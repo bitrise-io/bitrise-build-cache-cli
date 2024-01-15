@@ -120,7 +120,7 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 gradle.settingsEvaluated { settings ->
     settings.buildCache {
         local {
-            enabled = false
+            enabled = true
         }
 
         registerBuildCacheService(BitriseBuildCache.class, BitriseBuildCacheServiceFactory.class)
@@ -157,7 +157,7 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 gradle.settingsEvaluated { settings ->
     settings.buildCache {
         local {
-            enabled = false
+            enabled = true
         }
 
         registerBuildCacheService(BitriseBuildCache.class, BitriseBuildCacheServiceFactory.class)
