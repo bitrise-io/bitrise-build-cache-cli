@@ -6,6 +6,9 @@ Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the
 ## Install
 
 ```shell
+#!/usr/bin/env bash
+set -euxo pipefail
+
 # download the Bitrise Build Cache CLI
 curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d
 
