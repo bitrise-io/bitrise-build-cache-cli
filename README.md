@@ -10,7 +10,7 @@ Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the
 curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d
 
 # run the CLI
-/tmp/bin/bitrise-build-cache-cli [COMMAND]
+/tmp/bin/bitrise-build-cache [COMMAND]
 ```
 
 If you want to install the CLI to somewhere else you can change the `-b PATH` parameter.
@@ -20,13 +20,13 @@ If you want to install the CLI to somewhere else you can change the `-b PATH` pa
 To configure Bitrise Build Cache for Gradle on the current machine:
 
 ```shell
-/tmp/bin/bitrise-build-cache-cli enable-for gradle
+/tmp/bin/bitrise-build-cache enable-for gradle
 ```
 
 To configure Bitrise Build Cache for Bazel on the current machine:
 
 ```shell
-/tmp/bin/bitrise-build-cache-cli enable-for bazel
+/tmp/bin/bitrise-build-cache enable-for bazel
 ```
 
 For the options and parameters accepted by the commands call the command with `--help` flag.

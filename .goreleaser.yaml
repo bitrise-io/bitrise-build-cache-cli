@@ -3,6 +3,8 @@
 
 version: 1
 
+project_name: bitrise-build-cache
+
 release:
   github:
     owner: bitrise-io
@@ -14,7 +16,8 @@ before:
     - go mod tidy
 
 builds:
-  - env:
+  - binary: bitrise-build-cache
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -22,7 +25,7 @@ builds:
       - darwin
 
 archives:
-  - name_template: '{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - name_template: 'bitrise-build-cache_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 changelog:
   sort: asc
