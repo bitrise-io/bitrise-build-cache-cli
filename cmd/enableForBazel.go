@@ -58,6 +58,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 
 	logger.Infof("(i) Checking parameters")
 	endpointURL := cacheconfigcommon.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
+	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 	ciProvider := envProvider("CI_PROVIDER")
 
 	authConfig, err := cacheconfigcommon.ReadAuthConfigFromEnvironments(envProvider)

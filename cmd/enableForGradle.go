@@ -66,7 +66,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	}
 	authToken := authConfig.TokenInGradleFormat()
 	endpointURL := cacheconfigcommon.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
-	logger.Debugf("endpointURL: %s", endpointURL)
+	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 	logger.Infof("(i) paramIsGradleMetricsEnabled: %t", paramIsGradleMetricsEnabled)
 
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
