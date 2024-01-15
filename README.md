@@ -80,12 +80,28 @@ When `enable-for gradle` or `enable-for bazel` is called:
   If there's no marked block in the bazelrc file yet then the CLI will append it to the file
   with the necessary content in the block.
 
-## Release and download script generation
+## Release process
 
 To release a new version we use [goreleaser](https://github.com/goreleaser/goreleaser).
+
+```shell
+# first tag the new release
+git tag -a v0.1.0 -m "Initial test release"
+git push origin v0.1.0
+
+# then run goreleaser
+goreleaser release --clean
+```
 
 **NOTE:** the release will be created as a **draft**. After successful release creation
 and assets uploads (`goreleaser release --clean`) you have to manually finish the release
 by editing the draft and clicking `Publish release`.
 
+Now that the new release is available run `godownloader` to update the
+installer script.
 To generate the downloader/installer script we use [github.com/kamilsk/godownloader](https://github.com/kamilsk/godownloader).
+
+```shell
+# generate the downloader/installer script into ./install/installer.sh based on the .goreleaser.yaml configuration.
+godownloader .goreleaser.yaml > ./install/installer.sh
+```

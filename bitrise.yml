@@ -3,7 +3,7 @@ format_version: '13'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
 workflows:
-  primary:
+  test:
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -25,6 +25,6 @@ meta:
     machine_type_id: standard
 trigger_map:
 - push_branch: main
-  workflow: primary
+  workflow: test
 - pull_request_source_branch: "*"
-  workflow: primary
+  workflow: test
