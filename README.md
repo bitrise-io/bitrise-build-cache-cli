@@ -1,4 +1,4 @@
-# bitrise-build-cache-cli
+# Bitrise Build Cache CLI
 
 Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the machine where you run this CLI.
 
