@@ -1,8 +1,38 @@
----
-format_version: '13'
+format_version: "13"
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
+meta:
+  bitrise.io:
+    machine_type_id: standard
+    stack: linux-docker-android-20.04
+trigger_map:
+- push_branch: main
+  workflow: test
+- pull_request_source_branch: '*'
+  workflow: test
+- tag: '*.*.*'
+  workflow: release
 workflows:
+  release:
+    description: Creates Linux and Darwin binaries, then publishes a GitHub release
+    envs:
+    - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN  # Goreleaser expects this env var
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script:
+        title: Goreleaser (create binaries + publish to GH)
+        deps:
+          brew:
+          - name: goreleaser
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -ex
+
+            goreleaser release
+    - deploy-to-bitrise-io@2: {}
   test:
     steps:
     - activate-ssh-key@4:
@@ -19,12 +49,3 @@ workflows:
             curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.55.2
             ./bin/golangci-lint run -v
     - deploy-to-bitrise-io@2: {}
-meta:
-  bitrise.io:
-    stack: linux-docker-android-20.04
-    machine_type_id: standard
-trigger_map:
-- push_branch: main
-  workflow: test
-- pull_request_source_branch: "*"
-  workflow: test
