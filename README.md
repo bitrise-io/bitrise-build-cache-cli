@@ -87,18 +87,22 @@ When `enable-for gradle` or `enable-for bazel` is called:
 
 To release a new version we use [goreleaser](https://github.com/goreleaser/goreleaser).
 
+The release is generated on Bitrise CI. To trigger it, create and push a new version tag
+in the following format: `vX.X.X` for example `v0.1.0`:
+
 ```shell
 # first tag the new release
 git tag -a v0.1.0 -m "Initial test release"
 git push origin v0.1.0
-
-# then run goreleaser
-goreleaser release --clean
 ```
 
-**NOTE:** the release will be created as a **draft**. After successful release creation
-and assets uploads (`goreleaser release --clean`) you have to manually finish the release
-by editing the draft and clicking `Publish release`.
+This will trigger a build on Bitrise CI with the `release` workflow,
+which will create the new GitHub Release, generate the various archives
+based on the `.goreleaser.yaml` config (currently generating intel + arm, for linux + macos).
+
+**NOTE:** the GitHub Release will be created as a **draft**. After successful release creation
+and assets uploads you have to manually finish the release by editing the draft and clicking `Publish release`
+on the GitHub UI.
 
 Now that the new release is available run `godownloader` to update the
 installer script.
@@ -108,3 +112,6 @@ To generate the downloader/installer script we use [github.com/kamilsk/godownloa
 # generate the downloader/installer script into ./install/installer.sh based on the .goreleaser.yaml configuration.
 godownloader .goreleaser.yaml > ./install/installer.sh
 ```
+
+If only the timestamp is changed at the top of `./install/installer.sh` you don't have to commit
+the change, just discard it. If something else also changes then commit and push the updated `installer.sh`.
