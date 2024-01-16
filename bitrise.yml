@@ -23,6 +23,20 @@ workflows:
     - git-clone@8:
         inputs:
         - fetch_tags: "yes"
+    - script@1:
+        title: asdf install
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            asdf install
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:
