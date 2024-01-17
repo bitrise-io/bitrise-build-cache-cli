@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	cacheconfigcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -59,7 +60,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	logger.Infof("(i) Checking parameters")
 	endpointURL := cacheconfigcommon.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-	ciProvider := envProvider("CI_PROVIDER")
+	cacheConfig := common.NewCacheConfig(os.Getenv)
 
 	authConfig, err := cacheconfigcommon.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -74,7 +75,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	logger.Debugf("isBazelrcExists: %t", isBazelrcExists)
 
 	logger.Infof("(i) Generate ~/.bazelrc")
-	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(endpointURL, authConfig.WorkspaceID, authConfig.AuthToken, ciProvider)
+	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(endpointURL, authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig)
 	if err != nil {
 		return fmt.Errorf("generate bazelrc: %w", err)
 	}

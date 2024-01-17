@@ -11,3 +11,6 @@ build --remote_header=x-flare-builduser={{ .CIProvider }}
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --build_event_publish_all_actions
+{{- if .RepoURL }}
+build --bes_header='x-repository-url={{ .RepoURL }}'
+{{- end }}
