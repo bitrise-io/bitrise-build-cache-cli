@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	cacheconfigcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
@@ -60,14 +61,23 @@ func init() {
 
 func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
 	logger.Infof("(i) Checking parameters")
+
+	// Required configs
+	logger.Infof("(i) Check Auth Config")
 	authConfig, err := cacheconfigcommon.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environment variables: %w", err)
 	}
 	authToken := authConfig.TokenInGradleFormat()
+
+	// Optional configs
+	// EndpointURL
 	endpointURL := cacheconfigcommon.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 	logger.Infof("(i) paramIsGradleMetricsEnabled: %t", paramIsGradleMetricsEnabled)
+	// Metadata
+	cacheConfig := common.NewCacheConfig(os.Getenv)
+	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
 	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
