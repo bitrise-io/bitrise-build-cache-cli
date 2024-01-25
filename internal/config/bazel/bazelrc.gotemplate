@@ -1,8 +1,8 @@
 build --remote_cache={{ .EndpointURL }}
 build --remote_timeout=3600
 {{- if .WorkspaceID }}
-build --remote_header=x-org-id={{ .WorkspaceID }}
-build --bes_header=x-org-id={{ .WorkspaceID }} 
+build --remote_header='x-org-id={{ .WorkspaceID }}'
+build --bes_header='x-org-id={{ .WorkspaceID }}'
 {{- end }}
 build --remote_header=authorization="Bearer {{ .AuthToken }}"
 build --bes_header=authorization="Bearer {{ .AuthToken }}"
@@ -12,5 +12,6 @@ build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --build_event_publish_all_actions
 {{- if .RepoURL }}
+build --remote_header='x-repository-url={{ .RepoURL }}'
 build --bes_header='x-repository-url={{ .RepoURL }}'
 {{- end }}

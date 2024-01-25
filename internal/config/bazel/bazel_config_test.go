@@ -66,8 +66,8 @@ build --build_event_publish_all_actions
 			wantErr: "",
 			want: `build --remote_cache=grpcs://TESTENDPOINT.bitrise.io
 build --remote_timeout=3600
-build --remote_header=x-org-id=W0rkSp4ceID
-build --bes_header=x-org-id=W0rkSp4ceID
+build --remote_header='x-org-id=W0rkSp4ceID'
+build --bes_header='x-org-id=W0rkSp4ceID'
 build --remote_header=authorization="Bearer 4uth70k3n"
 build --bes_header=authorization="Bearer 4uth70k3n"
 build --remote_header=x-flare-buildtool=bazel
@@ -75,6 +75,7 @@ build --remote_header=x-flare-builduser=BestCI
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --build_event_publish_all_actions
+build --remote_header='x-repository-url=https://github.com/some/repo'
 build --bes_header='x-repository-url=https://github.com/some/repo'
 `,
 		},
