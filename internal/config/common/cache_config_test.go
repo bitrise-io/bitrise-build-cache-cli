@@ -25,13 +25,21 @@ func TestNewCacheConfig(t *testing.T) {
 			name: "Bitrise",
 			args: args{
 				envProvider: createEnvProvider(map[string]string{
-					"BITRISE_IO":         "true",
-					"GIT_REPOSITORY_URL": "git/repo/url",
+					"BITRISE_IO":                       "true",
+					"GIT_REPOSITORY_URL":               "git/repo/url",
+					"BITRISE_APP_SLUG":                 "BitriseAppID1",
+					"BITRISE_BUILD_SLUG":               "BitriseBuildID1",
+					"BITRISE_TRIGGERED_WORKFLOW_TITLE": "BitriseWorkflowName1",
+					"BITRISE_STEP_EXECUTION_ID":        "BitriseStepID1",
 				}),
 			},
 			want: CacheConfig{
-				CIProvider: CIProviderBitrise,
-				RepoURL:    "git/repo/url",
+				CIProvider:          CIProviderBitrise,
+				RepoURL:             "git/repo/url",
+				BitriseAppID:        "BitriseAppID1",
+				BitriseBuildID:      "BitriseBuildID1",
+				BitriseWorkflowName: "BitriseWorkflowName1",
+				BitriseStepID:       "BitriseStepID1",
 			},
 		},
 		{

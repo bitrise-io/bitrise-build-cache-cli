@@ -15,3 +15,19 @@ build --build_event_publish_all_actions
 build --remote_header='x-repository-url={{ .RepoURL }}'
 build --bes_header='x-repository-url={{ .RepoURL }}'
 {{- end }}
+{{- if .BitriseAppID }}
+build --remote_header='x-app-id={{ .BitriseAppID }}'
+build --bes_header='x-app-id={{ .BitriseAppID }}'
+{{- end }}
+{{- if .BitriseStepID }}
+build --remote_header='x-step-id={{ .BitriseStepID }}'
+build --bes_header='x-step-id={{ .BitriseStepID }}'
+{{- end }}
+{{- if .BitriseWorkflowName }}
+build --remote_header='x-workflow-name={{ .BitriseWorkflowName }}'
+build --bes_header='x-workflow-name={{ .BitriseWorkflowName }}'
+{{- end }}
+{{- if .BitriseBuildID }}
+build --remote_header='x-build-id={{ .BitriseBuildID }}'
+build --bes_header='x-build-id={{ .BitriseBuildID }}'
+{{- end }}

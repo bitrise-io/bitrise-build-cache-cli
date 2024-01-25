@@ -61,6 +61,11 @@ build --build_event_publish_all_actions
 				cacheConfig: common.CacheConfig{
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
+					// BitriseCI specific
+					BitriseAppID:        "BitriseAppID1",
+					BitriseStepID:       "BitriseStepID1",
+					BitriseWorkflowName: "BitriseWorkflowName1",
+					BitriseBuildID:      "BitriseBuildID1",
 				},
 			},
 			wantErr: "",
@@ -77,6 +82,14 @@ build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --build_event_publish_all_actions
 build --remote_header='x-repository-url=https://github.com/some/repo'
 build --bes_header='x-repository-url=https://github.com/some/repo'
+build --remote_header='x-app-id=BitriseAppID1'
+build --bes_header='x-app-id=BitriseAppID1'
+build --remote_header='x-step-id=BitriseStepID1'
+build --bes_header='x-step-id=BitriseStepID1'
+build --remote_header='x-workflow-name=BitriseWorkflowName1'
+build --bes_header='x-workflow-name=BitriseWorkflowName1'
+build --remote_header='x-build-id=BitriseBuildID1'
+build --bes_header='x-build-id=BitriseBuildID1'
 `,
 		},
 	}
