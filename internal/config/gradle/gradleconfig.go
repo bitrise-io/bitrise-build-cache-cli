@@ -10,7 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
-//go:embed init.gradle.gotemplate
+//go:embed initd.gradle.kts.gotemplate
 var gradleTemplateText string
 
 var (
