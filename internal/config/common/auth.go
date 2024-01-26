@@ -1,4 +1,4 @@
-package cacheconfigcommon
+package common
 
 import "errors"
 

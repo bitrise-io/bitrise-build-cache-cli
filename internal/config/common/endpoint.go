@@ -1,4 +1,4 @@
-package cacheconfigcommon
+package common
 
 import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"

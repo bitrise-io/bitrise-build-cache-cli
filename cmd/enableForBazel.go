@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
-	cacheconfigcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -51,22 +51,28 @@ func init() {
 }
 
 func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string) error {
-	bazelrcPath, err := pathutil.NewPathModifier().AbsPath(filepath.Join(homeDirPath, ".bazelrc"))
-	if err != nil {
-		return fmt.Errorf("get absolute path of ~/.bazelrc, error: %w", err)
-	}
-
 	logger.Infof("(i) Checking parameters")
-	endpointURL := cacheconfigcommon.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-	ciProvider := envProvider("CI_PROVIDER")
 
-	authConfig, err := cacheconfigcommon.ReadAuthConfigFromEnvironments(envProvider)
+	// Required configs
+	logger.Infof("(i) Check Auth Config")
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environments: %w", err)
 	}
 
+	// Optional configs
+	// EndpointURL
+	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
+	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
+	// Metadata
+	cacheConfig := common.NewCacheConfig(os.Getenv)
+	logger.Infof("(i) Cache Config: %+v", cacheConfig)
+
 	logger.Infof("(i) Check ~/.bazelrc")
+	bazelrcPath, err := pathutil.NewPathModifier().AbsPath(filepath.Join(homeDirPath, ".bazelrc"))
+	if err != nil {
+		return fmt.Errorf("get absolute path of ~/.bazelrc, error: %w", err)
+	}
 	currentBazelrcFileContent, isBazelrcExists, err := readFileIfExists(bazelrcPath)
 	if err != nil {
 		return fmt.Errorf("check if ~/.bazelrc exists at %s, error: %w", bazelrcPath, err)
@@ -74,7 +80,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	logger.Debugf("isBazelrcExists: %t", isBazelrcExists)
 
 	logger.Infof("(i) Generate ~/.bazelrc")
-	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(endpointURL, authConfig.WorkspaceID, authConfig.AuthToken, ciProvider)
+	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(endpointURL, authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig)
 	if err != nil {
 		return fmt.Errorf("generate bazelrc: %w", err)
 	}
