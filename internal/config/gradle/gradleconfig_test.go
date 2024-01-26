@@ -4,15 +4,17 @@ import (
 	_ "embed"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateInitGradle(t *testing.T) {
 	type args struct {
-		endpointURL    string
-		authToken      string
-		metricsEnabled bool
+		endpointURL         string
+		authToken           string
+		metricsEnabled      bool
+		cacheConfigMetadata common.CacheConfigMetadata
 	}
 	tests := []struct {
 		name    string
@@ -42,6 +44,15 @@ func TestGenerateInitGradle(t *testing.T) {
 				endpointURL:    "grpcs://remote-build-cache.services.bitrise.io",
 				authToken:      "AuthT0ken",
 				metricsEnabled: false,
+				cacheConfigMetadata: common.CacheConfigMetadata{
+					CIProvider: "BestCI",
+					RepoURL:    "https://github.com/some/repo",
+					// Bitrise CI specific
+					BitriseAppID:        "BitriseAppID1",
+					BitriseBuildID:      "BitriseBuildID1",
+					BitriseWorkflowName: "BitriseWorkflowName1",
+					BitriseStepID:       "BitriseStepID1",
+				},
 			},
 			want:    expectedInitScriptWithoutMetrics,
 			wantErr: "",
@@ -52,14 +63,34 @@ func TestGenerateInitGradle(t *testing.T) {
 				endpointURL:    "grpcs://remote-build-cache.services.bitrise.io",
 				authToken:      "AuthT0ken",
 				metricsEnabled: true,
+				cacheConfigMetadata: common.CacheConfigMetadata{
+					CIProvider: "BestCI",
+					RepoURL:    "https://github.com/some/repo",
+					// Bitrise CI specific
+					BitriseAppID:        "BitriseAppID1",
+					BitriseBuildID:      "BitriseBuildID1",
+					BitriseWorkflowName: "BitriseWorkflowName1",
+					BitriseStepID:       "BitriseStepID1",
+				},
 			},
 			want:    expectedInitScriptWithMetrics,
+			wantErr: "",
+		},
+		{
+			name: "MetricsEnabled=true but empty metadata",
+			args: args{
+				endpointURL:         "grpcs://remote-build-cache.services.bitrise.io",
+				authToken:           "AuthT0ken",
+				metricsEnabled:      true,
+				cacheConfigMetadata: common.CacheConfigMetadata{},
+			},
+			want:    expectedInitScriptWithMetricsButNoMetadata,
 			wantErr: "",
 		},
 	}
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateInitGradle(tt.args.endpointURL, tt.args.authToken, tt.args.metricsEnabled)
+			got, err := GenerateInitGradle(tt.args.endpointURL, tt.args.authToken, tt.args.metricsEnabled, tt.args.cacheConfigMetadata)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
@@ -70,106 +101,143 @@ func TestGenerateInitGradle(t *testing.T) {
 	}
 }
 
-const expectedInitScriptWithMetrics = `initscript {
+const expectedInitScriptWithMetrics = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
     repositories {
+        mavenLocal()
         mavenCentral()
-        maven {
-            url 'https://jitpack.io'
-        }
-        maven {
-            url "https://plugins.gradle.org/m2/"
-        }
+        google()
+        maven(url="https://jitpack.io")
+        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
     }
-
     dependencies {
-        classpath 'io.bitrise.gradle:remote-cache:1.+'
-        classpath 'io.bitrise.gradle:gradle-analytics:0.+'
+        classpath("io.bitrise.gradle:remote-cache:1.+")
+        classpath("io.bitrise.gradle:gradle-analytics:main-SNAPSHOT")
     }
 }
 
-println('[BITRISE BUILD CACHE] Gradle Metrics collection: on')
-rootProject {
-    apply plugin: io.bitrise.gradle.analytics.AnalyticsPlugin
-
-    analytics {
-        ignoreErrors = false
-        bitrise {
-            remote {
-                authorization = 'AuthT0ken'
-                endpoint = 'gradle-analytics.services.bitrise.io'
-                port = 443
-            }
-        }
-    }
-
-    // Configure the analytics producer task to run at the end of the build, no matter what tasks are executed
-    allprojects {
-        tasks.configureEach {
-            if (name != "producer") {
-                // The producer task is defined in the root project only, but we are in the allprojects {} block,
-                // so this special syntax is needed to reference the root project task
-                finalizedBy ":producer"
-            }
-        }
-    }
-}
-
-import io.bitrise.gradle.cache.BitriseBuildCache
-import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
-
-gradle.settingsEvaluated { settings ->
-    settings.buildCache {
+settingsEvaluated {
+    buildCache {
         local {
-            enabled = false
+            isEnabled = false
         }
 
-        registerBuildCacheService(BitriseBuildCache.class, BitriseBuildCacheServiceFactory.class)
-        remote(BitriseBuildCache.class) {
-            endpoint = 'grpcs://remote-build-cache.services.bitrise.io'
-            println('[BITRISE BUILD CACHE] endpoint: ' + endpoint)
-            authToken = 'AuthT0ken'
-            enabled = true
-            push = true
-            println('[BITRISE BUILD CACHE] push: ' + push)
+        registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
+        remote(BitriseBuildCache::class.java) {
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isEnabled = true
+            isPush = true
             debug = true
-            blobValidationLevel = 'warning'
+        }
+    }
+}
+
+rootProject {
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
+
+    extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
+        endpoint.set("gradle-analytics.services.bitrise.io:443")
+        authToken.set("AuthT0ken")
+        dumpEventsToFiles.set(true)
+        debug.set(true)
+        enabled.set(true)
+
+        providerName.set("BestCI")
+
+        bitrise {
+            appSlug.set("BitriseAppID1")
+            buildSlug.set("BitriseBuildID1")
+            stepId.set("BitriseStepID1")
+            workflowName.set("BitriseWorkflowName1")
         }
     }
 }
 `
 
-const expectedInitScriptWithoutMetrics = `initscript {
-    repositories {
-        mavenCentral()
-        maven {
-            url 'https://jitpack.io'
-        }
-    }
+const expectedInitScriptWithMetricsButNoMetadata = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
 
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
+    }
     dependencies {
-        classpath 'io.bitrise.gradle:remote-cache:1.+'
+        classpath("io.bitrise.gradle:remote-cache:1.+")
+        classpath("io.bitrise.gradle:gradle-analytics:main-SNAPSHOT")
     }
 }
 
-import io.bitrise.gradle.cache.BitriseBuildCache
-import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
-
-gradle.settingsEvaluated { settings ->
-    settings.buildCache {
+settingsEvaluated {
+    buildCache {
         local {
-            enabled = false
+            isEnabled = false
         }
 
-        registerBuildCacheService(BitriseBuildCache.class, BitriseBuildCacheServiceFactory.class)
-        remote(BitriseBuildCache.class) {
-            endpoint = 'grpcs://remote-build-cache.services.bitrise.io'
-            println('[BITRISE BUILD CACHE] endpoint: ' + endpoint)
-            authToken = 'AuthT0ken'
-            enabled = true
-            push = true
-            println('[BITRISE BUILD CACHE] push: ' + push)
+        registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
+        remote(BitriseBuildCache::class.java) {
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isEnabled = true
+            isPush = true
             debug = true
-            blobValidationLevel = 'warning'
+        }
+    }
+}
+
+rootProject {
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
+
+    extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
+        endpoint.set("gradle-analytics.services.bitrise.io:443")
+        authToken.set("AuthT0ken")
+        dumpEventsToFiles.set(true)
+        debug.set(true)
+        enabled.set(true)
+
+        providerName.set("")
+
+        bitrise {
+        }
+    }
+}
+`
+
+const expectedInitScriptWithoutMetrics = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
+    }
+    dependencies {
+        classpath("io.bitrise.gradle:remote-cache:1.+")
+    }
+}
+
+settingsEvaluated {
+    buildCache {
+        local {
+            isEnabled = false
+        }
+
+        registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
+        remote(BitriseBuildCache::class.java) {
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isEnabled = true
+            isPush = true
+            debug = true
         }
     }
 }

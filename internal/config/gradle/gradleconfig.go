@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"text/template"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
-//go:embed init.gradle.gotemplate
+//go:embed initd.gradle.kts.gotemplate
 var gradleTemplateText string
 
 var (
@@ -17,16 +19,17 @@ var (
 )
 
 type templateInventory struct {
-	AuthToken       string
-	EndpointURL     string
-	CacheVersion    string
-	PushEnabled     bool
-	DebugEnabled    bool
-	ValidationLevel string
-	MetricsEnabled  bool
-	MetricsVersion  string
-	MetricsEndpoint string
-	MetricsPort     int
+	AuthToken                string
+	CacheEndpointURLWithPort string
+	CacheVersion             string
+	PushEnabled              bool
+	DebugEnabled             bool
+	ValidationLevel          string
+	MetricsEnabled           bool
+	MetricsVersion           string
+	MetricsEndpoint          string
+	MetricsPort              int
+	CacheConfigMetadata      common.CacheConfigMetadata
 }
 
 // Sync the major version of this step and the library.
@@ -44,7 +47,7 @@ const analyticsPort = 443
 // Generate init.gradle content.
 // Recommended to save the content into $HOME/.gradle/init.d/ instead of
 // overwriting the $HOME/.gradle/init.gradle file.
-func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool) (string, error) {
+func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
 	// required check
 	if len(authToken) < 1 {
 		return "", fmt.Errorf("generate init.gradle, error: %w", errAuthTokenNotProvided)
@@ -56,16 +59,17 @@ func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool) (s
 
 	// create inventory
 	inventory := templateInventory{
-		AuthToken:       authToken,
-		EndpointURL:     endpointURL,
-		CacheVersion:    gradleRemoteBuildCachePluginDepVersion,
-		PushEnabled:     true,
-		DebugEnabled:    true,
-		ValidationLevel: "warning",
-		MetricsEnabled:  analyticsEnabled,
-		MetricsVersion:  analyticsPluginDepVersion,
-		MetricsEndpoint: analyticsEndpoint,
-		MetricsPort:     analyticsPort,
+		AuthToken:                authToken,
+		CacheEndpointURLWithPort: endpointURL,
+		CacheVersion:             gradleRemoteBuildCachePluginDepVersion,
+		PushEnabled:              true,
+		DebugEnabled:             true,
+		ValidationLevel:          "warning",
+		MetricsEnabled:           analyticsEnabled,
+		MetricsVersion:           analyticsPluginDepVersion,
+		MetricsEndpoint:          analyticsEndpoint,
+		MetricsPort:              analyticsPort,
+		CacheConfigMetadata:      cacheConfigMetadata,
 	}
 
 	tmpl, err := template.New("init.gradle").Parse(gradleTemplateText)

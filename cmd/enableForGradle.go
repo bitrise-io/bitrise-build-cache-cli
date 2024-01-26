@@ -24,7 +24,7 @@ var enableForGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Long: `Enable Bitrise Build Cache for Gradle.
 This command will:
 
-- Create a ~/.gradle/init.d/bitrise-build-cache-init.gradle file with the necessary configs. This file will be overwritten.
+- Create a ~/.gradle/init.d/bitrise-build-cache-init.gradle.kts file with the necessary configs. This file will be overwritten.
 - Create a ~/.gradle/gradle.properties file with org.gradle.caching=true
 
 The gradle.properties file will be created if it doesn't exist.
@@ -75,8 +75,8 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 	logger.Infof("(i) paramIsGradleMetricsEnabled: %t", paramIsGradleMetricsEnabled)
 	// Metadata
-	cacheConfig := common.NewCacheConfig(os.Getenv)
-	logger.Infof("(i) Cache Config: %+v", cacheConfig)
+	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv)
+	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
 
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
 	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
@@ -85,18 +85,18 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		return fmt.Errorf("ensure ~/.gradle/init.d exists: %w", err)
 	}
 
-	logger.Infof("(i) Generate ~/.gradle/init.d/bitrise-build-cache-init.gradle")
-	initGradleContent, err := gradleconfig.GenerateInitGradle(endpointURL, authToken, paramIsGradleMetricsEnabled)
+	logger.Infof("(i) Generate ~/.gradle/init.d/bitrise-build-cache-init.gradle.kts")
+	initGradleContent, err := gradleconfig.GenerateInitGradle(endpointURL, authToken, paramIsGradleMetricsEnabled, cacheConfigMetadata)
 	if err != nil {
-		return fmt.Errorf("generate bitrise-build-cache-init.gradle: %w", err)
+		return fmt.Errorf("generate bitrise-build-cache-init.gradle.kts: %w", err)
 	}
 
-	logger.Infof("(i) Write ~/.gradle/init.d/bitrise-build-cache-init.gradle")
+	logger.Infof("(i) Write ~/.gradle/init.d/bitrise-build-cache-init.gradle.kts")
 	{
-		initGradlePath := filepath.Join(gradleInitDPath, "bitrise-build-cache-init.gradle")
+		initGradlePath := filepath.Join(gradleInitDPath, "bitrise-build-cache-init.gradle.kts")
 		err = os.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,gomnd
 		if err != nil {
-			return fmt.Errorf("write bitrise-build-cache-init.gradle to %s, error: %w", initGradlePath, err)
+			return fmt.Errorf("write bitrise-build-cache-init.gradle.kts to %s, error: %w", initGradlePath, err)
 		}
 	}
 

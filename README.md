@@ -57,7 +57,7 @@ Note: the easiest way to get these parameters and do a Bitrise Build Cache setup
 
 It creates the necessary config to enable Build Cache and Command Exec/Invocation Analytics. It does this via adding the config in the `$HOME` directory.
 
-In case of Gradle it's done via creating or modifying the following two files: `$HOME/.gradle/init.d/bitrise-build-cache-init.gradle` and `$HOME/.gradle/gradle.properties` (adding `org.gradle.caching=true` to `gradle.properties`).
+In case of Gradle it's done via creating or modifying the following two files: `$HOME/.gradle/init.d/bitrise-build-cache-init.gradle.kts` and `$HOME/.gradle/gradle.properties` (adding `org.gradle.caching=true` to `gradle.properties`).
 
 In case of Bazel it's done via creating or modifying `$HOME/.bazelrc`.
 
@@ -76,7 +76,7 @@ When `enable-for gradle` or `enable-for bazel` is called:
 
 ### Gradle
 
-- `$HOME/.gradle/init.d/bitrise-build-cache-init.gradle` is overwritten when you run `enable-for gradle`.
+- `$HOME/.gradle/init.d/bitrise-build-cache-init.gradle.kts` is overwritten when you run `enable-for gradle`.
   Any modification you do in that file will be overwritten.
 - `$HOME/.gradle/gradle.properties` is modified in the following way: when you run `enable-for gradle`
   the CLI will check whether a `# [start] generated-by-bitrise-build-cache / # [end] generated-by-bitrise-build-cache`
