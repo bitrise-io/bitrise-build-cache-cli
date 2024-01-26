@@ -18,6 +18,15 @@ curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli
 
 If you want to install the CLI to somewhere else you can change the `-b PATH` parameter.
 
+If you want to install a specific version of the CLI you can use specify the version as the last parameter
+of the installer script. For example to install version `v0.4.0`:
+
+```shell
+curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v0.4.0
+```
+
+*Note: pre-release versions aren't supported by the installer script currently.*
+
 ### Command examples
 
 To configure Bitrise Build Cache for Gradle on the current machine:
