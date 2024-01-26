@@ -80,6 +80,8 @@ build --remote_header=x-flare-builduser=BestCI
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --build_event_publish_all_actions
+build --remote_header='x-ci-provider=BestCI'
+build --bes_header='x-ci-provider=BestCI'
 build --remote_header='x-repository-url=https://github.com/some/repo'
 build --bes_header='x-repository-url=https://github.com/some/repo'
 build --remote_header='x-app-id=BitriseAppID1'

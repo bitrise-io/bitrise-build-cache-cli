@@ -17,6 +17,12 @@ const (
 	CIProviderCircleCI = "circle-ci"
 	// CIProviderGitHubActions ...
 	CIProviderGitHubActions = "github-actions"
+
+	// --- not used yet ---
+	// CIProviderJenkins ...
+	// CIProviderJenkins = "jenkins"
+	// CIProviderUnknown ...
+	// CIProviderUnknown = "other"
 )
 
 // EnvProviderFunc is a function which returns the value of an environment variable.

@@ -22,7 +22,7 @@ func TestNewCacheConfig(t *testing.T) {
 			want: CacheConfig{},
 		},
 		{
-			name: "Bitrise",
+			name: "Bitrise CI",
 			args: args{
 				envProvider: createEnvProvider(map[string]string{
 					"BITRISE_IO":                       "true",
