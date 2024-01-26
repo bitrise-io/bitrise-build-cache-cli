@@ -51,7 +51,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		//
-		isInitFileExists, err := pathutil.NewPathChecker().IsPathExists(filepath.Join(tmpGradleHomeDir, "init.d", "bitrise-build-cache-init.gradle"))
+		isInitFileExists, err := pathutil.NewPathChecker().IsPathExists(filepath.Join(tmpGradleHomeDir, "init.d", "bitrise-build-cache-init.gradle.kts"))
 		require.NoError(t, err)
 		assert.True(t, isInitFileExists)
 		//

@@ -33,7 +33,7 @@ type templateInventory struct {
 }
 
 // Generate bazelrc.
-func GenerateBazelrc(endpointURL, workspaceID, authToken string, cacheConfig common.CacheConfig) (string, error) {
+func GenerateBazelrc(endpointURL, workspaceID, authToken string, cacheConfig common.CacheConfigMetadata) (string, error) {
 	// required check
 	if len(authToken) < 1 {
 		return "", fmt.Errorf("generate bazelrc, error: %w", errAuthTokenNotProvided)

@@ -14,7 +14,7 @@ func TestGenerateBazelrc(t *testing.T) {
 		endpointURL string
 		workspaceID string
 		authToken   string
-		cacheConfig common.CacheConfig
+		cacheConfig common.CacheConfigMetadata
 	}
 	tests := []struct {
 		name    string
@@ -58,7 +58,7 @@ build --build_event_publish_all_actions
 				endpointURL: "grpcs://TESTENDPOINT.bitrise.io",
 				workspaceID: "W0rkSp4ceID",
 				authToken:   "4uth70k3n",
-				cacheConfig: common.CacheConfig{
+				cacheConfig: common.CacheConfigMetadata{
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
 					// BitriseCI specific

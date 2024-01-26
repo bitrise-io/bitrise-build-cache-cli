@@ -5,21 +5,21 @@ import (
 	"testing"
 )
 
-func TestNewCacheConfig(t *testing.T) {
+func TestNewCacheConfigMetadata(t *testing.T) {
 	type args struct {
 		envProvider EnvProviderFunc
 	}
 	tests := []struct {
 		name string
 		args args
-		want CacheConfig
+		want CacheConfigMetadata
 	}{
 		{
 			name: "Unknown CI provider",
 			args: args{
 				envProvider: createEnvProvider(map[string]string{}),
 			},
-			want: CacheConfig{},
+			want: CacheConfigMetadata{},
 		},
 		{
 			name: "Bitrise CI",
@@ -33,7 +33,7 @@ func TestNewCacheConfig(t *testing.T) {
 					"BITRISE_STEP_EXECUTION_ID":        "BitriseStepID1",
 				}),
 			},
-			want: CacheConfig{
+			want: CacheConfigMetadata{
 				CIProvider:          CIProviderBitrise,
 				RepoURL:             "git/repo/url",
 				BitriseAppID:        "BitriseAppID1",
@@ -50,7 +50,7 @@ func TestNewCacheConfig(t *testing.T) {
 					"CIRCLE_REPOSITORY_URL": "git/repo/url",
 				}),
 			},
-			want: CacheConfig{
+			want: CacheConfigMetadata{
 				CIProvider: CIProviderCircleCI,
 				RepoURL:    "git/repo/url",
 			},
@@ -64,7 +64,7 @@ func TestNewCacheConfig(t *testing.T) {
 					"GITHUB_REPOSITORY": "owner/repo",
 				}),
 			},
-			want: CacheConfig{
+			want: CacheConfigMetadata{
 				CIProvider: CIProviderGitHubActions,
 				RepoURL:    "https://github.com/owner/repo",
 			},
@@ -72,8 +72,8 @@ func TestNewCacheConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewCacheConfig(tt.args.envProvider); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewCacheConfig() = %v, want %v", got, tt.want)
+			if got := NewCacheConfigMetadata(tt.args.envProvider); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewCacheConfigMetadata() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -1,6 +1,6 @@
 package common
 
-type CacheConfig struct {
+type CacheConfigMetadata struct {
 	CIProvider string
 	RepoURL    string
 	// BitriseCI specific
@@ -46,10 +46,10 @@ func detectCIProvider(envProvider EnvProviderFunc) string {
 	return ""
 }
 
-func createCacheConfig(provider, repoURL string,
+func createCacheConfigMetadata(provider, repoURL string,
 	bitriseAppID, bitriseStepID, bitriseWorkflowName, bitriseBuildID string,
-) CacheConfig {
-	return CacheConfig{
+) CacheConfigMetadata {
+	return CacheConfigMetadata{
 		CIProvider: provider,
 		RepoURL:    repoURL,
 		// BitriseCI specific
@@ -60,24 +60,24 @@ func createCacheConfig(provider, repoURL string,
 	}
 }
 
-// NewCacheConfig creates a new CacheConfig instance based on the environment variables.
-func NewCacheConfig(envProvider EnvProviderFunc) CacheConfig {
+// NewCacheConfigMetadata creates a new CacheConfigMetadata instance based on the environment variables.
+func NewCacheConfigMetadata(envProvider EnvProviderFunc) CacheConfigMetadata {
 	provider := detectCIProvider(envProvider)
 	switch provider {
 	case CIProviderBitrise:
-		return createCacheConfig(provider, envProvider("GIT_REPOSITORY_URL"),
+		return createCacheConfigMetadata(provider, envProvider("GIT_REPOSITORY_URL"),
 			// Bitrise CI specific
 			envProvider("BITRISE_APP_SLUG"), envProvider("BITRISE_STEP_EXECUTION_ID"),
 			envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"), envProvider("BITRISE_BUILD_SLUG"))
 	case CIProviderCircleCI:
-		return createCacheConfig(provider, envProvider("CIRCLE_REPOSITORY_URL"),
+		return createCacheConfigMetadata(provider, envProvider("CIRCLE_REPOSITORY_URL"),
 			"", "", "", "")
 	case CIProviderGitHubActions:
 		repoURL := envProvider("GITHUB_SERVER_URL") + "/" + envProvider("GITHUB_REPOSITORY")
 
-		return createCacheConfig(provider, repoURL,
+		return createCacheConfigMetadata(provider, repoURL,
 			"", "", "", "")
 	}
 
-	return CacheConfig{}
+	return CacheConfigMetadata{}
 }
