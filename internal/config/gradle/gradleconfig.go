@@ -19,17 +19,17 @@ var (
 )
 
 type templateInventory struct {
-	AuthToken           string
-	EndpointURL         string
-	CacheVersion        string
-	PushEnabled         bool
-	DebugEnabled        bool
-	ValidationLevel     string
-	MetricsEnabled      bool
-	MetricsVersion      string
-	MetricsEndpoint     string
-	MetricsPort         int
-	CacheConfigMetadata common.CacheConfigMetadata
+	AuthToken                string
+	CacheEndpointURLWithPort string
+	CacheVersion             string
+	PushEnabled              bool
+	DebugEnabled             bool
+	ValidationLevel          string
+	MetricsEnabled           bool
+	MetricsVersion           string
+	MetricsEndpoint          string
+	MetricsPort              int
+	CacheConfigMetadata      common.CacheConfigMetadata
 }
 
 // Sync the major version of this step and the library.
@@ -59,17 +59,17 @@ func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool, ca
 
 	// create inventory
 	inventory := templateInventory{
-		AuthToken:           authToken,
-		EndpointURL:         endpointURL,
-		CacheVersion:        gradleRemoteBuildCachePluginDepVersion,
-		PushEnabled:         true,
-		DebugEnabled:        true,
-		ValidationLevel:     "warning",
-		MetricsEnabled:      analyticsEnabled,
-		MetricsVersion:      analyticsPluginDepVersion,
-		MetricsEndpoint:     analyticsEndpoint,
-		MetricsPort:         analyticsPort,
-		CacheConfigMetadata: cacheConfigMetadata,
+		AuthToken:                authToken,
+		CacheEndpointURLWithPort: endpointURL,
+		CacheVersion:             gradleRemoteBuildCachePluginDepVersion,
+		PushEnabled:              true,
+		DebugEnabled:             true,
+		ValidationLevel:          "warning",
+		MetricsEnabled:           analyticsEnabled,
+		MetricsVersion:           analyticsPluginDepVersion,
+		MetricsEndpoint:          analyticsEndpoint,
+		MetricsPort:              analyticsPort,
+		CacheConfigMetadata:      cacheConfigMetadata,
 	}
 
 	tmpl, err := template.New("init.gradle").Parse(gradleTemplateText)

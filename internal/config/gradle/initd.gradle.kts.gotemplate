@@ -25,7 +25,7 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "{{ .EndpointURL }}"
+            endpoint = "{{ .CacheEndpointURLWithPort }}"
             authToken = "{{ .AuthToken }}"
             isEnabled = true
             isPush = {{ .PushEnabled }}
