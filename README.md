@@ -25,7 +25,7 @@ of the installer script. For example to install version `v0.4.0`:
 curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v0.4.0
 ```
 
-*Note: pre-release versions aren't supported by the installer script currently.*
+*Note: **DRAFT** versions aren't supported by the installer, but releases marked as **pre-release** are.*
 
 ### Command examples
 
@@ -112,6 +112,12 @@ based on the `.goreleaser.yaml` config (currently generating intel + arm, for li
 **NOTE:** the GitHub Release will be created as a **draft**. After successful release creation
 and assets uploads you have to manually finish the release by editing the draft and clicking `Publish release`
 on the GitHub UI.
+
+**NOTE:** to test the new release before it'd be automatically downloaded by the installer when no version
+number is specified: edit the **draft** and enable the `Set as a pre-release` toggle option.
+This way you can test the new version by specifying it for the installer script, and if it
+looks good you can edit the release and change it to `Set as the latest release`,
+so it'll be the version downloaded by the installer when the installer is called without a specified version.
 
 Now that the new release is available run `godownloader` to update the
 installer script.
