@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 )
 
 //go:embed initd.gradle.kts.gotemplate
@@ -21,29 +22,17 @@ var (
 type templateInventory struct {
 	AuthToken                string
 	CacheEndpointURLWithPort string
-	CacheVersion             string
+	CachePluginVersion       string
 	PushEnabled              bool
 	DebugEnabled             bool
 	ValidationLevel          string
-	MetricsEnabled           bool
-	MetricsVersion           string
-	MetricsEndpoint          string
-	MetricsPort              int
+	AnalyticsEnabled         bool
+	AnalyticsPluginVersion   string
+	AnalyticsEndpoint        string
+	AnalyticsPort            int
 	// Metadata
 	CacheConfigMetadata common.CacheConfigMetadata
 }
-
-// Sync the major version of this step and the library.
-// Use the latest 1.x version of our dependency, so we don't have to update this definition after every lib release.
-// But don't forget to update this to `2.+` if the library reaches version 2.0!
-const gradleRemoteBuildCachePluginDepVersion = "1.+"
-
-// Sync the major version of this step and the plugin.
-// Use the latest 1.x version of the plugin, so we don't have to update this definition after every plugin release.
-// But don't forget to update this to `2.+` if the library reaches version 2.0!
-const analyticsPluginDepVersion = "0.+"
-const analyticsEndpoint = "gradle-analytics.services.bitrise.io"
-const analyticsPort = 443
 
 // Generate init.gradle content.
 // Recommended to save the content into $HOME/.gradle/init.d/ instead of
@@ -62,14 +51,14 @@ func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool, ca
 	inventory := templateInventory{
 		AuthToken:                authToken,
 		CacheEndpointURLWithPort: endpointURL,
-		CacheVersion:             gradleRemoteBuildCachePluginDepVersion,
+		CachePluginVersion:       consts.GradleRemoteBuildCachePluginDepVersion,
 		PushEnabled:              true,
 		DebugEnabled:             true,
 		ValidationLevel:          "warning",
-		MetricsEnabled:           analyticsEnabled,
-		MetricsVersion:           analyticsPluginDepVersion,
-		MetricsEndpoint:          analyticsEndpoint,
-		MetricsPort:              analyticsPort,
+		AnalyticsEnabled:         analyticsEnabled,
+		AnalyticsPluginVersion:   consts.GradleAnalyticsPluginDepVersion,
+		AnalyticsEndpoint:        consts.GradleAnalyticsEndpoint,
+		AnalyticsPort:            consts.GradleAnalyticsPort,
 		CacheConfigMetadata:      cacheConfigMetadata,
 	}
 

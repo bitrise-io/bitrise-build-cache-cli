@@ -108,11 +108,10 @@ initscript {
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
-        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
-        classpath("io.bitrise.gradle:gradle-analytics:main-SNAPSHOT")
+        classpath("io.bitrise.gradle:gradle-analytics:2.0-RC1")
     }
 }
 
@@ -163,11 +162,10 @@ initscript {
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
-        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
-        classpath("io.bitrise.gradle:gradle-analytics:main-SNAPSHOT")
+        classpath("io.bitrise.gradle:gradle-analytics:2.0-RC1")
     }
 }
 
@@ -215,7 +213,6 @@ initscript {
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
-        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
