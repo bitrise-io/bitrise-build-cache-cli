@@ -55,9 +55,6 @@ rootProject {
             {{- if .CacheConfigMetadata.BitriseBuildID }}
             buildSlug.set("{{ .CacheConfigMetadata.BitriseBuildID }}")
             {{- end }}
-            {{- if .CacheConfigMetadata.BitriseStepID }}
-            stepId.set("{{ .CacheConfigMetadata.BitriseStepID }}")
-            {{- end }}
             {{- if .CacheConfigMetadata.BitriseWorkflowName }}
             workflowName.set("{{ .CacheConfigMetadata.BitriseWorkflowName }}")
             {{- end }}

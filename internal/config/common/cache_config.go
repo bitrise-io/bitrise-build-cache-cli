@@ -5,7 +5,6 @@ type CacheConfigMetadata struct {
 	RepoURL    string
 	// BitriseCI specific
 	BitriseAppID        string
-	BitriseStepID       string
 	BitriseWorkflowName string
 	BitriseBuildID      string
 }
@@ -46,17 +45,22 @@ func detectCIProvider(envProvider EnvProviderFunc) string {
 	return ""
 }
 
+type bitriseCISpecificMetadata struct {
+	BitriseAppID        string
+	BitriseWorkflowName string
+	BitriseBuildID      string
+}
+
 func createCacheConfigMetadata(provider, repoURL string,
-	bitriseAppID, bitriseStepID, bitriseWorkflowName, bitriseBuildID string,
+	bitriseCIMetadata bitriseCISpecificMetadata,
 ) CacheConfigMetadata {
 	return CacheConfigMetadata{
 		CIProvider: provider,
 		RepoURL:    repoURL,
 		// BitriseCI specific
-		BitriseAppID:        bitriseAppID,
-		BitriseStepID:       bitriseStepID,
-		BitriseWorkflowName: bitriseWorkflowName,
-		BitriseBuildID:      bitriseBuildID,
+		BitriseAppID:        bitriseCIMetadata.BitriseAppID,
+		BitriseWorkflowName: bitriseCIMetadata.BitriseWorkflowName,
+		BitriseBuildID:      bitriseCIMetadata.BitriseBuildID,
 	}
 }
 
@@ -66,17 +70,19 @@ func NewCacheConfigMetadata(envProvider EnvProviderFunc) CacheConfigMetadata {
 	switch provider {
 	case CIProviderBitrise:
 		return createCacheConfigMetadata(provider, envProvider("GIT_REPOSITORY_URL"),
-			// Bitrise CI specific
-			envProvider("BITRISE_APP_SLUG"), envProvider("BITRISE_STEP_EXECUTION_ID"),
-			envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"), envProvider("BITRISE_BUILD_SLUG"))
+			bitriseCISpecificMetadata{
+				BitriseAppID:        envProvider("BITRISE_APP_SLUG"),
+				BitriseWorkflowName: envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
+				BitriseBuildID:      envProvider("BITRISE_BUILD_SLUG"),
+			})
 	case CIProviderCircleCI:
 		return createCacheConfigMetadata(provider, envProvider("CIRCLE_REPOSITORY_URL"),
-			"", "", "", "")
+			bitriseCISpecificMetadata{})
 	case CIProviderGitHubActions:
 		repoURL := envProvider("GITHUB_SERVER_URL") + "/" + envProvider("GITHUB_REPOSITORY")
 
 		return createCacheConfigMetadata(provider, repoURL,
-			"", "", "", "")
+			bitriseCISpecificMetadata{})
 	}
 
 	return CacheConfigMetadata{}
