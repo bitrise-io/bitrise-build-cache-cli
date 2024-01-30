@@ -11,10 +11,10 @@ import (
 
 func TestGenerateBazelrc(t *testing.T) {
 	type args struct {
-		endpointURL string
-		workspaceID string
-		authToken   string
-		cacheConfig common.CacheConfigMetadata
+		endpointURL         string
+		workspaceID         string
+		authToken           string
+		cacheConfigMetadata common.CacheConfigMetadata
 	}
 	tests := []struct {
 		name    string
@@ -58,12 +58,11 @@ build --build_event_publish_all_actions
 				endpointURL: "grpcs://TESTENDPOINT.bitrise.io",
 				workspaceID: "W0rkSp4ceID",
 				authToken:   "4uth70k3n",
-				cacheConfig: common.CacheConfigMetadata{
+				cacheConfigMetadata: common.CacheConfigMetadata{
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
 					// BitriseCI specific
 					BitriseAppID:        "BitriseAppID1",
-					BitriseStepID:       "BitriseStepID1",
 					BitriseWorkflowName: "BitriseWorkflowName1",
 					BitriseBuildID:      "BitriseBuildID1",
 				},
@@ -86,8 +85,6 @@ build --remote_header='x-repository-url=https://github.com/some/repo'
 build --bes_header='x-repository-url=https://github.com/some/repo'
 build --remote_header='x-app-id=BitriseAppID1'
 build --bes_header='x-app-id=BitriseAppID1'
-build --remote_header='x-step-id=BitriseStepID1'
-build --bes_header='x-step-id=BitriseStepID1'
 build --remote_header='x-workflow-name=BitriseWorkflowName1'
 build --bes_header='x-workflow-name=BitriseWorkflowName1'
 build --remote_header='x-build-id=BitriseBuildID1'
@@ -97,7 +94,7 @@ build --bes_header='x-build-id=BitriseBuildID1'
 	}
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateBazelrc(tt.args.endpointURL, tt.args.workspaceID, tt.args.authToken, tt.args.cacheConfig)
+			got, err := GenerateBazelrc(tt.args.endpointURL, tt.args.workspaceID, tt.args.authToken, tt.args.cacheConfigMetadata)
 
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)

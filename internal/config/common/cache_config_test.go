@@ -30,7 +30,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 					"BITRISE_APP_SLUG":                 "BitriseAppID1",
 					"BITRISE_BUILD_SLUG":               "BitriseBuildID1",
 					"BITRISE_TRIGGERED_WORKFLOW_TITLE": "BitriseWorkflowName1",
-					"BITRISE_STEP_EXECUTION_ID":        "BitriseStepID1",
 				}),
 			},
 			want: CacheConfigMetadata{
@@ -39,7 +38,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				BitriseAppID:        "BitriseAppID1",
 				BitriseBuildID:      "BitriseBuildID1",
 				BitriseWorkflowName: "BitriseWorkflowName1",
-				BitriseStepID:       "BitriseStepID1",
 			},
 		},
 		{

@@ -7,31 +7,27 @@ build --bes_header='x-org-id={{ .WorkspaceID }}'
 build --remote_header=authorization="Bearer {{ .AuthToken }}"
 build --bes_header=authorization="Bearer {{ .AuthToken }}"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser={{ .CIProvider }}
+build --remote_header=x-flare-builduser={{ .CacheConfigMetadata.CIProvider }}
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --build_event_publish_all_actions
-{{- if .CIProvider }}
-build --remote_header='x-ci-provider={{ .CIProvider }}'
-build --bes_header='x-ci-provider={{ .CIProvider }}'
+{{- if .CacheConfigMetadata.CIProvider }}
+build --remote_header='x-ci-provider={{ .CacheConfigMetadata.CIProvider }}'
+build --bes_header='x-ci-provider={{ .CacheConfigMetadata.CIProvider }}'
 {{- end }}
-{{- if .RepoURL }}
-build --remote_header='x-repository-url={{ .RepoURL }}'
-build --bes_header='x-repository-url={{ .RepoURL }}'
+{{- if .CacheConfigMetadata.RepoURL }}
+build --remote_header='x-repository-url={{ .CacheConfigMetadata.RepoURL }}'
+build --bes_header='x-repository-url={{ .CacheConfigMetadata.RepoURL }}'
 {{- end }}
-{{- if .BitriseAppID }}
-build --remote_header='x-app-id={{ .BitriseAppID }}'
-build --bes_header='x-app-id={{ .BitriseAppID }}'
+{{- if .CacheConfigMetadata.BitriseAppID }}
+build --remote_header='x-app-id={{ .CacheConfigMetadata.BitriseAppID }}'
+build --bes_header='x-app-id={{ .CacheConfigMetadata.BitriseAppID }}'
 {{- end }}
-{{- if .BitriseStepID }}
-build --remote_header='x-step-id={{ .BitriseStepID }}'
-build --bes_header='x-step-id={{ .BitriseStepID }}'
+{{- if .CacheConfigMetadata.BitriseWorkflowName }}
+build --remote_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName }}'
+build --bes_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName }}'
 {{- end }}
-{{- if .BitriseWorkflowName }}
-build --remote_header='x-workflow-name={{ .BitriseWorkflowName }}'
-build --bes_header='x-workflow-name={{ .BitriseWorkflowName }}'
-{{- end }}
-{{- if .BitriseBuildID }}
-build --remote_header='x-build-id={{ .BitriseBuildID }}'
-build --bes_header='x-build-id={{ .BitriseBuildID }}'
+{{- if .CacheConfigMetadata.BitriseBuildID }}
+build --remote_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
+build --bes_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 {{- end }}

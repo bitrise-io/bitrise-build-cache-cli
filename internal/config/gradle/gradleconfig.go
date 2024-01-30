@@ -29,7 +29,8 @@ type templateInventory struct {
 	MetricsVersion           string
 	MetricsEndpoint          string
 	MetricsPort              int
-	CacheConfigMetadata      common.CacheConfigMetadata
+	// Metadata
+	CacheConfigMetadata common.CacheConfigMetadata
 }
 
 // Sync the major version of this step and the library.

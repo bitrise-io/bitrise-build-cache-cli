@@ -23,17 +23,11 @@ type templateInventory struct {
 	WorkspaceID string
 	AuthToken   string
 	// Metadata
-	CIProvider string
-	RepoURL    string
-	// Bitrise CI specific
-	BitriseAppID        string
-	BitriseStepID       string
-	BitriseWorkflowName string
-	BitriseBuildID      string
+	CacheConfigMetadata common.CacheConfigMetadata
 }
 
 // Generate bazelrc.
-func GenerateBazelrc(endpointURL, workspaceID, authToken string, cacheConfig common.CacheConfigMetadata) (string, error) {
+func GenerateBazelrc(endpointURL, workspaceID, authToken string, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
 	// required check
 	if len(authToken) < 1 {
 		return "", fmt.Errorf("generate bazelrc, error: %w", errAuthTokenNotProvided)
@@ -49,13 +43,7 @@ func GenerateBazelrc(endpointURL, workspaceID, authToken string, cacheConfig com
 		WorkspaceID: workspaceID,
 		AuthToken:   authToken,
 		// Metadata
-		CIProvider: cacheConfig.CIProvider,
-		RepoURL:    cacheConfig.RepoURL,
-		// Bitrise CI specific
-		BitriseAppID:        cacheConfig.BitriseAppID,
-		BitriseStepID:       cacheConfig.BitriseStepID,
-		BitriseWorkflowName: cacheConfig.BitriseWorkflowName,
-		BitriseBuildID:      cacheConfig.BitriseBuildID,
+		CacheConfigMetadata: cacheConfigMetadata,
 	}
 
 	tmpl, err := template.New("bazelrc").Parse(bazelrcTemplateText)
