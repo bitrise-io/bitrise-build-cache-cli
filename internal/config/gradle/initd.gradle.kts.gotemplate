@@ -7,12 +7,11 @@ initscript {
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
-        maven(url="https://s01.oss.sonatype.org/content/repositories/snapshots/")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.+")
-        {{- if .MetricsEnabled }}
-        classpath("io.bitrise.gradle:gradle-analytics:main-SNAPSHOT")
+        classpath("io.bitrise.gradle:remote-cache:{{ .CachePluginVersion }}")
+        {{- if .AnalyticsEnabled }}
+        classpath("io.bitrise.gradle:gradle-analytics:{{ .AnalyticsPluginVersion }}")
         {{- end }}
     }
 }
@@ -34,13 +33,13 @@ settingsEvaluated {
     }
 }
 
-{{- if .MetricsEnabled }}
+{{- if .AnalyticsEnabled }}
 
 rootProject {
     apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
 
     extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
-        endpoint.set("{{ .MetricsEndpoint }}:{{ .MetricsPort }}")
+        endpoint.set("{{ .AnalyticsEndpoint }}:{{ .AnalyticsPort }}")
         authToken.set("{{ .AuthToken }}")
         dumpEventsToFiles.set({{ .DebugEnabled }})
         debug.set({{ .DebugEnabled }})
