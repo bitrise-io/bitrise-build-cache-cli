@@ -94,6 +94,8 @@ When `enable-for gradle` or `enable-for bazel` is called:
 
 ## Release process
 
+### 1: Create release
+
 To release a new version we use [goreleaser](https://github.com/goreleaser/goreleaser).
 
 The release is generated on Bitrise CI. To trigger it, create and push a new version tag
@@ -119,6 +121,8 @@ This way you can test the new version by specifying it for the installer script,
 looks good you can edit the release and change it to `Set as the latest release`,
 so it'll be the version downloaded by the installer when the installer is called without a specified version.
 
+### 2: Update downloader
+
 Now that the new release is available run `godownloader` to update the
 installer script.
 To generate the downloader/installer script we use [github.com/kamilsk/godownloader](https://github.com/kamilsk/godownloader).
@@ -130,3 +134,15 @@ godownloader .goreleaser.yaml > ./install/installer.sh
 
 If only the timestamp is changed at the top of `./install/installer.sh` you don't have to commit
 the change, just discard it. If something else also changes then commit and push the updated `installer.sh`.
+
+### 3: Update depending repos (steps, ...)
+
+The Bitrise Build Cache CLI is platform independent, but we have platform specific "adapters".
+These adapters depend on the Bitrise Build Cache CLI, either by importing it as a Go
+library, or by depending on the compiled and released CLI.
+
+When we do a new Bitrise Build Cache CLI release the following dependent "adapters" should also be updated:
+
+- Bitrise CI Steps:
+  - https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache
+  - https://github.com/bitrise-steplib/bitrise-step-activate-bazel-cache
