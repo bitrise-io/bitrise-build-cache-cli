@@ -10,7 +10,7 @@ Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the
 set -euxo pipefail
 
 # download the Bitrise Build Cache CLI
-curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d
+curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d
 
 # run the CLI
 /tmp/bin/bitrise-build-cache [COMMAND]
@@ -22,7 +22,7 @@ If you want to install a specific version of the CLI you can use specify the ver
 of the installer script. For example to install version `v0.4.0`:
 
 ```shell
-curl -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v0.4.0
+curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v0.4.0
 ```
 
 *Note: **DRAFT** versions aren't supported by the installer, but releases marked as **pre-release** are.*
