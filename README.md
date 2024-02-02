@@ -126,6 +126,7 @@ so it'll be the version downloaded by the installer when the installer is called
 Now that the new release is available run `godownloader` to update the
 installer script.
 To generate the downloader/installer script we use [github.com/kamilsk/godownloader](https://github.com/kamilsk/godownloader).
+To install `godownloader` with Homebrew, use `brew install octolab/tap/godownloader`.
 
 ```shell
 # generate the downloader/installer script into ./install/installer.sh based on the .goreleaser.yaml configuration.
