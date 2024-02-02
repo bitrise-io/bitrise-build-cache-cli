@@ -57,6 +57,9 @@ rootProject {
             {{- if .CacheConfigMetadata.BitriseWorkflowName }}
             workflowName.set("{{ .CacheConfigMetadata.BitriseWorkflowName }}")
             {{- end }}
+            {{- if .CacheConfigMetadata.BitriseStepExecutionID }}
+            stepId.set("{{ .CacheConfigMetadata.BitriseStepExecutionID }}")
+            {{- end }}
         }
     }
 }

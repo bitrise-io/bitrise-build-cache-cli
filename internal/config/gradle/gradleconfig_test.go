@@ -66,9 +66,10 @@ func TestGenerateInitGradle(t *testing.T) {
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
 					// Bitrise CI specific
-					BitriseAppID:        "BitriseAppID1",
-					BitriseBuildID:      "BitriseBuildID1",
-					BitriseWorkflowName: "BitriseWorkflowName1",
+					BitriseAppID:           "BitriseAppID1",
+					BitriseBuildID:         "BitriseBuildID1",
+					BitriseWorkflowName:    "BitriseWorkflowName1",
+					BitriseStepExecutionID: "BitriseStepID1",
 				},
 			},
 			want:    expectedInitScriptWithMetrics,
@@ -148,6 +149,7 @@ rootProject {
             appSlug.set("BitriseAppID1")
             buildSlug.set("BitriseBuildID1")
             workflowName.set("BitriseWorkflowName1")
+            stepId.set("BitriseStepID1")
         }
     }
 }
