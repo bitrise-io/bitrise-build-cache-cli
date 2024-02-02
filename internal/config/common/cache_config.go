@@ -4,10 +4,9 @@ type CacheConfigMetadata struct {
 	CIProvider string
 	RepoURL    string
 	// BitriseCI specific
-	BitriseAppID           string
-	BitriseWorkflowName    string
-	BitriseBuildID         string
-	BitriseStepExecutionID string
+	BitriseAppID        string
+	BitriseWorkflowName string
+	BitriseBuildID      string
 }
 
 const (
@@ -47,10 +46,9 @@ func detectCIProvider(envProvider EnvProviderFunc) string {
 }
 
 type bitriseCISpecificMetadata struct {
-	BitriseAppID           string
-	BitriseWorkflowName    string
-	BitriseBuildID         string
-	BitriseStepExecutionID string
+	BitriseAppID        string
+	BitriseWorkflowName string
+	BitriseBuildID      string
 }
 
 func createCacheConfigMetadata(provider, repoURL string,
@@ -73,10 +71,9 @@ func NewCacheConfigMetadata(envProvider EnvProviderFunc) CacheConfigMetadata {
 	case CIProviderBitrise:
 		return createCacheConfigMetadata(provider, envProvider("GIT_REPOSITORY_URL"),
 			bitriseCISpecificMetadata{
-				BitriseAppID:           envProvider("BITRISE_APP_SLUG"),
-				BitriseWorkflowName:    envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
-				BitriseBuildID:         envProvider("BITRISE_BUILD_SLUG"),
-				BitriseStepExecutionID: envProvider("BITRISE_STEP_EXECUTION_ID"),
+				BitriseAppID:        envProvider("BITRISE_APP_SLUG"),
+				BitriseWorkflowName: envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
+				BitriseBuildID:      envProvider("BITRISE_BUILD_SLUG"),
 			})
 	case CIProviderCircleCI:
 		return createCacheConfigMetadata(provider, envProvider("CIRCLE_REPOSITORY_URL"),

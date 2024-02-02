@@ -31,7 +31,3 @@ build --bes_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName 
 build --remote_header='x-flare-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 build --bes_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 {{- end }}
-{{- if .CacheConfigMetadata.BitriseStepExecutionID }}
-build --remote_header='x-flare-step-id={{ .CacheConfigMetadata.BitriseStepExecutionID }}'
-build --bes_header='x-step-id={{ .CacheConfigMetadata.BitriseStepExecutionID }}'
-{{- end }}

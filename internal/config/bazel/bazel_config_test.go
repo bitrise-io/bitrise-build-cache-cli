@@ -62,10 +62,9 @@ build --build_event_publish_all_actions
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
 					// BitriseCI specific
-					BitriseAppID:           "BitriseAppID1",
-					BitriseWorkflowName:    "BitriseWorkflowName1",
-					BitriseBuildID:         "BitriseBuildID1",
-					BitriseStepExecutionID: "BitriseStepID1",
+					BitriseAppID:        "BitriseAppID1",
+					BitriseWorkflowName: "BitriseWorkflowName1",
+					BitriseBuildID:      "BitriseBuildID1",
 				},
 			},
 			wantErr: "",
@@ -90,8 +89,6 @@ build --remote_header='x-workflow-name=BitriseWorkflowName1'
 build --bes_header='x-workflow-name=BitriseWorkflowName1'
 build --remote_header='x-flare-build-id=BitriseBuildID1'
 build --bes_header='x-build-id=BitriseBuildID1'
-build --remote_header='x-flare-step-id=BitriseStepID1'
-build --bes_header='x-step-id=BitriseStepID1'
 `,
 		},
 	}
