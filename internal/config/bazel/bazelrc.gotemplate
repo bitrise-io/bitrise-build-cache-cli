@@ -28,6 +28,6 @@ build --remote_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowNa
 build --bes_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName }}'
 {{- end }}
 {{- if .CacheConfigMetadata.BitriseBuildID }}
-build --remote_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
+build --remote_header='x-flare-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 build --bes_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 {{- end }}

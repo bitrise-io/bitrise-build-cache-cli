@@ -87,7 +87,7 @@ build --remote_header='x-app-id=BitriseAppID1'
 build --bes_header='x-app-id=BitriseAppID1'
 build --remote_header='x-workflow-name=BitriseWorkflowName1'
 build --bes_header='x-workflow-name=BitriseWorkflowName1'
-build --remote_header='x-build-id=BitriseBuildID1'
+build --remote_header='x-flare-build-id=BitriseBuildID1'
 build --bes_header='x-build-id=BitriseBuildID1'
 `,
 		},
