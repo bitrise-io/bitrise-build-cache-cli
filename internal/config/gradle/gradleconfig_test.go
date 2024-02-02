@@ -147,7 +147,7 @@ rootProject {
         bitrise {
             appSlug.set("BitriseAppID1")
             buildSlug.set("BitriseBuildID1")
-            workflowName.set("BitriseWorkflowName1")            
+            workflowName.set("BitriseWorkflowName1")
         }
     }
 }
