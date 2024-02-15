@@ -4,9 +4,10 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func TestGenerateInitGradle(t *testing.T) {
@@ -111,7 +112,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
-        classpath("io.bitrise.gradle:gradle-analytics:2.0-RC1")
+        classpath("io.bitrise.gradle:gradle-analytics:2.0.1")
     }
 }
 
@@ -165,7 +166,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
-        classpath("io.bitrise.gradle:gradle-analytics:2.0-RC1")
+        classpath("io.bitrise.gradle:gradle-analytics:2.0.1")
     }
 }
 

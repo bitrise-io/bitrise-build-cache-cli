@@ -3,3 +3,4 @@ bin/
 .bitrise.secrets.yml
 dist/
 _tmp/
+.idea/
