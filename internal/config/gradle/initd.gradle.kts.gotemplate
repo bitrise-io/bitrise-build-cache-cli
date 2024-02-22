@@ -40,6 +40,7 @@ rootProject {
 
     extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
         endpoint.set("{{ .AnalyticsEndpoint }}:{{ .AnalyticsPort }}")
+        httpEndpoint.set("{{ .AnalyticsHTTPEndpoint }}")
         authToken.set("{{ .AuthToken }}")
         dumpEventsToFiles.set({{ .DebugEnabled }})
         debug.set({{ .DebugEnabled }})

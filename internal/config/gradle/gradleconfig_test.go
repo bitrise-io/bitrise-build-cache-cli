@@ -111,7 +111,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
-        classpath("io.bitrise.gradle:gradle-analytics:2.0.2")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1")
     }
 }
 
@@ -137,6 +137,7 @@ rootProject {
 
     extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
         endpoint.set("gradle-analytics.services.bitrise.io:443")
+        httpEndpoint.set("https://gradle-sink.services.bitrise.io")
         authToken.set("AuthT0ken")
         dumpEventsToFiles.set(true)
         debug.set(true)
@@ -165,7 +166,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.+")
-        classpath("io.bitrise.gradle:gradle-analytics:2.0.2")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1")
     }
 }
 
@@ -191,6 +192,7 @@ rootProject {
 
     extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
         endpoint.set("gradle-analytics.services.bitrise.io:443")
+        httpEndpoint.set("https://gradle-sink.services.bitrise.io")
         authToken.set("AuthT0ken")
         dumpEventsToFiles.set(true)
         debug.set(true)
