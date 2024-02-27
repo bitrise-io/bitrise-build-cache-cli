@@ -30,6 +30,7 @@ type templateInventory struct {
 	AnalyticsPluginVersion   string
 	AnalyticsEndpoint        string
 	AnalyticsPort            int
+	AnalyticsHTTPEndpoint    string
 	// Metadata
 	CacheConfigMetadata common.CacheConfigMetadata
 }
@@ -59,6 +60,7 @@ func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool, ca
 		AnalyticsPluginVersion:   consts.GradleAnalyticsPluginDepVersion,
 		AnalyticsEndpoint:        consts.GradleAnalyticsEndpoint,
 		AnalyticsPort:            consts.GradleAnalyticsPort,
+		AnalyticsHTTPEndpoint:    consts.GradleAnalyticsHTTPEndpoint,
 		CacheConfigMetadata:      cacheConfigMetadata,
 	}
 
