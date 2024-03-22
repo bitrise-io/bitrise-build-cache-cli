@@ -15,12 +15,8 @@ const (
 
 	// Cache key template
 	// OS + Arch: to guarantee that stack-specific content (absolute paths, binaries) are stored separately
-	// checksum values:
-	// - `**/*.gradle*`: Gradle build files in any submodule, including ones written in Kotlin (*.gradle.kts)
-	// - `**/gradle-wrapper.properties`: contains exact Gradle version
-	// - `**/gradle.properties`: contains Gradle config values
-	// - `**/gradle/libs.versions.toml`: version catalog file, contains dependencies and their versions
-	key = `{{ .OS }}-{{ .Arch }}-gradle-build-cache-diagnostics-{{ checksum "**/*.gradle*" "**/gradle-wrapper.properties" "**/gradle.properties" "**/gradle/libs.versions.toml" }}`
+	// Workflow: current Bitrise workflow name (for example, primary).
+	key = `{{ .OS }}-{{ .Arch }}-gradle-build-cache-diagnostics-{{ .Workflow }}`
 )
 
 // Cached paths
@@ -54,11 +50,9 @@ func NewGradleDiagnosticOuptutSaver(
 }
 
 func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
-	s.logger.Println()
-	s.logger.Printf("Cache key: %s", key)
-	s.logger.Printf("Cache paths:")
-	s.logger.Printf(strings.Join(paths, "\n"))
-	s.logger.Println()
+	s.logger.Debugf("Cache key: %s", key)
+	s.logger.Debugf("Cache paths:")
+	s.logger.Debugf(strings.Join(paths, "\n"))
 
 	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker)
 
