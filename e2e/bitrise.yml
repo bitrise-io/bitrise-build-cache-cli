@@ -20,6 +20,7 @@ workflows:
         title: Switch working dir to _tmp
         inputs:
         - path: ./_tmp
+    # - set-java-version@1:
     - android-build:
         title: Build APK
         inputs:
@@ -30,7 +31,7 @@ workflows:
         inputs:
         - content: |-
             set -ex
-            bitrise-build-cache-cli -d save-gradle-output-data
+            ../bitrise-build-cache-cli -d save-gradle-output-data
     - script:
         title: Delete local Gradle caches
         inputs:
@@ -42,7 +43,7 @@ workflows:
         inputs:
         - content: |-
             set -ex
-            bitrise-build-cache-cli -d restore-gradle-output-data
+            ../bitrise-build-cache-cli -d restore-gradle-output-data
     - script:
         title: Verify restored folder
         inputs:
