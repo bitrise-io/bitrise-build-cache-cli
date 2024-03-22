@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"fmt"
+
 	"github.com/bitrise-io/go-steputils/v2/cache"
 	"github.com/bitrise-io/go-utils/v2/command"
 	"github.com/bitrise-io/go-utils/v2/env"
@@ -8,7 +10,8 @@ import (
 )
 
 const (
-	restoreStepId = "restore-gradle-build-cache-diagnostics"
+	numRestoreRetries = 3
+	restoreStepID     = "restore-gradle-build-cache-diagnostics"
 )
 
 type GradleOutputDiagnosticsRestorer struct {
@@ -30,10 +33,14 @@ func NewGradleDiagnosticOuptutRestorer(
 }
 
 func (step GradleOutputDiagnosticsRestorer) Run(isVerboseMode bool) error {
-	return cache.NewRestorer(step.envRepo, step.logger, step.commandFactory).Restore(cache.RestoreCacheInput{
-		StepId:         restoreStepId,
+	if err := cache.NewRestorer(step.envRepo, step.logger, step.commandFactory).Restore(cache.RestoreCacheInput{
+		StepId:         restoreStepID,
 		Verbose:        isVerboseMode,
 		Keys:           []string{key},
-		NumFullRetries: 3,
-	})
+		NumFullRetries: numRestoreRetries,
+	}); err != nil {
+		return fmt.Errorf("failed to restore cache: %w", err)
+	}
+
+	return nil
 }

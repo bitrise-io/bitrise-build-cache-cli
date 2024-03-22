@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/cache"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -8,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var saveGradleOutputDataCmd = &cobra.Command{
+var saveGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "save-gradle-output-data",
 	Short: "Save Gradle output data to cache, for running diagnostics builds",
 	Long: `Save Gradle output data to cache, for running diagnostics builds.
@@ -37,5 +39,10 @@ func saveGradleOutputDataCmdFn(logger log.Logger) error {
 	envRepo := env.NewRepository()
 
 	saveGradleDiagnosticOutputStep := cache.NewGradleDiagnosticOuptutSaver(logger, pathChecker, pathProvider, pathModifier, envRepo)
-	return saveGradleDiagnosticOutputStep.Run(isDebugLogMode)
+
+	if err := saveGradleDiagnosticOutputStep.Run(isDebugLogMode); err != nil {
+		return fmt.Errorf("failed to save Gradle output: %w", err)
+	}
+
+	logger.TInfof("✅ Gradle output saved to cache")
 }

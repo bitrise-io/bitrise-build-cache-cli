@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/cache"
 	"github.com/bitrise-io/go-utils/v2/command"
 	"github.com/bitrise-io/go-utils/v2/env"
@@ -8,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var restoreGradleOutputDataCmd = &cobra.Command{
+var restoreGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "restore-gradle-output-data",
 	Short: "Restore Gradle output data from cache, for running diagnostics builds",
 	Long: `Restore Gradle output data from cache, for running diagnostics builds.
@@ -33,11 +35,17 @@ func restoreGradleOutputDataCmdFn(logger log.Logger) error {
 	envRepo := env.NewRepository()
 	commandFactory := command.NewFactory(envRepo)
 
-	restoreCacheStep := cache.NewGradleDiagnosticOuptutRestorer(
+	restorer := cache.NewGradleDiagnosticOuptutRestorer(
 		logger,
 		commandFactory,
 		envRepo,
 	)
 
-	return restoreCacheStep.Run(isDebugLogMode)
+	if err := restorer.Run(isDebugLogMode); err != nil {
+		return fmt.Errorf("failed to restore Gradle output: %w", err)
+	}
+
+	logger.TInfof("✅ Gradle output restored from cache")
+
+	return nil
 }

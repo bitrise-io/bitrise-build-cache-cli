@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/bitrise-io/go-steputils/v2/cache"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	saveStepId = "save-gradle-build-cache-diagnostics"
+	saveStepID = "save-gradle-build-cache-diagnostics"
 
 	// Cache key template
 	// OS + Arch: to guarantee that stack-specific content (absolute paths, binaries) are stored separately
@@ -23,7 +24,7 @@ const (
 )
 
 // Cached paths
-var paths = []string{
+var paths = []string{ //nolint:gochecknoglobals
 	"**/build",
 	".gradle",
 }
@@ -60,11 +61,16 @@ func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
 	s.logger.Println()
 
 	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker)
-	return saver.Save(cache.SaveCacheInput{
-		StepId:      saveStepId,
+
+	if err := saver.Save(cache.SaveCacheInput{
+		StepId:      saveStepID,
 		Verbose:     isVerboseMode,
 		Key:         key,
 		Paths:       paths,
 		IsKeyUnique: true,
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to save cache: %w", err)
+	}
+
+	return nil
 }
