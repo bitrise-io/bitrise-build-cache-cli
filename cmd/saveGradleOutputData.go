@@ -44,5 +44,7 @@ func saveGradleOutputDataCmdFn(logger log.Logger) error {
 		return fmt.Errorf("failed to save Gradle output: %w", err)
 	}
 
-	logger.TInfof("✅ Gradle output saved to cache")
+	logger.TInfof("✅ Gradle output data saved to cache")
+
+	return nil
 }

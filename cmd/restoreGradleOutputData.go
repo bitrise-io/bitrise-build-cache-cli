@@ -45,7 +45,7 @@ func restoreGradleOutputDataCmdFn(logger log.Logger) error {
 		return fmt.Errorf("failed to restore Gradle output: %w", err)
 	}
 
-	logger.TInfof("✅ Gradle output restored from cache")
+	logger.TInfof("✅ Gradle output data restored from cache")
 
 	return nil
 }
