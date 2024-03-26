@@ -49,7 +49,7 @@ workflows:
         inputs:
         - content: |-
             set -ex
-            if [ ! -d .gradle/caches ]; then
+            if [ ! "$(ls -A .gradle)" ]; then
               echo ".gradle/caches directory doesn't exist"
               exit 1
             fi
