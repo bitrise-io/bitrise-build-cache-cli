@@ -39,7 +39,7 @@ workflows:
             set -ex
             sudo rm -rf .gradle
     - script:
-        title: Restore cache
+        title: Restore Gradle output data
         inputs:
         - content: |-
             set -ex
