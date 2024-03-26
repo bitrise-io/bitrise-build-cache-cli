@@ -56,12 +56,12 @@ func folderExistsNotEmpty(folderPath string) (bool, error) {
 	if os.IsNotExist(err) {
 		return false, nil
 	} else if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to check if folder exists: %w", err)
 	}
 
 	entries, err := os.ReadDir(folderPath)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to read folder entries: %w", err)
 	}
 
 	if len(entries) > 0 {

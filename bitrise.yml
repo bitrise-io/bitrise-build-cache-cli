@@ -59,7 +59,6 @@ workflows:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8: {}
     - go-list@1: {}
-    - go-test@1: {}
     - script@1:
         title: golangci-lint
         inputs:
@@ -68,6 +67,7 @@ workflows:
             set -ex
             curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.55.2
             ./bin/golangci-lint run -v
+    - go-test@1: {}
     - deploy-to-bitrise-io@2: {}
   e2e:
     steps:
