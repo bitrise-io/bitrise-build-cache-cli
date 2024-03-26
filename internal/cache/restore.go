@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/bitrise-io/go-steputils/v2/cache"
 	"github.com/bitrise-io/go-utils/v2/command"
@@ -32,15 +33,40 @@ func NewGradleDiagnosticOuptutRestorer(
 	}
 }
 
-func (step GradleOutputDiagnosticsRestorer) Run(isVerboseMode bool) error {
+func (step GradleOutputDiagnosticsRestorer) Run(isVerboseMode bool) (bool, error) {
 	if err := cache.NewRestorer(step.envRepo, step.logger, step.commandFactory).Restore(cache.RestoreCacheInput{
 		StepId:         restoreStepID,
 		Verbose:        isVerboseMode,
 		Keys:           []string{key},
 		NumFullRetries: numRestoreRetries,
 	}); err != nil {
-		return fmt.Errorf("failed to restore cache: %w", err)
+		return false, fmt.Errorf("failed to restore cache: %w", err)
 	}
 
-	return nil
+	foundRestoredData, err := folderExistsNotEmpty(".gradle")
+	if err != nil {
+		return false, fmt.Errorf("failed to check if Gradle output data was restored: %w", err)
+	}
+
+	return foundRestoredData, nil
+}
+
+func folderExistsNotEmpty(folderPath string) (bool, error) {
+	_, err := os.Stat(folderPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return false, err
+	}
+
+	if len(entries) > 0 {
+		return true, nil
+	}
+
+	return false, nil
 }

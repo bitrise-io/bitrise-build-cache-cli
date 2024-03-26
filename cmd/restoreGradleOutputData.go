@@ -41,11 +41,16 @@ func restoreGradleOutputDataCmdFn(logger log.Logger) error {
 		envRepo,
 	)
 
-	if err := restorer.Run(isDebugLogMode); err != nil {
+	foundRestoredData, err := restorer.Run(isDebugLogMode)
+	if err != nil {
 		return fmt.Errorf("failed to restore Gradle output: %w", err)
 	}
 
-	logger.TInfof("✅ Gradle output data restored from cache")
+	if foundRestoredData {
+		logger.TInfof("✅ Gradle output data restored from cache")
+	} else {
+		logger.TWarnf("Gradle output data wasn't found. Please ensure that you also run bitrise-build-cache save-gradle-output-data in the build and run at least two builds.")
+	}
 
 	return nil
 }
