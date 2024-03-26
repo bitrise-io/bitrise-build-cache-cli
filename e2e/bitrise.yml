@@ -27,7 +27,7 @@ workflows:
         - module: app
         - variant: debug
     - script:
-        title: Save cache
+        title: Save Gradle output data
         inputs:
         - content: |-
             set -ex
