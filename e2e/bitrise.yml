@@ -33,7 +33,7 @@ workflows:
             set -ex
             ../bitrise-build-cache-cli -d save-gradle-output-data
     - script:
-        title: Delete local Gradle caches
+        title: Delete local Gradle output data
         inputs:
         - content: |-
             set -ex
