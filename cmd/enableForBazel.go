@@ -25,7 +25,7 @@ If the file doesn't exist it will be created.
 If it already exists a "# [start/end] generated-by-bitrise-build-cache" block will be added to the end of the file.
 If the "# [start/end] generated-by-bitrise-build-cache" block is already present in the file then only the block's content will be modified.
 `,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
@@ -93,7 +93,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	)
 
 	logger.Infof("(i) Writing config into ~/.bazelrc")
-	err = os.WriteFile(bazelrcPath, []byte(bazelrcContent), 0755) //nolint:gosec,gomnd
+	err = os.WriteFile(bazelrcPath, []byte(bazelrcContent), 0755) //nolint:gosec,gomnd,mnd
 	if err != nil {
 		return fmt.Errorf("write bazelrc config to %s, error: %w", bazelrcPath, err)
 	}
