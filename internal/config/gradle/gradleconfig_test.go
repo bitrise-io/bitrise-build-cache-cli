@@ -4,9 +4,10 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func TestGenerateInitGradle(t *testing.T) {
@@ -110,8 +111,8 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.3")
-        classpath("io.bitrise.gradle:gradle-analytics:2.1.2")
+        classpath("io.bitrise.gradle:remote-cache:1.2.4")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.3")
     }
 }
 
@@ -165,8 +166,8 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.3")
-        classpath("io.bitrise.gradle:gradle-analytics:2.1.2")
+        classpath("io.bitrise.gradle:remote-cache:1.2.4")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.3")
     }
 }
 
@@ -217,7 +218,7 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.3")
+        classpath("io.bitrise.gradle:remote-cache:1.2.4")
     }
 }
 
