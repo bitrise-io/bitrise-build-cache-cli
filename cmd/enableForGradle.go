@@ -31,7 +31,7 @@ The gradle.properties file will be created if it doesn't exist.
 If it already exists a "# [start/end] generated-by-bitrise-build-cache" block will be added to the end of the file.
 If the "# [start/end] generated-by-bitrise-build-cache" block is already present in the file then only the block's content will be modified.
 `,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
@@ -80,7 +80,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
 	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
-	err = os.MkdirAll(gradleInitDPath, 0755) //nolint:gomnd
+	err = os.MkdirAll(gradleInitDPath, 0755) //nolint:gomnd,mnd
 	if err != nil {
 		return fmt.Errorf("ensure ~/.gradle/init.d exists: %w", err)
 	}
@@ -94,7 +94,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	logger.Infof("(i) Write ~/.gradle/init.d/bitrise-build-cache-init.gradle.kts")
 	{
 		initGradlePath := filepath.Join(gradleInitDPath, "bitrise-build-cache-init.gradle.kts")
-		err = os.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,gomnd
+		err = os.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,gomnd,mnd
 		if err != nil {
 			return fmt.Errorf("write bitrise-build-cache-init.gradle.kts to %s, error: %w", initGradlePath, err)
 		}
@@ -116,7 +116,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 			"org.gradle.caching=true",
 		)
 
-		err = os.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosec,gomnd
+		err = os.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosec,gomnd,mnd
 		if err != nil {
 			return fmt.Errorf("write gradle.properties to %s, error: %w", gradlePropertiesPath, err)
 		}
