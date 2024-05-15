@@ -65,8 +65,7 @@ workflows:
         - content: |-
             #!/bin/bash
             set -ex
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.55.2
-            ./bin/golangci-lint run -v
+            make lint
     - go-test@1: {}
     - deploy-to-bitrise-io@2: {}
   e2e:

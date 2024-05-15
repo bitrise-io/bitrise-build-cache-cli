@@ -18,7 +18,7 @@ var restoreGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 This command will:
 - Restore the Gradle output data from the Bitrise key-value cache.
 `,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Restore Gradle output data from cache, for running diagnostics builds")
