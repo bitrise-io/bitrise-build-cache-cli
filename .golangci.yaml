@@ -21,3 +21,5 @@ linters:
   - exhaustruct
   - paralleltest
   - testpackage
+  - mnd
+  - gomnd

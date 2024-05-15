@@ -1,12 +1,12 @@
 module github.com/bitrise-io/bitrise-build-cache-cli
 
-go 1.21
+go 1.22.3
 
 require (
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.28
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.20
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.29
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.21
 	github.com/spf13/cobra v1.8.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 )
 
 require (
@@ -23,6 +23,6 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.5.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

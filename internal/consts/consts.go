@@ -6,10 +6,10 @@ const (
 	EndpointURLATL1    = "grpc://atl-cache.services.bitrise.io:6666"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.4"
+	GradleRemoteBuildCachePluginDepVersion = "1.2.5"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "2.1.3"
+	GradleAnalyticsPluginDepVersion = "2.1.4"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsPort             = 443

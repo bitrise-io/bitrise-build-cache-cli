@@ -4,7 +4,7 @@ project_type: other
 meta:
   bitrise.io:
     machine_type_id: standard
-    stack: linux-docker-android-20.04
+    stack: linux-docker-android-22.04
 trigger_map:
 - push_branch: main
   workflow: test
@@ -24,19 +24,12 @@ workflows:
         inputs:
         - fetch_tags: "yes"
     - script@1:
-        title: asdf install
+        title: asdf use latest go
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            # fail if any commands fails
-            set -e
-            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
-            set -o pipefail
-            # debug log
-            set -x
 
-            # write your script here
-            asdf install
+            asdf global golang 1.22
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:
@@ -65,8 +58,7 @@ workflows:
         - content: |-
             #!/bin/bash
             set -ex
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.58.0
-            ./bin/golangci-lint run -v
+            make lint
     - go-test@1: {}
     - deploy-to-bitrise-io@2: {}
   e2e:

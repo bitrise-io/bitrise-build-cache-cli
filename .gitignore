@@ -3,4 +3,7 @@ bin/
 .bitrise.secrets.yml
 dist/
 _tmp/
-.idea/
+.idea/*
+!.idea/codeStyles
+.idea/codeStyles/*
+!.idea/codeStyles/Project.xml
