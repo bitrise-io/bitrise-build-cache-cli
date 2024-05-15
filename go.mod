@@ -1,6 +1,6 @@
 module github.com/bitrise-io/bitrise-build-cache-cli
 
-go 1.21
+go 1.22.3
 
 require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.29
