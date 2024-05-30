@@ -42,10 +42,6 @@ workflows:
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
-    meta:
-      bitrise.io:
-        machine_type_id: g2-m1.8core
-        stack: osx-xcode-edge
   test:
     steps:
     - activate-ssh-key@4:
