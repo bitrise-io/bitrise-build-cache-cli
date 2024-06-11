@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ var (
 	paramValidationLevel        string
 	paramRemoteCacheEndpoint    string
 )
+
+var errInvalidCacheLevel = errors.New("invalid cache validation level, valid options: none, warning, error")
 
 // enableForGradleCmd represents the gradle command
 var enableForGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -61,7 +64,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 func init() {
 	enableForCmd.AddCommand(enableForGradleCmd)
-	enableForGradleCmd.Flags().BoolVar(&paramIsGradleMetricsEnabled, "metrics", true, "Gradle Metrics collection enabled/disabled")
+	enableForGradleCmd.Flags().BoolVar(&paramIsGradleMetricsEnabled, "metrics", true, "Gradle Metrics collection enabled/disabled. Used for cache insights.")
 	enableForGradleCmd.Flags().BoolVar(&paramIsPushEnabled, "push", true, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
 	enableForGradleCmd.Flags().StringVar(&paramValidationLevel, "validation-level", "warning", "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
 	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
@@ -82,15 +85,17 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	// EndpointURL
 	endpointURL := common.SelectEndpointURL(paramRemoteCacheEndpoint, envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-	logger.Infof("(i) paramIsPushEnabled: %t", paramIsPushEnabled)
-	logger.Infof("(i) paramValidationLevel: %s", paramValidationLevel)
-	logger.Infof("(i) paramIsGradleMetricsEnabled: %t", paramIsGradleMetricsEnabled)
-	logger.Infof("(i) isDebugLogMode: %t", isDebugLogMode)
+	logger.Infof("(i) Push new cache entries: %t", paramIsPushEnabled)
+	logger.Infof("(i) Cache entry validation level: %s", paramValidationLevel)
+	logger.Infof("(i) Collect metrics for cache insights: %t", paramIsGradleMetricsEnabled)
+	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
 
 	if paramValidationLevel != string(gradleconfig.CacheValidationLevelNone) &&
 		paramValidationLevel != string(gradleconfig.CacheValidationLevelWarning) &&
 		paramValidationLevel != string(gradleconfig.CacheValidationLevelError) {
-		return fmt.Errorf("invalid validation level (%s), valid options: none, error, warning", paramValidationLevel)
+		logger.Errorf("Invalid validation level: '%s'", paramValidationLevel)
+
+		return errInvalidCacheLevel
 	}
 	// Metadata
 	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv)
