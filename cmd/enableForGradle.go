@@ -15,7 +15,8 @@ import (
 
 const gradleHomeNonExpanded = "~/.gradle"
 
-var ( //nolint:gochecknoglobals
+//nolint:gochecknoglobals
+var (
 	paramIsGradleMetricsEnabled bool
 	paramIsPushEnabled          bool
 	paramValidationLevel        string
@@ -89,7 +90,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	if paramValidationLevel != string(gradleconfig.CacheValidationLevelNone) &&
 		paramValidationLevel != string(gradleconfig.CacheValidationLevelWarning) &&
 		paramValidationLevel != string(gradleconfig.CacheValidationLevelError) {
-		return fmt.Errorf("invalid validation level: %s", paramValidationLevel)
+		return fmt.Errorf("invalid validation level (%s), valid options: none, error, warning", paramValidationLevel)
 	}
 	// Metadata
 	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv)
