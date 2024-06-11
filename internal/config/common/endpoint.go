@@ -7,6 +7,9 @@ import (
 // SelectEndpointURL - if endpointURL provided use that,
 // otherwise select the best build cache endpoint automatically
 func SelectEndpointURL(endpointURL string, envProvider func(string) string) string {
+	if endpointURL == "" {
+		endpointURL = envProvider("BITRISE_BUILD_CACHE_ENDPOINT")
+	}
 	if len(endpointURL) > 0 {
 		return endpointURL
 	}

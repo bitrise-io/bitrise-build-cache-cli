@@ -19,14 +19,29 @@ var (
 	errEndpointURLNotProvided = errors.New("EndpointURL not provided")
 )
 
+type CacheValidationLevel string
+
+var (
+	CacheValidationLevelNone    CacheValidationLevel = "none"
+	CacheValidationLevelWarning CacheValidationLevel = "warning"
+	CacheValidationLevelError   CacheValidationLevel = "error"
+)
+
+type Preferences struct {
+	IsPushEnabled        bool
+	CacheLevelValidation CacheValidationLevel
+	IsAnalyticsEnabled   bool
+	IsDebugEnabled       bool
+}
+
 type templateInventory struct {
 	AuthToken                string
 	CacheEndpointURLWithPort string
 	CachePluginVersion       string
-	PushEnabled              bool
-	DebugEnabled             bool
+	IsPushEnabled            bool
+	IsDebugEnabled           bool
 	ValidationLevel          string
-	AnalyticsEnabled         bool
+	IsAnalyticsEnabled       bool
 	AnalyticsPluginVersion   string
 	AnalyticsEndpoint        string
 	AnalyticsPort            int
@@ -38,7 +53,7 @@ type templateInventory struct {
 // Generate init.gradle content.
 // Recommended to save the content into $HOME/.gradle/init.d/ instead of
 // overwriting the $HOME/.gradle/init.gradle file.
-func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
+func GenerateInitGradle(endpointURL, authToken string, preferences Preferences, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
 	// required check
 	if len(authToken) < 1 {
 		return "", fmt.Errorf("generate init.gradle, error: %w", errAuthTokenNotProvided)
@@ -53,10 +68,10 @@ func GenerateInitGradle(endpointURL, authToken string, analyticsEnabled bool, ca
 		AuthToken:                authToken,
 		CacheEndpointURLWithPort: endpointURL,
 		CachePluginVersion:       consts.GradleRemoteBuildCachePluginDepVersion,
-		PushEnabled:              true,
-		DebugEnabled:             true,
-		ValidationLevel:          "warning",
-		AnalyticsEnabled:         analyticsEnabled,
+		IsPushEnabled:            preferences.IsPushEnabled,
+		IsDebugEnabled:           preferences.IsDebugEnabled,
+		ValidationLevel:          string(preferences.CacheLevelValidation),
+		IsAnalyticsEnabled:       preferences.IsAnalyticsEnabled,
 		AnalyticsPluginVersion:   consts.GradleAnalyticsPluginDepVersion,
 		AnalyticsEndpoint:        consts.GradleAnalyticsEndpoint,
 		AnalyticsPort:            consts.GradleAnalyticsPort,
