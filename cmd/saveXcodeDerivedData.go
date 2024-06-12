@@ -37,9 +37,9 @@ func init() {
 	saveXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
 	saveXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
 	saveXcodeDerivedDataCmd.MarkFlagRequired("project-root")
-	restoreXcodeDerivedDataCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
+	saveXcodeDerivedDataCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
 		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/DerivedData/MyProject\"")
-	restoreXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path")
+	saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path")
 }
 
 func saveXcodeDerivedDataCmdFn(logger log.Logger, envProvider func(string) string) error {
