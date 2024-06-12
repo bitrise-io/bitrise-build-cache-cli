@@ -15,12 +15,19 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 	Use:   "save-xcode-deriveddata",
 	Short: "Save the DerivedData folder into Bitrise Build Cache",
 	Long:  `Save the contents of the DerivedData folder (used by Xcode to store intermediate build files) into Bitrise Build Cache.`,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Save Xcode DerivedData into Bitrise Build Cache")
 
-		if err := saveXcodeDerivedDataCmdFn(logger, os.Getenv); err != nil {
+		logger.Infof("(i) Checking parameters")
+		cacheArchivePath, _ := cmd.Flags().GetString("cache-archive")
+		projectRoot, _ := cmd.Flags().GetString("project-root")
+		cacheKey, _ := cmd.Flags().GetString("key")
+		cacheMetadataPath := "dd-metadata.json"
+		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
+
+		if err := saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, ddPath, logger, os.Getenv); err != nil {
 			return fmt.Errorf("save Xcode DerivedData into Bitrise Build Cache: %w", err)
 		}
 
@@ -42,14 +49,7 @@ func init() {
 	saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path")
 }
 
-func saveXcodeDerivedDataCmdFn(logger log.Logger, envProvider func(string) string) error {
-	logger.Infof("(i) Checking parameters")
-
-	cacheArchivePath, _ := restoreXcodeDerivedDataCmd.Flags().GetString("cache-archive")
-	projectRoot, _ := restoreXcodeDerivedDataCmd.Flags().GetString("project-root")
-	cacheKey, _ := restoreXcodeDerivedDataCmd.Flags().GetString("key")
-	cacheMetadataPath := "dd-metadata.json"
-
+func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, derivedDataPath string, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
