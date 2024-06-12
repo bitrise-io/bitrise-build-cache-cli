@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/cache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/diagnostics"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -38,7 +38,7 @@ func saveGradleOutputDataCmdFn(logger log.Logger) error {
 	pathModifier := pathutil.NewPathModifier()
 	envRepo := env.NewRepository()
 
-	saveGradleDiagnosticOutputStep := cache.NewGradleDiagnosticOuptutSaver(logger, pathChecker, pathProvider, pathModifier, envRepo)
+	saveGradleDiagnosticOutputStep := diagnostics.NewGradleDiagnosticOuptutSaver(logger, pathChecker, pathProvider, pathModifier, envRepo)
 
 	if err := saveGradleDiagnosticOutputStep.Run(isDebugLogMode); err != nil {
 		return fmt.Errorf("failed to save Gradle output: %w", err)

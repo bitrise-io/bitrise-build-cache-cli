@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/cache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/diagnostics"
 	"github.com/bitrise-io/go-utils/v2/command"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -35,7 +35,7 @@ func restoreGradleOutputDataCmdFn(logger log.Logger) error {
 	envRepo := env.NewRepository()
 	commandFactory := command.NewFactory(envRepo)
 
-	restorer := cache.NewGradleDiagnosticOuptutRestorer(
+	restorer := diagnostics.NewGradleDiagnosticOuptutRestorer(
 		logger,
 		commandFactory,
 		envRepo,
