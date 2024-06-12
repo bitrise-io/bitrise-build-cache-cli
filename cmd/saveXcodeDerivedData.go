@@ -11,12 +11,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-var cacheArchivePath string
-var projectRoot string
-var derivedDataPath string
-var cacheMetadataPath string = "dd-metadata.json"
-var cacheKey string
-
 var saveXcodeDerivedDataCmd = &cobra.Command{
 	Use:   "save-xcode-deriveddata",
 	Short: "Save the DerivedData folder into Bitrise Build Cache",
@@ -39,16 +33,22 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(saveXcodeDerivedDataCmd)
 
-	saveXcodeDerivedDataCmd.Flags().StringVarP(&cacheKey, "key", "", "", "The cache key to use for the saved cache item (set to the current git branch by default")
-	saveXcodeDerivedDataCmd.Flags().StringVarP(&cacheArchivePath, "cache-archive", "", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
-	saveXcodeDerivedDataCmd.Flags().StringVarP(&projectRoot, "project-root", "", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
+	saveXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default")
+	saveXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
+	saveXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
 	saveXcodeDerivedDataCmd.MarkFlagRequired("project-root")
-	saveXcodeDerivedDataCmd.Flags().StringVarP(&derivedDataPath, "deriveddata-path", "", "", "Path to the DerivedData folder used by the build - "+
+	restoreXcodeDerivedDataCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
 		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/DerivedData/MyProject\"")
+	restoreXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path")
 }
 
 func saveXcodeDerivedDataCmdFn(logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Checking parameters")
+
+	cacheArchivePath, _ := restoreXcodeDerivedDataCmd.Flags().GetString("cache-archive")
+	projectRoot, _ := restoreXcodeDerivedDataCmd.Flags().GetString("project-root")
+	cacheKey, _ := restoreXcodeDerivedDataCmd.Flags().GetString("key")
+	cacheMetadataPath := "dd-metadata.json"
 
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
@@ -57,12 +57,9 @@ func saveXcodeDerivedDataCmdFn(logger log.Logger, envProvider func(string) strin
 	}
 
 	if cacheKey == "" {
-		branch := envProvider("BITRISE_GIT_BRANCH")
-		if branch == "" {
-			return fmt.Errorf("cache key is required if BITRISE_GIT_BRANCH is not set")
+		if cacheKey, err = xcode.GetCacheKey(envProvider); err != nil {
+			return fmt.Errorf("get cache key: %w", err)
 		}
-
-		cacheKey = fmt.Sprintf("xcode-deriveddata-%s", branch)
 	}
 	logger.Infof("(i) Cache key prefix: %s", cacheKey)
 

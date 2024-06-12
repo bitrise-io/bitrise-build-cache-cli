@@ -21,12 +21,16 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		return nil, fmt.Errorf("missing rootDir")
 	}
 
-	logger.Infof("(i) Calculating files for %s\n", rootDir)
+	absoluteRootDir, err := filepath.Abs(rootDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path of rootDir: %w", err)
+	}
+	logger.Infof("(i) Calculating files for %s", absoluteRootDir)
 
 	var fileInfos []FileInfo
 
 	// Walk through the directory tree
-	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -50,7 +54,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 
 		hashString, err := checksumOfFile(path)
 		if err != nil {
-			fmt.Printf("Error calculating hash: %v\n", err)
+			logger.Debugf("Error calculating hash: %v", err)
 			return nil
 		}
 
@@ -72,8 +76,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		return nil
 	})
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to calculate file infos: %w", err)
 	}
 
 	logger.Infof("Processed %d files", len(fileInfos))

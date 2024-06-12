@@ -70,7 +70,7 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 
 		h, err := checksumOfFile(path)
 		if err != nil {
-			logger.Infof("Error hashing file %s: %v\n", fi.Path, err)
+			logger.Infof("Error hashing file %s: %v", fi.Path, err)
 			continue
 		}
 
@@ -80,7 +80,7 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 
 		// Set modification time
 		if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
-			logger.Infof("Error setting modification time for %s: %v\n", fi.Path, err)
+			logger.Infof("Error setting modification time for %s: %v", fi.Path, err)
 		} else {
 			updated++
 		}

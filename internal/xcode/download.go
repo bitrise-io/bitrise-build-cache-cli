@@ -18,8 +18,9 @@ import (
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func download(ctx context.Context, downloadPath, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.Infof("Downloading %s from %s\n", downloadPath, cacheUrl)
+func DownloadFromBuildCache(filePath, key, accessToken, cacheUrl string, logger log.Logger) error {
+	logger.Infof("(i) Initializing download %s from %s\n", filePath, cacheUrl)
+
 	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
 	if err != nil {
 		return fmt.Errorf(
@@ -28,12 +29,13 @@ func download(ctx context.Context, downloadPath, key, accessToken, cacheUrl stri
 		)
 	}
 
-	file, err := os.Create(downloadPath)
+	file, err := os.Create(filePath)
 	if err != nil {
-		return fmt.Errorf("create %q: %w", downloadPath, err)
+		return fmt.Errorf("create %q: %w", filePath, err)
 	}
 	defer file.Close()
 
+	ctx := context.Background()
 	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
 		UseInsecure: insecureGRPC,
 		Host:        buildCacheHost,
@@ -56,7 +58,7 @@ func download(ctx context.Context, downloadPath, key, accessToken, cacheUrl stri
 		if ok && st.Code() == codes.NotFound {
 			return ErrCacheNotFound
 		}
-		logger.Debugf("Failed to download archive: %s", err)
+
 		return fmt.Errorf("failed to download archive: %w", err)
 	}
 	return nil
