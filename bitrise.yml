@@ -40,6 +40,8 @@ workflows:
             #!/usr/bin/env bash
             set -ex
 
+            brew install goreleaser/tap/goreleaser
+
             goreleaser release
     - deploy-to-bitrise-io@2: {}
   test:
