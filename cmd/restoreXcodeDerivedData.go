@@ -28,7 +28,7 @@ var restoreXcodeDerivedDataCmd = &cobra.Command{
 		cacheMetadataPath := "dd-metadata.json"
 
 		if err := restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, logger, os.Getenv); err != nil {
-			return fmt.Errorf("restpre Xcode DerivedData from Bitrise Build Cache: %w", err)
+			return fmt.Errorf("restore Xcode DerivedData from Bitrise Build Cache: %w", err)
 		}
 
 		logger.TInfof("✅ DerivedData restored from Bitrise Build Cache ")

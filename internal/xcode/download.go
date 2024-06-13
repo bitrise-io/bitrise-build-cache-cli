@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -18,8 +19,8 @@ import (
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func DownloadFromBuildCache(filePath, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.Debugf("Downloading %s from %s", filePath, cacheUrl)
+func DownloadFromBuildCache(fileName, key, accessToken, cacheUrl string, logger log.Logger) error {
+	logger.Debugf("Downloading %s from %s", fileName, cacheUrl)
 
 	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
 	if err != nil {
@@ -29,9 +30,14 @@ func DownloadFromBuildCache(filePath, key, accessToken, cacheUrl string, logger 
 		)
 	}
 
-	file, err := os.Create(filePath)
+	dir := filepath.Dir(fileName)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	file, err := os.Create(fileName)
 	if err != nil {
-		return fmt.Errorf("create %q: %w", filePath, err)
+		return fmt.Errorf("create %q: %w", fileName, err)
 	}
 	defer file.Close()
 
