@@ -3,13 +3,14 @@ package xcode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/bitrise-io/go-utils/v2/log"
 	"os"
 	"path/filepath"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type Metadata struct {
-	FileInfos []FileInfo `json:"input_files"`
+	FileInfos []FileInfo `json:"inputFiles"`
 }
 
 func SaveMetadata(rootDir string, fileName string, logger log.Logger) error {
@@ -38,7 +39,7 @@ func SaveMetadata(rootDir string, fileName string, logger log.Logger) error {
 	}
 
 	// Write JSON data to a file
-	err = os.WriteFile(fileName, jsonData, 0644)
+	err = os.WriteFile(fileName, jsonData, 0600)
 	if err != nil {
 		return fmt.Errorf("writing JSON file: %w", err)
 	}
@@ -76,6 +77,7 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 		h, err := checksumOfFile(path)
 		if err != nil {
 			logger.Infof("Error hashing file %s: %v", fi.Path, err)
+
 			continue
 		}
 

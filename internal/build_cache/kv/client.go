@@ -35,11 +35,12 @@ type NewClientParams struct {
 func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.DialTimeout)
 	defer cancel()
-	creds := credentials.NewTLS(&tls.Config{})
+	creds := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	if p.UseInsecure {
 		creds = insecure.NewCredentials()
 	}
 	transportOpt := grpc.WithTransportCredentials(creds)
+	// nolint: staticcheck
 	conn, err := grpc.DialContext(ctx, p.Host, transportOpt)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", p.Host, err)
@@ -75,6 +76,7 @@ func (w *writer) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("send data: %w", err)
 	}
 	w.offset += int64(len(p))
+
 	return len(p), nil
 }
 
@@ -83,6 +85,7 @@ func (w *writer) Close() error {
 	if err != nil {
 		return fmt.Errorf("close stream: %w", err)
 	}
+
 	return nil
 }
 
@@ -99,6 +102,7 @@ func (r *reader) Read(p []byte) (int, error) {
 	bufLen := r.buf.Len()
 	if bufLen > 0 {
 		n, _ := r.buf.Read(p) // this will never fail
+
 		return n, nil
 	}
 	r.buf.Reset()
@@ -111,12 +115,12 @@ func (r *reader) Read(p []byte) (int, error) {
 		return 0, fmt.Errorf("stream receive: %w", err)
 	}
 
-	n := copy(p, resp.Data)
-	if n == len(resp.Data) {
+	n := copy(p, resp.GetData())
+	if n == len(resp.GetData()) {
 		return n, nil
 	}
 
-	unwritenData := resp.Data[n:]
+	unwritenData := resp.GetData()[n:]
 	_, _ = r.buf.Write(unwritenData) // this will never fail
 
 	return n, nil
@@ -124,5 +128,6 @@ func (r *reader) Read(p []byte) (int, error) {
 
 func (r *reader) Close() error {
 	r.buf.Reset()
+
 	return nil
 }

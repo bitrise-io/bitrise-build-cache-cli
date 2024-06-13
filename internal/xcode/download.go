@@ -19,14 +19,14 @@ import (
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func DownloadFromBuildCache(fileName, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.Debugf("Downloading %s from %s", fileName, cacheUrl)
+func DownloadFromBuildCache(fileName, key, accessToken, cacheURL string, logger log.Logger) error {
+	logger.Debugf("Downloading %s from %s", fileName, cacheURL)
 
-	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
+	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
 			"the url grpc[s]://host:port format, %q is invalid: %w",
-			cacheUrl, err,
+			cacheURL, err,
 		)
 	}
 
@@ -67,5 +67,6 @@ func DownloadFromBuildCache(fileName, key, accessToken, cacheUrl string, logger 
 
 		return fmt.Errorf("failed to download archive: %w", err)
 	}
+
 	return nil
 }

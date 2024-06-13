@@ -11,6 +11,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+// nolint: gochecknoglobals
 var restoreXcodeDerivedDataCmd = &cobra.Command{
 	Use:   "restore-xcode-deriveddata",
 	Short: "Restore the DerivedData folder from Bitrise Build Cache",
@@ -43,7 +44,9 @@ func init() {
 	restoreXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default")
 	restoreXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
 	restoreXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when restoring the modification time of the source files)")
-	restoreXcodeDerivedDataCmd.MarkFlagRequired("project-root")
+	if err := restoreXcodeDerivedDataCmd.MarkFlagRequired("project-root"); err != nil {
+		panic(err)
+	}
 }
 
 func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey string, logger log.Logger, envProvider func(string) string) error {

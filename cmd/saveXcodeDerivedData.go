@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+// nolint: gochecknoglobals
 var saveXcodeDerivedDataCmd = &cobra.Command{
 	Use:   "save-xcode-deriveddata",
 	Short: "Save the DerivedData folder into Bitrise Build Cache",
@@ -44,10 +45,14 @@ func init() {
 	saveXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default")
 	saveXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
 	saveXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
-	saveXcodeDerivedDataCmd.MarkFlagRequired("project-root")
+	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("project-root"); err != nil {
+		panic(err)
+	}
 	saveXcodeDerivedDataCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
 		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/DerivedData/MyProject\"")
-	saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path")
+	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path"); err != nil {
+		panic(err)
+	}
 }
 
 func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, derivedDataPath string, logger log.Logger, envProvider func(string) string) error {

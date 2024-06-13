@@ -23,3 +23,8 @@ linters:
   - testpackage
   - mnd
   - gomnd
+  - err113
+  - perfsprint
+  - varnamelen
+  - gci
+  - nolintlint

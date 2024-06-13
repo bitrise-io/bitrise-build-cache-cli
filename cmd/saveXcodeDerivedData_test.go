@@ -1,12 +1,13 @@
 package cmd
 
 import (
-	"github.com/stretchr/testify/mock"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_saveXcodeDerivedDataCmdFn(t *testing.T) {
@@ -17,6 +18,8 @@ func Test_saveXcodeDerivedDataCmdFn(t *testing.T) {
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+		mockLogger.On("TInfof", mock.Anything).Return()
+		mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
 
 		return mockLogger
 	}
@@ -25,7 +28,7 @@ func Test_saveXcodeDerivedDataCmdFn(t *testing.T) {
 	t.Run("No envs specified", func(t *testing.T) {
 		mockLogger := prep()
 		envVars := createEnvProvider(map[string]string{})
-		err := saveXcodeDerivedDataCmdFn(mockLogger, envVars)
+		err := saveXcodeDerivedDataCmdFn("", "", ".", "some-key", "", mockLogger, envVars)
 
 		// then
 		require.EqualError(t, err, "read auth config from environments: AuthToken not provided")
@@ -36,9 +39,9 @@ func Test_saveXcodeDerivedDataCmdFn(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
 		})
-		err := saveXcodeDerivedDataCmdFn(mockLogger, envVars)
+		err := saveXcodeDerivedDataCmdFn("", "", ".", "", "", mockLogger, envVars)
 
 		// then
-		require.EqualError(t, err, "cache key is required if BITRISE_GIT_BRANCH is not set")
+		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH is not set")
 	})
 }

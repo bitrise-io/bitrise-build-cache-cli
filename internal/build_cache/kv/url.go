@@ -5,7 +5,7 @@ import (
 	"net/url"
 )
 
-func ParseUrlGRPC(s string) (string, bool, error) {
+func ParseURLGRPC(s string) (string, bool, error) {
 	parsed, err := url.ParseRequestURI(s)
 	if err != nil {
 		return "", false, fmt.Errorf("parse url: %w", err)
@@ -16,5 +16,6 @@ func ParseUrlGRPC(s string) (string, bool, error) {
 	if parsed.Port() == "" {
 		return "", false, fmt.Errorf("must provide a port")
 	}
+
 	return parsed.Host, parsed.Scheme == "grpc", nil
 }

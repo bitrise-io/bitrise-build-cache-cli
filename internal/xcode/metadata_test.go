@@ -1,11 +1,11 @@
 package xcode
 
 import (
-	"fmt"
-	"github.com/stretchr/testify/require"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_SaveMetadata(t *testing.T) {
@@ -16,14 +16,16 @@ func Test_SaveMetadata(t *testing.T) {
 
 	testRootDir, err := os.MkdirTemp("", "testRootDir")
 	if err != nil {
-		fmt.Println("Error creating temp directory:", err)
+		t.Logf("Error creating temp directory: %v", err)
+
 		return
 	}
 	defer os.RemoveAll(testRootDir)
 
 	testInputFile, err := os.CreateTemp(testRootDir, "test-file.swift")
 	if err != nil {
-		fmt.Println("Error creating temp file:", err)
+		t.Logf("Error creating temp file: %v", err)
+
 		return
 	}
 	testInputFile.Close()
@@ -57,6 +59,8 @@ func Test_SaveMetadata(t *testing.T) {
 				outputFile: "metadata.json",
 			},
 			asserts: func(t *testing.T) {
+				t.Helper()
+
 				md, err := LoadMetadata("metadata.json")
 				require.NoError(t, err)
 

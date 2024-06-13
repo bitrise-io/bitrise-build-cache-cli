@@ -14,13 +14,14 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func UploadToBuildCache(filePath, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.Debugf("Uploading %s to %s\n", filePath, cacheUrl)
-	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
+// nolint: funlen, cyclop
+func UploadToBuildCache(filePath, key, accessToken, cacheURL string, logger log.Logger) error {
+	logger.Debugf("Uploading %s to %s\n", filePath, cacheURL)
+	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
 			"the url grpc[s]://host:port format, %q is invalid: %w",
-			cacheUrl, err,
+			cacheURL, err,
 		)
 	}
 
@@ -74,6 +75,7 @@ func UploadToBuildCache(filePath, key, accessToken, cacheUrl string, logger log.
 		if err := kvWriter.Close(); err != nil {
 			return fmt.Errorf("close upload: %w", err), false
 		}
+
 		return nil, false
 	})
 	if err != nil {

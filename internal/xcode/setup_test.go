@@ -7,6 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/mocks"
 )
 
+// nolint: ireturn
 func setupTests() log.Logger {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Infof", mock.Anything).Return()

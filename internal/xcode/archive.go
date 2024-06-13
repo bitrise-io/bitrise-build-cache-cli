@@ -2,11 +2,12 @@ package xcode
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/bitrise-io/go-steputils/v2/cache/compression"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"os"
-	"path/filepath"
 )
 
 func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {

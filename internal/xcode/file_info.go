@@ -13,7 +13,7 @@ import (
 type FileInfo struct {
 	Path    string    `json:"path"`
 	Hash    string    `json:"hash"`
-	ModTime time.Time `json:"mod_time"`
+	ModTime time.Time `json:"modTime"`
 }
 
 func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
@@ -36,7 +36,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 
 		inf, err := d.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get file info: %w", err)
 		}
 
 		// Skip symbolic links
@@ -49,12 +49,13 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		hashString, err := checksumOfFile(path)
 		if err != nil {
 			logger.Debugf("Error calculating hash: %v", err)
+
 			return nil
 		}
 
 		relPath, err := filepath.Rel(rootDir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
 		// Create FileInfo object
