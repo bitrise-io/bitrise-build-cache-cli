@@ -1,5 +1,7 @@
 github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.29 h1:of5Njxd2pJOCp2168uUJ9fMEjKioYu+6wCjiZx2oioo=
 github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.29/go.mod h1:aS6TO1DpbWJoBuAlvmpS/I/FU97C71wv1F/+p+kVrCk=
+github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.32.0.20240613091435-de92acfc2188 h1:X/SzfZI2AFUri82rE9diZM4EcocZNbM/OazMU9Re+TA=
+github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.32.0.20240613091435-de92acfc2188/go.mod h1:Wu1/fiQqxr7A7a9aphh/Jxpof6WV+LEO6vGfBQ9T99A=
 github.com/bitrise-io/go-utils v1.0.1 h1:e7mepVBkVN1DXRPESNXb0djEw6bxB6B93p/Q74zzcvk=
 github.com/bitrise-io/go-utils v1.0.1/go.mod h1:ZY1DI+fEpZuFpO9szgDeICM4QbqoWVt0RSY3tRI1heY=
 github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.21 h1:iwNnwOGg8VP8eqhse68Fxt5ZnfEYosgV2gRZB7LKfHg=
@@ -37,6 +39,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/klauspost/compress v1.17.3 h1:qkRjuerhUU1EmXLYGkSH6EZL+vPSxIrYjLNAK4slzwA=
 github.com/klauspost/compress v1.17.3/go.mod h1:/dCuZOvVtNoHsyb+cuJD3itjs3NbnF6KH9zAO4BDxPM=
+github.com/klauspost/compress v1.17.8 h1:YcnTYrq7MikUT7k0Yb5eceMmALQPYBW/Xltxn0NAMnU=
+github.com/klauspost/compress v1.17.8/go.mod h1:Di0epgTjJY877eYKx5yC51cX2A2Vl2ibi7bDH9ttBbw=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
 github.com/magiconair/properties v1.8.7/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
 github.com/melbahja/got v0.7.0 h1:YHbiuNZVS8fIkyV0iXyThQQliwlKZb5h4k80zBVovxg=

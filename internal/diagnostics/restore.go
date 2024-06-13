@@ -34,7 +34,7 @@ func NewGradleDiagnosticOuptutRestorer(
 }
 
 func (step GradleOutputDiagnosticsRestorer) Run(isVerboseMode bool) (bool, error) {
-	if err := cache.NewRestorer(step.envRepo, step.logger, step.commandFactory).Restore(cache.RestoreCacheInput{
+	if err := cache.NewRestorer(step.envRepo, step.logger, step.commandFactory, nil).Restore(cache.RestoreCacheInput{
 		StepId:         restoreStepID,
 		Verbose:        isVerboseMode,
 		Keys:           []string{key},

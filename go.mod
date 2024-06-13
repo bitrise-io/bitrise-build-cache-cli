@@ -3,7 +3,7 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.22.3
 
 require (
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.29
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.32.0.20240613091435-de92acfc2188
 	github.com/bitrise-io/go-utils v1.0.1
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.21
 	github.com/dustin/go-humanize v1.0.1
@@ -24,7 +24,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/klauspost/compress v1.17.3 // indirect
+	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/melbahja/got v0.7.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

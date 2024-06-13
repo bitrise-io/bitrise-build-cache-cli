@@ -54,7 +54,7 @@ func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
 	s.logger.Debugf("Cache paths:")
 	s.logger.Debugf(strings.Join(paths, "\n"))
 
-	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker)
+	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker, nil)
 
 	if err := saver.Save(cache.SaveCacheInput{
 		StepId:      saveStepID,
