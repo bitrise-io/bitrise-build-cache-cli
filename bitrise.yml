@@ -32,9 +32,7 @@ workflows:
             asdf global golang 1.22
     - script:
         title: Goreleaser (create binaries + publish to GH)
-        deps:
-          apt_get:
-          - name: cmake
+        deps:          
           brew:
           - name: goreleaser
         inputs:
@@ -44,6 +42,10 @@ workflows:
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
+    meta:
+      bitrise.io:
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
   test:
     steps:
     - activate-ssh-key@4:
