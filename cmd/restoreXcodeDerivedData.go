@@ -63,12 +63,13 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
-	logger.Infof("(i) Downloading metadata")
-	if err := xcode.DownloadFromBuildCache(cacheMetadataPath, fmt.Sprintf("%s-metadata", cacheKey), authConfig.AuthToken, endpointURL, logger); err != nil {
+	metadataKey := fmt.Sprintf("%s-metadata", cacheKey)
+	logger.TInfof("Downloading metadata for key %s", metadataKey)
+	if err := xcode.DownloadFromBuildCache(cacheMetadataPath, metadataKey, authConfig.AuthToken, endpointURL, logger); err != nil {
 		return fmt.Errorf("download cache metadata: %w", err)
 	}
 
-	logger.Infof("(i) Restoring modification time of input files")
+	logger.TInfof("Restoring modification time of input files")
 	var metadata *xcode.Metadata
 	if metadata, err = xcode.LoadMetadata(cacheMetadataPath); err != nil {
 		return fmt.Errorf("load metadata: %w", err)
@@ -77,11 +78,13 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 		return fmt.Errorf("restore modification time: %w", err)
 	}
 
-	logger.Infof("(i) Downloading cache archive")
-	if err := xcode.DownloadFromBuildCache(cacheArchivePath, fmt.Sprintf("%s-archive", cacheKey), authConfig.AuthToken, endpointURL, logger); err != nil {
+	cacheArchiveKey := fmt.Sprintf("%s-archive", cacheKey)
+	logger.TInfof("Downloading cache archive for key %s", cacheArchiveKey)
+	if err := xcode.DownloadFromBuildCache(cacheArchivePath, cacheArchiveKey, authConfig.AuthToken, endpointURL, logger); err != nil {
 		return fmt.Errorf("download cache archive: %w", err)
 	}
 
+	logger.TInfof("Extracting cache archive")
 	if err := xcode.ExtractCacheArchive(cacheArchivePath, logger); err != nil {
 		return fmt.Errorf("extract cache archive: %w", err)
 	}

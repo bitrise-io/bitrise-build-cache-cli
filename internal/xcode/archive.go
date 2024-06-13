@@ -25,8 +25,6 @@ func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {
 }
 
 func ExtractCacheArchive(fileName string, logger log.Logger) error {
-	logger.TInfof("Extracting cache archive %s", fileName)
-
 	envRepo := env.NewRepository()
 	archiver := compression.NewArchiver(
 		logger,
