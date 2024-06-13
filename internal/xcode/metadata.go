@@ -12,14 +12,14 @@ type Metadata struct {
 	FileInfos []FileInfo `json:"input_files"`
 }
 
-func SaveMetadata(rootDir string, outputFile string, logger log.Logger) error {
+func SaveMetadata(rootDir string, fileName string, logger log.Logger) error {
 	fileInfos, err := calculateFileInfos(rootDir, logger)
 	if err != nil {
 		return fmt.Errorf("failed to calculate file infos: %w", err)
 	}
 
-	if outputFile == "" {
-		return fmt.Errorf("missing output file")
+	if fileName == "" {
+		return fmt.Errorf("missing output fileName")
 	}
 
 	m := Metadata{
@@ -32,13 +32,18 @@ func SaveMetadata(rootDir string, outputFile string, logger log.Logger) error {
 		return fmt.Errorf("encoding JSON: %w", err)
 	}
 
+	dir := filepath.Dir(fileName)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create cache metadata directory: %w", err)
+	}
+
 	// Write JSON data to a file
-	err = os.WriteFile(outputFile, jsonData, 0644)
+	err = os.WriteFile(fileName, jsonData, 0644)
 	if err != nil {
 		return fmt.Errorf("writing JSON file: %w", err)
 	}
 
-	logger.Infof("(i) Metadata saved to %s", outputFile)
+	logger.Infof("(i) Metadata saved to %s", fileName)
 
 	return nil
 }

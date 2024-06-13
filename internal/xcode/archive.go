@@ -5,6 +5,8 @@ import (
 	"github.com/bitrise-io/go-steputils/v2/cache/compression"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"os"
+	"path/filepath"
 )
 
 func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {
@@ -15,6 +17,11 @@ func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {
 		logger,
 		envRepo,
 		compression.NewDependencyChecker(logger, envRepo))
+
+	dir := filepath.Dir(fileName)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create cache archive directory: %w", err)
+	}
 
 	err := archiver.Compress(fileName, []string{inputDir}, 3, []string{"--format", "posix"})
 	if err != nil {
