@@ -45,12 +45,12 @@ func Test_SaveMetadata(t *testing.T) {
 			wantErr: "failed to calculate file infos: missing rootDir",
 		},
 		{
-			name: "missing outputFile",
+			name: "missing fileName",
 			args: args{
 				rootDir:    testRootDir,
 				outputFile: "",
 			},
-			wantErr: "missing output file",
+			wantErr: "missing output fileName",
 		},
 		{
 			name: "ok",
