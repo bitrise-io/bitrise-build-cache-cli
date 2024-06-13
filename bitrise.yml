@@ -33,14 +33,14 @@ workflows:
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:
+          apt_get:
+          - name: cmake
           brew:
-          - name: goreleaser/tap/goreleaser
+          - name: goreleaser
         inputs:
         - content: |
             #!/usr/bin/env bash
             set -ex
-
-            brew install goreleaser/tap/goreleaser
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
