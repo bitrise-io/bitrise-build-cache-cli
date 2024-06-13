@@ -10,7 +10,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:{{ .CachePluginVersion }}")
-        {{- if .AnalyticsEnabled }}
+        {{- if .IsAnalyticsEnabled }}
         classpath("io.bitrise.gradle:gradle-analytics:{{ .AnalyticsPluginVersion }}")
         {{- end }}
     }
@@ -26,14 +26,15 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "{{ .CacheEndpointURLWithPort }}"
             authToken = "{{ .AuthToken }}"
-            isEnabled = true
-            isPush = {{ .PushEnabled }}
-            debug = {{ .DebugEnabled }}
+            enabled = true
+            push = {{ .IsPushEnabled }}
+            debug = {{ .IsDebugEnabled }}
+            blobValidationLevel = '{{ .ValidationLevel }}'
         }
     }
 }
 
-{{- if .AnalyticsEnabled }}
+{{- if .IsAnalyticsEnabled }}
 
 rootProject {
     apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
@@ -42,8 +43,8 @@ rootProject {
         endpoint.set("{{ .AnalyticsEndpoint }}:{{ .AnalyticsPort }}")
         httpEndpoint.set("{{ .AnalyticsHTTPEndpoint }}")
         authToken.set("{{ .AuthToken }}")
-        dumpEventsToFiles.set({{ .DebugEnabled }})
-        debug.set({{ .DebugEnabled }})
+        dumpEventsToFiles.set({{ .IsDebugEnabled }})
+        debug.set({{ .IsDebugEnabled }})
         enabled.set(true)
 
         providerName.set("{{ .CacheConfigMetadata.CIProvider }}")

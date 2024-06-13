@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,15 @@ import (
 
 const gradleHomeNonExpanded = "~/.gradle"
 
-var paramIsGradleMetricsEnabled bool //nolint:gochecknoglobals
+//nolint:gochecknoglobals
+var (
+	paramIsGradleMetricsEnabled bool
+	paramIsPushEnabled          bool
+	paramValidationLevel        string
+	paramRemoteCacheEndpoint    string
+)
+
+var errInvalidCacheLevel = errors.New("invalid cache validation level, valid options: none, warning, error")
 
 // enableForGradleCmd represents the gradle command
 var enableForGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -55,7 +64,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 func init() {
 	enableForCmd.AddCommand(enableForGradleCmd)
-	enableForGradleCmd.Flags().BoolVar(&paramIsGradleMetricsEnabled, "metrics", true, "Gradle Metrics collection enabled/disabled")
+	enableForGradleCmd.Flags().BoolVar(&paramIsGradleMetricsEnabled, "metrics", true, "Gradle Metrics collection enabled/disabled. Used for cache insights.")
+	enableForGradleCmd.Flags().BoolVar(&paramIsPushEnabled, "push", true, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
+	enableForGradleCmd.Flags().StringVar(&paramValidationLevel, "validation-level", "warning", "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
+	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
 }
 
 func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
@@ -71,9 +83,20 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	// Optional configs
 	// EndpointURL
-	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
+	endpointURL := common.SelectEndpointURL(paramRemoteCacheEndpoint, envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-	logger.Infof("(i) paramIsGradleMetricsEnabled: %t", paramIsGradleMetricsEnabled)
+	logger.Infof("(i) Push new cache entries: %t", paramIsPushEnabled)
+	logger.Infof("(i) Cache entry validation level: %s", paramValidationLevel)
+	logger.Infof("(i) Collect metrics for cache insights: %t", paramIsGradleMetricsEnabled)
+	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
+
+	if paramValidationLevel != string(gradleconfig.CacheValidationLevelNone) &&
+		paramValidationLevel != string(gradleconfig.CacheValidationLevelWarning) &&
+		paramValidationLevel != string(gradleconfig.CacheValidationLevelError) {
+		logger.Errorf("Invalid validation level: '%s'", paramValidationLevel)
+
+		return errInvalidCacheLevel
+	}
 	// Metadata
 	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv)
 	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
@@ -86,7 +109,13 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	}
 
 	logger.Infof("(i) Generate ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts")
-	initGradleContent, err := gradleconfig.GenerateInitGradle(endpointURL, authToken, paramIsGradleMetricsEnabled, cacheConfigMetadata)
+	prefs := gradleconfig.Preferences{
+		IsPushEnabled:        paramIsPushEnabled,
+		CacheLevelValidation: gradleconfig.CacheValidationLevel(paramValidationLevel),
+		IsAnalyticsEnabled:   paramIsGradleMetricsEnabled,
+		IsDebugEnabled:       isDebugLogMode,
+	}
+	initGradleContent, err := gradleconfig.GenerateInitGradle(endpointURL, authToken, prefs, cacheConfigMetadata)
 	if err != nil {
 		return fmt.Errorf("generate bitrise-build-cache.init.gradle.kts: %w", err)
 	}

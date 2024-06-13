@@ -13,7 +13,7 @@ func TestGenerateInitGradle(t *testing.T) {
 	type args struct {
 		endpointURL         string
 		authToken           string
-		metricsEnabled      bool
+		userPrefs           Preferences
 		cacheConfigMetadata common.CacheConfigMetadata
 	}
 	tests := []struct {
@@ -41,9 +41,14 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "MetricsEnabled=false",
 			args: args{
-				endpointURL:    "grpcs://remote-build-cache.services.bitrise.io",
-				authToken:      "AuthT0ken",
-				metricsEnabled: false,
+				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				authToken:   "AuthT0ken",
+				userPrefs: Preferences{
+					IsPushEnabled:        true,
+					CacheLevelValidation: CacheValidationLevelWarning,
+					IsAnalyticsEnabled:   false,
+					IsDebugEnabled:       true,
+				},
 				cacheConfigMetadata: common.CacheConfigMetadata{
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
@@ -59,9 +64,14 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "MetricsEnabled=true",
 			args: args{
-				endpointURL:    "grpcs://remote-build-cache.services.bitrise.io",
-				authToken:      "AuthT0ken",
-				metricsEnabled: true,
+				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				authToken:   "AuthT0ken",
+				userPrefs: Preferences{
+					IsPushEnabled:        true,
+					CacheLevelValidation: CacheValidationLevelWarning,
+					IsAnalyticsEnabled:   true,
+					IsDebugEnabled:       true,
+				},
 				cacheConfigMetadata: common.CacheConfigMetadata{
 					CIProvider: "BestCI",
 					RepoURL:    "https://github.com/some/repo",
@@ -77,18 +87,53 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "MetricsEnabled=true but empty metadata",
 			args: args{
-				endpointURL:         "grpcs://remote-build-cache.services.bitrise.io",
-				authToken:           "AuthT0ken",
-				metricsEnabled:      true,
+				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				authToken:   "AuthT0ken",
+				userPrefs: Preferences{
+					IsPushEnabled:        true,
+					CacheLevelValidation: CacheValidationLevelWarning,
+					IsAnalyticsEnabled:   true,
+					IsDebugEnabled:       true,
+				},
 				cacheConfigMetadata: common.CacheConfigMetadata{},
 			},
 			want:    expectedInitScriptWithMetricsButNoMetadata,
 			wantErr: "",
 		},
+		{
+			name: "Push disabled, debug enabled, metrics disabled",
+			args: args{
+				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				authToken:   "AuthT0ken",
+				userPrefs: Preferences{
+					IsPushEnabled:        false,
+					CacheLevelValidation: CacheValidationLevelError,
+					IsAnalyticsEnabled:   false,
+					IsDebugEnabled:       true,
+				},
+				cacheConfigMetadata: common.CacheConfigMetadata{},
+			},
+			want: expectedInitScriptNoPushYesDebugNoMetrics,
+		},
+		{
+			name: "Push enabled, debug disabled, metrics disabled",
+			args: args{
+				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				authToken:   "AuthT0ken",
+				userPrefs: Preferences{
+					IsPushEnabled:        true,
+					CacheLevelValidation: CacheValidationLevelError,
+					IsAnalyticsEnabled:   false,
+					IsDebugEnabled:       false,
+				},
+				cacheConfigMetadata: common.CacheConfigMetadata{},
+			},
+			want: expectedInitScriptYesPushNoDebugNoMetrics,
+		},
 	}
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateInitGradle(tt.args.endpointURL, tt.args.authToken, tt.args.metricsEnabled, tt.args.cacheConfigMetadata)
+			got, err := GenerateInitGradle(tt.args.endpointURL, tt.args.authToken, tt.args.userPrefs, tt.args.cacheConfigMetadata)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
@@ -125,9 +170,10 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            isEnabled = true
-            isPush = true
+            enabled = true
+            push = true
             debug = true
+            blobValidationLevel = 'warning'
         }
     }
 }
@@ -180,9 +226,10 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            isEnabled = true
-            isPush = true
+            enabled = true
+            push = true
             debug = true
+            blobValidationLevel = 'warning'
         }
     }
 }
@@ -231,9 +278,78 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            isEnabled = true
-            isPush = true
+            enabled = true
+            push = true
             debug = true
+            blobValidationLevel = 'warning'
+        }
+    }
+}
+`
+
+const expectedInitScriptNoPushYesDebugNoMetrics = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+    }
+    dependencies {
+        classpath("io.bitrise.gradle:remote-cache:1.2.6")
+    }
+}
+
+settingsEvaluated {
+    buildCache {
+        local {
+            isEnabled = false
+        }
+
+        registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
+        remote(BitriseBuildCache::class.java) {
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "AuthT0ken"
+            enabled = true
+            push = false
+            debug = true
+            blobValidationLevel = 'error'
+        }
+    }
+}
+`
+
+const expectedInitScriptYesPushNoDebugNoMetrics = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+    }
+    dependencies {
+        classpath("io.bitrise.gradle:remote-cache:1.2.6")
+    }
+}
+
+settingsEvaluated {
+    buildCache {
+        local {
+            isEnabled = false
+        }
+
+        registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
+        remote(BitriseBuildCache::class.java) {
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "AuthT0ken"
+            enabled = true
+            push = true
+            debug = false
+            blobValidationLevel = 'error'
         }
     }
 }
