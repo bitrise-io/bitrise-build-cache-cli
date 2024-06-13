@@ -21,16 +21,10 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		return nil, fmt.Errorf("missing rootDir")
 	}
 
-	absoluteRootDir, err := filepath.Abs(rootDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path of rootDir: %w", err)
-	}
-	logger.TInfof("Gathering metadata for files in %s", absoluteRootDir)
-
 	var fileInfos []FileInfo
 
 	// Walk through the directory tree
-	err = filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

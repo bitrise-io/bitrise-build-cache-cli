@@ -10,7 +10,7 @@ import (
 )
 
 func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {
-	logger.TInfof("Creating cache archive %s from DerivedData folder at %s", fileName, inputDir)
+	logger.Debugf("Creating cache archive %s from DerivedData folder at %s", fileName, inputDir)
 
 	envRepo := env.NewRepository()
 	archiver := compression.NewArchiver(

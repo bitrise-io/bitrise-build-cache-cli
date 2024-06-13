@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -66,19 +67,29 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
+	absoluteRootDir, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path of rootDir: %w", err)
+	}
+	logger.TInfof("Gathering metadata for files in %s", absoluteRootDir)
 	if err := xcode.SaveMetadata(projectRoot, cacheMetadataPath, logger); err != nil {
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
+	logger.TInfof("Creating cache archive %s for DerivedData folder %s", cacheArchivePath, derivedDataPath)
 	if err := xcode.CreateCacheArchive(cacheArchivePath, derivedDataPath, logger); err != nil {
 		return fmt.Errorf("create cache archive: %w", err)
 	}
 
-	if err := xcode.UploadToBuildCache(cacheArchivePath, fmt.Sprintf("%s-archive", cacheKey), authConfig.AuthToken, endpointURL, logger); err != nil {
+	cacheArchiveKey := fmt.Sprintf("%s.tar.zst", cacheKey)
+	logger.TInfof("Uploading cache archive for key %s", cacheArchiveKey)
+	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheArchiveKey, authConfig.AuthToken, endpointURL, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
 
-	if err := xcode.UploadToBuildCache(cacheMetadataPath, fmt.Sprintf("%s-metadata", cacheKey), authConfig.AuthToken, endpointURL, logger); err != nil {
+	cacheMetadataKey := fmt.Sprintf("%s-metadata", cacheKey)
+	logger.TInfof("Uploading cache metadata for key %s", cacheMetadataKey)
+	if err := xcode.UploadToBuildCache(cacheMetadataPath, cacheMetadataKey, authConfig.AuthToken, endpointURL, logger); err != nil {
 		return fmt.Errorf("upload cache metadata: %w", err)
 	}
 

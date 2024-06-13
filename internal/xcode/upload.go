@@ -15,7 +15,7 @@ import (
 )
 
 func UploadToBuildCache(filePath, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.TInfof("Uploading %s to %s\n", filePath, cacheUrl)
+	logger.Debugf("Uploading %s to %s\n", filePath, cacheUrl)
 	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
 	if err != nil {
 		return fmt.Errorf(
