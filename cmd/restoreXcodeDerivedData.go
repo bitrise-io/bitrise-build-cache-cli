@@ -82,5 +82,9 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 		return fmt.Errorf("download cache archive: %w", err)
 	}
 
+	if err := xcode.ExtractCacheArchive(cacheArchivePath, logger); err != nil {
+		return fmt.Errorf("extract cache archive: %w", err)
+	}
+
 	return nil
 }

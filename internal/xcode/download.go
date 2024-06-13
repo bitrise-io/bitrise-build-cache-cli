@@ -19,7 +19,7 @@ import (
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
 func DownloadFromBuildCache(filePath, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.Infof("(i) Initializing download %s from %s\n", filePath, cacheUrl)
+	logger.TInfof("Downloading %s from %s", filePath, cacheUrl)
 
 	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
 	if err != nil {

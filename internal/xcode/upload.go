@@ -15,7 +15,7 @@ import (
 )
 
 func UploadToBuildCache(filePath, key, accessToken, cacheUrl string, logger log.Logger) error {
-	logger.Infof("(i) Initializing upload %s to %s\n", filePath, cacheUrl)
+	logger.TInfof("Uploading %s to %s\n", filePath, cacheUrl)
 	buildCacheHost, insecureGRPC, err := kv.ParseUrlGRPC(cacheUrl)
 	if err != nil {
 		return fmt.Errorf(
@@ -58,7 +58,7 @@ func UploadToBuildCache(filePath, key, accessToken, cacheUrl string, logger log.
 			return fmt.Errorf("stat %q: %w", filePath, err), false
 		}
 
-		logger.Infof("(i) Uploading %s - size %s\n", filePath, humanize.Bytes(uint64(stat.Size())))
+		logger.Infof("(i) Upload size: %s", humanize.Bytes(uint64(stat.Size())))
 
 		kvWriter, err := kvClient.Put(ctx, kv.PutParams{
 			Name:      key,

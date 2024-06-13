@@ -25,7 +25,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path of rootDir: %w", err)
 	}
-	logger.Infof("(i) Calculating files for %s", absoluteRootDir)
+	logger.TInfof("Gathering metadata for files in %s", absoluteRootDir)
 
 	var fileInfos []FileInfo
 
@@ -79,7 +79,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		return nil, fmt.Errorf("failed to calculate file infos: %w", err)
 	}
 
-	logger.Infof("Processed %d files", len(fileInfos))
+	logger.Infof("(i) Processed %d files", len(fileInfos))
 
 	return fileInfos, nil
 }
