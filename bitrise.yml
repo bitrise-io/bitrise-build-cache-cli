@@ -34,13 +34,11 @@ workflows:
         title: Goreleaser (create binaries + publish to GH)
         deps:
           brew:
-          - name: goreleaser
+          - name: goreleaser/tap/goreleaser
         inputs:
         - content: |
             #!/usr/bin/env bash
             set -ex
-
-            go install github.com/goreleaser/goreleaser/v2@latest
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
