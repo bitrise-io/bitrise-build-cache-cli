@@ -66,7 +66,7 @@ func LoadMetadata(file string) (*Metadata, error) {
 func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 	updated := 0
 
-	logger.Infof("(i) %d file info loaded", len(metadata.FileInfos))
+	logger.Infof("(i) %d files' info loaded from cache metadata", len(metadata.FileInfos))
 
 	for _, fi := range metadata.FileInfos {
 		path := filepath.Join(rootDir, fi.Path)
