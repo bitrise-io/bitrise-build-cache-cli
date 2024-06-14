@@ -66,6 +66,8 @@ func LoadMetadata(file string) (*Metadata, error) {
 func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 	updated := 0
 
+	logger.Infof("(i) %d file info loaded", len(metadata.FileInfos))
+
 	for _, fi := range metadata.FileInfos {
 		path := filepath.Join(rootDir, fi.Path)
 
@@ -87,7 +89,7 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 
 		// Set modification time
 		if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
-			logger.Infof("Error setting modification time for %s: %v", fi.Path, err)
+			logger.Debugf("Error setting modification time for %s: %v", fi.Path, err)
 		} else {
 			updated++
 		}
