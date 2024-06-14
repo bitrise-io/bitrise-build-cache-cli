@@ -21,8 +21,9 @@ var restoreXcodeDerivedDataCmd = &cobra.Command{
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Restore Xcode DerivedData from Bitrise Build Cache")
 
-		logger.Infof("(i) Checking parameters")
+		logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
 
+		logger.Infof("(i) Checking parameters")
 		cacheArchivePath, _ := cmd.Flags().GetString("cache-archive")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")

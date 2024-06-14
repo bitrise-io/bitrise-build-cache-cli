@@ -22,6 +22,8 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Save Xcode DerivedData into Bitrise Build Cache")
 
+		logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
+
 		logger.Infof("(i) Checking parameters")
 		cacheArchivePath, _ := cmd.Flags().GetString("cache-archive")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
