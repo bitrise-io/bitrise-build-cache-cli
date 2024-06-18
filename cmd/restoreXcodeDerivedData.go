@@ -72,6 +72,11 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 		return fmt.Errorf("download cache archive: %w", err)
 	}
 
+	logger.TInfof("Extracting cache archive")
+	if err := xcode.ExtractCacheArchive(cacheArchivePath, logger); err != nil {
+		return fmt.Errorf("extract cache archive: %w", err)
+	}
+
 	logger.TInfof("Restoring modification time of input files")
 	var metadata *xcode.Metadata
 	if metadata, err = xcode.LoadMetadata(cacheMetadataPath); err != nil {
@@ -79,11 +84,6 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	}
 	if err := xcode.RestoreMTime(metadata, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
-	}
-
-	logger.TInfof("Extracting cache archive")
-	if err := xcode.ExtractCacheArchive(cacheArchivePath, logger); err != nil {
-		return fmt.Errorf("extract cache archive: %w", err)
 	}
 
 	return nil
