@@ -42,7 +42,7 @@ var restoreXcodeDerivedDataCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(restoreXcodeDerivedDataCmd)
 
-	restoreXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default")
+	restoreXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default)")
 	restoreXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
 	restoreXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when restoring the modification time of the source files)")
 	if err := restoreXcodeDerivedDataCmd.MarkFlagRequired("project-root"); err != nil {
@@ -62,15 +62,14 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 			return fmt.Errorf("get cache key: %w", err)
 		}
 	}
-	logger.Infof("(i) Cache key prefix: %s", cacheKey)
+	logger.Infof("(i) Cache key: %s", cacheKey)
 
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
-	metadataKey := fmt.Sprintf("%s-metadata", cacheKey)
-	logger.TInfof("Downloading metadata for key %s", metadataKey)
-	if err := xcode.DownloadFromBuildCache(cacheMetadataPath, metadataKey, authConfig.AuthToken, endpointURL, logger); err != nil {
-		return fmt.Errorf("download cache metadata: %w", err)
+	logger.TInfof("Downloading cache archive for key %s", cacheKey)
+	if err := xcode.DownloadFromBuildCache(cacheArchivePath, cacheKey, authConfig.AuthToken, endpointURL, logger); err != nil {
+		return fmt.Errorf("download cache archive: %w", err)
 	}
 
 	logger.TInfof("Restoring modification time of input files")
@@ -80,12 +79,6 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	}
 	if err := xcode.RestoreMTime(metadata, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
-	}
-
-	cacheArchiveKey := fmt.Sprintf("%s-archive", cacheKey)
-	logger.TInfof("Downloading cache archive for key %s", cacheArchiveKey)
-	if err := xcode.DownloadFromBuildCache(cacheArchivePath, cacheArchiveKey, authConfig.AuthToken, endpointURL, logger); err != nil {
-		return fmt.Errorf("download cache archive: %w", err)
 	}
 
 	logger.TInfof("Extracting cache archive")

@@ -10,8 +10,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {
-	logger.Debugf("Creating cache archive %s from DerivedData folder at %s", fileName, inputDir)
+func CreateCacheArchive(fileName, derivedDataPath, metadataPath string, logger log.Logger) error {
+	logger.Debugf("Creating cache archive %s from DerivedData folder %s and metadata file %s", fileName, derivedDataPath, metadataPath)
 
 	envRepo := env.NewRepository()
 	archiver := compression.NewArchiver(
@@ -24,7 +24,7 @@ func CreateCacheArchive(fileName, inputDir string, logger log.Logger) error {
 		return fmt.Errorf("failed to create cache archive directory: %w", err)
 	}
 
-	err := archiver.Compress(fileName, []string{inputDir}, 3, []string{"--format", "posix"})
+	err := archiver.Compress(fileName, []string{derivedDataPath, metadataPath}, 3, []string{"--format", "posix"})
 	if err != nil {
 		return fmt.Errorf("failed to compress: %w", err)
 	}

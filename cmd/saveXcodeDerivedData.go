@@ -69,7 +69,7 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 			return fmt.Errorf("get cache key: %w", err)
 		}
 	}
-	logger.Infof("(i) Cache key prefix: %s", cacheKey)
+	logger.Infof("(i) Cache key: %s", cacheKey)
 
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
@@ -83,21 +83,14 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
-	logger.TInfof("Creating cache archive %s for DerivedData folder %s", cacheArchivePath, derivedDataPath)
-	if err := xcode.CreateCacheArchive(cacheArchivePath, derivedDataPath, logger); err != nil {
+	logger.TInfof("Creating cache archive %s for DerivedData folder %s and metadata file %s", cacheArchivePath, derivedDataPath, cacheMetadataPath)
+	if err := xcode.CreateCacheArchive(cacheArchivePath, derivedDataPath, cacheMetadataPath, logger); err != nil {
 		return fmt.Errorf("create cache archive: %w", err)
 	}
 
-	cacheArchiveKey := fmt.Sprintf("%s-archive", cacheKey)
-	logger.TInfof("Uploading cache archive %s for key %s", cacheArchivePath, cacheArchiveKey)
-	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheArchiveKey, authConfig.AuthToken, endpointURL, logger); err != nil {
+	logger.TInfof("Uploading cache archive %s for key %s", cacheArchivePath, cacheKey)
+	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheKey, authConfig.AuthToken, endpointURL, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
-	}
-
-	cacheMetadataKey := fmt.Sprintf("%s-metadata", cacheKey)
-	logger.TInfof("Uploading cache metadata %s for key %s", cacheMetadataPath, cacheMetadataKey)
-	if err := xcode.UploadToBuildCache(cacheMetadataPath, cacheMetadataKey, authConfig.AuthToken, endpointURL, logger); err != nil {
-		return fmt.Errorf("upload cache metadata: %w", err)
 	}
 
 	return nil
