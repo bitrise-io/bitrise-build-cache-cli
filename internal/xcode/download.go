@@ -55,7 +55,7 @@ func DownloadFromBuildCache(fileName, key, accessToken, cacheURL string, logger 
 
 	kvReader, err := kvClient.Get(ctx, key)
 	if err != nil {
-		return fmt.Errorf("create kv get client: %w", err)
+		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
 	}
 	defer kvReader.Close()
 

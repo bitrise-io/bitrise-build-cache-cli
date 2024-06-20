@@ -67,7 +67,7 @@ func UploadToBuildCache(filePath, key, accessToken, cacheURL string, logger log.
 			FileSize:  stat.Size(),
 		})
 		if err != nil {
-			return fmt.Errorf("create kv put client: %w", err), false
+			return fmt.Errorf("create kv put client (with key %s): %w", key, err), false
 		}
 		if _, err := io.Copy(kvWriter, file); err != nil {
 			return fmt.Errorf("upload archive: %w", err), false

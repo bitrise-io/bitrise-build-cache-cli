@@ -44,7 +44,7 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(saveXcodeDerivedDataCmd)
 
-	saveXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default")
+	saveXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the current git branch by default)")
 	saveXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
 	saveXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
 	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("project-root"); err != nil {
