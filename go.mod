@@ -3,7 +3,7 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.22.3
 
 require (
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.32.0.20240613091435-de92acfc2188
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33
 	github.com/bitrise-io/go-utils v1.0.1
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.21
 	github.com/dustin/go-humanize v1.0.1
