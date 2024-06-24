@@ -42,6 +42,6 @@ func Test_saveXcodeDerivedDataCmdFn(t *testing.T) {
 		err := saveXcodeDerivedDataCmdFn("", "", ".", "", "", mockLogger, envVars)
 
 		// then
-		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH is not set")
+		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH env var is not set")
 	})
 }
