@@ -65,7 +65,7 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	}
 
 	if cacheKey == "" {
-		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current git branch...")
+		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
 		if cacheKey, err = xcode.GetCacheKey(envProvider); err != nil {
 			return fmt.Errorf("get cache key: %w", err)
 		}
