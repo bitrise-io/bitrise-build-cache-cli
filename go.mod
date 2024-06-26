@@ -16,7 +16,7 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gofrs/uuid v4.3.1+incompatible // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-retryablehttp v0.7.1 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.3 // indirect
 	github.com/melbahja/got v0.7.0 // indirect
