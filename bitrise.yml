@@ -37,7 +37,7 @@ workflows:
             #!/usr/bin/env bash
             set -ex
 
-            go install github.com/goreleaser/goreleaser/v2@latest
+            GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
     - script:
         title: Goreleaser (create binaries + publish to GH)
         inputs:
