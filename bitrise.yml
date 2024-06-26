@@ -31,10 +31,15 @@ workflows:
 
             asdf global golang 1.22
     - script:
+        title: Install Goreleaser
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -ex
+
+            go install github.com/goreleaser/goreleaser/v2@latest
+    - script:
         title: Goreleaser (create binaries + publish to GH)
-        deps:
-          brew:
-          - name: goreleaser
         inputs:
         - content: |
             #!/usr/bin/env bash
