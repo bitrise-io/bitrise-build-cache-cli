@@ -173,7 +173,7 @@ settingsEvaluated {
             isEnabled = true
             isPush = true
             debug = true
-            blobValidationLevel = 'warning'
+            blobValidationLevel = "warning"
         }
     }
 }
@@ -229,7 +229,7 @@ settingsEvaluated {
             isEnabled = true
             isPush = true
             debug = true
-            blobValidationLevel = 'warning'
+            blobValidationLevel = "warning"
         }
     }
 }
@@ -281,7 +281,7 @@ settingsEvaluated {
             isEnabled = true
             isPush = true
             debug = true
-            blobValidationLevel = 'warning'
+            blobValidationLevel = "warning"
         }
     }
 }
@@ -315,7 +315,7 @@ settingsEvaluated {
             isEnabled = true
             isPush = false
             debug = true
-            blobValidationLevel = 'error'
+            blobValidationLevel = "error"
         }
     }
 }
@@ -349,7 +349,7 @@ settingsEvaluated {
             isEnabled = true
             isPush = true
             debug = false
-            blobValidationLevel = 'error'
+            blobValidationLevel = "error"
         }
     }
 }
