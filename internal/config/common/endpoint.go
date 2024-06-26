@@ -20,6 +20,8 @@ func SelectEndpointURL(endpointURL string, envProvider func(string) string) stri
 		return consts.EndpointURLLAS1
 	case "ATL1":
 		return consts.EndpointURLATL1
+	case "IAD1":
+		return consts.EndpointURLIAD1
 	}
 
 	return consts.EndpointURLDefault
