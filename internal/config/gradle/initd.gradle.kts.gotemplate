@@ -29,7 +29,7 @@ settingsEvaluated {
             isEnabled = true
             isPush = {{ .IsPushEnabled }}
             debug = {{ .IsDebugEnabled }}
-            blobValidationLevel = '{{ .ValidationLevel }}'
+            blobValidationLevel = "{{ .ValidationLevel }}"
         }
     }
 }
