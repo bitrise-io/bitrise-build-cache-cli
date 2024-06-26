@@ -26,8 +26,8 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "{{ .CacheEndpointURLWithPort }}"
             authToken = "{{ .AuthToken }}"
-            enabled = true
-            push = {{ .IsPushEnabled }}
+            isEnabled = true
+            isPush = {{ .IsPushEnabled }}
             debug = {{ .IsDebugEnabled }}
             blobValidationLevel = '{{ .ValidationLevel }}'
         }

@@ -170,8 +170,8 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            enabled = true
-            push = true
+            isEnabled = true
+            isPush = true
             debug = true
             blobValidationLevel = 'warning'
         }
@@ -226,8 +226,8 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            enabled = true
-            push = true
+            isEnabled = true
+            isPush = true
             debug = true
             blobValidationLevel = 'warning'
         }
@@ -278,8 +278,8 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            enabled = true
-            push = true
+            isEnabled = true
+            isPush = true
             debug = true
             blobValidationLevel = 'warning'
         }
@@ -312,8 +312,8 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            enabled = true
-            push = false
+            isEnabled = true
+            isPush = false
             debug = true
             blobValidationLevel = 'error'
         }
@@ -346,8 +346,8 @@ settingsEvaluated {
         remote(BitriseBuildCache::class.java) {
             endpoint = "grpcs://remote-build-cache.services.bitrise.io"
             authToken = "AuthT0ken"
-            enabled = true
-            push = true
+            isEnabled = true
+            isPush = true
             debug = false
             blobValidationLevel = 'error'
         }
