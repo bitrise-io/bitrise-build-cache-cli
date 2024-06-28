@@ -63,7 +63,7 @@ func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
 		Paths:       paths,
 		IsKeyUnique: true,
 	}); err != nil {
-		return fmt.Errorf("failed to save cache: %w", err)
+		return fmt.Errorf("save cache: %w", err)
 	}
 
 	return nil

@@ -21,12 +21,12 @@ func CreateCacheArchive(fileName, derivedDataPath, metadataPath string, logger l
 
 	dir := filepath.Dir(fileName)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create cache archive directory: %w", err)
+		return fmt.Errorf("create cache archive directory: %w", err)
 	}
 
 	err := archiver.Compress(fileName, []string{derivedDataPath, metadataPath}, 3, []string{"--format", "posix"})
 	if err != nil {
-		return fmt.Errorf("failed to compress: %w", err)
+		return fmt.Errorf("compress: %w", err)
 	}
 
 	return nil
@@ -41,7 +41,7 @@ func ExtractCacheArchive(fileName string, logger log.Logger) error {
 
 	err := archiver.Decompress(fileName, "")
 	if err != nil {
-		return fmt.Errorf("failed to decompress: %w", err)
+		return fmt.Errorf("decompress: %w", err)
 	}
 
 	return nil

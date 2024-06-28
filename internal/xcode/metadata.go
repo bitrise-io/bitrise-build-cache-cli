@@ -16,7 +16,7 @@ type Metadata struct {
 func SaveMetadata(rootDir string, fileName string, logger log.Logger) error {
 	fileInfos, err := calculateFileInfos(rootDir, logger)
 	if err != nil {
-		return fmt.Errorf("failed to calculate file infos: %w", err)
+		return fmt.Errorf("calculate file infos: %w", err)
 	}
 
 	if fileName == "" {
@@ -35,7 +35,7 @@ func SaveMetadata(rootDir string, fileName string, logger log.Logger) error {
 
 	dir := filepath.Dir(fileName)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create cache metadata directory: %w", err)
+		return fmt.Errorf("create cache metadata directory: %w", err)
 	}
 
 	// Write JSON data to a file

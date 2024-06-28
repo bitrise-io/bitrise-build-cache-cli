@@ -36,7 +36,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 
 		inf, err := d.Info()
 		if err != nil {
-			return fmt.Errorf("failed to get file info: %w", err)
+			return fmt.Errorf("get file info: %w", err)
 		}
 
 		// Skip symbolic links
@@ -55,7 +55,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 
 		relPath, err := filepath.Rel(rootDir, path)
 		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
+			return fmt.Errorf("get relative path: %w", err)
 		}
 
 		// Create FileInfo object
@@ -71,7 +71,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate file infos: %w", err)
+		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
 
 	logger.Infof("(i) Processed %d files", len(fileInfos))

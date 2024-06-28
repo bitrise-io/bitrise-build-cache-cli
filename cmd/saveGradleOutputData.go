@@ -41,7 +41,7 @@ func saveGradleOutputDataCmdFn(logger log.Logger) error {
 	saveGradleDiagnosticOutputStep := diagnostics.NewGradleDiagnosticOuptutSaver(logger, pathChecker, pathProvider, pathModifier, envRepo)
 
 	if err := saveGradleDiagnosticOutputStep.Run(isDebugLogMode); err != nil {
-		return fmt.Errorf("failed to save Gradle output: %w", err)
+		return fmt.Errorf("save Gradle output: %w", err)
 	}
 
 	logger.TInfof("✅ Gradle output data saved to cache")

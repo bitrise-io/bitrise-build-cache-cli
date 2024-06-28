@@ -65,7 +65,7 @@ func DownloadFromBuildCache(fileName, key, accessToken, cacheURL string, logger 
 			return ErrCacheNotFound
 		}
 
-		return fmt.Errorf("failed to download archive: %w", err)
+		return fmt.Errorf("download archive: %w", err)
 	}
 
 	return nil

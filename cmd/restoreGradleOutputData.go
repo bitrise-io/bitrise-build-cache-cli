@@ -43,7 +43,7 @@ func restoreGradleOutputDataCmdFn(logger log.Logger) error {
 
 	foundRestoredData, err := restorer.Run(isDebugLogMode)
 	if err != nil {
-		return fmt.Errorf("failed to restore Gradle output: %w", err)
+		return fmt.Errorf("restore Gradle output: %w", err)
 	}
 
 	if foundRestoredData {
