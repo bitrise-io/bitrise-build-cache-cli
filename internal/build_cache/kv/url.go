@@ -13,9 +13,15 @@ func ParseURLGRPC(s string) (string, bool, error) {
 	if parsed.Scheme != "grpc" && parsed.Scheme != "grpcs" {
 		return "", false, fmt.Errorf("scheme must be grpc or grpcs")
 	}
+
+	host := parsed.Host
 	if parsed.Port() == "" {
-		return "", false, fmt.Errorf("must provide a port")
+		if parsed.Scheme == "grpc" {
+			host += ":80"
+		} else {
+			host += ":443"
+		}
 	}
 
-	return parsed.Host, parsed.Scheme == "grpc", nil
+	return host, parsed.Scheme == "grpc", nil
 }
