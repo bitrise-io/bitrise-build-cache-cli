@@ -16,15 +16,9 @@ type FileInfo struct {
 	ModTime time.Time `json:"modTime"`
 }
 
-func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
-	if rootDir == "" {
-		return nil, fmt.Errorf("missing rootDir")
-	}
-
-	var fileInfos []FileInfo
-
-	// Walk through the directory tree
-	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
+// TODO refactor to struct
+func processFileInfoFunc(rootDir string, logger log.Logger, fileInfos *[]FileInfo) func(string, fs.DirEntry, error) error {
+	return func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -66,10 +60,21 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		}
 
 		// Append FileInfo to slice
-		fileInfos = append(fileInfos, fileInfo)
+		*fileInfos = append(*fileInfos, fileInfo)
 
 		return nil
-	})
+	}
+}
+
+func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
+	if rootDir == "" {
+		return nil, fmt.Errorf("missing rootDir")
+	}
+
+	var fileInfos []FileInfo
+
+	// Walk through the directory tree
+	err := filepath.WalkDir(rootDir, processFileInfoFunc(rootDir, logger, &fileInfos))
 	if err != nil {
 		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
