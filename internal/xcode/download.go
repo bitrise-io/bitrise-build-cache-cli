@@ -13,13 +13,14 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func DownloadFromBuildCache(fileName, key, accessToken, cacheURL string, logger log.Logger) error {
+func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	logger.Debugf("Downloading %s from %s", fileName, cacheURL)
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
@@ -32,7 +33,7 @@ func DownloadFromBuildCache(fileName, key, accessToken, cacheURL string, logger 
 
 	dir := filepath.Dir(fileName)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return fmt.Errorf("create directory: %w", err)
 	}
 
 	file, err := os.Create(fileName)
@@ -47,7 +48,6 @@ func DownloadFromBuildCache(fileName, key, accessToken, cacheURL string, logger 
 		Host:        buildCacheHost,
 		DialTimeout: 5 * time.Second,
 		ClientName:  "kv",
-		Token:       accessToken,
 	})
 	if err != nil {
 		return fmt.Errorf("new kv client: %w", err)

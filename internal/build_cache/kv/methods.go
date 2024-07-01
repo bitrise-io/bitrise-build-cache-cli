@@ -18,12 +18,15 @@ type PutParams struct {
 
 func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, error) {
 	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.token),
+		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", "xcode",
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
 	)
+	if c.authConfig.WorkspaceID != "" {
+		md.Append("x-org-id", c.authConfig.WorkspaceID)
+	}
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	stream, err := c.bitriseKVClient.Put(ctx)
 	if err != nil {
@@ -49,8 +52,11 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 		ReadLimit:    0,
 	}
 	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("Bearer %s", c.token),
+		"authorization", fmt.Sprintf("Bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", "xcode")
+	if c.authConfig.WorkspaceID != "" {
+		md.Append("x-org-id", c.authConfig.WorkspaceID)
+	}
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	stream, err := c.bitriseKVClient.Get(ctx, readReq)
 	if err != nil {

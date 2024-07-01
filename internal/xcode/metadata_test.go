@@ -42,7 +42,7 @@ func Test_SaveMetadata(t *testing.T) {
 				rootDir:    "",
 				outputFile: "metadata.json",
 			},
-			wantErr: "failed to calculate file infos: missing rootDir",
+			wantErr: "calculate file infos: missing rootDir",
 		},
 		{
 			name: "missing fileName",

@@ -90,7 +90,7 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	}
 
 	logger.TInfof("Uploading cache archive %s for key %s", cacheArchivePath, cacheKey)
-	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheKey, authConfig.AuthToken, endpointURL, logger); err != nil {
+	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
 

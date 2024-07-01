@@ -10,12 +10,13 @@ import (
 	"github.com/dustin/go-humanize"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // nolint: funlen, cyclop
-func UploadToBuildCache(filePath, key, accessToken, cacheURL string, logger log.Logger) error {
+func UploadToBuildCache(filePath, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	logger.Debugf("Uploading %s to %s\n", filePath, cacheURL)
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
@@ -43,7 +44,7 @@ func UploadToBuildCache(filePath, key, accessToken, cacheURL string, logger log.
 			Host:        buildCacheHost,
 			DialTimeout: 5 * time.Second,
 			ClientName:  "kv",
-			Token:       accessToken,
+			AuthConfig:  authConfig,
 		})
 		if err != nil {
 			return fmt.Errorf("new kv client: %w", err), false

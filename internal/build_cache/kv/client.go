@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 )
 
@@ -21,7 +22,7 @@ type Client struct {
 	bytestreamClient bytestream.ByteStreamClient
 	bitriseKVClient  kv_storage.KVStorageClient
 	clientName       string
-	token            string
+	authConfig       common.CacheAuthConfig
 }
 
 type NewClientParams struct {
@@ -29,7 +30,7 @@ type NewClientParams struct {
 	Host        string
 	DialTimeout time.Duration
 	ClientName  string
-	Token       string
+	AuthConfig  common.CacheAuthConfig
 }
 
 func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
@@ -50,7 +51,7 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 		bytestreamClient: bytestream.NewByteStreamClient(conn),
 		bitriseKVClient:  kv_storage.NewKVStorageClient(conn),
 		clientName:       p.ClientName,
-		token:            p.Token,
+		authConfig:       p.AuthConfig,
 	}, nil
 }
 
