@@ -10,18 +10,21 @@ func ParseURLGRPC(s string) (string, bool, error) {
 	if err != nil {
 		return "", false, fmt.Errorf("parse url: %w", err)
 	}
+
+	isSecure := parsed.Scheme == "grpcs"
+
 	if parsed.Scheme != "grpc" && parsed.Scheme != "grpcs" {
 		return "", false, fmt.Errorf("scheme must be grpc or grpcs")
 	}
 
 	host := parsed.Host
 	if parsed.Port() == "" {
-		if parsed.Scheme == "grpc" {
+		if isSecure {
 			host += ":80"
 		} else {
 			host += ":443"
 		}
 	}
 
-	return host, parsed.Scheme == "grpc", nil
+	return host, isSecure, nil
 }

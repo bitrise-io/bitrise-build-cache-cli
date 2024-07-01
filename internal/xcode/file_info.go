@@ -16,7 +16,6 @@ type FileInfo struct {
 	ModTime time.Time `json:"modTime"`
 }
 
-// TODO refactor to struct
 func processFileInfoFunc(rootDir string, logger log.Logger, fileInfos *[]FileInfo) func(string, fs.DirEntry, error) error {
 	return func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

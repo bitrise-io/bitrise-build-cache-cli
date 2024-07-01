@@ -74,6 +74,7 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 		// Skip if file doesn't exist
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			logger.Debugf("File %s doesn't exist", fi.Path)
+
 			continue
 		}
 
