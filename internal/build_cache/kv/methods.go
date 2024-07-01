@@ -52,7 +52,7 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 		ReadLimit:    0,
 	}
 	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("Bearer %s", c.authConfig.AuthToken),
+		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", "xcode")
 	if c.authConfig.WorkspaceID != "" {
 		md.Append("x-org-id", c.authConfig.WorkspaceID)

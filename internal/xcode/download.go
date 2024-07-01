@@ -48,6 +48,7 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 		Host:        buildCacheHost,
 		DialTimeout: 5 * time.Second,
 		ClientName:  "kv",
+		AuthConfig:  authConfig,
 	})
 	if err != nil {
 		return fmt.Errorf("new kv client: %w", err)
