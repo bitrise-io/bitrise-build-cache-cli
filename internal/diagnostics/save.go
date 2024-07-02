@@ -1,4 +1,4 @@
-package cache
+package diagnostics
 
 import (
 	"fmt"
@@ -54,7 +54,7 @@ func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
 	s.logger.Debugf("Cache paths:")
 	s.logger.Debugf(strings.Join(paths, "\n"))
 
-	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker)
+	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker, nil)
 
 	if err := saver.Save(cache.SaveCacheInput{
 		StepId:      saveStepID,
@@ -63,7 +63,7 @@ func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
 		Paths:       paths,
 		IsKeyUnique: true,
 	}); err != nil {
-		return fmt.Errorf("failed to save cache: %w", err)
+		return fmt.Errorf("save cache: %w", err)
 	}
 
 	return nil
