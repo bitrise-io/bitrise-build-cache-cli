@@ -5,30 +5,47 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type Metadata struct {
-	FileInfos []FileInfo `json:"inputFiles"`
+	FileInfos   []FileInfo `json:"inputFiles"`
+	CacheKey    string     `json:"cacheKey"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	AppID       string     `json:"appId,omitempty"`
+	BuildID     string     `json:"buildId,omitempty"`
+	WorkspaceID string     `json:"workspaceId,omitempty"`
+	GitCommit   string     `json:"gitCommit,omitempty"`
+	GitBranch   string     `json:"gitBranch,omitempty"`
 }
 
-func SaveMetadata(rootDir string, fileName string, logger log.Logger) error {
-	fileInfos, err := calculateFileInfos(rootDir, logger)
+func CreateMetadata(projectRootDir string, cacheKey string, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
+	fileInfos, err := calculateFileInfos(projectRootDir, logger)
 	if err != nil {
-		return fmt.Errorf("calculate file infos: %w", err)
-	}
-
-	if fileName == "" {
-		return fmt.Errorf("missing output fileName")
+		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
 
 	m := Metadata{
 		FileInfos: fileInfos,
+		CacheKey:  cacheKey,
+		CreatedAt: time.Now(),
+		AppID:     envProvider("BITRISE_APP_SLUG"),
+		BuildID:   envProvider("BITRISE_BUILD_SLUG"),
+		GitCommit: envProvider("BITRISE_GIT_COMMIT"),
+		GitBranch: envProvider("BITRISE_GIT_BRANCH"),
 	}
 
-	// Encode metadata to JSON
-	jsonData, err := json.Marshal(m)
+	return &m, nil
+}
+
+func SaveMetadata(metadata *Metadata, fileName string, logger log.Logger) error {
+	if fileName == "" {
+		return fmt.Errorf("missing output fileName")
+	}
+
+	jsonData, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("encoding JSON: %w", err)
 	}

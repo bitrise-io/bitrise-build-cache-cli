@@ -80,7 +80,13 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 		return fmt.Errorf("get absolute path of rootDir: %w", err)
 	}
 	logger.TInfof("Gathering metadata for files in %s", absoluteRootDir)
-	if err := xcode.SaveMetadata(projectRoot, cacheMetadataPath, logger); err != nil {
+	metadata, err := xcode.CreateMetadata(absoluteRootDir, cacheKey, envProvider, logger)
+	if err != nil {
+		return fmt.Errorf("create metadata: %w", err)
+	}
+
+	logger.TInfof("Saving metadata file %s", cacheMetadataPath)
+	if err := xcode.SaveMetadata(metadata, cacheMetadataPath, logger); err != nil {
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
