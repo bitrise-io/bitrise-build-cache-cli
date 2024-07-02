@@ -96,7 +96,11 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
 	logger.Infof("Cache metadata:")
 	logger.Infof("  Cache key: %s", md.CacheKey)
-	logger.Infof("  Created at: %s", md.CreatedAt)
+	createdAt := ""
+	if !md.CreatedAt.IsZero() {
+		createdAt = md.CreatedAt.String()
+	}
+	logger.Infof("  Created at: %s", createdAt)
 	logger.Infof("  App ID: %s", md.AppID)
 	logger.Infof("  Build ID: %s", md.BuildID)
 	logger.Infof("  Git commit: %s", md.GitCommit)

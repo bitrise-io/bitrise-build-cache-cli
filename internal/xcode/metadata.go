@@ -37,6 +37,10 @@ func CreateMetadata(projectRootDir string, cacheKey string, envProvider func(str
 		GitBranch: envProvider("BITRISE_GIT_BRANCH"),
 	}
 
+	if m.GitCommit == "" {
+		m.GitCommit = envProvider("GIT_CLONE_COMMIT_HASH")
+	}
+
 	return &m, nil
 }
 
