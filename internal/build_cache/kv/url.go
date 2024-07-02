@@ -26,5 +26,5 @@ func ParseURLGRPC(s string) (string, bool, error) {
 		}
 	}
 
-	return host, isSecure, nil
+	return host, !isSecure, nil
 }
