@@ -21,8 +21,6 @@ import (
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
 func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	logger.Debugf("Downloading %s from %s", fileName, cacheURL)
-
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
@@ -30,6 +28,8 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 			cacheURL, err,
 		)
 	}
+
+	logger.Debugf("Downloading %s from %s", fileName, buildCacheHost)
 
 	dir := filepath.Dir(fileName)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {

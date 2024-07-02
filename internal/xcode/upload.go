@@ -17,7 +17,6 @@ import (
 
 // nolint: funlen, cyclop
 func UploadToBuildCache(filePath, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	logger.Debugf("Uploading %s to %s\n", filePath, cacheURL)
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
@@ -25,6 +24,8 @@ func UploadToBuildCache(filePath, key, cacheURL string, authConfig common.CacheA
 			cacheURL, err,
 		)
 	}
+
+	logger.Debugf("Uploading %s to %s\n", filePath, buildCacheHost)
 
 	checksum, err := checksumOfFile(filePath)
 	if err != nil {
