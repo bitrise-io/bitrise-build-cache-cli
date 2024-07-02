@@ -20,9 +20,9 @@ func ParseURLGRPC(s string) (string, bool, error) {
 	host := parsed.Host
 	if parsed.Port() == "" {
 		if isSecure {
-			host += ":80"
-		} else {
 			host += ":443"
+		} else {
+			host += ":80"
 		}
 	}
 
