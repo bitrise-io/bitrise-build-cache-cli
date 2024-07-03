@@ -12,6 +12,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+const CacheMetadataPath = "dd-metadata.json"
+
 // nolint: gochecknoglobals
 var saveXcodeDerivedDataCmd = &cobra.Command{
 	Use:   "save-xcode-deriveddata",
@@ -28,10 +30,9 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 		cacheArchivePath, _ := cmd.Flags().GetString("cache-archive")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")
-		cacheMetadataPath := "dd-metadata.json"
 		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
 
-		if err := saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, ddPath, logger, os.Getenv); err != nil {
+		if err := saveXcodeDerivedDataCmdFn(cacheArchivePath, CacheMetadataPath, projectRoot, cacheKey, ddPath, logger, os.Getenv); err != nil {
 			return fmt.Errorf("save Xcode DerivedData into Bitrise Build Cache: %w", err)
 		}
 
