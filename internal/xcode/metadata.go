@@ -84,7 +84,7 @@ func LoadMetadata(file string) (*Metadata, error) {
 	return &metadata, nil
 }
 
-func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
+func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) (int, error) {
 	updated := 0
 
 	logger.Infof("(i) %d files' info loaded from cache metadata", len(metadata.FileInfos))
@@ -120,5 +120,5 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) error {
 
 	logger.Infof("(i) %d files' modification time restored", updated)
 
-	return nil
+	return updated, nil
 }

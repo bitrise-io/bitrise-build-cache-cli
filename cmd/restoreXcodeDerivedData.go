@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -66,15 +67,29 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
+	tracker := xcode.NewStepTracker("save-xcode-build-cache", envProvider, logger)
+	defer tracker.Wait()
+	startT := time.Now()
+
 	logger.TInfof("Downloading cache archive for key %s", cacheKey)
 	if err := xcode.DownloadFromBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("download cache archive: %w", err)
 	}
 
+	archiveDownloadedT := time.Now()
+	var archiveSize int64
+	if archiveSize, err = getFileSize(cacheArchivePath); err != nil {
+		return fmt.Errorf("get file size: %w", err)
+	}
+	tracker.LogArchiveDownloaded(archiveDownloadedT.Sub(startT), archiveSize)
+
 	logger.TInfof("Extracting cache archive")
 	if err := xcode.ExtractCacheArchive(cacheArchivePath, logger); err != nil {
 		return fmt.Errorf("extract cache archive: %w", err)
 	}
+
+	archiveExtractedT := time.Now()
+	tracker.LogArchiveExtracted(archiveExtractedT.Sub(archiveDownloadedT), archiveSize)
 
 	logger.TInfof("Loading metadata of the cache archive from %s", cacheMetadataPath)
 	var metadata *xcode.Metadata
@@ -85,9 +100,13 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	logCacheMetadata(metadata, logger)
 
 	logger.TInfof("Restoring modification time of input files")
-	if err := xcode.RestoreMTime(metadata, projectRoot, logger); err != nil {
+	var filesUpdated int
+	if filesUpdated, err = xcode.RestoreMTime(metadata, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
 	}
+
+	metadataLoadedT := time.Now()
+	tracker.LogMetadataLoaded(metadataLoadedT.Sub(archiveExtractedT), metadataLoadedT.Sub(startT), len(metadata.FileInfos), filesUpdated)
 
 	return nil
 }

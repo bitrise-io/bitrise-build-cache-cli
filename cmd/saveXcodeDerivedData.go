@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -76,6 +77,10 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
+	tracker := xcode.NewStepTracker("save-xcode-build-cache", envProvider, logger)
+	defer tracker.Wait()
+	startT := time.Now()
+
 	absoluteRootDir, err := filepath.Abs(projectRoot)
 	if err != nil {
 		return fmt.Errorf("get absolute path of rootDir: %w", err)
@@ -91,15 +96,28 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
+	metadataSavedT := time.Now()
+	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.FileInfos))
+
 	logger.TInfof("Creating cache archive %s for DerivedData folder %s and metadata file %s", cacheArchivePath, derivedDataPath, cacheMetadataPath)
 	if err := xcode.CreateCacheArchive(cacheArchivePath, derivedDataPath, cacheMetadataPath, logger); err != nil {
 		return fmt.Errorf("create cache archive: %w", err)
 	}
+	var archiveSize int64
+	if archiveSize, err = getFileSize(cacheArchivePath); err != nil {
+		return fmt.Errorf("get file size: %w", err)
+	}
+
+	archiveCreatedT := time.Now()
+	tracker.LogArchiveCreated(archiveCreatedT.Sub(metadataSavedT), archiveSize)
 
 	logger.TInfof("Uploading cache archive %s for key %s", cacheArchivePath, cacheKey)
 	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
+
+	archiveUploadedT := time.Now()
+	tracker.LogArchiveUploaded(archiveUploadedT.Sub(archiveCreatedT), archiveUploadedT.Sub(startT), archiveSize)
 
 	return nil
 }
