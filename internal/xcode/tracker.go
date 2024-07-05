@@ -37,33 +37,33 @@ func (t *StepAnalyticsTracker) LogMetadataSaved(duration time.Duration, fileCoun
 
 func (t *StepAnalyticsTracker) LogArchiveCreated(duration time.Duration, archiveSizeBytes int64) {
 	properties := analytics.Properties{
-		"duration_ms":       duration.Milliseconds(),
-		"archive_size_byte": archiveSizeBytes,
+		"duration_ms":        duration.Milliseconds(),
+		"archive_size_bytes": archiveSizeBytes,
 	}
 	t.tracker.Enqueue("step_save_xcode_build_cache_archive_created", properties)
 }
 
 func (t *StepAnalyticsTracker) LogArchiveUploaded(duration time.Duration, totalDuration time.Duration, archiveSizeBytes int64) {
 	properties := analytics.Properties{
-		"duration_ms":       duration.Milliseconds(),
-		"total_duration_ms": totalDuration.Milliseconds(),
-		"archive_size_byte": archiveSizeBytes,
+		"duration_ms":        duration.Milliseconds(),
+		"total_duration_ms":  totalDuration.Milliseconds(),
+		"archive_size_bytes": archiveSizeBytes,
 	}
 	t.tracker.Enqueue("step_save_xcode_build_cache_archive_uploaded", properties)
 }
 
 func (t *StepAnalyticsTracker) LogArchiveDownloaded(duration time.Duration, archiveSizeBytes int64) {
 	properties := analytics.Properties{
-		"duration_ms":       duration.Milliseconds(),
-		"archive_size_byte": archiveSizeBytes,
+		"duration_ms":        duration.Milliseconds(),
+		"archive_size_bytes": archiveSizeBytes,
 	}
 	t.tracker.Enqueue("step_restore_xcode_build_cache_archive_downloaded", properties)
 }
 
 func (t *StepAnalyticsTracker) LogArchiveExtracted(duration time.Duration, archiveSizeBytes int64) {
 	properties := analytics.Properties{
-		"duration_ms":       duration.Milliseconds(),
-		"archive_size_byte": archiveSizeBytes,
+		"duration_ms":        duration.Milliseconds(),
+		"archive_size_bytes": archiveSizeBytes,
 	}
 	t.tracker.Enqueue("step_restore_xcode_build_cache_archive_extracted", properties)
 }
