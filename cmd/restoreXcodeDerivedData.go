@@ -67,7 +67,7 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
-	tracker := xcode.NewStepTracker("save-xcode-build-cache", envProvider, logger)
+	tracker := xcode.NewStepTracker("restore-xcode-build-cache", envProvider, logger)
 	defer tracker.Wait()
 	startT := time.Now()
 
