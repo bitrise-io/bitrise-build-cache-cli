@@ -15,14 +15,16 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 )
 
 type Client struct {
-	bytestreamClient bytestream.ByteStreamClient
-	bitriseKVClient  kv_storage.KVStorageClient
-	clientName       string
-	authConfig       common.CacheAuthConfig
+	bytestreamClient   bytestream.ByteStreamClient
+	bitriseKVClient    kv_storage.KVStorageClient
+	capabilitiesClient remoteexecution.CapabilitiesClient
+	clientName         string
+	authConfig         common.CacheAuthConfig
 }
 
 type NewClientParams struct {
@@ -48,10 +50,11 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 	}
 
 	return &Client{
-		bytestreamClient: bytestream.NewByteStreamClient(conn),
-		bitriseKVClient:  kv_storage.NewKVStorageClient(conn),
-		clientName:       p.ClientName,
-		authConfig:       p.AuthConfig,
+		bytestreamClient:   bytestream.NewByteStreamClient(conn),
+		bitriseKVClient:    kv_storage.NewKVStorageClient(conn),
+		capabilitiesClient: remoteexecution.NewCapabilitiesClient(conn),
+		clientName:         p.ClientName,
+		authConfig:         p.AuthConfig,
 	}, nil
 }
 
