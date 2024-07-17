@@ -121,7 +121,7 @@ func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {
 }
 
 func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
-	out := make([]*FileDigest, len(digests))
+	out := make([]*FileDigest, 0, len(digests))
 
 	for _, d := range digests {
 		out = append(out, &FileDigest{
