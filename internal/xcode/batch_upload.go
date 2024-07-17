@@ -64,7 +64,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 func findMissingBlobs(ctx context.Context, dd DerivedData, client *kv.Client, logger log.Logger) (map[string]bool, error) {
 	logger.Infof("(i) Checking for missing blobs in the cache of %d files", len(dd.Files))
 
-	blobs := map[string]bool{}
+	blobs := make(map[string]bool)
 
 	allDigests := make([]*kv.FileDigest, 0, len(dd.Files))
 	for _, file := range dd.Files {
@@ -84,7 +84,7 @@ func findMissingBlobs(ctx context.Context, dd DerivedData, client *kv.Client, lo
 		return nil, fmt.Errorf("failed to check for existing files in the cache: %w", err)
 	}
 
-	missingBlobs := map[string]bool{}
+	missingBlobs := make(map[string]bool)
 	for _, d := range missingDigests {
 		missingBlobs[d.Sha256Sum] = true
 	}
