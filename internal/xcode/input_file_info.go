@@ -10,13 +10,13 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-type FileInfo struct {
+type InputFileInfo struct {
 	Path    string    `json:"path"`
 	Hash    string    `json:"hash"`
 	ModTime time.Time `json:"modTime"`
 }
 
-func processFileInfoFunc(rootDir string, logger log.Logger, fileInfos *[]FileInfo) func(string, fs.DirEntry, error) error {
+func processFileInfoFunc(rootDir string, logger log.Logger, fileInfos *[]InputFileInfo) func(string, fs.DirEntry, error) error {
 	return func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -51,26 +51,26 @@ func processFileInfoFunc(rootDir string, logger log.Logger, fileInfos *[]FileInf
 			return fmt.Errorf("get relative path: %w", err)
 		}
 
-		// Create FileInfo object
-		fileInfo := FileInfo{
+		// Create InputFileInfo object
+		fileInfo := InputFileInfo{
 			Path:    relPath,
 			Hash:    hashString,
 			ModTime: inf.ModTime(),
 		}
 
-		// Append FileInfo to slice
+		// Append InputFileInfo to slice
 		*fileInfos = append(*fileInfos, fileInfo)
 
 		return nil
 	}
 }
 
-func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
+func calculateFileInfos(rootDir string, logger log.Logger) ([]InputFileInfo, error) {
 	if rootDir == "" {
 		return nil, fmt.Errorf("missing rootDir")
 	}
 
-	var fileInfos []FileInfo
+	var fileInfos []InputFileInfo
 
 	// Walk through the directory tree
 	err := filepath.WalkDir(rootDir, processFileInfoFunc(rootDir, logger, &fileInfos))
@@ -78,7 +78,7 @@ func calculateFileInfos(rootDir string, logger log.Logger) ([]FileInfo, error) {
 		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
 
-	logger.Infof("(i) Processed %d files", len(fileInfos))
+	logger.Infof("(i) Processed %d input files", len(fileInfos))
 
 	return fileInfos, nil
 }

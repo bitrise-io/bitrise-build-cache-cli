@@ -59,7 +59,7 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	}
 
 	if cacheKey == "" {
-		if cacheKey, err = xcode.GetCacheKey(envProvider); err != nil {
+		if cacheKey, err = xcode.GetCacheKey(envProvider, false); err != nil {
 			return fmt.Errorf("get cache key: %w", err)
 		}
 	}
@@ -114,7 +114,7 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	}
 
 	metadataLoadedT := time.Now()
-	tracker.LogMetadataLoaded(metadataLoadedT.Sub(archiveExtractedT), metadataLoadedT.Sub(startT), len(metadata.FileInfos), filesUpdated)
+	tracker.LogMetadataLoaded(metadataLoadedT.Sub(archiveExtractedT), metadataLoadedT.Sub(startT), len(metadata.InputFiles), filesUpdated)
 
 	return nil
 }

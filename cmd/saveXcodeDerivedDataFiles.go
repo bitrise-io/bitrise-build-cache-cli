@@ -14,12 +14,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-const CacheMetadataPath = "dd-metadata.json"
-
 // nolint: gochecknoglobals
-var saveXcodeDerivedDataCmd = &cobra.Command{
-	Use:   "save-xcode-deriveddata",
-	Short: "Save the DerivedData folder into Bitrise Build Cache",
+var saveXcodeDerivedDataFilesCmd = &cobra.Command{
+	Use:   "save-xcode-deriveddata-files",
+	Short: "Save the DerivedData folder into Bitrise Build Cache (file level)",
 	Long:  `Save the contents of the DerivedData folder (used by Xcode to store intermediate build files) into Bitrise Build Cache.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
@@ -34,7 +32,7 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 		cacheKey, _ := cmd.Flags().GetString("key")
 		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
 
-		if err := saveXcodeDerivedDataCmdFn(cacheArchivePath, CacheMetadataPath, projectRoot, cacheKey, ddPath, logger, os.Getenv); err != nil {
+		if err := saveXcodeDerivedDataFilesCmdFn(cacheArchivePath, CacheMetadataPath, projectRoot, cacheKey, ddPath, logger, os.Getenv); err != nil {
 			return fmt.Errorf("save Xcode DerivedData into Bitrise Build Cache: %w", err)
 		}
 
@@ -45,15 +43,15 @@ var saveXcodeDerivedDataCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(saveXcodeDerivedDataCmd)
+	rootCmd.AddCommand(saveXcodeDerivedDataFilesCmd)
 
-	saveXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
-	saveXcodeDerivedDataCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
-	saveXcodeDerivedDataCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
-	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("project-root"); err != nil {
+	saveXcodeDerivedDataFilesCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
+	saveXcodeDerivedDataFilesCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
+	saveXcodeDerivedDataFilesCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
+	if err := saveXcodeDerivedDataFilesCmd.MarkFlagRequired("project-root"); err != nil {
 		panic(err)
 	}
-	saveXcodeDerivedDataCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
+	saveXcodeDerivedDataFilesCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
 		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/DerivedData/MyProject\"")
 	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path"); err != nil {
 		panic(err)
@@ -61,7 +59,7 @@ func init() {
 }
 
 // nolint:cyclop
-func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, derivedDataPath string, logger log.Logger, envProvider func(string) string) error {
+func saveXcodeDerivedDataFilesCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey, derivedDataPath string, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -70,7 +68,7 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 
 	if cacheKey == "" {
 		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
-		if cacheKey, err = xcode.GetCacheKey(envProvider, false); err != nil {
+		if cacheKey, err = xcode.GetCacheKey(envProvider, true); err != nil {
 			return fmt.Errorf("get cache key: %w", err)
 		}
 	}
@@ -94,9 +92,10 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	if err != nil {
 		return fmt.Errorf("get absolute path of rootDir: %w", err)
 	}
-	logger.TInfof("Gathering metadata for files in %s", absoluteRootDir)
+	logger.TInfof("Gathering metadata for input files in %s and DerivedData in %s", absoluteRootDir, derivedDataPath)
 	metadata, err := xcode.CreateMetadata(xcode.CreateMetadataParams{
-		ProjectRootDirPath: projectRoot,
+		ProjectRootDirPath: absoluteRootDir,
+		DerivedDataPath:    derivedDataPath,
 		CacheKey:           cacheKey,
 	}, envProvider, logger)
 	if err != nil {
@@ -111,25 +110,15 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	metadataSavedT := time.Now()
 	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.InputFiles))
 
-	logger.TInfof("Creating cache archive %s for DerivedData folder %s and metadata file %s", cacheArchivePath, derivedDataPath, cacheMetadataPath)
-	if err := xcode.CreateCacheArchive(cacheArchivePath, derivedDataPath, cacheMetadataPath, logger); err != nil {
-		return fmt.Errorf("create cache archive: %w", err)
-	}
-	var archiveSize int64
-	if archiveSize, err = getFileSize(cacheArchivePath); err != nil {
-		return fmt.Errorf("get file size: %w", err)
-	}
-
-	archiveCreatedT := time.Now()
-	tracker.LogArchiveCreated(archiveCreatedT.Sub(metadataSavedT), archiveSize)
-
-	logger.TInfof("Uploading cache archive %s for key %s", cacheArchivePath, cacheKey)
-	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
+	logger.TInfof("Uploading metadata %s for key %s", cacheMetadataPath, cacheKey)
+	if err := xcode.UploadToBuildCache(cacheMetadataPath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
 
-	archiveUploadedT := time.Now()
-	tracker.LogArchiveUploaded(archiveUploadedT.Sub(archiveCreatedT), archiveUploadedT.Sub(startT), archiveSize)
+	logger.TInfof("Uploading DerivedData files")
+	if err := xcode.UploadDerivedDataFilesToBuildCache(metadata.DerivedData, endpointURL, authConfig, logger); err != nil {
+		return fmt.Errorf("upload derived data files to build cache: %w", err)
+	}
 
 	return nil
 }

@@ -51,7 +51,7 @@ func deleteXcodeDerivedDataCmdFn(cacheKey string, logger log.Logger, envProvider
 
 	if cacheKey == "" {
 		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
-		if cacheKey, err = xcode.GetCacheKey(envProvider); err != nil {
+		if cacheKey, err = xcode.GetCacheKey(envProvider, false); err != nil {
 			return fmt.Errorf("get cache key: %w", err)
 		}
 	}

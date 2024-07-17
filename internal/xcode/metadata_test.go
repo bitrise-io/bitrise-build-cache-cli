@@ -64,8 +64,8 @@ func Test_CreateMetadata(t *testing.T) {
 			asserts: func(t *testing.T, md *Metadata) {
 				t.Helper()
 
-				require.Len(t, md.FileInfos, 1)
-				fi := md.FileInfos[0]
+				require.Len(t, md.InputFiles, 1)
+				fi := md.InputFiles[0]
 				require.True(t, strings.HasPrefix(fi.Path, "test-file.swift"))
 				require.NotEmpty(t, fi.Hash)
 

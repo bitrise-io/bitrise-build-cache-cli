@@ -11,30 +11,46 @@ import (
 )
 
 type Metadata struct {
-	FileInfos   []FileInfo `json:"inputFiles"`
-	CacheKey    string     `json:"cacheKey"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	AppID       string     `json:"appId,omitempty"`
-	BuildID     string     `json:"buildId,omitempty"`
-	WorkspaceID string     `json:"workspaceId,omitempty"`
-	GitCommit   string     `json:"gitCommit,omitempty"`
-	GitBranch   string     `json:"gitBranch,omitempty"`
+	InputFiles  []InputFileInfo `json:"inputFiles"`
+	DerivedData DerivedData     `json:"derivedData"`
+	CacheKey    string          `json:"cacheKey"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	AppID       string          `json:"appId,omitempty"`
+	BuildID     string          `json:"buildId,omitempty"`
+	WorkspaceID string          `json:"workspaceId,omitempty"`
+	GitCommit   string          `json:"gitCommit,omitempty"`
+	GitBranch   string          `json:"gitBranch,omitempty"`
 }
 
-func CreateMetadata(projectRootDir string, cacheKey string, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
-	fileInfos, err := calculateFileInfos(projectRootDir, logger)
+type CreateMetadataParams struct {
+	ProjectRootDirPath string
+	DerivedDataPath    string
+	CacheKey           string
+}
+
+func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
+	fileInfos, err := calculateFileInfos(params.ProjectRootDirPath, logger)
 	if err != nil {
 		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
 
+	var derivedData DerivedData
+	if params.DerivedDataPath != "" {
+		derivedData, err = calculateDerivedDataInfo(params.DerivedDataPath, logger)
+		if err != nil {
+			return nil, fmt.Errorf("calculate derived data info: %w", err)
+		}
+	}
+
 	m := Metadata{
-		FileInfos: fileInfos,
-		CacheKey:  cacheKey,
-		CreatedAt: time.Now(),
-		AppID:     envProvider("BITRISE_APP_SLUG"),
-		BuildID:   envProvider("BITRISE_BUILD_SLUG"),
-		GitCommit: envProvider("BITRISE_GIT_COMMIT"),
-		GitBranch: envProvider("BITRISE_GIT_BRANCH"),
+		InputFiles:  fileInfos,
+		DerivedData: derivedData,
+		CacheKey:    params.CacheKey,
+		CreatedAt:   time.Now(),
+		AppID:       envProvider("BITRISE_APP_SLUG"),
+		BuildID:     envProvider("BITRISE_BUILD_SLUG"),
+		GitCommit:   envProvider("BITRISE_GIT_COMMIT"),
+		GitBranch:   envProvider("BITRISE_GIT_BRANCH"),
 	}
 
 	if m.GitCommit == "" {
@@ -87,9 +103,9 @@ func LoadMetadata(file string) (*Metadata, error) {
 func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) (int, error) {
 	updated := 0
 
-	logger.Infof("(i) %d files' info loaded from cache metadata", len(metadata.FileInfos))
+	logger.Infof("(i) %d files' info loaded from cache metadata", len(metadata.InputFiles))
 
-	for _, fi := range metadata.FileInfos {
+	for _, fi := range metadata.InputFiles {
 		path := filepath.Join(rootDir, fi.Path)
 
 		// Skip if file doesn't exist

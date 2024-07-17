@@ -23,6 +23,7 @@ type Client struct {
 	bytestreamClient   bytestream.ByteStreamClient
 	bitriseKVClient    kv_storage.KVStorageClient
 	capabilitiesClient remoteexecution.CapabilitiesClient
+	casClient          remoteexecution.ContentAddressableStorageClient
 	clientName         string
 	authConfig         common.CacheAuthConfig
 }
@@ -53,6 +54,7 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 		bytestreamClient:   bytestream.NewByteStreamClient(conn),
 		bitriseKVClient:    kv_storage.NewKVStorageClient(conn),
 		capabilitiesClient: remoteexecution.NewCapabilitiesClient(conn),
+		casClient:          remoteexecution.NewContentAddressableStorageClient(conn),
 		clientName:         p.ClientName,
 		authConfig:         p.AuthConfig,
 	}, nil
