@@ -7,10 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/dustin/go-humanize"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/dustin/go-humanize"
 
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -52,7 +51,9 @@ func UploadToBuildCache(filePath, key, cacheURL string, authConfig common.CacheA
 			return fmt.Errorf("new kv client: %w", err), false
 		}
 
-		err = uploadFile(ctx, kvClient, filePath, key, checksum, logger)
+		fileSize, err := uploadFile(ctx, kvClient, filePath, key, checksum, logger)
+		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
+
 		if err != nil {
 			return err, false
 		}
@@ -66,18 +67,16 @@ func UploadToBuildCache(filePath, key, cacheURL string, authConfig common.CacheA
 	return nil
 }
 
-func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum string, logger log.Logger) error {
+func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum string, logger log.Logger) (int64, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("open %q: %w", filePath, err)
+		return 0, fmt.Errorf("open %q: %w", filePath, err)
 	}
 	defer file.Close()
 	stat, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("stat %q: %w", filePath, err)
+		return 0, fmt.Errorf("stat %q: %w", filePath, err)
 	}
-
-	logger.Infof("(i) Upload size: %s", humanize.Bytes(uint64(stat.Size())))
 
 	kvWriter, err := client.Put(ctx, kv.PutParams{
 		Name:      key,
@@ -85,14 +84,14 @@ func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum 
 		FileSize:  stat.Size(),
 	})
 	if err != nil {
-		return fmt.Errorf("create kv put client (with key %s): %w", key, err)
+		return 0, fmt.Errorf("create kv put client (with key %s): %w", key, err)
 	}
 	if _, err := io.Copy(kvWriter, file); err != nil {
-		return fmt.Errorf("upload archive: %w", err)
+		return 0, fmt.Errorf("upload archive: %w", err)
 	}
 	if err := kvWriter.Close(); err != nil {
-		return fmt.Errorf("close upload: %w", err)
+		return 0, fmt.Errorf("close upload: %w", err)
 	}
 
-	return nil
+	return stat.Size(), nil
 }

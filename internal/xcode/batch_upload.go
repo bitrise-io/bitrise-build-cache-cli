@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/bitrise-io/go-utils/retry"
+	"github.com/dustin/go-humanize"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -37,6 +38,8 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 		return fmt.Errorf("failed to check for missing blobs: %w", err)
 	}
 
+	var totalSize int64
+	uploadCount := 0
 	for _, file := range dd.Files {
 		if _, ok := missingBlobs[file.Hash]; ok {
 			const retries = 2
@@ -44,10 +47,13 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 				if attempt != 0 {
 					logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 				}
-				err := uploadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Hash, logger)
+				fileSize, err := uploadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Hash, logger)
 				if err != nil {
 					return fmt.Errorf("failed to upload file %s: %w", file.AbsolutePath, err), false
 				}
+
+				totalSize += fileSize
+				uploadCount++
 
 				return nil, false
 			})
@@ -57,6 +63,8 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 			}
 		}
 	}
+
+	logger.Infof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(totalSize)), uploadCount)
 
 	return nil
 }
