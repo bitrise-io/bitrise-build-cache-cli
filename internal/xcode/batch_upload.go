@@ -66,7 +66,7 @@ func findMissingBlobs(ctx context.Context, dd DerivedData, client *kv.Client, lo
 
 	blobs := map[string]bool{}
 
-	allDigests := make([]*kv.FileDigest, len(dd.Files))
+	allDigests := make([]*kv.FileDigest, 0, len(dd.Files))
 	for _, file := range dd.Files {
 		if _, ok := blobs[file.Hash]; !ok {
 			allDigests = append(allDigests, &kv.FileDigest{
@@ -78,6 +78,7 @@ func findMissingBlobs(ctx context.Context, dd DerivedData, client *kv.Client, lo
 		}
 	}
 
+	logger.Debugf("(i) Checking %d files", len(allDigests))
 	missingDigests, err := client.FindMissing(ctx, allDigests)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for existing files in the cache: %w", err)
