@@ -24,6 +24,15 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
+	md := metadata.Pairs(
+		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
+		"x-flare-buildtool", "xcode",
+	)
+	if c.authConfig.WorkspaceID != "" {
+		md.Append("x-org-id", c.authConfig.WorkspaceID)
+	}
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
 	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
 		return fmt.Errorf("get capabilities: %w", err)
