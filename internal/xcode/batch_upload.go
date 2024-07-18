@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
+	"sync"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -42,34 +43,52 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 
 	var totalSize int64
 	uploadCount := 0
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, 10) // Limit to 10 parallel operations
+	failedUpload := false
 	for _, file := range dd.Files {
 		if _, ok := missingBlobs[file.Hash]; ok {
-			const retries = 2
-			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
-				if attempt != 0 {
-					logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
-				}
-				fileSize, err := uploadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Hash, logger)
+			wg.Add(1)
+			semaphore <- struct{}{} // Block if there are already 10 goroutines running
+
+			go func(file *DerivedDataFile) {
+				defer wg.Done()
+				defer func() { <-semaphore }() // Release a slot in the semaphore
+
+				const retries = 2
+				err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+					if attempt != 0 {
+						logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
+					}
+					fileSize, err := uploadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Hash, logger)
+					if err != nil {
+						return fmt.Errorf("failed to upload file %s: %w", file.AbsolutePath, err), false
+					}
+
+					// Remove the uploded blob from the map of the missing blobs
+					delete(missingBlobs, file.Hash)
+
+					totalSize += fileSize
+					uploadCount++
+
+					return nil, false
+				})
+
 				if err != nil {
-					return fmt.Errorf("failed to upload file %s: %w", file.AbsolutePath, err), false
+					failedUpload = true
+					logger.Errorf("Failed to upload file %s with error: %v", file.AbsolutePath, err)
 				}
-
-				// Remove the uploded blob from the map if the missing blobs
-				delete(missingBlobs, file.Hash)
-
-				totalSize += fileSize
-				uploadCount++
-
-				return nil, false
-			})
-
-			if err != nil {
-				return fmt.Errorf("with retries: %w", err)
-			}
+			}(file)
 		}
 	}
 
+	wg.Wait()
+
 	logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(totalSize)), uploadCount)
+
+	if failedUpload {
+		return fmt.Errorf("failed to upload some files")
+	}
 
 	return nil
 }
