@@ -48,7 +48,10 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 	semaphore := make(chan struct{}, 10) // Limit to 10 parallel operations
 	failedUpload := false
 	for _, file := range dd.Files {
-		if _, ok := missingBlobs[file.Hash]; ok {
+		mutex.Lock()
+		_, ok := missingBlobs[file.Hash]
+		mutex.Unlock()
+		if ok {
 			wg.Add(1)
 			semaphore <- struct{}{} // Block if there are already 10 goroutines running
 
