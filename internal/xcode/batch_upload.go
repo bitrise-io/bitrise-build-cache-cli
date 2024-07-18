@@ -45,7 +45,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 	uploadCount := 0
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
-	semaphore := make(chan struct{}, 10) // Limit to 10 parallel operations
+	semaphore := make(chan struct{}, 3) // Limit to 10 parallel operations
 	failedUpload := false
 	for _, file := range dd.Files {
 		mutex.Lock()
