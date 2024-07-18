@@ -54,6 +54,9 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 					return fmt.Errorf("failed to upload file %s: %w", file.AbsolutePath, err), false
 				}
 
+				// Remove the uploded blob from the map if the missing blobs
+				delete(missingBlobs, file.Hash)
+
 				totalSize += fileSize
 				uploadCount++
 
