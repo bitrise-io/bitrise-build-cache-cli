@@ -3,10 +3,11 @@ package xcode
 import (
 	"context"
 	"fmt"
-	"github.com/bitrise-io/go-utils/retry"
-	"github.com/dustin/go-humanize"
 	"sync"
 	"time"
+
+	"github.com/bitrise-io/go-utils/retry"
+	"github.com/dustin/go-humanize"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -45,7 +46,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 	uploadCount := 0
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
-	semaphore := make(chan struct{}, 3) // Limit to 10 parallel operations
+	semaphore := make(chan struct{}, 1) // Limit parallelization
 	failedUpload := false
 	for _, file := range dd.Files {
 		mutex.Lock()
