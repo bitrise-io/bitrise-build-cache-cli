@@ -51,6 +51,11 @@ func UploadToBuildCache(filePath, key, cacheURL string, authConfig common.CacheA
 			return fmt.Errorf("new kv client: %w", err), false
 		}
 
+		err = kvClient.GetCapabilities(ctx)
+		if err != nil {
+			return err, false
+		}
+
 		fileSize, err := uploadFile(ctx, kvClient, filePath, key, checksum, logger)
 		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
 

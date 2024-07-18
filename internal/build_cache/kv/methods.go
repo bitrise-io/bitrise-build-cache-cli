@@ -23,6 +23,15 @@ type FileDigest struct {
 	SizeInBytes int64
 }
 
+func (c *Client) GetCapabilities(ctx context.Context) error {
+	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
+	if err != nil {
+		return fmt.Errorf("get capabilities: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, error) {
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
@@ -35,11 +44,6 @@ func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, err
 		md.Append("x-org-id", c.authConfig.WorkspaceID)
 	}
 	ctx = metadata.NewOutgoingContext(ctx, md)
-
-	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("get capabilities: %w", err)
-	}
 
 	stream, err := c.bitriseKVClient.Put(ctx)
 	if err != nil {

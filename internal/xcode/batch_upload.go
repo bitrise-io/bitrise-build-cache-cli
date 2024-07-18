@@ -35,6 +35,11 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 		return fmt.Errorf("new KV client: %w", err)
 	}
 
+	err = kvClient.GetCapabilities(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get capabilities: %w", err)
+	}
+
 	missingBlobs, err := findMissingBlobs(ctx, dd, kvClient, logger)
 	if err != nil {
 		return fmt.Errorf("failed to check for missing blobs: %w", err)
