@@ -44,6 +44,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 	var totalSize int64
 	uploadCount := 0
 	var wg sync.WaitGroup
+	var mutex sync.Mutex
 	semaphore := make(chan struct{}, 10) // Limit to 10 parallel operations
 	failedUpload := false
 	for _, file := range dd.Files {
@@ -65,11 +66,13 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 						return fmt.Errorf("failed to upload file %s: %w", file.AbsolutePath, err), false
 					}
 
-					// Remove the uploded blob from the map of the missing blobs
+					mutex.Lock()
+					// Delete the uploded blob from the map of the missing blobs
 					delete(missingBlobs, file.Hash)
 
 					totalSize += fileSize
 					uploadCount++
+					mutex.Unlock()
 
 					return nil, false
 				})
