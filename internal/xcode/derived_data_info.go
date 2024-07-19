@@ -3,6 +3,7 @@ package xcode
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -31,6 +32,17 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 			return err
 		}
 		if d.IsDir() {
+			return nil
+		}
+		inf, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("get file info: %w", err)
+		}
+
+		// Skip symbolic links
+		if inf.Mode()&os.ModeSymlink != 0 {
+			logger.Debugf("Skipping symbolic link: %s", path)
+
 			return nil
 		}
 		absPath, err := filepath.Abs(path)
