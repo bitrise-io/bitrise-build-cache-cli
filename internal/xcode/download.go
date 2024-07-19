@@ -29,19 +29,6 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 		)
 	}
 
-	logger.Debugf("Downloading %s from %s", fileName, buildCacheHost)
-
-	dir := filepath.Dir(fileName)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("create directory: %w", err)
-	}
-
-	file, err := os.Create(fileName)
-	if err != nil {
-		return fmt.Errorf("create %q: %w", fileName, err)
-	}
-	defer file.Close()
-
 	ctx := context.Background()
 	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
 		UseInsecure: insecureGRPC,
@@ -54,7 +41,34 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 		return fmt.Errorf("new kv client: %w", err)
 	}
 
-	kvReader, err := kvClient.Get(ctx, key)
+	err = kvClient.GetCapabilities(ctx)
+	if err != nil {
+		return err
+	}
+
+	logger.Debugf("Downloading %s from %s", fileName, buildCacheHost)
+
+	err = downloadFile(ctx, kvClient, fileName, key, logger)
+	if err != nil {
+		return fmt.Errorf("download file: %w", err)
+	}
+
+	return nil
+}
+
+func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, logger log.Logger) error {
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("create %q: %w", filePath, err)
+	}
+	defer file.Close()
+
+	kvReader, err := client.Get(ctx, key)
 	if err != nil {
 		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
 	}
@@ -70,4 +84,5 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 	}
 
 	return nil
+
 }

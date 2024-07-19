@@ -80,11 +80,6 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	}
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
-	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("get capabilities: %w", err)
-	}
-
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
 		ReadOffset:   0,
