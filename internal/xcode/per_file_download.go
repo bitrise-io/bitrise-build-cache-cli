@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/go-utils/retry"
+	"github.com/dustin/go-humanize"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -39,19 +42,48 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 
 	logger.TInfof("(i) Downloading %d files...", len(dd.Files))
 
-	//var wg sync.WaitGroup
-	//var mutex sync.Mutex
-	//semaphore := make(chan struct{}, 20) // Limit parallelization
-	//failedDownload := false
+	var wg sync.WaitGroup
+	var mutex sync.Mutex
+	failedDownload := false
+	var downloadSize int64
 	for _, file := range dd.Files {
-		err = downloadFile(ctx, kvClient, file.AbsolutePath, file.Hash, logger)
-		if err != nil {
-			return fmt.Errorf("download file: %w", err)
-		}
+		wg.Add(1)
 
-		if err := os.Chtimes(file.AbsolutePath, file.ModTime, file.ModTime); err != nil {
-			return fmt.Errorf("failed to set file mod time: %w", err)
-		}
+		go func(file *DerivedDataFile) {
+			defer wg.Done()
+
+			const retries = 3
+			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+				err = downloadFile(ctx, kvClient, file.AbsolutePath, file.Hash, logger)
+				if err != nil {
+					return fmt.Errorf("download file: %w", err), false
+				}
+
+				if err := os.Chtimes(file.AbsolutePath, file.ModTime, file.ModTime); err != nil {
+					return fmt.Errorf("failed to set file mod time: %w", err), false
+				}
+
+				return nil, false
+			})
+
+			mutex.Lock()
+			if err != nil {
+				failedDownload = true
+				logger.Errorf("Failed to upload file %s with error: %v", file.AbsolutePath, err)
+			} else {
+				downloadSize += file.Size
+
+			}
+			mutex.Unlock()
+		}(file)
+	}
+
+	wg.Wait()
+
+	logger.TInfof("(i) Downloaded: %s", humanize.Bytes(uint64(downloadSize)))
+
+	if failedDownload {
+		return fmt.Errorf("failed to download some files")
 	}
 
 	return nil
