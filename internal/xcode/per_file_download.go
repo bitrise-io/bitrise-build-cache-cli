@@ -44,13 +44,16 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
+	semaphore := make(chan struct{}, 20) // Limit parallelization
 	failedDownload := false
 	var downloadSize int64
 	for _, file := range dd.Files {
 		wg.Add(1)
+		semaphore <- struct{}{} // Block if there are too many goroutines are running
 
 		go func(file *DerivedDataFile) {
 			defer wg.Done()
+			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			const retries = 3
 			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
@@ -60,7 +63,7 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 				}
 
 				if err := os.Chtimes(file.AbsolutePath, file.ModTime, file.ModTime); err != nil {
-					return fmt.Errorf("failed to set file mod time: %w", err), false
+					return fmt.Errorf("failed to set file mod time: %w", err), true
 				}
 
 				return nil, false

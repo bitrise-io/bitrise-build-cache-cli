@@ -59,7 +59,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 		mutex.Unlock()
 		if ok {
 			wg.Add(1)
-			semaphore <- struct{}{} // Block if there are already 10 goroutines running
+			semaphore <- struct{}{} // Block if there are too many goroutines are running
 
 			go func(file *DerivedDataFile) {
 				defer wg.Done()
