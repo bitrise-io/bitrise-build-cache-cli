@@ -57,7 +57,7 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 
 			const retries = 3
 			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
-				err = downloadFile(ctx, kvClient, file.AbsolutePath, file.Hash, logger)
+				err = downloadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Mode)
 				if err != nil {
 					return fmt.Errorf("download file: %w", err), false
 				}

@@ -18,10 +18,11 @@ type DerivedData struct {
 }
 
 type DerivedDataFile struct {
-	AbsolutePath string    `json:"path"`
-	Size         int64     `json:"size"`
-	Hash         string    `json:"hash"`
-	ModTime      time.Time `json:"modTime"`
+	AbsolutePath string      `json:"path"`
+	Size         int64       `json:"size"`
+	Hash         string      `json:"hash"`
+	ModTime      time.Time   `json:"modTime"`
+	Mode         os.FileMode `json:"mode"`
 }
 
 func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (DerivedData, error) {
@@ -53,8 +54,6 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 		if err != nil {
 			return err
 		}
-		fileSize := fileInfo.Size()
-		modTime := fileInfo.ModTime()
 
 		file, err := os.Open(path)
 		if err != nil {
@@ -70,9 +69,10 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 
 		dd.Files = append(dd.Files, &DerivedDataFile{
 			AbsolutePath: absPath,
-			Size:         fileSize,
+			Size:         fileInfo.Size(),
 			Hash:         hash,
-			ModTime:      modTime,
+			ModTime:      fileInfo.ModTime(),
+			Mode:         fileInfo.Mode(),
 		})
 
 		return nil
