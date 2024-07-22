@@ -48,7 +48,7 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 
 	logger.Debugf("Downloading %s from %s", fileName, buildCacheHost)
 
-	err = downloadFile(ctx, kvClient, fileName, key, 0, true)
+	err = downloadFile(ctx, kvClient, fileName, key, 0)
 	if err != nil {
 		return fmt.Errorf("download file: %w", err)
 	}
@@ -56,12 +56,10 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 	return nil
 }
 
-func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, createDirectories bool) error {
+func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode) error {
 	dir := filepath.Dir(filePath)
-	if createDirectories {
-		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-			return fmt.Errorf("create directory: %w", err)
-		}
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("create directory: %w", err)
 	}
 
 	if fileMode == 0 {

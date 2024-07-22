@@ -96,14 +96,14 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheArchivePath, cacheMetadataPath, proj
 		return fmt.Errorf("restore modification time: %w", err)
 	}
 
-	logger.TInfof("Restoring DerivedData directories")
-	if err := xcode.RestoreDirectories(metadata.DerivedData, logger); err != nil {
-		return fmt.Errorf("restore DerivedData directories: %w", err)
-	}
-
 	logger.TInfof("Downloading DerivedData files")
 	if err := xcode.DownloadDerivedDataFilesFromBuildCache(metadata.DerivedData, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("download DerivedData files: %w", err)
+	}
+
+	logger.TInfof("Restoring DerivedData directory metadata")
+	if err := xcode.RestoreDirectories(metadata.DerivedData, logger); err != nil {
+		return fmt.Errorf("restore DerivedData directories: %w", err)
 	}
 
 	return nil
