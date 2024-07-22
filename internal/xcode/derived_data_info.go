@@ -14,7 +14,13 @@ import (
 )
 
 type DerivedData struct {
-	Files []*DerivedDataFile `json:"files"`
+	Files       []*DerivedDataFile `json:"files"`
+	Directories []*DerivedDataDir  `json:"directories"`
+}
+
+type DerivedDataDir struct {
+	AbsolutePath string    `json:"path"`
+	ModTime      time.Time `json:"modTime"`
 }
 
 type DerivedDataFile struct {
@@ -32,12 +38,21 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			return nil
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
 		}
 		inf, err := d.Info()
 		if err != nil {
 			return fmt.Errorf("get file info: %w", err)
+		}
+
+		if d.IsDir() {
+			dd.Directories = append(dd.Directories, &DerivedDataDir{
+				AbsolutePath: absPath,
+				ModTime:      inf.ModTime(),
+			})
+			return nil
 		}
 
 		// Skip symbolic links
@@ -45,14 +60,6 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 			logger.Debugf("Skipping symbolic link: %s", path)
 
 			return nil
-		}
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-		fileInfo, err := os.Stat(path)
-		if err != nil {
-			return err
 		}
 
 		file, err := os.Open(path)
@@ -69,10 +76,10 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 
 		dd.Files = append(dd.Files, &DerivedDataFile{
 			AbsolutePath: absPath,
-			Size:         fileInfo.Size(),
+			Size:         inf.Size(),
 			Hash:         hash,
-			ModTime:      fileInfo.ModTime(),
-			Mode:         fileInfo.Mode(),
+			ModTime:      inf.ModTime(),
+			Mode:         inf.Mode(),
 		})
 
 		return nil
@@ -85,4 +92,20 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 	logger.Infof("(i) Processed %d DerivedData files", len(dd.Files))
 
 	return dd, nil
+}
+
+func RestoreDirectories(dd DerivedData, logger log.Logger) error {
+	for _, dir := range dd.Directories {
+		if err := os.MkdirAll(dir.AbsolutePath, os.ModePerm); err != nil {
+			return fmt.Errorf("create directory: %w", err)
+		}
+
+		if err := os.Chtimes(dir.AbsolutePath, dir.ModTime, dir.ModTime); err != nil {
+			return fmt.Errorf("set directory mod time: %w", err)
+		}
+	}
+
+	logger.Infof("(i) Restored %d DerivedData directories", len(dd.Directories))
+
+	return nil
 }
