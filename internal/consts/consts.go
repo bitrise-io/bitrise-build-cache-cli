@@ -8,7 +8,7 @@ const (
 	EndpointURLORD1    = "grpc://ord-cache.services.bitrise.io:6666"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.6"
+	GradleRemoteBuildCachePluginDepVersion = "1.2.7"
 
 	// Gradle Analytics related consts
 	GradleAnalyticsPluginDepVersion = "2.1.7"
