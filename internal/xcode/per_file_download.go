@@ -72,7 +72,7 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 			mutex.Lock()
 			if err != nil {
 				failedDownload = true
-				logger.Errorf("Failed to upload file %s with error: %v", file.AbsolutePath, err)
+				logger.Errorf("Failed to download file %s with error: %v", file.AbsolutePath, err)
 			} else {
 				downloadSize += file.Size
 
