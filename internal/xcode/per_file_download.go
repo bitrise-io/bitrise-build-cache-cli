@@ -23,6 +23,13 @@ func DownloadCacheFilesFromBuildCache(dd CacheDirectoryMetadata, cacheURL string
 		)
 	}
 
+	var largestFileSize int64
+	for _, file := range dd.Files {
+		if file.Size > largestFileSize {
+			largestFileSize = file.Size
+		}
+	}
+
 	ctx := context.Background()
 	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
 		UseInsecure: insecureGRPC,
@@ -40,7 +47,8 @@ func DownloadCacheFilesFromBuildCache(dd CacheDirectoryMetadata, cacheURL string
 		return fmt.Errorf("failed to get capabilities: %w", err)
 	}
 
-	logger.TInfof("(i) Downloading %d files...", len(dd.Files))
+	logger.TInfof("(i) Downloading %d files, largest is %s",
+		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
 
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
