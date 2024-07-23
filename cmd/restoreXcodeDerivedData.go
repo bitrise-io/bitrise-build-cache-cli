@@ -109,7 +109,7 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 
 	logger.TInfof("Restoring modification time of input files")
 	var filesUpdated int
-	if filesUpdated, err = xcode.RestoreMTime(metadata, projectRoot, logger); err != nil {
+	if filesUpdated, err = xcode.RestoreFileInfos(metadata.InputFiles, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
 	}
 

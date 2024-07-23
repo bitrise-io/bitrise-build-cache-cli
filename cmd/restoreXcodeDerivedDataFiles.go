@@ -90,10 +90,15 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheArchivePath, cacheMetadataPath, proj
 
 	logCacheMetadata(metadata, logger)
 
-	logger.TInfof("Restoring modification time of input files")
+	logger.TInfof("Restoring metadata of input files")
 	//var filesUpdated int
-	if _, err = xcode.RestoreMTime(metadata, projectRoot, logger); err != nil {
+	if _, err = xcode.RestoreFileInfos(metadata.InputFiles, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
+	}
+
+	logger.TInfof("Restoring metadata of input directories")
+	if err := xcode.RestoreDirectoryInfos(metadata.InputDirectories, projectRoot, logger); err != nil {
+		return fmt.Errorf("restore metadata of input directories: %w", err)
 	}
 
 	logger.TInfof("Downloading DerivedData files")

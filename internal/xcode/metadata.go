@@ -11,15 +11,16 @@ import (
 )
 
 type Metadata struct {
-	InputFiles  []InputFileInfo `json:"inputFiles"`
-	DerivedData DerivedData     `json:"derivedData"`
-	CacheKey    string          `json:"cacheKey"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	AppID       string          `json:"appId,omitempty"`
-	BuildID     string          `json:"buildId,omitempty"`
-	WorkspaceID string          `json:"workspaceId,omitempty"`
-	GitCommit   string          `json:"gitCommit,omitempty"`
-	GitBranch   string          `json:"gitBranch,omitempty"`
+	InputFiles       []*FileInfo      `json:"inputFiles"`
+	InputDirectories []*DirectoryInfo `json:"inputDirectories"`
+	DerivedData      DerivedData      `json:"derivedData"`
+	CacheKey         string           `json:"cacheKey"`
+	CreatedAt        time.Time        `json:"createdAt"`
+	AppID            string           `json:"appId,omitempty"`
+	BuildID          string           `json:"buildId,omitempty"`
+	WorkspaceID      string           `json:"workspaceId,omitempty"`
+	GitCommit        string           `json:"gitCommit,omitempty"`
+	GitBranch        string           `json:"gitBranch,omitempty"`
 }
 
 type CreateMetadataParams struct {
@@ -29,7 +30,7 @@ type CreateMetadataParams struct {
 }
 
 func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
-	fileInfos, err := calculateFileInfos(params.ProjectRootDirPath, logger)
+	fileInfos, dirInfos, err := calculateFileInfos(params.ProjectRootDirPath, logger)
 	if err != nil {
 		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
@@ -43,14 +44,15 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	}
 
 	m := Metadata{
-		InputFiles:  fileInfos,
-		DerivedData: derivedData,
-		CacheKey:    params.CacheKey,
-		CreatedAt:   time.Now(),
-		AppID:       envProvider("BITRISE_APP_SLUG"),
-		BuildID:     envProvider("BITRISE_BUILD_SLUG"),
-		GitCommit:   envProvider("BITRISE_GIT_COMMIT"),
-		GitBranch:   envProvider("BITRISE_GIT_BRANCH"),
+		InputFiles:       fileInfos,
+		InputDirectories: dirInfos,
+		DerivedData:      derivedData,
+		CacheKey:         params.CacheKey,
+		CreatedAt:        time.Now(),
+		AppID:            envProvider("BITRISE_APP_SLUG"),
+		BuildID:          envProvider("BITRISE_BUILD_SLUG"),
+		GitCommit:        envProvider("BITRISE_GIT_COMMIT"),
+		GitBranch:        envProvider("BITRISE_GIT_BRANCH"),
 	}
 
 	if m.GitCommit == "" {
@@ -100,12 +102,29 @@ func LoadMetadata(file string) (*Metadata, error) {
 	return &metadata, nil
 }
 
-func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) (int, error) {
+func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log.Logger) error {
+	for _, dir := range dirInfos {
+		path := filepath.Join(rootDir, dir.Path)
+		if err := os.MkdirAll(path, os.ModePerm); err != nil {
+			return fmt.Errorf("create directory: %w", err)
+		}
+
+		if err := os.Chtimes(path, dir.ModTime, dir.ModTime); err != nil {
+			return fmt.Errorf("set directory mod time: %w", err)
+		}
+	}
+
+	logger.Infof("(i) Restored %d DerivedData directories", len(dirInfos))
+
+	return nil
+}
+
+func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) (int, error) {
 	updated := 0
 
-	logger.Infof("(i) %d files' info loaded from cache metadata", len(metadata.InputFiles))
+	logger.Infof("(i) %d files' info loaded from cache metadata", len(fileInfos))
 
-	for _, fi := range metadata.InputFiles {
+	for _, fi := range fileInfos {
 		path := filepath.Join(rootDir, fi.Path)
 
 		// Skip if file doesn't exist
@@ -129,9 +148,14 @@ func RestoreMTime(metadata *Metadata, rootDir string, logger log.Logger) (int, e
 		// Set modification time
 		if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
 			logger.Debugf("Error setting modification time for %s: %v", fi.Path, err)
-		} else {
-			updated++
+			continue
 		}
+
+		if err = os.Chmod(fi.Path, fi.Mode); err != nil {
+			logger.Debugf("Error setting file mode time for %s: %v", fi.Path, err)
+		}
+
+		updated++
 	}
 
 	logger.Infof("(i) %d files' modification time restored", updated)

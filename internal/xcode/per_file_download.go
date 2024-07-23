@@ -51,18 +51,18 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 		wg.Add(1)
 		semaphore <- struct{}{} // Block if there are too many goroutines are running
 
-		go func(file *DerivedDataFile) {
+		go func(file *FileInfo) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			const retries = 3
 			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
-				err = downloadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Mode)
+				err = downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if err != nil {
 					return fmt.Errorf("download file: %w", err), false
 				}
 
-				if err := os.Chtimes(file.AbsolutePath, file.ModTime, file.ModTime); err != nil {
+				if err := os.Chtimes(file.Path, file.ModTime, file.ModTime); err != nil {
 					return fmt.Errorf("failed to set file mod time: %w", err), true
 				}
 
@@ -72,7 +72,7 @@ func DownloadDerivedDataFilesFromBuildCache(dd DerivedData, cacheURL string, aut
 			mutex.Lock()
 			if err != nil {
 				failedDownload = true
-				logger.Errorf("Failed to download file %s with error: %v", file.AbsolutePath, err)
+				logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 			} else {
 				downloadSize += file.Size
 

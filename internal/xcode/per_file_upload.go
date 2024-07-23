@@ -61,7 +61,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 			wg.Add(1)
 			semaphore <- struct{}{} // Block if there are too many goroutines are running
 
-			go func(file *DerivedDataFile) {
+			go func(file *FileInfo) {
 				defer wg.Done()
 				defer func() { <-semaphore }() // Release a slot in the semaphore
 
@@ -70,9 +70,9 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 					if attempt != 0 {
 						logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 					}
-					fileSize, err := uploadFile(ctx, kvClient, file.AbsolutePath, file.Hash, file.Hash, logger)
+					fileSize, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
 					if err != nil {
-						return fmt.Errorf("failed to upload file %s: %w", file.AbsolutePath, err), false
+						return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
 					}
 
 					mutex.Lock()
@@ -88,7 +88,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 
 				if err != nil {
 					failedUpload = true
-					logger.Errorf("Failed to upload file %s with error: %v", file.AbsolutePath, err)
+					logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
 				}
 			}(file)
 		}

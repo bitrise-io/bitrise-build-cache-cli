@@ -14,21 +14,21 @@ import (
 )
 
 type DerivedData struct {
-	Files       []*DerivedDataFile `json:"files"`
-	Directories []*DerivedDataDir  `json:"directories"`
+	Files       []*FileInfo      `json:"files"`
+	Directories []*DirectoryInfo `json:"directories"`
 }
 
-type DerivedDataDir struct {
-	AbsolutePath string    `json:"path"`
-	ModTime      time.Time `json:"modTime"`
+type DirectoryInfo struct {
+	Path    string    `json:"path"`
+	ModTime time.Time `json:"modTime"`
 }
 
-type DerivedDataFile struct {
-	AbsolutePath string      `json:"path"`
-	Size         int64       `json:"size"`
-	Hash         string      `json:"hash"`
-	ModTime      time.Time   `json:"modTime"`
-	Mode         os.FileMode `json:"mode"`
+type FileInfo struct {
+	Path    string      `json:"path"`
+	Size    int64       `json:"size"`
+	Hash    string      `json:"hash"`
+	ModTime time.Time   `json:"modTime"`
+	Mode    os.FileMode `json:"mode"`
 }
 
 func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (DerivedData, error) {
@@ -48,9 +48,9 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 		}
 
 		if d.IsDir() {
-			dd.Directories = append(dd.Directories, &DerivedDataDir{
-				AbsolutePath: absPath,
-				ModTime:      inf.ModTime(),
+			dd.Directories = append(dd.Directories, &DirectoryInfo{
+				Path:    absPath,
+				ModTime: inf.ModTime(),
 			})
 			return nil
 		}
@@ -74,12 +74,12 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 		}
 		hash := hex.EncodeToString(hasher.Sum(nil))
 
-		dd.Files = append(dd.Files, &DerivedDataFile{
-			AbsolutePath: absPath,
-			Size:         inf.Size(),
-			Hash:         hash,
-			ModTime:      inf.ModTime(),
-			Mode:         inf.Mode(),
+		dd.Files = append(dd.Files, &FileInfo{
+			Path:    absPath,
+			Size:    inf.Size(),
+			Hash:    hash,
+			ModTime: inf.ModTime(),
+			Mode:    inf.Mode(),
 		})
 
 		return nil
@@ -96,11 +96,11 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 
 func RestoreDirectories(dd DerivedData, logger log.Logger) error {
 	for _, dir := range dd.Directories {
-		if err := os.MkdirAll(dir.AbsolutePath, os.ModePerm); err != nil {
+		if err := os.MkdirAll(dir.Path, os.ModePerm); err != nil {
 			return fmt.Errorf("create directory: %w", err)
 		}
 
-		if err := os.Chtimes(dir.AbsolutePath, dir.ModTime, dir.ModTime); err != nil {
+		if err := os.Chtimes(dir.Path, dir.ModTime, dir.ModTime); err != nil {
 			return fmt.Errorf("set directory mod time: %w", err)
 		}
 	}
