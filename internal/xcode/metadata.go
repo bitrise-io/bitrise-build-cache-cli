@@ -153,6 +153,13 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 
 		if err = os.Chmod(fi.Path, fi.Mode); err != nil {
 			logger.Debugf("Error setting file mode time for %s: %v", fi.Path, err)
+			continue
+		}
+
+		err = setAttributes(fi.Path, fi.Attributes)
+		if err != nil {
+			logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
+			continue
 		}
 
 		updated++

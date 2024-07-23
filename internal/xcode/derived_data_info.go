@@ -25,11 +25,12 @@ type DirectoryInfo struct {
 }
 
 type FileInfo struct {
-	Path    string      `json:"path"`
-	Size    int64       `json:"size"`
-	Hash    string      `json:"hash"`
-	ModTime time.Time   `json:"modTime"`
-	Mode    os.FileMode `json:"mode"`
+	Path       string            `json:"path"`
+	Size       int64             `json:"size"`
+	Hash       string            `json:"hash"`
+	ModTime    time.Time         `json:"modTime"`
+	Mode       os.FileMode       `json:"mode"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (DerivedData, error) {

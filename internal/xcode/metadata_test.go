@@ -87,7 +87,11 @@ func Test_CreateMetadata(t *testing.T) {
 			if envProvider == nil {
 				envProvider = createEnvProvider(map[string]string{})
 			}
-			md, err := CreateMetadata(tt.args.rootDir, "some-key", envProvider, logger)
+			md, err := CreateMetadata(CreateMetadataParams{
+				ProjectRootDirPath: tt.args.rootDir,
+				DerivedDataPath:    tt.args.rootDir,
+				CacheKey:           "some-key",
+			}, envProvider, logger)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
