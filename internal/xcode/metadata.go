@@ -114,7 +114,7 @@ func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log
 		}
 	}
 
-	logger.Infof("(i) Restored %d DerivedData directories", len(dirInfos))
+	logger.Infof("(i) Restored %d directory infos", len(dirInfos))
 
 	return nil
 }
