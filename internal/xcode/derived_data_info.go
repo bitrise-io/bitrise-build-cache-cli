@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"io"
 	"io/fs"
 	"os"
@@ -33,6 +34,7 @@ type FileInfo struct {
 
 func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (DerivedData, error) {
 	var dd DerivedData
+	var largestFileSize int64
 
 	err := filepath.WalkDir(derivedDataPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -82,6 +84,10 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 			Mode:    inf.Mode(),
 		})
 
+		if inf.Size() > largestFileSize {
+			largestFileSize = inf.Size()
+		}
+
 		return nil
 	})
 
@@ -90,6 +96,7 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 	}
 
 	logger.Infof("(i) Processed %d DerivedData files", len(dd.Files))
+	logger.Debugf("(i) Largest DerivedData file size: %s", humanize.Bytes(uint64(largestFileSize)))
 
 	return dd, nil
 }
