@@ -14,7 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func UploadCacheFilesToBuildCache(dd CacheDirectoryMetadata, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
@@ -105,7 +105,7 @@ func UploadDerivedDataFilesToBuildCache(dd DerivedData, cacheURL string, authCon
 	return nil
 }
 
-func findMissingBlobs(ctx context.Context, dd DerivedData, client *kv.Client, logger log.Logger) (map[string]bool, error) {
+func findMissingBlobs(ctx context.Context, dd CacheDirectoryMetadata, client *kv.Client, logger log.Logger) (map[string]bool, error) {
 	logger.TInfof("(i) Checking for missing blobs in the cache of %d files", len(dd.Files))
 
 	blobs := make(map[string]bool)

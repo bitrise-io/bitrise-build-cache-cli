@@ -11,21 +11,23 @@ import (
 )
 
 type Metadata struct {
-	InputFiles       []*FileInfo      `json:"inputFiles"`
-	InputDirectories []*DirectoryInfo `json:"inputDirectories"`
-	DerivedData      DerivedData      `json:"derivedData"`
-	CacheKey         string           `json:"cacheKey"`
-	CreatedAt        time.Time        `json:"createdAt"`
-	AppID            string           `json:"appId,omitempty"`
-	BuildID          string           `json:"buildId,omitempty"`
-	WorkspaceID      string           `json:"workspaceId,omitempty"`
-	GitCommit        string           `json:"gitCommit,omitempty"`
-	GitBranch        string           `json:"gitBranch,omitempty"`
+	InputFiles       []*FileInfo            `json:"inputFiles"`
+	InputDirectories []*DirectoryInfo       `json:"inputDirectories"`
+	DerivedData      CacheDirectoryMetadata `json:"derivedData"`
+	XcodeCacheDir    CacheDirectoryMetadata `json:"xcodeCacheDir"`
+	CacheKey         string                 `json:"cacheKey"`
+	CreatedAt        time.Time              `json:"createdAt"`
+	AppID            string                 `json:"appId,omitempty"`
+	BuildID          string                 `json:"buildId,omitempty"`
+	WorkspaceID      string                 `json:"workspaceId,omitempty"`
+	GitCommit        string                 `json:"gitCommit,omitempty"`
+	GitBranch        string                 `json:"gitBranch,omitempty"`
 }
 
 type CreateMetadataParams struct {
 	ProjectRootDirPath string
 	DerivedDataPath    string
+	XcodeCacheDirPath  string
 	CacheKey           string
 }
 
@@ -35,11 +37,19 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		return nil, fmt.Errorf("calculate file infos: %w", err)
 	}
 
-	var derivedData DerivedData
+	var derivedData CacheDirectoryMetadata
 	if params.DerivedDataPath != "" {
-		derivedData, err = calculateDerivedDataInfo(params.DerivedDataPath, logger)
+		derivedData, err = calculateCacheDirectoryInfo(params.DerivedDataPath, logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate derived data info: %w", err)
+		}
+	}
+
+	var xcodeCacheDir CacheDirectoryMetadata
+	if params.XcodeCacheDirPath != "" {
+		xcodeCacheDir, err = calculateCacheDirectoryInfo(params.XcodeCacheDirPath, logger)
+		if err != nil {
+			return nil, fmt.Errorf("calculate xcode cache dir info: %w", err)
 		}
 	}
 
@@ -47,6 +57,7 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		InputFiles:       fileInfos,
 		InputDirectories: dirInfos,
 		DerivedData:      derivedData,
+		XcodeCacheDir:    xcodeCacheDir,
 		CacheKey:         params.CacheKey,
 		CreatedAt:        time.Now(),
 		AppID:            envProvider("BITRISE_APP_SLUG"),

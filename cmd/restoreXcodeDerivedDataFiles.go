@@ -24,11 +24,10 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
 
 		logger.Infof("(i) Checking parameters")
-		cacheArchivePath, _ := cmd.Flags().GetString("cache-archive")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")
 
-		if err := restoreXcodeDerivedDataFilesCmdFn(cacheArchivePath, CacheMetadataPath, projectRoot, cacheKey, logger, os.Getenv); err != nil {
+		if err := restoreXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, logger, os.Getenv); err != nil {
 			return fmt.Errorf("restore Xcode DerivedData from Bitrise Build Cache: %w", err)
 		}
 
@@ -42,14 +41,13 @@ func init() {
 	rootCmd.AddCommand(restoreXcodeDerivedDataFilesCmd)
 
 	restoreXcodeDerivedDataFilesCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
-	restoreXcodeDerivedDataFilesCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the DerivedData folder")
 	restoreXcodeDerivedDataFilesCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when restoring the modification time of the source files)")
 	if err := restoreXcodeDerivedDataFilesCmd.MarkFlagRequired("project-root"); err != nil {
 		panic(err)
 	}
 }
 
-func restoreXcodeDerivedDataFilesCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot, cacheKey string, logger log.Logger, envProvider func(string) string) error {
+func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey string, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -102,13 +100,25 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheArchivePath, cacheMetadataPath, proj
 	}
 
 	logger.TInfof("Downloading DerivedData files")
-	if err := xcode.DownloadDerivedDataFilesFromBuildCache(metadata.DerivedData, endpointURL, authConfig, logger); err != nil {
+	if err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("download DerivedData files: %w", err)
 	}
 
 	logger.TInfof("Restoring DerivedData directory metadata")
 	if err := xcode.RestoreDirectories(metadata.DerivedData, logger); err != nil {
 		return fmt.Errorf("restore DerivedData directories: %w", err)
+	}
+
+	if len(metadata.XcodeCacheDir.Files) > 0 {
+		logger.TInfof("Downloading Xcode cache files")
+		if err := xcode.DownloadCacheFilesFromBuildCache(metadata.XcodeCacheDir, endpointURL, authConfig, logger); err != nil {
+			return fmt.Errorf("download Xcode cache files: %w", err)
+		}
+
+		logger.TInfof("Restoring DerivedData directory metadata")
+		if err := xcode.RestoreDirectories(metadata.XcodeCacheDir, logger); err != nil {
+			return fmt.Errorf("restore Xcode cache directories: %w", err)
+		}
 	}
 
 	return nil

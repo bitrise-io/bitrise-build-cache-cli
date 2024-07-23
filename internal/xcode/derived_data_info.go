@@ -14,7 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-type DerivedData struct {
+type CacheDirectoryMetadata struct {
 	Files       []*FileInfo      `json:"files"`
 	Directories []*DirectoryInfo `json:"directories"`
 }
@@ -33,11 +33,11 @@ type FileInfo struct {
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
-func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (DerivedData, error) {
-	var dd DerivedData
+func calculateCacheDirectoryInfo(cacheDirPath string, logger log.Logger) (CacheDirectoryMetadata, error) {
+	var dd CacheDirectoryMetadata
 	var largestFileSize int64
 
-	err := filepath.WalkDir(derivedDataPath, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(cacheDirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -93,16 +93,16 @@ func calculateDerivedDataInfo(derivedDataPath string, logger log.Logger) (Derive
 	})
 
 	if err != nil {
-		return DerivedData{}, err
+		return CacheDirectoryMetadata{}, err
 	}
 
-	logger.Infof("(i) Processed %d DerivedData files", len(dd.Files))
-	logger.Debugf("(i) Largest DerivedData file size: %s", humanize.Bytes(uint64(largestFileSize)))
+	logger.Infof("(i) Processed %d cache directory files", len(dd.Files))
+	logger.Debugf("(i) Largest cache directory file size: %s", humanize.Bytes(uint64(largestFileSize)))
 
 	return dd, nil
 }
 
-func RestoreDirectories(dd DerivedData, logger log.Logger) error {
+func RestoreDirectories(dd CacheDirectoryMetadata, logger log.Logger) error {
 	for _, dir := range dd.Directories {
 		if err := os.MkdirAll(dir.Path, os.ModePerm); err != nil {
 			return fmt.Errorf("create directory: %w", err)
@@ -113,7 +113,7 @@ func RestoreDirectories(dd DerivedData, logger log.Logger) error {
 		}
 	}
 
-	logger.Infof("(i) Restored %d DerivedData directories", len(dd.Directories))
+	logger.Infof("(i) Restored %d cache directories", len(dd.Directories))
 
 	return nil
 }
