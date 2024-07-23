@@ -46,7 +46,6 @@ func init() {
 	rootCmd.AddCommand(saveXcodeDerivedDataFilesCmd)
 
 	saveXcodeDerivedDataFilesCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
-	saveXcodeDerivedDataFilesCmd.Flags().String("cache-archive", "bitrise-dd-cache/dd.tar.zst", "Path to the uploadable cache archive with the contents of the CacheDirectoryMetadata folder")
 	saveXcodeDerivedDataFilesCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
 	if err := saveXcodeDerivedDataFilesCmd.MarkFlagRequired("project-root"); err != nil {
 		panic(err)
@@ -56,7 +55,7 @@ func init() {
 	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path"); err != nil {
 		panic(err)
 	}
-	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "~/Library/Caches", "Path to the Xcode cache directory folder. Defaults to ~/Library/Caches")
+	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")
 }
 
 // nolint:cyclop
