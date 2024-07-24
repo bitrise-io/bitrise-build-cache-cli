@@ -109,7 +109,7 @@ func saveXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRoot,
 	}
 
 	metadataSavedT := time.Now()
-	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.InputFiles))
+	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.ProjectFiles.Files))
 
 	logger.TInfof("Creating cache archive %s for DerivedData folder %s and metadata file %s", cacheArchivePath, derivedDataPath, cacheMetadataPath)
 	if err := xcode.CreateCacheArchive(cacheArchivePath, derivedDataPath, cacheMetadataPath, logger); err != nil {

@@ -51,7 +51,7 @@ func init() {
 		panic(err)
 	}
 	saveXcodeDerivedDataFilesCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
-		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/CacheDirectoryMetadata/MyProject\"")
+		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/FileGroupMetadata/MyProject\"")
 	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path"); err != nil {
 		panic(err)
 	}
@@ -114,7 +114,7 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey, de
 	}
 
 	metadataSavedT := time.Now()
-	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.InputFiles))
+	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.ProjectFiles.Files))
 
 	logger.TInfof("Uploading metadata %s for key %s", cacheMetadataPath, cacheKey)
 	if err := xcode.UploadToBuildCache(cacheMetadataPath, cacheKey, endpointURL, authConfig, logger); err != nil {

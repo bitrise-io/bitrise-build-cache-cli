@@ -10,18 +10,21 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+const metadataVersion = 1
+
 type Metadata struct {
-	InputFiles       []*FileInfo            `json:"inputFiles"`
-	InputDirectories []*DirectoryInfo       `json:"inputDirectories"`
-	DerivedData      CacheDirectoryMetadata `json:"derivedData"`
-	XcodeCacheDir    CacheDirectoryMetadata `json:"xcodeCacheDir"`
-	CacheKey         string                 `json:"cacheKey"`
-	CreatedAt        time.Time              `json:"createdAt"`
-	AppID            string                 `json:"appId,omitempty"`
-	BuildID          string                 `json:"buildId,omitempty"`
-	WorkspaceID      string                 `json:"workspaceId,omitempty"`
-	GitCommit        string                 `json:"gitCommit,omitempty"`
-	GitBranch        string                 `json:"gitBranch,omitempty"`
+	ProjectFiles         FileGroupInfo `json:"projectFiles"`
+	DerivedData          FileGroupInfo `json:"derivedData"`
+	XcodeCacheDir        FileGroupInfo `json:"xcodeCacheDir"`
+	CacheKey             string        `json:"cacheKey"`
+	CreatedAt            time.Time     `json:"createdAt"`
+	AppID                string        `json:"appId,omitempty"`
+	BuildID              string        `json:"buildId,omitempty"`
+	WorkspaceID          string        `json:"workspaceId,omitempty"`
+	GitCommit            string        `json:"gitCommit,omitempty"`
+	GitBranch            string        `json:"gitBranch,omitempty"`
+	BuildCacheCLIVersion string        `json:"cliVersion,omitempty"`
+	MetadataVersion      int           `json:"metadataVersion"`
 }
 
 type CreateMetadataParams struct {
@@ -32,38 +35,45 @@ type CreateMetadataParams struct {
 }
 
 func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
-	fileInfos, dirInfos, err := calculateFileInfos(params.ProjectRootDirPath, logger)
+	var projectFiles FileGroupInfo
+	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath, params.ProjectRootDirPath, true, logger)
 	if err != nil {
-		return nil, fmt.Errorf("calculate file infos: %w", err)
+		return nil, fmt.Errorf("calculate project files info: %w", err)
 	}
 
-	var derivedData CacheDirectoryMetadata
+	//fileInfos, dirInfos, err := calculateFileInfos(params.ProjectRootDirPath, logger)
+	//if err != nil {
+	//	return nil, fmt.Errorf("calculate file infos: %w", err)
+	//}
+
+	var derivedData FileGroupInfo
 	if params.DerivedDataPath != "" {
-		derivedData, err = calculateCacheDirectoryInfo(params.DerivedDataPath, logger)
+		derivedData, err = collectFileGroupInfo(params.DerivedDataPath, "", false, logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate derived data info: %w", err)
 		}
 	}
 
-	var xcodeCacheDir CacheDirectoryMetadata
+	var xcodeCacheDir FileGroupInfo
 	if params.XcodeCacheDirPath != "" {
-		xcodeCacheDir, err = calculateCacheDirectoryInfo(params.XcodeCacheDirPath, logger)
+		xcodeCacheDir, err = collectFileGroupInfo(params.XcodeCacheDirPath, "", false, logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate xcode cache dir info: %w", err)
 		}
 	}
 
 	m := Metadata{
-		InputFiles:       fileInfos,
-		InputDirectories: dirInfos,
-		DerivedData:      derivedData,
-		XcodeCacheDir:    xcodeCacheDir,
-		CacheKey:         params.CacheKey,
-		CreatedAt:        time.Now(),
-		AppID:            envProvider("BITRISE_APP_SLUG"),
-		BuildID:          envProvider("BITRISE_BUILD_SLUG"),
-		GitCommit:        envProvider("BITRISE_GIT_COMMIT"),
-		GitBranch:        envProvider("BITRISE_GIT_BRANCH"),
+		ProjectFiles:         projectFiles,
+		DerivedData:          derivedData,
+		XcodeCacheDir:        xcodeCacheDir,
+		CacheKey:             params.CacheKey,
+		CreatedAt:            time.Now(),
+		AppID:                envProvider("BITRISE_APP_SLUG"),
+		BuildID:              envProvider("BITRISE_BUILD_SLUG"),
+		GitCommit:            envProvider("BITRISE_GIT_COMMIT"),
+		GitBranch:            envProvider("BITRISE_GIT_BRANCH"),
+		BuildCacheCLIVersion: envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		MetadataVersion:      metadataVersion,
 	}
 
 	if m.GitCommit == "" {
@@ -115,7 +125,13 @@ func LoadMetadata(file string) (*Metadata, error) {
 
 func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log.Logger) error {
 	for _, dir := range dirInfos {
-		path := filepath.Join(rootDir, dir.Path)
+		var path string
+		if filepath.IsAbs(dir.Path) {
+			path = dir.Path
+		} else {
+			path = filepath.Join(rootDir, dir.Path)
+		}
+
 		if err := os.MkdirAll(path, os.ModePerm); err != nil {
 			return fmt.Errorf("create directory: %w", err)
 		}
@@ -136,7 +152,12 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 	logger.Infof("(i) %d files' info loaded from cache metadata", len(fileInfos))
 
 	for _, fi := range fileInfos {
-		path := filepath.Join(rootDir, fi.Path)
+		var path string
+		if filepath.IsAbs(fi.Path) {
+			path = fi.Path
+		} else {
+			path = filepath.Join(rootDir, fi.Path)
+		}
 
 		// Skip if file doesn't exist
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -156,7 +177,6 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 			continue
 		}
 
-		// Set modification time
 		if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
 			logger.Debugf("Error setting modification time for %s: %v", fi.Path, err)
 			continue
@@ -167,10 +187,12 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 			continue
 		}
 
-		err = setAttributes(fi.Path, fi.Attributes)
-		if err != nil {
-			logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
-			continue
+		if len(fi.Attributes) > 0 {
+			err = setAttributes(fi.Path, fi.Attributes)
+			if err != nil {
+				logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
+				continue
+			}
 		}
 
 		updated++

@@ -90,12 +90,12 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 
 	logger.TInfof("Restoring metadata of input files")
 	//var filesUpdated int
-	if _, err = xcode.RestoreFileInfos(metadata.InputFiles, projectRoot, logger); err != nil {
+	if _, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
 	}
 
 	logger.TInfof("Restoring metadata of input directories")
-	if err := xcode.RestoreDirectoryInfos(metadata.InputDirectories, projectRoot, logger); err != nil {
+	if err := xcode.RestoreDirectoryInfos(metadata.ProjectFiles.Directories, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore metadata of input directories: %w", err)
 	}
 
@@ -105,7 +105,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 	}
 
 	logger.TInfof("Restoring DerivedData directory metadata")
-	if err := xcode.RestoreDirectories(metadata.DerivedData, logger); err != nil {
+	if err := xcode.RestoreDirectoryInfos(metadata.DerivedData.Directories, "", logger); err != nil {
 		return fmt.Errorf("restore DerivedData directories: %w", err)
 	}
 
@@ -115,8 +115,8 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 			return fmt.Errorf("download Xcode cache files: %w", err)
 		}
 
-		logger.TInfof("Restoring DerivedData directory metadata")
-		if err := xcode.RestoreDirectories(metadata.XcodeCacheDir, logger); err != nil {
+		logger.TInfof("Restoring Xcode cache directory metadata")
+		if err := xcode.RestoreDirectoryInfos(metadata.XcodeCacheDir.Directories, "", logger); err != nil {
 			return fmt.Errorf("restore Xcode cache directories: %w", err)
 		}
 	}

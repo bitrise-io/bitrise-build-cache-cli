@@ -109,12 +109,12 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 
 	logger.TInfof("Restoring modification time of input files")
 	var filesUpdated int
-	if filesUpdated, err = xcode.RestoreFileInfos(metadata.InputFiles, projectRoot, logger); err != nil {
+	if filesUpdated, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
 	}
 
 	metadataLoadedT := time.Now()
-	tracker.LogMetadataLoaded(metadataLoadedT.Sub(archiveExtractedT), metadataLoadedT.Sub(startT), len(metadata.InputFiles), filesUpdated)
+	tracker.LogMetadataLoaded(metadataLoadedT.Sub(archiveExtractedT), metadataLoadedT.Sub(startT), len(metadata.ProjectFiles.Files), filesUpdated)
 
 	return nil
 }
@@ -132,4 +132,7 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
 	logger.Infof("  Git commit: %s", md.GitCommit)
 	logger.Infof("  Git branch: %s", md.GitBranch)
 	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
+	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
+	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
+	logger.Infof("  Metadata version: %d", md.MetadataVersion)
 }

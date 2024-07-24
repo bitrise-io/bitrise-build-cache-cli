@@ -14,7 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func DownloadCacheFilesFromBuildCache(dd CacheDirectoryMetadata, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(

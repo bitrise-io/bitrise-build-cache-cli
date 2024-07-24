@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/dustin/go-humanize"
+	"github.com/pkg/xattr"
 	"io"
 	"io/fs"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-type CacheDirectoryMetadata struct {
+type FileGroupInfo struct {
 	Files       []*FileInfo      `json:"files"`
 	Directories []*DirectoryInfo `json:"directories"`
 }
@@ -33,8 +34,8 @@ type FileInfo struct {
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
-func calculateCacheDirectoryInfo(cacheDirPath string, logger log.Logger) (CacheDirectoryMetadata, error) {
-	var dd CacheDirectoryMetadata
+func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes bool, logger log.Logger) (FileGroupInfo, error) {
+	var dd FileGroupInfo
 	var largestFileSize int64
 
 	err := filepath.WalkDir(cacheDirPath, func(path string, d fs.DirEntry, err error) error {
@@ -58,7 +59,6 @@ func calculateCacheDirectoryInfo(cacheDirPath string, logger log.Logger) (CacheD
 			return nil
 		}
 
-		// Skip symbolic links
 		if inf.Mode()&os.ModeSymlink != 0 {
 			logger.Debugf("Skipping symbolic link: %s", path)
 
@@ -77,12 +77,30 @@ func calculateCacheDirectoryInfo(cacheDirPath string, logger log.Logger) (CacheD
 		}
 		hash := hex.EncodeToString(hasher.Sum(nil))
 
+		savedPath := absPath
+		if rootDir != "" {
+			relPath, err := filepath.Rel(rootDir, path)
+			if err != nil {
+				return fmt.Errorf("get relative path: %w", err)
+			}
+			savedPath = relPath
+		}
+
+		var attrs map[string]string
+		if collectAttributes {
+			attrs, err = getAttributes(path)
+			if err != nil {
+				return fmt.Errorf("getting attributes: %w", err)
+			}
+		}
+
 		dd.Files = append(dd.Files, &FileInfo{
-			Path:    absPath,
-			Size:    inf.Size(),
-			Hash:    hash,
-			ModTime: inf.ModTime(),
-			Mode:    inf.Mode(),
+			Path:       savedPath,
+			Size:       inf.Size(),
+			Hash:       hash,
+			ModTime:    inf.ModTime(),
+			Mode:       inf.Mode(),
+			Attributes: attrs,
 		})
 
 		if inf.Size() > largestFileSize {
@@ -93,27 +111,38 @@ func calculateCacheDirectoryInfo(cacheDirPath string, logger log.Logger) (CacheD
 	})
 
 	if err != nil {
-		return CacheDirectoryMetadata{}, err
+		return FileGroupInfo{}, err
 	}
 
 	logger.Infof("(i) Processed %d cache directory files", len(dd.Files))
-	logger.Debugf("(i) Largest cache directory file size: %s", humanize.Bytes(uint64(largestFileSize)))
+	logger.Debugf("(i) Largest processed file size: %s", humanize.Bytes(uint64(largestFileSize)))
 
 	return dd, nil
 }
 
-func RestoreDirectories(dd CacheDirectoryMetadata, logger log.Logger) error {
-	for _, dir := range dd.Directories {
-		if err := os.MkdirAll(dir.Path, os.ModePerm); err != nil {
-			return fmt.Errorf("create directory: %w", err)
-		}
-
-		if err := os.Chtimes(dir.Path, dir.ModTime, dir.ModTime); err != nil {
-			return fmt.Errorf("set directory mod time: %w", err)
-		}
+func getAttributes(path string) (map[string]string, error) {
+	attributes := make(map[string]string)
+	attrNames, err := xattr.List(path)
+	if err != nil {
+		return nil, err
 	}
 
-	logger.Infof("(i) Restored %d cache directories", len(dd.Directories))
+	for _, attr := range attrNames {
+		value, err := xattr.Get(path, attr)
+		if err != nil {
+			return nil, err
+		}
+		attributes[attr] = string(value)
+	}
 
+	return attributes, nil
+}
+
+func setAttributes(path string, attributes map[string]string) error {
+	for attr, value := range attributes {
+		if err := xattr.Set(path, attr, []byte(value)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
