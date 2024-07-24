@@ -131,6 +131,7 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
 	logger.Infof("  Build ID: %s", md.BuildID)
 	logger.Infof("  Git commit: %s", md.GitCommit)
 	logger.Infof("  Git branch: %s", md.GitBranch)
+	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
 	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
 	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
 	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
