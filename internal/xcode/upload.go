@@ -1,6 +1,7 @@
 package xcode
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,8 +21,7 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 
 	checksum, err := ChecksumOfFile(filePath)
 	if err != nil {
-		logger.Warnf(err.Error())
-		// fail silently and continue
+		return fmt.Errorf("checksum of %s: %w", filePath, err)
 	}
 
 	err = uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
@@ -39,11 +39,17 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 }
 
 func UploadStreamToBuildCache(source io.Reader, key, checksum string, size int64, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
-		return uploadStream(ctx, client, source, key, checksum, size, logger)
-	})
-
+	// calculate hash from source stream first and clone it to be able to read it again for the upload
+	var sourceBuf bytes.Buffer
+	teeSource := io.TeeReader(source, &sourceBuf)
+	checksum, err := Checksum(teeSource)
 	if err != nil {
+		return fmt.Errorf("checksum: %w", err)
+	}
+
+	if err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
+		return uploadStream(ctx, client, &sourceBuf, key, checksum, size, logger)
+	}); err != nil {
 		return fmt.Errorf("upload stream: %w", err)
 	}
 

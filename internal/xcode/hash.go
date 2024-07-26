@@ -9,15 +9,19 @@ import (
 )
 
 func ChecksumOfFile(path string) (string, error) {
-	hash := sha256.New()
-
 	file, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("open file: %w", err)
 	}
 	defer file.Close() //nolint:errcheck
 
-	_, err = io.Copy(hash, file)
+	return Checksum(file)
+}
+
+func Checksum(source io.Reader) (string, error) {
+	hash := sha256.New()
+
+	_, err := io.Copy(hash, source)
 	if err != nil {
 		return "", fmt.Errorf("reading file to hash: %w", err)
 	}
