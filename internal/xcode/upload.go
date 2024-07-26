@@ -47,6 +47,8 @@ func UploadStreamToBuildCache(source io.Reader, key, checksum string, size int64
 		return fmt.Errorf("checksum: %w", err)
 	}
 
+	logger.Debugf("Uploading stream: %s", sourceBuf.String())
+
 	if err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
 		return uploadStream(ctx, client, &sourceBuf, key, checksum, size, logger)
 	}); err != nil {
@@ -136,6 +138,8 @@ func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key,
 	if err := kvWriter.Close(); err != nil {
 		return fmt.Errorf("close upload: %w", err)
 	}
+
+	logger.Debugf("Uploaded %d bytes for %s", size, key)
 
 	return nil
 }
