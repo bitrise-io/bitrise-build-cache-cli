@@ -38,9 +38,9 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 	return nil
 }
 
-func UploadStreamToBuildCache(source io.Reader, key, checksum, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func UploadStreamToBuildCache(source io.Reader, key, checksum string, size int64, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
-		return uploadStream(ctx, client, source, key, checksum, 0, logger)
+		return uploadStream(ctx, client, source, key, checksum, size, logger)
 	})
 
 	if err != nil {
