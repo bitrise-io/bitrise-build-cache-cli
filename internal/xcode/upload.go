@@ -17,7 +17,7 @@ import (
 )
 
 func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	logger.Debugf("Uploading %s\n", filePath)
+	logger.Debugf("Uploading %s", filePath)
 
 	checksum, err := ChecksumOfFile(filePath)
 	if err != nil {
@@ -66,7 +66,7 @@ func uploadToBuildCache(cacheURL string, authConfig common.CacheAuthConfig, logg
 		)
 	}
 
-	logger.Debugf("Build Cache host: %s\n", buildCacheHost)
+	logger.Debugf("Build Cache host: %s", buildCacheHost)
 
 	const retries = 3
 	err = retry.Times(retries).Wait(5 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
