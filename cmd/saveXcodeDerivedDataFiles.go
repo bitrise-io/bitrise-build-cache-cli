@@ -123,7 +123,7 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey, de
 		return fmt.Errorf("checksum of metadata file: %w", err)
 	}
 	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", cacheMetadataPath, mdChecksum, cacheKey)
-	if err := xcode.UploadStreamToBuildCache(mdChecksumReader, mdChecksum, mdChecksum, mdChecksumReader.Size(), endpointURL, authConfig, logger); err != nil {
+	if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 	}
 

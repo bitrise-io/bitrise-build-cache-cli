@@ -38,7 +38,7 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 	return nil
 }
 
-func UploadStreamToBuildCache(source io.Reader, key, checksum string, size int64, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func UploadStreamToBuildCache(source io.Reader, key string, size int64, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	// calculate hash from source stream first and clone it to be able to read it again for the upload
 	var sourceBuf bytes.Buffer
 	teeSource := io.TeeReader(source, &sourceBuf)
@@ -46,8 +46,6 @@ func UploadStreamToBuildCache(source io.Reader, key, checksum string, size int64
 	if err != nil {
 		return fmt.Errorf("checksum: %w", err)
 	}
-
-	logger.Debugf("Uploading stream: %s", sourceBuf.String())
 
 	if err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
 		return uploadStream(ctx, client, &sourceBuf, key, checksum, size, logger)
@@ -138,8 +136,6 @@ func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key,
 	if err := kvWriter.Close(); err != nil {
 		return fmt.Errorf("close upload: %w", err)
 	}
-
-	logger.Debugf("Uploaded %d bytes for %s", size, key)
 
 	return nil
 }
