@@ -117,7 +117,7 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey, de
 	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.ProjectFiles.Files))
 
 	logger.TInfof("Uploading metadata %s for key %s", cacheMetadataPath, cacheKey)
-	if err := xcode.UploadToBuildCache(cacheMetadataPath, cacheKey, endpointURL, authConfig, logger); err != nil {
+	if err := xcode.UploadFileToBuildCache(cacheMetadataPath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
 

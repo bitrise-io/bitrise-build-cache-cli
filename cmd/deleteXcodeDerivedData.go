@@ -67,7 +67,7 @@ func deleteXcodeDerivedDataCmdFn(cacheKey string, logger log.Logger, envProvider
 	}
 
 	logger.TInfof("Uploading empty cache archive %s for key %s", cacheArchivePath, cacheKey)
-	if err := xcode.UploadToBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
+	if err := xcode.UploadFileToBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
 
