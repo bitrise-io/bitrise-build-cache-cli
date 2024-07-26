@@ -14,7 +14,7 @@ func GetCacheKey(envProvider func(string) string, metadataKey bool) (string, err
 	}
 
 	if metadataKey {
-		return fmt.Sprintf("xcode-deriveddata-metadata-%s-%s", appSlug, branch), nil
+		return fmt.Sprintf("xcode-cache-metadata-%s-%s", appSlug, branch), nil
 	}
 
 	return fmt.Sprintf("xcode-deriveddata-%s-%s", appSlug, branch), nil

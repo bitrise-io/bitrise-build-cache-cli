@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -116,9 +117,18 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey, de
 	metadataSavedT := time.Now()
 	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.ProjectFiles.Files))
 
-	logger.TInfof("Uploading metadata %s for key %s", cacheMetadataPath, cacheKey)
-	if err := xcode.UploadFileToBuildCache(cacheMetadataPath, cacheKey, endpointURL, authConfig, logger); err != nil {
-		return fmt.Errorf("upload cache archive: %w", err)
+	mdChecksum, err := xcode.ChecksumOfFile(cacheMetadataPath)
+	if err != nil {
+		return fmt.Errorf("checksum of metadata file: %w", err)
+	}
+	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", cacheMetadataPath, mdChecksum, cacheKey)
+	if err := xcode.UploadStreamToBuildCache(strings.NewReader(mdChecksum), mdChecksum, mdChecksum, endpointURL, authConfig, logger); err != nil {
+		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
+	}
+
+	logger.TInfof("Uploading metadata content of %s for key %s", cacheMetadataPath, mdChecksum)
+	if err := xcode.UploadFileToBuildCache(cacheMetadataPath, mdChecksum, endpointURL, authConfig, logger); err != nil {
+		return fmt.Errorf("upload metadata content to build cache: %w", err)
 	}
 
 	logger.TInfof("Uploading DerivedData files")

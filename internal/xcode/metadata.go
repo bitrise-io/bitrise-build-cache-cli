@@ -166,7 +166,7 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 			continue
 		}
 
-		h, err := checksumOfFile(path)
+		h, err := ChecksumOfFile(path)
 		if err != nil {
 			logger.Infof("Error hashing file %s: %v", fi.Path, err)
 

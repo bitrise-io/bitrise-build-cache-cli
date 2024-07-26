@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func checksumOfFile(path string) (string, error) {
+func ChecksumOfFile(path string) (string, error) {
 	hash := sha256.New()
 
 	file, err := os.Open(path)

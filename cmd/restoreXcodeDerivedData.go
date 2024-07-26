@@ -80,7 +80,7 @@ func restoreXcodeDerivedDataCmdFn(cacheArchivePath, cacheMetadataPath, projectRo
 	startT := time.Now()
 
 	logger.TInfof("Downloading cache archive for key %s", cacheKey)
-	if err := xcode.DownloadFromBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
+	if err := xcode.DownloadFileFromBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("download cache archive: %w", err)
 	}
 

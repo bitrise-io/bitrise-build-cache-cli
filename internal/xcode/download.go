@@ -20,7 +20,29 @@ import (
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func DownloadFileFromBuildCache(fileName, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+	logger.Debugf("Downloading %s", fileName)
+
+	if err := downloadFromBuildCache(key, cacheURL, authConfig, logger, func(ctx context.Context, key string, client *kv.Client) error {
+		return downloadFile(ctx, client, fileName, key, 0)
+	}); err != nil {
+		return fmt.Errorf("download file from build cache: %w", err)
+	}
+
+	return nil
+}
+
+func DownloadStreamFromBuildCache(destination io.Writer, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+	if err := downloadFromBuildCache(key, cacheURL, authConfig, logger, func(ctx context.Context, key string, client *kv.Client) error {
+		return downloadStream(ctx, destination, client, key)
+	}); err != nil {
+		return fmt.Errorf("download stream from build cache: %w", err)
+	}
+
+	return nil
+}
+
+func downloadFromBuildCache(key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger, download func(ctx context.Context, key string, client *kv.Client) error) error {
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
@@ -28,6 +50,8 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 			cacheURL, err,
 		)
 	}
+
+	logger.Debugf("Build Cache host: %s", buildCacheHost)
 
 	ctx := context.Background()
 	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
@@ -46,10 +70,7 @@ func DownloadFromBuildCache(fileName, key, cacheURL string, authConfig common.Ca
 		return err
 	}
 
-	logger.Debugf("Downloading %s from %s", fileName, buildCacheHost)
-
-	err = downloadFile(ctx, kvClient, fileName, key, 0)
-	if err != nil {
+	if err := download(ctx, key, kvClient); err != nil {
 		return fmt.Errorf("download file: %w", err)
 	}
 
@@ -71,13 +92,17 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	}
 	defer file.Close()
 
+	return downloadStream(ctx, file, client, key)
+}
+
+func downloadStream(ctx context.Context, destination io.Writer, client *kv.Client, key string) error {
 	kvReader, err := client.Get(ctx, key)
 	if err != nil {
 		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
 	}
 	defer kvReader.Close()
 
-	if _, err := io.Copy(file, kvReader); err != nil {
+	if _, err := io.Copy(destination, kvReader); err != nil {
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.NotFound {
 			return ErrCacheNotFound
@@ -87,5 +112,4 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	}
 
 	return nil
-
 }

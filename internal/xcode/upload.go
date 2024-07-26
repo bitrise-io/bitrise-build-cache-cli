@@ -15,8 +15,43 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// nolint: funlen, cyclop
 func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+	logger.Debugf("Uploading %s\n", filePath)
+
+	checksum, err := ChecksumOfFile(filePath)
+	if err != nil {
+		logger.Warnf(err.Error())
+		// fail silently and continue
+	}
+
+	err = uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
+		fileSize, err := uploadFile(ctx, client, filePath, key, checksum, logger)
+		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
+
+		return err
+	})
+
+	if err != nil {
+		return fmt.Errorf("upload file: %w", err)
+	}
+
+	return nil
+}
+
+func UploadStreamToBuildCache(source io.Reader, key, checksum, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+	err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
+		return uploadStream(ctx, client, source, key, checksum, 0, logger)
+	})
+
+	if err != nil {
+		return fmt.Errorf("upload stream: %w", err)
+	}
+
+	return nil
+}
+
+// nolint: funlen, cyclop
+func uploadToBuildCache(cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger, upload func(ctx context.Context, client *kv.Client) error) error {
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
 		return fmt.Errorf(
@@ -25,13 +60,7 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 		)
 	}
 
-	logger.Debugf("Uploading %s to %s\n", filePath, buildCacheHost)
-
-	checksum, err := checksumOfFile(filePath)
-	if err != nil {
-		logger.Warnf(err.Error())
-		// fail silently and continue
-	}
+	logger.Debugf("Build Cache host: %s\n", buildCacheHost)
 
 	const retries = 3
 	err = retry.Times(retries).Wait(5 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
@@ -51,15 +80,11 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 			return fmt.Errorf("new kv client: %w", err), false
 		}
 
-		err = kvClient.GetCapabilities(ctx)
-		if err != nil {
+		if err := kvClient.GetCapabilities(ctx); err != nil {
 			return err, false
 		}
 
-		fileSize, err := uploadFile(ctx, kvClient, filePath, key, checksum, logger)
-		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
-
-		if err != nil {
+		if err := upload(ctx, kvClient); err != nil {
 			return err, false
 		}
 
@@ -83,20 +108,28 @@ func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum 
 		return 0, fmt.Errorf("stat %q: %w", filePath, err)
 	}
 
-	kvWriter, err := client.Put(ctx, kv.PutParams{
-		Name:      key,
-		Sha256Sum: checksum,
-		FileSize:  stat.Size(),
-	})
-	if err != nil {
-		return 0, fmt.Errorf("create kv put client (with key %s): %w", key, err)
-	}
-	if _, err := io.Copy(kvWriter, file); err != nil {
-		return 0, fmt.Errorf("upload archive: %w", err)
-	}
-	if err := kvWriter.Close(); err != nil {
-		return 0, fmt.Errorf("close upload: %w", err)
+	if err = uploadStream(ctx, client, file, key, checksum, stat.Size(), logger); err != nil {
+		return 0, fmt.Errorf("upload %q: %w", filePath, err)
 	}
 
 	return stat.Size(), nil
+}
+
+func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key, checksum string, size int64, logger log.Logger) error {
+	kvWriter, err := client.Put(ctx, kv.PutParams{
+		Name:      key,
+		Sha256Sum: checksum,
+		FileSize:  size,
+	})
+	if err != nil {
+		return fmt.Errorf("create kv put client (with key %s): %w", key, err)
+	}
+	if _, err := io.Copy(kvWriter, source); err != nil {
+		return fmt.Errorf("upload archive: %w", err)
+	}
+	if err := kvWriter.Close(); err != nil {
+		return fmt.Errorf("close upload: %w", err)
+	}
+
+	return nil
 }

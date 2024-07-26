@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
+	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
@@ -75,8 +76,14 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 	defer tracker.Wait()
 	//startT := time.Now()
 
-	logger.TInfof("Downloading cache metadata for key %s", cacheKey)
-	if err := xcode.DownloadFromBuildCache(cacheMetadataPath, cacheKey, endpointURL, authConfig, logger); err != nil {
+	logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
+	var mdChecksum strings.Builder
+	if err := xcode.DownloadStreamFromBuildCache(&mdChecksum, cacheKey, endpointURL, authConfig, logger); err != nil {
+		return fmt.Errorf("download cache metadata checksum: %w", err)
+	}
+
+	logger.TInfof("Downloading cache metadata content to %s for key %s", cacheMetadataPath, mdChecksum.String())
+	if err := xcode.DownloadFileFromBuildCache(cacheMetadataPath, mdChecksum.String(), endpointURL, authConfig, logger); err != nil {
 		return fmt.Errorf("download cache archive: %w", err)
 	}
 
