@@ -71,7 +71,7 @@ func downloadFromBuildCache(key, cacheURL string, authConfig common.CacheAuthCon
 	}
 
 	if err := download(ctx, key, kvClient); err != nil {
-		return fmt.Errorf("download file: %w", err)
+		return fmt.Errorf("download: %w", err)
 	}
 
 	return nil
@@ -105,7 +105,7 @@ func downloadStream(ctx context.Context, destination io.Writer, client *kv.Clien
 	if _, err := io.Copy(destination, kvReader); err != nil {
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.NotFound {
-			return ErrCacheNotFound
+			return fmt.Errorf("no cache archive found for the provided key: %s", key)
 		}
 
 		return fmt.Errorf("download archive: %w", err)
