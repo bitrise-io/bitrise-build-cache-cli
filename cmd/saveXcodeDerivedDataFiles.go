@@ -15,6 +15,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+const CacheMetadataPath = "dd-metadata.json"
+
 // nolint: gochecknoglobals
 var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 	Use:   "save-xcode-deriveddata-files",
@@ -53,7 +55,7 @@ func init() {
 	}
 	saveXcodeDerivedDataFilesCmd.Flags().String("deriveddata-path", "", "Path to the DerivedData folder used by the build - "+
 		"NOTE: this must be the same folder specified for the -derivedDataPath flag when running xcodebuild e.g. xcodebuild -derivedData \"~/FileGroupMetadata/MyProject\"")
-	if err := saveXcodeDerivedDataCmd.MarkFlagRequired("deriveddata-path"); err != nil {
+	if err := saveXcodeDerivedDataFilesCmd.MarkFlagRequired("deriveddata-path"); err != nil {
 		panic(err)
 	}
 	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")

@@ -3,13 +3,14 @@ package xcode
 import (
 	"context"
 	"fmt"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
-	"os"
-	"sync"
-	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -83,7 +84,6 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 				logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 			} else {
 				downloadSize += file.Size
-
 			}
 			mutex.Unlock()
 		}(file)

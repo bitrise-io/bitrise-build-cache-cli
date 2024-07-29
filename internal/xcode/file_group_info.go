@@ -4,13 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/pkg/xattr"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/dustin/go-humanize"
+	"github.com/pkg/xattr"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -44,7 +45,7 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 		}
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("get absolute path: %w", err)
 		}
 		inf, err := d.Info()
 		if err != nil {
@@ -56,6 +57,7 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 				Path:    absPath,
 				ModTime: inf.ModTime(),
 			})
+
 			return nil
 		}
 
@@ -67,7 +69,7 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 
 		file, err := os.Open(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("open file: %w", err)
 		}
 		defer file.Close()
 
@@ -111,10 +113,10 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 	})
 
 	if err != nil {
-		return FileGroupInfo{}, err
+		return FileGroupInfo{}, fmt.Errorf("walk dir: %w", err)
 	}
 
-	logger.Infof("(i) Processed %d cache directory files", len(dd.Files))
+	logger.Infof("(i) Processed %d files", len(dd.Files))
 	logger.Debugf("(i) Largest processed file size: %s", humanize.Bytes(uint64(largestFileSize)))
 
 	return dd, nil
@@ -124,13 +126,13 @@ func getAttributes(path string) (map[string]string, error) {
 	attributes := make(map[string]string)
 	attrNames, err := xattr.List(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list attributes: %w", err)
 	}
 
 	for _, attr := range attrNames {
 		value, err := xattr.Get(path, attr)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("xattr get: %w", err)
 		}
 		attributes[attr] = string(value)
 	}

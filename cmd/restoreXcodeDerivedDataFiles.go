@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/spf13/cobra"
 )
 
 // nolint: gochecknoglobals
@@ -74,7 +74,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 
 	tracker := xcode.NewStepTracker("restore-xcode-build-cache", envProvider, logger)
 	defer tracker.Wait()
-	//startT := time.Now()
+	// startT := time.Now()
 
 	logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
 	var mdChecksum strings.Builder
@@ -96,7 +96,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 	logCacheMetadata(metadata, logger)
 
 	logger.TInfof("Restoring metadata of input files")
-	//var filesUpdated int
+	// var filesUpdated int
 	if _, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
 	}
@@ -129,4 +129,23 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 	}
 
 	return nil
+}
+
+func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
+	logger.Infof("Cache metadata:")
+	logger.Infof("  Cache key: %s", md.CacheKey)
+	createdAt := ""
+	if !md.CreatedAt.IsZero() {
+		createdAt = md.CreatedAt.String()
+	}
+	logger.Infof("  Created at: %s", createdAt)
+	logger.Infof("  App ID: %s", md.AppID)
+	logger.Infof("  Build ID: %s", md.BuildID)
+	logger.Infof("  Git commit: %s", md.GitCommit)
+	logger.Infof("  Git branch: %s", md.GitBranch)
+	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
+	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
+	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
+	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
+	logger.Infof("  Metadata version: %d", md.MetadataVersion)
 }

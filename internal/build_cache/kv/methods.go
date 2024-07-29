@@ -113,11 +113,11 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 		return nil, fmt.Errorf("find missing blobs: %w", err)
 	}
 
-	return convertToFileDigests(resp.MissingBlobDigests), nil
+	return convertToFileDigests(resp.GetMissingBlobDigests()), nil
 }
 
 func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {
-	out := make([]*remoteexecution.Digest, len(digests))
+	out := make([]*remoteexecution.Digest, 0, len(digests))
 
 	for _, d := range digests {
 		out = append(out, &remoteexecution.Digest{
@@ -125,6 +125,7 @@ func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {
 			SizeBytes: d.SizeInBytes,
 		})
 	}
+
 	return out
 }
 
@@ -133,9 +134,10 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 
 	for _, d := range digests {
 		out = append(out, &FileDigest{
-			Sha256Sum:   strings.TrimSuffix(d.Hash, "/0"),
-			SizeInBytes: d.SizeBytes,
+			Sha256Sum:   strings.TrimSuffix(d.GetHash(), "/0"),
+			SizeInBytes: d.GetSizeBytes(),
 		})
 	}
+
 	return out
 }

@@ -41,11 +41,6 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		return nil, fmt.Errorf("calculate project files info: %w", err)
 	}
 
-	//fileInfos, dirInfos, err := calculateFileInfos(params.ProjectRootDirPath, logger)
-	//if err != nil {
-	//	return nil, fmt.Errorf("calculate file infos: %w", err)
-	//}
-
 	var derivedData FileGroupInfo
 	if params.DerivedDataPath != "" {
 		derivedData, err = collectFileGroupInfo(params.DerivedDataPath, "", false, logger)
@@ -172,18 +167,20 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 
 			continue
 		}
-
 		if h != fi.Hash {
+
 			continue
 		}
 
 		if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
 			logger.Debugf("Error setting modification time for %s: %v", fi.Path, err)
+
 			continue
 		}
 
 		if err = os.Chmod(fi.Path, fi.Mode); err != nil {
 			logger.Debugf("Error setting file mode time for %s: %v", fi.Path, err)
+
 			continue
 		}
 
@@ -191,6 +188,7 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 			err = setAttributes(fi.Path, fi.Attributes)
 			if err != nil {
 				logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
+
 				continue
 			}
 		}

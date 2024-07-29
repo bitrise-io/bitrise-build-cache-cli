@@ -67,7 +67,7 @@ func downloadFromBuildCache(key, cacheURL string, authConfig common.CacheAuthCon
 
 	err = kvClient.GetCapabilities(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get capabilities: %w", err)
 	}
 
 	if err := download(ctx, key, kvClient); err != nil {

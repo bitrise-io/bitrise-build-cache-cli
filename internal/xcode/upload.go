@@ -87,7 +87,7 @@ func uploadToBuildCache(cacheURL string, authConfig common.CacheAuthConfig, logg
 		}
 
 		if err := kvClient.GetCapabilities(ctx); err != nil {
-			return err, false
+			return fmt.Errorf("get capabilities: %w", err), false
 		}
 
 		if err := upload(ctx, kvClient); err != nil {
@@ -121,7 +121,7 @@ func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum 
 	return stat.Size(), nil
 }
 
-func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key, checksum string, size int64, logger log.Logger) error {
+func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key, checksum string, size int64, _ log.Logger) error {
 	kvWriter, err := client.Put(ctx, kv.PutParams{
 		Name:      key,
 		Sha256Sum: checksum,
