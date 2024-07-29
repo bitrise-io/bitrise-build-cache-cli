@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 
+	"errors"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -67,6 +68,10 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 			const retries = 3
 			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
 				err = downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
+				if errors.Is(err, ErrCacheNotFound) {
+					logger.Errorf("cache not found for file %s (%s)", file.Path, file.Hash)
+					return nil, true
+				}
 				if err != nil {
 					return fmt.Errorf("download file: %w", err), false
 				}
