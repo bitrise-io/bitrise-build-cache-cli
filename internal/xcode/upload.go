@@ -9,14 +9,13 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/dustin/go-humanize"
 
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func UploadFileToBuildCache(filePath, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Uploading %s", filePath)
 
 	checksum, err := ChecksumOfFile(filePath)
@@ -24,7 +23,7 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 		return fmt.Errorf("checksum of %s: %w", filePath, err)
 	}
 
-	err = uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
+	err = uploadToBuildCache(kvClient, logger, func(ctx context.Context, client *kv.Client) error {
 		fileSize, err := uploadFile(ctx, client, filePath, key, checksum, logger)
 		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
 
@@ -38,7 +37,7 @@ func UploadFileToBuildCache(filePath, key, cacheURL string, authConfig common.Ca
 	return nil
 }
 
-func UploadStreamToBuildCache(source io.Reader, key string, size int64, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func UploadStreamToBuildCache(source io.Reader, key string, size int64, kvClient *kv.Client, logger log.Logger) error {
 	// calculate hash from source stream first and clone it to be able to read it again for the upload
 	var sourceBuf bytes.Buffer
 	teeSource := io.TeeReader(source, &sourceBuf)
@@ -47,7 +46,7 @@ func UploadStreamToBuildCache(source io.Reader, key string, size int64, cacheURL
 		return fmt.Errorf("checksum: %w", err)
 	}
 
-	if err := uploadToBuildCache(cacheURL, authConfig, logger, func(ctx context.Context, client *kv.Client) error {
+	if err := uploadToBuildCache(kvClient, logger, func(ctx context.Context, client *kv.Client) error {
 		return uploadStream(ctx, client, &sourceBuf, key, checksum, size, logger)
 	}); err != nil {
 		return fmt.Errorf("upload stream: %w", err)
@@ -57,40 +56,14 @@ func UploadStreamToBuildCache(source io.Reader, key string, size int64, cacheURL
 }
 
 // nolint: funlen
-func uploadToBuildCache(cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger, upload func(ctx context.Context, client *kv.Client) error) error {
-	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
-	if err != nil {
-		return fmt.Errorf(
-			"the url grpc[s]://host:port format, %q is invalid: %w",
-			cacheURL, err,
-		)
-	}
-
-	logger.Debugf("Build Cache host: %s", buildCacheHost)
-
+func uploadToBuildCache(client *kv.Client, logger log.Logger, upload func(ctx context.Context, client *kv.Client) error) error {
 	const retries = 3
-	err = retry.Times(retries).Wait(5 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+	err := retry.Times(retries).Wait(5 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt != 0 {
 			logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 		}
 
-		ctx := context.Background()
-		kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
-			UseInsecure: insecureGRPC,
-			Host:        buildCacheHost,
-			DialTimeout: 5 * time.Second,
-			ClientName:  "kv",
-			AuthConfig:  authConfig,
-		})
-		if err != nil {
-			return fmt.Errorf("new kv client: %w", err), false
-		}
-
-		if err := kvClient.GetCapabilities(ctx); err != nil {
-			return fmt.Errorf("get capabilities: %w", err), false
-		}
-
-		if err := upload(ctx, kvClient); err != nil {
+		if err := upload(context.Background(), client); err != nil {
 			return err, false
 		}
 

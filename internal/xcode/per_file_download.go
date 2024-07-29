@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 
@@ -17,15 +16,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
-	if err != nil {
-		return fmt.Errorf(
-			"the url grpc[s]://host:port format, %q is invalid: %w",
-			cacheURL, err,
-		)
-	}
-
+func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) error {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {
@@ -33,22 +24,8 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 		}
 	}
 
-	ctx := context.Background()
-	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
-		UseInsecure: insecureGRPC,
-		Host:        buildCacheHost,
-		DialTimeout: 5 * time.Second,
-		ClientName:  "kv",
-		AuthConfig:  authConfig,
-	})
-	if err != nil {
-		return fmt.Errorf("new kv client: %w", err)
-	}
-
-	err = kvClient.GetCapabilities(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get capabilities: %w", err)
-	}
+	ctx, _ := context.WithCancel(context.Background())
+	// TODO context cancellation
 
 	logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
@@ -67,8 +44,8 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			const retries = 3
-			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
-				err = downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
+			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
+				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if errors.Is(err, ErrCacheNotFound) {
 					logger.Infof("cache not found for file %s (%s)", file.Path, file.Hash)
 

@@ -57,8 +57,10 @@ func deleteXcodeDerivedDataCmdFn(cacheKey string, logger log.Logger, envProvider
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
+	kvClient, err := createKVClient(authConfig, envProvider, logger)
+	if err != nil {
+		return fmt.Errorf("create kv client: %w", err)
+	}
 
 	logger.TInfof("Creating empty cache archive")
 	var cacheArchivePath string
@@ -67,7 +69,7 @@ func deleteXcodeDerivedDataCmdFn(cacheKey string, logger log.Logger, envProvider
 	}
 
 	logger.TInfof("Uploading empty cache archive %s for key %s", cacheArchivePath, cacheKey)
-	if err := xcode.UploadFileToBuildCache(cacheArchivePath, cacheKey, endpointURL, authConfig, logger); err != nil {
+	if err := xcode.UploadFileToBuildCache(cacheArchivePath, cacheKey, kvClient, logger); err != nil {
 		return fmt.Errorf("upload cache archive: %w", err)
 	}
 
