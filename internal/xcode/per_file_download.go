@@ -69,7 +69,7 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 				err = downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if errors.Is(err, ErrCacheNotFound) {
-					logger.Errorf("cache not found for file %s (%s)", file.Path, file.Hash)
+					logger.Infof("cache not found for file %s (%s)", file.Path, file.Hash)
 					return nil, true
 				}
 				if err != nil {
