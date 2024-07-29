@@ -47,7 +47,7 @@ func Test_CreateMetadata(t *testing.T) {
 				rootDir:    "",
 				outputFile: "metadata.json",
 			},
-			wantErr: "calculate file infos: missing rootDir",
+			wantErr: "missing project root directory path",
 		},
 		{
 			name: "ok",

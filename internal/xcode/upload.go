@@ -56,7 +56,7 @@ func UploadStreamToBuildCache(source io.Reader, key string, size int64, cacheURL
 	return nil
 }
 
-// nolint: funlen, cyclop
+// nolint: funlen
 func uploadToBuildCache(cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger, upload func(ctx context.Context, client *kv.Client) error) error {
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {

@@ -28,3 +28,4 @@ linters:
   - varnamelen
   - gci
   - nolintlint
+  - cyclop

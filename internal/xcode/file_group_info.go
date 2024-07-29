@@ -75,7 +75,7 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 
 		hasher := sha256.New()
 		if _, err := io.Copy(hasher, file); err != nil {
-			return err
+			return fmt.Errorf("hash copy file content: %w", err)
 		}
 		hash := hex.EncodeToString(hasher.Sum(nil))
 
@@ -143,8 +143,9 @@ func getAttributes(path string) (map[string]string, error) {
 func setAttributes(path string, attributes map[string]string) error {
 	for attr, value := range attributes {
 		if err := xattr.Set(path, attr, []byte(value)); err != nil {
-			return err
+			return fmt.Errorf("xattr set: %w", err)
 		}
 	}
+
 	return nil
 }

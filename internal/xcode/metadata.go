@@ -35,6 +35,9 @@ type CreateMetadataParams struct {
 }
 
 func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
+	if params.ProjectRootDirPath == "" {
+		return nil, fmt.Errorf("missing project root directory path")
+	}
 	var projectFiles FileGroupInfo
 	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath, params.ProjectRootDirPath, true, logger)
 	if err != nil {
@@ -167,8 +170,8 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 
 			continue
 		}
-		if h != fi.Hash {
 
+		if h != fi.Hash {
 			continue
 		}
 

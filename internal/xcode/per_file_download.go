@@ -65,7 +65,7 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			const retries = 3
-			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+			err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
 				err = downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if err != nil {
 					return fmt.Errorf("download file: %w", err), false

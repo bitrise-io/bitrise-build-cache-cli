@@ -61,7 +61,6 @@ func init() {
 	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")
 }
 
-// nolint:cyclop
 func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey, derivedDataPath, xcodeCachePath string, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
