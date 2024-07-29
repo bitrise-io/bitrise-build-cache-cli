@@ -105,7 +105,7 @@ func downloadStream(ctx context.Context, destination io.Writer, client *kv.Clien
 	if _, err := io.Copy(destination, kvReader); err != nil {
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.NotFound {
-			return fmt.Errorf("no cache archive found for the provided key: %s", key)
+			return ErrCacheNotFound
 		}
 
 		return fmt.Errorf("download archive: %w", err)
