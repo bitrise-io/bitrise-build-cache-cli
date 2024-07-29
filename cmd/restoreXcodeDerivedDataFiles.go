@@ -1,15 +1,15 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"strings"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
+	"os"
+	"strings"
 )
 
 // nolint: gochecknoglobals
@@ -48,19 +48,12 @@ func init() {
 	}
 }
 
-func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey string, logger log.Logger, envProvider func(string) string) error {
+func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environments: %w", err)
 	}
-
-	if cacheKey == "" {
-		if cacheKey, err = xcode.GetCacheKey(envProvider, true); err != nil {
-			return fmt.Errorf("get cache key: %w", err)
-		}
-	}
-	logger.Infof("(i) Cache key: %s", cacheKey)
 
 	// Temporarily redirect all traffic to GCP
 	overrideEndpointURL := consts.EndpointURLDefault
@@ -76,15 +69,8 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 	defer tracker.Wait()
 	// startT := time.Now()
 
-	logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
-	var mdChecksum strings.Builder
-	if err := xcode.DownloadStreamFromBuildCache(&mdChecksum, cacheKey, endpointURL, authConfig, logger); err != nil {
-		return fmt.Errorf("download cache metadata checksum: %w", err)
-	}
-
-	logger.TInfof("Downloading cache metadata content to %s for key %s", cacheMetadataPath, mdChecksum.String())
-	if err := xcode.DownloadFileFromBuildCache(cacheMetadataPath, mdChecksum.String(), endpointURL, authConfig, logger); err != nil {
-		return fmt.Errorf("download cache archive: %w", err)
+	if err := downloadMetadata(cacheMetadataPath, providedCacheKey, endpointURL, authConfig, logger, envProvider); err != nil {
+		return fmt.Errorf("download cache metadata: %w", err)
 	}
 
 	logger.TInfof("Loading metadata of the cache archive from %s", cacheMetadataPath)
@@ -126,6 +112,55 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, cacheKey 
 		if err := xcode.RestoreDirectoryInfos(metadata.XcodeCacheDir.Directories, "", logger); err != nil {
 			return fmt.Errorf("restore Xcode cache directories: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func downloadMetadata(cacheMetadataPath, providedCacheKey, endpointURL string,
+	authConfig common.CacheAuthConfig,
+	logger log.Logger,
+	envProvider func(string) string) error {
+	var cacheKey string
+	var err error
+	if providedCacheKey == "" {
+		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
+			return fmt.Errorf("get cache key: %w", err)
+		}
+		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
+	} else {
+		cacheKey = providedCacheKey
+		logger.TInfof("Downloading cache metadata checksum for provided key %s", cacheKey)
+	}
+
+	var mdChecksum strings.Builder
+	err = xcode.DownloadStreamFromBuildCache(&mdChecksum, cacheKey, endpointURL, authConfig, logger)
+	if err != nil && !errors.Is(err, xcode.ErrCacheNotFound) {
+		return fmt.Errorf("download cache metadata checksum: %w", err)
+	}
+
+	if errors.Is(err, xcode.ErrCacheNotFound) {
+		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		if fallbackErr != nil {
+			return errors.New("cache metadata not found in cache")
+		}
+
+		cacheKey = fallbackCacheKey
+		logger.Infof("Cache metadata not found for original key, trying fallback key %s", cacheKey)
+
+		err = xcode.DownloadStreamFromBuildCache(&mdChecksum, cacheKey, endpointURL, authConfig, logger)
+		if errors.Is(err, xcode.ErrCacheNotFound) {
+			return errors.New("cache metadata not found in cache")
+		}
+		if err != nil {
+			return fmt.Errorf("download cache metadata checksum: %w", err)
+		}
+		logger.Infof("Cache metadata found for fallback key %s", cacheKey)
+	}
+
+	logger.TInfof("Downloading cache metadata content to %s for key %s", cacheMetadataPath, mdChecksum.String())
+	if err := xcode.DownloadFileFromBuildCache(cacheMetadataPath, mdChecksum.String(), endpointURL, authConfig, logger); err != nil {
+		return fmt.Errorf("download cache archive: %w", err)
 	}
 
 	return nil
