@@ -13,6 +13,7 @@ import (
 	"github.com/dustin/go-humanize"
 
 	"errors"
+
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -70,6 +71,7 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, cacheURL string, authCon
 				err = downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if errors.Is(err, ErrCacheNotFound) {
 					logger.Infof("cache not found for file %s (%s)", file.Path, file.Hash)
+					
 					return nil, true
 				}
 				if err != nil {
