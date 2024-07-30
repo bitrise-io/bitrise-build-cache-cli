@@ -14,6 +14,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	MetadataKeyDefault  = "default"
+	MetadataKeyFallback = "fallback"
+	MetadataKeyProvided = "provided"
+)
+
+type MetadataKeyType string
+
 // nolint: gochecknoglobals
 var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 	Use:   "restore-xcode-deriveddata-files",
@@ -69,7 +77,8 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	if err := downloadMetadata(cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider); err != nil {
+	metadataKeyType, err := downloadMetadata(cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
+	if err != nil {
 		return fmt.Errorf("download cache metadata: %w", err)
 	}
 
@@ -93,7 +102,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 	}
 
 	metadataRestoredT := time.Now()
-	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated)
+	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(metadataKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated)
 
 	logger.TInfof("Downloading DerivedData files")
 	stats, err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, kvClient, logger)
@@ -127,15 +136,17 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 func downloadMetadata(cacheMetadataPath, providedCacheKey string,
 	kvClient *kv.Client,
 	logger log.Logger,
-	envProvider func(string) string) error {
+	envProvider func(string) string) (MetadataKeyType, error) {
+	var cacheKeyType MetadataKeyType = MetadataKeyDefault
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
 		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
-			return fmt.Errorf("get cache key: %w", err)
+			return "", fmt.Errorf("get cache key: %w", err)
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
 	} else {
+		cacheKeyType = MetadataKeyProvided
 		cacheKey = providedCacheKey
 		logger.TInfof("Downloading cache metadata checksum for provided key %s", cacheKey)
 	}
@@ -143,13 +154,14 @@ func downloadMetadata(cacheMetadataPath, providedCacheKey string,
 	var mdChecksum strings.Builder
 	err = xcode.DownloadStreamFromBuildCache(&mdChecksum, cacheKey, kvClient, logger)
 	if err != nil && !errors.Is(err, xcode.ErrCacheNotFound) {
-		return fmt.Errorf("download cache metadata checksum: %w", err)
+		return "", fmt.Errorf("download cache metadata checksum: %w", err)
 	}
 
 	if errors.Is(err, xcode.ErrCacheNotFound) {
+		cacheKeyType = MetadataKeyFallback
 		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
-			return errors.New("cache metadata not found in cache")
+			return cacheKeyType, errors.New("cache metadata not found in cache")
 		}
 
 		cacheKey = fallbackCacheKey
@@ -157,20 +169,20 @@ func downloadMetadata(cacheMetadataPath, providedCacheKey string,
 
 		err = xcode.DownloadStreamFromBuildCache(&mdChecksum, cacheKey, kvClient, logger)
 		if errors.Is(err, xcode.ErrCacheNotFound) {
-			return errors.New("cache metadata not found in cache")
+			return cacheKeyType, errors.New("cache metadata not found in cache")
 		}
 		if err != nil {
-			return fmt.Errorf("download cache metadata checksum: %w", err)
+			return cacheKeyType, fmt.Errorf("download cache metadata checksum: %w", err)
 		}
 		logger.Infof("Cache metadata found for fallback key %s", cacheKey)
 	}
 
 	logger.TInfof("Downloading cache metadata content to %s for key %s", cacheMetadataPath, mdChecksum.String())
 	if err := xcode.DownloadFileFromBuildCache(cacheMetadataPath, mdChecksum.String(), kvClient, logger); err != nil {
-		return fmt.Errorf("download cache archive: %w", err)
+		return "", fmt.Errorf("download cache archive: %w", err)
 	}
 
-	return nil
+	return cacheKeyType, nil
 }
 
 func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {

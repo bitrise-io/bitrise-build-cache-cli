@@ -12,7 +12,7 @@ type StepAnalyticsTracker interface {
 	LogMetadataSaved(duration time.Duration, fileCount int, size int64)
 	LogDerivedDataUploaded(duration time.Duration, stats UploadFilesStats)
 	LogSaveFinished(totalDuration time.Duration, err error)
-	LogMetadataLoaded(duration time.Duration, totalFileCount int, restoredFileCount int)
+	LogMetadataLoaded(duration time.Duration, metadataKeyType string, totalFileCount int, restoredFileCount int)
 	LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats)
 	LogRestoreFinished(totalDuration time.Duration, err error)
 
@@ -73,9 +73,10 @@ func (t *DefaultStepAnalyticsTracker) LogSaveFinished(totalDuration time.Duratio
 	t.tracker.Enqueue("step_save_xcode_build_cache_finished", properties)
 }
 
-func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, totalFileCount int, restoredFileCount int) {
+func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, metadataKeyType string, totalFileCount int, restoredFileCount int) {
 	properties := analytics.Properties{
 		"duration_ms":         duration.Milliseconds(),
+		"metadata_key_type":   metadataKeyType,
 		"total_file_count":    totalFileCount,
 		"restored_file_count": restoredFileCount,
 	}
