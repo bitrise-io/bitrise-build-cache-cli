@@ -81,30 +81,30 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	return &m, nil
 }
 
-func SaveMetadata(metadata *Metadata, fileName string, logger log.Logger) error {
+func SaveMetadata(metadata *Metadata, fileName string, logger log.Logger) (int64, error) {
 	if fileName == "" {
-		return fmt.Errorf("missing output fileName")
+		return 0, fmt.Errorf("missing output fileName")
 	}
 
 	jsonData, err := json.Marshal(metadata)
 	if err != nil {
-		return fmt.Errorf("encoding JSON: %w", err)
+		return 0, fmt.Errorf("encoding JSON: %w", err)
 	}
 
 	dir := filepath.Dir(fileName)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("create cache metadata directory: %w", err)
+		return 0, fmt.Errorf("create cache metadata directory: %w", err)
 	}
 
 	// Write JSON data to a file
 	err = os.WriteFile(fileName, jsonData, 0600)
 	if err != nil {
-		return fmt.Errorf("writing JSON file: %w", err)
+		return 0, fmt.Errorf("writing JSON file: %w", err)
 	}
 
 	logger.Infof("(i) Metadata saved to %s", fileName)
 
-	return nil
+	return int64(len(jsonData)), nil
 }
 
 func LoadMetadata(file string) (*Metadata, error) {

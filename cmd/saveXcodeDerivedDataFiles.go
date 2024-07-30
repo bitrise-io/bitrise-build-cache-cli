@@ -34,7 +34,12 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
 		xcodeCachePath, _ := cmd.Flags().GetString("xcodecache-path")
 
-		if err := saveXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, os.Getenv); err != nil {
+		tracker := xcode.NewStepTracker("save-xcode-build-cache", os.Getenv, logger)
+		defer tracker.Wait()
+		startT := time.Now()
+
+		if err := saveXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv); err != nil {
+			tracker.LogSaveFinished(time.Since(startT), err)
 			return fmt.Errorf("save Xcode cache into Bitrise Build Cache: %w", err)
 		}
 
@@ -60,7 +65,8 @@ func init() {
 	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")
 }
 
-func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCacheKey, derivedDataPath, xcodeCachePath string, logger log.Logger, envProvider func(string) string) error {
+func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCacheKey, derivedDataPath, xcodeCachePath string,
+	logger log.Logger, tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -83,10 +89,6 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	tracker := xcode.NewStepTracker("save-xcode-build-cache", envProvider, logger)
-	defer tracker.Wait()
-	startT := time.Now()
-
 	absoluteRootDir, err := filepath.Abs(projectRoot)
 	if err != nil {
 		return fmt.Errorf("get absolute path of rootDir: %w", err)
@@ -108,12 +110,13 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 	}
 
 	logger.TInfof("Saving metadata file %s", cacheMetadataPath)
-	if err := xcode.SaveMetadata(metadata, cacheMetadataPath, logger); err != nil {
+	metadataSize, err := xcode.SaveMetadata(metadata, cacheMetadataPath, logger)
+	if err != nil {
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
 	metadataSavedT := time.Now()
-	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.ProjectFiles.Files))
+	tracker.LogMetadataSaved(metadataSavedT.Sub(startT), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), metadataSize)
 
 	mdChecksum, err := xcode.ChecksumOfFile(cacheMetadataPath)
 	mdChecksumReader := strings.NewReader(mdChecksum)
@@ -132,16 +135,22 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 	}
 
 	logger.TInfof("Uploading DerivedData files")
-	if err := xcode.UploadCacheFilesToBuildCache(metadata.DerivedData, kvClient, logger); err != nil {
+	ddUploadStats, err := xcode.UploadCacheFilesToBuildCache(metadata.DerivedData, kvClient, logger)
+	if err != nil {
 		return fmt.Errorf("upload derived data files to build cache: %w", err)
 	}
 
+	ddUploadedT := time.Now()
+	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
+
 	if xcodeCachePath != "" {
 		logger.TInfof("Uploading Xcode cache files")
-		if err := xcode.UploadCacheFilesToBuildCache(metadata.XcodeCacheDir, kvClient, logger); err != nil {
+		if _, err := xcode.UploadCacheFilesToBuildCache(metadata.XcodeCacheDir, kvClient, logger); err != nil {
 			return fmt.Errorf("upload xcode cache files to build cache: %w", err)
 		}
 	}
+
+	tracker.LogSaveFinished(time.Since(startT), nil)
 
 	return nil
 }

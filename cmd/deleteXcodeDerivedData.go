@@ -84,7 +84,7 @@ func createEmptyCacheArchive(logger log.Logger) (string, error) {
 	defer os.RemoveAll(emptyDir)
 
 	var emptyMetadata xcode.Metadata
-	if err := xcode.SaveMetadata(&emptyMetadata, CacheMetadataPath, logger); err != nil {
+	if _, err := xcode.SaveMetadata(&emptyMetadata, CacheMetadataPath, logger); err != nil {
 		return "", fmt.Errorf("save metadata: %w", err)
 	}
 

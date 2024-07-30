@@ -14,19 +14,24 @@ import (
 )
 
 type UploadFilesStats struct {
-	FilesToBeUploaded int
-	FilesUploded      int
-	TotalFiles        int
-	UploadedSize      int64
-	FailedUploads     int
+	FilesToBeUploaded   int
+	FilesUploded        int
+	FilesFailedToUpload int
+	TotalFiles          int
+	UploadSize          int64
 }
 
-func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) error {
+func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
 	ctx, _ := context.WithCancel(context.Background())
 	// TODO context cancellation
 	missingBlobs, err := findMissingBlobs(ctx, dd, kvClient, logger)
 	if err != nil {
-		return fmt.Errorf("failed to check for missing blobs: %w", err)
+		return UploadFilesStats{}, fmt.Errorf("failed to check for missing blobs: %w", err)
+	}
+
+	stats := UploadFilesStats{
+		TotalFiles:        len(dd.Files),
+		FilesToBeUploaded: len(missingBlobs),
 	}
 
 	logger.TInfof("(i) Uploading missing blobs...")
@@ -73,6 +78,10 @@ func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger 
 				if err != nil {
 					failedUpload = true
 					logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
+					stats.FilesFailedToUpload++
+				} else {
+					stats.FilesUploded++
+					stats.UploadSize += file.Size
 				}
 			}(file)
 		}
@@ -83,10 +92,10 @@ func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger 
 	logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(totalSize)), uploadCount)
 
 	if failedUpload {
-		return fmt.Errorf("failed to upload some files")
+		return UploadFilesStats{}, fmt.Errorf("failed to upload some files")
 	}
 
-	return nil
+	return stats, nil
 }
 
 func findMissingBlobs(ctx context.Context, dd FileGroupInfo, client *kv.Client, logger log.Logger) (map[string]bool, error) {

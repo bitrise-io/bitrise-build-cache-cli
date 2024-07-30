@@ -1,18 +1,21 @@
 package cmd
 
 import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 )
 
 func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 	// given
-	prep := func() log.Logger {
+	prep := func() (log.Logger, xcode.StepAnalyticsTracker) {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
@@ -21,25 +24,26 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		mockLogger.On("TInfof", mock.Anything).Return()
 		mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
 
-		return mockLogger
+		mockTracker := &xcodeMocks.StepAnalyticsTrackerMock{}
+		return mockLogger, mockTracker
 	}
 
 	// when
 	t.Run("No envs specified", func(t *testing.T) {
-		mockLogger := prep()
+		mockLogger, mockTracker := prep()
 		envVars := createEnvProvider(map[string]string{})
-		err := saveXcodeDerivedDataFilesCmdFn("", "", ".", "some-key", "", mockLogger, envVars)
+		err := saveXcodeDerivedDataFilesCmdFn("", "", ".", "some-key", "", mockLogger, mockTracker, time.Now(), envVars)
 
 		// then
 		require.EqualError(t, err, "read auth config from environments: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
 	})
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN specified", func(t *testing.T) {
-		mockLogger := prep()
+		mockLogger, mockTracker := prep()
 		envVars := createEnvProvider(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
 		})
-		err := saveXcodeDerivedDataFilesCmdFn("", "", "", "", "", mockLogger, envVars)
+		err := saveXcodeDerivedDataFilesCmdFn("", "", "", "", "", mockLogger, mockTracker, time.Now(), envVars)
 
 		// then
 		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH env var is not set")

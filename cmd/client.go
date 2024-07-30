@@ -3,11 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"time"
 )
 
 func createKVClient(authConfig common.CacheAuthConfig, envProvider common.EnvProviderFunc, logger log.Logger) (*kv.Client, error) {
