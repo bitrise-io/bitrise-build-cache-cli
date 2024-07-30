@@ -4,77 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"io"
 	"os"
 	"path/filepath"
-	"time"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func DownloadFileFromBuildCache(fileName, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
+func DownloadFileFromBuildCache(fileName, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", fileName)
 
-	if err := downloadFromBuildCache(key, cacheURL, authConfig, logger, func(ctx context.Context, key string, client *kv.Client) error {
-		return downloadFile(ctx, client, fileName, key, 0)
-	}); err != nil {
-		return fmt.Errorf("download file from build cache: %w", err)
-	}
+	ctx, _ := context.WithCancel(context.Background())
+	// TODO context cancellation
 
-	return nil
+	return downloadFile(ctx, kvClient, fileName, key, 0)
 }
 
-func DownloadStreamFromBuildCache(destination io.Writer, key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	if err := downloadFromBuildCache(key, cacheURL, authConfig, logger, func(ctx context.Context, key string, client *kv.Client) error {
-		return downloadStream(ctx, destination, client, key)
-	}); err != nil {
-		return fmt.Errorf("download stream from build cache: %w", err)
-	}
+func DownloadStreamFromBuildCache(destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
+	logger.Debugf("Downloading %s", key)
 
-	return nil
-}
+	ctx, _ := context.WithCancel(context.Background())
+	// TODO context cancellation
 
-func downloadFromBuildCache(key, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger, download func(ctx context.Context, key string, client *kv.Client) error) error {
-	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
-	if err != nil {
-		return fmt.Errorf(
-			"the url grpc[s]://host:port format, %q is invalid: %w",
-			cacheURL, err,
-		)
-	}
-
-	logger.Debugf("Build Cache host: %s", buildCacheHost)
-
-	ctx := context.Background()
-	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
-		UseInsecure: insecureGRPC,
-		Host:        buildCacheHost,
-		DialTimeout: 5 * time.Second,
-		ClientName:  "kv",
-		AuthConfig:  authConfig,
-	})
-	if err != nil {
-		return fmt.Errorf("new kv client: %w", err)
-	}
-
-	err = kvClient.GetCapabilities(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get capabilities: %w", err)
-	}
-
-	if err := download(ctx, key, kvClient); err != nil {
-		return fmt.Errorf("download: %w", err)
-	}
-
-	return nil
+	return downloadStream(ctx, destination, kvClient, key)
 }
 
 func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode) error {

@@ -10,7 +10,6 @@ import (
 	"github.com/dustin/go-humanize"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -22,32 +21,9 @@ type UploadFilesStats struct {
 	FailedUploads     int
 }
 
-func UploadCacheFilesToBuildCache(dd FileGroupInfo, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
-	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
-	if err != nil {
-		return fmt.Errorf(
-			"the url grpc[s]://host:port format, %q is invalid: %w",
-			cacheURL, err,
-		)
-	}
-
-	ctx := context.Background()
-	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
-		UseInsecure: insecureGRPC,
-		Host:        buildCacheHost,
-		DialTimeout: 5 * time.Second,
-		ClientName:  "kv",
-		AuthConfig:  authConfig,
-	})
-	if err != nil {
-		return fmt.Errorf("new KV client: %w", err)
-	}
-
-	err = kvClient.GetCapabilities(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get capabilities: %w", err)
-	}
-
+func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) error {
+	ctx, _ := context.WithCancel(context.Background())
+	// TODO context cancellation
 	missingBlobs, err := findMissingBlobs(ctx, dd, kvClient, logger)
 	if err != nil {
 		return fmt.Errorf("failed to check for missing blobs: %w", err)

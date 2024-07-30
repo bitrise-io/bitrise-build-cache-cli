@@ -2,9 +2,13 @@ package xcode
 
 import "fmt"
 
-func GetCacheKey(envProvider func(string) string, metadataKey bool) (string, error) {
+type CacheKeyParams struct {
+	IsFallback bool
+}
+
+func GetCacheKey(envProvider func(string) string, keyParams CacheKeyParams) (string, error) {
 	branch := envProvider("BITRISE_GIT_BRANCH")
-	if branch == "" {
+	if branch == "" && !keyParams.IsFallback {
 		return "", fmt.Errorf("cache key is required if BITRISE_GIT_BRANCH env var is not set")
 	}
 
@@ -13,9 +17,9 @@ func GetCacheKey(envProvider func(string) string, metadataKey bool) (string, err
 		return "", fmt.Errorf("cache key is required if BITRISE_APP_SLUG env var is not set")
 	}
 
-	if metadataKey {
+	if keyParams.IsFallback {
+		return fmt.Sprintf("xcode-cache-metadata-%s", appSlug), nil
+	} else {
 		return fmt.Sprintf("xcode-cache-metadata-%s-%s", appSlug, branch), nil
 	}
-
-	return fmt.Sprintf("xcode-deriveddata-%s-%s", appSlug, branch), nil
 }
