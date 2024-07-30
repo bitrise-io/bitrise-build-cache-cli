@@ -25,7 +25,7 @@ var _ xcode.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 //			LogDerivedDataUploadedFunc: func(duration time.Duration, stats xcode.UploadFilesStats)  {
 //				panic("mock out the LogDerivedDataUploaded method")
 //			},
-//			LogMetadataLoadedFunc: func(duration time.Duration, metadataKeyType string, totalFileCount int, restoredFileCount int, size int64)  {
+//			LogMetadataLoadedFunc: func(duration time.Duration, cacheKeyType string, totalFileCount int, restoredFileCount int, size int64)  {
 //				panic("mock out the LogMetadataLoaded method")
 //			},
 //			LogMetadataSavedFunc: func(duration time.Duration, fileCount int, size int64)  {
@@ -54,7 +54,7 @@ type StepAnalyticsTrackerMock struct {
 	LogDerivedDataUploadedFunc func(duration time.Duration, stats xcode.UploadFilesStats)
 
 	// LogMetadataLoadedFunc mocks the LogMetadataLoaded method.
-	LogMetadataLoadedFunc func(duration time.Duration, metadataKeyType string, totalFileCount int, restoredFileCount int, size int64)
+	LogMetadataLoadedFunc func(duration time.Duration, cacheKeyType string, totalFileCount int, restoredFileCount int, size int64)
 
 	// LogMetadataSavedFunc mocks the LogMetadataSaved method.
 	LogMetadataSavedFunc func(duration time.Duration, fileCount int, size int64)
@@ -88,8 +88,8 @@ type StepAnalyticsTrackerMock struct {
 		LogMetadataLoaded []struct {
 			// Duration is the duration argument value.
 			Duration time.Duration
-			// MetadataKeyType is the metadataKeyType argument value.
-			MetadataKeyType string
+			// CacheKeyType is the cacheKeyType argument value.
+			CacheKeyType string
 			// TotalFileCount is the totalFileCount argument value.
 			TotalFileCount int
 			// RestoredFileCount is the restoredFileCount argument value.
@@ -206,19 +206,19 @@ func (mock *StepAnalyticsTrackerMock) LogDerivedDataUploadedCalls() []struct {
 }
 
 // LogMetadataLoaded calls LogMetadataLoadedFunc.
-func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, metadataKeyType string, totalFileCount int, restoredFileCount int, size int64) {
+func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, cacheKeyType string, totalFileCount int, restoredFileCount int, size int64) {
 	if mock.LogMetadataLoadedFunc == nil {
 		panic("StepAnalyticsTrackerMock.LogMetadataLoadedFunc: method is nil but StepAnalyticsTracker.LogMetadataLoaded was just called")
 	}
 	callInfo := struct {
 		Duration          time.Duration
-		MetadataKeyType   string
+		CacheKeyType      string
 		TotalFileCount    int
 		RestoredFileCount int
 		Size              int64
 	}{
 		Duration:          duration,
-		MetadataKeyType:   metadataKeyType,
+		CacheKeyType:      cacheKeyType,
 		TotalFileCount:    totalFileCount,
 		RestoredFileCount: restoredFileCount,
 		Size:              size,
@@ -226,7 +226,7 @@ func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, 
 	mock.lockLogMetadataLoaded.Lock()
 	mock.calls.LogMetadataLoaded = append(mock.calls.LogMetadataLoaded, callInfo)
 	mock.lockLogMetadataLoaded.Unlock()
-	mock.LogMetadataLoadedFunc(duration, metadataKeyType, totalFileCount, restoredFileCount, size)
+	mock.LogMetadataLoadedFunc(duration, cacheKeyType, totalFileCount, restoredFileCount, size)
 }
 
 // LogMetadataLoadedCalls gets all the calls that were made to LogMetadataLoaded.
@@ -235,14 +235,14 @@ func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, 
 //	len(mockedStepAnalyticsTracker.LogMetadataLoadedCalls())
 func (mock *StepAnalyticsTrackerMock) LogMetadataLoadedCalls() []struct {
 	Duration          time.Duration
-	MetadataKeyType   string
+	CacheKeyType      string
 	TotalFileCount    int
 	RestoredFileCount int
 	Size              int64
 } {
 	var calls []struct {
 		Duration          time.Duration
-		MetadataKeyType   string
+		CacheKeyType      string
 		TotalFileCount    int
 		RestoredFileCount int
 		Size              int64

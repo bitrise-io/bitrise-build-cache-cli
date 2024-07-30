@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	MetadataKeyDefault  = "default"
-	MetadataKeyFallback = "fallback"
-	MetadataKeyProvided = "provided"
+	CacheKeyTypeDefault  = "default"
+	CacheKeyTypeFallback = "fallback"
+	CacheKeyTypeProvided = "provided"
 )
 
-type MetadataKeyType string
+type CacheKeyType string
 
 // nolint: gochecknoglobals
 var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
@@ -77,7 +77,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	metadataKeyType, err := downloadMetadata(cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
+	cacheKeyType, err := downloadMetadata(cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
 	if err != nil {
 		return fmt.Errorf("download cache metadata: %w", err)
 	}
@@ -103,7 +103,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 	}
 
 	metadataRestoredT := time.Now()
-	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(metadataKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
+	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(cacheKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
 	stats, err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, kvClient, logger)
@@ -137,8 +137,8 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 func downloadMetadata(cacheMetadataPath, providedCacheKey string,
 	kvClient *kv.Client,
 	logger log.Logger,
-	envProvider func(string) string) (MetadataKeyType, error) {
-	var cacheKeyType MetadataKeyType = MetadataKeyDefault
+	envProvider func(string) string) (CacheKeyType, error) {
+	var cacheKeyType CacheKeyType = CacheKeyTypeDefault
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
@@ -147,7 +147,7 @@ func downloadMetadata(cacheMetadataPath, providedCacheKey string,
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
 	} else {
-		cacheKeyType = MetadataKeyProvided
+		cacheKeyType = CacheKeyTypeProvided
 		cacheKey = providedCacheKey
 		logger.TInfof("Downloading cache metadata checksum for provided key %s", cacheKey)
 	}
@@ -159,7 +159,7 @@ func downloadMetadata(cacheMetadataPath, providedCacheKey string,
 	}
 
 	if errors.Is(err, xcode.ErrCacheNotFound) {
-		cacheKeyType = MetadataKeyFallback
+		cacheKeyType = CacheKeyTypeFallback
 		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
 			return cacheKeyType, errors.New("cache metadata not found in cache")
