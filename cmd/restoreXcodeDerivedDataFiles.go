@@ -84,7 +84,8 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 
 	logger.TInfof("Loading metadata of the cache archive from %s", cacheMetadataPath)
 	var metadata *xcode.Metadata
-	if metadata, err = xcode.LoadMetadata(cacheMetadataPath); err != nil {
+	var metadataSize int64
+	if metadata, metadataSize, err = xcode.LoadMetadata(cacheMetadataPath); err != nil {
 		return fmt.Errorf("load metadata: %w", err)
 	}
 
@@ -102,7 +103,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 	}
 
 	metadataRestoredT := time.Now()
-	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(metadataKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated)
+	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(metadataKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
 	stats, err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, kvClient, logger)

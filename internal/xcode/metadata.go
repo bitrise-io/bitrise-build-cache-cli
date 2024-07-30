@@ -107,18 +107,18 @@ func SaveMetadata(metadata *Metadata, fileName string, logger log.Logger) (int64
 	return int64(len(jsonData)), nil
 }
 
-func LoadMetadata(file string) (*Metadata, error) {
+func LoadMetadata(file string) (*Metadata, int64, error) {
 	jsonData, err := os.ReadFile(file)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", file, err)
+		return nil, 0, fmt.Errorf("reading %s: %w", file, err)
 	}
 
 	var metadata Metadata
 	if err := json.Unmarshal(jsonData, &metadata); err != nil {
-		return nil, fmt.Errorf("parsing JSON: %w", err)
+		return nil, 0, fmt.Errorf("parsing JSON: %w", err)
 	}
 
-	return &metadata, nil
+	return &metadata, int64(len(jsonData)), nil
 }
 
 func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log.Logger) error {
