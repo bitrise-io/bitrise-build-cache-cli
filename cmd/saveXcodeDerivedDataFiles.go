@@ -2,16 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
-
 	"github.com/spf13/cobra"
+	"os"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 const CacheMetadataPath = "dd-metadata.json"
@@ -132,6 +131,20 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 	logger.TInfof("Uploading metadata content of %s for key %s", cacheMetadataPath, mdChecksum)
 	if err := xcode.UploadFileToBuildCache(cacheMetadataPath, mdChecksum, kvClient, logger); err != nil {
 		return fmt.Errorf("upload metadata content to build cache: %w", err)
+	}
+
+	if providedCacheKey == "" {
+		fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		if err != nil {
+			logger.Warnf("Failed to get fallback cache key: %s", err)
+		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
+			cacheKey = fallbackCacheKey
+			mdChecksumReader = strings.NewReader(mdChecksum) // reset reader
+			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", cacheMetadataPath, mdChecksum, cacheKey)
+			if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), kvClient, logger); err != nil {
+				return fmt.Errorf("upload metadata checksum to build cache: %w", err)
+			}
+		}
 	}
 
 	logger.TInfof("Uploading DerivedData files")
