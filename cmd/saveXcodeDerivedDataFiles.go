@@ -33,12 +33,14 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
 		xcodeCachePath, _ := cmd.Flags().GetString("xcodecache-path")
 
-		tracker := xcode.NewStepTracker("save-xcode-build-cache", os.Getenv, logger)
+		tracker := xcode.NewDefaultStepTracker("save-xcode-build-cache", os.Getenv, logger)
 		defer tracker.Wait()
 		startT := time.Now()
 
-		if err := saveXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv); err != nil {
-			tracker.LogSaveFinished(time.Since(startT), err)
+		err := saveXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv)
+		tracker.LogSaveFinished(time.Since(startT), err)
+		if err != nil {
+
 			return fmt.Errorf("save Xcode cache into Bitrise Build Cache: %w", err)
 		}
 
@@ -162,8 +164,6 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 			return fmt.Errorf("upload xcode cache files to build cache: %w", err)
 		}
 	}
-
-	tracker.LogSaveFinished(time.Since(startT), nil)
 
 	return nil
 }

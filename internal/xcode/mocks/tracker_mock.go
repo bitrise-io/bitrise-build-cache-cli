@@ -19,20 +19,20 @@ var _ xcode.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 //
 //		// make and configure a mocked xcode.StepAnalyticsTracker
 //		mockedStepAnalyticsTracker := &StepAnalyticsTrackerMock{
-//			LogArchiveDownloadedFunc: func(duration time.Duration, archiveSizeBytes int64)  {
-//				panic("mock out the LogArchiveDownloaded method")
-//			},
-//			LogArchiveExtractedFunc: func(duration time.Duration, archiveSizeBytes int64)  {
-//				panic("mock out the LogArchiveExtracted method")
+//			LogDerivedDataDownloadedFunc: func(duration time.Duration, stats xcode.DownloadFilesStats)  {
+//				panic("mock out the LogDerivedDataDownloaded method")
 //			},
 //			LogDerivedDataUploadedFunc: func(duration time.Duration, stats xcode.UploadFilesStats)  {
 //				panic("mock out the LogDerivedDataUploaded method")
 //			},
-//			LogMetadataLoadedFunc: func(duration time.Duration, totalDuration time.Duration, totalFileCount int, restoredFileCount int)  {
+//			LogMetadataLoadedFunc: func(duration time.Duration, totalFileCount int, restoredFileCount int)  {
 //				panic("mock out the LogMetadataLoaded method")
 //			},
 //			LogMetadataSavedFunc: func(duration time.Duration, fileCount int, size int64)  {
 //				panic("mock out the LogMetadataSaved method")
+//			},
+//			LogRestoreFinishedFunc: func(totalDuration time.Duration, err error)  {
+//				panic("mock out the LogRestoreFinished method")
 //			},
 //			LogSaveFinishedFunc: func(totalDuration time.Duration, err error)  {
 //				panic("mock out the LogSaveFinished method")
@@ -47,20 +47,20 @@ var _ xcode.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 //
 //	}
 type StepAnalyticsTrackerMock struct {
-	// LogArchiveDownloadedFunc mocks the LogArchiveDownloaded method.
-	LogArchiveDownloadedFunc func(duration time.Duration, archiveSizeBytes int64)
-
-	// LogArchiveExtractedFunc mocks the LogArchiveExtracted method.
-	LogArchiveExtractedFunc func(duration time.Duration, archiveSizeBytes int64)
+	// LogDerivedDataDownloadedFunc mocks the LogDerivedDataDownloaded method.
+	LogDerivedDataDownloadedFunc func(duration time.Duration, stats xcode.DownloadFilesStats)
 
 	// LogDerivedDataUploadedFunc mocks the LogDerivedDataUploaded method.
 	LogDerivedDataUploadedFunc func(duration time.Duration, stats xcode.UploadFilesStats)
 
 	// LogMetadataLoadedFunc mocks the LogMetadataLoaded method.
-	LogMetadataLoadedFunc func(duration time.Duration, totalDuration time.Duration, totalFileCount int, restoredFileCount int)
+	LogMetadataLoadedFunc func(duration time.Duration, totalFileCount int, restoredFileCount int)
 
 	// LogMetadataSavedFunc mocks the LogMetadataSaved method.
 	LogMetadataSavedFunc func(duration time.Duration, fileCount int, size int64)
+
+	// LogRestoreFinishedFunc mocks the LogRestoreFinished method.
+	LogRestoreFinishedFunc func(totalDuration time.Duration, err error)
 
 	// LogSaveFinishedFunc mocks the LogSaveFinished method.
 	LogSaveFinishedFunc func(totalDuration time.Duration, err error)
@@ -70,19 +70,12 @@ type StepAnalyticsTrackerMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// LogArchiveDownloaded holds details about calls to the LogArchiveDownloaded method.
-		LogArchiveDownloaded []struct {
+		// LogDerivedDataDownloaded holds details about calls to the LogDerivedDataDownloaded method.
+		LogDerivedDataDownloaded []struct {
 			// Duration is the duration argument value.
 			Duration time.Duration
-			// ArchiveSizeBytes is the archiveSizeBytes argument value.
-			ArchiveSizeBytes int64
-		}
-		// LogArchiveExtracted holds details about calls to the LogArchiveExtracted method.
-		LogArchiveExtracted []struct {
-			// Duration is the duration argument value.
-			Duration time.Duration
-			// ArchiveSizeBytes is the archiveSizeBytes argument value.
-			ArchiveSizeBytes int64
+			// Stats is the stats argument value.
+			Stats xcode.DownloadFilesStats
 		}
 		// LogDerivedDataUploaded holds details about calls to the LogDerivedDataUploaded method.
 		LogDerivedDataUploaded []struct {
@@ -95,8 +88,6 @@ type StepAnalyticsTrackerMock struct {
 		LogMetadataLoaded []struct {
 			// Duration is the duration argument value.
 			Duration time.Duration
-			// TotalDuration is the totalDuration argument value.
-			TotalDuration time.Duration
 			// TotalFileCount is the totalFileCount argument value.
 			TotalFileCount int
 			// RestoredFileCount is the restoredFileCount argument value.
@@ -111,6 +102,13 @@ type StepAnalyticsTrackerMock struct {
 			// Size is the size argument value.
 			Size int64
 		}
+		// LogRestoreFinished holds details about calls to the LogRestoreFinished method.
+		LogRestoreFinished []struct {
+			// TotalDuration is the totalDuration argument value.
+			TotalDuration time.Duration
+			// Err is the err argument value.
+			Err error
+		}
 		// LogSaveFinished holds details about calls to the LogSaveFinished method.
 		LogSaveFinished []struct {
 			// TotalDuration is the totalDuration argument value.
@@ -122,84 +120,48 @@ type StepAnalyticsTrackerMock struct {
 		Wait []struct {
 		}
 	}
-	lockLogArchiveDownloaded   sync.RWMutex
-	lockLogArchiveExtracted    sync.RWMutex
-	lockLogDerivedDataUploaded sync.RWMutex
-	lockLogMetadataLoaded      sync.RWMutex
-	lockLogMetadataSaved       sync.RWMutex
-	lockLogSaveFinished        sync.RWMutex
-	lockWait                   sync.RWMutex
+	lockLogDerivedDataDownloaded sync.RWMutex
+	lockLogDerivedDataUploaded   sync.RWMutex
+	lockLogMetadataLoaded        sync.RWMutex
+	lockLogMetadataSaved         sync.RWMutex
+	lockLogRestoreFinished       sync.RWMutex
+	lockLogSaveFinished          sync.RWMutex
+	lockWait                     sync.RWMutex
 }
 
-// LogArchiveDownloaded calls LogArchiveDownloadedFunc.
-func (mock *StepAnalyticsTrackerMock) LogArchiveDownloaded(duration time.Duration, archiveSizeBytes int64) {
-	if mock.LogArchiveDownloadedFunc == nil {
-		panic("StepAnalyticsTrackerMock.LogArchiveDownloadedFunc: method is nil but StepAnalyticsTracker.LogArchiveDownloaded was just called")
+// LogDerivedDataDownloaded calls LogDerivedDataDownloadedFunc.
+func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloaded(duration time.Duration, stats xcode.DownloadFilesStats) {
+	if mock.LogDerivedDataDownloadedFunc == nil {
+		panic("StepAnalyticsTrackerMock.LogDerivedDataDownloadedFunc: method is nil but StepAnalyticsTracker.LogDerivedDataDownloaded was just called")
 	}
 	callInfo := struct {
-		Duration         time.Duration
-		ArchiveSizeBytes int64
+		Duration time.Duration
+		Stats    xcode.DownloadFilesStats
 	}{
-		Duration:         duration,
-		ArchiveSizeBytes: archiveSizeBytes,
+		Duration: duration,
+		Stats:    stats,
 	}
-	mock.lockLogArchiveDownloaded.Lock()
-	mock.calls.LogArchiveDownloaded = append(mock.calls.LogArchiveDownloaded, callInfo)
-	mock.lockLogArchiveDownloaded.Unlock()
-	mock.LogArchiveDownloadedFunc(duration, archiveSizeBytes)
+	mock.lockLogDerivedDataDownloaded.Lock()
+	mock.calls.LogDerivedDataDownloaded = append(mock.calls.LogDerivedDataDownloaded, callInfo)
+	mock.lockLogDerivedDataDownloaded.Unlock()
+	mock.LogDerivedDataDownloadedFunc(duration, stats)
 }
 
-// LogArchiveDownloadedCalls gets all the calls that were made to LogArchiveDownloaded.
+// LogDerivedDataDownloadedCalls gets all the calls that were made to LogDerivedDataDownloaded.
 // Check the length with:
 //
-//	len(mockedStepAnalyticsTracker.LogArchiveDownloadedCalls())
-func (mock *StepAnalyticsTrackerMock) LogArchiveDownloadedCalls() []struct {
-	Duration         time.Duration
-	ArchiveSizeBytes int64
+//	len(mockedStepAnalyticsTracker.LogDerivedDataDownloadedCalls())
+func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloadedCalls() []struct {
+	Duration time.Duration
+	Stats    xcode.DownloadFilesStats
 } {
 	var calls []struct {
-		Duration         time.Duration
-		ArchiveSizeBytes int64
+		Duration time.Duration
+		Stats    xcode.DownloadFilesStats
 	}
-	mock.lockLogArchiveDownloaded.RLock()
-	calls = mock.calls.LogArchiveDownloaded
-	mock.lockLogArchiveDownloaded.RUnlock()
-	return calls
-}
-
-// LogArchiveExtracted calls LogArchiveExtractedFunc.
-func (mock *StepAnalyticsTrackerMock) LogArchiveExtracted(duration time.Duration, archiveSizeBytes int64) {
-	if mock.LogArchiveExtractedFunc == nil {
-		panic("StepAnalyticsTrackerMock.LogArchiveExtractedFunc: method is nil but StepAnalyticsTracker.LogArchiveExtracted was just called")
-	}
-	callInfo := struct {
-		Duration         time.Duration
-		ArchiveSizeBytes int64
-	}{
-		Duration:         duration,
-		ArchiveSizeBytes: archiveSizeBytes,
-	}
-	mock.lockLogArchiveExtracted.Lock()
-	mock.calls.LogArchiveExtracted = append(mock.calls.LogArchiveExtracted, callInfo)
-	mock.lockLogArchiveExtracted.Unlock()
-	mock.LogArchiveExtractedFunc(duration, archiveSizeBytes)
-}
-
-// LogArchiveExtractedCalls gets all the calls that were made to LogArchiveExtracted.
-// Check the length with:
-//
-//	len(mockedStepAnalyticsTracker.LogArchiveExtractedCalls())
-func (mock *StepAnalyticsTrackerMock) LogArchiveExtractedCalls() []struct {
-	Duration         time.Duration
-	ArchiveSizeBytes int64
-} {
-	var calls []struct {
-		Duration         time.Duration
-		ArchiveSizeBytes int64
-	}
-	mock.lockLogArchiveExtracted.RLock()
-	calls = mock.calls.LogArchiveExtracted
-	mock.lockLogArchiveExtracted.RUnlock()
+	mock.lockLogDerivedDataDownloaded.RLock()
+	calls = mock.calls.LogDerivedDataDownloaded
+	mock.lockLogDerivedDataDownloaded.RUnlock()
 	return calls
 }
 
@@ -240,25 +202,23 @@ func (mock *StepAnalyticsTrackerMock) LogDerivedDataUploadedCalls() []struct {
 }
 
 // LogMetadataLoaded calls LogMetadataLoadedFunc.
-func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, totalDuration time.Duration, totalFileCount int, restoredFileCount int) {
+func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, totalFileCount int, restoredFileCount int) {
 	if mock.LogMetadataLoadedFunc == nil {
 		panic("StepAnalyticsTrackerMock.LogMetadataLoadedFunc: method is nil but StepAnalyticsTracker.LogMetadataLoaded was just called")
 	}
 	callInfo := struct {
 		Duration          time.Duration
-		TotalDuration     time.Duration
 		TotalFileCount    int
 		RestoredFileCount int
 	}{
 		Duration:          duration,
-		TotalDuration:     totalDuration,
 		TotalFileCount:    totalFileCount,
 		RestoredFileCount: restoredFileCount,
 	}
 	mock.lockLogMetadataLoaded.Lock()
 	mock.calls.LogMetadataLoaded = append(mock.calls.LogMetadataLoaded, callInfo)
 	mock.lockLogMetadataLoaded.Unlock()
-	mock.LogMetadataLoadedFunc(duration, totalDuration, totalFileCount, restoredFileCount)
+	mock.LogMetadataLoadedFunc(duration, totalFileCount, restoredFileCount)
 }
 
 // LogMetadataLoadedCalls gets all the calls that were made to LogMetadataLoaded.
@@ -267,13 +227,11 @@ func (mock *StepAnalyticsTrackerMock) LogMetadataLoaded(duration time.Duration, 
 //	len(mockedStepAnalyticsTracker.LogMetadataLoadedCalls())
 func (mock *StepAnalyticsTrackerMock) LogMetadataLoadedCalls() []struct {
 	Duration          time.Duration
-	TotalDuration     time.Duration
 	TotalFileCount    int
 	RestoredFileCount int
 } {
 	var calls []struct {
 		Duration          time.Duration
-		TotalDuration     time.Duration
 		TotalFileCount    int
 		RestoredFileCount int
 	}
@@ -320,6 +278,42 @@ func (mock *StepAnalyticsTrackerMock) LogMetadataSavedCalls() []struct {
 	mock.lockLogMetadataSaved.RLock()
 	calls = mock.calls.LogMetadataSaved
 	mock.lockLogMetadataSaved.RUnlock()
+	return calls
+}
+
+// LogRestoreFinished calls LogRestoreFinishedFunc.
+func (mock *StepAnalyticsTrackerMock) LogRestoreFinished(totalDuration time.Duration, err error) {
+	if mock.LogRestoreFinishedFunc == nil {
+		panic("StepAnalyticsTrackerMock.LogRestoreFinishedFunc: method is nil but StepAnalyticsTracker.LogRestoreFinished was just called")
+	}
+	callInfo := struct {
+		TotalDuration time.Duration
+		Err           error
+	}{
+		TotalDuration: totalDuration,
+		Err:           err,
+	}
+	mock.lockLogRestoreFinished.Lock()
+	mock.calls.LogRestoreFinished = append(mock.calls.LogRestoreFinished, callInfo)
+	mock.lockLogRestoreFinished.Unlock()
+	mock.LogRestoreFinishedFunc(totalDuration, err)
+}
+
+// LogRestoreFinishedCalls gets all the calls that were made to LogRestoreFinished.
+// Check the length with:
+//
+//	len(mockedStepAnalyticsTracker.LogRestoreFinishedCalls())
+func (mock *StepAnalyticsTrackerMock) LogRestoreFinishedCalls() []struct {
+	TotalDuration time.Duration
+	Err           error
+} {
+	var calls []struct {
+		TotalDuration time.Duration
+		Err           error
+	}
+	mock.lockLogRestoreFinished.RLock()
+	calls = mock.calls.LogRestoreFinished
+	mock.lockLogRestoreFinished.RUnlock()
 	return calls
 }
 

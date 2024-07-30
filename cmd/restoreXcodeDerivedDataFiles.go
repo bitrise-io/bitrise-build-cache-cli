@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -29,7 +30,13 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")
 
-		if err := restoreXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, logger, os.Getenv); err != nil {
+		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", os.Getenv, logger)
+		defer tracker.Wait()
+		startT := time.Now()
+
+		err := restoreXcodeDerivedDataFilesCmdFn(CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv)
+		tracker.LogRestoreFinished(time.Since(startT), err)
+		if err != nil {
 			return fmt.Errorf("restore Xcode DerivedData from Bitrise Build Cache: %w", err)
 		}
 
@@ -49,7 +56,8 @@ func init() {
 	}
 }
 
-func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger, envProvider func(string) string) error {
+func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
+	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -60,10 +68,6 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
 	}
-
-	tracker := xcode.NewStepTracker("restore-xcode-build-cache", envProvider, logger)
-	defer tracker.Wait()
-	// startT := time.Now()
 
 	if err := downloadMetadata(cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider); err != nil {
 		return fmt.Errorf("download cache metadata: %w", err)
@@ -78,8 +82,8 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 	logCacheMetadata(metadata, logger)
 
 	logger.TInfof("Restoring metadata of input files")
-	// var filesUpdated int
-	if _, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
+	var filesUpdated int
+	if filesUpdated, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
 		return fmt.Errorf("restore modification time: %w", err)
 	}
 
@@ -88,10 +92,17 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 		return fmt.Errorf("restore metadata of input directories: %w", err)
 	}
 
+	metadataRestoredT := time.Now()
+	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated)
+
 	logger.TInfof("Downloading DerivedData files")
-	if err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, kvClient, logger); err != nil {
+	stats, err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, kvClient, logger)
+	if err != nil {
 		return fmt.Errorf("download DerivedData files: %w", err)
 	}
+
+	ddDownloadedT := time.Now()
+	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 
 	logger.TInfof("Restoring DerivedData directory metadata")
 	if err := xcode.RestoreDirectoryInfos(metadata.DerivedData.Directories, "", logger); err != nil {
@@ -100,7 +111,7 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
-		if err := xcode.DownloadCacheFilesFromBuildCache(metadata.XcodeCacheDir, kvClient, logger); err != nil {
+		if _, err := xcode.DownloadCacheFilesFromBuildCache(metadata.XcodeCacheDir, kvClient, logger); err != nil {
 			return fmt.Errorf("download Xcode cache files: %w", err)
 		}
 

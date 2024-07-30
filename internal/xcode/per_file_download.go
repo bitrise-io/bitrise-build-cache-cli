@@ -16,7 +16,15 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) error {
+type DownloadFilesStats struct {
+	FilesToBeDownloaded   int
+	FilesDownloaded       int
+	FilesMissing          int
+	FilesFailedToDownload int
+	DownloadSize          int64
+}
+
+func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {
@@ -30,11 +38,13 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 	logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
 
+	stats := DownloadFilesStats{
+		FilesToBeDownloaded: len(dd.Files),
+	}
+
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
 	semaphore := make(chan struct{}, 20) // Limit parallelization
-	failedDownload := false
-	var downloadSize int64
 	for _, file := range dd.Files {
 		wg.Add(1)
 		semaphore <- struct{}{} // Block if there are too many goroutines are running
@@ -47,7 +57,9 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
 				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if errors.Is(err, ErrCacheNotFound) {
-					logger.Infof("cache not found for file %s (%s)", file.Path, file.Hash)
+					logger.Infof("cache entry not found for file %s (%s)", file.Path, file.Hash)
+
+					stats.FilesMissing++
 
 					return nil, true
 				}
@@ -64,10 +76,12 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 
 			mutex.Lock()
 			if err != nil {
-				failedDownload = true
 				logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
+
+				stats.FilesFailedToDownload++
 			} else {
-				downloadSize += file.Size
+				stats.FilesDownloaded++
+				stats.DownloadSize += file.Size
 			}
 			mutex.Unlock()
 		}(file)
@@ -75,11 +89,11 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 
 	wg.Wait()
 
-	logger.TInfof("(i) Downloaded: %s", humanize.Bytes(uint64(downloadSize)))
+	logger.TInfof("(i) Downloaded: %s", humanize.Bytes(uint64(stats.DownloadSize)))
 
-	if failedDownload {
-		return fmt.Errorf("failed to download some files")
+	if stats.FilesFailedToDownload > 0 {
+		return DownloadFilesStats{}, fmt.Errorf("failed to download some files")
 	}
 
-	return nil
+	return stats, nil
 }

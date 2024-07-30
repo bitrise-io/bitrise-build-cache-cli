@@ -14,7 +14,7 @@ import (
 )
 
 type UploadFilesStats struct {
-	FilesToBeUploaded   int
+	FilesToUpload       int
 	FilesUploded        int
 	FilesFailedToUpload int
 	TotalFiles          int
@@ -30,8 +30,8 @@ func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger 
 	}
 
 	stats := UploadFilesStats{
-		TotalFiles:        len(dd.Files),
-		FilesToBeUploaded: len(missingBlobs),
+		TotalFiles:    len(dd.Files),
+		FilesToUpload: len(missingBlobs),
 	}
 
 	logger.TInfof("(i) Uploading missing blobs...")

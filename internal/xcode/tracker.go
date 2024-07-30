@@ -12,9 +12,10 @@ type StepAnalyticsTracker interface {
 	LogMetadataSaved(duration time.Duration, fileCount int, size int64)
 	LogDerivedDataUploaded(duration time.Duration, stats UploadFilesStats)
 	LogSaveFinished(totalDuration time.Duration, err error)
-	LogArchiveDownloaded(duration time.Duration, archiveSizeBytes int64)
-	LogArchiveExtracted(duration time.Duration, archiveSizeBytes int64)
-	LogMetadataLoaded(duration time.Duration, totalDuration time.Duration, totalFileCount int, restoredFileCount int)
+	LogMetadataLoaded(duration time.Duration, totalFileCount int, restoredFileCount int)
+	LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats)
+	LogRestoreFinished(totalDuration time.Duration, err error)
+
 	Wait()
 }
 
@@ -23,7 +24,7 @@ type DefaultStepAnalyticsTracker struct {
 	logger  log.Logger
 }
 
-func NewStepTracker(stepID string, envProvider func(string) string, logger log.Logger) *DefaultStepAnalyticsTracker {
+func NewDefaultStepTracker(stepID string, envProvider func(string) string, logger log.Logger) *DefaultStepAnalyticsTracker {
 	p := analytics.Properties{
 		"step_id":     stepID,
 		"build_slug":  envProvider("BITRISE_BUILD_SLUG"),
@@ -50,7 +51,7 @@ func (t *DefaultStepAnalyticsTracker) LogMetadataSaved(duration time.Duration, f
 func (t *DefaultStepAnalyticsTracker) LogDerivedDataUploaded(duration time.Duration, stats UploadFilesStats) {
 	properties := analytics.Properties{
 		"duration_ms":     duration.Milliseconds(),
-		"files_to_upload": stats.FilesToBeUploaded,
+		"files_to_upload": stats.FilesToUpload,
 		"files_uploaded":  stats.FilesUploded,
 		"files_failed":    stats.FilesFailedToUpload,
 		"total_files":     stats.TotalFiles,
@@ -72,30 +73,38 @@ func (t *DefaultStepAnalyticsTracker) LogSaveFinished(totalDuration time.Duratio
 	t.tracker.Enqueue("step_save_xcode_build_cache_finished", properties)
 }
 
-func (t *DefaultStepAnalyticsTracker) LogArchiveDownloaded(duration time.Duration, archiveSizeBytes int64) {
-	properties := analytics.Properties{
-		"duration_ms":        duration.Milliseconds(),
-		"archive_size_bytes": archiveSizeBytes,
-	}
-	t.tracker.Enqueue("step_restore_xcode_build_cache_archive_downloaded", properties)
-}
-
-func (t *DefaultStepAnalyticsTracker) LogArchiveExtracted(duration time.Duration, archiveSizeBytes int64) {
-	properties := analytics.Properties{
-		"duration_ms":        duration.Milliseconds(),
-		"archive_size_bytes": archiveSizeBytes,
-	}
-	t.tracker.Enqueue("step_restore_xcode_build_cache_archive_extracted", properties)
-}
-
-func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, totalDuration time.Duration, totalFileCount int, restoredFileCount int) {
+func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, totalFileCount int, restoredFileCount int) {
 	properties := analytics.Properties{
 		"duration_ms":         duration.Milliseconds(),
-		"total_duration_ms":   totalDuration.Milliseconds(),
 		"total_file_count":    totalFileCount,
 		"restored_file_count": restoredFileCount,
 	}
 	t.tracker.Enqueue("step_restore_xcode_build_cache_metadata_loaded", properties)
+}
+
+func (t *DefaultStepAnalyticsTracker) LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats) {
+	properties := analytics.Properties{
+		"duration_ms":       duration.Milliseconds(),
+		"files_to_download": stats.FilesFailedToDownload,
+		"files_downloaded":  stats.FilesDownloaded,
+		"files_missing":     stats.FilesMissing,
+		"files_failed":      stats.FilesFailedToDownload,
+		"download_files":    stats.DownloadSize,
+	}
+	t.tracker.Enqueue("step_restore_xcode_build_cache_derived_data_uploaded", properties)
+}
+
+func (t *DefaultStepAnalyticsTracker) LogRestoreFinished(totalDuration time.Duration, err error) {
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	properties := analytics.Properties{
+		"total_duration_ms": totalDuration.Milliseconds(),
+		"error":             errStr,
+	}
+	t.tracker.Enqueue("step_restore_xcode_build_cache_finished", properties)
 }
 
 func (t *DefaultStepAnalyticsTracker) Wait() {
