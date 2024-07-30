@@ -63,6 +63,7 @@ func uploadToBuildCache(client *kv.Client, logger log.Logger, upload func(ctx co
 			logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 		}
 
+		// TODO context cancellation
 		if err := upload(context.Background(), client); err != nil {
 			return err, false
 		}
