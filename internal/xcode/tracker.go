@@ -52,12 +52,13 @@ func (t *DefaultStepAnalyticsTracker) LogMetadataSaved(duration time.Duration, f
 
 func (t *DefaultStepAnalyticsTracker) LogDerivedDataUploaded(duration time.Duration, stats UploadFilesStats) {
 	properties := t.propertiesWithCLIVersion().Merge(analytics.Properties{
-		"duration_ms":     duration.Milliseconds(),
-		"files_to_upload": stats.FilesToUpload,
-		"files_uploaded":  stats.FilesUploded,
-		"files_failed":    stats.FilesFailedToUpload,
-		"total_files":     stats.TotalFiles,
-		"upload_size":     stats.UploadSize,
+		"duration_ms":             duration.Milliseconds(),
+		"files_to_upload":         stats.FilesToUpload,
+		"files_uploaded":          stats.FilesUploded,
+		"files_failed":            stats.FilesFailedToUpload,
+		"total_files":             stats.TotalFiles,
+		"upload_size_bytes":       stats.UploadSize,
+		"largest_file_size_bytes": stats.LargestFileSize,
 	})
 	t.tracker.Enqueue("step_save_xcode_build_cache_derived_data_uploaded", properties)
 }
@@ -85,12 +86,13 @@ func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, 
 
 func (t *DefaultStepAnalyticsTracker) LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats) {
 	properties := t.propertiesWithCLIVersion().Merge(analytics.Properties{
-		"duration_ms":       duration.Milliseconds(),
-		"files_to_download": stats.FilesFailedToDownload,
-		"files_downloaded":  stats.FilesDownloaded,
-		"files_missing":     stats.FilesMissing,
-		"files_failed":      stats.FilesFailedToDownload,
-		"download_size":     stats.DownloadSize,
+		"duration_ms":             duration.Milliseconds(),
+		"files_to_download":       stats.FilesFailedToDownload,
+		"files_downloaded":        stats.FilesDownloaded,
+		"files_missing":           stats.FilesMissing,
+		"files_failed":            stats.FilesFailedToDownload,
+		"download_size_bytes":     stats.DownloadSize,
+		"largest_file_size_bytes": stats.LargestFileSize,
 	})
 	t.tracker.Enqueue("step_restore_xcode_build_cache_derived_data_uploaded", properties)
 }

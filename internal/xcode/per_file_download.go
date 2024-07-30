@@ -22,6 +22,7 @@ type DownloadFilesStats struct {
 	FilesMissing          int
 	FilesFailedToDownload int
 	DownloadSize          int64
+	LargestFileSize       int64
 }
 
 func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (DownloadFilesStats, error) {
@@ -82,6 +83,9 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 			} else {
 				stats.FilesDownloaded++
 				stats.DownloadSize += file.Size
+				if file.Size > stats.LargestFileSize {
+					stats.LargestFileSize = file.Size
+				}
 			}
 			mutex.Unlock()
 		}(file)

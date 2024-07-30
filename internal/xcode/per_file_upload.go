@@ -19,6 +19,7 @@ type UploadFilesStats struct {
 	FilesFailedToUpload int
 	TotalFiles          int
 	UploadSize          int64
+	LargestFileSize     int64
 }
 
 func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
@@ -82,6 +83,9 @@ func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger 
 				} else {
 					stats.FilesUploded++
 					stats.UploadSize += file.Size
+					if file.Size > stats.LargestFileSize {
+						stats.LargestFileSize = file.Size
+					}
 				}
 			}(file)
 		}
