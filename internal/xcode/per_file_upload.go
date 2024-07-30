@@ -14,6 +14,14 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+type UploadFilesStats struct {
+	FilesToBeUploaded int
+	FilesUploded      int
+	TotalFiles        int
+	UploadedSize      int64
+	FailedUploads     int
+}
+
 func UploadCacheFilesToBuildCache(dd FileGroupInfo, cacheURL string, authConfig common.CacheAuthConfig, logger log.Logger) error {
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(cacheURL)
 	if err != nil {
