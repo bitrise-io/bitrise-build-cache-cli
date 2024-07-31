@@ -94,7 +94,7 @@ func (t *DefaultStepAnalyticsTracker) LogDerivedDataDownloaded(duration time.Dur
 		"download_size_bytes":     stats.DownloadSize,
 		"largest_file_size_bytes": stats.LargestFileSize,
 	})
-	t.tracker.Enqueue("step_restore_xcode_build_cache_derived_data_uploaded", properties)
+	t.tracker.Enqueue("step_restore_xcode_build_cache_derived_data_downloaded", properties)
 }
 
 func (t *DefaultStepAnalyticsTracker) LogRestoreFinished(totalDuration time.Duration, err error) {
