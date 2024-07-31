@@ -60,33 +60,33 @@ func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger 
 					if attempt != 0 {
 						logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 					}
-					fileSize, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
+					_, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
 					if err != nil {
 						return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
 					}
 
-					mutex.Lock()
-					// Delete the uploded blob from the map of the missing blobs
-					delete(missingBlobs, file.Hash)
-
-					totalSize += fileSize
-					uploadCount++
-					mutex.Unlock()
-
 					return nil, false
 				})
 
+				mutex.Lock()
 				if err != nil {
 					failedUpload = true
 					logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
 					stats.FilesFailedToUpload++
 				} else {
+					// Delete the uploded blob from the map of the missing blobs
+					delete(missingBlobs, file.Hash)
+
+					totalSize += file.Size
+					uploadCount++
+
 					stats.FilesUploded++
 					stats.UploadSize += file.Size
 					if file.Size > stats.LargestFileSize {
 						stats.LargestFileSize = file.Size
 					}
 				}
+				mutex.Unlock()
 			}(file)
 		}
 	}
