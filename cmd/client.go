@@ -7,18 +7,11 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 func createKVClient(authConfig common.CacheAuthConfig, envProvider common.EnvProviderFunc, logger log.Logger) (*kv.Client, error) {
-	overrideEndpointURL := consts.EndpointURLDefault
-	if envProvider("BITRISE_BUILD_CACHE_ENDPOINT") != "" {
-		// But still allow users to override the endpoint
-		overrideEndpointURL = envProvider("BITRISE_BUILD_CACHE_ENDPOINT")
-	}
-
-	endpointURL := common.SelectEndpointURL(overrideEndpointURL, envProvider)
+	endpointURL := common.SelectEndpointURL("", envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(endpointURL)
