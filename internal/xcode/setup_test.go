@@ -12,6 +12,7 @@ func setupTests() log.Logger {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Infof", mock.Anything).Return()
 	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 
