@@ -17,9 +17,10 @@ const CacheMetadataPath = "dd-metadata.json"
 
 // nolint: gochecknoglobals
 var saveXcodeDerivedDataFilesCmd = &cobra.Command{
-	Use:   "save-xcode-deriveddata-files",
-	Short: "Save the DerivedData folder into Bitrise Build Cache (file level)",
-	Long:  `Save the contents of the DerivedData folder (used by Xcode to store intermediate build files) into Bitrise Build Cache.`,
+	Use:          "save-xcode-deriveddata-files",
+	Short:        "Save the DerivedData folder into Bitrise Build Cache (file level)",
+	Long:         `Save the contents of the DerivedData folder (used by Xcode to store intermediate build files) into Bitrise Build Cache.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)

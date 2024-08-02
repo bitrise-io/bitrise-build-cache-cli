@@ -13,9 +13,10 @@ import (
 
 // nolint: gochecknoglobals
 var deleteXcodeDerivedDataCmd = &cobra.Command{
-	Use:   "delete-xcode-deriveddata",
-	Short: "Deletes the DerivedData cache archive from the Bitrise Build Cache for a given key",
-	Long:  `Deletes the DerivedData cache archive from the Bitrise Build Cache for a given key.`,
+	Use:          "delete-xcode-deriveddata",
+	Short:        "Deletes the DerivedData cache archive from the Bitrise Build Cache for a given key",
+	Long:         `Deletes the DerivedData cache archive from the Bitrise Build Cache for a given key.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)

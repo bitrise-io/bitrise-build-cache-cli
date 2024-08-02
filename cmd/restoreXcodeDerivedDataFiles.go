@@ -24,9 +24,10 @@ type CacheKeyType string
 
 // nolint: gochecknoglobals
 var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
-	Use:   "restore-xcode-deriveddata-files",
-	Short: "Restore the DerivedData folder from Bitrise Build Cache (per file)",
-	Long:  `Restore the contents of the DerivedData folder (used by Xcode to store intermediate build files) from Bitrise Build Cache.`,
+	Use:          "restore-xcode-deriveddata-files",
+	Short:        "Restore the DerivedData folder from Bitrise Build Cache (per file)",
+	Long:         `Restore the contents of the DerivedData folder (used by Xcode to store intermediate build files) from Bitrise Build Cache.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)

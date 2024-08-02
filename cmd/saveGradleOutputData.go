@@ -19,6 +19,7 @@ var saveGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 - Collect the contents of **/build/ + .gradle/ directories.
 - Save the collected data to the Bitrise key-value cache.
 `,
+	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
