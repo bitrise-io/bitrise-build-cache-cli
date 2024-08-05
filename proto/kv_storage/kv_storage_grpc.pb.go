@@ -25,6 +25,7 @@ const _ = grpc.SupportPackageIsVersion7
 type KVStorageClient interface {
 	Get(ctx context.Context, in *bytestream.ReadRequest, opts ...grpc.CallOption) (KVStorage_GetClient, error)
 	Put(ctx context.Context, opts ...grpc.CallOption) (KVStorage_PutClient, error)
+	Delete(ctx context.Context, in *bytestream.ReadRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 }
 
 type kVStorageClient struct {
@@ -101,12 +102,22 @@ func (x *kVStoragePutClient) CloseAndRecv() (*bytestream.WriteResponse, error) {
 	return m, nil
 }
 
+func (c *kVStorageClient) Delete(ctx context.Context, in *bytestream.ReadRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
+	out := new(DeleteResponse)
+	err := c.cc.Invoke(ctx, "/kv_storage.KVStorage/Delete", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // KVStorageServer is the server API for KVStorage service.
 // All implementations must embed UnimplementedKVStorageServer
 // for forward compatibility
 type KVStorageServer interface {
 	Get(*bytestream.ReadRequest, KVStorage_GetServer) error
 	Put(KVStorage_PutServer) error
+	Delete(context.Context, *bytestream.ReadRequest) (*DeleteResponse, error)
 	mustEmbedUnimplementedKVStorageServer()
 }
 
@@ -119,6 +130,9 @@ func (UnimplementedKVStorageServer) Get(*bytestream.ReadRequest, KVStorage_GetSe
 }
 func (UnimplementedKVStorageServer) Put(KVStorage_PutServer) error {
 	return status.Errorf(codes.Unimplemented, "method Put not implemented")
+}
+func (UnimplementedKVStorageServer) Delete(context.Context, *bytestream.ReadRequest) (*DeleteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
 }
 func (UnimplementedKVStorageServer) mustEmbedUnimplementedKVStorageServer() {}
 
@@ -180,13 +194,36 @@ func (x *kVStoragePutServer) Recv() (*bytestream.WriteRequest, error) {
 	return m, nil
 }
 
+func _KVStorage_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(bytestream.ReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStorageServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/kv_storage.KVStorage/Delete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStorageServer).Delete(ctx, req.(*bytestream.ReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // KVStorage_ServiceDesc is the grpc.ServiceDesc for KVStorage service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var KVStorage_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kv_storage.KVStorage",
 	HandlerType: (*KVStorageServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Delete",
+			Handler:    _KVStorage_Delete_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Get",

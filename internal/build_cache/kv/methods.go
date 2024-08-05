@@ -96,6 +96,30 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	}, nil
 }
 
+func (c *Client) Delete(ctx context.Context, name string) error {
+	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
+
+	md := metadata.Pairs(
+		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
+		"x-flare-buildtool", "xcode")
+	if c.authConfig.WorkspaceID != "" {
+		md.Append("x-org-id", c.authConfig.WorkspaceID)
+	}
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	readReq := &bytestream.ReadRequest{
+		ResourceName: resourceName,
+		ReadOffset:   0,
+		ReadLimit:    0,
+	}
+	_, err := c.bitriseKVClient.Delete(ctx, readReq)
+	if err != nil {
+		return fmt.Errorf("initiate delete: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),

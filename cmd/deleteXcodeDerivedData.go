@@ -6,9 +6,15 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"context"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"strings"
+	"time"
 )
 
 // nolint: gochecknoglobals
@@ -26,8 +32,9 @@ var deleteXcodeDerivedDataCmd = &cobra.Command{
 
 		logger.Infof("(i) Checking parameters")
 		cacheKey, _ := cmd.Flags().GetString("key")
+		empty, _ := cmd.Flags().GetBool("empty")
 
-		if err := deleteXcodeDerivedDataCmdFn(cacheKey, logger, os.Getenv); err != nil {
+		if err := deleteXcodeDerivedDataCmdFn(cacheKey, empty, logger, os.Getenv); err != nil {
 			return fmt.Errorf("delete Xcode DerivedData into Bitrise Build Cache: %w", err)
 		}
 
@@ -41,20 +48,24 @@ func init() {
 	rootCmd.AddCommand(deleteXcodeDerivedDataCmd)
 
 	deleteXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to be delete (set to the Bitrise app's slug and current git branch by default)")
+	deleteXcodeDerivedDataCmd.Flags().Bool("empty", false, "If true, upload an empty metadata")
 }
 
-func deleteXcodeDerivedDataCmdFn(cacheKey string, logger log.Logger, envProvider func(string) string) error {
+func deleteXcodeDerivedDataCmdFn(providedCacheKey string, uploadEmpty bool, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environments: %w", err)
 	}
 
-	if cacheKey == "" {
+	var cacheKey string
+	if providedCacheKey == "" {
 		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
 		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
 			return fmt.Errorf("get cache key: %w", err)
 		}
+	} else {
+		cacheKey = providedCacheKey
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
@@ -63,36 +74,90 @@ func deleteXcodeDerivedDataCmdFn(cacheKey string, logger log.Logger, envProvider
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	logger.TInfof("Creating empty cache archive")
-	var cacheArchivePath string
-	if cacheArchivePath, err = createEmptyCacheArchive(logger); err != nil {
-		return fmt.Errorf("create empty cache archive: %w", err)
+	if !uploadEmpty {
+		return deleteCacheKey(providedCacheKey, cacheKey, envProvider, kvClient, logger)
 	}
 
-	logger.TInfof("Uploading empty cache archive %s for key %s", cacheArchivePath, cacheKey)
-	if err := xcode.UploadFileToBuildCache(cacheArchivePath, cacheKey, kvClient, logger); err != nil {
-		return fmt.Errorf("upload cache archive: %w", err)
+	return uploadEmptyMetadata(providedCacheKey, cacheKey, envProvider, kvClient, logger)
+}
+
+func uploadEmptyMetadata(providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
+	logger.TInfof("Saving empty metadata file %s", CacheMetadataPath)
+	_, err := xcode.SaveMetadata(&xcode.Metadata{
+		ProjectFiles:         xcode.FileGroupInfo{},
+		DerivedData:          xcode.FileGroupInfo{},
+		XcodeCacheDir:        xcode.FileGroupInfo{},
+		CacheKey:             cacheKey,
+		CreatedAt:            time.Now(),
+		AppID:                envProvider("BITRISE_APP_SLUG"),
+		BuildID:              envProvider("BITRISE_BUILD_SLUG"),
+		GitCommit:            envProvider("BITRISE_GIT_COMMIT"),
+		GitBranch:            envProvider("BITRISE_GIT_BRANCH"),
+		BuildCacheCLIVersion: envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		MetadataVersion:      1,
+	}, CacheMetadataPath, logger)
+	if err != nil {
+		return fmt.Errorf("save metadata: %w", err)
+	}
+
+	mdChecksum, err := xcode.ChecksumOfFile(CacheMetadataPath)
+	mdChecksumReader := strings.NewReader(mdChecksum)
+	if err != nil {
+		return fmt.Errorf("checksum of metadata file: %w", err)
+	}
+
+	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", CacheMetadataPath, mdChecksum, cacheKey)
+	if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
+	}
+
+	logger.TInfof("Uploading metadata content of %s for key %s", CacheMetadataPath, mdChecksum)
+	if err := xcode.UploadFileToBuildCache(CacheMetadataPath, mdChecksum, client, logger); err != nil {
+		return fmt.Errorf("upload metadata content to build cache: %w", err)
+	}
+
+	if providedCacheKey == "" {
+		fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		if err != nil {
+			logger.Warnf("Failed to get fallback cache key: %s", err)
+		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
+			cacheKey = fallbackCacheKey
+			mdChecksumReader = strings.NewReader(mdChecksum) // reset reader
+			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", CacheMetadataPath, mdChecksum, cacheKey)
+			if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+				return fmt.Errorf("upload metadata checksum to build cache: %w", err)
+			}
+		}
 	}
 
 	return nil
 }
 
-func createEmptyCacheArchive(logger log.Logger) (string, error) {
-	emptyDir, err := os.MkdirTemp("", "empty-folder")
+func deleteCacheKey(providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
+	logger.TInfof("Deleting cache key %s", cacheKey)
+	err := client.Delete(context.Background(), cacheKey)
 	if err != nil {
-		return "", fmt.Errorf("create empty folder: %w", err)
-	}
-	defer os.RemoveAll(emptyDir)
-
-	var emptyMetadata xcode.Metadata
-	if _, err := xcode.SaveMetadata(&emptyMetadata, CacheMetadataPath, logger); err != nil {
-		return "", fmt.Errorf("save metadata: %w", err)
+		st, ok := status.FromError(err)
+		if !ok || st.Code() != codes.NotFound {
+			return fmt.Errorf("delete cache key: %w", err)
+		}
 	}
 
-	cacheArchivePath := "bitrise-dd-cache/empty-dd.tar.zst"
-	if err := xcode.CreateCacheArchive(cacheArchivePath, emptyDir, CacheMetadataPath, logger); err != nil {
-		return "", fmt.Errorf("create cache archive: %w", err)
+	if providedCacheKey == "" {
+		fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		if err != nil {
+			logger.Warnf("Failed to get fallback cache key: %s", err)
+		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
+			cacheKey = fallbackCacheKey
+			logger.TInfof("Deleting fallback cache key %s", cacheKey)
+			if err := client.Delete(context.Background(), cacheKey); err != nil {
+				st, ok := status.FromError(err)
+				if !ok || st.Code() != codes.NotFound {
+					return fmt.Errorf("delete cache key: %w", err)
+				}
+			}
+		}
 	}
 
-	return cacheArchivePath, nil
+	return nil
 }
