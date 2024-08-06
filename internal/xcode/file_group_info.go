@@ -36,10 +36,35 @@ type FileInfo struct {
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
+type fileGroupInfoCollector struct {
+	Files           []*FileInfo
+	Dirs            []*DirectoryInfo
+	LargestFileSize int64
+	mu              sync.Mutex
+}
+
+func (mc *fileGroupInfoCollector) AddFile(fileInfo *FileInfo) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	mc.Files = append(mc.Files, fileInfo)
+	if fileInfo.Size > mc.LargestFileSize {
+		mc.LargestFileSize = fileInfo.Size
+	}
+}
+
+func (mc *fileGroupInfoCollector) AddDir(dirInfo *DirectoryInfo) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	mc.Dirs = append(mc.Dirs, dirInfo)
+}
+
 func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes bool, logger log.Logger) (FileGroupInfo, error) {
 	var dd FileGroupInfo
 
-	mc := NewMetadataCollector(logger)
+	fgi := fileGroupInfoCollector{
+		Files: make([]*FileInfo, 0),
+		Dirs:  make([]*DirectoryInfo, 0),
+	}
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, 10) // Limit parallelization
 
@@ -55,7 +80,7 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
-			if err := collectMetadata(path, d, mc, collectAttributes, rootDir, logger); err != nil {
+			if err := collectFileMetadata(path, d, &fgi, collectAttributes, rootDir, logger); err != nil {
 				logger.Errorf("Failed to collect metadata: %s", err)
 			}
 		}(d)
@@ -69,16 +94,16 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 		return FileGroupInfo{}, fmt.Errorf("walk dir: %w", err)
 	}
 
-	dd.Files = mc.Files
-	dd.Directories = mc.Dirs
+	dd.Files = fgi.Files
+	dd.Directories = fgi.Dirs
 
 	logger.Infof("(i) Collected %d files and %d directories ", len(dd.Files), len(dd.Directories))
-	logger.Debugf("(i) Largest processed file size: %s", humanize.Bytes(uint64(mc.LargestFileSize)))
+	logger.Debugf("(i) Largest processed file size: %s", humanize.Bytes(uint64(fgi.LargestFileSize)))
 
 	return dd, nil
 }
 
-func collectMetadata(path string, d fs.DirEntry, mc *MetadataCollector, collectAttributes bool, rootDir string, logger log.Logger) error {
+func collectFileMetadata(path string, d fs.DirEntry, fgi *fileGroupInfoCollector, collectAttributes bool, rootDir string, logger log.Logger) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("get absolute path: %w", err)
@@ -89,7 +114,7 @@ func collectMetadata(path string, d fs.DirEntry, mc *MetadataCollector, collectA
 	}
 
 	if d.IsDir() {
-		mc.AddDir(&DirectoryInfo{
+		fgi.AddDir(&DirectoryInfo{
 			Path:    absPath,
 			ModTime: inf.ModTime(),
 		})
@@ -132,7 +157,7 @@ func collectMetadata(path string, d fs.DirEntry, mc *MetadataCollector, collectA
 		}
 	}
 
-	mc.AddFile(&FileInfo{
+	fgi.AddFile(&FileInfo{
 		Path:       savedPath,
 		Size:       inf.Size(),
 		Hash:       hash,
