@@ -14,6 +14,7 @@ import (
 	"errors"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"sync/atomic"
 )
 
 type DownloadFilesStats struct {
@@ -39,12 +40,12 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 	logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
 
-	stats := DownloadFilesStats{
-		FilesToBeDownloaded: len(dd.Files),
-	}
+	var filesDownloaded atomic.Int32
+	var filesMissing atomic.Int32
+	var filesFailedToDownload atomic.Int32
+	var downloadSize atomic.Int64
 
 	var wg sync.WaitGroup
-	var mutex sync.Mutex
 	semaphore := make(chan struct{}, 20) // Limit parallelization
 	for _, file := range dd.Files {
 		wg.Add(1)
@@ -58,13 +59,8 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
 				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
 				if errors.Is(err, ErrCacheNotFound) {
-					logger.Infof("cache entry not found for file %s (%s)", file.Path, file.Hash)
-
-					stats.FilesMissing++
-
-					return nil, true
-				}
-				if err != nil {
+					return err, true
+				} else if err != nil {
 					return fmt.Errorf("download file: %w", err), false
 				}
 
@@ -75,28 +71,37 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 				return nil, false
 			})
 
-			mutex.Lock()
-			if err != nil {
+			if errors.Is(err, ErrCacheNotFound) {
+				logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
+
+				filesMissing.Add(1)
+			} else if err != nil {
 				logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 
-				stats.FilesFailedToDownload++
+				filesFailedToDownload.Add(1)
 			} else {
-				stats.FilesDownloaded++
-				stats.DownloadSize += file.Size
-				if file.Size > stats.LargestFileSize {
-					stats.LargestFileSize = file.Size
-				}
+				filesDownloaded.Add(1)
+				downloadSize.Add(file.Size)
 			}
-			mutex.Unlock()
 		}(file)
 	}
 
 	wg.Wait()
 
-	logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files", stats.FilesDownloaded, humanize.Bytes(uint64(stats.DownloadSize)), stats.FilesMissing)
+	logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load())
 
-	if stats.FilesFailedToDownload > 0 {
-		return DownloadFilesStats{}, fmt.Errorf("failed to download some files")
+	stats := DownloadFilesStats{
+		FilesToBeDownloaded:   len(dd.Files),
+		FilesDownloaded:       int(filesDownloaded.Load()),
+		FilesMissing:          int(filesMissing.Load()),
+		FilesFailedToDownload: int(filesFailedToDownload.Load()),
+		DownloadSize:          downloadSize.Load(),
+		LargestFileSize:       largestFileSize,
+	}
+	logger.Infof("Download stats: %+v", stats)
+
+	if filesFailedToDownload.Load() > 0 {
+		return stats, fmt.Errorf("failed to download some files")
 	}
 
 	return stats, nil

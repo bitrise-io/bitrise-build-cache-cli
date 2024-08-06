@@ -87,7 +87,7 @@ func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, 
 func (t *DefaultStepAnalyticsTracker) LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats) {
 	properties := t.propertiesWithCLIVersion().Merge(analytics.Properties{
 		"duration_ms":             duration.Milliseconds(),
-		"files_to_download":       stats.FilesFailedToDownload,
+		"files_to_download":       stats.FilesToBeDownloaded,
 		"files_downloaded":        stats.FilesDownloaded,
 		"files_missing":           stats.FilesMissing,
 		"files_failed":            stats.FilesFailedToDownload,

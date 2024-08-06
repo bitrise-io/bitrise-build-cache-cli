@@ -108,12 +108,11 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 
 	logger.TInfof("Downloading DerivedData files")
 	stats, err := xcode.DownloadCacheFilesFromBuildCache(metadata.DerivedData, kvClient, logger)
+	ddDownloadedT := time.Now()
+	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	if err != nil {
 		return fmt.Errorf("download DerivedData files: %w", err)
 	}
-
-	ddDownloadedT := time.Now()
-	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 
 	logger.TInfof("Restoring DerivedData directory metadata")
 	if err := xcode.RestoreDirectoryInfos(metadata.DerivedData.Directories, "", logger); err != nil {
