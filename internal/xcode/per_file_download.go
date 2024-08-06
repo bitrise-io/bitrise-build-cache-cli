@@ -100,7 +100,7 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 	}
 	logger.Debugf("Download stats: %+v", stats)
 
-	if filesFailedToDownload.Load() > 0 {
+	if filesFailedToDownload.Load() > 0 || filesMissing.Load() > 0 {
 		return stats, fmt.Errorf("failed to download some files")
 	}
 
