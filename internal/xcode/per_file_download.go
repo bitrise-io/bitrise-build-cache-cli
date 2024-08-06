@@ -98,7 +98,7 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 		DownloadSize:          downloadSize.Load(),
 		LargestFileSize:       largestFileSize,
 	}
-	logger.Infof("Download stats: %+v", stats)
+	logger.Debugf("Download stats: %+v", stats)
 
 	if filesFailedToDownload.Load() > 0 {
 		return stats, fmt.Errorf("failed to download some files")
