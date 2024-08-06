@@ -22,9 +22,7 @@ type UploadFilesStats struct {
 	LargestFileSize     int64
 }
 
-func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
-	ctx, _ := context.WithCancel(context.Background())
-	// TODO context cancellation
+func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
 	missingBlobs, err := findMissingBlobs(ctx, dd, kvClient, logger)
 	if err != nil {
 		return UploadFilesStats{}, fmt.Errorf("failed to check for missing blobs: %w", err)

@@ -18,20 +18,14 @@ import (
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
-func DownloadFileFromBuildCache(fileName, key string, kvClient *kv.Client, logger log.Logger) error {
+func DownloadFileFromBuildCache(ctx context.Context, fileName, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", fileName)
-
-	ctx, _ := context.WithCancel(context.Background())
-	// TODO context cancellation
 
 	return downloadFile(ctx, kvClient, fileName, key, 0)
 }
 
-func DownloadStreamFromBuildCache(destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
+func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", key)
-
-	ctx, _ := context.WithCancel(context.Background())
-	// TODO context cancellation
 
 	return downloadStream(ctx, destination, kvClient, key)
 }

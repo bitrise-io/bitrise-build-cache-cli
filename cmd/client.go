@@ -10,7 +10,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func createKVClient(authConfig common.CacheAuthConfig, envProvider common.EnvProviderFunc, logger log.Logger) (*kv.Client, error) {
+func createKVClient(ctx context.Context, authConfig common.CacheAuthConfig, envProvider common.EnvProviderFunc, logger log.Logger) (*kv.Client, error) {
 	endpointURL := common.SelectEndpointURL("", envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
@@ -23,7 +23,6 @@ func createKVClient(authConfig common.CacheAuthConfig, envProvider common.EnvPro
 	}
 	logger.Debugf("Build Cache host: %s", buildCacheHost)
 
-	ctx := context.Background()
 	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
 		UseInsecure: insecureGRPC,
 		Host:        buildCacheHost,

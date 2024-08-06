@@ -26,16 +26,13 @@ type DownloadFilesStats struct {
 	LargestFileSize       int64
 }
 
-func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (DownloadFilesStats, error) {
+func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {
 			largestFileSize = file.Size
 		}
 	}
-
-	ctx, _ := context.WithCancel(context.Background())
-	// TODO context cancellation
 
 	logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))

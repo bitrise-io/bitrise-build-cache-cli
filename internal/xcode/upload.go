@@ -15,7 +15,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func UploadFileToBuildCache(filePath, key string, kvClient *kv.Client, logger log.Logger) error {
+func UploadFileToBuildCache(ctx context.Context, filePath, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Uploading %s", filePath)
 
 	checksum, err := ChecksumOfFile(filePath)
@@ -23,7 +23,7 @@ func UploadFileToBuildCache(filePath, key string, kvClient *kv.Client, logger lo
 		return fmt.Errorf("checksum of %s: %w", filePath, err)
 	}
 
-	err = uploadToBuildCache(kvClient, logger, func(ctx context.Context, client *kv.Client) error {
+	err = uploadToBuildCache(ctx, kvClient, logger, func(ctx context.Context, client *kv.Client) error {
 		fileSize, err := uploadFile(ctx, client, filePath, key, checksum, logger)
 		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
 
@@ -37,7 +37,7 @@ func UploadFileToBuildCache(filePath, key string, kvClient *kv.Client, logger lo
 	return nil
 }
 
-func UploadStreamToBuildCache(source io.Reader, key string, size int64, kvClient *kv.Client, logger log.Logger) error {
+func UploadStreamToBuildCache(ctx context.Context, source io.Reader, key string, size int64, kvClient *kv.Client, logger log.Logger) error {
 	// calculate hash from source stream first and clone it to be able to read it again for the upload
 	var sourceBuf bytes.Buffer
 	teeSource := io.TeeReader(source, &sourceBuf)
@@ -46,7 +46,7 @@ func UploadStreamToBuildCache(source io.Reader, key string, size int64, kvClient
 		return fmt.Errorf("checksum: %w", err)
 	}
 
-	if err := uploadToBuildCache(kvClient, logger, func(ctx context.Context, client *kv.Client) error {
+	if err := uploadToBuildCache(ctx, kvClient, logger, func(ctx context.Context, client *kv.Client) error {
 		return uploadStream(ctx, client, &sourceBuf, key, checksum, size, logger)
 	}); err != nil {
 		return fmt.Errorf("upload stream: %w", err)
@@ -56,15 +56,14 @@ func UploadStreamToBuildCache(source io.Reader, key string, size int64, kvClient
 }
 
 // nolint: funlen
-func uploadToBuildCache(client *kv.Client, logger log.Logger, upload func(ctx context.Context, client *kv.Client) error) error {
+func uploadToBuildCache(ctx context.Context, client *kv.Client, logger log.Logger, upload func(ctx context.Context, client *kv.Client) error) error {
 	const retries = 3
 	err := retry.Times(retries).Wait(5 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt != 0 {
 			logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 		}
 
-		// TODO context cancellation
-		if err := upload(context.Background(), client); err != nil {
+		if err := upload(ctx, client); err != nil {
 			return err, false
 		}
 

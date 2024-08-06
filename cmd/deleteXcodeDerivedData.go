@@ -34,7 +34,7 @@ var deleteXcodeDerivedDataCmd = &cobra.Command{
 		cacheKey, _ := cmd.Flags().GetString("key")
 		empty, _ := cmd.Flags().GetBool("empty")
 
-		if err := deleteXcodeDerivedDataCmdFn(cacheKey, empty, logger, os.Getenv); err != nil {
+		if err := deleteXcodeDerivedDataCmdFn(cmd.Context(), cacheKey, empty, logger, os.Getenv); err != nil {
 			return fmt.Errorf("delete Xcode DerivedData into Bitrise Build Cache: %w", err)
 		}
 
@@ -51,7 +51,7 @@ func init() {
 	deleteXcodeDerivedDataCmd.Flags().Bool("empty", false, "If true, upload an empty metadata")
 }
 
-func deleteXcodeDerivedDataCmdFn(providedCacheKey string, uploadEmpty bool, logger log.Logger, envProvider func(string) string) error {
+func deleteXcodeDerivedDataCmdFn(ctx context.Context, providedCacheKey string, uploadEmpty bool, logger log.Logger, envProvider func(string) string) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -69,19 +69,19 @@ func deleteXcodeDerivedDataCmdFn(providedCacheKey string, uploadEmpty bool, logg
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	kvClient, err := createKVClient(authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
 	if !uploadEmpty {
-		return deleteCacheKey(providedCacheKey, cacheKey, envProvider, kvClient, logger)
+		return deleteCacheKey(ctx, providedCacheKey, cacheKey, envProvider, kvClient, logger)
 	}
 
-	return uploadEmptyMetadata(providedCacheKey, cacheKey, envProvider, kvClient, logger)
+	return uploadEmptyMetadata(ctx, providedCacheKey, cacheKey, envProvider, kvClient, logger)
 }
 
-func uploadEmptyMetadata(providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
+func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
 	logger.TInfof("Saving empty metadata file %s", CacheMetadataPath)
 	_, err := xcode.SaveMetadata(&xcode.Metadata{
 		ProjectFiles:         xcode.FileGroupInfo{},
@@ -107,12 +107,12 @@ func uploadEmptyMetadata(providedCacheKey, cacheKey string, envProvider common.E
 	}
 
 	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", CacheMetadataPath, mdChecksum, cacheKey)
-	if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+	if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
 		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 	}
 
 	logger.TInfof("Uploading metadata content of %s for key %s", CacheMetadataPath, mdChecksum)
-	if err := xcode.UploadFileToBuildCache(CacheMetadataPath, mdChecksum, client, logger); err != nil {
+	if err := xcode.UploadFileToBuildCache(ctx, CacheMetadataPath, mdChecksum, client, logger); err != nil {
 		return fmt.Errorf("upload metadata content to build cache: %w", err)
 	}
 
@@ -124,7 +124,7 @@ func uploadEmptyMetadata(providedCacheKey, cacheKey string, envProvider common.E
 			cacheKey = fallbackCacheKey
 			mdChecksumReader = strings.NewReader(mdChecksum) // reset reader
 			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", CacheMetadataPath, mdChecksum, cacheKey)
-			if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+			if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
 				return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 			}
 		}
@@ -133,9 +133,9 @@ func uploadEmptyMetadata(providedCacheKey, cacheKey string, envProvider common.E
 	return nil
 }
 
-func deleteCacheKey(providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
+func deleteCacheKey(ctx context.Context, providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
 	logger.TInfof("Deleting cache key %s", cacheKey)
-	err := client.Delete(context.Background(), cacheKey)
+	err := client.Delete(ctx, cacheKey)
 	if err != nil {
 		st, ok := status.FromError(err)
 		if !ok || st.Code() != codes.NotFound {
@@ -150,7 +150,7 @@ func deleteCacheKey(providedCacheKey, cacheKey string, envProvider common.EnvPro
 		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
 			cacheKey = fallbackCacheKey
 			logger.TInfof("Deleting fallback cache key %s", cacheKey)
-			if err := client.Delete(context.Background(), cacheKey); err != nil {
+			if err := client.Delete(ctx, cacheKey); err != nil {
 				st, ok := status.FromError(err)
 				if !ok || st.Code() != codes.NotFound {
 					return fmt.Errorf("delete cache key: %w", err)
