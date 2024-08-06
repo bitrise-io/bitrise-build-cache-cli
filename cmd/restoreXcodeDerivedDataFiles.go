@@ -111,6 +111,9 @@ func restoreXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedC
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	if err != nil {
+		// To prevent the build from failing
+		xcode.DeleteFileGroup(metadata.DerivedData, logger)
+
 		return fmt.Errorf("download DerivedData files: %w", err)
 	}
 

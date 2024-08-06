@@ -106,3 +106,11 @@ func DownloadCacheFilesFromBuildCache(dd FileGroupInfo, kvClient *kv.Client, log
 
 	return stats, nil
 }
+
+func DeleteFileGroup(fgi FileGroupInfo, logger log.Logger) {
+	for _, file := range fgi.Files {
+		if err := os.Remove(file.Path); err != nil {
+			logger.Errorf("Failed to remove file %s: %s", file.Path, err)
+		}
+	}
+}
