@@ -96,7 +96,7 @@ func UploadCacheFilesToBuildCache(dd FileGroupInfo, kvClient *kv.Client, logger 
 	logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(totalSize)), uploadCount)
 
 	if failedUpload {
-		return UploadFilesStats{}, fmt.Errorf("failed to upload some files")
+		return stats, fmt.Errorf("failed to upload some files")
 	}
 
 	return stats, nil

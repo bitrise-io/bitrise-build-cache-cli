@@ -128,12 +128,12 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 
 	logger.TInfof("Uploading DerivedData files")
 	ddUploadStats, err := xcode.UploadCacheFilesToBuildCache(metadata.DerivedData, kvClient, logger)
+	ddUploadedT := time.Now()
+	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
+
 	if err != nil {
 		return fmt.Errorf("upload derived data files to build cache: %w", err)
 	}
-
-	ddUploadedT := time.Now()
-	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
 
 	if xcodeCachePath != "" {
 		logger.TInfof("Uploading Xcode cache files")
