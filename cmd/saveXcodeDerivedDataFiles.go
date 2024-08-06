@@ -126,6 +126,22 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 		return fmt.Errorf("checksum of metadata file: %w", err)
 	}
 
+	logger.TInfof("Uploading DerivedData files")
+	ddUploadStats, err := xcode.UploadCacheFilesToBuildCache(metadata.DerivedData, kvClient, logger)
+	if err != nil {
+		return fmt.Errorf("upload derived data files to build cache: %w", err)
+	}
+
+	ddUploadedT := time.Now()
+	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
+
+	if xcodeCachePath != "" {
+		logger.TInfof("Uploading Xcode cache files")
+		if _, err := xcode.UploadCacheFilesToBuildCache(metadata.XcodeCacheDir, kvClient, logger); err != nil {
+			return fmt.Errorf("upload xcode cache files to build cache: %w", err)
+		}
+	}
+
 	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", cacheMetadataPath, mdChecksum, cacheKey)
 	if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), kvClient, logger); err != nil {
 		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
@@ -147,22 +163,6 @@ func saveXcodeDerivedDataFilesCmdFn(cacheMetadataPath, projectRoot, providedCach
 			if err := xcode.UploadStreamToBuildCache(mdChecksumReader, cacheKey, mdChecksumReader.Size(), kvClient, logger); err != nil {
 				return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 			}
-		}
-	}
-
-	logger.TInfof("Uploading DerivedData files")
-	ddUploadStats, err := xcode.UploadCacheFilesToBuildCache(metadata.DerivedData, kvClient, logger)
-	if err != nil {
-		return fmt.Errorf("upload derived data files to build cache: %w", err)
-	}
-
-	ddUploadedT := time.Now()
-	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
-
-	if xcodeCachePath != "" {
-		logger.TInfof("Uploading Xcode cache files")
-		if _, err := xcode.UploadCacheFilesToBuildCache(metadata.XcodeCacheDir, kvClient, logger); err != nil {
-			return fmt.Errorf("upload xcode cache files to build cache: %w", err)
 		}
 	}
 
