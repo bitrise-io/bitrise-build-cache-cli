@@ -196,3 +196,72 @@ func setAttributes(path string, attributes map[string]string) error {
 
 	return nil
 }
+
+func restoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
+	var path string
+	if filepath.IsAbs(fi.Path) {
+		path = fi.Path
+	} else {
+		path = filepath.Join(rootDir, fi.Path)
+	}
+
+	// Skip if file doesn't exist
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		logger.Debugf("File %s doesn't exist", fi.Path)
+
+		return false
+	}
+
+	h, err := ChecksumOfFile(path)
+	if err != nil {
+		logger.Infof("Error hashing file %s: %v", fi.Path, err)
+
+		return false
+	}
+
+	if h != fi.Hash {
+		return false
+	}
+
+	if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
+		logger.Debugf("Error setting modification time for %s: %v", fi.Path, err)
+
+		return false
+	}
+
+	if err = os.Chmod(fi.Path, fi.Mode); err != nil {
+		logger.Debugf("Error setting file mode time for %s: %v", fi.Path, err)
+
+		return false
+	}
+
+	if len(fi.Attributes) > 0 {
+		err = setAttributes(fi.Path, fi.Attributes)
+		if err != nil {
+			logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
+
+			return false
+		}
+	}
+
+	return true
+}
+
+func restoreDirectoryInfo(dir DirectoryInfo, rootDir string) error {
+	var path string
+	if filepath.IsAbs(dir.Path) {
+		path = dir.Path
+	} else {
+		path = filepath.Join(rootDir, dir.Path)
+	}
+
+	if err := os.MkdirAll(path, os.ModePerm); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	if err := os.Chtimes(path, dir.ModTime, dir.ModTime); err != nil {
+		return fmt.Errorf("set directory mod time: %w", err)
+	}
+
+	return nil
+}

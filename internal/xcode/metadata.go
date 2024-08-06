@@ -123,19 +123,8 @@ func LoadMetadata(file string) (*Metadata, int64, error) {
 
 func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log.Logger) error {
 	for _, dir := range dirInfos {
-		var path string
-		if filepath.IsAbs(dir.Path) {
-			path = dir.Path
-		} else {
-			path = filepath.Join(rootDir, dir.Path)
-		}
-
-		if err := os.MkdirAll(path, os.ModePerm); err != nil {
-			return fmt.Errorf("create directory: %w", err)
-		}
-
-		if err := os.Chtimes(path, dir.ModTime, dir.ModTime); err != nil {
-			return fmt.Errorf("set directory mod time: %w", err)
+		if err := restoreDirectoryInfo(*dir, rootDir); err != nil {
+			return fmt.Errorf("restoring directory info: %w", err)
 		}
 	}
 
@@ -150,56 +139,22 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 	logger.Infof("(i) %d files' info loaded from cache metadata", len(fileInfos))
 
 	for _, fi := range fileInfos {
-		var path string
-		if filepath.IsAbs(fi.Path) {
-			path = fi.Path
-		} else {
-			path = filepath.Join(rootDir, fi.Path)
+		if restoreFileInfo(*fi, rootDir, logger) {
+			updated++
 		}
-
-		// Skip if file doesn't exist
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			logger.Debugf("File %s doesn't exist", fi.Path)
-
-			continue
-		}
-
-		h, err := ChecksumOfFile(path)
-		if err != nil {
-			logger.Infof("Error hashing file %s: %v", fi.Path, err)
-
-			continue
-		}
-
-		if h != fi.Hash {
-			continue
-		}
-
-		if err := os.Chtimes(path, fi.ModTime, fi.ModTime); err != nil {
-			logger.Debugf("Error setting modification time for %s: %v", fi.Path, err)
-
-			continue
-		}
-
-		if err = os.Chmod(fi.Path, fi.Mode); err != nil {
-			logger.Debugf("Error setting file mode time for %s: %v", fi.Path, err)
-
-			continue
-		}
-
-		if len(fi.Attributes) > 0 {
-			err = setAttributes(fi.Path, fi.Attributes)
-			if err != nil {
-				logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
-
-				continue
-			}
-		}
-
-		updated++
 	}
 
 	logger.Infof("(i) %d files' modification time restored", updated)
 
 	return updated, nil
+}
+
+func DeleteFileGroup(fgi FileGroupInfo, logger log.Logger) {
+	logger.Infof("Deleting %d files", len(fgi.Files))
+
+	for _, file := range fgi.Files {
+		if err := os.Remove(file.Path); err != nil {
+			logger.Infof("Failed to remove file %s: %s", file.Path, err)
+		}
+	}
 }
