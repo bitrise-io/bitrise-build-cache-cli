@@ -13,8 +13,9 @@ import (
 
 	"errors"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"sync/atomic"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type DownloadFilesStats struct {
@@ -68,15 +69,16 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 				return nil, false
 			})
 
-			if errors.Is(err, ErrCacheNotFound) {
+			switch {
+			case errors.Is(err, ErrCacheNotFound):
 				logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
 
 				filesMissing.Add(1)
-			} else if err != nil {
+			case err != nil:
 				logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 
 				filesFailedToDownload.Add(1)
-			} else {
+			default:
 				filesDownloaded.Add(1)
 				downloadSize.Add(file.Size)
 			}
@@ -95,7 +97,13 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 		DownloadSize:          downloadSize.Load(),
 		LargestFileSize:       largestFileSize,
 	}
-	logger.Debugf("Download stats: %+v", stats)
+	logger.Debugf("Download stats:")
+	logger.Debugf("  Files to be downloaded: %d", len(dd.Files))
+	logger.Debugf("  Files downloaded: %d", int(filesDownloaded.Load()))
+	logger.Debugf("  Files missing: %d", int(filesMissing.Load()))
+	logger.Debugf("  Files failed to download: %d", int(filesFailedToDownload.Load()))
+	logger.Debugf("  Download size: %s", humanize.Bytes(uint64(downloadSize.Load())))
+	logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(largestFileSize)))
 
 	if filesFailedToDownload.Load() > 0 || filesMissing.Load() > 0 {
 		return stats, fmt.Errorf("failed to download some files")

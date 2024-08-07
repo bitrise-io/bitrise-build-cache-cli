@@ -2,16 +2,18 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
-	"github.com/bitrise-io/go-utils/v2/log"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const CacheMetadataPath = "dd-metadata.json"

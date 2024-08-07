@@ -19,7 +19,7 @@ func GetCacheKey(envProvider func(string) string, keyParams CacheKeyParams) (str
 
 	if keyParams.IsFallback {
 		return fmt.Sprintf("xcode-cache-metadata-%s", appSlug), nil
-	} else {
-		return fmt.Sprintf("xcode-cache-metadata-%s-%s", appSlug, branch), nil
 	}
+
+	return fmt.Sprintf("xcode-cache-metadata-%s-%s", appSlug, branch), nil
 }

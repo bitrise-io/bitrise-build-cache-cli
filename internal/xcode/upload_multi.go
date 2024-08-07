@@ -15,11 +15,39 @@ import (
 
 type UploadFilesStats struct {
 	FilesToUpload       int
-	FilesUploded        int
+	FilesUploaded       int
 	FilesFailedToUpload int
 	TotalFiles          int
 	UploadSize          int64
 	LargestFileSize     int64
+}
+
+func uploadCacheFileToBuildCache(ctx context.Context, kvClient *kv.Client, file *FileInfo, mutex *sync.Mutex, stats *UploadFilesStats, logger log.Logger) {
+	const retries = 2
+	err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt != 0 {
+			logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
+		}
+		_, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
+		if err != nil {
+			return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
+		}
+
+		return nil, false
+	})
+
+	mutex.Lock()
+	if err != nil {
+		logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
+		stats.FilesFailedToUpload++
+	} else {
+		stats.FilesUploaded++
+		stats.UploadSize += file.Size
+		if file.Size > stats.LargestFileSize {
+			stats.LargestFileSize = file.Size
+		}
+	}
+	mutex.Unlock()
 }
 
 func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
@@ -35,65 +63,37 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 
 	logger.TInfof("(i) Uploading missing blobs...")
 
-	var totalSize int64
-	uploadCount := 0
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
 	semaphore := make(chan struct{}, 20) // Limit parallelization
-	failedUpload := false
 	for _, file := range dd.Files {
 		mutex.Lock()
 		_, ok := missingBlobs[file.Hash]
 		mutex.Unlock()
-		if ok {
-			wg.Add(1)
-			semaphore <- struct{}{} // Block if there are too many goroutines are running
-
-			go func(file *FileInfo) {
-				defer wg.Done()
-				defer func() { <-semaphore }() // Release a slot in the semaphore
-
-				const retries = 2
-				err = retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
-					if attempt != 0 {
-						logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
-					}
-					_, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
-					if err != nil {
-						return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
-					}
-
-					return nil, false
-				})
-
-				mutex.Lock()
-				if err != nil {
-					failedUpload = true
-					logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
-					stats.FilesFailedToUpload++
-				} else {
-					// Delete the uploded blob from the map of the missing blobs
-					delete(missingBlobs, file.Hash)
-
-					totalSize += file.Size
-					uploadCount++
-
-					stats.FilesUploded++
-					stats.UploadSize += file.Size
-					if file.Size > stats.LargestFileSize {
-						stats.LargestFileSize = file.Size
-					}
-				}
-				mutex.Unlock()
-			}(file)
+		if !ok {
+			continue
 		}
+
+		wg.Add(1)
+		semaphore <- struct{}{} // Block if there are too many goroutines are running
+
+		go func(file *FileInfo) {
+			defer wg.Done()
+			defer func() { <-semaphore }() // Release a slot in the semaphore
+
+			uploadCacheFileToBuildCache(ctx, kvClient, file, &mutex, &stats, logger)
+
+			mutex.Lock()
+			delete(missingBlobs, file.Hash)
+			mutex.Unlock()
+		}(file)
 	}
 
 	wg.Wait()
 
-	logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(totalSize)), uploadCount)
+	logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(stats.UploadSize)), stats.FilesUploaded)
 
-	if failedUpload {
+	if stats.FilesFailedToUpload > 0 {
 		return stats, fmt.Errorf("failed to upload some files")
 	}
 

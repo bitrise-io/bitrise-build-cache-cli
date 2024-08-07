@@ -54,7 +54,7 @@ func (t *DefaultStepAnalyticsTracker) LogDerivedDataUploaded(duration time.Durat
 	properties := t.propertiesWithCLIVersion().Merge(analytics.Properties{
 		"duration_ms":             duration.Milliseconds(),
 		"files_to_upload":         stats.FilesToUpload,
-		"files_uploaded":          stats.FilesUploded,
+		"files_uploaded":          stats.FilesUploaded,
 		"files_failed":            stats.FilesFailedToUpload,
 		"total_files":             stats.TotalFiles,
 		"upload_size_bytes":       stats.UploadSize,

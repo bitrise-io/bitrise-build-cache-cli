@@ -7,14 +7,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"context"
+	"strings"
+	"time"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"strings"
-	"time"
 )
 
 // nolint: gochecknoglobals
@@ -143,19 +144,27 @@ func deleteCacheKey(ctx context.Context, providedCacheKey, cacheKey string, envP
 		}
 	}
 
-	if providedCacheKey == "" {
-		fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
-		if err != nil {
-			logger.Warnf("Failed to get fallback cache key: %s", err)
-		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
-			cacheKey = fallbackCacheKey
-			logger.TInfof("Deleting fallback cache key %s", cacheKey)
-			if err := client.Delete(ctx, cacheKey); err != nil {
-				st, ok := status.FromError(err)
-				if !ok || st.Code() != codes.NotFound {
-					return fmt.Errorf("delete cache key: %w", err)
-				}
-			}
+	if providedCacheKey != "" {
+		return nil
+	}
+
+	fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+	if err != nil {
+		logger.Warnf("Failed to get fallback cache key: %s", err)
+
+		return nil
+	}
+
+	if fallbackCacheKey == "" || cacheKey == fallbackCacheKey {
+		return nil
+	}
+
+	cacheKey = fallbackCacheKey
+	logger.TInfof("Deleting fallback cache key %s", cacheKey)
+	if err := client.Delete(ctx, cacheKey); err != nil {
+		st, ok := status.FromError(err)
+		if !ok || st.Code() != codes.NotFound {
+			return fmt.Errorf("delete cache key: %w", err)
 		}
 	}
 

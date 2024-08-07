@@ -1,12 +1,15 @@
 package cmd
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"context"
 
 	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -25,6 +28,7 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
 
 		mockTracker := &xcodeMocks.StepAnalyticsTrackerMock{}
+
 		return mockLogger, mockTracker
 	}
 
@@ -32,7 +36,7 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 	t.Run("No envs specified", func(t *testing.T) {
 		mockLogger, mockTracker := prep()
 		envVars := createEnvProvider(map[string]string{})
-		err := saveXcodeDerivedDataFilesCmdFn("", "", ".", "some-key", "", mockLogger, mockTracker, time.Now(), envVars)
+		err := saveXcodeDerivedDataFilesCmdFn(context.Background(), "", "", ".", "some-key", "", mockLogger, mockTracker, time.Now(), envVars)
 
 		// then
 		require.EqualError(t, err, "read auth config from environments: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
@@ -43,7 +47,7 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
 		})
-		err := saveXcodeDerivedDataFilesCmdFn("", "", "", "", "", mockLogger, mockTracker, time.Now(), envVars)
+		err := saveXcodeDerivedDataFilesCmdFn(context.Background(), "", "", "", "", "", mockLogger, mockTracker, time.Now(), envVars)
 
 		// then
 		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH env var is not set")
