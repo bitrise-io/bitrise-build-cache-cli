@@ -40,6 +40,7 @@ The gradle.properties file will be created if it doesn't exist.
 If it already exists a "# [start/end] generated-by-bitrise-build-cache" block will be added to the end of the file.
 If the "# [start/end] generated-by-bitrise-build-cache" block is already present in the file then only the block's content will be modified.
 `,
+	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()

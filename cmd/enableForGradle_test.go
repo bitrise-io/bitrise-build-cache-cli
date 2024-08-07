@@ -35,7 +35,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		err := enableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
-		require.EqualError(t, err, "read auth config from environment variables: AuthToken not provided")
+		require.EqualError(t, err, "read auth config from environment variables: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
 	})
 
 	t.Run("No envs specified", func(t *testing.T) {

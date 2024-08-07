@@ -14,7 +14,7 @@ func createEnvProvider(envs map[string]string) func(string) string {
 func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 	t.Run("No envs provided", func(t *testing.T) {
 		authToken, err := ReadAuthConfigFromEnvironments(createEnvProvider(map[string]string{}))
-		require.EqualError(t, err, "AuthToken not provided")
+		require.EqualError(t, err, "BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
 		assert.Equal(t, CacheAuthConfig{}, authToken)
 	})
 
@@ -30,7 +30,7 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 		authToken, err := ReadAuthConfigFromEnvironments(createEnvProvider(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN": "BuildCacheAuthTokenValue",
 		}))
-		require.EqualError(t, err, "WorkspaceID not provided")
+		require.EqualError(t, err, "BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
 		assert.Equal(t, CacheAuthConfig{}, authToken)
 	})
 

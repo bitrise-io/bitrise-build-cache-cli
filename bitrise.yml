@@ -40,6 +40,9 @@ workflows:
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
     - script:
         title: Goreleaser (create binaries + publish to GH)
+        deps:          
+          brew:
+          - name: goreleaser
         inputs:
         - content: |
             #!/usr/bin/env bash
@@ -47,6 +50,10 @@ workflows:
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
+    meta:
+      bitrise.io:
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
   test:
     steps:
     - activate-ssh-key@4:

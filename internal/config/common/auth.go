@@ -3,8 +3,8 @@ package common
 import "errors"
 
 var (
-	errAuthTokenNotProvided   = errors.New("AuthToken not provided")
-	errWorkspaceIDNotProvided = errors.New("WorkspaceID not provided")
+	errAuthTokenNotProvided   = errors.New("BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
+	errWorkspaceIDNotProvided = errors.New("BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
 )
 
 // CacheAuthConfig holds the auth config for the cache.
