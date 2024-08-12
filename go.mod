@@ -3,19 +3,19 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.22.3
 
 require (
-	cloud.google.com/go/longrunning v0.5.10
+	cloud.google.com/go/longrunning v0.5.12
 	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33
-	github.com/bitrise-io/go-utils v1.0.1
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.21
+	github.com/bitrise-io/go-utils v1.0.13
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
 	github.com/dustin/go-humanize v1.0.1
 	github.com/pkg/xattr v0.4.10
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240701130421-f6361c86f094
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240610135401-a8a62080eff3
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240708141625-4ad9e859172b
-	google.golang.org/grpc v1.64.1
+	google.golang.org/genproto/googleapis/api v0.0.0-20240808171019-573a1156607a
+	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240808171019-573a1156607a
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240808171019-573a1156607a
+	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
 )
 
@@ -23,7 +23,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/gofrs/uuid v4.3.1+incompatible // indirect
+	github.com/gofrs/uuid/v5 v5.2.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
