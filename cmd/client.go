@@ -7,12 +7,17 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 func createKVClient(ctx context.Context, authConfig common.CacheAuthConfig, envProvider common.EnvProviderFunc, logger log.Logger) (*kv.Client, error) {
 	endpointURL := common.SelectEndpointURL("", envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
+
+	if endpointURL == consts.EndpointURLATL1 || endpointURL == consts.EndpointURLLAS1 {
+		return nil, fmt.Errorf("the selected endpoint %s is not supported", endpointURL)
+	}
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(endpointURL)
 	if err != nil {
