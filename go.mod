@@ -3,7 +3,7 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.22.3
 
 require (
-	cloud.google.com/go/longrunning v0.5.12
+	cloud.google.com/go/longrunning v0.6.0
 	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33
 	github.com/bitrise-io/go-utils v1.0.13
@@ -12,9 +12,9 @@ require (
 	github.com/pkg/xattr v0.4.10
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240808171019-573a1156607a
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240808171019-573a1156607a
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240808171019-573a1156607a
+	google.golang.org/genproto/googleapis/api v0.0.0-20240820151423-278611b39280
+	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240820151423-278611b39280
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240820151423-278611b39280
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
 )
@@ -34,9 +34,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	golang.org/x/net v0.27.0 // indirect
-	golang.org/x/sys v0.22.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/net v0.28.0 // indirect
+	golang.org/x/sys v0.24.0 // indirect
+	golang.org/x/text v0.17.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
