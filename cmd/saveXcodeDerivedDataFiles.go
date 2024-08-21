@@ -51,8 +51,10 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		op, cmdError := saveXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv)
 		if op != nil {
-			errStr := cmdError.Error()
-			op.Error = &errStr
+			if cmdError == nil {
+				errStr := cmdError.Error()
+				op.Error = &errStr
+			}
 			op.Duration = int(time.Since(op.StartedAt))
 
 			xaClint, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
