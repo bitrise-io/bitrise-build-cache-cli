@@ -33,7 +33,7 @@ func NewClient(baseURL string, accessToken string, logger log.Logger) (*Client, 
 }
 
 func (c *Client) PutCacheOperation(op *CacheOperation) error {
-	requestURL := fmt.Sprintf("%s/operation/%s", c.baseURL, op.OperationID)
+	requestURL := fmt.Sprintf("%s/operations/%s", c.baseURL, op.OperationID)
 
 	payload, err := json.Marshal(op)
 	if err != nil {
