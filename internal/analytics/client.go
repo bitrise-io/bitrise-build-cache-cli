@@ -52,7 +52,7 @@ func (c *Client) PutCacheOperation(op *CacheOperation) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return unwrapError(resp)
 	}
 
