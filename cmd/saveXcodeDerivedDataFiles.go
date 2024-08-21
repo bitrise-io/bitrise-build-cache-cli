@@ -60,6 +60,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 			if clientErr != nil {
 				logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
 			} else {
+				logger.Debugf("Sending cache operation to Xcode Analytics Service: %v", op)
 				err := xaClint.PutCacheOperation(op)
 				if err != nil {
 					logger.Warnf("Failed to send cache operation to Xcode Analytics Service: %s", err)
