@@ -51,7 +51,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		op, cmdError := saveXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv)
 		if op != nil {
-			if cmdError == nil {
+			if cmdError != nil {
 				errStr := cmdError.Error()
 				op.Error = &errStr
 			}
