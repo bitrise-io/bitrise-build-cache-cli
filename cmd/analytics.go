@@ -31,7 +31,7 @@ func sendCacheOperationAnalytics(op xa.CacheOperation, cmdError error, logger lo
 		logger.Debugf("Sending cache operation to Xcode Analytics Service: %s", string(payload))
 	}
 
-	if err := xaClint.PutCacheOperation(op); err != nil {
+	if err := xaClient.PutCacheOperation(op); err != nil {
 		return fmt.Errorf("failed to send cache operation to Xcode Analytics Service: %w", err)
 	}
 
