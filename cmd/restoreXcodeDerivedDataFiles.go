@@ -9,6 +9,7 @@ import (
 
 	"context"
 
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
@@ -45,9 +46,26 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		defer tracker.Wait()
 		startT := time.Now()
 
-		err := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv)
-		tracker.LogRestoreFinished(time.Since(startT), err)
+		logger.Infof("(i) Check Auth Config")
+		authConfig, err := common.ReadAuthConfigFromEnvironments(os.Getenv)
 		if err != nil {
+			return fmt.Errorf("read auth config from environments: %w", err)
+		}
+
+		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv)
+		if op != nil {
+			if cmdError != nil {
+				errStr := cmdError.Error()
+				op.Error = &errStr
+			}
+
+			if err := sendCacheOperationAnalytics(*op, logger, authConfig); err != nil {
+				logger.Warnf("Failed to send cache operation analytics: %s", err)
+			}
+		}
+
+		tracker.LogRestoreFinished(time.Since(startT), err)
+		if cmdError != nil {
 			return fmt.Errorf("restore Xcode DerivedData from Bitrise Build Cache: %w", err)
 		}
 
@@ -67,29 +85,27 @@ func init() {
 	}
 }
 
-func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
-	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) error {
-	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
-	if err != nil {
-		return fmt.Errorf("read auth config from environments: %w", err)
-	}
-
+func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
+	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) (*xa.CacheOperation, error) {
 	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
 	if err != nil {
-		return fmt.Errorf("create kv client: %w", err)
+		return nil, fmt.Errorf("create kv client: %w", err)
 	}
 
-	cacheKeyType, err := downloadMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
+	cacheKeyType, cacheKey, err := downloadMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
+	op := newCacheOperation(startT, xa.OperationTypeUpload, cacheKey, envProvider)
 	if err != nil {
-		return fmt.Errorf("download cache metadata: %w", err)
+		return op, fmt.Errorf("download cache metadata: %w", err)
 	}
+
+	cacheKeyTypeStr := string(cacheKeyType)
+	op.CacheKeyType = &cacheKeyTypeStr
 
 	logger.TInfof("Loading metadata of the cache archive from %s", cacheMetadataPath)
 	var metadata *xcode.Metadata
 	var metadataSize int64
 	if metadata, metadataSize, err = xcode.LoadMetadata(cacheMetadataPath); err != nil {
-		return fmt.Errorf("load metadata: %w", err)
+		return op, fmt.Errorf("load metadata: %w", err)
 	}
 
 	logCacheMetadata(metadata, logger)
@@ -97,12 +113,12 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, cacheMetadataPath, p
 	logger.TInfof("Restoring metadata of input files")
 	var filesUpdated int
 	if filesUpdated, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
-		return fmt.Errorf("restore modification time: %w", err)
+		return op, fmt.Errorf("restore modification time: %w", err)
 	}
 
 	logger.TInfof("Restoring metadata of input directories")
 	if err := xcode.RestoreDirectoryInfos(metadata.ProjectFiles.Directories, projectRoot, logger); err != nil {
-		return fmt.Errorf("restore metadata of input directories: %w", err)
+		return op, fmt.Errorf("restore metadata of input directories: %w", err)
 	}
 
 	metadataRestoredT := time.Now()
@@ -112,44 +128,45 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, cacheMetadataPath, p
 	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
+	fillCacheOperationWithDownloadStats(op, stats)
 	if err != nil {
 		logger.Infof("Failed to download DerivedData files, clearing")
 		// To prevent the build from failing
 		xcode.DeleteFileGroup(metadata.DerivedData, logger)
 
-		return fmt.Errorf("download DerivedData files: %w", err)
+		return op, fmt.Errorf("download DerivedData files: %w", err)
 	}
 
 	logger.TInfof("Restoring DerivedData directory metadata")
 	if err := xcode.RestoreDirectoryInfos(metadata.DerivedData.Directories, "", logger); err != nil {
-		return fmt.Errorf("restore DerivedData directories: %w", err)
+		return op, fmt.Errorf("restore DerivedData directories: %w", err)
 	}
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
 		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger); err != nil {
-			return fmt.Errorf("download Xcode cache files: %w", err)
+			return op, fmt.Errorf("download Xcode cache files: %w", err)
 		}
 
 		logger.TInfof("Restoring Xcode cache directory metadata")
 		if err := xcode.RestoreDirectoryInfos(metadata.XcodeCacheDir.Directories, "", logger); err != nil {
-			return fmt.Errorf("restore Xcode cache directories: %w", err)
+			return op, fmt.Errorf("restore Xcode cache directories: %w", err)
 		}
 	}
 
-	return nil
+	return op, nil
 }
 
 func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
 	kvClient *kv.Client,
 	logger log.Logger,
-	envProvider func(string) string) (CacheKeyType, error) {
+	envProvider func(string) string) (CacheKeyType, string, error) {
 	var cacheKeyType CacheKeyType = CacheKeyTypeDefault
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
 		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
-			return "", fmt.Errorf("get cache key: %w", err)
+			return "", "", fmt.Errorf("get cache key: %w", err)
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
 	} else {
@@ -161,14 +178,14 @@ func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey s
 	var mdChecksum strings.Builder
 	err = xcode.DownloadStreamFromBuildCache(ctx, &mdChecksum, cacheKey, kvClient, logger)
 	if err != nil && !errors.Is(err, xcode.ErrCacheNotFound) {
-		return "", fmt.Errorf("download cache metadata checksum: %w", err)
+		return cacheKeyType, cacheKey, fmt.Errorf("download cache metadata checksum: %w", err)
 	}
 
 	if errors.Is(err, xcode.ErrCacheNotFound) {
 		cacheKeyType = CacheKeyTypeFallback
 		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
-			return cacheKeyType, errors.New("cache metadata not found in cache")
+			return cacheKeyType, fallbackCacheKey, errors.New("cache metadata not found in cache")
 		}
 
 		cacheKey = fallbackCacheKey
@@ -176,20 +193,20 @@ func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey s
 
 		err = xcode.DownloadStreamFromBuildCache(ctx, &mdChecksum, cacheKey, kvClient, logger)
 		if errors.Is(err, xcode.ErrCacheNotFound) {
-			return cacheKeyType, errors.New("cache metadata not found in cache")
+			return cacheKeyType, cacheKey, errors.New("cache metadata not found in cache")
 		}
 		if err != nil {
-			return cacheKeyType, fmt.Errorf("download cache metadata checksum: %w", err)
+			return cacheKeyType, cacheKey, fmt.Errorf("download cache metadata checksum: %w", err)
 		}
 		logger.Infof("Cache metadata found for fallback key %s", cacheKey)
 	}
 
 	logger.TInfof("Downloading cache metadata content to %s for key %s", cacheMetadataPath, mdChecksum.String())
 	if err := xcode.DownloadFileFromBuildCache(ctx, cacheMetadataPath, mdChecksum.String(), kvClient, logger); err != nil {
-		return "", fmt.Errorf("download cache archive: %w", err)
+		return cacheKeyType, cacheKey, fmt.Errorf("download cache archive: %w", err)
 	}
 
-	return cacheKeyType, nil
+	return cacheKeyType, cacheKey, nil
 }
 
 func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
