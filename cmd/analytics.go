@@ -21,7 +21,7 @@ func sendCacheOperationAnalytics(op *xa.CacheOperation, cmdError error, logger l
 		op.Error = &errStr
 	}
 
-	xaClint, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
+	xaClient, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
 	if clientErr != nil {
 		logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
 	} else {
