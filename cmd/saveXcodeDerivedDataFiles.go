@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -51,29 +49,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		op, cmdError := saveXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv)
 		if op != nil {
-			if cmdError != nil {
-				errStr := cmdError.Error()
-				op.Error = &errStr
-			}
-			op.Duration = int(time.Since(op.StartedAt).Milliseconds())
-
-			xaClint, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
-			if clientErr != nil {
-				logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
-			} else {
-				logger.Debugf("Sending cache operation to Xcode Analytics Service: %v", func() string {
-					payload, err := json.Marshal(op)
-					if err != nil {
-						return fmt.Sprintf("Failed to encode cache operation to JSON: %s", err)
-					}
-
-					return string(payload)
-				})
-				err := xaClint.PutCacheOperation(op)
-				if err != nil {
-					logger.Warnf("Failed to send cache operation to Xcode Analytics Service: %s", err)
-				}
-			}
+			sendCacheOperationAnalytics(op, cmdError, logger, authConfig)
 		}
 
 		tracker.LogSaveFinished(time.Since(startT), err)

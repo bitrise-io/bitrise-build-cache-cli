@@ -1,11 +1,45 @@
 package cmd
 
 import (
-	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
-	"github.com/google/uuid"
+	"encoding/json"
+	"fmt"
 	"time"
+
+	"github.com/google/uuid"
+
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+	"github.com/bitrise-io/go-utils/v2/log"
 )
+
+func sendCacheOperationAnalytics(op *xa.CacheOperation, cmdError error, logger log.Logger, authConfig common.CacheAuthConfig) {
+	op.Duration = int(time.Since(op.StartedAt).Milliseconds())
+
+	if cmdError != nil {
+		errStr := cmdError.Error()
+		op.Error = &errStr
+	}
+
+	xaClint, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
+	if clientErr != nil {
+		logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
+	} else {
+		logger.Debugf("Sending cache operation to Xcode Analytics Service: %v", func() string {
+			payload, err := json.Marshal(op)
+			if err != nil {
+				return fmt.Sprintf("Failed to encode cache operation to JSON: %s", err)
+			}
+
+			return string(payload)
+		})
+		err := xaClint.PutCacheOperation(op)
+		if err != nil {
+			logger.Warnf("Failed to send cache operation to Xcode Analytics Service: %s", err)
+		}
+	}
+}
 
 func newCacheOperation(startT time.Time, operationType, cacheKey string, envProvider func(string) string) *xa.CacheOperation {
 	op := &xa.CacheOperation{
@@ -59,5 +93,16 @@ func fillCacheOperationWithUploadStats(op *xa.CacheOperation, stats xcode.Upload
 		FilesFailed:      stats.FilesFailedToUpload,
 		FilesMissing:     stats.FilesToUpload,
 		TotalFiles:       stats.TotalFiles,
+	}
+}
+
+func fillCacheOperationWithDownloadStats(op *xa.CacheOperation, stats xcode.DownloadFilesStats) {
+	op.TransferSize = stats.DownloadSize
+	op.FileStats = xa.FileStats{
+		FilesToTransfer:  stats.FilesToBeDownloaded,
+		FilesTransferred: stats.FilesDownloaded,
+		FilesFailed:      stats.FilesFailedToDownload,
+		FilesMissing:     stats.FilesMissing,
+		TotalFiles:       stats.FilesToBeDownloaded,
 	}
 }
