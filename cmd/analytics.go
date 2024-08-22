@@ -26,7 +26,7 @@ func sendCacheOperationAnalytics(op *xa.CacheOperation, cmdError error, logger l
 	if clientErr != nil {
 		logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
 	} else {
-		logger.Debugf("Sending cache operation to Xcode Analytics Service: %v", func() string {
+		logger.Debugf("Sending cache operation to Xcode Analytics Service: %s", func() string {
 			payload, err := json.Marshal(op)
 			if err != nil {
 				return fmt.Sprintf("Failed to encode cache operation to JSON: %s", err)
