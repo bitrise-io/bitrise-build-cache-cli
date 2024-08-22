@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,8 +14,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func sendCacheOperationAnalytics(op *xa.CacheOperation, cmdError error, logger log.Logger, authConfig common.CacheAuthConfig) {
-	op.Duration = int(time.Since(op.StartedAt).Milliseconds())
+func sendCacheOperationAnalytics(op xa.CacheOperation, cmdError error, logger log.Logger, authConfig common.CacheAuthConfig) error {
+	op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
 
 	if cmdError != nil {
 		errStr := cmdError.Error()
@@ -23,16 +24,18 @@ func sendCacheOperationAnalytics(op *xa.CacheOperation, cmdError error, logger l
 
 	xaClint, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
 	if clientErr != nil {
-		logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
-	} else {
-		if payload, err := json.Marshal(op); err == nil {
-			logger.Debugf("Sending cache operation to Xcode Analytics Service: %s", string(payload))
-		}
-
-		if err := xaClint.PutCacheOperation(op); err != nil {
-			logger.Warnf("Failed to send cache operation to Xcode Analytics Service: %s", err)
-		}
+		return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
 	}
+
+	if payload, err := json.Marshal(op); err == nil {
+		logger.Debugf("Sending cache operation to Xcode Analytics Service: %s", string(payload))
+	}
+
+	if err := xaClint.PutCacheOperation(op); err != nil {
+		return fmt.Errorf("failed to send cache operation to Xcode Analytics Service: %w", err)
+	}
+
+	return nil
 }
 
 func newCacheOperation(startT time.Time, operationType, cacheKey string, envProvider func(string) string) *xa.CacheOperation {

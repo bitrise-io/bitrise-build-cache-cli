@@ -54,7 +54,9 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv)
 		if op != nil {
-			sendCacheOperationAnalytics(op, cmdError, logger, authConfig)
+			if err := sendCacheOperationAnalytics(*op, cmdError, logger, authConfig); err != nil {
+				logger.Warnf("Failed to send cache operation analytics: %s", err)
+			}
 		}
 
 		tracker.LogRestoreFinished(time.Since(startT), err)
