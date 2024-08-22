@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,16 +25,11 @@ func sendCacheOperationAnalytics(op *xa.CacheOperation, cmdError error, logger l
 	if clientErr != nil {
 		logger.Warnf("Failed to create Xcode Analytics Service client: %s", clientErr)
 	} else {
-		logger.Debugf("Sending cache operation to Xcode Analytics Service: %s", func() string {
-			payload, err := json.Marshal(op)
-			if err != nil {
-				return fmt.Sprintf("Failed to encode cache operation to JSON: %s", err)
-			}
+		if payload, err := json.Marshal(op); err != nil {
+			logger.Debugf("Sending cache operation to Xcode Analytics Service: %s", string(payload))
+		}
 
-			return string(payload)
-		})
-		err := xaClint.PutCacheOperation(op)
-		if err != nil {
+		if err := xaClint.PutCacheOperation(op); err != nil {
 			logger.Warnf("Failed to send cache operation to Xcode Analytics Service: %s", err)
 		}
 	}
