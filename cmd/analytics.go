@@ -14,13 +14,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func sendCacheOperationAnalytics(op xa.CacheOperation, cmdError error, logger log.Logger, authConfig common.CacheAuthConfig) error {
+func sendCacheOperationAnalytics(op xa.CacheOperation, logger log.Logger, authConfig common.CacheAuthConfig) error {
 	op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
-
-	if cmdError != nil {
-		errStr := cmdError.Error()
-		op.Error = &errStr
-	}
 
 	xaClient, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
 	if clientErr != nil {
