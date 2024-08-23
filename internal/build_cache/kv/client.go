@@ -17,6 +17,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type Client struct {
@@ -26,6 +27,7 @@ type Client struct {
 	casClient          remoteexecution.ContentAddressableStorageClient
 	clientName         string
 	authConfig         common.CacheAuthConfig
+	logger             log.Logger
 }
 
 type NewClientParams struct {
@@ -34,6 +36,7 @@ type NewClientParams struct {
 	DialTimeout time.Duration
 	ClientName  string
 	AuthConfig  common.CacheAuthConfig
+	Logger      log.Logger
 }
 
 func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
@@ -57,6 +60,7 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 		casClient:          remoteexecution.NewContentAddressableStorageClient(conn),
 		clientName:         p.ClientName,
 		authConfig:         p.AuthConfig,
+		logger:             p.Logger,
 	}, nil
 }
 
