@@ -131,11 +131,12 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	var missingBlobs []*FileDigest
+	blobDigests := convertToBlobDigests(digests)
 	req := &remoteexecution.FindMissingBlobsRequest{
-		BlobDigests: convertToBlobDigests(digests),
+		BlobDigests: blobDigests,
 	}
 	c.logger.Debugf("Size of FindMissingBlobs request for %d blobs is %s", len(digests), humanize.Bytes(uint64(len(req.String()))))
-	gRPCLimitBytes := 4 * 1024 * 1024 // gRPC limit is 4 MiB
+	gRPCLimitBytes := 1 * 1024 * 1024 // gRPC limit is 4 MiB
 	if len(req.String()) > gRPCLimitBytes {
 		// Chunk up request blobs to fit into gRPC limits
 		// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
@@ -146,7 +147,7 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 			if endIndex > len(digests) {
 				endIndex = len(digests)
 			}
-			req.BlobDigests = convertToBlobDigests(digests[startIndex:endIndex])
+			req.BlobDigests = blobDigests[startIndex:endIndex]
 
 			c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
 			resp, err := c.casClient.FindMissingBlobs(ctx, req)
