@@ -136,7 +136,7 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 		BlobDigests: blobDigests,
 	}
 	c.logger.Debugf("Size of FindMissingBlobs request for %d blobs is %s", len(digests), humanize.Bytes(uint64(len(req.String()))))
-	gRPCLimitBytes := 1 * 1024 * 1024 // gRPC limit is 4 MiB
+	gRPCLimitBytes := 4 * 1024 * 1024 // gRPC limit is 4 MiB
 	if len(req.String()) > gRPCLimitBytes {
 		// Chunk up request blobs to fit into gRPC limits
 		// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
