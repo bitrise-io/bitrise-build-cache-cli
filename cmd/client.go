@@ -34,6 +34,7 @@ func createKVClient(ctx context.Context, authConfig common.CacheAuthConfig, envP
 		DialTimeout: 5 * time.Second,
 		ClientName:  "kv",
 		AuthConfig:  authConfig,
+		Logger:      logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)

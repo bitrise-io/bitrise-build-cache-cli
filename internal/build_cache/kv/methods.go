@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc/metadata"
 )
@@ -129,15 +130,43 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 	}
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
-	resp, err := c.casClient.FindMissingBlobs(ctx, &remoteexecution.FindMissingBlobsRequest{
-		BlobDigests: convertToBlobDigests(digests),
-	})
+	var missingBlobs []*FileDigest
+	blobDigests := convertToBlobDigests(digests)
+	req := &remoteexecution.FindMissingBlobsRequest{
+		BlobDigests: blobDigests,
+	}
+	c.logger.Debugf("Size of FindMissingBlobs request for %d blobs is %s", len(digests), humanize.Bytes(uint64(len(req.String()))))
+	gRPCLimitBytes := 4 * 1024 * 1024 // gRPC limit is 4 MiB
+	if len(req.String()) > gRPCLimitBytes {
+		// Chunk up request blobs to fit into gRPC limits
+		// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
+		digestUnitSize := float64(len(req.String())) / float64(len(digests))
+		maxDigests := int(float64(gRPCLimitBytes) / digestUnitSize)
+		for startIndex := 0; startIndex < len(digests); startIndex += maxDigests {
+			endIndex := startIndex + maxDigests
+			if endIndex > len(digests) {
+				endIndex = len(digests)
+			}
+			req.BlobDigests = blobDigests[startIndex:endIndex]
 
-	if err != nil {
-		return nil, fmt.Errorf("find missing blobs: %w", err)
+			c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
+			resp, err := c.casClient.FindMissingBlobs(ctx, req)
+
+			if err != nil {
+				return nil, fmt.Errorf("find missing blobs[%d:%d]: %w", startIndex, endIndex, err)
+			}
+			missingBlobs = append(missingBlobs, convertToFileDigests(resp.GetMissingBlobDigests())...)
+		}
+	} else {
+		resp, err := c.casClient.FindMissingBlobs(ctx, req)
+
+		if err != nil {
+			return nil, fmt.Errorf("find missing blobs: %w", err)
+		}
+		missingBlobs = convertToFileDigests(resp.GetMissingBlobDigests())
 	}
 
-	return convertToFileDigests(resp.GetMissingBlobDigests()), nil
+	return missingBlobs, nil
 }
 
 func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {
