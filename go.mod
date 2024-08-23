@@ -14,9 +14,9 @@ require (
 	github.com/pkg/xattr v0.4.10
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240820151423-278611b39280
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240820151423-278611b39280
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240820151423-278611b39280
+	google.golang.org/genproto/googleapis/api v0.0.0-20240822170219-fc7c04adadcd
+	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240822170219-fc7c04adadcd
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240822170219-fc7c04adadcd
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
 )
