@@ -237,7 +237,7 @@ func logCurrentUserInfo(logger log.Logger) {
 	}
 
 	logger.Debugf("Current user info:")
-	logger.Debugf("  UID: %d", currentUser.Uid)
-	logger.Debugf("  GID: %d", currentUser.Gid)
+	logger.Debugf("  UID: %s", currentUser.Uid)
+	logger.Debugf("  GID: %s", currentUser.Gid)
 	logger.Debugf("  Username: %s", currentUser.Username)
 }
