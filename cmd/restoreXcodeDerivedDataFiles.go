@@ -1,13 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"strings"
 	"time"
-
-	"context"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -34,6 +34,8 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
+		logCurrentUserInfo(logger)
+
 		logger.TInfof("Restore Xcode DerivedData from Bitrise Build Cache")
 
 		logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
@@ -226,4 +228,16 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
 	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
 	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
 	logger.Infof("  Metadata version: %d", md.MetadataVersion)
+}
+
+func logCurrentUserInfo(logger log.Logger) {
+	currentUser, err := user.Current()
+	if err != nil {
+		logger.Debugf("Error getting current user: %v", err)
+	}
+
+	logger.Debugf("Current user info:")
+	logger.Debugf("  UID: %d", currentUser.Uid)
+	logger.Debugf("  GID: %d", currentUser.Gid)
+	logger.Debugf("  Username: %s", currentUser.Username)
 }
