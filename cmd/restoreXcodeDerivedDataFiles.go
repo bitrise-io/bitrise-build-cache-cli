@@ -66,7 +66,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		tracker.LogRestoreFinished(time.Since(startT), err)
 		if cmdError != nil {
-			return fmt.Errorf("restore Xcode DerivedData from Bitrise Build Cache: %w", err)
+			return fmt.Errorf("restore Xcode DerivedData from Bitrise Build Cache: %w", cmdError)
 		}
 
 		logger.TInfof("✅ DerivedData restored from Bitrise Build Cache ")
