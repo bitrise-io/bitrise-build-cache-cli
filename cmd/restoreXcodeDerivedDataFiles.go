@@ -52,7 +52,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
 
-		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv)
+		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode)
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -86,7 +86,7 @@ func init() {
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
-	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) (*xa.CacheOperation, error) {
+	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode bool) (*xa.CacheOperation, error) {
 	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create kv client: %w", err)
@@ -125,7 +125,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(cacheKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
-	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger)
+	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	fillCacheOperationWithDownloadStats(op, stats)
@@ -144,7 +144,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
-		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger); err != nil {
+		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode); err != nil {
 			return op, fmt.Errorf("download Xcode cache files: %w", err)
 		}
 

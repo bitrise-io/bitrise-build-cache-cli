@@ -27,7 +27,7 @@ type DownloadFilesStats struct {
 	LargestFileSize       int64
 }
 
-func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (DownloadFilesStats, error) {
+func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger, isDebugLogMode bool) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {
@@ -55,7 +55,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 
 			const retries = 3
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
-				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode)
+				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode)
 				if errors.Is(err, ErrCacheNotFound) {
 					return err, true
 				} else if err != nil {
