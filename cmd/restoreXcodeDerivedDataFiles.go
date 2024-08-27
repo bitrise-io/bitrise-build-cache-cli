@@ -1,13 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"strings"
 	"time"
-
-	"context"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -34,6 +34,8 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
+		logCurrentUserInfo(logger)
+
 		logger.TInfof("Restore Xcode DerivedData from Bitrise Build Cache")
 
 		logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
@@ -52,7 +54,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
 
-		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv)
+		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode)
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -86,7 +88,7 @@ func init() {
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
-	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) (*xa.CacheOperation, error) {
+	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode bool) (*xa.CacheOperation, error) {
 	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create kv client: %w", err)
@@ -125,7 +127,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(cacheKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
-	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger)
+	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	fillCacheOperationWithDownloadStats(op, stats)
@@ -144,7 +146,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
-		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger); err != nil {
+		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode); err != nil {
 			return op, fmt.Errorf("download Xcode cache files: %w", err)
 		}
 
@@ -226,4 +228,16 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
 	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
 	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
 	logger.Infof("  Metadata version: %d", md.MetadataVersion)
+}
+
+func logCurrentUserInfo(logger log.Logger) {
+	currentUser, err := user.Current()
+	if err != nil {
+		logger.Debugf("Error getting current user: %v", err)
+	}
+
+	logger.Debugf("Current user info:")
+	logger.Debugf("  UID: %s", currentUser.Uid)
+	logger.Debugf("  GID: %s", currentUser.Gid)
+	logger.Debugf("  Username: %s", currentUser.Username)
 }

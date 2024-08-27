@@ -27,6 +27,8 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
+		logCurrentUserInfo(logger)
+
 		logger.TInfof("Save Xcode DerivedData into Bitrise Build Cache")
 
 		logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)

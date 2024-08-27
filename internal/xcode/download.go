@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,7 +22,7 @@ var ErrCacheNotFound = errors.New("no cache archive found for the provided keys"
 func DownloadFileFromBuildCache(ctx context.Context, fileName, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", fileName)
 
-	return downloadFile(ctx, kvClient, fileName, key, 0)
+	return downloadFile(ctx, kvClient, fileName, key, 0, logger, false)
 }
 
 func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
@@ -30,7 +31,7 @@ func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, ke
 	return downloadStream(ctx, destination, kvClient, key)
 }
 
-func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode) error {
+func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode bool) error {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return fmt.Errorf("create directory: %w", err)
@@ -41,6 +42,10 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	}
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileMode)
 	if err != nil {
+		if isDebugLogMode {
+			logFilePathDebugInfo(filePath, logger)
+		}
+
 		return fmt.Errorf("create %q: %w", filePath, err)
 	}
 	defer file.Close()
@@ -65,4 +70,24 @@ func downloadStream(ctx context.Context, destination io.Writer, client *kv.Clien
 	}
 
 	return nil
+}
+
+func logFilePathDebugInfo(filePath string, logger log.Logger) {
+	fileInfo, err := os.Stat(filePath)
+	if err == nil {
+		logger.Debugf("    File already exists - permissions: %s\n", fileInfo.Mode().String())
+
+		if stat, ok := fileInfo.Sys().(*syscall.Stat_t); ok {
+			logger.Debugf("    Owner UID: %d Owner GID: %d\n", stat.Uid, stat.Gid)
+		}
+	}
+
+	dirPath := filepath.Dir(filePath)
+	dirInfo, err := os.Stat(dirPath)
+	if err == nil {
+		logger.Debugf("    Containing dir permissions: %s\n", dirInfo.Mode().String())
+		if stat, ok := dirInfo.Sys().(*syscall.Stat_t); ok {
+			logger.Debugf("    Owner UID: %d Owner GID: %d\n", stat.Uid, stat.Gid)
+		}
+	}
 }
