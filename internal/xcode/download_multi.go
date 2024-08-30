@@ -27,7 +27,8 @@ type DownloadFilesStats struct {
 	LargestFileSize       int64
 }
 
-func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger, isDebugLogMode bool) (DownloadFilesStats, error) {
+func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger,
+	isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {
@@ -55,10 +56,13 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 
 			const retries = 3
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
-				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode)
+				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode, forceOverwrite)
 				if errors.Is(err, ErrCacheNotFound) {
 					return err, true
-				} else if err != nil {
+				} else if errors.Is(err, ErrFileExistsAndNotWritable) {
+					return err, true
+				}
+				if err != nil {
 					return fmt.Errorf("download file: %w", err), false
 				}
 
@@ -75,7 +79,9 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 
 				filesMissing.Add(1)
 			case err != nil:
-				logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
+				if filesFailedToDownload.Load() < int32(maxLoggedDownloadErrors) {
+					logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
+				}
 
 				filesFailedToDownload.Add(1)
 			default:
@@ -104,6 +110,11 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 	logger.Debugf("  Files failed to download: %d", int(filesFailedToDownload.Load()))
 	logger.Debugf("  Download size: %s", humanize.Bytes(uint64(downloadSize.Load())))
 	logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(largestFileSize)))
+
+	downloadErrors := int(filesFailedToDownload.Load())
+	if maxLoggedDownloadErrors < downloadErrors {
+		logger.Warnf("Too many download errors (%d), only the first %d errors are logged", downloadErrors, maxLoggedDownloadErrors)
+	}
 
 	if filesFailedToDownload.Load() > 0 || filesMissing.Load() > 0 {
 		return stats, fmt.Errorf("failed to download some files")
