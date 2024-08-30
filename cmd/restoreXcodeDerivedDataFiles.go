@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/dustin/go-humanize"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -43,6 +46,8 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		logger.Infof("(i) Checking parameters")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")
+		forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite-files")
+		maxLoggedErrors, _ := cmd.Flags().GetInt("max-logged-errors")
 
 		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", os.Getenv, logger)
 		defer tracker.Wait()
@@ -54,7 +59,8 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
 
-		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode)
+		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot,
+			cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode, forceOverwrite, maxLoggedErrors)
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -85,10 +91,12 @@ func init() {
 	if err := restoreXcodeDerivedDataFilesCmd.MarkFlagRequired("project-root"); err != nil {
 		panic(err)
 	}
+	restoreXcodeDerivedDataFilesCmd.Flags().Bool("force-overwrite-files", false, "If set, the command will try to overwrite existing files during restoring the cache even if the permissions do not allow it")
+	restoreXcodeDerivedDataFilesCmd.Flags().Int("max-logged-errors", 100, "The maximum number of errors logged to the console during restoring the cache.")
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
-	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode bool) (*xa.CacheOperation, error) {
+	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
 	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create kv client: %w", err)
@@ -110,7 +118,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 		return op, fmt.Errorf("load metadata: %w", err)
 	}
 
-	logCacheMetadata(metadata, logger)
+	logCacheMetadata(metadata, logger, isDebugLogMode)
 
 	logger.TInfof("Restoring metadata of input files")
 	var filesUpdated int
@@ -127,7 +135,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(cacheKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
-	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode)
+	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	fillCacheOperationWithDownloadStats(op, stats)
@@ -146,7 +154,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
-		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode); err != nil {
+		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors); err != nil {
 			return op, fmt.Errorf("download Xcode cache files: %w", err)
 		}
 
@@ -211,7 +219,7 @@ func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey s
 	return cacheKeyType, cacheKey, nil
 }
 
-func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
+func logCacheMetadata(md *xcode.Metadata, logger log.Logger, isDebugLogMode bool) {
 	logger.Infof("Cache metadata:")
 	logger.Infof("  Cache key: %s", md.CacheKey)
 	createdAt := ""
@@ -228,6 +236,24 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger) {
 	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
 	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
 	logger.Infof("  Metadata version: %d", md.MetadataVersion)
+
+	if isDebugLogMode {
+		sortedDDFiles := make([]*xcode.FileInfo, len(md.DerivedData.Files))
+		copy(sortedDDFiles, md.DerivedData.Files)
+
+		sort.Slice(sortedDDFiles, func(i, j int) bool {
+			return sortedDDFiles[i].Size > sortedDDFiles[j].Size
+		})
+
+		if len(sortedDDFiles) > 10 {
+			sortedDDFiles = sortedDDFiles[:10]
+		}
+
+		logger.Debugf("  Largest files:")
+		for i, file := range sortedDDFiles {
+			logger.Debugf("    %d. %s (%s)", i+1, file.Path, humanize.Bytes(uint64(file.Size)))
+		}
+	}
 }
 
 func logCurrentUserInfo(logger log.Logger) {

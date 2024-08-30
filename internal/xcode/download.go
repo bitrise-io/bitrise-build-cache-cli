@@ -19,10 +19,13 @@ import (
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
 
+// ErrFileExistsAndNotWritable ...
+var ErrFileExistsAndNotWritable = errors.New("file already exists and is not writable")
+
 func DownloadFileFromBuildCache(ctx context.Context, fileName, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", fileName)
 
-	return downloadFile(ctx, kvClient, fileName, key, 0, logger, false)
+	return downloadFile(ctx, kvClient, fileName, key, 0, logger, false, false)
 }
 
 func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
@@ -31,7 +34,8 @@ func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, ke
 	return downloadStream(ctx, destination, kvClient, key)
 }
 
-func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode bool) error {
+// nolint: nestif
+func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode, forceOverwrite bool) error {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return fmt.Errorf("create directory: %w", err)
@@ -40,6 +44,24 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	if fileMode == 0 {
 		fileMode = 0666
 	}
+
+	if fileInfo, err := os.Stat(filePath); err == nil {
+		ownerWritable := (fileInfo.Mode().Perm() & 0200) != 0
+		if !ownerWritable {
+			if !forceOverwrite {
+				return ErrFileExistsAndNotWritable
+			}
+
+			if err := os.Chmod(filePath, 0666); err != nil {
+				return fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
+			}
+
+			if err := os.Remove(filePath); err != nil {
+				return fmt.Errorf("force overwrite - failed to remove existing file: %w", err)
+			}
+		}
+	}
+
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileMode)
 	if err != nil {
 		if isDebugLogMode {
