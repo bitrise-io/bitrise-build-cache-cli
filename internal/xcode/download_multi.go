@@ -93,7 +93,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 
 	wg.Wait()
 
-	logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load())
+	logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files. Failed: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load(), filesFailedToDownload.Load())
 
 	stats := DownloadFilesStats{
 		FilesToBeDownloaded:   len(dd.Files),
