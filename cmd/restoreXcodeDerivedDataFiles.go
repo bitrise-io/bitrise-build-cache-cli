@@ -249,8 +249,8 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger, isDebugLogMode bool
 			sortedDDFiles = sortedDDFiles[:10]
 		}
 
+		logger.Debugf("  Largest files:")
 		for i, file := range sortedDDFiles {
-			logger.Infof("  Largest files:")
 			logger.Debugf("    %d. %s (%s)", i+1, file.Path, humanize.Bytes(uint64(file.Size)))
 		}
 	}
