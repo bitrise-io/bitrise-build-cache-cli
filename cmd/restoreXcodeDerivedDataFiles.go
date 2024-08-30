@@ -46,7 +46,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		logger.Infof("(i) Checking parameters")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")
-		forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite")
+		forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite-files")
 		maxLoggedErrors, _ := cmd.Flags().GetInt("max-logged-errors")
 
 		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", os.Getenv, logger)
@@ -91,7 +91,7 @@ func init() {
 	if err := restoreXcodeDerivedDataFilesCmd.MarkFlagRequired("project-root"); err != nil {
 		panic(err)
 	}
-	restoreXcodeDerivedDataFilesCmd.Flags().Bool("force-overwrite", false, "If set, the command will try to overwrite existing files during restoring the cache even if the permissions do not allow it")
+	restoreXcodeDerivedDataFilesCmd.Flags().Bool("force-overwrite-files", false, "If set, the command will try to overwrite existing files during restoring the cache even if the permissions do not allow it")
 	restoreXcodeDerivedDataFilesCmd.Flags().Int("max-logged-errors", 100, "The maximum number of errors logged to the console during restoring the cache.")
 }
 

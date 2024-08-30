@@ -48,16 +48,16 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	if fileInfo, err := os.Stat(filePath); err == nil {
 		ownerWritable := (fileInfo.Mode().Perm() & 0200) != 0
 		if !ownerWritable {
-			if forceOverwrite {
-				if err := os.Chmod(filePath, 0666); err != nil {
-					return fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
-				}
-
-				if err := os.Remove(filePath); err != nil {
-					return fmt.Errorf("force overwrite - failed to remove existing file: %w", err)
-				}
-			} else {
+			if !forceOverwrite {
 				return ErrFileExistsAndNotWritable
+			}
+
+			if err := os.Chmod(filePath, 0666); err != nil {
+				return fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
+			}
+
+			if err := os.Remove(filePath); err != nil {
+				return fmt.Errorf("force overwrite - failed to remove existing file: %w", err)
 			}
 		}
 	}
