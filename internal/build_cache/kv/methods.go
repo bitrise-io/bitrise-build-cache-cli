@@ -25,14 +25,7 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
-	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode",
-	)
-	if c.authConfig.WorkspaceID != "" {
-		md.Append("x-org-id", c.authConfig.WorkspaceID)
-	}
-	ctx = metadata.NewOutgoingContext(ctx, md)
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
 	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
@@ -43,16 +36,11 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 }
 
 func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, error) {
-	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode",
+	md := metadata.Join(c.getMethodCallMetadata(), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
-	)
-	if c.authConfig.WorkspaceID != "" {
-		md.Append("x-org-id", c.authConfig.WorkspaceID)
-	}
+	))
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	stream, err := c.bitriseKVClient.Put(ctx)
@@ -73,13 +61,7 @@ func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, err
 func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
 
-	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode")
-	if c.authConfig.WorkspaceID != "" {
-		md.Append("x-org-id", c.authConfig.WorkspaceID)
-	}
-	ctx = metadata.NewOutgoingContext(ctx, md)
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -100,13 +82,7 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 func (c *Client) Delete(ctx context.Context, name string) error {
 	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
 
-	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode")
-	if c.authConfig.WorkspaceID != "" {
-		md.Append("x-org-id", c.authConfig.WorkspaceID)
-	}
-	ctx = metadata.NewOutgoingContext(ctx, md)
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -122,13 +98,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 }
 
 func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
-	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode")
-	if c.authConfig.WorkspaceID != "" {
-		md.Append("x-org-id", c.authConfig.WorkspaceID)
-	}
-	ctx = metadata.NewOutgoingContext(ctx, md)
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
 	var missingBlobs []*FileDigest
 	blobDigests := convertToBlobDigests(digests)
@@ -193,4 +163,31 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 	}
 
 	return out
+}
+
+func (c *Client) getMethodCallMetadata() metadata.MD {
+	md := metadata.Pairs(
+		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
+		"x-flare-buildtool", "xcode")
+
+	if c.authConfig.WorkspaceID != "" {
+		md.Set("x-org-id", c.authConfig.WorkspaceID)
+	}
+	if c.cacheConfigMetadata.BitriseAppID != "" {
+		md.Set("x-app-id", c.cacheConfigMetadata.BitriseAppID)
+	}
+	if c.cacheConfigMetadata.BitriseBuildID != "" {
+		md.Set("x-flare-build-id", c.cacheConfigMetadata.BitriseBuildID)
+	}
+	if c.cacheConfigMetadata.BitriseWorkflowName != "" {
+		md.Set("x-workflow-name", c.cacheConfigMetadata.BitriseWorkflowName)
+	}
+	if c.cacheConfigMetadata.RepoURL != "" {
+		md.Set("x-repository-url", c.cacheConfigMetadata.RepoURL)
+	}
+	if c.cacheConfigMetadata.CIProvider != "" {
+		md.Set("x-ci-provider", c.cacheConfigMetadata.CIProvider)
+	}
+
+	return md
 }

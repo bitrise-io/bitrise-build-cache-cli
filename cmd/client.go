@@ -29,12 +29,13 @@ func createKVClient(ctx context.Context, authConfig common.CacheAuthConfig, envP
 	logger.Debugf("Build Cache host: %s", buildCacheHost)
 
 	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
-		UseInsecure: insecureGRPC,
-		Host:        buildCacheHost,
-		DialTimeout: 5 * time.Second,
-		ClientName:  "kv",
-		AuthConfig:  authConfig,
-		Logger:      logger,
+		UseInsecure:         insecureGRPC,
+		Host:                buildCacheHost,
+		DialTimeout:         5 * time.Second,
+		ClientName:          "kv",
+		AuthConfig:          authConfig,
+		Logger:              logger,
+		CacheConfigMetadata: common.NewCacheConfigMetadata(envProvider),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)

@@ -21,22 +21,24 @@ import (
 )
 
 type Client struct {
-	bytestreamClient   bytestream.ByteStreamClient
-	bitriseKVClient    kv_storage.KVStorageClient
-	capabilitiesClient remoteexecution.CapabilitiesClient
-	casClient          remoteexecution.ContentAddressableStorageClient
-	clientName         string
-	authConfig         common.CacheAuthConfig
-	logger             log.Logger
+	bytestreamClient    bytestream.ByteStreamClient
+	bitriseKVClient     kv_storage.KVStorageClient
+	capabilitiesClient  remoteexecution.CapabilitiesClient
+	casClient           remoteexecution.ContentAddressableStorageClient
+	clientName          string
+	authConfig          common.CacheAuthConfig
+	cacheConfigMetadata common.CacheConfigMetadata
+	logger              log.Logger
 }
 
 type NewClientParams struct {
-	UseInsecure bool
-	Host        string
-	DialTimeout time.Duration
-	ClientName  string
-	AuthConfig  common.CacheAuthConfig
-	Logger      log.Logger
+	UseInsecure         bool
+	Host                string
+	DialTimeout         time.Duration
+	ClientName          string
+	AuthConfig          common.CacheAuthConfig
+	CacheConfigMetadata common.CacheConfigMetadata
+	Logger              log.Logger
 }
 
 func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
@@ -54,13 +56,14 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 	}
 
 	return &Client{
-		bytestreamClient:   bytestream.NewByteStreamClient(conn),
-		bitriseKVClient:    kv_storage.NewKVStorageClient(conn),
-		capabilitiesClient: remoteexecution.NewCapabilitiesClient(conn),
-		casClient:          remoteexecution.NewContentAddressableStorageClient(conn),
-		clientName:         p.ClientName,
-		authConfig:         p.AuthConfig,
-		logger:             p.Logger,
+		bytestreamClient:    bytestream.NewByteStreamClient(conn),
+		bitriseKVClient:     kv_storage.NewKVStorageClient(conn),
+		capabilitiesClient:  remoteexecution.NewCapabilitiesClient(conn),
+		casClient:           remoteexecution.NewContentAddressableStorageClient(conn),
+		clientName:          p.ClientName,
+		authConfig:          p.AuthConfig,
+		logger:              p.Logger,
+		cacheConfigMetadata: p.CacheConfigMetadata,
 	}, nil
 }
 
