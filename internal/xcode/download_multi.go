@@ -73,13 +73,16 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 				return nil, false
 			})
 
+			missingPlusFailed := filesMissing.Load() + filesFailedToDownload.Load()
 			switch {
 			case errors.Is(err, ErrCacheNotFound):
-				logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
+				if missingPlusFailed < int32(maxLoggedDownloadErrors) {
+					logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
+				}
 
 				filesMissing.Add(1)
 			case err != nil:
-				if filesFailedToDownload.Load() < int32(maxLoggedDownloadErrors) {
+				if missingPlusFailed < int32(maxLoggedDownloadErrors) {
 					logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 				}
 
@@ -112,8 +115,9 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 	logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(largestFileSize)))
 
 	downloadErrors := int(filesFailedToDownload.Load())
-	if maxLoggedDownloadErrors < downloadErrors {
-		logger.Warnf("Too many download errors (%d), only the first %d errors are logged", downloadErrors, maxLoggedDownloadErrors)
+	missingFiles := int(filesMissing.Load())
+	if maxLoggedDownloadErrors < downloadErrors+missingFiles {
+		logger.Warnf("Too many download errors or missing files, only the first %d errors were logged", maxLoggedDownloadErrors)
 	}
 
 	if filesFailedToDownload.Load() > 0 || filesMissing.Load() > 0 {
