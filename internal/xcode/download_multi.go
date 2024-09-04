@@ -27,6 +27,7 @@ type DownloadFilesStats struct {
 	LargestFileSize       int64
 }
 
+// nolint: gocognit
 func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger,
 	isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
 	var largestFileSize int64
