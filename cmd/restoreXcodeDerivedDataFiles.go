@@ -92,7 +92,7 @@ func init() {
 		panic(err)
 	}
 	restoreXcodeDerivedDataFilesCmd.Flags().Bool("force-overwrite-files", false, "If set, the command will try to overwrite existing files during restoring the cache even if the permissions do not allow it")
-	restoreXcodeDerivedDataFilesCmd.Flags().Int("max-logged-errors", 100, "The maximum number of errors logged to the console during restoring the cache.")
+	restoreXcodeDerivedDataFilesCmd.Flags().Int("max-logged-errors", 150, "The maximum number of errors logged to the console during restoring the cache.")
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
