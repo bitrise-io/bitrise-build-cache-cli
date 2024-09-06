@@ -29,6 +29,7 @@ type Client struct {
 	authConfig          common.CacheAuthConfig
 	cacheConfigMetadata common.CacheConfigMetadata
 	logger              log.Logger
+	cacheOperationID    string
 }
 
 type NewClientParams struct {
@@ -39,6 +40,7 @@ type NewClientParams struct {
 	AuthConfig          common.CacheAuthConfig
 	CacheConfigMetadata common.CacheConfigMetadata
 	Logger              log.Logger
+	CacheOperationID    string
 }
 
 func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
@@ -64,6 +66,7 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 		authConfig:          p.AuthConfig,
 		logger:              p.Logger,
 		cacheConfigMetadata: p.CacheConfigMetadata,
+		cacheOperationID:    p.CacheOperationID,
 	}, nil
 }
 

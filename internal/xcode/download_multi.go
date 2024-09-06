@@ -28,7 +28,7 @@ type DownloadFilesStats struct {
 }
 
 // nolint: gocognit
-func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, cacheOperationID string, kvClient *kv.Client, logger log.Logger,
+func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger,
 	isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
@@ -57,7 +57,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, cac
 
 			const retries = 3
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
-				err := downloadFile(ctx, kvClient, file.Path, file.Hash, cacheOperationID, file.Mode, logger, isDebugLogMode, forceOverwrite)
+				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode, forceOverwrite)
 				if errors.Is(err, ErrCacheNotFound) {
 					return err, true
 				} else if errors.Is(err, ErrFileExistsAndNotWritable) {
