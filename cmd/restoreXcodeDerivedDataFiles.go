@@ -97,13 +97,15 @@ func init() {
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
 	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
-	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
+	op := newCacheOperation(startT, xa.OperationTypeDownload, envProvider)
+	kvClient, err := createKVClient(ctx, op.OperationID, authConfig, envProvider, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create kv client: %w", err)
 	}
+	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
 	cacheKeyType, cacheKey, err := downloadMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
-	op := newCacheOperation(startT, xa.OperationTypeUpload, cacheKey, envProvider)
+	op.CacheKey = cacheKey
 	if err != nil {
 		return op, fmt.Errorf("download cache metadata: %w", err)
 	}

@@ -170,6 +170,10 @@ func (c *Client) getMethodCallMetadata() metadata.MD {
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", "xcode")
 
+	if c.cacheOperationID != "" {
+		md.Set("x-cache-operation-id", c.cacheOperationID)
+	}
+
 	if c.authConfig.WorkspaceID != "" {
 		md.Set("x-org-id", c.authConfig.WorkspaceID)
 	}

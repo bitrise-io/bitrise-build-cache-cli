@@ -102,9 +102,11 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Cache
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	op := newCacheOperation(startT, xa.OperationTypeUpload, cacheKey, envProvider)
+	op := newCacheOperation(startT, xa.OperationTypeUpload, envProvider)
+	op.CacheKey = cacheKey
+	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
-	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx, op.OperationID, authConfig, envProvider, logger)
 	if err != nil {
 		return op, fmt.Errorf("create kv client: %w", err)
 	}
