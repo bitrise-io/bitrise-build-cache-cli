@@ -22,13 +22,13 @@ type UploadFilesStats struct {
 	LargestFileSize     int64
 }
 
-func uploadCacheFileToBuildCache(ctx context.Context, kvClient *kv.Client, file *FileInfo, mutex *sync.Mutex, stats *UploadFilesStats, logger log.Logger) {
+func uploadCacheFileToBuildCache(ctx context.Context, cacheOperationID string, kvClient *kv.Client, file *FileInfo, mutex *sync.Mutex, stats *UploadFilesStats, logger log.Logger) {
 	const retries = 2
 	err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt != 0 {
 			logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 		}
-		_, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
+		_, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, cacheOperationID, logger)
 		if err != nil {
 			return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
 		}
@@ -50,7 +50,7 @@ func uploadCacheFileToBuildCache(ctx context.Context, kvClient *kv.Client, file 
 	mutex.Unlock()
 }
 
-func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
+func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, cacheOperationID string, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
 	missingBlobs, err := findMissingBlobs(ctx, dd, kvClient, logger)
 	if err != nil {
 		return UploadFilesStats{}, fmt.Errorf("failed to check for missing blobs: %w", err)
@@ -81,7 +81,7 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
-			uploadCacheFileToBuildCache(ctx, kvClient, file, &mutex, &stats, logger)
+			uploadCacheFileToBuildCache(ctx, cacheOperationID, kvClient, file, &mutex, &stats, logger)
 
 			mutex.Lock()
 			delete(missingBlobs, file.Hash)

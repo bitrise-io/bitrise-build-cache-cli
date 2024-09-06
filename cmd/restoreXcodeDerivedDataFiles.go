@@ -102,8 +102,9 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 		return nil, fmt.Errorf("create kv client: %w", err)
 	}
 
-	cacheKeyType, cacheKey, err := downloadMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
-	op := newCacheOperation(startT, xa.OperationTypeUpload, cacheKey, envProvider)
+	op := newCacheOperation(startT, xa.OperationTypeDownload, envProvider)
+	cacheKeyType, cacheKey, err := downloadMetadata(ctx, cacheMetadataPath, providedCacheKey, op.OperationID, kvClient, logger, envProvider)
+	op.CacheKey = cacheKey
 	if err != nil {
 		return op, fmt.Errorf("download cache metadata: %w", err)
 	}
@@ -135,7 +136,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(cacheKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
-	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors)
+	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, op.OperationID, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	fillCacheOperationWithDownloadStats(op, stats)
@@ -154,7 +155,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
-		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors); err != nil {
+		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, op.OperationID, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors); err != nil {
 			return op, fmt.Errorf("download Xcode cache files: %w", err)
 		}
 
@@ -167,7 +168,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	return op, nil
 }
 
-func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
+func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey, cacheOperationID string,
 	kvClient *kv.Client,
 	logger log.Logger,
 	envProvider func(string) string) (CacheKeyType, string, error) {
@@ -186,7 +187,7 @@ func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey s
 	}
 
 	var mdChecksum strings.Builder
-	err = xcode.DownloadStreamFromBuildCache(ctx, &mdChecksum, cacheKey, kvClient, logger)
+	err = xcode.DownloadStreamFromBuildCache(ctx, &mdChecksum, cacheKey, cacheOperationID, kvClient, logger)
 	if err != nil && !errors.Is(err, xcode.ErrCacheNotFound) {
 		return cacheKeyType, cacheKey, fmt.Errorf("download cache metadata checksum: %w", err)
 	}
@@ -201,7 +202,7 @@ func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey s
 		cacheKey = fallbackCacheKey
 		logger.Infof("Cache metadata not found for original key, trying fallback key %s", cacheKey)
 
-		err = xcode.DownloadStreamFromBuildCache(ctx, &mdChecksum, cacheKey, kvClient, logger)
+		err = xcode.DownloadStreamFromBuildCache(ctx, &mdChecksum, cacheKey, cacheOperationID, kvClient, logger)
 		if errors.Is(err, xcode.ErrCacheNotFound) {
 			return cacheKeyType, cacheKey, errors.New("cache metadata not found in cache")
 		}

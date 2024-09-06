@@ -108,12 +108,12 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 	}
 
 	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", CacheMetadataPath, mdChecksum, cacheKey)
-	if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+	if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, "", mdChecksumReader.Size(), client, logger); err != nil {
 		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 	}
 
 	logger.TInfof("Uploading metadata content of %s for key %s", CacheMetadataPath, mdChecksum)
-	if err := xcode.UploadFileToBuildCache(ctx, CacheMetadataPath, mdChecksum, client, logger); err != nil {
+	if err := xcode.UploadFileToBuildCache(ctx, CacheMetadataPath, mdChecksum, "", client, logger); err != nil {
 		return fmt.Errorf("upload metadata content to build cache: %w", err)
 	}
 
@@ -125,7 +125,7 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 			cacheKey = fallbackCacheKey
 			mdChecksumReader = strings.NewReader(mdChecksum) // reset reader
 			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", CacheMetadataPath, mdChecksum, cacheKey)
-			if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+			if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, "", mdChecksumReader.Size(), client, logger); err != nil {
 				return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 			}
 		}

@@ -102,7 +102,8 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Cache
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	op := newCacheOperation(startT, xa.OperationTypeUpload, cacheKey, envProvider)
+	op := newCacheOperation(startT, xa.OperationTypeUpload, envProvider)
+	op.CacheKey = cacheKey
 
 	kvClient, err := createKVClient(ctx, authConfig, envProvider, logger)
 	if err != nil {
@@ -145,7 +146,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Cache
 	}
 
 	logger.TInfof("Uploading DerivedData files")
-	ddUploadStats, err := xcode.UploadCacheFilesToBuildCache(ctx, metadata.DerivedData, kvClient, logger)
+	ddUploadStats, err := xcode.UploadCacheFilesToBuildCache(ctx, metadata.DerivedData, op.OperationID, kvClient, logger)
 	ddUploadedT := time.Now()
 	fillCacheOperationWithUploadStats(op, ddUploadStats)
 	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
@@ -156,18 +157,18 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Cache
 
 	if xcodeCachePath != "" {
 		logger.TInfof("Uploading Xcode cache files")
-		if _, err := xcode.UploadCacheFilesToBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger); err != nil {
+		if _, err := xcode.UploadCacheFilesToBuildCache(ctx, metadata.XcodeCacheDir, op.OperationID, kvClient, logger); err != nil {
 			return op, fmt.Errorf("upload xcode cache files to build cache: %w", err)
 		}
 	}
 
 	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", cacheMetadataPath, mdChecksum, cacheKey)
-	if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), kvClient, logger); err != nil {
+	if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, op.OperationID, mdChecksumReader.Size(), kvClient, logger); err != nil {
 		return op, fmt.Errorf("upload metadata checksum to build cache: %w", err)
 	}
 
 	logger.TInfof("Uploading metadata content of %s for key %s", cacheMetadataPath, mdChecksum)
-	if err := xcode.UploadFileToBuildCache(ctx, cacheMetadataPath, mdChecksum, kvClient, logger); err != nil {
+	if err := xcode.UploadFileToBuildCache(ctx, cacheMetadataPath, mdChecksum, op.OperationID, kvClient, logger); err != nil {
 		return op, fmt.Errorf("upload metadata content to build cache: %w", err)
 	}
 
@@ -179,7 +180,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Cache
 			cacheKey = fallbackCacheKey
 			mdChecksumReader = strings.NewReader(mdChecksum) // reset reader
 			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", cacheMetadataPath, mdChecksum, cacheKey)
-			if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), kvClient, logger); err != nil {
+			if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, op.OperationID, mdChecksumReader.Size(), kvClient, logger); err != nil {
 				return op, fmt.Errorf("upload metadata checksum to build cache: %w", err)
 			}
 		}

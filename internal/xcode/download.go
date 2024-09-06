@@ -25,17 +25,17 @@ var ErrFileExistsAndNotWritable = errors.New("file already exists and is not wri
 func DownloadFileFromBuildCache(ctx context.Context, fileName, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", fileName)
 
-	return downloadFile(ctx, kvClient, fileName, key, 0, logger, false, false)
+	return downloadFile(ctx, kvClient, fileName, key, "", 0, logger, false, false)
 }
 
-func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
+func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key, cacheOperationID string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", key)
 
-	return downloadStream(ctx, destination, kvClient, key)
+	return downloadStream(ctx, destination, kvClient, key, cacheOperationID)
 }
 
 // nolint: nestif
-func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode, forceOverwrite bool) error {
+func downloadFile(ctx context.Context, client *kv.Client, filePath, key, cacheOperationID string, fileMode os.FileMode, logger log.Logger, isDebugLogMode, forceOverwrite bool) error {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return fmt.Errorf("create directory: %w", err)
@@ -72,11 +72,11 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	}
 	defer file.Close()
 
-	return downloadStream(ctx, file, client, key)
+	return downloadStream(ctx, file, client, key, cacheOperationID)
 }
 
-func downloadStream(ctx context.Context, destination io.Writer, client *kv.Client, key string) error {
-	kvReader, err := client.Get(ctx, key)
+func downloadStream(ctx context.Context, destination io.Writer, client *kv.Client, key, cacheOperationID string) error {
+	kvReader, err := client.Get(ctx, key, cacheOperationID)
 	if err != nil {
 		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
 	}

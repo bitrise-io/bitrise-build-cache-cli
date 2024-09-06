@@ -33,12 +33,11 @@ func sendCacheOperationAnalytics(op xa.CacheOperation, logger log.Logger, authCo
 	return nil
 }
 
-func newCacheOperation(startT time.Time, operationType, cacheKey string, envProvider func(string) string) *xa.CacheOperation {
+func newCacheOperation(startT time.Time, operationType string, envProvider func(string) string) *xa.CacheOperation {
 	op := &xa.CacheOperation{
 		OperationID:   uuid.NewString(),
 		OperationType: operationType,
 		StartedAt:     startT,
-		CacheKey:      cacheKey,
 		CIProvider:    "bitrise",
 		CLIVersion:    envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
 		CommitHash:    envProvider("BITRISE_GIT_COMMIT"),

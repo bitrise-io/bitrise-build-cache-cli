@@ -15,7 +15,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func UploadFileToBuildCache(ctx context.Context, filePath, key string, kvClient *kv.Client, logger log.Logger) error {
+func UploadFileToBuildCache(ctx context.Context, filePath, key, cacheOperationID string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Uploading %s", filePath)
 
 	checksum, err := ChecksumOfFile(filePath)
@@ -24,7 +24,7 @@ func UploadFileToBuildCache(ctx context.Context, filePath, key string, kvClient 
 	}
 
 	err = uploadToBuildCache(ctx, kvClient, logger, func(ctx context.Context, client *kv.Client) error {
-		fileSize, err := uploadFile(ctx, client, filePath, key, checksum, logger)
+		fileSize, err := uploadFile(ctx, client, filePath, key, checksum, cacheOperationID, logger)
 		logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
 
 		return err
@@ -37,7 +37,7 @@ func UploadFileToBuildCache(ctx context.Context, filePath, key string, kvClient 
 	return nil
 }
 
-func UploadStreamToBuildCache(ctx context.Context, source io.Reader, key string, size int64, kvClient *kv.Client, logger log.Logger) error {
+func UploadStreamToBuildCache(ctx context.Context, source io.Reader, key, cacheOperationID string, size int64, kvClient *kv.Client, logger log.Logger) error {
 	// calculate hash from source stream first and clone it to be able to read it again for the upload
 	var sourceBuf bytes.Buffer
 	teeSource := io.TeeReader(source, &sourceBuf)
@@ -47,7 +47,7 @@ func UploadStreamToBuildCache(ctx context.Context, source io.Reader, key string,
 	}
 
 	if err := uploadToBuildCache(ctx, kvClient, logger, func(ctx context.Context, client *kv.Client) error {
-		return uploadStream(ctx, client, &sourceBuf, key, checksum, size, logger)
+		return uploadStream(ctx, client, &sourceBuf, key, checksum, cacheOperationID, size, logger)
 	}); err != nil {
 		return fmt.Errorf("upload stream: %w", err)
 	}
@@ -76,7 +76,7 @@ func uploadToBuildCache(ctx context.Context, client *kv.Client, logger log.Logge
 	return nil
 }
 
-func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum string, logger log.Logger) (int64, error) {
+func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum, cacheOperationID string, logger log.Logger) (int64, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return 0, fmt.Errorf("open %q: %w", filePath, err)
@@ -87,18 +87,19 @@ func uploadFile(ctx context.Context, client *kv.Client, filePath, key, checksum 
 		return 0, fmt.Errorf("stat %q: %w", filePath, err)
 	}
 
-	if err = uploadStream(ctx, client, file, key, checksum, stat.Size(), logger); err != nil {
+	if err = uploadStream(ctx, client, file, key, checksum, cacheOperationID, stat.Size(), logger); err != nil {
 		return 0, fmt.Errorf("upload %q: %w", filePath, err)
 	}
 
 	return stat.Size(), nil
 }
 
-func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key, checksum string, size int64, _ log.Logger) error {
+func uploadStream(ctx context.Context, client *kv.Client, source io.Reader, key, checksum, cacheOperationID string, size int64, _ log.Logger) error {
 	kvWriter, err := client.Put(ctx, kv.PutParams{
-		Name:      key,
-		Sha256Sum: checksum,
-		FileSize:  size,
+		Name:             key,
+		Sha256Sum:        checksum,
+		FileSize:         size,
+		CacheOperationID: cacheOperationID,
 	})
 	if err != nil {
 		return fmt.Errorf("create kv put client (with key %s): %w", key, err)

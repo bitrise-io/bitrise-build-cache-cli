@@ -14,9 +14,10 @@ import (
 )
 
 type PutParams struct {
-	Name      string
-	Sha256Sum string
-	FileSize  int64
+	Name             string
+	Sha256Sum        string
+	FileSize         int64
+	CacheOperationID string
 }
 
 type FileDigest struct {
@@ -25,7 +26,7 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(""))
 
 	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
@@ -36,7 +37,7 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 }
 
 func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, error) {
-	md := metadata.Join(c.getMethodCallMetadata(), metadata.Pairs(
+	md := metadata.Join(c.getMethodCallMetadata(params.CacheOperationID), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
@@ -58,10 +59,10 @@ func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, err
 	}, nil
 }
 
-func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+func (c *Client) Get(ctx context.Context, name, cacheOperationID string) (io.ReadCloser, error) {
 	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
 
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(cacheOperationID))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -82,7 +83,7 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 func (c *Client) Delete(ctx context.Context, name string) error {
 	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
 
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(""))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -98,7 +99,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 }
 
 func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(""))
 
 	var missingBlobs []*FileDigest
 	blobDigests := convertToBlobDigests(digests)
@@ -165,10 +166,14 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 	return out
 }
 
-func (c *Client) getMethodCallMetadata() metadata.MD {
+func (c *Client) getMethodCallMetadata(cacheOperationID string) metadata.MD {
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", "xcode")
+
+	if cacheOperationID != "" {
+		md.Set("x-cache-operation-id", cacheOperationID)
+	}
 
 	if c.authConfig.WorkspaceID != "" {
 		md.Set("x-org-id", c.authConfig.WorkspaceID)
