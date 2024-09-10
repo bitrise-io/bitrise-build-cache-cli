@@ -38,6 +38,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		cacheKey, _ := cmd.Flags().GetString("key")
 		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
 		xcodeCachePath, _ := cmd.Flags().GetString("xcodecache-path")
+		followSymlinks, _ := cmd.Flags().GetBool("follow-symlinks")
 
 		tracker := xcode.NewDefaultStepTracker("save-xcode-build-cache", os.Getenv, logger)
 		defer tracker.Wait()
@@ -49,7 +50,18 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
 
-		op, cmdError := saveXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot, cacheKey, ddPath, xcodeCachePath, logger, tracker, startT, os.Getenv)
+		op, cmdError := saveXcodeDerivedDataFilesCmdFn(cmd.Context(),
+			authConfig,
+			CacheMetadataPath,
+			projectRoot,
+			cacheKey,
+			ddPath,
+			xcodeCachePath,
+			followSymlinks,
+			logger,
+			tracker,
+			startT,
+			os.Getenv)
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -86,10 +98,21 @@ func init() {
 		panic(err)
 	}
 	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")
+	saveXcodeDerivedDataFilesCmd.Flags().Bool("follow-symlinks", false, "Follow symlinks when calculating metadata (default: false)")
 }
 
-func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey, derivedDataPath, xcodeCachePath string,
-	logger log.Logger, tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string) (*xa.CacheOperation, error) {
+func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
+	authConfig common.CacheAuthConfig,
+	cacheMetadataPath,
+	projectRoot,
+	providedCacheKey,
+	derivedDataPath,
+	xcodeCachePath string,
+	followSymlinks bool,
+	logger log.Logger,
+	tracker xcode.StepAnalyticsTracker,
+	startT time.Time,
+	envProvider func(string) string) (*xa.CacheOperation, error) {
 	var err error
 	var cacheKey string
 	if providedCacheKey == "" {
@@ -126,6 +149,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Cache
 		DerivedDataPath:    derivedDataPath,
 		XcodeCacheDirPath:  xcodeCachePath,
 		CacheKey:           cacheKey,
+		FollowSymlinks:     followSymlinks,
 	}, envProvider, logger)
 	if err != nil {
 		return op, fmt.Errorf("create metadata: %w", err)

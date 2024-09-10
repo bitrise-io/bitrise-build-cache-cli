@@ -32,6 +32,7 @@ type CreateMetadataParams struct {
 	DerivedDataPath    string
 	XcodeCacheDirPath  string
 	CacheKey           string
+	FollowSymlinks     bool
 }
 
 func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
@@ -39,14 +40,22 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		return nil, fmt.Errorf("missing project root directory path")
 	}
 	var projectFiles FileGroupInfo
-	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath, params.ProjectRootDirPath, true, logger)
+	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath,
+		params.ProjectRootDirPath,
+		true,
+		params.FollowSymlinks,
+		logger)
 	if err != nil {
 		return nil, fmt.Errorf("calculate project files info: %w", err)
 	}
 
 	var derivedData FileGroupInfo
 	if params.DerivedDataPath != "" {
-		derivedData, err = collectFileGroupInfo(params.DerivedDataPath, "", false, logger)
+		derivedData, err = collectFileGroupInfo(params.DerivedDataPath,
+			"",
+			false,
+			params.FollowSymlinks,
+			logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate derived data info: %w", err)
 		}
@@ -54,7 +63,11 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 
 	var xcodeCacheDir FileGroupInfo
 	if params.XcodeCacheDirPath != "" {
-		xcodeCacheDir, err = collectFileGroupInfo(params.XcodeCacheDirPath, "", false, logger)
+		xcodeCacheDir, err = collectFileGroupInfo(params.XcodeCacheDirPath,
+			"",
+			false,
+			params.FollowSymlinks,
+			logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate xcode cache dir info: %w", err)
 		}

@@ -58,7 +58,7 @@ func (mc *fileGroupInfoCollector) AddDir(dirInfo *DirectoryInfo) {
 	mc.Dirs = append(mc.Dirs, dirInfo)
 }
 
-func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes bool, logger log.Logger) (FileGroupInfo, error) {
+func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes, followSymlinks bool, logger log.Logger) (FileGroupInfo, error) {
 	var dd FileGroupInfo
 
 	fgi := fileGroupInfoCollector{
@@ -80,7 +80,14 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
-			if err := collectFileMetadata(path, d, &fgi, collectAttributes, rootDir, logger); err != nil {
+			inf, err := d.Info()
+			if err != nil {
+				logger.Errorf("get file info: %v", err)
+
+				return
+			}
+
+			if err := collectFileMetadata(path, inf, inf.IsDir(), &fgi, collectAttributes, followSymlinks, rootDir, logger); err != nil {
 				logger.Errorf("Failed to collect metadata: %s", err)
 			}
 		}(d)
@@ -103,29 +110,60 @@ func collectFileGroupInfo(cacheDirPath string, rootDir string, collectAttributes
 	return dd, nil
 }
 
-func collectFileMetadata(path string, d fs.DirEntry, fgi *fileGroupInfoCollector, collectAttributes bool, rootDir string, logger log.Logger) error {
+// nolint:wrapcheck
+func collectSymlink(path string, fgi *fileGroupInfoCollector, followSymlinks bool, rootDir string, logger log.Logger) error {
+	if !followSymlinks {
+		logger.Debugf("Skipping symbolic link: %s", path)
+
+		return nil
+	}
+
+	target, err := resolveSymlink(path)
+	if err != nil {
+		return fmt.Errorf("resolve symlink %s: %w", path, err)
+	}
+	logger.Debugf("Resolved symlink %s to %s", path, target)
+
+	stat, err := os.Stat(target)
+	if err != nil {
+		return fmt.Errorf("stat target: %w", err)
+	}
+	if !stat.IsDir() {
+		return collectFileMetadata(target, stat, false, fgi, false, followSymlinks, rootDir, logger)
+	}
+
+	logger.Debugf("Symlink target is a directory, walking it: %s", target)
+	// Recursively walk the target directory, as it will not be included in this walk
+	return filepath.WalkDir(target, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("walk target dir: %w", err)
+		}
+
+		inf, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("get file info: %w", err)
+		}
+
+		return collectFileMetadata(path, inf, inf.IsDir(), fgi, false, followSymlinks, rootDir, logger)
+	})
+}
+
+func collectFileMetadata(path string, fileInfo fs.FileInfo, isDirectory bool, fgi *fileGroupInfoCollector, collectAttributes, followSymlinks bool, rootDir string, logger log.Logger) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("get absolute path: %w", err)
 	}
-	inf, err := d.Info()
-	if err != nil {
-		return fmt.Errorf("get file info: %w", err)
-	}
-
-	if d.IsDir() {
+	if isDirectory {
 		fgi.AddDir(&DirectoryInfo{
 			Path:    absPath,
-			ModTime: inf.ModTime(),
+			ModTime: fileInfo.ModTime(),
 		})
 
 		return nil
 	}
 
-	if inf.Mode()&os.ModeSymlink != 0 {
-		logger.Debugf("Skipping symbolic link: %s", path)
-
-		return nil
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		return collectSymlink(path, fgi, followSymlinks, rootDir, logger)
 	}
 
 	file, err := os.Open(path)
@@ -159,10 +197,10 @@ func collectFileMetadata(path string, d fs.DirEntry, fgi *fileGroupInfoCollector
 
 	fgi.AddFile(&FileInfo{
 		Path:       savedPath,
-		Size:       inf.Size(),
+		Size:       fileInfo.Size(),
 		Hash:       hash,
-		ModTime:    inf.ModTime(),
-		Mode:       inf.Mode(),
+		ModTime:    fileInfo.ModTime(),
+		Mode:       fileInfo.Mode(),
 		Attributes: attrs,
 	})
 
@@ -264,4 +302,36 @@ func restoreDirectoryInfo(dir DirectoryInfo, rootDir string) error {
 	}
 
 	return nil
+}
+
+func resolveSymlink(path string) (string, error) {
+	seen := make(map[string]struct{})
+	current := path
+
+	for {
+		if _, visited := seen[current]; visited {
+			return "", fmt.Errorf("circular symlink detected at %s", current)
+		}
+		seen[current] = struct{}{}
+
+		target, err := os.Readlink(current)
+		if err != nil {
+			return "", fmt.Errorf("read symlink: %w", err)
+		}
+
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(current), target)
+		}
+
+		info, err := os.Lstat(target)
+		if err != nil {
+			return "", fmt.Errorf("lstat target: %w", err)
+		}
+
+		if info.Mode()&os.ModeSymlink == 0 {
+			return target, nil
+		}
+
+		current = target
+	}
 }
