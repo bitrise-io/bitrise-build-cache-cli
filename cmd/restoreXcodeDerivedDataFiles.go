@@ -154,6 +154,20 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 		return op, fmt.Errorf("restore DerivedData directories: %w", err)
 	}
 
+	if len(metadata.ProjectFiles.Symlinks) > 0 {
+		logger.TInfof("Restoring project symlinks")
+		if filesUpdated, err = xcode.RestoreSymlinks(metadata.ProjectFiles.Symlinks, logger); err != nil {
+			return op, fmt.Errorf("restore project symlink: %w", err)
+		}
+	}
+
+	if len(metadata.DerivedData.Symlinks) > 0 {
+		logger.TInfof("Restoring DerivedData symlinks")
+		if filesUpdated, err = xcode.RestoreSymlinks(metadata.DerivedData.Symlinks, logger); err != nil {
+			return op, fmt.Errorf("restore DerivedData symlink: %w", err)
+		}
+	}
+
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
 		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors); err != nil {
@@ -163,6 +177,13 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 		logger.TInfof("Restoring Xcode cache directory metadata")
 		if err := xcode.RestoreDirectoryInfos(metadata.XcodeCacheDir.Directories, "", logger); err != nil {
 			return op, fmt.Errorf("restore Xcode cache directories: %w", err)
+		}
+	}
+
+	if len(metadata.XcodeCacheDir.Symlinks) > 0 {
+		logger.TInfof("Restoring Xcode cache symlinks")
+		if filesUpdated, err = xcode.RestoreSymlinks(metadata.XcodeCacheDir.Symlinks, logger); err != nil {
+			return op, fmt.Errorf("restore xcode symlink: %w", err)
 		}
 	}
 
@@ -234,8 +255,11 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger, isDebugLogMode bool
 	logger.Infof("  Git commit: %s", md.GitCommit)
 	logger.Infof("  Git branch: %s", md.GitBranch)
 	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
+	logger.Infof("  Project sylinks: %d", len(md.ProjectFiles.Symlinks))
 	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
+	logger.Infof("  DerivedData symlinks: %d", len(md.DerivedData.Symlinks))
 	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
+	logger.Infof("  Xcode cache symlinks: %d", len(md.XcodeCacheDir.Symlinks))
 	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
 	logger.Infof("  Metadata version: %d", md.MetadataVersion)
 

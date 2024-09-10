@@ -41,7 +41,6 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	}
 	var projectFiles FileGroupInfo
 	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath,
-		params.ProjectRootDirPath,
 		true,
 		params.FollowSymlinks,
 		logger)
@@ -52,7 +51,6 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	var derivedData FileGroupInfo
 	if params.DerivedDataPath != "" {
 		derivedData, err = collectFileGroupInfo(params.DerivedDataPath,
-			"",
 			false,
 			params.FollowSymlinks,
 			logger)
@@ -64,7 +62,6 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	var xcodeCacheDir FileGroupInfo
 	if params.XcodeCacheDirPath != "" {
 		xcodeCacheDir, err = collectFileGroupInfo(params.XcodeCacheDirPath,
-			"",
 			false,
 			params.FollowSymlinks,
 			logger)
@@ -144,6 +141,22 @@ func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log
 	logger.Infof("(i) Restored %d directory infos", len(dirInfos))
 
 	return nil
+}
+
+func RestoreSymlinks(symlinks []*SymlinkInfo, logger log.Logger) (int, error) {
+	updated := 0
+
+	logger.Infof("(i) %d symlinks' info loaded from cache metadata", len(symlinks))
+
+	for _, si := range symlinks {
+		if restoreSymlink(*si, logger) {
+			updated++
+		}
+	}
+
+	logger.Infof("(i) %d symlinks restored", updated)
+
+	return updated, nil
 }
 
 func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) (int, error) {
