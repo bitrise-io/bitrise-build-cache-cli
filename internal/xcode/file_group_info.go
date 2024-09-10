@@ -136,6 +136,7 @@ func collectFileGroupInfo(cacheDirPath string, collectAttributes, followSymlinks
 
 	dd.Files = fgi.Files
 	dd.Directories = fgi.Dirs
+	dd.Symlinks = fgi.Symlinks
 
 	logger.Infof("(i) Collected %d files and %d directories ", len(dd.Files), len(dd.Directories))
 	logger.Debugf("(i) Largest processed file size: %s", humanize.Bytes(uint64(fgi.LargestFileSize)))
