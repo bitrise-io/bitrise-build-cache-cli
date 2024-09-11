@@ -66,7 +66,7 @@ func Test_CreateMetadata(t *testing.T) {
 
 				require.Len(t, md.ProjectFiles.Files, 1)
 				fi := md.ProjectFiles.Files[0]
-				require.True(t, strings.HasPrefix(fi.Path, "test-file.swift"))
+				require.True(t, strings.Contains(fi.Path, "test-file.swift"))
 				require.NotEmpty(t, fi.Hash)
 
 				require.NotEmpty(t, md.CacheKey)
