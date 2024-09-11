@@ -291,12 +291,14 @@ func restoreSymlink(symlink SymlinkInfo, forceOverwrite bool, logger log.Logger)
 	if err == nil && fileInfo.Mode()&os.ModeSymlink != 0 {
 		if !forceOverwrite {
 			logger.Debugf("Symlink %s already exists", symlink.Path)
+
 			return false
 		}
 
 		err := os.Remove(symlink.Path)
 		if err != nil {
 			logger.Infof("Error removing existing symlink %s: %v", symlink.Path, err)
+
 			return false
 		}
 	}
