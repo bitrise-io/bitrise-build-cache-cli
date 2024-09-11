@@ -287,7 +287,7 @@ func setAttributes(path string, attributes map[string]string) error {
 }
 
 func restoreSymlink(symlink SymlinkInfo, forceOverwrite bool, logger log.Logger) bool {
-	fileInfo, err := os.Stat(symlink.Path)
+	fileInfo, err := os.Lstat(symlink.Path)
 	if err == nil && fileInfo.Mode()&os.ModeSymlink != 0 {
 		if !forceOverwrite {
 			logger.Debugf("Symlink %s already exists", symlink.Path)
