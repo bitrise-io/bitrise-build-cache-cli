@@ -98,7 +98,7 @@ func init() {
 		panic(err)
 	}
 	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")
-	saveXcodeDerivedDataFilesCmd.Flags().Bool("follow-symlinks", false, "Follow symlinks when calculating metadata (default: false)")
+	saveXcodeDerivedDataFilesCmd.Flags().Bool("follow-symlinks", false, "Follow symlinks when calculating metadata and save referenced files to the cache (default: false)")
 }
 
 func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,

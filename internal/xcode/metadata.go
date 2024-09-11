@@ -143,13 +143,13 @@ func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log
 	return nil
 }
 
-func RestoreSymlinks(symlinks []*SymlinkInfo, forceOverwrite bool, logger log.Logger) (int, error) {
+func RestoreSymlinks(symlinks []*SymlinkInfo, logger log.Logger) (int, error) {
 	updated := 0
 
 	logger.Infof("(i) %d symlinks' info loaded from cache metadata", len(symlinks))
 
 	for _, si := range symlinks {
-		if restoreSymlink(*si, forceOverwrite, logger) {
+		if restoreSymlink(*si, logger) {
 			updated++
 		}
 	}

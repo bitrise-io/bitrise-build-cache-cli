@@ -286,14 +286,10 @@ func setAttributes(path string, attributes map[string]string) error {
 	return nil
 }
 
-func restoreSymlink(symlink SymlinkInfo, forceOverwrite bool, logger log.Logger) bool {
+func restoreSymlink(symlink SymlinkInfo, logger log.Logger) bool {
 	fileInfo, err := os.Lstat(symlink.Path)
 	if err == nil && fileInfo.Mode()&os.ModeSymlink != 0 {
-		if !forceOverwrite {
-			logger.Debugf("Symlink %s already exists", symlink.Path)
-
-			return false
-		}
+		logger.Debugf("Symlink %s already exists, overwriting...", symlink.Path)
 
 		err := os.Remove(symlink.Path)
 		if err != nil {

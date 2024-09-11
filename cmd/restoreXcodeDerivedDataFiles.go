@@ -156,14 +156,14 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.ProjectFiles.Symlinks) > 0 {
 		logger.TInfof("Restoring project symlinks")
-		if _, err = xcode.RestoreSymlinks(metadata.ProjectFiles.Symlinks, forceOverwrite, logger); err != nil {
+		if _, err = xcode.RestoreSymlinks(metadata.ProjectFiles.Symlinks, logger); err != nil {
 			return op, fmt.Errorf("restore project symlink: %w", err)
 		}
 	}
 
 	if len(metadata.DerivedData.Symlinks) > 0 {
 		logger.TInfof("Restoring DerivedData symlinks")
-		if _, err = xcode.RestoreSymlinks(metadata.DerivedData.Symlinks, forceOverwrite, logger); err != nil {
+		if _, err = xcode.RestoreSymlinks(metadata.DerivedData.Symlinks, logger); err != nil {
 			return op, fmt.Errorf("restore DerivedData symlink: %w", err)
 		}
 	}
@@ -182,7 +182,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.XcodeCacheDir.Symlinks) > 0 {
 		logger.TInfof("Restoring Xcode cache symlinks")
-		if _, err = xcode.RestoreSymlinks(metadata.XcodeCacheDir.Symlinks, forceOverwrite, logger); err != nil {
+		if _, err = xcode.RestoreSymlinks(metadata.XcodeCacheDir.Symlinks, logger); err != nil {
 			return op, fmt.Errorf("restore xcode symlink: %w", err)
 		}
 	}
@@ -255,7 +255,7 @@ func logCacheMetadata(md *xcode.Metadata, logger log.Logger, isDebugLogMode bool
 	logger.Infof("  Git commit: %s", md.GitCommit)
 	logger.Infof("  Git branch: %s", md.GitBranch)
 	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
-	logger.Infof("  Project sylinks: %d", len(md.ProjectFiles.Symlinks))
+	logger.Infof("  Project symlinks: %d", len(md.ProjectFiles.Symlinks))
 	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
 	logger.Infof("  DerivedData symlinks: %d", len(md.DerivedData.Symlinks))
 	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
