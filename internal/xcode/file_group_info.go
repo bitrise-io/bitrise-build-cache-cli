@@ -287,9 +287,16 @@ func setAttributes(path string, attributes map[string]string) error {
 }
 
 func restoreSymlink(symlink SymlinkInfo, logger log.Logger) bool {
-	err := os.Symlink(symlink.Target, symlink.Path)
+	fileInfo, err := os.Stat(symlink.Path)
+	if err == nil && fileInfo.Mode()&os.ModeSymlink != 0 {
+		logger.Debugf("Symlink %s already exists", symlink.Path)
+
+		return false
+	}
+
+	err = os.Symlink(symlink.Target, symlink.Path)
 	if err != nil {
-		logger.Infof("Error creating symlink %s -> %s: %v", symlink.Path, symlink.Target, err)
+		logger.Debugf("Error creating symlink %s -> %s: %v", symlink.Path, symlink.Target, err)
 
 		return false
 	}
