@@ -39,6 +39,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		ddPath, _ := cmd.Flags().GetString("deriveddata-path")
 		xcodeCachePath, _ := cmd.Flags().GetString("xcodecache-path")
 		followSymlinks, _ := cmd.Flags().GetBool("follow-symlinks")
+		skipSPM, _ := cmd.Flags().GetBool("skip-spm")
 
 		tracker := xcode.NewDefaultStepTracker("save-xcode-build-cache", os.Getenv, logger)
 		defer tracker.Wait()
@@ -58,6 +59,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 			ddPath,
 			xcodeCachePath,
 			followSymlinks,
+			skipSPM,
 			logger,
 			tracker,
 			startT,
@@ -99,6 +101,7 @@ func init() {
 	}
 	saveXcodeDerivedDataFilesCmd.Flags().String("xcodecache-path", "", "Path to the Xcode cache directory folder to be saved. If not set, it will not be uploaded.")
 	saveXcodeDerivedDataFilesCmd.Flags().Bool("follow-symlinks", false, "Follow symlinks when calculating metadata and save referenced files to the cache (default: false)")
+	saveXcodeDerivedDataFilesCmd.Flags().Bool("skip-spm", false, "Skip saving files under \"DerivedData/*/SourcePackages\", i.e. skip SPM dependencies. Consider enabling this flag if using SPM cache steps. Default: false")
 }
 
 func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
@@ -109,6 +112,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	derivedDataPath,
 	xcodeCachePath string,
 	followSymlinks bool,
+	skipSPM bool,
 	logger log.Logger,
 	tracker xcode.StepAnalyticsTracker,
 	startT time.Time,
@@ -150,6 +154,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 		XcodeCacheDirPath:  xcodeCachePath,
 		CacheKey:           cacheKey,
 		FollowSymlinks:     followSymlinks,
+		SkipSPM:            skipSPM,
 	}, envProvider, logger)
 	if err != nil {
 		return op, fmt.Errorf("create metadata: %w", err)
