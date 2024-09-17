@@ -231,8 +231,9 @@ func collectFileMetadata(
 		relPath, _ := filepath.Rel(rootPath, path)
 		parts := strings.Split(filepath.ToSlash(relPath), "/")
 
-		// Checking for */SourcePackages/* under the DeriveData directory
-		if len(parts) > 2 && parts[1] == "SourcePackages" {
+		// Checking for SourcePackages/* or */SourcePackages/* under the directory
+		if len(parts) >= 1 && parts[0] == "SourcePackages" ||
+			len(parts) >= 2 && parts[1] == "SourcePackages" {
 			logger.Debugf("Skipping SPM package: %s", path)
 
 			return nil

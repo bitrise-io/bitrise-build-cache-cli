@@ -44,7 +44,7 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath,
 		true,
 		params.FollowSymlinks,
-		params.SkipSPM,
+		false,
 		logger)
 	if err != nil {
 		return nil, fmt.Errorf("calculate project files info: %w", err)
