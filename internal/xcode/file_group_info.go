@@ -234,8 +234,6 @@ func collectFileMetadata(
 		// Checking for SourcePackages/* or */SourcePackages/* under the directory
 		if len(parts) >= 1 && parts[0] == "SourcePackages" ||
 			len(parts) >= 2 && parts[1] == "SourcePackages" {
-			logger.Debugf("Skipping SPM package: %s", path)
-
 			return nil
 		}
 	}
