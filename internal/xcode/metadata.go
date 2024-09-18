@@ -33,6 +33,7 @@ type CreateMetadataParams struct {
 	XcodeCacheDirPath  string
 	CacheKey           string
 	FollowSymlinks     bool
+	SkipSPM            bool
 }
 
 func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
@@ -43,6 +44,7 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath,
 		true,
 		params.FollowSymlinks,
+		false,
 		logger)
 	if err != nil {
 		return nil, fmt.Errorf("calculate project files info: %w", err)
@@ -53,6 +55,7 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		derivedData, err = collectFileGroupInfo(params.DerivedDataPath,
 			false,
 			params.FollowSymlinks,
+			params.SkipSPM,
 			logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate derived data info: %w", err)
@@ -64,6 +67,7 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		xcodeCacheDir, err = collectFileGroupInfo(params.XcodeCacheDirPath,
 			false,
 			params.FollowSymlinks,
+			params.SkipSPM,
 			logger)
 		if err != nil {
 			return nil, fmt.Errorf("calculate xcode cache dir info: %w", err)

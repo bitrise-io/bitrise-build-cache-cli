@@ -16,6 +16,8 @@ import (
 	"io"
 	"syscall"
 
+	"strings"
+
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -86,7 +88,11 @@ func (mc *fileGroupInfoCollector) isSeen(path string) bool {
 	return mc.seen[path]
 }
 
-func collectFileGroupInfo(cacheDirPath string, collectAttributes, followSymlinks bool, logger log.Logger) (FileGroupInfo, error) {
+func collectFileGroupInfo(cacheDirPath string,
+	collectAttributes,
+	followSymlinks bool,
+	skipSPM bool,
+	logger log.Logger) (FileGroupInfo, error) {
 	var dd FileGroupInfo
 
 	fgi := fileGroupInfoCollector{
@@ -120,7 +126,7 @@ func collectFileGroupInfo(cacheDirPath string, collectAttributes, followSymlinks
 			if !filepath.IsAbs(path) {
 				path = filepath.Join(cacheDirPath, path)
 			}
-			if err := collectFileMetadata(path, inf, inf.IsDir(), &fgi, collectAttributes, followSymlinks, logger); err != nil {
+			if err := collectFileMetadata(cacheDirPath, path, inf, inf.IsDir(), &fgi, collectAttributes, followSymlinks, skipSPM, logger); err != nil {
 				logger.Errorf("Failed to collect metadata: %s", err)
 			}
 		}(d)
@@ -145,7 +151,11 @@ func collectFileGroupInfo(cacheDirPath string, collectAttributes, followSymlinks
 }
 
 // nolint:wrapcheck
-func followSymlink(path string, target string, fgi *fileGroupInfoCollector, followSymlinks bool, logger log.Logger) error {
+func followSymlink(rootPath, path, target string,
+	fgi *fileGroupInfoCollector,
+	followSymlinks,
+	skipSPM bool,
+	logger log.Logger) error {
 	if !followSymlinks {
 		logger.Debugf("Skipping symbolic link: %s", path)
 
@@ -172,7 +182,7 @@ func followSymlink(path string, target string, fgi *fileGroupInfoCollector, foll
 	})
 
 	if !stat.IsDir() {
-		return collectFileMetadata(target, stat, false, fgi, false, followSymlinks, logger)
+		return collectFileMetadata(rootPath, target, stat, false, fgi, false, followSymlinks, skipSPM, logger)
 	}
 
 	logger.Debugf("Symlink target is a directory, walking it: %s", target)
@@ -191,11 +201,17 @@ func followSymlink(path string, target string, fgi *fileGroupInfoCollector, foll
 			path = filepath.Join(target, path)
 		}
 
-		return collectFileMetadata(path, inf, inf.IsDir(), fgi, false, followSymlinks, logger)
+		return collectFileMetadata(target, path, inf, inf.IsDir(), fgi, false, followSymlinks, skipSPM, logger)
 	})
 }
 
-func collectFileMetadata(path string, fileInfo fs.FileInfo, isDirectory bool, fgi *fileGroupInfoCollector, collectAttributes, followSymlinks bool, logger log.Logger) error {
+func collectFileMetadata(
+	rootPath, path string,
+	fileInfo fs.FileInfo,
+	isDirectory bool,
+	fgi *fileGroupInfoCollector,
+	collectAttributes, followSymlinks, skipSPM bool,
+	logger log.Logger) error {
 	if fgi.isSeen(path) {
 		logger.Debugf("Skipping path %s, already seen", path)
 
@@ -211,6 +227,17 @@ func collectFileMetadata(path string, fileInfo fs.FileInfo, isDirectory bool, fg
 		return nil
 	}
 
+	if skipSPM {
+		relPath, _ := filepath.Rel(rootPath, path)
+		parts := strings.Split(filepath.ToSlash(relPath), "/")
+
+		// Checking for SourcePackages/* or */SourcePackages/* under the directory
+		if len(parts) >= 1 && parts[0] == "SourcePackages" ||
+			len(parts) >= 2 && parts[1] == "SourcePackages" {
+			return nil
+		}
+	}
+
 	isSymlink := fileInfo.Mode()&os.ModeSymlink != 0
 
 	if isSymlink {
@@ -223,7 +250,7 @@ func collectFileMetadata(path string, fileInfo fs.FileInfo, isDirectory bool, fg
 			target = filepath.Join(filepath.Dir(path), target)
 		}
 
-		return followSymlink(path, target, fgi, followSymlinks, logger)
+		return followSymlink(rootPath, path, target, fgi, followSymlinks, skipSPM, logger)
 	}
 
 	file, err := os.Open(path)
