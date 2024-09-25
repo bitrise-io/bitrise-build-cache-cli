@@ -69,6 +69,7 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 	for _, file := range dd.Files {
 		mutex.Lock()
 		_, ok := missingBlobs[file.Hash]
+		delete(missingBlobs, file.Hash) // Remove the blob from the list of missing blobs as it's being uploaded
 		mutex.Unlock()
 		if !ok {
 			continue
@@ -82,10 +83,6 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			uploadCacheFileToBuildCache(ctx, kvClient, file, &mutex, &stats, logger)
-
-			mutex.Lock()
-			delete(missingBlobs, file.Hash)
-			mutex.Unlock()
 		}(file)
 	}
 
