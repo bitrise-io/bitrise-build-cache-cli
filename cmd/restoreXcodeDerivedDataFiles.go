@@ -47,6 +47,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		projectRoot, _ := cmd.Flags().GetString("project-root")
 		cacheKey, _ := cmd.Flags().GetString("key")
 		forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite-files")
+		skipExisting, _ := cmd.Flags().GetBool("skip-existing-files")
 		maxLoggedErrors, _ := cmd.Flags().GetInt("max-logged-errors")
 
 		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", os.Getenv, logger)
@@ -60,7 +61,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		}
 
 		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, CacheMetadataPath, projectRoot,
-			cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode, forceOverwrite, maxLoggedErrors)
+			cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode, skipExisting, forceOverwrite, maxLoggedErrors)
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -92,11 +93,12 @@ func init() {
 		panic(err)
 	}
 	restoreXcodeDerivedDataFilesCmd.Flags().Bool("force-overwrite-files", false, "If set, the command will try to overwrite existing files during restoring the cache even if the permissions do not allow it")
+	restoreXcodeDerivedDataFilesCmd.Flags().Bool("skip-existing-files", false, "If set, existing files will be skipped and not be overwritten during restoring the cache")
 	restoreXcodeDerivedDataFilesCmd.Flags().Int("max-logged-errors", 150, "The maximum number of errors logged to the console during restoring the cache.")
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
-	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
+	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
 	op := newCacheOperation(startT, xa.OperationTypeDownload, envProvider)
 	kvClient, err := createKVClient(ctx, op.OperationID, authConfig, envProvider, logger)
 	if err != nil {
@@ -137,7 +139,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	tracker.LogMetadataLoaded(metadataRestoredT.Sub(startT), string(cacheKeyType), len(metadata.ProjectFiles.Files)+len(metadata.ProjectFiles.Directories), filesUpdated, metadataSize)
 
 	logger.TInfof("Downloading DerivedData files")
-	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors)
+	stats, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.DerivedData, kvClient, logger, isDebugLogMode, skipExisting, forceOverwrite, maxLoggedDownloadErrors)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
 	fillCacheOperationWithDownloadStats(op, stats)
@@ -170,7 +172,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 
 	if len(metadata.XcodeCacheDir.Files) > 0 {
 		logger.TInfof("Downloading Xcode cache files")
-		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode, forceOverwrite, maxLoggedDownloadErrors); err != nil {
+		if _, err := xcode.DownloadCacheFilesFromBuildCache(ctx, metadata.XcodeCacheDir, kvClient, logger, isDebugLogMode, skipExisting, forceOverwrite, maxLoggedDownloadErrors); err != nil {
 			return op, fmt.Errorf("download Xcode cache files: %w", err)
 		}
 

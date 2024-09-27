@@ -29,7 +29,7 @@ type DownloadFilesStats struct {
 
 // nolint: gocognit
 func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger,
-	isDebugLogMode, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
+	isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {
@@ -44,10 +44,18 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 	var filesMissing atomic.Int32
 	var filesFailedToDownload atomic.Int32
 	var downloadSize atomic.Int64
+	var skippedFiles atomic.Int32
 
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, 20) // Limit parallelization
 	for _, file := range dd.Files {
+		if skipExisting {
+			if _, err := os.Stat(file.Path); err == nil {
+				skippedFiles.Add(1)
+				continue
+			}
+		}
+
 		wg.Add(1)
 		semaphore <- struct{}{} // Block if there are too many goroutines are running
 
@@ -100,7 +108,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 	logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files. Failed: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load(), filesFailedToDownload.Load())
 
 	stats := DownloadFilesStats{
-		FilesToBeDownloaded:   len(dd.Files),
+		FilesToBeDownloaded:   len(dd.Files) - int(skippedFiles.Load()),
 		FilesDownloaded:       int(filesDownloaded.Load()),
 		FilesMissing:          int(filesMissing.Load()),
 		FilesFailedToDownload: int(filesFailedToDownload.Load()),
@@ -108,20 +116,19 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 		LargestFileSize:       largestFileSize,
 	}
 	logger.Debugf("Download stats:")
-	logger.Debugf("  Files to be downloaded: %d", len(dd.Files))
-	logger.Debugf("  Files downloaded: %d", int(filesDownloaded.Load()))
-	logger.Debugf("  Files missing: %d", int(filesMissing.Load()))
-	logger.Debugf("  Files failed to download: %d", int(filesFailedToDownload.Load()))
-	logger.Debugf("  Download size: %s", humanize.Bytes(uint64(downloadSize.Load())))
-	logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(largestFileSize)))
+	logger.Debugf("  Files to be downloaded: %d", stats.FilesToBeDownloaded)
+	logger.Debugf("  Files downloaded: %d", stats.FilesDownloaded)
+	logger.Debugf("  Files missing: %d", stats.FilesMissing)
+	logger.Debugf("  Files failed to download: %d", stats.FilesFailedToDownload)
+	logger.Debugf("  Files skipped (existing): %d", skippedFiles.Load())
+	logger.Debugf("  Download size: %s", humanize.Bytes(uint64(stats.DownloadSize)))
+	logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(stats.LargestFileSize)))
 
-	downloadErrors := int(filesFailedToDownload.Load())
-	missingFiles := int(filesMissing.Load())
-	if maxLoggedDownloadErrors < downloadErrors+missingFiles {
+	if maxLoggedDownloadErrors < stats.FilesFailedToDownload+stats.FilesMissing {
 		logger.Warnf("Too many download errors or missing files, only the first %d errors were logged", maxLoggedDownloadErrors)
 	}
 
-	if filesFailedToDownload.Load() > 0 || filesMissing.Load() > 0 {
+	if stats.FilesFailedToDownload > 0 || stats.FilesMissing > 0 {
 		return stats, fmt.Errorf("failed to download some files")
 	}
 
