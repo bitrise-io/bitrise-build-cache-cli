@@ -25,7 +25,9 @@ var ErrFileExistsAndNotWritable = errors.New("file already exists and is not wri
 func DownloadFileFromBuildCache(ctx context.Context, fileName, key string, kvClient *kv.Client, logger log.Logger) error {
 	logger.Debugf("Downloading %s", fileName)
 
-	return downloadFile(ctx, kvClient, fileName, key, 0, logger, false, false)
+	_, err := downloadFile(ctx, kvClient, fileName, key, 0, logger, false, false, false)
+
+	return err
 }
 
 func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
@@ -35,10 +37,10 @@ func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, ke
 }
 
 // nolint: nestif
-func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode, forceOverwrite bool) error {
+func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode, skipExisting, forceOverwrite bool) (bool, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("create directory: %w", err)
+		return false, fmt.Errorf("create directory: %w", err)
 	}
 
 	if fileMode == 0 {
@@ -46,18 +48,22 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	}
 
 	if fileInfo, err := os.Stat(filePath); err == nil {
+		if skipExisting {
+			return true, nil
+		}
+
 		ownerWritable := (fileInfo.Mode().Perm() & 0200) != 0
 		if !ownerWritable {
 			if !forceOverwrite {
-				return ErrFileExistsAndNotWritable
+				return false, ErrFileExistsAndNotWritable
 			}
 
 			if err := os.Chmod(filePath, 0666); err != nil {
-				return fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
+				return false, fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
 			}
 
 			if err := os.Remove(filePath); err != nil {
-				return fmt.Errorf("force overwrite - failed to remove existing file: %w", err)
+				return false, fmt.Errorf("force overwrite - failed to remove existing file: %w", err)
 			}
 		}
 	}
@@ -68,11 +74,11 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 			logFilePathDebugInfo(filePath, logger)
 		}
 
-		return fmt.Errorf("create %q: %w", filePath, err)
+		return false, fmt.Errorf("create %q: %w", filePath, err)
 	}
 	defer file.Close()
 
-	return downloadStream(ctx, file, client, key)
+	return false, downloadStream(ctx, file, client, key)
 }
 
 func downloadStream(ctx context.Context, destination io.Writer, client *kv.Client, key string) error {

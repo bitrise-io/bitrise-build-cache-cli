@@ -49,14 +49,6 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, 20) // Limit parallelization
 	for _, file := range dd.Files {
-		if skipExisting {
-			if _, err := os.Stat(file.Path); err == nil {
-				skippedFiles.Add(1)
-
-				continue
-			}
-		}
-
 		wg.Add(1)
 		semaphore <- struct{}{} // Block if there are too many goroutines are running
 
@@ -66,7 +58,13 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 
 			const retries = 3
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
-				err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode, forceOverwrite)
+				skipped, err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode, forceOverwrite, skipExisting)
+				if skipped {
+					skippedFiles.Add(1)
+
+					return nil, false
+				}
+
 				if errors.Is(err, ErrCacheNotFound) {
 					return err, true
 				} else if errors.Is(err, ErrFileExistsAndNotWritable) {
