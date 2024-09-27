@@ -53,8 +53,8 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID":        "WorkspaceIDValue",
 		}))
 		require.NoError(t, err)
-		// BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN wins
-		assert.Equal(t, CacheAuthConfig{AuthToken: "ServiceAccessTokenValue"}, authToken)
+		// BITRISE_BUILD_CACHE_AUTH_TOKEN wins
+		assert.Equal(t, CacheAuthConfig{AuthToken: "AuthTokenValue", WorkspaceID: "WorkspaceIDValue"}, authToken)
 	})
 }
 
