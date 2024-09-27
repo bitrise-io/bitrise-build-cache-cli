@@ -30,6 +30,9 @@ settingsEvaluated {
             isPush = {{ .IsPushEnabled }}
             debug = {{ .IsDebugEnabled }}
             blobValidationLevel = "{{ .ValidationLevel }}"
+            {{- if .IsAnalyticsEnabled }}
+            collectMetadata = false
+            {{- end }}
         }
     }
 }
@@ -52,12 +55,6 @@ rootProject {
         bitrise {
             {{- if .CacheConfigMetadata.BitriseAppID }}
             appSlug.set("{{ .CacheConfigMetadata.BitriseAppID }}")
-            {{- end }}
-            {{- if .CacheConfigMetadata.BitriseBuildID }}
-            buildSlug.set("{{ .CacheConfigMetadata.BitriseBuildID }}")
-            {{- end }}
-            {{- if .CacheConfigMetadata.BitriseWorkflowName }}
-            workflowName.set("{{ .CacheConfigMetadata.BitriseWorkflowName }}")
             {{- end }}
         }
     }
