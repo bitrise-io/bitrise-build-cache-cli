@@ -52,6 +52,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 		if skipExisting {
 			if _, err := os.Stat(file.Path); err == nil {
 				skippedFiles.Add(1)
+
 				continue
 			}
 		}
