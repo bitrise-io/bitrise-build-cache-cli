@@ -50,6 +50,9 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		skipExisting, _ := cmd.Flags().GetBool("skip-existing-files")
 		maxLoggedErrors, _ := cmd.Flags().GetInt("max-logged-errors")
 
+		logger.Infof("(i) Skip existing files: %t", skipExisting)
+		logger.Infof("(i) Force overwrite existing files: %t", forceOverwrite)
+
 		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", os.Getenv, logger)
 		defer tracker.Wait()
 		startT := time.Now()
