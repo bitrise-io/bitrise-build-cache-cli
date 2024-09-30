@@ -10,7 +10,7 @@ const (
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.8"
+	GradleRemoteBuildCachePluginDepVersion = "1.2.9"
 
 	// Gradle Analytics related consts
 	GradleAnalyticsPluginDepVersion = "2.1.7"
