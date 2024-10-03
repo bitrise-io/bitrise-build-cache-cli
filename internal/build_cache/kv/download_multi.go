@@ -1,4 +1,4 @@
-package xcode
+package kv
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 
@@ -15,7 +14,7 @@ import (
 
 	"sync/atomic"
 
-	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 type DownloadFilesStats struct {
@@ -28,7 +27,7 @@ type DownloadFilesStats struct {
 }
 
 // nolint: gocognit
-func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger,
+func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegroup.Info,
 	isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
@@ -37,7 +36,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 		}
 	}
 
-	logger.TInfof("(i) Downloading %d files, largest is %s",
+	c.logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
 
 	var filesDownloaded atomic.Int32
@@ -52,13 +51,13 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 		wg.Add(1)
 		semaphore <- struct{}{} // Block if there are too many goroutines are running
 
-		go func(file *FileInfo) {
+		go func(file *filegroup.FileInfo) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			const retries = 3
 			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
-				skipped, err := downloadFile(ctx, kvClient, file.Path, file.Hash, file.Mode, logger, isDebugLogMode, forceOverwrite, skipExisting)
+				skipped, err := c.DownloadFile(ctx, file.Path, file.Hash, file.Mode, isDebugLogMode, forceOverwrite, skipExisting)
 				if skipped {
 					skippedFiles.Add(1)
 
@@ -85,13 +84,13 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 			switch {
 			case errors.Is(err, ErrCacheNotFound):
 				if missingPlusFailed < int32(maxLoggedDownloadErrors) {
-					logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
+					c.logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
 				}
 
 				filesMissing.Add(1)
 			case err != nil:
 				if missingPlusFailed < int32(maxLoggedDownloadErrors) {
-					logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
+					c.logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 				}
 
 				filesFailedToDownload.Add(1)
@@ -104,7 +103,7 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 
 	wg.Wait()
 
-	logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files. Failed: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load(), filesFailedToDownload.Load())
+	c.logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files. Failed: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load(), filesFailedToDownload.Load())
 
 	stats := DownloadFilesStats{
 		FilesToBeDownloaded:   len(dd.Files) - int(skippedFiles.Load()),
@@ -114,17 +113,17 @@ func DownloadCacheFilesFromBuildCache(ctx context.Context, dd FileGroupInfo, kvC
 		DownloadSize:          downloadSize.Load(),
 		LargestFileSize:       largestFileSize,
 	}
-	logger.Debugf("Download stats:")
-	logger.Debugf("  Files to be downloaded: %d", stats.FilesToBeDownloaded)
-	logger.Debugf("  Files downloaded: %d", stats.FilesDownloaded)
-	logger.Debugf("  Files missing: %d", stats.FilesMissing)
-	logger.Debugf("  Files failed to download: %d", stats.FilesFailedToDownload)
-	logger.Debugf("  Files skipped (existing): %d", skippedFiles.Load())
-	logger.Debugf("  Download size: %s", humanize.Bytes(uint64(stats.DownloadSize)))
-	logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(stats.LargestFileSize)))
+	c.logger.Debugf("Download stats:")
+	c.logger.Debugf("  Files to be downloaded: %d", stats.FilesToBeDownloaded)
+	c.logger.Debugf("  Files downloaded: %d", stats.FilesDownloaded)
+	c.logger.Debugf("  Files missing: %d", stats.FilesMissing)
+	c.logger.Debugf("  Files failed to download: %d", stats.FilesFailedToDownload)
+	c.logger.Debugf("  Files skipped (existing): %d", skippedFiles.Load())
+	c.logger.Debugf("  Download size: %s", humanize.Bytes(uint64(stats.DownloadSize)))
+	c.logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(stats.LargestFileSize)))
 
 	if maxLoggedDownloadErrors < stats.FilesFailedToDownload+stats.FilesMissing {
-		logger.Warnf("Too many download errors or missing files, only the first %d errors were logged", maxLoggedDownloadErrors)
+		c.logger.Warnf("Too many download errors or missing files, only the first %d errors were logged", maxLoggedDownloadErrors)
 	}
 
 	if stats.FilesFailedToDownload > 0 || stats.FilesMissing > 0 {

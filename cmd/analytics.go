@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -76,7 +76,7 @@ func newCacheOperation(startT time.Time, operationType string, envProvider func(
 	return op
 }
 
-func fillCacheOperationWithUploadStats(op *xa.CacheOperation, stats xcode.UploadFilesStats) {
+func fillCacheOperationWithUploadStats(op *xa.CacheOperation, stats kv.UploadFilesStats) {
 	op.TransferSize = stats.UploadSize
 	op.FileStats = xa.FileStats{
 		FilesToTransfer:  stats.FilesToUpload,
@@ -87,7 +87,7 @@ func fillCacheOperationWithUploadStats(op *xa.CacheOperation, stats xcode.Upload
 	}
 }
 
-func fillCacheOperationWithDownloadStats(op *xa.CacheOperation, stats xcode.DownloadFilesStats) {
+func fillCacheOperationWithDownloadStats(op *xa.CacheOperation, stats kv.DownloadFilesStats) {
 	op.TransferSize = stats.DownloadSize
 	op.FileStats = xa.FileStats{
 		FilesToTransfer:  stats.FilesToBeDownloaded,
