@@ -3,6 +3,7 @@ package xcode
 import (
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/go-utils/v2/analytics"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -10,10 +11,10 @@ import (
 //go:generate moq -out mocks/tracker_mock.go -pkg mocks . StepAnalyticsTracker
 type StepAnalyticsTracker interface {
 	LogMetadataSaved(duration time.Duration, fileCount int, size int64)
-	LogDerivedDataUploaded(duration time.Duration, stats UploadFilesStats)
+	LogDerivedDataUploaded(duration time.Duration, stats kv.UploadFilesStats)
 	LogSaveFinished(totalDuration time.Duration, err error)
 	LogMetadataLoaded(duration time.Duration, cacheKeyType string, totalFileCount int, restoredFileCount int, size int64)
-	LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats)
+	LogDerivedDataDownloaded(duration time.Duration, stats kv.DownloadFilesStats)
 	LogRestoreFinished(totalDuration time.Duration, err error)
 
 	Wait()
@@ -50,7 +51,7 @@ func (t *DefaultStepAnalyticsTracker) LogMetadataSaved(duration time.Duration, f
 	t.tracker.Enqueue("step_save_xcode_build_cache_metadata_saved", properties)
 }
 
-func (t *DefaultStepAnalyticsTracker) LogDerivedDataUploaded(duration time.Duration, stats UploadFilesStats) {
+func (t *DefaultStepAnalyticsTracker) LogDerivedDataUploaded(duration time.Duration, stats kv.UploadFilesStats) {
 	properties := t.propertiesWithCLIVersion().Merge(analytics.Properties{
 		"duration_ms":             duration.Milliseconds(),
 		"files_to_upload":         stats.FilesToUpload,
@@ -84,7 +85,7 @@ func (t *DefaultStepAnalyticsTracker) LogMetadataLoaded(duration time.Duration, 
 	t.tracker.Enqueue("step_restore_xcode_build_cache_metadata_loaded", properties)
 }
 
-func (t *DefaultStepAnalyticsTracker) LogDerivedDataDownloaded(duration time.Duration, stats DownloadFilesStats) {
+func (t *DefaultStepAnalyticsTracker) LogDerivedDataDownloaded(duration time.Duration, stats kv.DownloadFilesStats) {
 	properties := t.propertiesWithCLIVersion().Merge(analytics.Properties{
 		"duration_ms":             duration.Milliseconds(),
 		"files_to_download":       stats.FilesToBeDownloaded,
