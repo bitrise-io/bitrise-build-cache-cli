@@ -6,16 +6,12 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"sort"
 	"strings"
 	"time"
-
-	"github.com/dustin/go-humanize"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -110,7 +106,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	}
 	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
-	cacheKeyType, cacheKey, err := downloadMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
+	cacheKeyType, cacheKey, err := downloadXcodeMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
 	op.CacheKey = cacheKey
 	if err != nil {
 		return op, fmt.Errorf("download cache metadata: %w", err)
@@ -126,7 +122,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 		return op, fmt.Errorf("load metadata: %w", err)
 	}
 
-	logCacheMetadata(metadata, logger, isDebugLogMode)
+	metadata.Print(logger, isDebugLogMode)
 
 	logger.TInfof("Restoring metadata of input files")
 	var filesUpdated int
@@ -196,7 +192,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 	return op, nil
 }
 
-func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
+func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
 	kvClient *kv.Client,
 	logger log.Logger,
 	envProvider func(string) string) (CacheKeyType, string, error) {
@@ -246,46 +242,6 @@ func downloadMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey s
 	}
 
 	return cacheKeyType, cacheKey, nil
-}
-
-func logCacheMetadata(md *xcode.Metadata, logger log.Logger, isDebugLogMode bool) {
-	logger.Infof("Cache metadata:")
-	logger.Infof("  Cache key: %s", md.CacheKey)
-	createdAt := ""
-	if !md.CreatedAt.IsZero() {
-		createdAt = md.CreatedAt.String()
-	}
-	logger.Infof("  Created at: %s", createdAt)
-	logger.Infof("  App ID: %s", md.AppID)
-	logger.Infof("  Build ID: %s", md.BuildID)
-	logger.Infof("  Git commit: %s", md.GitCommit)
-	logger.Infof("  Git branch: %s", md.GitBranch)
-	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
-	logger.Infof("  Project symlinks: %d", len(md.ProjectFiles.Symlinks))
-	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
-	logger.Infof("  DerivedData symlinks: %d", len(md.DerivedData.Symlinks))
-	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
-	logger.Infof("  Xcode cache symlinks: %d", len(md.XcodeCacheDir.Symlinks))
-	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
-	logger.Infof("  Metadata version: %d", md.MetadataVersion)
-
-	if isDebugLogMode {
-		sortedDDFiles := make([]*filegroup.FileInfo, len(md.DerivedData.Files))
-		copy(sortedDDFiles, md.DerivedData.Files)
-
-		sort.Slice(sortedDDFiles, func(i, j int) bool {
-			return sortedDDFiles[i].Size > sortedDDFiles[j].Size
-		})
-
-		if len(sortedDDFiles) > 10 {
-			sortedDDFiles = sortedDDFiles[:10]
-		}
-
-		logger.Debugf("  Largest files:")
-		for i, file := range sortedDDFiles {
-			logger.Debugf("    %d. %s (%s)", i+1, file.Path, humanize.Bytes(uint64(file.Size)))
-		}
-	}
 }
 
 func logCurrentUserInfo(logger log.Logger) {
