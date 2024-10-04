@@ -346,7 +346,7 @@ func RestoreSymlink(symlink SymlinkInfo, logger log.Logger) bool {
 
 func RestoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
 	var path string
-	if filepath.IsAbs(fi.Path) {
+	if filepath.IsAbs(fi.Path) || rootDir == "" {
 		path = fi.Path
 	} else {
 		path = filepath.Join(rootDir, fi.Path)
