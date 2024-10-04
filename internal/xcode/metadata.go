@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/dustin/go-humanize"
 )
 
 const metadataVersion = 1
@@ -186,6 +188,46 @@ func DeleteFileGroup(fgi filegroup.Info, logger log.Logger) {
 	for _, file := range fgi.Files {
 		if err := os.Remove(file.Path); err != nil {
 			logger.Infof("Failed to remove file %s: %s", file.Path, err)
+		}
+	}
+}
+
+func (md *Metadata) Print(logger log.Logger, isDebugLogMode bool) {
+	logger.Infof("Cache metadata:")
+	logger.Infof("  Cache key: %s", md.CacheKey)
+	createdAt := ""
+	if !md.CreatedAt.IsZero() {
+		createdAt = md.CreatedAt.String()
+	}
+	logger.Infof("  Created at: %s", createdAt)
+	logger.Infof("  App ID: %s", md.AppID)
+	logger.Infof("  Build ID: %s", md.BuildID)
+	logger.Infof("  Git commit: %s", md.GitCommit)
+	logger.Infof("  Git branch: %s", md.GitBranch)
+	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
+	logger.Infof("  Project symlinks: %d", len(md.ProjectFiles.Symlinks))
+	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
+	logger.Infof("  DerivedData symlinks: %d", len(md.DerivedData.Symlinks))
+	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
+	logger.Infof("  Xcode cache symlinks: %d", len(md.XcodeCacheDir.Symlinks))
+	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
+	logger.Infof("  Metadata version: %d", md.MetadataVersion)
+
+	if isDebugLogMode {
+		sortedDDFiles := make([]*filegroup.FileInfo, len(md.DerivedData.Files))
+		copy(sortedDDFiles, md.DerivedData.Files)
+
+		sort.Slice(sortedDDFiles, func(i, j int) bool {
+			return sortedDDFiles[i].Size > sortedDDFiles[j].Size
+		})
+
+		if len(sortedDDFiles) > 10 {
+			sortedDDFiles = sortedDDFiles[:10]
+		}
+
+		logger.Debugf("  Largest files:")
+		for i, file := range sortedDDFiles {
+			logger.Debugf("    %d. %s (%s)", i+1, file.Path, humanize.Bytes(uint64(file.Size)))
 		}
 	}
 }
