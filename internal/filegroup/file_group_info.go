@@ -1,4 +1,4 @@
-package xcode
+package filegroup
 
 import (
 	"fmt"
@@ -18,10 +18,11 @@ import (
 
 	"strings"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-type FileGroupInfo struct {
+type Info struct {
 	Files       []*FileInfo      `json:"files"`
 	Directories []*DirectoryInfo `json:"directories"`
 	Symlinks    []*SymlinkInfo   `json:"symlinks,omitempty"`
@@ -88,12 +89,12 @@ func (mc *fileGroupInfoCollector) isSeen(path string) bool {
 	return mc.seen[path]
 }
 
-func collectFileGroupInfo(cacheDirPath string,
+func CollectFileGroupInfo(cacheDirPath string,
 	collectAttributes,
 	followSymlinks bool,
 	skipSPM bool,
-	logger log.Logger) (FileGroupInfo, error) {
-	var dd FileGroupInfo
+	logger log.Logger) (Info, error) {
+	var dd Info
 
 	fgi := fileGroupInfoCollector{
 		Files:    make([]*FileInfo, 0),
@@ -126,7 +127,7 @@ func collectFileGroupInfo(cacheDirPath string,
 			if !filepath.IsAbs(path) {
 				path = filepath.Join(cacheDirPath, path)
 			}
-			if err := collectFileMetadata(cacheDirPath, path, inf, inf.IsDir(), &fgi, collectAttributes, followSymlinks, skipSPM, logger); err != nil {
+			if err := CollectFileMetadata(cacheDirPath, path, inf, inf.IsDir(), &fgi, collectAttributes, followSymlinks, skipSPM, logger); err != nil {
 				logger.Errorf("Failed to collect metadata: %s", err)
 			}
 		}(d)
@@ -137,7 +138,7 @@ func collectFileGroupInfo(cacheDirPath string,
 	wg.Wait()
 
 	if err != nil {
-		return FileGroupInfo{}, fmt.Errorf("walk dir: %w", err)
+		return Info{}, fmt.Errorf("walk dir: %w", err)
 	}
 
 	dd.Files = fgi.Files
@@ -182,7 +183,7 @@ func followSymlink(rootPath, path, target string,
 	})
 
 	if !stat.IsDir() {
-		return collectFileMetadata(rootPath, target, stat, false, fgi, false, followSymlinks, skipSPM, logger)
+		return CollectFileMetadata(rootPath, target, stat, false, fgi, false, followSymlinks, skipSPM, logger)
 	}
 
 	logger.Debugf("Symlink target is a directory, walking it: %s", target)
@@ -201,11 +202,11 @@ func followSymlink(rootPath, path, target string,
 			path = filepath.Join(target, path)
 		}
 
-		return collectFileMetadata(target, path, inf, inf.IsDir(), fgi, false, followSymlinks, skipSPM, logger)
+		return CollectFileMetadata(target, path, inf, inf.IsDir(), fgi, false, followSymlinks, skipSPM, logger)
 	})
 }
 
-func collectFileMetadata(
+func CollectFileMetadata(
 	rootPath, path string,
 	fileInfo fs.FileInfo,
 	isDirectory bool,
@@ -303,7 +304,7 @@ func getAttributes(path string) (map[string]string, error) {
 	return attributes, nil
 }
 
-func setAttributes(path string, attributes map[string]string) error {
+func SetAttributes(path string, attributes map[string]string) error {
 	for attr, value := range attributes {
 		if err := xattr.Set(path, attr, []byte(value)); err != nil {
 			return fmt.Errorf("xattr set: %w", err)
@@ -313,7 +314,7 @@ func setAttributes(path string, attributes map[string]string) error {
 	return nil
 }
 
-func restoreSymlink(symlink SymlinkInfo, logger log.Logger) bool {
+func RestoreSymlink(symlink SymlinkInfo, logger log.Logger) bool {
 	fileInfo, err := os.Lstat(symlink.Path)
 	if err == nil && fileInfo.Mode()&os.ModeSymlink != 0 {
 		logger.Debugf("Symlink %s already exists, overwriting...", symlink.Path)
@@ -345,7 +346,7 @@ func restoreSymlink(symlink SymlinkInfo, logger log.Logger) bool {
 	return true
 }
 
-func restoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
+func RestoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
 	var path string
 	if filepath.IsAbs(fi.Path) {
 		path = fi.Path
@@ -360,7 +361,7 @@ func restoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
 		return false
 	}
 
-	h, err := ChecksumOfFile(path)
+	h, err := hash.ChecksumOfFile(path)
 	if err != nil {
 		logger.Infof("Error hashing file %s: %v", fi.Path, err)
 
@@ -384,7 +385,7 @@ func restoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
 	}
 
 	if len(fi.Attributes) > 0 {
-		err = setAttributes(fi.Path, fi.Attributes)
+		err = SetAttributes(fi.Path, fi.Attributes)
 		if err != nil {
 			logger.Debugf("Error setting file attributes for %s: %v", fi.Path, err)
 
@@ -395,7 +396,7 @@ func restoreFileInfo(fi FileInfo, rootDir string, logger log.Logger) bool {
 	return true
 }
 
-func restoreDirectoryInfo(dir DirectoryInfo, rootDir string) error {
+func RestoreDirectoryInfo(dir DirectoryInfo, rootDir string) error {
 	var path string
 	if filepath.IsAbs(dir.Path) {
 		path = dir.Path

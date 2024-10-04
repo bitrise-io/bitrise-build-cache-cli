@@ -4,6 +4,7 @@
 package mocks
 
 import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"sync"
 	"time"
@@ -19,10 +20,10 @@ var _ xcode.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 //
 //		// make and configure a mocked xcode.StepAnalyticsTracker
 //		mockedStepAnalyticsTracker := &StepAnalyticsTrackerMock{
-//			LogDerivedDataDownloadedFunc: func(duration time.Duration, stats xcode.DownloadFilesStats)  {
+//			LogDerivedDataDownloadedFunc: func(duration time.Duration, stats kv.DownloadFilesStats)  {
 //				panic("mock out the LogDerivedDataDownloaded method")
 //			},
-//			LogDerivedDataUploadedFunc: func(duration time.Duration, stats xcode.UploadFilesStats)  {
+//			LogDerivedDataUploadedFunc: func(duration time.Duration, stats kv.UploadFilesStats)  {
 //				panic("mock out the LogDerivedDataUploaded method")
 //			},
 //			LogMetadataLoadedFunc: func(duration time.Duration, cacheKeyType string, totalFileCount int, restoredFileCount int, size int64)  {
@@ -48,10 +49,10 @@ var _ xcode.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 //	}
 type StepAnalyticsTrackerMock struct {
 	// LogDerivedDataDownloadedFunc mocks the LogDerivedDataDownloaded method.
-	LogDerivedDataDownloadedFunc func(duration time.Duration, stats xcode.DownloadFilesStats)
+	LogDerivedDataDownloadedFunc func(duration time.Duration, stats kv.DownloadFilesStats)
 
 	// LogDerivedDataUploadedFunc mocks the LogDerivedDataUploaded method.
-	LogDerivedDataUploadedFunc func(duration time.Duration, stats xcode.UploadFilesStats)
+	LogDerivedDataUploadedFunc func(duration time.Duration, stats kv.UploadFilesStats)
 
 	// LogMetadataLoadedFunc mocks the LogMetadataLoaded method.
 	LogMetadataLoadedFunc func(duration time.Duration, cacheKeyType string, totalFileCount int, restoredFileCount int, size int64)
@@ -75,14 +76,14 @@ type StepAnalyticsTrackerMock struct {
 			// Duration is the duration argument value.
 			Duration time.Duration
 			// Stats is the stats argument value.
-			Stats xcode.DownloadFilesStats
+			Stats kv.DownloadFilesStats
 		}
 		// LogDerivedDataUploaded holds details about calls to the LogDerivedDataUploaded method.
 		LogDerivedDataUploaded []struct {
 			// Duration is the duration argument value.
 			Duration time.Duration
 			// Stats is the stats argument value.
-			Stats xcode.UploadFilesStats
+			Stats kv.UploadFilesStats
 		}
 		// LogMetadataLoaded holds details about calls to the LogMetadataLoaded method.
 		LogMetadataLoaded []struct {
@@ -134,13 +135,13 @@ type StepAnalyticsTrackerMock struct {
 }
 
 // LogDerivedDataDownloaded calls LogDerivedDataDownloadedFunc.
-func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloaded(duration time.Duration, stats xcode.DownloadFilesStats) {
+func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloaded(duration time.Duration, stats kv.DownloadFilesStats) {
 	if mock.LogDerivedDataDownloadedFunc == nil {
 		panic("StepAnalyticsTrackerMock.LogDerivedDataDownloadedFunc: method is nil but StepAnalyticsTracker.LogDerivedDataDownloaded was just called")
 	}
 	callInfo := struct {
 		Duration time.Duration
-		Stats    xcode.DownloadFilesStats
+		Stats    kv.DownloadFilesStats
 	}{
 		Duration: duration,
 		Stats:    stats,
@@ -157,11 +158,11 @@ func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloaded(duration time.Dur
 //	len(mockedStepAnalyticsTracker.LogDerivedDataDownloadedCalls())
 func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloadedCalls() []struct {
 	Duration time.Duration
-	Stats    xcode.DownloadFilesStats
+	Stats    kv.DownloadFilesStats
 } {
 	var calls []struct {
 		Duration time.Duration
-		Stats    xcode.DownloadFilesStats
+		Stats    kv.DownloadFilesStats
 	}
 	mock.lockLogDerivedDataDownloaded.RLock()
 	calls = mock.calls.LogDerivedDataDownloaded
@@ -170,13 +171,13 @@ func (mock *StepAnalyticsTrackerMock) LogDerivedDataDownloadedCalls() []struct {
 }
 
 // LogDerivedDataUploaded calls LogDerivedDataUploadedFunc.
-func (mock *StepAnalyticsTrackerMock) LogDerivedDataUploaded(duration time.Duration, stats xcode.UploadFilesStats) {
+func (mock *StepAnalyticsTrackerMock) LogDerivedDataUploaded(duration time.Duration, stats kv.UploadFilesStats) {
 	if mock.LogDerivedDataUploadedFunc == nil {
 		panic("StepAnalyticsTrackerMock.LogDerivedDataUploadedFunc: method is nil but StepAnalyticsTracker.LogDerivedDataUploaded was just called")
 	}
 	callInfo := struct {
 		Duration time.Duration
-		Stats    xcode.UploadFilesStats
+		Stats    kv.UploadFilesStats
 	}{
 		Duration: duration,
 		Stats:    stats,
@@ -193,11 +194,11 @@ func (mock *StepAnalyticsTrackerMock) LogDerivedDataUploaded(duration time.Durat
 //	len(mockedStepAnalyticsTracker.LogDerivedDataUploadedCalls())
 func (mock *StepAnalyticsTrackerMock) LogDerivedDataUploadedCalls() []struct {
 	Duration time.Duration
-	Stats    xcode.UploadFilesStats
+	Stats    kv.UploadFilesStats
 } {
 	var calls []struct {
 		Duration time.Duration
-		Stats    xcode.UploadFilesStats
+		Stats    kv.UploadFilesStats
 	}
 	mock.lockLogDerivedDataUploaded.RLock()
 	calls = mock.calls.LogDerivedDataUploaded

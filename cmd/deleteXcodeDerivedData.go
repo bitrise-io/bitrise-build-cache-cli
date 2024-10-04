@@ -12,6 +12,8 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/grpc/codes"
@@ -83,11 +85,11 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context, providedCacheKey string, u
 }
 
 func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
-	logger.TInfof("Saving empty metadata file %s", CacheMetadataPath)
+	logger.TInfof("Saving empty metadata file %s", XCodeCacheMetadataPath)
 	_, err := xcode.SaveMetadata(&xcode.Metadata{
-		ProjectFiles:         xcode.FileGroupInfo{},
-		DerivedData:          xcode.FileGroupInfo{},
-		XcodeCacheDir:        xcode.FileGroupInfo{},
+		ProjectFiles:         filegroup.Info{},
+		DerivedData:          filegroup.Info{},
+		XcodeCacheDir:        filegroup.Info{},
 		CacheKey:             cacheKey,
 		CreatedAt:            time.Now(),
 		AppID:                envProvider("BITRISE_APP_SLUG"),
@@ -96,24 +98,24 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 		GitBranch:            envProvider("BITRISE_GIT_BRANCH"),
 		BuildCacheCLIVersion: envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
 		MetadataVersion:      1,
-	}, CacheMetadataPath, logger)
+	}, XCodeCacheMetadataPath, logger)
 	if err != nil {
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
-	mdChecksum, err := xcode.ChecksumOfFile(CacheMetadataPath)
+	mdChecksum, err := hash.ChecksumOfFile(XCodeCacheMetadataPath)
 	mdChecksumReader := strings.NewReader(mdChecksum)
 	if err != nil {
 		return fmt.Errorf("checksum of metadata file: %w", err)
 	}
 
-	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", CacheMetadataPath, mdChecksum, cacheKey)
-	if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+	logger.TInfof("Uploading metadata checksum of %s (%s) for key %s", XCodeCacheMetadataPath, mdChecksum, cacheKey)
+	if err := client.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size()); err != nil {
 		return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 	}
 
-	logger.TInfof("Uploading metadata content of %s for key %s", CacheMetadataPath, mdChecksum)
-	if err := xcode.UploadFileToBuildCache(ctx, CacheMetadataPath, mdChecksum, client, logger); err != nil {
+	logger.TInfof("Uploading metadata content of %s for key %s", XCodeCacheMetadataPath, mdChecksum)
+	if err := client.UploadFileToBuildCache(ctx, XCodeCacheMetadataPath, mdChecksum); err != nil {
 		return fmt.Errorf("upload metadata content to build cache: %w", err)
 	}
 
@@ -124,8 +126,8 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
 			cacheKey = fallbackCacheKey
 			mdChecksumReader = strings.NewReader(mdChecksum) // reset reader
-			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", CacheMetadataPath, mdChecksum, cacheKey)
-			if err := xcode.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size(), client, logger); err != nil {
+			logger.TInfof("Uploading metadata checksum of %s (%s) for fallback key %s", XCodeCacheMetadataPath, mdChecksum, cacheKey)
+			if err := client.UploadStreamToBuildCache(ctx, mdChecksumReader, cacheKey, mdChecksumReader.Size()); err != nil {
 				return fmt.Errorf("upload metadata checksum to build cache: %w", err)
 			}
 		}

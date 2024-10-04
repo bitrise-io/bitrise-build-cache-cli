@@ -5,26 +5,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/dustin/go-humanize"
 )
 
 const metadataVersion = 1
 
 type Metadata struct {
-	ProjectFiles         FileGroupInfo `json:"projectFiles"`
-	DerivedData          FileGroupInfo `json:"derivedData"`
-	XcodeCacheDir        FileGroupInfo `json:"xcodeCacheDir"`
-	CacheKey             string        `json:"cacheKey"`
-	CreatedAt            time.Time     `json:"createdAt"`
-	AppID                string        `json:"appId,omitempty"`
-	BuildID              string        `json:"buildId,omitempty"`
-	WorkspaceID          string        `json:"workspaceId,omitempty"`
-	GitCommit            string        `json:"gitCommit,omitempty"`
-	GitBranch            string        `json:"gitBranch,omitempty"`
-	BuildCacheCLIVersion string        `json:"cliVersion,omitempty"`
-	MetadataVersion      int           `json:"metadataVersion"`
+	ProjectFiles         filegroup.Info `json:"projectFiles"`
+	DerivedData          filegroup.Info `json:"derivedData"`
+	XcodeCacheDir        filegroup.Info `json:"xcodeCacheDir"`
+	CacheKey             string         `json:"cacheKey"`
+	CreatedAt            time.Time      `json:"createdAt"`
+	AppID                string         `json:"appId,omitempty"`
+	BuildID              string         `json:"buildId,omitempty"`
+	WorkspaceID          string         `json:"workspaceId,omitempty"`
+	GitCommit            string         `json:"gitCommit,omitempty"`
+	GitBranch            string         `json:"gitBranch,omitempty"`
+	BuildCacheCLIVersion string         `json:"cliVersion,omitempty"`
+	MetadataVersion      int            `json:"metadataVersion"`
 }
 
 type CreateMetadataParams struct {
@@ -40,8 +43,8 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 	if params.ProjectRootDirPath == "" {
 		return nil, fmt.Errorf("missing project root directory path")
 	}
-	var projectFiles FileGroupInfo
-	projectFiles, err := collectFileGroupInfo(params.ProjectRootDirPath,
+	var projectFiles filegroup.Info
+	projectFiles, err := filegroup.CollectFileGroupInfo(params.ProjectRootDirPath,
 		true,
 		params.FollowSymlinks,
 		false,
@@ -50,9 +53,9 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		return nil, fmt.Errorf("calculate project files info: %w", err)
 	}
 
-	var derivedData FileGroupInfo
+	var derivedData filegroup.Info
 	if params.DerivedDataPath != "" {
-		derivedData, err = collectFileGroupInfo(params.DerivedDataPath,
+		derivedData, err = filegroup.CollectFileGroupInfo(params.DerivedDataPath,
 			false,
 			params.FollowSymlinks,
 			params.SkipSPM,
@@ -62,9 +65,9 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		}
 	}
 
-	var xcodeCacheDir FileGroupInfo
+	var xcodeCacheDir filegroup.Info
 	if params.XcodeCacheDirPath != "" {
-		xcodeCacheDir, err = collectFileGroupInfo(params.XcodeCacheDirPath,
+		xcodeCacheDir, err = filegroup.CollectFileGroupInfo(params.XcodeCacheDirPath,
 			false,
 			params.FollowSymlinks,
 			params.SkipSPM,
@@ -135,9 +138,9 @@ func LoadMetadata(file string) (*Metadata, int64, error) {
 	return &metadata, int64(len(jsonData)), nil
 }
 
-func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log.Logger) error {
+func RestoreDirectoryInfos(dirInfos []*filegroup.DirectoryInfo, rootDir string, logger log.Logger) error {
 	for _, dir := range dirInfos {
-		if err := restoreDirectoryInfo(*dir, rootDir); err != nil {
+		if err := filegroup.RestoreDirectoryInfo(*dir, rootDir); err != nil {
 			return fmt.Errorf("restoring directory info: %w", err)
 		}
 	}
@@ -147,13 +150,13 @@ func RestoreDirectoryInfos(dirInfos []*DirectoryInfo, rootDir string, logger log
 	return nil
 }
 
-func RestoreSymlinks(symlinks []*SymlinkInfo, logger log.Logger) (int, error) {
+func RestoreSymlinks(symlinks []*filegroup.SymlinkInfo, logger log.Logger) (int, error) {
 	updated := 0
 
 	logger.Infof("(i) %d symlinks' info loaded from cache metadata", len(symlinks))
 
 	for _, si := range symlinks {
-		if restoreSymlink(*si, logger) {
+		if filegroup.RestoreSymlink(*si, logger) {
 			updated++
 		}
 	}
@@ -163,13 +166,13 @@ func RestoreSymlinks(symlinks []*SymlinkInfo, logger log.Logger) (int, error) {
 	return updated, nil
 }
 
-func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) (int, error) {
+func RestoreFileInfos(fileInfos []*filegroup.FileInfo, rootDir string, logger log.Logger) (int, error) {
 	updated := 0
 
 	logger.Infof("(i) %d files' info loaded from cache metadata", len(fileInfos))
 
 	for _, fi := range fileInfos {
-		if restoreFileInfo(*fi, rootDir, logger) {
+		if filegroup.RestoreFileInfo(*fi, rootDir, logger) {
 			updated++
 		}
 	}
@@ -179,12 +182,52 @@ func RestoreFileInfos(fileInfos []*FileInfo, rootDir string, logger log.Logger) 
 	return updated, nil
 }
 
-func DeleteFileGroup(fgi FileGroupInfo, logger log.Logger) {
+func DeleteFileGroup(fgi filegroup.Info, logger log.Logger) {
 	logger.Infof("Deleting %d files", len(fgi.Files))
 
 	for _, file := range fgi.Files {
 		if err := os.Remove(file.Path); err != nil {
 			logger.Infof("Failed to remove file %s: %s", file.Path, err)
+		}
+	}
+}
+
+func (md *Metadata) Print(logger log.Logger, isDebugLogMode bool) {
+	logger.Infof("Cache metadata:")
+	logger.Infof("  Cache key: %s", md.CacheKey)
+	createdAt := ""
+	if !md.CreatedAt.IsZero() {
+		createdAt = md.CreatedAt.String()
+	}
+	logger.Infof("  Created at: %s", createdAt)
+	logger.Infof("  App ID: %s", md.AppID)
+	logger.Infof("  Build ID: %s", md.BuildID)
+	logger.Infof("  Git commit: %s", md.GitCommit)
+	logger.Infof("  Git branch: %s", md.GitBranch)
+	logger.Infof("  Project files: %d", len(md.ProjectFiles.Files))
+	logger.Infof("  Project symlinks: %d", len(md.ProjectFiles.Symlinks))
+	logger.Infof("  DerivedData files: %d", len(md.DerivedData.Files))
+	logger.Infof("  DerivedData symlinks: %d", len(md.DerivedData.Symlinks))
+	logger.Infof("  Xcode cache files: %d", len(md.XcodeCacheDir.Files))
+	logger.Infof("  Xcode cache symlinks: %d", len(md.XcodeCacheDir.Symlinks))
+	logger.Infof("  Build Cache CLI version: %s", md.BuildCacheCLIVersion)
+	logger.Infof("  Metadata version: %d", md.MetadataVersion)
+
+	if isDebugLogMode {
+		sortedDDFiles := make([]*filegroup.FileInfo, len(md.DerivedData.Files))
+		copy(sortedDDFiles, md.DerivedData.Files)
+
+		sort.Slice(sortedDDFiles, func(i, j int) bool {
+			return sortedDDFiles[i].Size > sortedDDFiles[j].Size
+		})
+
+		if len(sortedDDFiles) > 10 {
+			sortedDDFiles = sortedDDFiles[:10]
+		}
+
+		logger.Debugf("  Largest files:")
+		for i, file := range sortedDDFiles {
+			logger.Debugf("    %d. %s (%s)", i+1, file.Path, humanize.Bytes(uint64(file.Size)))
 		}
 	}
 }

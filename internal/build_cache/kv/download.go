@@ -1,4 +1,4 @@
-package xcode
+package kv
 
 import (
 	"context"
@@ -11,9 +11,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // ErrCacheNotFound ...
@@ -22,22 +19,22 @@ var ErrCacheNotFound = errors.New("no cache archive found for the provided keys"
 // ErrFileExistsAndNotWritable ...
 var ErrFileExistsAndNotWritable = errors.New("file already exists and is not writable")
 
-func DownloadFileFromBuildCache(ctx context.Context, fileName, key string, kvClient *kv.Client, logger log.Logger) error {
-	logger.Debugf("Downloading %s", fileName)
+func (c *Client) DownloadFileFromBuildCache(ctx context.Context, fileName, key string) error {
+	c.logger.Debugf("Downloading %s", fileName)
 
-	_, err := downloadFile(ctx, kvClient, fileName, key, 0, logger, false, false, false)
+	_, err := c.DownloadFile(ctx, fileName, key, 0, false, false, false)
 
 	return err
 }
 
-func DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string, kvClient *kv.Client, logger log.Logger) error {
-	logger.Debugf("Downloading %s", key)
+func (c *Client) DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string) error {
+	c.logger.Debugf("Downloading %s", key)
 
-	return downloadStream(ctx, destination, kvClient, key)
+	return c.DownloadStream(ctx, destination, key)
 }
 
 // nolint: nestif
-func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, fileMode os.FileMode, logger log.Logger, isDebugLogMode, skipExisting, forceOverwrite bool) (bool, error) {
+func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMode os.FileMode, isDebugLogMode, skipExisting, forceOverwrite bool) (bool, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return false, fmt.Errorf("create directory: %w", err)
@@ -71,18 +68,18 @@ func downloadFile(ctx context.Context, client *kv.Client, filePath, key string, 
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileMode)
 	if err != nil {
 		if isDebugLogMode {
-			logFilePathDebugInfo(filePath, logger)
+			c.logFilePathDebugInfo(filePath)
 		}
 
 		return false, fmt.Errorf("create %q: %w", filePath, err)
 	}
 	defer file.Close()
 
-	return false, downloadStream(ctx, file, client, key)
+	return false, c.DownloadStream(ctx, file, key)
 }
 
-func downloadStream(ctx context.Context, destination io.Writer, client *kv.Client, key string) error {
-	kvReader, err := client.Get(ctx, key)
+func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
+	kvReader, err := c.Get(ctx, key)
 	if err != nil {
 		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
 	}
@@ -100,22 +97,22 @@ func downloadStream(ctx context.Context, destination io.Writer, client *kv.Clien
 	return nil
 }
 
-func logFilePathDebugInfo(filePath string, logger log.Logger) {
+func (c *Client) logFilePathDebugInfo(filePath string) {
 	fileInfo, err := os.Stat(filePath)
 	if err == nil {
-		logger.Debugf("    File already exists - permissions: %s\n", fileInfo.Mode().String())
+		c.logger.Debugf("    File already exists - permissions: %s\n", fileInfo.Mode().String())
 
 		if stat, ok := fileInfo.Sys().(*syscall.Stat_t); ok {
-			logger.Debugf("    Owner UID: %d Owner GID: %d\n", stat.Uid, stat.Gid)
+			c.logger.Debugf("    Owner UID: %d Owner GID: %d\n", stat.Uid, stat.Gid)
 		}
 	}
 
 	dirPath := filepath.Dir(filePath)
 	dirInfo, err := os.Stat(dirPath)
 	if err == nil {
-		logger.Debugf("    Containing dir permissions: %s\n", dirInfo.Mode().String())
+		c.logger.Debugf("    Containing dir permissions: %s\n", dirInfo.Mode().String())
 		if stat, ok := dirInfo.Sys().(*syscall.Stat_t); ok {
-			logger.Debugf("    Owner UID: %d Owner GID: %d\n", stat.Uid, stat.Gid)
+			c.logger.Debugf("    Owner UID: %d Owner GID: %d\n", stat.Uid, stat.Gid)
 		}
 	}
 }

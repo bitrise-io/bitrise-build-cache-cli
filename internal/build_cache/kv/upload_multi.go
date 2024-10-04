@@ -1,4 +1,4 @@
-package xcode
+package kv
 
 import (
 	"context"
@@ -9,8 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 type UploadFilesStats struct {
@@ -22,13 +21,13 @@ type UploadFilesStats struct {
 	LargestFileSize     int64
 }
 
-func uploadCacheFileToBuildCache(ctx context.Context, kvClient *kv.Client, file *FileInfo, mutex *sync.Mutex, stats *UploadFilesStats, logger log.Logger) {
+func (c *Client) uploadFileToBuildCache(ctx context.Context, file *filegroup.FileInfo, mutex *sync.Mutex, stats *UploadFilesStats) {
 	const retries = 2
 	err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt != 0 {
-			logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
+			c.logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
 		}
-		_, err := uploadFile(ctx, kvClient, file.Path, file.Hash, file.Hash, logger)
+		_, err := c.uploadFile(ctx, file.Path, file.Hash, file.Hash)
 		if err != nil {
 			return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
 		}
@@ -38,7 +37,7 @@ func uploadCacheFileToBuildCache(ctx context.Context, kvClient *kv.Client, file 
 
 	mutex.Lock()
 	if err != nil {
-		logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
+		c.logger.Errorf("Failed to upload file %s with error: %v", file.Path, err)
 		stats.FilesFailedToUpload++
 	} else {
 		stats.FilesUploaded++
@@ -50,8 +49,8 @@ func uploadCacheFileToBuildCache(ctx context.Context, kvClient *kv.Client, file 
 	mutex.Unlock()
 }
 
-func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClient *kv.Client, logger log.Logger) (UploadFilesStats, error) {
-	missingBlobs, err := findMissingBlobs(ctx, dd, kvClient, logger)
+func (c *Client) UploadFileGroupToBuildCache(ctx context.Context, dd filegroup.Info) (UploadFilesStats, error) {
+	missingBlobs, err := c.findMissingBlobs(ctx, dd)
 	if err != nil {
 		return UploadFilesStats{}, fmt.Errorf("failed to check for missing blobs: %w", err)
 	}
@@ -61,7 +60,7 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 		FilesToUpload: len(missingBlobs),
 	}
 
-	logger.TInfof("(i) Uploading missing blobs...")
+	c.logger.TInfof("(i) Uploading missing blobs...")
 
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
@@ -78,17 +77,17 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 		wg.Add(1)
 		semaphore <- struct{}{} // Block if there are too many goroutines are running
 
-		go func(file *FileInfo) {
+		go func(file *filegroup.FileInfo) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
-			uploadCacheFileToBuildCache(ctx, kvClient, file, &mutex, &stats, logger)
+			c.uploadFileToBuildCache(ctx, file, &mutex, &stats)
 		}(file)
 	}
 
 	wg.Wait()
 
-	logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(stats.UploadSize)), stats.FilesUploaded)
+	c.logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(stats.UploadSize)), stats.FilesUploaded)
 
 	if stats.FilesFailedToUpload > 0 {
 		return stats, fmt.Errorf("failed to upload some files")
@@ -97,15 +96,15 @@ func UploadCacheFilesToBuildCache(ctx context.Context, dd FileGroupInfo, kvClien
 	return stats, nil
 }
 
-func findMissingBlobs(ctx context.Context, dd FileGroupInfo, client *kv.Client, logger log.Logger) (map[string]bool, error) {
-	logger.TInfof("(i) Checking for missing blobs in the cache of %d files", len(dd.Files))
+func (c *Client) findMissingBlobs(ctx context.Context, dd filegroup.Info) (map[string]bool, error) {
+	c.logger.TInfof("(i) Checking for missing blobs in the cache of %d files", len(dd.Files))
 
 	blobs := make(map[string]bool)
 
-	allDigests := make([]*kv.FileDigest, 0, len(dd.Files))
+	allDigests := make([]*FileDigest, 0, len(dd.Files))
 	for _, file := range dd.Files {
 		if _, ok := blobs[file.Hash]; !ok {
-			allDigests = append(allDigests, &kv.FileDigest{
+			allDigests = append(allDigests, &FileDigest{
 				Sha256Sum:   file.Hash,
 				SizeInBytes: file.Size,
 			})
@@ -114,8 +113,8 @@ func findMissingBlobs(ctx context.Context, dd FileGroupInfo, client *kv.Client, 
 		}
 	}
 
-	logger.Infof("(i) The files are stored in %d different blobs", len(allDigests))
-	missingDigests, err := client.FindMissing(ctx, allDigests)
+	c.logger.Infof("(i) The files are stored in %d different blobs", len(allDigests))
+	missingDigests, err := c.FindMissing(ctx, allDigests)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for existing files in the cache: %w", err)
 	}
@@ -125,7 +124,7 @@ func findMissingBlobs(ctx context.Context, dd FileGroupInfo, client *kv.Client, 
 		missingBlobs[d.Sha256Sum] = true
 	}
 
-	logger.TInfof("(i) %d of %d blobs are missing", len(missingBlobs), len(blobs))
+	c.logger.TInfof("(i) %d of %d blobs are missing", len(missingBlobs), len(blobs))
 
 	return missingBlobs, nil
 }
