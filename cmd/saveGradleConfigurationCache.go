@@ -62,10 +62,7 @@ func init() {
 	rootCmd.AddCommand(saveGradleConfigCacheCmd)
 
 	saveGradleConfigCacheCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
-	saveGradleConfigCacheCmd.Flags().String("config-cache-dir", "", "Path to the Gradle configuration cache folder. It's usually the $PROJECT_ROOT/.gradle/configuration-cache")
-	if err := saveGradleConfigCacheCmd.MarkFlagRequired("config-cache-dir"); err != nil {
-		panic(err)
-	}
+	saveGradleConfigCacheCmd.Flags().String("config-cache-dir", "./.gradle/configuration-cache", "Path to the Gradle configuration cache folder. It's usually the $PROJECT_ROOT/.gradle/configuration-cache")
 }
 
 func saveGradleConfigCacheCmdFn(ctx context.Context,
