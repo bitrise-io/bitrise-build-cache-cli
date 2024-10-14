@@ -2,10 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
-	"errors"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
@@ -13,7 +14,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 // nolint: gochecknoglobals
@@ -66,7 +66,6 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider func(string) string) error {
-
 	kvClient, err := createKVClient(ctx, uuid.NewString(), authConfig, envProvider, logger)
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
@@ -76,7 +75,7 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 
 	logger.TInfof("(i) Restoring Gradle configuration cache")
 
-	_, _, err = downloadGradleConfigCacheMetadata(ctx, GradleConfigCacheMetadataPath, providedCacheKey, g, kvClient, logger, envProvider)
+	_, _, err = downloadGradleConfigCacheMetadata(ctx, GradleConfigCacheMetadataPath, providedCacheKey, g, kvClient, logger)
 	if err != nil {
 		return fmt.Errorf("download cache metadata: %w", err)
 	}
@@ -121,8 +120,7 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 func downloadGradleConfigCacheMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
 	gradleCache *gradle.Cache,
 	kvClient *kv.Client,
-	logger log.Logger,
-	envProvider func(string) string) (CacheKeyType, string, error) {
+	logger log.Logger) (CacheKeyType, string, error) {
 	var cacheKeyType CacheKeyType = CacheKeyTypeDefault
 	var cacheKey string
 	var err error
