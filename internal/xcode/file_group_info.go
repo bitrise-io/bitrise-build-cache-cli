@@ -228,13 +228,11 @@ func collectFileMetadata(
 	}
 
 	if skipSPM {
-		relPath, _ := filepath.Rel(rootPath, path)
-		parts := strings.Split(filepath.ToSlash(relPath), "/")
-
-		// Checking for SourcePackages/* or */SourcePackages/* under the directory
-		if len(parts) >= 1 && parts[0] == "SourcePackages" ||
-			len(parts) >= 2 && parts[1] == "SourcePackages" {
-			return nil
+		parts := strings.Split(filepath.ToSlash(path), "/")
+		for _, part := range parts {
+			if part == "SourcePackages" {
+				return nil
+			}
 		}
 	}
 
