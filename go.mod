@@ -3,9 +3,9 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.22.3
 
 require (
-	cloud.google.com/go/longrunning v0.6.0
-	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33
+	cloud.google.com/go/longrunning v0.6.1
+	github.com/bazelbuild/remote-apis v0.0.0-20240926071355-6777112ef7de
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.35
 	github.com/bitrise-io/go-utils v1.0.13
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
 	github.com/dustin/go-humanize v1.0.1
@@ -14,14 +14,15 @@ require (
 	github.com/pkg/xattr v0.4.10
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/grpc v1.65.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53
+	google.golang.org/genproto/googleapis/bytestream v0.0.0-20241015192408-796eee8c2d53
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53
+	google.golang.org/grpc v1.67.1
+	google.golang.org/protobuf v1.35.1
 )
 
 require (
+	github.com/bitrise-io/got v0.0.0-20240902113940-25f6469d1456 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/go-units v0.4.0 // indirect
@@ -30,7 +31,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/melbahja/got v0.7.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
