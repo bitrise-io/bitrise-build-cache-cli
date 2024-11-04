@@ -65,6 +65,7 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 				}
 
 				if errors.Is(err, ErrCacheNotFound) {
+					c.logger.Debugf("Cache entry not found for file %s (%s)", file.Path, file.Hash)
 					return err, true
 				} else if errors.Is(err, ErrFileExistsAndNotWritable) {
 					return err, true
