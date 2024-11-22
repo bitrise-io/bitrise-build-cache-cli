@@ -10,6 +10,12 @@ release:
     owner: bitrise-io
     name: bitrise-build-cache-cli
   draft: true
+  footer: |
+    ### Gradle verification
+    For reference, the verification metadata is available as an attached assset.
+  extra_files:
+    - glob: ./gradle_verification_sample/gradle/verification-metadata.xml
+
 
 before:
   hooks:

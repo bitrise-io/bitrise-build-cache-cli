@@ -14,6 +14,8 @@ trigger_map:
   workflow: release
 workflows:
   release:
+    before_run:
+    - generate_gradle_verification
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
     envs:
     - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
@@ -38,6 +40,33 @@ workflows:
             set -ex
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
+    - script:
+        title: Generate verification
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+
+            # Backup $HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            GRADLE_INIT_PATH=$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            if [[ -f "$GRADLE_INIT_PATH" ]]; then
+              mv $GRADLE_INIT_PATH $GRADLE_INIT_PATH.backup
+            fi
+
+            go build -o /tmp/bin/bitrise-build-cache-cli
+
+            SAMPLE_PATH=$(realpath ./gradle_verification_sample)
+            
+            # add plugin with CLI
+            cd "$SAMPLE_PATH"
+            /tmp/bin/bitrise-build-cache-cli enable-for add-gradle-deps
+
+            # generate xml
+            rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
+            ./gradlew --write-verification-metadata sha256 help
+
+            echo "Generated verification xml:"
+            cat "$SAMPLE_PATH/gradle/verification-metadata.xml"
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:          
@@ -86,3 +115,4 @@ workflows:
         - content: |-
             set -ex
             bitrise run --config e2e/bitrise.yml test_gradle_output_diagnostics 
+
