@@ -14,8 +14,6 @@ trigger_map:
   workflow: release
 workflows:
   release:
-    before_run:
-    - generate_gradle_verification
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
     envs:
     - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
@@ -59,7 +57,7 @@ workflows:
             
             # add plugin with CLI
             cd "$SAMPLE_PATH"
-            /tmp/bin/bitrise-build-cache-cli enable-for add-gradle-deps
+            /tmp/bin/bitrise-build-cache-cli add-gradle-deps
 
             # generate xml
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
