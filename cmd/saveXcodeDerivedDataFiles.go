@@ -77,7 +77,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		}
 
 		tracker.LogSaveFinished(time.Since(startT), err)
-		if err != nil {
+		if cmdError != nil {
 			return fmt.Errorf("save Xcode cache into Bitrise Build Cache: %w", err)
 		}
 
