@@ -3,7 +3,7 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
 meta:
   bitrise.io:
-    machine_type_id: standard
+    machine_type_id: g2.linux.medium
     stack: linux-docker-android-22.04
 trigger_map:
 - push_branch: main
