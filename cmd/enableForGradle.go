@@ -129,7 +129,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
 
 	prefs := gradleconfig.Preferences{
-		IsOfflineMode:        false,
+		IsDependencyOnly:     false,
 		IsPushEnabled:        paramIsPushEnabled,
 		CacheLevelValidation: gradleconfig.CacheValidationLevel(paramValidationLevel),
 		IsAnalyticsEnabled:   paramIsGradleMetricsEnabled,

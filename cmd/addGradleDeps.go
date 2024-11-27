@@ -62,7 +62,7 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider fu
 
 	authToken := "placeholder-token"
 	prefs := gradleconfig.Preferences{
-		IsOfflineMode:        true,
+		IsDependencyOnly:     true,
 		IsPushEnabled:        false,
 		CacheLevelValidation: gradleconfig.CacheValidationLevelNone,
 		IsAnalyticsEnabled:   true,
