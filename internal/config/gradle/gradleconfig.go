@@ -29,6 +29,7 @@ var (
 )
 
 type Preferences struct {
+	IsDependencyOnly     bool
 	IsPushEnabled        bool
 	CacheLevelValidation CacheValidationLevel
 	IsAnalyticsEnabled   bool
@@ -36,6 +37,7 @@ type Preferences struct {
 }
 
 type templateInventory struct {
+	IsDependencyOnly         bool
 	AuthToken                string
 	CacheEndpointURLWithPort string
 	CachePluginVersion       string
@@ -66,6 +68,7 @@ func GenerateInitGradle(endpointURL, authToken string, preferences Preferences, 
 
 	// create inventory
 	inventory := templateInventory{
+		IsDependencyOnly:         preferences.IsDependencyOnly,
 		AuthToken:                authToken,
 		CacheEndpointURLWithPort: endpointURL,
 		CachePluginVersion:       consts.GradleRemoteBuildCachePluginDepVersion,
