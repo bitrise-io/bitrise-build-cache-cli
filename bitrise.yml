@@ -12,6 +12,7 @@ trigger_map:
   workflow: test
 - tag: '*.*.*'
   workflow: release
+
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
@@ -38,8 +39,69 @@ workflows:
             set -ex
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
+    - bundle::generate_gradle_verification_reference: { }
     - script:
-        title: Generate verification
+        title: Goreleaser (create binaries + publish to GH)
+        deps:          
+          brew:
+          - name: goreleaser
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -ex
+
+            goreleaser release
+    - deploy-to-bitrise-io@2: {}
+    meta:
+      bitrise.io:
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
+  test:
+    after_run:
+    - check_gradle_verification
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - go-list@1: {}
+    - script@1:
+        title: golangci-lint
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
+            make lint
+    - go-test@1: {}
+    - bundle::generate_gradle_verification_reference: { }
+    - deploy-to-bitrise-io@2: {}
+  
+  e2e:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script@1:
+        title: build CLI
+        inputs:
+        - content: |-
+            set -ex
+            go build -o bitrise-build-cache-cli
+    - script@1:
+        title: Run test
+        inputs:
+        - content: |-
+            set -ex
+            bitrise run --config e2e/bitrise.yml test_gradle_output_diagnostics
+
+  check_gradle_verification:
+    steps:
+    - bundle::generate_gradle_verification_reference: { }
+
+step_bundles:
+  generate_gradle_verification_reference:
+    steps:
+    - script:
+        title: Generate Gradle verification reference
         inputs:
         - content: |
             #!/bin/bash
@@ -63,55 +125,22 @@ workflows:
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
 
-            echo "Generated verification xml:"
-            cat "$SAMPLE_PATH/gradle/verification-metadata.xml"
-    - script:
-        title: Goreleaser (create binaries + publish to GH)
-        deps:          
-          brew:
-          - name: goreleaser
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -ex
-
-            goreleaser release
-    - deploy-to-bitrise-io@2: {}
-    meta:
-      bitrise.io:
-        machine_type_id: g2-m1.8core
-        stack: osx-xcode-edge
-  test:
-    steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - go-list@1: {}
+            GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
+            echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
+            envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
     - script@1:
-        title: golangci-lint
+        title: Check if local updates to verification-metadata.xml are not commited
         inputs:
         - content: |-
-            #!/bin/bash
-            set -ex
-            make lint
-    - go-test@1: {}
-    - deploy-to-bitrise-io@2: {}
-  
-  e2e:
-    steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - script@1:
-        title: build CLI
-        inputs:
-        - content: |-
-            set -ex
-            go build -o bitrise-build-cache-cli
-    - script@1:
-        title: Run test
-        inputs:
-        - content: |-
-            set -ex
-            bitrise run --config e2e/bitrise.yml test_gradle_output_diagnostics 
+            set -x
+            
+            git update-index --refresh | grep "verification-metadata.xml"
+            if [[ $? == 0 ]]; then
+              echo "Please manually commit the changes to the repo:"
+              echo "$GRADLE_VERIFICATION_REF_PATH"
+              exit 1
+            else
+              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_PATH"
+              exit 0
+            fi
 
