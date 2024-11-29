@@ -59,6 +59,22 @@ workflows:
         - module: app
         - variant: debug
 
+  test_gradle_verification:
+    steps:
+    - change-workdir:
+        title: Switch working dir to _tmp
+        inputs:
+        - path: ./_tmp
+    - script:
+        title: update metadata
+        inputs:
+        - content: |-
+            set -ex
+            METADATA_PATH=./gradle/verification-metadata.xml
+        
+            ../bitrise-build-cache-cli gradle-verification write --metadata-path=./gradle_verification_sample/gradle/verification-metadata.xml
+
+
   _setup:
     steps:
     - script:

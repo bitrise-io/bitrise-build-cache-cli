@@ -58,7 +58,7 @@ var writeGradleVerificationDeps = &cobra.Command{ //nolint:gochecknoglobals
 func init() {
 	rootCmd.AddCommand(gradleVerification)
 	gradleVerification.AddCommand(writeGradleVerificationDeps)
-	gradleVerification.Flags().StringVar(&metadataPath, "metadata-path", "", "Path of verification-metadata.xml")
+	writeGradleVerificationDeps.Flags().StringVar(&metadataPath, "metadata-path", "", "Path of verification-metadata.xml")
 }
 
 func addGradleVerification(logger log.Logger, projectMetadataPath string, _ func(string) string) error {
