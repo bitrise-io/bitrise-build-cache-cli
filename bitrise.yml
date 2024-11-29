@@ -23,13 +23,13 @@ workflows:
     - git-clone@8:
         inputs:
         - fetch_tags: "yes"
-    - script@1:
-        title: asdf use latest go
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
+    # - script@1:
+    #     title: asdf use latest go
+    #     inputs:
+    #     - content: |-
+    #         #!/usr/bin/env bash
 
-            asdf global golang 1.22
+    #         asdf global golang 1.22
     - script:
         title: Install Goreleaser
         inputs:
@@ -65,6 +65,9 @@ workflows:
 
             echo "Generated verification xml:"
             cat "$SAMPLE_PATH/gradle/verification-metadata.xml"
+
+            # Copy metadata to be included in the CLI binary
+            cp -f "$SAMPLE_PATH/gradle/verification-metadata.xml" ./cmd/asset/verification-metadata.xml
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:          
