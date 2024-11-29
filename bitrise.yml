@@ -54,8 +54,7 @@ workflows:
     - deploy-to-bitrise-io@2: {}
     meta:
       bitrise.io:
-        machine_type_id: g2-m1.8core
-        stack: osx-xcode-edge
+        stack: osx-xcode-16.1.x
   test:
     after_run:
     - check_gradle_verification
@@ -74,6 +73,9 @@ workflows:
     - go-test@1: {}
     - bundle::generate_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2: {}
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.1.x
   
   e2e:
     steps:
