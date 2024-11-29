@@ -126,6 +126,7 @@ step_bundles:
             ./gradlew --write-verification-metadata sha256 help
 
             GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
+            cat $GRADLE_VERIFICATION_REF_PATH
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
             envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
     - script@1:
