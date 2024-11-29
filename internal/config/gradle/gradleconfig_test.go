@@ -152,7 +152,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.2.9")
-        classpath("io.bitrise.gradle:gradle-analytics:2.1.7")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.8")
     }
 }
 
@@ -207,7 +207,7 @@ initscript {
     }
     dependencies {
         classpath("io.bitrise.gradle:remote-cache:1.2.9")
-        classpath("io.bitrise.gradle:gradle-analytics:2.1.7")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.8")
     }
 }
 
