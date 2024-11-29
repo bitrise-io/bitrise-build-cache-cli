@@ -24,13 +24,13 @@ workflows:
     - git-clone@8:
         inputs:
         - fetch_tags: "yes"
-    - script@1:
-        title: asdf use latest go
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
+    # - script@1:
+    #     title: asdf use latest go
+    #     inputs:
+    #     - content: |-
+    #         #!/usr/bin/env bash
 
-            asdf global golang 1.22
+    #         asdf global golang 1.22
     - script:
         title: Install Goreleaser
         inputs:
@@ -131,6 +131,9 @@ step_bundles:
             cat $GRADLE_VERIFICATION_REF_PATH
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
             envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
+
+            # Copy metadata to be included in the CLI binary
+            cp -f "$GRADLE_VERIFICATION_REF_PATH" ./cmd/asset/verification-metadata.xml
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
