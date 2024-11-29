@@ -5,6 +5,7 @@ go 1.22.3
 require (
 	cloud.google.com/go/longrunning v0.6.0
 	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
+	github.com/beevik/etree v1.4.1
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33
 	github.com/bitrise-io/go-utils v1.0.13
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
