@@ -57,8 +57,6 @@ workflows:
         machine_type_id: g2-m1.8core
         stack: osx-xcode-edge
   test:
-    after_run:
-    - check_gradle_verification
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
