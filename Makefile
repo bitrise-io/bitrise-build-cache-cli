@@ -1,5 +1,5 @@
 # Tool versions
-GOLANGCI_LINT_VERSION = v1.58.1
+GOLANGCI_LINT_VERSION = v1.60.0
 
 .PHONY: lint
 lint:					## Runs golangci-lint

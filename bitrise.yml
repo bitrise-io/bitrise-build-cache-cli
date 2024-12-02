@@ -12,6 +12,7 @@ trigger_map:
   workflow: test
 - tag: '*.*.*'
   workflow: release
+
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
@@ -38,33 +39,7 @@ workflows:
             set -ex
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
-    - script:
-        title: Generate verification
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -ex
-
-            # Backup $HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts
-            GRADLE_INIT_PATH=$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts
-            if [[ -f "$GRADLE_INIT_PATH" ]]; then
-              mv $GRADLE_INIT_PATH $GRADLE_INIT_PATH.backup
-            fi
-
-            go build -o /tmp/bin/bitrise-build-cache-cli
-
-            SAMPLE_PATH=$(realpath ./gradle_verification_sample)
-            
-            # add plugin with CLI
-            cd "$SAMPLE_PATH"
-            /tmp/bin/bitrise-build-cache-cli add-gradle-deps
-
-            # generate xml
-            rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
-            ./gradlew --write-verification-metadata sha256 help
-
-            echo "Generated verification xml:"
-            cat "$SAMPLE_PATH/gradle/verification-metadata.xml"
+    - bundle::check_gradle_verification_reference: { }
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:          
@@ -95,7 +70,12 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
+    - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2: {}
+    meta:
+      bitrise.io:
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
   
   e2e:
     steps:
@@ -113,5 +93,57 @@ workflows:
         inputs:
         - content: |-
             set -ex
-            bitrise run --config e2e/bitrise.yml test_gradle_output_diagnostics 
+            bitrise run --config e2e/bitrise.yml test_gradle_output_diagnostics
+
+  check_gradle_verification:
+    steps:
+    - bundle::check_gradle_verification_reference: { }
+
+step_bundles:
+  check_gradle_verification_reference:
+    steps:
+    - script:
+        title: Generate Gradle verification reference
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+
+            # Backup $HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            GRADLE_INIT_PATH=$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            if [[ -f "$GRADLE_INIT_PATH" ]]; then
+              mv $GRADLE_INIT_PATH $GRADLE_INIT_PATH.backup
+            fi
+
+            go build -o /tmp/bin/bitrise-build-cache-cli
+
+            SAMPLE_PATH=$(realpath ./gradle_verification_sample)
+            
+            # add plugin with CLI
+            cd "$SAMPLE_PATH"
+            /tmp/bin/bitrise-build-cache-cli add-gradle-deps
+
+            # generate xml
+            rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
+            ./gradlew --write-verification-metadata sha256 help
+
+            GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
+            cat $GRADLE_VERIFICATION_REF_PATH
+            echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
+            envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
+    - script@1:
+        title: Check if local updates to verification-metadata.xml are not commited
+        inputs:
+        - content: |-
+            set -x
+            
+            git update-index --refresh | grep "verification-metadata.xml"
+            if [[ $? == 0 ]]; then
+              echo "Please manually commit the changes to the repo:"
+              echo "$GRADLE_VERIFICATION_REF_PATH"
+              exit 1
+            else
+              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_PATH"
+              exit 0
+            fi
 
