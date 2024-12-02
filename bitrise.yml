@@ -39,7 +39,7 @@ workflows:
             set -ex
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
-    - bundle::generate_gradle_verification_reference: { }
+    - bundle::check_gradle_verification_reference: { }
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:          
@@ -54,7 +54,8 @@ workflows:
     - deploy-to-bitrise-io@2: {}
     meta:
       bitrise.io:
-        stack: osx-xcode-16.1.x
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
   test:
     after_run:
     - check_gradle_verification
@@ -71,11 +72,12 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
-    - bundle::generate_gradle_verification_reference: { }
+    - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2: {}
     meta:
       bitrise.io:
-        stack: osx-xcode-16.1.x
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
   
   e2e:
     steps:
@@ -97,10 +99,10 @@ workflows:
 
   check_gradle_verification:
     steps:
-    - bundle::generate_gradle_verification_reference: { }
+    - bundle::check_gradle_verification_reference: { }
 
 step_bundles:
-  generate_gradle_verification_reference:
+  check_gradle_verification_reference:
     steps:
     - script:
         title: Generate Gradle verification reference
