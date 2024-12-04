@@ -168,7 +168,7 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 func (c *Client) getMethodCallMetadata() metadata.MD {
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode")
+		"x-flare-buildtool", string(c.buildTool))
 
 	if c.cacheOperationID != "" {
 		md.Set("x-cache-operation-id", c.cacheOperationID)

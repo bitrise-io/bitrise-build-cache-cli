@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
@@ -134,7 +135,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	op.CacheKey = cacheKey
 	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
-	kvClient, err := createKVClient(ctx, op.OperationID, authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx, op.OperationID, authConfig, envProvider, logger, kv.Xcode)
 	if err != nil {
 		return op, fmt.Errorf("create kv client: %w", err)
 	}

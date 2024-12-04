@@ -15,7 +15,8 @@ func createKVClient(ctx context.Context,
 	cacheOperationID string,
 	authConfig common.CacheAuthConfig,
 	envProvider common.EnvProviderFunc,
-	logger log.Logger) (*kv.Client, error) {
+	logger log.Logger,
+	buildTool kv.BuildTool) (*kv.Client, error) {
 	endpointURL := common.SelectEndpointURL("", envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
@@ -41,6 +42,7 @@ func createKVClient(ctx context.Context,
 		Logger:              logger,
 		CacheConfigMetadata: common.NewCacheConfigMetadata(envProvider),
 		CacheOperationID:    cacheOperationID,
+		BuildTool:           buildTool,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)

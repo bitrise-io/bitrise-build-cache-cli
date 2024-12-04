@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
@@ -73,7 +74,7 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 	envProvider func(string) string) error {
 	var err error
 
-	kvClient, err := createKVClient(ctx, uuid.NewString(), authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx, uuid.NewString(), authConfig, envProvider, logger, kv.GradleConfig)
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
 	}

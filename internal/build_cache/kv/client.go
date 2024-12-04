@@ -20,6 +20,13 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+type BuildTool string
+
+const (
+	GradleConfig BuildTool = "gradle-config"
+	Xcode        BuildTool = "xcode"
+)
+
 type Client struct {
 	bytestreamClient    bytestream.ByteStreamClient
 	bitriseKVClient     kv_storage.KVStorageClient
@@ -30,6 +37,7 @@ type Client struct {
 	cacheConfigMetadata common.CacheConfigMetadata
 	logger              log.Logger
 	cacheOperationID    string
+	buildTool           BuildTool
 }
 
 type NewClientParams struct {
@@ -41,6 +49,7 @@ type NewClientParams struct {
 	CacheConfigMetadata common.CacheConfigMetadata
 	Logger              log.Logger
 	CacheOperationID    string
+	BuildTool           BuildTool
 }
 
 func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
@@ -67,6 +76,7 @@ func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
 		logger:              p.Logger,
 		cacheConfigMetadata: p.CacheConfigMetadata,
 		cacheOperationID:    p.CacheOperationID,
+		buildTool:           p.BuildTool,
 	}, nil
 }
 
