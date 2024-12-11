@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -79,7 +80,10 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 }
 
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
-	kvReader, err := c.Get(ctx, key)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	kvReader, err := c.InitiateGet(timeoutCtx, key)
 	if err != nil {
 		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
 	}

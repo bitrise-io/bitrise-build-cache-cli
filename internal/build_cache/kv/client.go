@@ -2,7 +2,6 @@ package kv
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -43,16 +42,13 @@ type NewClientParams struct {
 	CacheOperationID    string
 }
 
-func NewClient(ctx context.Context, p NewClientParams) (*Client, error) {
-	ctx, cancel := context.WithTimeout(ctx, p.DialTimeout)
-	defer cancel()
+func NewClient(p NewClientParams) (*Client, error) {
 	creds := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	if p.UseInsecure {
 		creds = insecure.NewCredentials()
 	}
-	transportOpt := grpc.WithTransportCredentials(creds)
-	// nolint: staticcheck
-	conn, err := grpc.DialContext(ctx, p.Host, transportOpt)
+
+	conn, err := grpc.NewClient(p.Host, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", p.Host, err)
 	}

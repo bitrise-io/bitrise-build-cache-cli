@@ -38,7 +38,7 @@ func createKVClient(ctx context.Context,
 	}
 	logger.Debugf("Build Cache host: %s", buildCacheHost)
 
-	kvClient, err := kv.NewClient(ctx, kv.NewClientParams{
+	kvClient, err := kv.NewClient(kv.NewClientParams{
 		UseInsecure:         insecureGRPC,
 		Host:                buildCacheHost,
 		DialTimeout:         5 * time.Second,
