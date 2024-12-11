@@ -66,7 +66,7 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider func(string) string) error {
-	kvClient, err := createKVClient(ctx, uuid.NewString(), authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx, ClientNameGradleConfigCache, uuid.NewString(), authConfig, envProvider, logger)
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
 	}

@@ -72,7 +72,12 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context, providedCacheKey string, u
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	kvClient, err := createKVClient(ctx, "", authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx,
+		"",
+		ClientNameXcode,
+		authConfig,
+		envProvider,
+		logger)
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
 	}
