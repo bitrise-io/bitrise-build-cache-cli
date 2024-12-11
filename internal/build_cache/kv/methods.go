@@ -48,7 +48,7 @@ func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, err
 		return nil, fmt.Errorf("initiate put: %w", err)
 	}
 
-	resourceName := fmt.Sprintf("%s/%s", c.clientName, params.Name)
+	resourceName := fmt.Sprintf("kv/%s", params.Name)
 
 	return &writer{
 		stream:       stream,
@@ -59,7 +59,7 @@ func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, err
 }
 
 func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
+	resourceName := fmt.Sprintf("kv/%s", name)
 
 	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
@@ -80,7 +80,7 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 }
 
 func (c *Client) Delete(ctx context.Context, name string) error {
-	resourceName := fmt.Sprintf("%s/%s", c.clientName, name)
+	resourceName := fmt.Sprintf("kv/%s", name)
 
 	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
@@ -168,7 +168,7 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 func (c *Client) getMethodCallMetadata() metadata.MD {
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
-		"x-flare-buildtool", "xcode")
+		"x-flare-buildtool", c.clientName)
 
 	if c.cacheOperationID != "" {
 		md.Set("x-cache-operation-id", c.cacheOperationID)

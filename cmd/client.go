@@ -11,8 +11,14 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+const (
+	ClientNameXcode             = "xcode"
+	ClientNameGradleConfigCache = "gradle-config"
+)
+
 func createKVClient(ctx context.Context,
 	cacheOperationID string,
+	clientName string,
 	authConfig common.CacheAuthConfig,
 	envProvider common.EnvProviderFunc,
 	logger log.Logger) (*kv.Client, error) {
@@ -36,7 +42,7 @@ func createKVClient(ctx context.Context,
 		UseInsecure:         insecureGRPC,
 		Host:                buildCacheHost,
 		DialTimeout:         5 * time.Second,
-		ClientName:          "kv",
+		ClientName:          clientName,
 		AuthConfig:          authConfig,
 		Logger:              logger,
 		CacheConfigMetadata: common.NewCacheConfigMetadata(envProvider),
