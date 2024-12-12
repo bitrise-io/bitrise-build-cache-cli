@@ -24,13 +24,13 @@ workflows:
     - git-clone@8:
         inputs:
         - fetch_tags: "yes"
-    # - script@1:
-    #     title: asdf use latest go
-    #     inputs:
-    #     - content: |-
-    #         #!/usr/bin/env bash
+    - script@1:
+        title: asdf use latest go
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
 
-    #         asdf global golang 1.22
+            asdf global golang 1.22
     - script:
         title: Install Goreleaser
         inputs:
@@ -118,6 +118,8 @@ step_bundles:
             go build -o /tmp/bin/bitrise-build-cache-cli
 
             SAMPLE_PATH=$(realpath ./gradle_verification_sample)
+            GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
+            GRADLE_VERIFICATION_REF_TARGET_PATH=$(realpath ./cmd/asset/verification-metadata.xml)
             
             # add plugin with CLI
             cd "$SAMPLE_PATH"
@@ -127,13 +129,12 @@ step_bundles:
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
 
-            GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
             cat $GRADLE_VERIFICATION_REF_PATH
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
             envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
 
             # Copy metadata to be included in the CLI binary
-            cp -f "$GRADLE_VERIFICATION_REF_PATH" ./cmd/asset/verification-metadata.xml
+            cp -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_ASSET_PATH"
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
