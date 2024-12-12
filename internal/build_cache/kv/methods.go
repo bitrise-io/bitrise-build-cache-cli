@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/dustin/go-humanize"
@@ -25,9 +26,11 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
 
-	_, err := c.capabilitiesClient.GetCapabilities(ctx, &remoteexecution.GetCapabilitiesRequest{})
+	_, err := c.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
 		return fmt.Errorf("get capabilities: %w", err)
 	}
@@ -35,12 +38,13 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, error) {
+func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteCloser, error) {
 	md := metadata.Join(c.getMethodCallMetadata(), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
 	))
+	// Timeout is the responsibility of the caller
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	stream, err := c.bitriseKVClient.Put(ctx)
@@ -58,9 +62,10 @@ func (c *Client) Put(ctx context.Context, params PutParams) (io.WriteCloser, err
 	}, nil
 }
 
-func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, error) {
 	resourceName := fmt.Sprintf("kv/%s", name)
 
+	// Timeout is the responsibility of the caller
 	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
 
 	readReq := &bytestream.ReadRequest{
@@ -82,14 +87,16 @@ func (c *Client) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 func (c *Client) Delete(ctx context.Context, name string) error {
 	resourceName := fmt.Sprintf("kv/%s", name)
 
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
 		ReadOffset:   0,
 		ReadLimit:    0,
 	}
-	_, err := c.bitriseKVClient.Delete(ctx, readReq)
+	_, err := c.bitriseKVClient.Delete(callCtx, readReq)
 	if err != nil {
 		return fmt.Errorf("initiate delete: %w", err)
 	}
@@ -98,8 +105,6 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 }
 
 func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
-
 	var missingBlobs []*FileDigest
 	blobDigests := convertToBlobDigests(digests)
 	req := &remoteexecution.FindMissingBlobsRequest{
@@ -119,16 +124,25 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 			}
 			req.BlobDigests = blobDigests[startIndex:endIndex]
 
-			c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
-			resp, err := c.casClient.FindMissingBlobs(ctx, req)
+			timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
 
+			c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
+			resp, err := c.casClient.FindMissingBlobs(callCtx, req)
+
+			cancel()
 			if err != nil {
 				return nil, fmt.Errorf("find missing blobs[%d:%d]: %w", startIndex, endIndex, err)
 			}
 			missingBlobs = append(missingBlobs, convertToFileDigests(resp.GetMissingBlobDigests())...)
 		}
 	} else {
-		resp, err := c.casClient.FindMissingBlobs(ctx, req)
+		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
+
+		resp, err := c.casClient.FindMissingBlobs(callCtx, req)
+
+		cancel()
 
 		if err != nil {
 			return nil, fmt.Errorf("find missing blobs: %w", err)
