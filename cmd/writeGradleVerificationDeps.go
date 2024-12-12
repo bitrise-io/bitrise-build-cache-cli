@@ -106,11 +106,22 @@ func writeVerificationDeps(referenceDepsReader io.Reader, projectDepsReader io.R
 		return "", fmt.Errorf("project metadata missing components")
 	}
 
-	for _, e := range referenceDeps.FindElements("/verification-metadata/components/component/") {
-		// fmt.Printf("%s: %s\n", e.Tag, e.Text())
-		// name := e.SelectAttrValue("name", "unknown")
-		// fmt.Printf("  name: %s\n", name)
+	referenceRoot := projectDeps.SelectElement("verification-metadata")
+	if referenceRoot == nil {
+		return "", fmt.Errorf("reference metadata missing verification-metadata")
+	}
 
+	referenceComponents := referenceRoot.SelectElement("components")
+	if referenceComponents == nil {
+		return "", fmt.Errorf("reference metadata missing components")
+	}
+
+	referenceComponentList := referenceComponents.SelectElements("component")
+	if referenceComponentList == nil {
+		return "", fmt.Errorf("reference metadata has no components")
+	}
+
+	for _, e := range referenceComponentList {
 		projectComponents.AddChild(e)
 	}
 
