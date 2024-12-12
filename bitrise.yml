@@ -124,24 +124,24 @@ step_bundles:
             # add plugin with CLI
             cd "$SAMPLE_PATH"
             /tmp/bin/bitrise-build-cache-cli add-gradle-verification-reference-deps
-            
+
             # generate xml
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
 
             cat $GRADLE_VERIFICATION_REF_PATH
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
-            envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
-
+            
             # Copy metadata to be included in the CLI binary
-            cp -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_ASSET_PATH"
+            mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_ASSET_PATH"
+            envman add --key GRADLE_VERIFICATION_REF_ASSET_PATH --value "$GRADLE_VERIFICATION_REF_ASSET_PATH"
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
         - content: |-
             set -x
             
-            git update-index --refresh | grep "verification-metadata.xml"
+            git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
             if [[ $? == 0 ]]; then
               echo "Please manually commit the changes to the repo:"
               echo "$GRADLE_VERIFICATION_REF_PATH"
