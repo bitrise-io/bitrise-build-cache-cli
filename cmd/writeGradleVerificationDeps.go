@@ -21,9 +21,10 @@ var metadataPath string
 
 // gradleVerification ...
 var gradleVerification = &cobra.Command{ //nolint:gochecknoglobals
-	Use:          "gradle-verification",
-	Short:        "Gradle verification support",
-	Long:         `Gradle verification support`,
+	Use:   "gradle-verification",
+	Short: "Bitrise build cache support for projects using Gradle verification",
+	Long: `Bitrise build cache support for projects using Gradle verification
+See https://docs.gradle.org/current/userguide/dependency_verification.html for more information.`,
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		return nil
@@ -31,9 +32,11 @@ var gradleVerification = &cobra.Command{ //nolint:gochecknoglobals
 }
 
 var writeGradleVerificationDeps = &cobra.Command{ //nolint:gochecknoglobals
-	Use:          "write",
-	Short:        "Add missing dependencies to verification-metadata.xml",
-	Long:         `Add missing dependencies to verification-metadata.xml`,
+	Use:   "write",
+	Short: "Add Bitrise build cache dependencies to verification-metadata.xml",
+	Long: `Add Bitrise build cache dependencies to verification-metadata.xml
+Missing dependencies of Bitrise build cache are appended.
+`,
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
@@ -71,7 +74,7 @@ func addGradleVerification(logger log.Logger, projectMetadataPath string, _ func
 		return fmt.Errorf("failed to open project verification-metadata.xml: %w", err)
 	}
 
-	resultProjectMetadata, err := writeVerificationDeps(referenceDepsReader, projectDepsReader)
+	resultProjectMetadata, err := writeVerificationDeps(logger, referenceDepsReader, projectDepsReader)
 	if err != nil {
 		return err
 	}
@@ -85,7 +88,7 @@ func addGradleVerification(logger log.Logger, projectMetadataPath string, _ func
 	return nil
 }
 
-func writeVerificationDeps(referenceDepsReader io.Reader, projectDepsReader io.Reader) (string, error) {
+func writeVerificationDeps(logger log.Logger, referenceDepsReader io.Reader, projectDepsReader io.Reader) (string, error) {
 	referenceDeps := etree.NewDocument()
 	if _, err := referenceDeps.ReadFrom(referenceDepsReader); err != nil {
 		return "", fmt.Errorf("failed to parse reference verification-metadata.xml: %w", err)
@@ -125,12 +128,12 @@ func writeVerificationDeps(referenceDepsReader io.Reader, projectDepsReader io.R
 		projectComponents.AddChild(e)
 	}
 
+	logger.Infof("Added %s dependecies to verification-metadata.xml", len(referenceComponentList))
+
 	result, err := projectDeps.WriteToString()
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize updated verification-metadata.xml: %w", err)
 	}
-
-	fmt.Printf("Updated project metadata: %s", result)
 
 	return result, nil
 }
