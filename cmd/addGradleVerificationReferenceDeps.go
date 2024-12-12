@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// addGradleDeps represents the gradle command
-var addGradleDeps = &cobra.Command{ //nolint:gochecknoglobals
-	Use:   "add-gradle-deps",
+// addGradleVerificationReferenceDeps represents the gradle command
+var addGradleVerificationReferenceDeps = &cobra.Command{ //nolint:gochecknoglobals
+	Use:   "add-gradle-verification-reference-deps",
 	Short: "Add Bitrise Build Cache plugins to the project (but do not enable it)",
 	Long: `Add Bitrise Build Cache plugins to the project (but do not enable it)
 This command will:
@@ -44,7 +44,7 @@ This command will:
 }
 
 func init() {
-	rootCmd.AddCommand(addGradleDeps)
+	rootCmd.AddCommand(addGradleVerificationReferenceDeps)
 }
 
 func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {

@@ -72,7 +72,7 @@ workflows:
     - TEST_APP_URL: https://github.com/bitrise-io/android-demo-app
     - BRANCH: gradle8
     after_run:
-    # - _setup
+    - _setup
     - _test_gradle_verification
 
   _test_gradle_verification:
@@ -96,14 +96,14 @@ workflows:
             if [[ -f ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts ]]; then
                 rm ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
             fi
-            ./gradlew build --write-verification-metadata=sha256
+            ./gradlew assemble --write-verification-metadata=sha256
             
             METADATA_PATH=./gradle/verification-metadata.xml
 
             /tmp/bin/bitrise-build-cache-cli add-gradle-deps
             /tmp/bin/bitrise-build-cache-cli gradle-verification write --metadata-path=$METADATA_PATH
 
-            ./gradlew build
+            ./gradlew assemble
 
 
   _setup:
