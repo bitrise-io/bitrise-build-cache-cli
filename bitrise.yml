@@ -123,8 +123,8 @@ step_bundles:
             
             # add plugin with CLI
             cd "$SAMPLE_PATH"
-            /tmp/bin/bitrise-build-cache-cli add-gradle-deps
-
+            /tmp/bin/bitrise-build-cache-cli add-gradle-verification-reference-deps
+            
             # generate xml
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
