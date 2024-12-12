@@ -106,7 +106,7 @@ func writeVerificationDeps(referenceDepsReader io.Reader, projectDepsReader io.R
 		return "", fmt.Errorf("project metadata missing components")
 	}
 
-	referenceRoot := projectDeps.SelectElement("verification-metadata")
+	referenceRoot := referenceDeps.SelectElement("verification-metadata")
 	if referenceRoot == nil {
 		return "", fmt.Errorf("reference metadata missing verification-metadata")
 	}
@@ -129,6 +129,8 @@ func writeVerificationDeps(referenceDepsReader io.Reader, projectDepsReader io.R
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize updated verification-metadata.xml: %w", err)
 	}
+
+	fmt.Printf("Updated project metadata: %s", result)
 
 	return result, nil
 }

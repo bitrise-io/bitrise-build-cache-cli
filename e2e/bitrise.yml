@@ -59,12 +59,23 @@ workflows:
         - module: app
         - variant: debug
 
-  test_gradle_verification:
+  test_gradle_verification_gradle7:
     envs:
     - TEST_APP_URL: https://github.com/bitrise-io/android-demo-app
     - BRANCH: main
-    before_run:
+    after_run:
     - _setup
+    - _test_gradle_verification
+
+  test_gradle_verification_gradle8:
+    envs:
+    - TEST_APP_URL: https://github.com/bitrise-io/android-demo-app
+    - BRANCH: gradle8
+    after_run:
+    # - _setup
+    - _test_gradle_verification
+
+  _test_gradle_verification:
     steps:
     - script:
         title: build CLI
@@ -81,6 +92,10 @@ workflows:
         inputs:
         - content: |-
             set -ex
+
+            if [[ -f ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts ]]; then
+                rm ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            fi
             ./gradlew build --write-verification-metadata=sha256
             
             METADATA_PATH=./gradle/verification-metadata.xml
