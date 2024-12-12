@@ -93,7 +93,7 @@ func (c *Client) uploadFile(ctx context.Context, filePath, key, checksum string)
 }
 
 func (c *Client) uploadStream(ctx context.Context, source io.Reader, key, checksum string, size int64) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	kvWriter, err := c.InitiatePut(timeoutCtx, PutParams{
