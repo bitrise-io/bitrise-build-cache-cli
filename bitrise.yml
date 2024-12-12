@@ -133,8 +133,8 @@ step_bundles:
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
             
             # Copy metadata to be included in the CLI binary
-            mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_ASSET_PATH"
-            envman add --key GRADLE_VERIFICATION_REF_ASSET_PATH --value "$GRADLE_VERIFICATION_REF_ASSET_PATH"
+            mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+            envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
@@ -144,10 +144,10 @@ step_bundles:
             git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
             if [[ $? == 0 ]]; then
               echo "Please manually commit the changes to the repo:"
-              echo "$GRADLE_VERIFICATION_REF_PATH"
+              echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 1
             else
-              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_PATH"
+              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 0
             fi
 
