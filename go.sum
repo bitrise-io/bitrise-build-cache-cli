@@ -4,6 +4,8 @@ cloud.google.com/go/longrunning v0.6.0/go.mod h1:uHzSZqW89h7/pasCWNYdUpwGz3PcVWh
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9 h1:Ma3IQbZmIVd8ROR7TZNqN8YnSYKXWtW5t5uUc35pftI=
 github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9/go.mod h1:ry8Y6CkQqCVcYsjPOlLXDX2iRVjOnjogdNwhvHmRcz8=
+github.com/beevik/etree v1.4.1 h1:PmQJDDYahBGNKDcpdX8uPy1xRCwoCGVUiW669MEirVI=
+github.com/beevik/etree v1.4.1/go.mod h1:gPNJNaBGVZ9AwsidazFZyygnd+0pAU38N4D+WemwKNs=
 github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33 h1:BxTsbaY9hwC/3a2y4V8vHlKAu80DAEuv/rvEEAvaq8o=
 github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33/go.mod h1:Wu1/fiQqxr7A7a9aphh/Jxpof6WV+LEO6vGfBQ9T99A=
 github.com/bitrise-io/go-utils v1.0.13 h1:1QENhTS/JlKH9F7+/nB+TtbTcor6jGrE6cQ4CJWfp5U=

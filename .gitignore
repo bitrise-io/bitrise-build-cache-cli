@@ -1,5 +1,6 @@
 bin/
 .DS_Store
+bitrise-build-cache-cli
 .bitrise.secrets.yml
 dist/
 _tmp/
@@ -7,3 +8,4 @@ _tmp/
 !.idea/codeStyles
 .idea/codeStyles/*
 !.idea/codeStyles/Project.xml
+gradle_verification_sample/gradle/verification-metadata.xml

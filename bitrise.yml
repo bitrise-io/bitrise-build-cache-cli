@@ -118,32 +118,36 @@ step_bundles:
             go build -o /tmp/bin/bitrise-build-cache-cli
 
             SAMPLE_PATH=$(realpath ./gradle_verification_sample)
+            GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
+            GRADLE_VERIFICATION_REF_TARGET_PATH=$(realpath ./cmd/asset/verification-metadata.xml)
             
             # add plugin with CLI
             cd "$SAMPLE_PATH"
-            /tmp/bin/bitrise-build-cache-cli add-gradle-deps
+            /tmp/bin/bitrise-build-cache-cli gradle-verification add-reference-deps
 
             # generate xml
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
 
-            GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
             cat $GRADLE_VERIFICATION_REF_PATH
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
-            envman add --key GRADLE_VERIFICATION_REF_PATH --value "$GRADLE_VERIFICATION_REF_PATH"
+            
+            # Copy metadata to be included in the CLI binary
+            mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+            envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
         - content: |-
             set -x
             
-            git update-index --refresh | grep "verification-metadata.xml"
+            git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
             if [[ $? == 0 ]]; then
               echo "Please manually commit the changes to the repo:"
-              echo "$GRADLE_VERIFICATION_REF_PATH"
+              echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 1
             else
-              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_PATH"
+              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 0
             fi
 

@@ -59,6 +59,53 @@ workflows:
         - module: app
         - variant: debug
 
+  test_gradle_verification_gradle7:
+    envs:
+    - TEST_APP_URL: https://github.com/bitrise-io/android-demo-app
+    - BRANCH: main
+    after_run:
+    - _setup
+    - _test_gradle_verification
+
+  test_gradle_verification_gradle8:
+    envs:
+    - TEST_APP_URL: https://github.com/bitrise-io/android-demo-app
+    - BRANCH: gradle8
+    after_run:
+    - _setup
+    - _test_gradle_verification
+
+  _test_gradle_verification:
+    steps:
+    - script:
+        title: build CLI
+        inputs:
+        - content: |-
+            set -ex
+            go build -o /tmp/bin/bitrise-build-cache-cli
+    - change-workdir:
+        title: Switch working dir to _tmp
+        inputs:
+        - path: ./_tmp
+    - script:
+        title: update metadata
+        inputs:
+        - content: |-
+            set -ex
+
+            if [[ -f ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts ]]; then
+                rm ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            fi
+            ./gradlew assemble --write-verification-metadata=sha256
+            
+            METADATA_PATH=./gradle/verification-metadata.xml
+
+            /tmp/bin/bitrise-build-cache-cli gradle-verification add-reference-deps
+            /tmp/bin/bitrise-build-cache-cli gradle-verification write --metadata-path=$METADATA_PATH
+
+            ./gradlew assemble
+
+
   _setup:
     steps:
     - script:
