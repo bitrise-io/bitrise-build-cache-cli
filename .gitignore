@@ -8,3 +8,4 @@ _tmp/
 !.idea/codeStyles
 .idea/codeStyles/*
 !.idea/codeStyles/Project.xml
+gradle_verification_sample/gradle/verification-metadata.xml

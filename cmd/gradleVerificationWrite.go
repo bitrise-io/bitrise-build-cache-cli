@@ -128,7 +128,7 @@ func writeVerificationDeps(logger log.Logger, referenceDepsReader io.Reader, pro
 		projectComponents.AddChild(e)
 	}
 
-	logger.Infof("Added %s dependecies to verification-metadata.xml", len(referenceComponentList))
+	logger.Infof("Added %d dependecies to verification-metadata.xml", len(referenceComponentList))
 
 	result, err := projectDeps.WriteToString()
 	if err != nil {
