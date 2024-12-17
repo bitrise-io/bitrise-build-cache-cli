@@ -100,7 +100,7 @@ workflows:
             
             METADATA_PATH=./gradle/verification-metadata.xml
 
-            /tmp/bin/bitrise-build-cache-cli add-gradle-deps
+            /tmp/bin/bitrise-build-cache-cli gradle-verification add-reference-deps
             /tmp/bin/bitrise-build-cache-cli gradle-verification write --metadata-path=$METADATA_PATH
 
             ./gradlew assemble
