@@ -42,7 +42,8 @@ func TestGenerateBazelrc(t *testing.T) {
 			},
 			wantErr: "",
 			want: `build --remote_cache=grpcs://TESTENDPOINT.bitrise.io
-build --remote_timeout=3600
+build --remote_timeout=60s
+build --bes_timeout=60s
 build --remote_header=authorization="Bearer 4uth70k3n"
 build --bes_header=authorization="Bearer 4uth70k3n"
 build --remote_header=x-flare-buildtool=bazel
@@ -69,7 +70,8 @@ build --build_event_publish_all_actions
 			},
 			wantErr: "",
 			want: `build --remote_cache=grpcs://TESTENDPOINT.bitrise.io
-build --remote_timeout=3600
+build --remote_timeout=60s
+build --bes_timeout=60s
 build --remote_header='x-org-id=W0rkSp4ceID'
 build --bes_header='x-org-id=W0rkSp4ceID'
 build --remote_header=authorization="Bearer 4uth70k3n"
