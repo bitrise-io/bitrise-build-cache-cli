@@ -25,7 +25,8 @@ func createKVClient(ctx context.Context,
 	endpointURL := common.SelectEndpointURL("", envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
-	if endpointURL == consts.EndpointURLATL1 || endpointURL == consts.EndpointURLLAS1 {
+	if clientName == ClientNameXcode &&
+		(endpointURL == consts.EndpointURLATL1 || endpointURL == consts.EndpointURLLAS1) {
 		return nil, fmt.Errorf("the selected endpoint %s is not supported", endpointURL)
 	}
 
