@@ -99,6 +99,20 @@ workflows:
     steps:
     - bundle::check_gradle_verification_reference: { }
 
+  check_gradle_verification-xcode15:
+    steps:
+    - bundle::check_gradle_verification_reference: { }
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.4.x
+
+  check_gradle_verification-ubuntu22:
+    steps:
+    - bundle::check_gradle_verification_reference: { }
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+
 step_bundles:
   check_gradle_verification_reference:
     steps:
