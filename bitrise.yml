@@ -71,7 +71,9 @@ workflows:
             make lint
     - go-test@1: {}
     - bundle::check_gradle_verification_reference: { }
-    - deploy-to-bitrise-io@2: {}
+    - deploy-to-bitrise-io@2:
+        inputs:
+          - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     meta:
       bitrise.io:
         machine_type_id: g2-m1.8core
@@ -150,4 +152,3 @@ step_bundles:
               echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 0
             fi
-
