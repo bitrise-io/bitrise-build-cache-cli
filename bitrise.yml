@@ -184,15 +184,6 @@ step_bundles:
                 
                 pandoc --version
       - script:
-          title: Check out gh-pages branch
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                git fetch --all
-                git checkout gh-pages
-      - script:
           title: Generate dependency matrix
           inputs:
             - content: |
@@ -215,6 +206,13 @@ step_bundles:
             - content: |
                 #!/bin/bash
                 set -ex
+
+                git stash push
+
+                git fetch --all
+                git checkout gh-pages
+                
+                git stash apply
                 
                 if [ -n "$(git status --porcelain)" ]; then
                   echo "Changes detected, committing and pushing to gh-pages branch."
