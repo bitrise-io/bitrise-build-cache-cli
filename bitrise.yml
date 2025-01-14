@@ -104,6 +104,17 @@ workflows:
   check_gradle_verification:
     steps:
     - bundle::check_gradle_verification_reference: { }
+
+  generate_and_commit_dependency_matrix:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8:
+        inputs:
+          - fetch_tags: "yes"
+          - shallow_clone: "false"
+          - clone_depth: "-1"
+    - bundle::generate_and_commit_dependency_matrix: {}
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -116,17 +127,6 @@ workflows:
           - webhook_url: "$SLACK_WEBHOOK_ALERTS"
         title: Send slack if failed
         run_if: ".IsBuildFailed"
-
-  generate_and_commit_dependency_matrix:
-    steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8:
-        inputs:
-          - fetch_tags: "yes"
-          - shallow_clone: "false"
-          - clone_depth: "-1"
-    - bundle::generate_and_commit_dependency_matrix: {}
 
 step_bundles:
   check_gradle_verification_reference:
