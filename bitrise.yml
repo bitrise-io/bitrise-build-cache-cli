@@ -214,12 +214,12 @@ step_bundles:
             - content: |
                 #!/bin/bash
                 set -ex
-
-                git stash push docs/dependency-matrix.md
-
+                
+                git stash push -m "stash before switching to gh-pages"
+              
                 git fetch --all
                 git checkout gh-pages
-                
+              
                 git stash apply
                 
                 if [ -n "$(git status --porcelain)" ]; then
