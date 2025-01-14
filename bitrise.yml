@@ -223,6 +223,11 @@ step_bundles:
                 rm -f docs/dependency-matrix.md
                 git stash apply
                 
+                if [ ! -f docs/dependency-matrix.md ]; then
+                  echo "No dependency matrix found, skipping commit."
+                  exit -1
+                fi
+                
                 if [ -n "$(git status --porcelain)" ]; then
                   echo "Changes detected, committing and pushing to gh-pages branch."
                   
