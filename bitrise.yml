@@ -184,13 +184,13 @@ step_bundles:
                 
                 pandoc --version
       - script:
-          title: Generate dependency matrix
+          title: Install go versions
           inputs:
             - content: |
                 #!/bin/bash
                 set -ex
-                                
-                bash ./scripts/generate-dependency-matrix.sh
+                
+                asdf install golang 1.21
       - script:
           title: Reformat dependency matrix
           inputs:
