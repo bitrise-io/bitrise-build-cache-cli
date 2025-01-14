@@ -46,7 +46,7 @@ workflows:
     - bundle::check_gradle_verification_reference: { }
     - script:
         title: Goreleaser (create binaries + publish to GH)
-        deps:          
+        deps:
           brew:
           - name: goreleaser
         inputs:
@@ -82,7 +82,7 @@ workflows:
       bitrise.io:
         machine_type_id: g2-m1.8core
         stack: osx-xcode-edge
-  
+
   e2e:
     steps:
     - activate-ssh-key@4:
@@ -109,7 +109,11 @@ workflows:
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: { }
+    - git-clone@8:
+        inputs:
+          - fetch_tags: "true"
+          - shallow_clone: "false"
+          - clone_depth: "-1"
     - bundle::generate_and_commit_dependency_matrix: {}
 
 step_bundles:
