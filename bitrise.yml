@@ -220,6 +220,7 @@ step_bundles:
                 git fetch --all
                 git checkout gh-pages
               
+                rm -f docs/dependency-matrix.md
                 git stash apply
                 
                 if [ -n "$(git status --porcelain)" ]; then
