@@ -215,7 +215,7 @@ step_bundles:
                 #!/bin/bash
                 set -ex
                 
-                git stash push -m "stash before switching to gh-pages"
+                git stash push -u -m "stash before switching to gh-pages"
               
                 git fetch --all
                 git checkout gh-pages
