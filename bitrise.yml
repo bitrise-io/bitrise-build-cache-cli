@@ -13,6 +13,10 @@ trigger_map:
 - tag: '*.*.*'
   workflow: release
 
+app:
+  envs:
+  - PANDOC_VERSION: "3.6.2"
+
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
@@ -162,11 +166,19 @@ step_bundles:
 
   generate_and_commit_dependency_matrix:
     steps:
-      - apt-get-install:
-          run_if: .IsCI
+      - script:
+          run_if: ".IsCI"
+          title: Install pandoc
           inputs:
-            - packages:
-              - pandoc
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+                tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+                sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
+                
+                pandoc --version
       - script:
           title: Check out gh-pages branch
           inputs:
