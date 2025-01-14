@@ -215,7 +215,7 @@ step_bundles:
                 #!/bin/bash
                 set -ex
 
-                git stash push
+                git stash push docs/dependency-matrix.md
 
                 git fetch --all
                 git checkout gh-pages
@@ -225,7 +225,7 @@ step_bundles:
                 if [ -n "$(git status --porcelain)" ]; then
                   echo "Changes detected, committing and pushing to gh-pages branch."
                   
-                  git add docs/dependency_matrix.md
+                  git add docs/dependency-matrix.md
                   git commit -m "chore: update dependency matrix"
                   git push origin gh-pages
                 else 
