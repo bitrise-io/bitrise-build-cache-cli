@@ -190,7 +190,7 @@ step_bundles:
                 #!/bin/bash
                 set -ex
                 
-                asdf install golang 1.21
+                asdf install golang 1.21.5
       - script:
           title: Generate dependency matrix
           inputs:
