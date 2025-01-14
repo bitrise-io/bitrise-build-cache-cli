@@ -182,6 +182,9 @@ step_bundles:
                 tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
                 sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
                 
+                rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+                rm -rf pandoc-$PANDOC_VERSION
+                
                 pandoc --version
       - script:
           title: Install go versions
@@ -214,7 +217,9 @@ step_bundles:
             - content: |
                 #!/bin/bash
                 set -ex
-                
+                          
+                git status  
+                ls -l docs/dependency-matrix.md
                 git stash push -u -m "stash before switching to gh-pages"
               
                 git fetch --all
@@ -230,10 +235,13 @@ step_bundles:
                 
                 if [ -n "$(git status --porcelain)" ]; then
                   echo "Changes detected, committing and pushing to gh-pages branch."
-                  
+                                    
                   git add docs/dependency-matrix.md
+                  git diff --cached docs/dependency-matrix.md
+
                   git commit -m "chore: update dependency matrix"
                   git push origin gh-pages
                 else 
                   echo "No changes detected, skipping commit."
+                  exit 0
                 fi
