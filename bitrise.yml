@@ -104,6 +104,18 @@ workflows:
   check_gradle_verification:
     steps:
     - bundle::check_gradle_verification_reference: { }
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              Dependency matrix generation failed! :matrix-code: :rotating_light:
+
+              Check build here: $BITRISE_BUILD_URL
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
 
   generate_and_commit_dependency_matrix:
     steps:
