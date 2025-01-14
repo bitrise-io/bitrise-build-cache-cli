@@ -101,6 +101,13 @@ workflows:
     steps:
     - bundle::check_gradle_verification_reference: { }
 
+  generate_and_commit_dependency_matrix:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: { }
+    - bundle::generate_and_commit_dependency_matrix: {}
+
 step_bundles:
   check_gradle_verification_reference:
     steps:
@@ -152,3 +159,52 @@ step_bundles:
               echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 0
             fi
+
+  generate_and_commit_dependency_matrix:
+    steps:
+      - apt-get-install:
+          run_if: .IsCI
+          inputs:
+            - packages:
+              - pandoc
+      - script:
+          title: Check out gh-pages branch
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                git checkout gh-pages
+      - script:
+          title: Generate dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                                
+                bash ./scripts/generate_dependency_matrix.sh
+      - script:
+          title: Reformat dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                
+                pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
+                mv cleaned.md docs/dependency-matrix.md
+      - script:
+          title: Commit dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                
+                if [ -n "$(git status --porcelain)" ]; then
+                  echo "Changes detected, committing and pushing to gh-pages branch."
+                  
+                  git add docs/dependency_matrix.md
+                  git commit -m "chore: update dependency matrix"
+                  git push origin gh-pages
+                else 
+                  echo "No changes detected, skipping commit."
+                fi
