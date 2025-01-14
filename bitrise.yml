@@ -190,6 +190,7 @@ step_bundles:
                 #!/bin/bash
                 set -ex
 
+                git fetch --all
                 git checkout gh-pages
       - script:
           title: Generate dependency matrix
