@@ -192,6 +192,14 @@ step_bundles:
                 
                 asdf install golang 1.21
       - script:
+          title: Generate dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                bash ./scripts/generate-dependency-matrix.sh
+      - script:
           title: Reformat dependency matrix
           inputs:
             - content: |
