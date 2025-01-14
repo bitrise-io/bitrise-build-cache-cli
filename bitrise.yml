@@ -190,7 +190,7 @@ step_bundles:
                 #!/bin/bash
                 set -ex
                                 
-                bash ./scripts/generate_dependency_matrix.sh
+                bash ./scripts/generate-dependency-matrix.sh
       - script:
           title: Reformat dependency matrix
           inputs:
