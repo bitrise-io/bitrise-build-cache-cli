@@ -13,6 +13,10 @@ trigger_map:
 - tag: '*.*.*'
   workflow: release
 
+app:
+  envs:
+  - PANDOC_VERSION: "3.6.2"
+
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
@@ -42,7 +46,7 @@ workflows:
     - bundle::check_gradle_verification_reference: { }
     - script:
         title: Goreleaser (create binaries + publish to GH)
-        deps:          
+        deps:
           brew:
           - name: goreleaser
         inputs:
@@ -78,7 +82,7 @@ workflows:
       bitrise.io:
         machine_type_id: g2-m1.8core
         stack: osx-xcode-edge
-  
+
   e2e:
     steps:
     - activate-ssh-key@4:
@@ -100,6 +104,29 @@ workflows:
   check_gradle_verification:
     steps:
     - bundle::check_gradle_verification_reference: { }
+
+  generate_and_commit_dependency_matrix:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8:
+        inputs:
+          - fetch_tags: "yes"
+          - shallow_clone: "false"
+          - clone_depth: "-1"
+    - bundle::generate_and_commit_dependency_matrix: {}
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              Dependency matrix generation failed! :matrix-code: :rotating_light:
+
+              Check build here: $BITRISE_BUILD_URL
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
 
 step_bundles:
   check_gradle_verification_reference:
@@ -152,3 +179,81 @@ step_bundles:
               echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
               exit 0
             fi
+
+  generate_and_commit_dependency_matrix:
+    steps:
+      - script:
+          run_if: ".IsCI"
+          title: Install pandoc
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+                tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+                sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
+                
+                rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+                rm -rf pandoc-$PANDOC_VERSION
+                
+                pandoc --version
+      - script:
+          title: Install go versions
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                
+                asdf install golang 1.21.5
+      - script:
+          title: Generate dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                bash ./scripts/generate-dependency-matrix.sh
+      - script:
+          title: Reformat dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                
+                pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
+                mv cleaned.md docs/dependency-matrix.md
+      - script:
+          title: Commit dependency matrix
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                          
+                git status  
+                ls -l docs/dependency-matrix.md
+                git stash push -u -m "stash before switching to gh-pages"
+              
+                git fetch --all
+                git checkout gh-pages
+              
+                rm -f docs/dependency-matrix.md
+                git stash apply
+                
+                if [ ! -f docs/dependency-matrix.md ]; then
+                  echo "No dependency matrix found, skipping commit."
+                  exit -1
+                fi
+                
+                if [ -n "$(git status --porcelain)" ]; then
+                  echo "Changes detected, committing and pushing to gh-pages branch."
+                                    
+                  git add docs/dependency-matrix.md
+                  git diff --cached docs/dependency-matrix.md
+
+                  git commit -m "chore: update dependency matrix"
+                  git push origin gh-pages
+                else 
+                  echo "No changes detected, skipping commit."
+                  exit 0
+                fi
