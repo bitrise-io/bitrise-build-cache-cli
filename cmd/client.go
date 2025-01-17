@@ -16,16 +16,20 @@ const (
 	ClientNameGradleConfigCache = "gradle-config"
 )
 
-func createKVClient(ctx context.Context,
-	cacheOperationID string,
-	clientName string,
-	authConfig common.CacheAuthConfig,
-	envProvider common.EnvProviderFunc,
-	logger log.Logger) (*kv.Client, error) {
-	endpointURL := common.SelectEndpointURL("", envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
+type CreateKVClientParams struct {
+	CacheOperationID string
+	ClientName       string
+	AuthConfig       common.CacheAuthConfig
+	EnvProvider      common.EnvProviderFunc
+	Logger           log.Logger
+}
 
-	if clientName == ClientNameXcode &&
+func createKVClient(ctx context.Context,
+	params CreateKVClientParams) (*kv.Client, error) {
+	endpointURL := common.SelectEndpointURL("", params.EnvProvider)
+	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
+
+	if params.ClientName == ClientNameXcode &&
 		(endpointURL == consts.EndpointURLATL1 || endpointURL == consts.EndpointURLLAS1) {
 		return nil, fmt.Errorf("the selected endpoint %s is not supported", endpointURL)
 	}
@@ -37,17 +41,17 @@ func createKVClient(ctx context.Context,
 			endpointURL, err,
 		)
 	}
-	logger.Debugf("Build Cache host: %s", buildCacheHost)
+	params.Logger.Debugf("Build Cache host: %s", buildCacheHost)
 
 	kvClient, err := kv.NewClient(kv.NewClientParams{
 		UseInsecure:         insecureGRPC,
 		Host:                buildCacheHost,
 		DialTimeout:         5 * time.Second,
-		ClientName:          clientName,
-		AuthConfig:          authConfig,
-		Logger:              logger,
-		CacheConfigMetadata: common.NewCacheConfigMetadata(envProvider),
-		CacheOperationID:    cacheOperationID,
+		ClientName:          params.ClientName,
+		AuthConfig:          params.AuthConfig,
+		Logger:              params.Logger,
+		CacheConfigMetadata: common.NewCacheConfigMetadata(params.EnvProvider),
+		CacheOperationID:    params.CacheOperationID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)

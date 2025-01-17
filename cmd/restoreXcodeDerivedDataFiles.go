@@ -100,7 +100,14 @@ func init() {
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
 	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
 	op := newCacheOperation(startT, xa.OperationTypeDownload, envProvider)
-	kvClient, err := createKVClient(ctx, ClientNameXcode, op.OperationID, authConfig, envProvider, logger)
+	kvClient, err := createKVClient(ctx,
+		CreateKVClientParams{
+			CacheOperationID: op.OperationID,
+			ClientName:       ClientNameXcode,
+			AuthConfig:       authConfig,
+			EnvProvider:      envProvider,
+			Logger:           logger,
+		})
 	if err != nil {
 		return nil, fmt.Errorf("create kv client: %w", err)
 	}
