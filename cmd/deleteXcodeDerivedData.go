@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -73,11 +74,13 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context, providedCacheKey string, u
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
 	kvClient, err := createKVClient(ctx,
-		"",
-		ClientNameXcode,
-		authConfig,
-		envProvider,
-		logger)
+		CreateKVClientParams{
+			CacheOperationID: uuid.NewString(),
+			ClientName:       ClientNameXcode,
+			AuthConfig:       authConfig,
+			EnvProvider:      envProvider,
+			Logger:           logger,
+		})
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)
 	}
