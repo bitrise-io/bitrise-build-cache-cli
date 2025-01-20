@@ -16,6 +16,7 @@ trigger_map:
 app:
   envs:
   - PANDOC_VERSION: "3.6.2"
+  - MAVEN_VERSION: "3.9.9"
 
 workflows:
   release:
@@ -127,6 +128,75 @@ workflows:
           - webhook_url: "$SLACK_WEBHOOK_ALERTS"
         title: Send slack if failed
         run_if: ".IsBuildFailed"
+
+  update_plugins:
+    envs:
+      - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
+    steps:
+      - activate-ssh-key@4:
+            run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@8: { }
+      - apt-get-install:
+          inputs:
+            - packages: libxml2-utils
+      - script:
+          title: Update plugins with latest version
+          inputs:
+            - content: |
+                bash ./scripts/update_plugins.sh
+      - script:
+          title: Commit updated plugins and open PR
+          inputs:
+            - content: |
+                set -ex
+                
+                # Check for existing PR with the same title
+                existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
+                  
+                if [ -n "$existing_pr" ]; then
+                  echo "A pull request with this title already exists: $existing_pr"
+                  exit 0
+                fi
+                
+                if [ -n "$(git status --porcelain)" ]; then
+                  git branch -D update-plugins || true
+                  git checkout -b update-plugins
+                
+                  git add .
+                  git commit -m "feat: update plugins to release"
+                  git push -f origin update-plugins
+                  
+                  # Create a pull request using GitHub API
+                  pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+                    -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
+                    "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
+                    
+                    pr_url=$(echo "$pr_response" | jq -r .html_url)
+                    envman add --key PR_URL --value "$pr_url" 
+                    
+                    if [ "$pr_url" != "null" ]; then
+                      echo "Pull request created successfully: $pr_url"
+                    else
+                      echo "Failed to create pull request. Response: $pr_response"
+                      exit 1
+                    fi
+                else
+                  echo "No changes detected, skipping commit."
+                  exit 0
+                fi
+      - slack@4:
+          inputs:
+            - channel: "#team-advanced-ci-alerts-website"
+            - text: |-
+                Gradle plugin update PR is ready! :tada: :rocket: :gradle:
+
+                Check PR here: $PR_URL
+            - emoji: ":rotating_light:"
+            - color: "#ee003b"
+            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+          title: Send slack if PR opened
+          run_if: '{{ getenv "PR_URL" | ne "" }}'
 
 step_bundles:
   check_gradle_verification_reference:
