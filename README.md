@@ -96,7 +96,7 @@ When `enable-for gradle` or `enable-for bazel` is called:
 
 ### 1: Update Gradle verification reference file
 
-Run the `bitrise test` or `bitrise run check_gradle_verification` command locally, and commit changes (workflows will fail if there are any) to the repository. In case the CI workflow is still failing, copy the generated metadata from the `Generate Gradle verification reference` Step's log.
+Run the `bitrise test` or `bitrise run generate_gradle_verification` command locally, and commit changes (workflows will fail if there are any) to the repository. In case the CI workflow is still failing, copy the generated metadata from the `Generate Gradle verification reference` Step's log.
 
 ### 2: Create release
 

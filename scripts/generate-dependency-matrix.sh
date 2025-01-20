@@ -5,7 +5,7 @@ set -e
 mkdir -p docs
 export RESULT_MD_PATH="docs/dependency-matrix.md"
 export MD_HEADER_PATH="assets/dependency-matrix-header.md"
-export CLI_RELEASE_URL_PREFIX="https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/"
+export CLI_RELEASE_URL_PREFIX="https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag"
 
 export BITRISE_BUILD_CACHE_AUTH_TOKEN=dummy
 export BITRISE_BUILD_CACHE_WORKSPACE_ID=dummy
