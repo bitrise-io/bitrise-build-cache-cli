@@ -246,7 +246,7 @@ workflows:
           title: Send slack if PR opened
           run_if: '{{ getenv "PR_URL" | ne "" }}'
 
-  feature-e2e-gradle:
+  feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
@@ -279,8 +279,73 @@ workflows:
             chmod +x ../scripts/check_pattern.sh
             ../scripts/check_pattern.sh "$PWD" \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId'
-            
+              '\[Bitrise Build Cache\].*Request metadata invocationId' \
+              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [\w\d]{8}-[\w\d]{4}-[\w\d]{4}-[\w\d]{4}-[\w\d]{12}'
+
+  feature-e2e-gradle-bitwarden:
+    envs:
+    - TEST_APP_URL: git@github.com:bitwarden/android.git
+    - BRANCH: main
+    triggers:
+      push:
+      - branch: "main"
+      pull_request:
+      - source_branch: "*"
+    before_run:
+    - feature-e2e-setup
+    steps:
+    - script:
+        title: Create local configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ./gradlew debug --configuration-cache --dry-run
+    - script:
+        title: Save configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli save-gradle-configuration-cache \
+              --config-cache-dir "$PWD/_tmp/.gradle/configuration-cache" \
+              --key "cli-bitwarden-test"
+    - script:
+        title: Delete local configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf .gradle/configuration-cache
+    - script:
+        title: Restore configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli restore-gradle-configuration-cache \
+              --key "cli-bitwarden-test"
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+    - script:
+        title: Build and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (./gradlew debug --configuration-cache 2>&1) | tee logs.txt
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            chmod +x ../scripts/check_pattern.sh
+            ../scripts/check_pattern.sh "$PWD" \
+              'Reusing configuration cache.' \
+              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+              '\[Bitrise Build Cache\].*Request metadata invocationId' \
+              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [\w\d]{8}-[\w\d]{4}-[\w\d]{4}-[\w\d]{4}-[\w\d]{12}'
+
   feature-e2e-bazel:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
@@ -469,7 +534,8 @@ pipelines:
   features-e2e:
     workflows:
       feature-e2e-bazel: {}
-      feature-e2e-gradle: {}
+      feature-e2e-gradle-duckduck: {}
+      feature-e2e-gradle-bitwarden: {}
     triggers:
       pull_request:
         - source_branch: "*"
