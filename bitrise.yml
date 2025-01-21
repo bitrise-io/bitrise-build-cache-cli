@@ -174,11 +174,21 @@ workflows:
           inputs:
             - packages: libxml2-utils
       - script:
-          title: Update plugins with latest version
+          title: Ensure we're on main
           inputs:
             - content: |
-                git checkout main && git pull
+                #!/bin/bash
+                set -ex
                 
+                git fetch origin
+                if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
+                  git checkout main
+                  git pull origin main
+                fi
+      - script:
+          title: Update plugins with latest version
+          inputs:
+            - content: |                
                 bash ./scripts/update_plugins.sh
       - bundle::generate_gradle_verification_reference: {}
       - script:
