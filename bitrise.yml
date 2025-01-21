@@ -16,6 +16,7 @@ trigger_map:
 app:
   envs:
   - PANDOC_VERSION: "3.6.2"
+  - MAVEN_VERSION: "3.9.9"
 
 workflows:
   release:
@@ -43,7 +44,22 @@ workflows:
             set -ex
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
-    - bundle::check_gradle_verification_reference: { }
+    - bundle::generate_gradle_verification_reference: { }
+    - script@1:
+        title: Check if local updates to verification-metadata.xml are not commited
+        inputs:
+          - content: |-
+              set -x
+
+              git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
+              if [[ $? == 0 ]]; then
+                echo "Please manually commit the changes to the repo:"
+                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+                exit 1
+              else
+                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
+                exit 0
+              fi
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:
@@ -74,7 +90,22 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
-    - bundle::check_gradle_verification_reference: { }
+    - bundle::generate_gradle_verification_reference: { }
+    - script@1:
+        title: Check if local updates to verification-metadata.xml are not commited
+        inputs:
+          - content: |-
+              set -x
+
+              git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
+              if [[ $? == 0 ]]; then
+                echo "Please manually commit the changes to the repo:"
+                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+                exit 1
+              else
+                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
+                exit 0
+              fi
     - deploy-to-bitrise-io@2:
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
@@ -101,9 +132,9 @@ workflows:
             set -ex
             bitrise run --config e2e/bitrise.yml test_gradle_output_diagnostics
 
-  check_gradle_verification:
+  generate_gradle_verification:
     steps:
-    - bundle::check_gradle_verification_reference: { }
+    - bundle::generate_gradle_verification_reference: { }
 
   generate_and_commit_dependency_matrix:
     steps:
@@ -128,8 +159,94 @@ workflows:
         title: Send slack if failed
         run_if: ".IsBuildFailed"
 
+  update_plugins:
+    envs:
+      - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
+    steps:
+      - activate-ssh-key@4:
+            run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@8:
+          inputs:
+          - fetch_tags: "yes"
+          - shallow_clone: "false"
+          - clone_depth: "-1"
+      - apt-get-install:
+          inputs:
+            - packages: libxml2-utils
+      - script:
+          title: Ensure we're on main
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                
+                git fetch origin
+                if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
+                  git checkout main
+                  git pull origin main
+                fi
+      - script:
+          title: Update plugins with latest version
+          inputs:
+            - content: |                
+                bash ./scripts/update_plugins.sh
+      - bundle::generate_gradle_verification_reference: {}
+      - script:
+          title: Commit updated plugins and open PR
+          inputs:
+            - content: |
+                set -ex
+                
+                # Check for existing PR with the same title
+                existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
+                  
+                if [ -n "$existing_pr" ]; then
+                  echo "A pull request with this title already exists: $existing_pr"
+                  exit 0
+                fi
+                
+                if [ -n "$(git status --porcelain)" ]; then
+                  git branch -D update-plugins || true
+                  git checkout -b update-plugins
+                
+                  git add .
+                  git commit -m "feat: update plugins to release"
+                  git push -f origin update-plugins
+                  
+                  # Create a pull request using GitHub API
+                  pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+                    -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
+                    "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
+                    
+                    pr_url=$(echo "$pr_response" | jq -r .html_url)
+                    envman add --key PR_URL --value "$pr_url" 
+                    
+                    if [ "$pr_url" != "null" ]; then
+                      echo "Pull request created successfully: $pr_url"
+                    else
+                      echo "Failed to create pull request. Response: $pr_response"
+                      exit 1
+                    fi
+                else
+                  echo "No changes detected, skipping commit."
+                  exit 0
+                fi
+      - slack@4:
+          inputs:
+            - channel: "#team-advanced-ci-alerts-website"
+            - text: |-
+                Gradle plugin update PR is ready! :tada: :rocket: :gradle:
+
+                Check PR here: $PR_URL
+            - emoji: ":gradle:"
+            - color: "#08a045"
+            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+          title: Send slack if PR opened
+          run_if: '{{ getenv "PR_URL" | ne "" }}'
+
 step_bundles:
-  check_gradle_verification_reference:
+  generate_gradle_verification_reference:
     steps:
     - script:
         title: Generate Gradle verification reference
@@ -164,21 +281,7 @@ step_bundles:
             # Copy metadata to be included in the CLI binary
             mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
             envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-    - script@1:
-        title: Check if local updates to verification-metadata.xml are not commited
-        inputs:
-        - content: |-
-            set -x
-            
-            git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
-            if [[ $? == 0 ]]; then
-              echo "Please manually commit the changes to the repo:"
-              echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-              exit 1
-            else
-              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
-              exit 0
-            fi
+    
 
   generate_and_commit_dependency_matrix:
     steps:
