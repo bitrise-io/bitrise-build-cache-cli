@@ -17,7 +17,7 @@ workflows:
     triggers:
       tag:
       - name:
-          regex: '^\d\.\d\.\d$'
+          regex: '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
     envs:
     - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
@@ -247,9 +247,9 @@ workflows:
           title: Send slack if PR opened
           run_if: '{{ getenv "PR_URL" | ne "" }}'
 
- e2e-cache-gradle:
+  feature-e2e-gradle:
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/DuckDuckGo-Android-BuildCache.git
+    - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
     triggers:
       push:
@@ -257,14 +257,14 @@ workflows:
       pull_request:
       - source_branch: "*"
     before_run:
-    - e2e-cache-setup
+    - feature-e2e-setup
     steps:
     - script:
         title: Enable build cache
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli enable-for gradle -d
+            ../bitrise-build-cache-cli enable-for gradle --metrics -d
     - script:
         title: Build and capture logs
         inputs:
@@ -277,15 +277,12 @@ workflows:
         - content: |-
             set -exo pipefail
             
-            REMOTE_CACHE_ENABLED="$(grep -o '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' -c logs.txt)"
-            INVOCATION_IDS="$(grep -o '\[Bitrise Build Cache\].*Request metadata invocationId' -c logs.txt)"
-
-            if [[ $REMOTE_CACHE_ENABLED -ne 1 || $INVOCATION_IDS -ne 1 ]]; then
-                echo "Bitrise Build Cache was not set up properly"
-                exit 1
-            fi
+            chmod +x ../scripts/check_pattern.sh
+            ../scripts/check_pattern.sh "$PWD" \
+              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+              '\[Bitrise Build Cache\].*Request metadata invocationId'
             
-  e2e-cache-bazel:
+  feature-e2e-bazel:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
@@ -295,43 +292,14 @@ workflows:
       pull_request:
       - source_branch: "*"
     before_run:
-    - e2e-cache-setup
+    - feature-e2e-setup
     steps:
     - script@1:
         inputs:
         - content: |
             #!/usr/bin/env bash
             set -exo pipefail
-
-            # Download Bazelisk using curl
-            # Define the Bazelisk version you want to install
-            export BAZELISK_VERSION='1.21.0'
-
-            # Determine the operating system
-            OS="$(uname -s)"
-            case "$OS" in
-                Linux*)     OS_NAME=linux;;
-                Darwin*)    OS_NAME=darwin;;
-                *)          echo "Unsupported OS: $OS"; exit 1;;
-            esac
-
-            # Download Bazelisk using curl based on the operating system
-            if [ "$OS_NAME" = "linux" ]; then
-                curl -fLO "https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-amd64"
-                mv bazelisk-linux-amd64 bazel
-            elif [ "$OS_NAME" = "darwin" ]; then
-                curl -fLO "https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-darwin-arm64"
-                mv bazelisk-darwin-arm64 bazel
-            fi
-
-            # Make the binary executable
-            chmod +x bazel
-
-            # Move the executable to a directory in your PATH
-            sudo mv bazel /usr/local/bin/
-
-            # Verify the installation
-            bazel --version
+            ../scripts/install_bazel.sh
         title: Install bazel
     - script:
         title: Enable build cache
@@ -349,17 +317,15 @@ workflows:
         title: Check for cache invocations
         inputs:
         - content: |-
+            #!/bin/bash
             set -exo pipefail
             
-            REMOTE_CACHE_ENABLED="$(grep -o '--remote_cache=grpcs:\/\/remote-build-cache\.services\.bitrise\.io' -c logs.txt)"
-            INVOCATION_IDS="$(grep -o 'Invocation ID: ' -c logs.txt)"
+            chmod +x ../scripts/check_pattern.sh
+            ../scripts/check_pattern.sh "$PWD" \
+              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+              '\[Bitrise Build Cache\].*Request metadata invocationId'
             
-            if [[ $REMOTE_CACHE_ENABLED -ne 1 || $INVOCATION_IDS -ne 1 ]]; then
-                echo "Bitrise Build Cache was not set up properly"
-                exit 1
-            fi
-            
-  e2e-cache-setup:
+  feature-e2e-setup:
     steps:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -383,8 +349,6 @@ workflows:
         title: Switch working dir to _tmp
         inputs:
         - path: "./_tmp"
-
-
 
 step_bundles:
   generate_gradle_verification_reference:
@@ -501,3 +465,14 @@ step_bundles:
                   echo "No changes detected, skipping commit."
                   exit 0
                 fi
+
+pipelines:
+  features-e2e:
+    workflows:
+      feature-e2e-bazel: {}
+      feature-e2e-gradle: {}
+    triggers:
+      pull_request:
+        - source_branch: "*"
+      push:
+        - branch: main
