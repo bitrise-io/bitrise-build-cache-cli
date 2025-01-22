@@ -58,6 +58,18 @@ workflows:
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              CLI release failed! :gopher_lift: :rotating_light:
+
+              Check build here: $BITRISE_BUILD_URL
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
     meta:
       bitrise.io:
         machine_type_id: g2-m1.8core
