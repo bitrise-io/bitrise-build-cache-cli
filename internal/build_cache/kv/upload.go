@@ -104,9 +104,18 @@ func (c *Client) uploadStream(ctx context.Context, source io.Reader, key, checks
 	if err != nil {
 		return fmt.Errorf("create kv put client (with key %s): %w", key, err)
 	}
-	if _, err := io.Copy(kvWriter, source); err != nil {
-		return fmt.Errorf("upload archive: %w", err)
+
+	if size > 0 {
+		if _, err := io.Copy(kvWriter, source); err != nil {
+			return fmt.Errorf("upload archive: %w", err)
+		}
+	} else {
+		// io.Copy does not write if there was no read
+		if _, err := kvWriter.Write([]byte{}); err != nil {
+			return fmt.Errorf("upload archive: %w", err)
+		}
 	}
+
 	if err := kvWriter.Close(); err != nil {
 		return fmt.Errorf("close upload: %w", err)
 	}
