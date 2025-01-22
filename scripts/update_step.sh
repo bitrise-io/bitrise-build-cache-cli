@@ -22,37 +22,37 @@ if [ -n "$existing_pr" ]; then
 fi
 
 # Update the version in the file
-SED_IN_PLACE_COMMAND='-i'
+SED_IN_PLACE_COMMAND=(-i)
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  SED_IN_PLACE_COMMAND='-i ""'
+  SED_IN_PLACE_COMMAND=(-i "")
 fi
 
-sed -E "$SED_IN_PLACE_COMMAND" "s/export BITRISE_BUILD_CACHE_CLI_VERSION=\"v?[0-9]+\.[0-9]+\.[0-9]+\"/export BITRISE_BUILD_CACHE_CLI_VERSION=\"$BITRISE_GIT_TAG\"/" "$FILE_TO_UPDATE"
+sed -E "${SED_IN_PLACE_COMMAND[@]}" "s/export BITRISE_BUILD_CACHE_CLI_VERSION=\"v?[0-9]+\.[0-9]+\.[0-9]+\"/export BITRISE_BUILD_CACHE_CLI_VERSION=\"$BITRISE_GIT_TAG\"/" "$FILE_TO_UPDATE"
 
-if [ -n "$(git status --porcelain)" ]; then
-  git branch -D update-cli || true
-  git checkout -b update-cli
-
-  git add .
-  git commit -m "feat: update CLI to release"
-  git push -f origin update-cli
-
-
- # Create a pull request using GitHub API
-  pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-    -d "{\"title\":\"$PR_TITLE\",\"body\":\"This PR updates the Bitrise Build Cache CLI.\",\"head\":\"update-cli\",\"base\":\"main\"}" \
-    "https://api.github.com/repos/$REPO_NAME/pulls")
-
-    pr_url=$(echo "$pr_response" | jq -r .html_url)
-    envman add --key PR_URL --value "$pr_url"
-
-    if [ "$pr_url" != "null" ]; then
-      echo "Pull request created successfully: $pr_url"
-    else
-      echo "Failed to create pull request. Response: $pr_response"
-      exit 1
-    fi
-else
-  echo "No changes detected, skipping commit."
-  exit 0
-fi
+#if [ -n "$(git status --porcelain)" ]; then
+#  git branch -D update-cli || true
+#  git checkout -b update-cli
+#
+#  git add .
+#  git commit -m "feat: update CLI to release"
+#  git push -f origin update-cli
+#
+#
+# # Create a pull request using GitHub API
+#  pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+#    -d "{\"title\":\"$PR_TITLE\",\"body\":\"This PR updates the Bitrise Build Cache CLI.\",\"head\":\"update-cli\",\"base\":\"main\"}" \
+#    "https://api.github.com/repos/$REPO_NAME/pulls")
+#
+#    pr_url=$(echo "$pr_response" | jq -r .html_url)
+#    envman add --key PR_URL --value "$pr_url"
+#
+#    if [ "$pr_url" != "null" ]; then
+#      echo "Pull request created successfully: $pr_url"
+#    else
+#      echo "Failed to create pull request. Response: $pr_response"
+#      exit 1
+#    fi
+#else
+#  echo "No changes detected, skipping commit."
+#  exit 0
+#fi

@@ -4,9 +4,9 @@ set -e
 VERSION_FILE="./internal/consts/consts.go"
 TEST_FILE="./internal/config/gradle/gradleconfig_test.go"
 
-SED_IN_PLACE_COMMAND='-i'
+SED_IN_PLACE_COMMAND=(-i)
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  SED_IN_PLACE_COMMAND='-i ""'
+  SED_IN_PLACE_COMMAND=(-i "")
 fi
 
 compare_versions() {
@@ -45,8 +45,8 @@ echo "Latest version of gradle-analytics plugin: $latest_version"
 if [[ $latest_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     # Compare versions and update if the latest is greater
     if compare_versions "$current_version" "$latest_version"; then
-        sed "$SED_IN_PLACE_COMMAND" "s/GradleAnalyticsPluginDepVersion = \".*\"/GradleAnalyticsPluginDepVersion = \"$latest_version\"/" "$VERSION_FILE"
-        sed "$SED_IN_PLACE_COMMAND" "s/classpath(\"io.bitrise.gradle:gradle-analytics:.*\")/classpath(\"io.bitrise.gradle:gradle-analytics:$latest_version\")/" "$TEST_FILE"
+        sed "${SED_IN_PLACE_COMMAND[@]}" "s/GradleAnalyticsPluginDepVersion = \".*\"/GradleAnalyticsPluginDepVersion = \"$latest_version\"/" "$VERSION_FILE"
+        sed "${SED_IN_PLACE_COMMAND[@]}" "s/classpath(\"io.bitrise.gradle:gradle-analytics:.*\")/classpath(\"io.bitrise.gradle:gradle-analytics:$latest_version\")/" "$TEST_FILE"
         echo "Updated to version $latest_version"
     else
         echo "No update needed. Current version ($current_version) is up-to-date or newer."
@@ -74,8 +74,8 @@ echo "Latest version of remote-cache plugin: $latest_version"
 if [[ $latest_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     # Compare versions and update if the latest is greater
     if compare_versions "$current_version" "$latest_version"; then
-        sed "$SED_IN_PLACE_COMMAND" "s/GradleRemoteBuildCachePluginDepVersion = \".*\"/GradleRemoteBuildCachePluginDepVersion = \"$latest_version\"/" "$VERSION_FILE"
-        sed "$SED_IN_PLACE_COMMAND" "s/classpath(\"io.bitrise.gradle:remote-cache:.*\")/classpath(\"io.bitrise.gradle:remote-cache:$latest_version\")/" "$TEST_FILE"
+        sed "${SED_IN_PLACE_COMMAND[@]}" "s/GradleRemoteBuildCachePluginDepVersion = \".*\"/GradleRemoteBuildCachePluginDepVersion = \"$latest_version\"/" "$VERSION_FILE"
+        sed "${SED_IN_PLACE_COMMAND[@]}" "s/classpath(\"io.bitrise.gradle:remote-cache:.*\")/classpath(\"io.bitrise.gradle:remote-cache:$latest_version\")/" "$TEST_FILE"
         echo "Updated to version $latest_version"
     else
         echo "No update needed. Current version ($current_version) is up-to-date or newer."
