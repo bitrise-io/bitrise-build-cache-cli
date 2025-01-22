@@ -22,7 +22,12 @@ if [ -n "$existing_pr" ]; then
 fi
 
 # Update the version in the file
-sed -E -i "s/export BITRISE_BUILD_CACHE_CLI_VERSION=\"v?[0-9]+\.[0-9]+\.[0-9]+\"/export BITRISE_BUILD_CACHE_CLI_VERSION=\"$BITRISE_GIT_TAG\"/" "$FILE_TO_UPDATE"
+SED_IN_PLACE_COMMAND='-i'
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  SED_IN_PLACE_COMMAND='-i ""'
+fi
+
+sed -E "$SED_IN_PLACE_COMMAND" "s/export BITRISE_BUILD_CACHE_CLI_VERSION=\"v?[0-9]+\.[0-9]+\.[0-9]+\"/export BITRISE_BUILD_CACHE_CLI_VERSION=\"$BITRISE_GIT_TAG\"/" "$FILE_TO_UPDATE"
 
 if [ -n "$(git status --porcelain)" ]; then
   git branch -D update-cli || true
