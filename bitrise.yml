@@ -295,6 +295,12 @@ workflows:
     - feature-e2e-setup
     steps:
     - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+    - script:
         title: Create local configuration cache
         inputs:
         - content: |-
@@ -321,12 +327,6 @@ workflows:
             set -exo pipefail
             ../bitrise-build-cache-cli restore-gradle-configuration-cache \
               --key "cli-bitwarden-test"
-    - script:
-        title: Enable build cache
-        inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli enable-for gradle --metrics -d
     - script:
         title: Build and capture logs
         inputs:
