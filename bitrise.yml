@@ -254,7 +254,8 @@ step_bundles:
             mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
             envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     
-  check_generate_gradle_verification_reference:
+  check_gradle_verification_reference:
+    steps:
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
