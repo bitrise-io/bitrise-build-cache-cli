@@ -5,11 +5,14 @@ version: 1
 
 project_name: bitrise-build-cache
 
+# Based on https://goreleaser.com/customization/release/#github
 release:
   github:
     owner: bitrise-io
     name: bitrise-build-cache-cli
-  draft: true
+  make_latest: true
+  mode: append
+  replace_existing_artifacts: true
   footer: |
     ### Gradle verification
     For reference, the verification metadata is available as an attached assset.
