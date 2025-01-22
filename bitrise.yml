@@ -58,6 +58,26 @@ workflows:
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
+    - script:
+        title: Update step
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -ex
+
+            ./scripts/update_step.sh
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
+
+              Check PR here: $PR_URL
+          - emoji: ":gradle:"
+          - color: "#08a045"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if PR opened
+        run_if: '{{ getenv "PR_URL" | ne "" }}'
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
