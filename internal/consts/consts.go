@@ -7,6 +7,9 @@ const (
 	EndpointURLIAD1    = "grpc://iad-cache.services.bitrise.io:6666"
 	EndpointURLORD1    = "grpc://ord-cache.services.bitrise.io:6666"
 
+	RBEEndpointURLIAD1 = "grpc://172.21.1.89:6670"
+	RBEEndpointURLORD1 = "grpc://172.22.1.89:6670"
+
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
 	// Gradle Remote Build Cache related consts

@@ -26,7 +26,7 @@ type CreateKVClientParams struct {
 
 func createKVClient(ctx context.Context,
 	params CreateKVClientParams) (*kv.Client, error) {
-	endpointURL := common.SelectEndpointURL("", params.EnvProvider)
+	endpointURL := common.SelectCacheEndpointURL("", params.EnvProvider)
 	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
 	if params.ClientName == ClientNameXcode &&

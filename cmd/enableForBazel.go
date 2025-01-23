@@ -47,7 +47,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 	},
 }
 
+var rbeEnabled bool //nolint:gochecknoglobals
+
 func init() {
+	enableForBazelCmd.Flags().BoolVar(&rbeEnabled, "with-rbe", false, "Enable Remote Build Execution (RBE)")
 	enableForCmd.AddCommand(enableForBazelCmd)
 }
 
@@ -62,9 +65,19 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	}
 
 	// Optional configs
-	// EndpointURL
-	endpointURL := common.SelectEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
+	// CacheEndpointURL
+	cacheEndpointURL := common.SelectCacheEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
+	logger.Infof("(i) Build Cache Endpoint URL: %s", cacheEndpointURL)
+	// RBEEndpointURL
+	var rbeEndpointURL string
+	if rbeEnabled {
+		rbeEndpointURL = common.SelectRBEEndpointURL(envProvider("BITRISE_RBE_ENDPOINT"), envProvider)
+		if rbeEndpointURL != "" {
+			logger.Infof("(i) RBE Endpoint URL: %s", rbeEndpointURL)
+		} else {
+			logger.Infof("(i) RBE is not available at this location")
+		}
+	}
 	// Metadata
 	cacheConfig := common.NewCacheConfigMetadata(os.Getenv)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
@@ -81,7 +94,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	logger.Debugf("isBazelrcExists: %t", isBazelrcExists)
 
 	logger.Infof("(i) Generate ~/.bazelrc")
-	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(endpointURL, authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig)
+	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(cacheEndpointURL, rbeEndpointURL, authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig)
 	if err != nil {
 		return fmt.Errorf("generate bazelrc: %w", err)
 	}

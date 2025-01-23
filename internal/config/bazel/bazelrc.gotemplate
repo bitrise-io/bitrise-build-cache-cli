@@ -1,5 +1,8 @@
-build --remote_cache={{ .EndpointURL }}
-build --remote_timeout=3600
+build --remote_cache={{ .CacheEndpointURL }}
+{{- if .RBEEndpointURL }}
+build --remote_executor={{ .RBEEndpointURL }}
+{{- end }}
+build --remote_timeout=600s
 {{- if .WorkspaceID }}
 build --remote_header='x-org-id={{ .WorkspaceID }}'
 build --bes_header='x-org-id={{ .WorkspaceID }}'
