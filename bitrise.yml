@@ -383,8 +383,8 @@ workflows:
             set -exo pipefail
             
             ../scripts/check_pattern.sh "$PWD/logs.txt" \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId'
+              '--remote_cache=grpcs:\/\/remote-build-cache\.services\.bitrise\.io' \
+              'Invocation ID: '
 
 step_bundles:
   generate_gradle_verification_reference:
