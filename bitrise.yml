@@ -276,7 +276,6 @@ workflows:
         - content: |-
             set -exo pipefail
             
-            chmod +x ../scripts/check_pattern.sh
             ../scripts/check_pattern.sh "$PWD/logs.txt" \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
@@ -339,7 +338,6 @@ workflows:
         - content: |-
             set -exo pipefail
 
-            chmod +x ../scripts/check_pattern.sh
             ../scripts/check_pattern.sh "$PWD/logs.txt" \
               'Reusing configuration cache.' \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
@@ -384,7 +382,6 @@ workflows:
             #!/bin/bash
             set -exo pipefail
             
-            chmod +x ../scripts/check_pattern.sh
             ../scripts/check_pattern.sh "$PWD/logs.txt" \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId'
