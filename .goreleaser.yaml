@@ -11,7 +11,7 @@ release:
     owner: bitrise-io
     name: bitrise-build-cache-cli
   make_latest: true
-  use_existing_draft: true
+  draft: false
   mode: append
   replace_existing_artifacts: true
   footer: |
