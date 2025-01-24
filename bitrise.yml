@@ -255,9 +255,8 @@ workflows:
       - branch: "main"
       pull_request:
       - source_branch: "*"
-    before_run:
-    - feature-e2e-setup
     steps:
+    - bundle::feature-e2e-setup: {}
     - script:
         title: Enable build cache
         inputs:
@@ -290,9 +289,8 @@ workflows:
       - branch: "main"
       pull_request:
       - source_branch: "*"
-    before_run:
-    - feature-e2e-setup
     steps:
+    - bundle::feature-e2e-setup: {}
     - script:
         title: Enable build cache
         inputs:
@@ -353,9 +351,8 @@ workflows:
       - branch: "main"
       pull_request:
       - source_branch: "*"
-    before_run:
-    - feature-e2e-setup
     steps:
+    - bundle::feature-e2e-setup: {}
     - script@1:
         inputs:
         - content: |
