@@ -52,7 +52,7 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider fu
 
 	// Optional configs
 	// EndpointURL
-	endpointURL := common.SelectEndpointURL(paramRemoteCacheEndpoint, envProvider)
+	endpointURL := common.SelectCacheEndpointURL(paramRemoteCacheEndpoint, envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
 

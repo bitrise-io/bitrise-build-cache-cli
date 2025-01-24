@@ -110,7 +110,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	// Optional configs
 	// EndpointURL
-	endpointURL := common.SelectEndpointURL(paramRemoteCacheEndpoint, envProvider)
+	endpointURL := common.SelectCacheEndpointURL(paramRemoteCacheEndpoint, envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 	logger.Infof("(i) Push new cache entries: %t", paramIsPushEnabled)
 	logger.Infof("(i) Cache entry validation level: %s", paramValidationLevel)

@@ -19,29 +19,35 @@ var (
 var bazelrcTemplateText string
 
 type templateInventory struct {
-	EndpointURL string
-	WorkspaceID string
-	AuthToken   string
+	CacheEndpointURL string
+	RBEEndpointURL   string
+	WorkspaceID      string
+	AuthToken        string
 	// Metadata
 	CacheConfigMetadata common.CacheConfigMetadata
 }
 
 // Generate bazelrc.
-func GenerateBazelrc(endpointURL, workspaceID, authToken string, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
+func GenerateBazelrc(cacheEndpointURL, rbeEndpointURL, workspaceID, authToken string, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
 	// required check
 	if len(authToken) < 1 {
 		return "", fmt.Errorf("generate bazelrc, error: %w", errAuthTokenNotProvided)
 	}
 
-	if len(endpointURL) < 1 {
+	if len(cacheEndpointURL) < 1 {
 		return "", fmt.Errorf("generate bazelrc, error: %w", errEndpointURLNotProvided)
+	}
+
+	if len(rbeEndpointURL) < 1 {
+		rbeEndpointURL = ""
 	}
 
 	// create inventory
 	inventory := templateInventory{
-		EndpointURL: endpointURL,
-		WorkspaceID: workspaceID,
-		AuthToken:   authToken,
+		CacheEndpointURL: cacheEndpointURL,
+		RBEEndpointURL:   rbeEndpointURL,
+		WorkspaceID:      workspaceID,
+		AuthToken:        authToken,
 		// Metadata
 		CacheConfigMetadata: cacheConfigMetadata,
 	}
