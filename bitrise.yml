@@ -41,21 +41,7 @@ workflows:
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
     - bundle::generate_gradle_verification_reference: { }
-    - script@1:
-        title: Check if local updates to verification-metadata.xml are not commited
-        inputs:
-          - content: |-
-              set -x
-
-              git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
-              if [[ $? == 0 ]]; then
-                echo "Please manually commit the changes to the repo:"
-                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 1
-              else
-                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 0
-              fi
+    - bundle::check_gradle_verification_reference: { }
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:
@@ -68,6 +54,38 @@ workflows:
 
             goreleaser release
     - deploy-to-bitrise-io@2: {}
+    - script:
+        title: Update step
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -ex
+
+            ./scripts/update_step.sh
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
+
+              Check PR here: $PR_URL
+          - emoji: ":gradle:"
+          - color: "#08a045"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if PR opened
+        run_if: '{{ getenv "PR_URL" | ne "" }}'
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              CLI release failed! :gopher_lift: :rotating_light:
+
+              Check build here: $BITRISE_BUILD_URL
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
     meta:
       bitrise.io:
         machine_type_id: g2-m1.8core
@@ -92,21 +110,7 @@ workflows:
             make lint
     - go-test@1: {}
     - bundle::generate_gradle_verification_reference: { }
-    - script@1:
-        title: Check if local updates to verification-metadata.xml are not commited
-        inputs:
-          - content: |-
-              set -x
-
-              git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
-              if [[ $? == 0 ]]; then
-                echo "Please manually commit the changes to the repo:"
-                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 1
-              else
-                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 0
-              fi
+    - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2:
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
@@ -420,7 +424,23 @@ step_bundles:
             mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
             envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     
+  check_gradle_verification_reference:
+    steps:
+    - script@1:
+        title: Check if local updates to verification-metadata.xml are not commited
+        inputs:
+          - content: |-
+              set -x
 
+              git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
+              if [[ $? == 0 ]]; then
+                echo "Please manually commit the changes to the repo:"
+                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+                exit 1
+              else
+                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
+                exit 0
+              fi
   generate_and_commit_dependency_matrix:
     steps:
       - script:
