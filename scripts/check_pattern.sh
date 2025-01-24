@@ -26,7 +26,7 @@ fi
 check_pattern() {
     local file=$1
     local pattern=$2
-    if grep -q -E "$pattern" "$file"; then
+    if grep -q -i -E "$pattern" "$file"; then
         return 0 # Pattern found
     else
         return 1 # Pattern not found
