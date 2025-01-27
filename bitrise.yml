@@ -249,6 +249,18 @@ workflows:
             - webhook_url: "$SLACK_WEBHOOK_ALERTS"
           title: Send slack if PR opened
           run_if: '{{ getenv "PR_URL" | ne "" }}'
+      - slack@4:
+          inputs:
+            - channel: "#team-advanced-ci-alerts-website"
+            - text: |-
+                CLI plugin update failed! :gradle: :gopher_lift: :rotating_light:
+
+                Check build here: $BITRISE_BUILD_URL
+            - emoji: ":rotating_light:"
+            - color: "#ee003b"
+            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+          title: Send slack if failed
+          run_if: ".IsBuildFailed"
 
   feature-e2e-gradle-duckduck:
     envs:

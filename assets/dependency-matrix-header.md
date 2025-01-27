@@ -5,6 +5,7 @@ This page lists the releases of the [Bitrise Build Cache for Gradle](https://dev
 ## Components
 
 The relationship between the step and the dependencies is as follows:
+
 - The Bitrise Build Cache for Gradle step (`activate-build-cache-for-gradle`, [repository link](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache)) installs a specific version of the CLI.
 - The Bitrise Build Cache CLI ([repository link](https://github.com/bitrise-io/bitrise-build-cache-cli)) supports multiple commands, but the relevant one is `enable-for gradle`, which creates the Gradle init script in `$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts` that pulls in the remote cache and analytics plugins with specific versions for the build.
 - The analytics plugin `io.bitrise.gradle:gradle-analytics` is published to Maven Central and provides build analytics information (e.g., [critical path](https://bitrise.io/changelog/enhanced-gradle-critical-path/24815)).

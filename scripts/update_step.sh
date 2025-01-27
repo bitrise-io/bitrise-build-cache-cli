@@ -5,7 +5,7 @@ set -ex
 # Configuration
 STEP_NAME="bitrise-step-activate-gradle-remote-cache"
 REPO_NAME="bitrise-steplib/$STEP_NAME"
-PR_TITLE="feat: Release new CLI"
+PR_TITLE="feat: Release new CLI $BITRISE_GIT_TAG"
 FILE_TO_UPDATE="step.sh"
 
 # Clone the repository
