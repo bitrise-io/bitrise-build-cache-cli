@@ -2,13 +2,13 @@ package consts
 
 const (
 	EndpointURLDefault = "grpcs://remote-build-cache.services.bitrise.io"
-	EndpointURLLAS1    = "grpc://las-cache.services.bitrise.io:6666"
-	EndpointURLATL1    = "grpc://atl-cache.services.bitrise.io:6666"
-	EndpointURLIAD1    = "grpc://iad-cache.services.bitrise.io:6666"
-	EndpointURLORD1    = "grpc://ord-cache.services.bitrise.io:6666"
+	EndpointURLLAS1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
+	EndpointURLATL1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
+	EndpointURLIAD1    = "grpcs://iad-cache.services.bitrise.io:443"
+	EndpointURLORD1    = "grpcs://ord-cache.services.bitrise.io:443"
 
-	RBEEndpointURLIAD1 = "grpc://172.21.1.89:6670"
-	RBEEndpointURLORD1 = "grpc://172.22.1.89:6670"
+	RBEEndpointURLIAD1 = "grpcs://rbe-internal-iad.services.bitrise.io:6669"
+	RBEEndpointURLORD1 = "grpcs://rbe-internal-ord.services.bitrise.io:6669"
 
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
