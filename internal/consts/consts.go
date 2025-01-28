@@ -7,8 +7,8 @@ const (
 	EndpointURLIAD1    = "grpcs://iad-cache.services.bitrise.io:443"
 	EndpointURLORD1    = "grpcs://ord-cache.services.bitrise.io:443"
 
-	RBEEndpointURLIAD1 = "grpc://172.21.1.89:6670"
-	RBEEndpointURLORD1 = "grpc://172.22.1.89:6670"
+	RBEEndpointURLIAD1 = "grpcs://rbe-internal-iad.services:6669"
+	RBEEndpointURLORD1 = "grpcs://rbe-internal-ord.services:6669"
 
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
