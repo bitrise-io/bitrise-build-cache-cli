@@ -2,7 +2,7 @@ package consts
 
 const (
 	EndpointURLDefault = "grpcs://remote-build-cache.services.bitrise.io"
-	EndpointURLLAS1    = "grpcs://build-cache-api-ord.services.bitrise.io:443"
+	EndpointURLLAS1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
 	EndpointURLATL1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
 	EndpointURLIAD1    = "grpcs://iad-cache.services.bitrise.io:443"
 	EndpointURLORD1    = "grpcs://ord-cache.services.bitrise.io:443"
