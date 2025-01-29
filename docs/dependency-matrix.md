@@ -8,24 +8,26 @@ linked DevCenter
 
 ## Components
 
-The relationship between the step and the dependencies is as follows: -
-The Bitrise Build Cache for Gradle step
-(`activate-build-cache-for-gradle`, [repository
-link](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache))
-installs a specific version of the CLI. - The Bitrise Build Cache CLI
-([repository
-link](https://github.com/bitrise-io/bitrise-build-cache-cli)) supports
-multiple commands, but the relevant one is `enable-for gradle`, which
-creates the Gradle init script in
-`$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts` that pulls in
-the remote cache and analytics plugins with specific versions for the
-build. - The analytics plugin `io.bitrise.gradle:gradle-analytics` is
-published to Maven Central and provides build analytics information
-(e.g., [critical
-path](https://bitrise.io/changelog/enhanced-gradle-critical-path/24815)). -
-The remote cache plugin `io.bitrise.gradle:remote-cache` is published to
-Maven Central and implements the client for the Bitrise remote Build
-Cache.
+The relationship between the step and the dependencies is as follows:
+
+- The Bitrise Build Cache for Gradle step
+  (`activate-build-cache-for-gradle`, [repository
+  link](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache))
+  installs a specific version of the CLI.
+- The Bitrise Build Cache CLI ([repository
+  link](https://github.com/bitrise-io/bitrise-build-cache-cli)) supports
+  multiple commands, but the relevant one is `enable-for gradle`, which
+  creates the Gradle init script in
+  `$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts` that pulls
+  in the remote cache and analytics plugins with specific versions for
+  the build.
+- The analytics plugin `io.bitrise.gradle:gradle-analytics` is published
+  to Maven Central and provides build analytics information (e.g.,
+  [critical
+  path](https://bitrise.io/changelog/enhanced-gradle-critical-path/24815)).
+- The remote cache plugin `io.bitrise.gradle:remote-cache` is published
+  to Maven Central and implements the client for the Bitrise remote
+  Build Cache.
 
 If you want to pin the dependencies (Gradle verification metadata), you
 should pin the full (patch) step version in your Bitrise workflows.
@@ -39,6 +41,7 @@ onwards.
 
 | Step version | CLI version | Analytics plugin version | Cache plugin version |
 |----|----|----|----|
+| 2.7.18 | [v0.15.13](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.15.13) | 2.1.13 | 1.2.14 |
 | 2.7.17 | [v0.15.12](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.15.12) | 2.1.13 | 1.2.14 |
 | 2.7.16 | [v0.15.10](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.15.10) | 2.1.13 | 1.2.13 |
 | 2.7.15 | [v0.15.9](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.15.9) | 2.1.12 | 1.2.12 |
