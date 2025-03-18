@@ -1,14 +1,22 @@
 package consts
 
 const (
-	EndpointURLDefault = "grpcs://remote-build-cache.services.bitrise.io"
-	EndpointURLLAS1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
-	EndpointURLATL1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
-	EndpointURLIAD1    = "grpcs://iad-cache.services.bitrise.io:443"
-	EndpointURLORD1    = "grpcs://ord-cache.services.bitrise.io:443"
+	// These URLs are internal only (for now) and environment aware.
+	// They point to the appropriate instance for the respective datacenter when used on VMs managed by Bitrise.
+	// More info: https://github.com/bitrise-io/build-prebooting-deployments/blob/production/preboot-reconciler/startup_script_extension_macos_bitvirt.sh#L58
+	CacheInternalEndpointURLUnified = "grpcs://cache.services.bitrise.io:443"
+	RBEInternalEndpointURLUnified   = "grpcs://remote-execution.services.bitrise.io:6669"
 
-	RBEEndpointURLIAD1 = "grpcs://rbe-internal-iad.services.bitrise.io:6669"
-	RBEEndpointURLORD1 = "grpcs://rbe-internal-ord.services.bitrise.io:6669"
+	// The default URL uses the public endpoint, which might not be context aware
+	// When this comment was written it simply pointed to the GCP us-east cache, but geo loadbalancing is planned.
+	EndpointURLDefault = "grpcs://remote-build-cache.services.bitrise.io"
+	EndpointURLLAS1    = CacheInternalEndpointURLUnified
+	EndpointURLATL1    = CacheInternalEndpointURLUnified
+	EndpointURLIAD1    = CacheInternalEndpointURLUnified
+	EndpointURLORD1    = CacheInternalEndpointURLUnified
+
+	RBEEndpointURLIAD1 = RBEInternalEndpointURLUnified
+	RBEEndpointURLORD1 = RBEInternalEndpointURLUnified
 
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
