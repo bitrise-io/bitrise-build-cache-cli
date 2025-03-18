@@ -16,13 +16,13 @@ func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string)
 
 	bitriseDenVMDatacenter := envProvider("BITRISE_DEN_VM_DATACENTER")
 	switch bitriseDenVMDatacenter {
-	case "LAS1":
+	case consts.LAS1:
 		return consts.EndpointURLLAS1
-	case "ATL1":
+	case consts.ATL1:
 		return consts.EndpointURLATL1
-	case "IAD1":
+	case consts.IAD1:
 		return consts.EndpointURLIAD1
-	case "ORD1":
+	case consts.ORD1:
 		return consts.EndpointURLORD1
 	}
 

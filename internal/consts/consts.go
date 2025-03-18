@@ -1,6 +1,11 @@
 package consts
 
 const (
+	LAS1 = "LAS1"
+	ATL1 = "ATL1"
+	IAD1 = "IAD1"
+	ORD1 = "ORD1"
+
 	// These URLs are internal only (for now) and environment aware.
 	// They point to the appropriate instance for the respective datacenter when used on VMs managed by Bitrise.
 	// More info: https://github.com/bitrise-io/build-prebooting-deployments/blob/production/preboot-reconciler/startup_script_extension_macos_bitvirt.sh#L58
