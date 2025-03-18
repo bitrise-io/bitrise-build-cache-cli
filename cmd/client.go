@@ -32,7 +32,7 @@ func createKVClient(ctx context.Context,
 	bitriseDenVMDatacenter := params.EnvProvider("BITRISE_DEN_VM_DATACENTER")
 	if params.ClientName == ClientNameXcode &&
 		(bitriseDenVMDatacenter == consts.LAS1 || bitriseDenVMDatacenter == consts.ATL1) {
-		return nil, fmt.Errorf("the selected endpoint %s is not supported", endpointURL)
+		return nil, fmt.Errorf("the selected datacenter %s is not supported", bitriseDenVMDatacenter)
 	}
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(endpointURL)
