@@ -7,7 +7,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -28,12 +27,6 @@ func createKVClient(ctx context.Context,
 	params CreateKVClientParams) (*kv.Client, error) {
 	endpointURL := common.SelectCacheEndpointURL("", params.EnvProvider)
 	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-
-	bitriseDenVMDatacenter := params.EnvProvider("BITRISE_DEN_VM_DATACENTER")
-	if params.ClientName == ClientNameXcode &&
-		(bitriseDenVMDatacenter == consts.LAS1 || bitriseDenVMDatacenter == consts.ATL1) {
-		return nil, fmt.Errorf("the selected datacenter %s is not supported", bitriseDenVMDatacenter)
-	}
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(endpointURL)
 	if err != nil {
