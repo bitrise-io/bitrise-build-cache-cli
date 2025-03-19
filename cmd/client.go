@@ -29,10 +29,8 @@ func createKVClient(ctx context.Context,
 	endpointURL := common.SelectCacheEndpointURL("", params.EnvProvider)
 	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
-	if params.ClientName == ClientNameXcode &&
-		(endpointURL == consts.EndpointURLATL1 || endpointURL == consts.EndpointURLLAS1) {
-		return nil, fmt.Errorf("the selected endpoint %s is not supported", endpointURL)
-	}
+	// Note: We no longer need to restrict specific datacenters for Xcode cache
+	// as all datacenters now use the unified cache endpoint that supports all client types
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(endpointURL)
 	if err != nil {

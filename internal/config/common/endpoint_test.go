@@ -3,6 +3,7 @@ package common
 import (
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -93,6 +94,134 @@ func TestCacheAuthConfig_TokenInGradleFormat(t *testing.T) {
 			if got := cac.TokenInGradleFormat(); got != tt.want {
 				t.Errorf("CacheAuthConfig.TokenInGradleFormat() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestSelectCacheEndpointURL(t *testing.T) {
+	tests := []struct {
+		name                string
+		providedEndpointURL string
+		envVars             map[string]string
+		expectedEndpointURL string
+	}{
+		{
+			name:                "Explicit endpoint URL provided",
+			providedEndpointURL: "grpcs://custom-endpoint.example.com",
+			envVars:             map[string]string{},
+			expectedEndpointURL: "grpcs://custom-endpoint.example.com",
+		},
+		{
+			name:                "Env var endpoint URL used",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_ENDPOINT": "grpcs://env-var-endpoint.example.com",
+			},
+			expectedEndpointURL: "grpcs://env-var-endpoint.example.com",
+		},
+		{
+			name:                "LAS1 datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "LAS1",
+			},
+			expectedEndpointURL: consts.UnifiedCacheEndpointURL,
+		},
+		{
+			name:                "ATL1 datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "ATL1",
+			},
+			expectedEndpointURL: consts.UnifiedCacheEndpointURL,
+		},
+		{
+			name:                "IAD1 datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "IAD1",
+			},
+			expectedEndpointURL: consts.UnifiedCacheEndpointURL,
+		},
+		{
+			name:                "ORD1 datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "ORD1",
+			},
+			expectedEndpointURL: consts.UnifiedCacheEndpointURL,
+		},
+		{
+			name:                "Default for unknown datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "UNKNOWN",
+			},
+			expectedEndpointURL: consts.EndpointURLDefault,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			envProvider := createEnvProvider(tt.envVars)
+			result := SelectCacheEndpointURL(tt.providedEndpointURL, envProvider)
+			assert.Equal(t, tt.expectedEndpointURL, result)
+		})
+	}
+}
+
+func TestSelectRBEEndpointURL(t *testing.T) {
+	tests := []struct {
+		name                string
+		providedEndpointURL string
+		envVars             map[string]string
+		expectedEndpointURL string
+	}{
+		{
+			name:                "Explicit endpoint URL provided",
+			providedEndpointURL: "grpcs://custom-rbe-endpoint.example.com",
+			envVars:             map[string]string{},
+			expectedEndpointURL: "grpcs://custom-rbe-endpoint.example.com",
+		},
+		{
+			name:                "Env var endpoint URL used",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_RBE_ENDPOINT": "grpcs://env-var-rbe-endpoint.example.com",
+			},
+			expectedEndpointURL: "grpcs://env-var-rbe-endpoint.example.com",
+		},
+		{
+			name:                "IAD1 datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "IAD1",
+			},
+			expectedEndpointURL: consts.UnifiedRBEEndpointURL,
+		},
+		{
+			name:                "ORD1 datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "ORD1",
+			},
+			expectedEndpointURL: consts.UnifiedRBEEndpointURL,
+		},
+		{
+			name:                "Default for unsupported datacenter",
+			providedEndpointURL: "",
+			envVars: map[string]string{
+				"BITRISE_DEN_VM_DATACENTER": "LAS1",
+			},
+			expectedEndpointURL: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			envProvider := createEnvProvider(tt.envVars)
+			result := SelectRBEEndpointURL(tt.providedEndpointURL, envProvider)
+			assert.Equal(t, tt.expectedEndpointURL, result)
 		})
 	}
 }

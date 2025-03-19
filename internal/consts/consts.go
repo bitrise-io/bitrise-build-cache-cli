@@ -1,14 +1,22 @@
 package consts
 
 const (
+	// Unified cache endpoints
+	UnifiedCacheEndpointURL = "grpcs://cache.services.bitrise.io:443"
+	UnifiedRBEEndpointURL   = "grpcs://remote-execution.services.bitrise.io:443"
+	
+	// Default public endpoint
 	EndpointURLDefault = "grpcs://remote-build-cache.services.bitrise.io"
-	EndpointURLLAS1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
-	EndpointURLATL1    = "grpcs://build-cache-api-iad.services.bitrise.io:443"
-	EndpointURLIAD1    = "grpcs://iad-cache.services.bitrise.io:443"
-	EndpointURLORD1    = "grpcs://ord-cache.services.bitrise.io:443"
+	
+	// Datacenter-specific endpoints (all using unified URLs now)
+	EndpointURLLAS1    = UnifiedCacheEndpointURL
+	EndpointURLATL1    = UnifiedCacheEndpointURL
+	EndpointURLIAD1    = UnifiedCacheEndpointURL
+	EndpointURLORD1    = UnifiedCacheEndpointURL
 
-	RBEEndpointURLIAD1 = "grpcs://rbe-internal-iad.services.bitrise.io:6669"
-	RBEEndpointURLORD1 = "grpcs://rbe-internal-ord.services.bitrise.io:6669"
+	// Datacenter-specific RBE endpoints (all using unified URLs now)
+	RBEEndpointURLIAD1 = UnifiedRBEEndpointURL
+	RBEEndpointURLORD1 = UnifiedRBEEndpointURL
 
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 

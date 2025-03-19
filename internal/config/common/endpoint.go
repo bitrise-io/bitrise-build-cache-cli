@@ -6,6 +6,8 @@ import (
 
 // SelectCacheEndpointURL - if endpointURL provided use that,
 // otherwise select the best build cache endpoint automatically
+// Note: All datacenter-specific endpoints now point to the unified cache.services.bitrise.io URL,
+// which automatically routes to the correct datacenter based on the request origin
 func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string) string {
 	if endpointURL == "" {
 		endpointURL = envProvider("BITRISE_BUILD_CACHE_ENDPOINT")
@@ -31,6 +33,8 @@ func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string)
 
 // SelectRBEEndpointURL - if endpointURL provided use that,
 // otherwise select the RBE endpoint from environment
+// Note: All datacenter-specific RBE endpoints now point to the unified remote-execution.services.bitrise.io URL,
+// which automatically routes to the correct datacenter based on the request origin
 func SelectRBEEndpointURL(endpointURL string, envProvider func(string) string) string {
 	if endpointURL == "" {
 		endpointURL = envProvider("BITRISE_RBE_ENDPOINT")
