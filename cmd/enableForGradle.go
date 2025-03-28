@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -125,7 +126,12 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		return errInvalidCacheLevel
 	}
 	// Metadata
-	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv)
+	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv,
+		func(name string, v ...string) (string, error) {
+			output, err := exec.Command(name, v...).Output()
+
+			return string(output), err
+		}, logger)
 	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
 
 	prefs := gradleconfig.Preferences{

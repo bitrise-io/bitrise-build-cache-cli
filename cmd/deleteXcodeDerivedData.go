@@ -1,12 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
-
-	"github.com/spf13/cobra"
-
-	"context"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -38,7 +37,13 @@ var deleteXcodeDerivedDataCmd = &cobra.Command{
 		cacheKey, _ := cmd.Flags().GetString("key")
 		empty, _ := cmd.Flags().GetBool("empty")
 
-		if err := deleteXcodeDerivedDataCmdFn(cmd.Context(), cacheKey, empty, logger, os.Getenv); err != nil {
+		if err := deleteXcodeDerivedDataCmdFn(cmd.Context(), cacheKey, empty, logger,
+			os.Getenv,
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output()
+
+				return string(output), err
+			}); err != nil {
 			return fmt.Errorf("delete Xcode DerivedData into Bitrise Build Cache: %w", err)
 		}
 
@@ -55,7 +60,12 @@ func init() {
 	deleteXcodeDerivedDataCmd.Flags().Bool("empty", false, "If true, upload an empty metadata")
 }
 
-func deleteXcodeDerivedDataCmdFn(ctx context.Context, providedCacheKey string, uploadEmpty bool, logger log.Logger, envProvider func(string) string) error {
+func deleteXcodeDerivedDataCmdFn(ctx context.Context,
+	providedCacheKey string,
+	uploadEmpty bool,
+	logger log.Logger,
+	envProvider func(string) string,
+	commandFunc func(string, ...string) (string, error)) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
@@ -79,6 +89,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context, providedCacheKey string, u
 			ClientName:       ClientNameXcode,
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
+			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
 	if err != nil {

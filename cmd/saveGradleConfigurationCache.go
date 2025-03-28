@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -47,7 +48,12 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 			configCacheDir,
 			cacheKey,
 			logger,
-			os.Getenv)
+			os.Getenv,
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output()
+
+				return string(output), err
+			})
 		if err != nil {
 			return fmt.Errorf("save Gradle config cache into Bitrise Build Cache: %w", err)
 		}
@@ -70,7 +76,8 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 	configCacheDir,
 	providedCacheKey string,
 	logger log.Logger,
-	envProvider func(string) string) error {
+	envProvider func(string) string,
+	commandFunc func(string, ...string) (string, error)) error {
 	var err error
 
 	kvClient, err := createKVClient(ctx,
@@ -79,6 +86,7 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 			ClientName:       ClientNameGradleConfigCache,
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
+			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
 	if err != nil {

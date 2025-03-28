@@ -4,17 +4,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/spf13/cobra"
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/spf13/cobra"
 )
 
 const XCodeCacheMetadataPath = "dd-metadata.json"
@@ -64,7 +64,12 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 			logger,
 			tracker,
 			startT,
-			os.Getenv)
+			os.Getenv,
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output()
+
+				return string(output), err
+			})
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -117,7 +122,8 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	logger log.Logger,
 	tracker xcode.StepAnalyticsTracker,
 	startT time.Time,
-	envProvider func(string) string) (*xa.CacheOperation, error) {
+	envProvider func(string) string,
+	commandFunc func(string, ...string) (string, error)) (*xa.CacheOperation, error) {
 	var err error
 	var cacheKey string
 	if providedCacheKey == "" {
@@ -140,6 +146,7 @@ func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 			ClientName:       ClientNameXcode,
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
+			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
 	if err != nil {

@@ -3,11 +3,14 @@ package common
 import (
 	"reflect"
 	"testing"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 func TestNewCacheConfigMetadata(t *testing.T) {
 	type args struct {
 		envProvider EnvProviderFunc
+		commandFunc CommandFunc
 	}
 	tests := []struct {
 		name string
@@ -18,6 +21,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			name: "Unknown CI provider",
 			args: args{
 				envProvider: createEnvProvider(map[string]string{}),
+				commandFunc: func(_ string, _ ...string) (string, error) {
+					return "", nil
+				},
 			},
 			want: CacheConfigMetadata{},
 		},
@@ -31,6 +37,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 					"BITRISE_BUILD_SLUG":               "BitriseBuildID1",
 					"BITRISE_TRIGGERED_WORKFLOW_TITLE": "BitriseWorkflowName1",
 				}),
+				commandFunc: func(_ string, _ ...string) (string, error) {
+					return "", nil
+				},
 			},
 			want: CacheConfigMetadata{
 				CIProvider:          CIProviderBitrise,
@@ -47,6 +56,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 					"CIRCLECI":              "true",
 					"CIRCLE_REPOSITORY_URL": "git/repo/url",
 				}),
+				commandFunc: func(_ string, _ ...string) (string, error) {
+					return "", nil
+				},
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderCircleCI,
@@ -61,6 +73,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 					"GITHUB_SERVER_URL": "https://github.com",
 					"GITHUB_REPOSITORY": "owner/repo",
 				}),
+				commandFunc: func(_ string, _ ...string) (string, error) {
+					return "", nil
+				},
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderGitHubActions,
@@ -70,7 +85,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewCacheConfigMetadata(tt.args.envProvider); !reflect.DeepEqual(got, tt.want) {
+			if got := NewCacheConfigMetadata(tt.args.envProvider,
+				tt.args.commandFunc,
+				log.NewLogger()); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewCacheConfigMetadata() = %v, want %v", got, tt.want)
 			}
 		})

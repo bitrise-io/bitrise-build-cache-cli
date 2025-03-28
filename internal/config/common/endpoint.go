@@ -4,6 +4,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 )
 
+const datacenterEnvKey = "BITRISE_DEN_VM_DATACENTER"
+
 // SelectCacheEndpointURL - if endpointURL provided use that,
 // otherwise select the best build cache endpoint automatically
 func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string) string {
@@ -14,7 +16,7 @@ func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string)
 		return endpointURL
 	}
 
-	bitriseDenVMDatacenter := envProvider("BITRISE_DEN_VM_DATACENTER")
+	bitriseDenVMDatacenter := envProvider(datacenterEnvKey)
 	switch bitriseDenVMDatacenter {
 	case consts.LAS1:
 		return consts.EndpointURLLAS1
@@ -39,7 +41,7 @@ func SelectRBEEndpointURL(endpointURL string, envProvider func(string) string) s
 		return endpointURL
 	}
 
-	bitriseDenVMDatacenter := envProvider("BITRISE_DEN_VM_DATACENTER")
+	bitriseDenVMDatacenter := envProvider(datacenterEnvKey)
 	switch bitriseDenVMDatacenter {
 	case "IAD1":
 		return consts.RBEEndpointURLIAD1
