@@ -92,8 +92,6 @@ workflows:
         stack: osx-xcode-edge
   test:
     triggers:
-      push:
-      - branch: "main"
       pull_request:
       - source_branch: "*"
     steps:
@@ -266,11 +264,6 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -300,11 +293,6 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
     - BRANCH: main
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -365,11 +353,6 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -401,11 +384,11 @@ workflows:
             ../scripts/check_pattern.sh "$PWD/logs.txt" \
               '--remote_cache=grpcs:\/\/remote-build-cache\.services\.bitrise\.io' \
               'Invocation ID: ' \
-              '--bes_header=\'x-os=Linux' \
-              '--bes_header=\'x-cpu-cores=[0-9]+' \
-              '--bes_header=\'x-mem-size=[0-9]+' \
-              '--bes_header=\'x-locale=\w+' \
-              '--bes_header=\'x-default-charset=\w+' \
+              '--bes_header=x-os=Linux' \
+              '--bes_header=x-cpu-cores=[0-9]+' \
+              '--bes_header=x-mem-size=[0-9]+' \
+              '--bes_header=x-locale=\w+' \
+              '--bes_header=x-default-charset=\w+' \
               
 
 step_bundles:
