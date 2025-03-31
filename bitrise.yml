@@ -91,9 +91,6 @@ workflows:
         machine_type_id: g2-m1.8core
         stack: osx-xcode-edge
   test:
-    triggers:
-      pull_request:
-      - source_branch: "*"
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -551,6 +548,7 @@ step_bundles:
 pipelines:
   features-e2e:
     workflows:
+      test: {}
       feature-e2e-bazel: {}
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-bitwarden: {}
