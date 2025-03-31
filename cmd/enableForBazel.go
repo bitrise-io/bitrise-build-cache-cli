@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
@@ -79,7 +80,13 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 		}
 	}
 	// Metadata
-	cacheConfig := common.NewCacheConfigMetadata(os.Getenv)
+	cacheConfig := common.NewCacheConfigMetadata(os.Getenv,
+		func(name string, v ...string) (string, error) {
+			output, err := exec.Command(name, v...).Output()
+
+			return string(output), err
+		},
+		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
 	logger.Infof("(i) Check ~/.bazelrc")

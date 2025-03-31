@@ -36,7 +36,10 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
 		})
-		_, err := saveXcodeDerivedDataFilesCmdFn(context.Background(), common.CacheAuthConfig{}, "", "", "", "", "", false, false, mockLogger, mockTracker, time.Now(), envVars)
+		cmd := func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}
+		_, err := saveXcodeDerivedDataFilesCmdFn(context.Background(), common.CacheAuthConfig{}, "", "", "", "", "", false, false, mockLogger, mockTracker, time.Now(), envVars, cmd)
 
 		// then
 		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH env var is not set")

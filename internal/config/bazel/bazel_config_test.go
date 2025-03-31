@@ -10,6 +10,8 @@ import (
 )
 
 func TestGenerateBazelrc(t *testing.T) {
+	t.Parallel()
+
 	type args struct {
 		endpointURL         string
 		rbeEndpointURL      string
@@ -114,9 +116,45 @@ build --remote_header='x-flare-build-id=BitriseBuildID1'
 build --bes_header='x-build-id=BitriseBuildID1'
 `,
 		},
+		{
+			name: "With Host metadata",
+			args: args{
+				endpointURL:    "grpcs://TESTENDPOINT.bitrise.io",
+				rbeEndpointURL: "grpcs://RBE.bitrise.io",
+				authToken:      "4uth70k3n",
+				cacheConfigMetadata: common.CacheConfigMetadata{
+					HostMetadata: common.HostMetadata{
+						OS:             "Linux 22.04",
+						MemSize:        1000,
+						CPUCores:       4,
+						Locale:         "en_US",
+						DefaultCharset: "UTF-8",
+					},
+				},
+			},
+			wantErr: "",
+			want: `build --remote_cache=grpcs://TESTENDPOINT.bitrise.io
+build --remote_executor=grpcs://RBE.bitrise.io
+build --remote_timeout=600s
+build --remote_header=authorization="Bearer 4uth70k3n"
+build --bes_header=authorization="Bearer 4uth70k3n"
+build --remote_header=x-flare-buildtool=bazel
+build --remote_header=x-flare-builduser=
+build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
+build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
+build --build_event_publish_all_actions
+build --bes_header='x-os=Linux 22.04'
+build --bes_header='x-locale=en_US'
+build --bes_header='x-default-charset=UTF-8'
+build --bes_header='x-cpu-cores=4'
+build --bes_header='x-mem-size=1000'
+`,
+		},
 	}
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := GenerateBazelrc(tt.args.endpointURL, tt.args.rbeEndpointURL, tt.args.workspaceID, tt.args.authToken, tt.args.cacheConfigMetadata)
 
 			if tt.wantErr != "" {

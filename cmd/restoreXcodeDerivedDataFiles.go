@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"strings"
 	"time"
@@ -60,8 +61,24 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
 
-		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(), authConfig, XCodeCacheMetadataPath, projectRoot,
-			cacheKey, logger, tracker, startT, os.Getenv, isDebugLogMode, skipExisting, forceOverwrite, maxLoggedErrors)
+		op, cmdError := restoreXcodeDerivedDataFilesCmdFn(cmd.Context(),
+			authConfig,
+			XCodeCacheMetadataPath,
+			projectRoot,
+			cacheKey,
+			logger,
+			tracker,
+			startT,
+			os.Getenv,
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output()
+
+				return string(output), err
+			},
+			isDebugLogMode,
+			skipExisting,
+			forceOverwrite,
+			maxLoggedErrors)
 		if op != nil {
 			if cmdError != nil {
 				errStr := cmdError.Error()
@@ -97,8 +114,16 @@ func init() {
 	restoreXcodeDerivedDataFilesCmd.Flags().Int("max-logged-errors", 150, "The maximum number of errors logged to the console during restoring the cache.")
 }
 
-func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.CacheAuthConfig, cacheMetadataPath, projectRoot, providedCacheKey string, logger log.Logger,
-	tracker xcode.StepAnalyticsTracker, startT time.Time, envProvider func(string) string, isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
+func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
+	authConfig common.CacheAuthConfig,
+	cacheMetadataPath, projectRoot, providedCacheKey string,
+	logger log.Logger,
+	tracker xcode.StepAnalyticsTracker,
+	startT time.Time,
+	envProvider func(string) string,
+	commandFunc func(string, ...string) (string, error),
+	isDebugLogMode, skipExisting, forceOverwrite bool,
+	maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
 	op := newCacheOperation(startT, xa.OperationTypeDownload, envProvider)
 	kvClient, err := createKVClient(ctx,
 		CreateKVClientParams{
@@ -106,6 +131,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context, authConfig common.Ca
 			ClientName:       ClientNameXcode,
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
+			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
 	if err != nil {

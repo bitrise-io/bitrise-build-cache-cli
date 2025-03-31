@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -44,7 +45,12 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 			authConfig,
 			cacheKey,
 			logger,
-			os.Getenv)
+			os.Getenv,
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output()
+
+				return string(output), err
+			})
 		if err != nil {
 			return fmt.Errorf("restore Gradle config cache from Bitrise Build Cache: %w", err)
 		}
@@ -65,13 +71,15 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	authConfig common.CacheAuthConfig,
 	providedCacheKey string,
 	logger log.Logger,
-	envProvider func(string) string) error {
+	envProvider func(string) string,
+	commandFunc func(string, ...string) (string, error)) error {
 	kvClient, err := createKVClient(ctx,
 		CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
 			ClientName:       ClientNameGradleConfigCache,
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
+			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
 	if err != nil {

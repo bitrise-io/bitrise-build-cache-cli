@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
@@ -57,7 +58,11 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider fu
 	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
 
 	// Metadata
-	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv)
+	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv, func(name string, v ...string) (string, error) {
+		output, err := exec.Command(name, v...).Output()
+
+		return string(output), err
+	}, logger)
 	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
 
 	authToken := "placeholder-token"

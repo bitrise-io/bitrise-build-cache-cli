@@ -91,11 +91,6 @@ workflows:
         machine_type_id: g2-m1.8core
         stack: osx-xcode-edge
   test:
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -266,11 +261,6 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -284,27 +274,23 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug 2>&1) | tee logs.txt
+            (./gradlew debug 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
         - content: |-
             set -exo pipefail
             
-            ../scripts/check_pattern.sh "$PWD/logs.txt" \
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    - deploy-to-bitrise-io@2: {}
 
   feature-e2e-gradle-bitwarden:
     envs:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
     - BRANCH: main
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -345,28 +331,27 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache 2>&1) | tee logs.txt
+            (./gradlew debug --configuration-cache 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
         - content: |-
             set -exo pipefail
 
-            ../scripts/check_pattern.sh "$PWD/logs.txt" \
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               'Reusing configuration cache.' \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    - deploy-to-bitrise-io@2: {}
 
   feature-e2e-bazel:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
-    triggers:
-      push:
-      - branch: "main"
-      pull_request:
-      - source_branch: "*"
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -387,7 +372,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee logs.txt
+            (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -395,9 +380,15 @@ workflows:
             #!/bin/bash
             set -exo pipefail
             
-            ../scripts/check_pattern.sh "$PWD/logs.txt" \
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               '--remote_cache=grpcs:\/\/remote-build-cache\.services\.bitrise\.io' \
-              'Invocation ID: '
+              'Invocation ID: ' \
+              '--bes_header=x-os=Linux' \
+              '--bes_header=x-cpu-cores=[0-9]+' \
+              '--bes_header=x-mem-size=[0-9]+' \
+              '--bes_header=x-locale=\w+' \
+              '--bes_header=x-default-charset=\w+' \
+    - deploy-to-bitrise-io@2: {}
 
 step_bundles:
   generate_gradle_verification_reference:
@@ -559,6 +550,7 @@ step_bundles:
 pipelines:
   features-e2e:
     workflows:
+      test: {}
       feature-e2e-bazel: {}
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-bitwarden: {}
