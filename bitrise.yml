@@ -274,17 +274,18 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug 2>&1) | tee logs.txt
+            (./gradlew debug 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
         - content: |-
             set -exo pipefail
             
-            ../scripts/check_pattern.sh "$PWD/logs.txt" \
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    - deploy-to-bitrise-io@2: {}
 
   feature-e2e-gradle-bitwarden:
     envs:
@@ -330,18 +331,19 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache 2>&1) | tee logs.txt
+            (./gradlew debug --configuration-cache 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
         - content: |-
             set -exo pipefail
 
-            ../scripts/check_pattern.sh "$PWD/logs.txt" \
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               'Reusing configuration cache.' \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    - deploy-to-bitrise-io@2: {}
 
   feature-e2e-bazel:
     meta:
@@ -370,7 +372,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee logs.txt
+            (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -378,7 +380,7 @@ workflows:
             #!/bin/bash
             set -exo pipefail
             
-            ../scripts/check_pattern.sh "$PWD/logs.txt" \
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               '--remote_cache=grpcs:\/\/remote-build-cache\.services\.bitrise\.io' \
               'Invocation ID: ' \
               '--bes_header=x-os=Linux' \
@@ -386,7 +388,7 @@ workflows:
               '--bes_header=x-mem-size=[0-9]+' \
               '--bes_header=x-locale=\w+' \
               '--bes_header=x-default-charset=\w+' \
-              
+    - deploy-to-bitrise-io@2: {}
 
 step_bundles:
   generate_gradle_verification_reference:
