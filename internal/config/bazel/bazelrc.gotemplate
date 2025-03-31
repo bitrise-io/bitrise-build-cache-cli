@@ -34,3 +34,18 @@ build --bes_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName 
 build --remote_header='x-flare-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 build --bes_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 {{- end }}
+{{- if .CacheConfigMetadata.HostMetadata.OS }}
+build --bes_header='x-os={{ .CacheConfigMetadata.HostMetadata.OS }}'
+{{- end }}
+{{- if .CacheConfigMetadata.HostMetadata.Locale }}
+build --bes_header='x-locale={{ .CacheConfigMetadata.HostMetadata.Locale }}'
+{{- end }}
+{{- if .CacheConfigMetadata.HostMetadata.DefaultCharset }}
+build --bes_header='x-default-charset={{ .CacheConfigMetadata.HostMetadata.DefaultCharset }}'
+{{- end }}
+{{- if .CacheConfigMetadata.HostMetadata.CPUCores }}
+build --bes_header='x-cpu-cores={{ .CacheConfigMetadata.HostMetadata.CPUCores }}'
+{{- end }}
+{{- if .CacheConfigMetadata.HostMetadata.MemSize }}
+build --bes_header='x-mem-size={{ .CacheConfigMetadata.HostMetadata.MemSize }}'
+{{- end }}

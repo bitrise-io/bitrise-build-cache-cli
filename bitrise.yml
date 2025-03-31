@@ -359,6 +359,9 @@ workflows:
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
   feature-e2e-bazel:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
@@ -397,7 +400,13 @@ workflows:
             
             ../scripts/check_pattern.sh "$PWD/logs.txt" \
               '--remote_cache=grpcs:\/\/remote-build-cache\.services\.bitrise\.io' \
-              'Invocation ID: '
+              'Invocation ID: ' \
+              '--bes_header=\'x-os=Linux' \
+              '--bes_header=\'x-cpu-cores=[0-9]+' \
+              '--bes_header=\'x-mem-size=[0-9]+' \
+              '--bes_header=\'x-locale=\w+' \
+              '--bes_header=\'x-default-charset=\w+' \
+              
 
 step_bundles:
   generate_gradle_verification_reference:
