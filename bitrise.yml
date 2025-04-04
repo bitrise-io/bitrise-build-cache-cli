@@ -553,7 +553,7 @@ pipelines:
       test: {}
       feature-e2e-bazel: {}
       feature-e2e-gradle-duckduck: {}
-      feature-e2e-gradle-bitwarden: {}
+      # feature-e2e-gradle-bitwarden: {} Until config cache is fixed in their repo
     triggers:
       pull_request:
         - source_branch: "*"
