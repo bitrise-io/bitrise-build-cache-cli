@@ -2,19 +2,16 @@ package kv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
-
-	"errors"
-
-	"sync/atomic"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 type DownloadFilesStats struct {
@@ -56,7 +53,11 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
 			const retries = 3
-			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(_ uint) (error, bool) {
+			err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+				if attempt > 0 {
+					c.logger.Debugf("Retrying download... (attempt %d)", attempt)
+				}
+
 				skipped, err := c.DownloadFile(ctx, file.Path, file.Hash, file.Mode, isDebugLogMode, forceOverwrite, skipExisting)
 				if skipped {
 					skippedFiles.Add(1)
@@ -64,17 +65,23 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 					return nil, false
 				}
 
-				if errors.Is(err, ErrCacheNotFound) {
-					return err, true
-				} else if errors.Is(err, ErrFileExistsAndNotWritable) {
-					return err, true
-				}
 				if err != nil {
+					c.logger.Errorf("Error in download file attempt %d: %s", attempt, err)
+				}
+
+				switch {
+				case errors.Is(err, ErrCacheUnauthenticated):
+					return err, true
+				case errors.Is(err, ErrCacheNotFound):
+					return err, true
+				case errors.Is(err, ErrFileExistsAndNotWritable):
+					return err, true
+				case err != nil:
 					return fmt.Errorf("download file: %w", err), false
 				}
 
 				if err := os.Chtimes(file.Path, file.ModTime, file.ModTime); err != nil {
-					return fmt.Errorf("failed to set file mod time: %w", err), true
+					return fmt.Errorf("set file mod time: %w", err), true
 				}
 
 				return nil, false

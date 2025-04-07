@@ -3,15 +3,17 @@ package kv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"github.com/dustin/go-humanize"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/go-utils/retry"
+	"github.com/dustin/go-humanize"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key string) error {
@@ -58,11 +60,17 @@ func (c *Client) uploadToBuildCache(ctx context.Context, upload func(ctx context
 	const retries = 3
 	err := retry.Times(retries).Wait(5 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt != 0 {
-			c.logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
+			c.logger.Debugf("Retrying upload... (attempt %d)", attempt)
 		}
 
 		if err := upload(ctx); err != nil {
-			return err, false
+			c.logger.Errorf("Error in upload attempt %d: %s", attempt, err)
+
+			if errors.Is(err, ErrCacheUnauthenticated) {
+				return ErrCacheUnauthenticated, true
+			}
+
+			return fmt.Errorf("upload: %w", err), false
 		}
 
 		return nil, false
@@ -106,14 +114,18 @@ func (c *Client) uploadStream(ctx context.Context, source io.Reader, key, checks
 	}
 
 	if size > 0 {
-		if _, err := io.Copy(kvWriter, source); err != nil {
-			return fmt.Errorf("upload archive: %w", err)
-		}
+		_, err = io.Copy(kvWriter, source)
 	} else {
 		// io.Copy does not write if there was no read
-		if _, err := kvWriter.Write([]byte{}); err != nil {
-			return fmt.Errorf("upload archive: %w", err)
-		}
+		_, err = kvWriter.Write([]byte{})
+	}
+
+	st, ok := status.FromError(err)
+	if ok && st.Code() == codes.Unauthenticated {
+		return ErrCacheUnauthenticated
+	}
+	if err != nil {
+		return fmt.Errorf("upload archive: %w", err)
 	}
 
 	if err := kvWriter.Close(); err != nil {

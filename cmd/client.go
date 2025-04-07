@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -52,8 +54,24 @@ func createKVClient(ctx context.Context,
 		return nil, fmt.Errorf("new kv client: %w", err)
 	}
 
-	if err := kvClient.GetCapabilities(ctx); err != nil {
-		return nil, fmt.Errorf("get capabilities: %w", err)
+	err = retry.Times(10).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt > 0 {
+			params.Logger.Debugf("Retrying GetCapabilities... (attempt %d)", attempt)
+		}
+
+		if err := kvClient.GetCapabilities(ctx); err != nil {
+			params.Logger.Errorf("Error in GetCapabilities attempt %d: %s", attempt, err)
+			if errors.Is(err, kv.ErrCacheUnauthenticated) {
+				return kv.ErrCacheUnauthenticated, true
+			}
+
+			return fmt.Errorf("get capabilities: %w", err), false
+		}
+
+		return nil, false
+	})
+	if err != nil {
+		return nil, fmt.Errorf("with retries: %w", err)
 	}
 
 	return kvClient, nil
