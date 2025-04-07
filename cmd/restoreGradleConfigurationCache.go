@@ -55,7 +55,7 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 			return fmt.Errorf("restore Gradle config cache from Bitrise Build Cache: %w", err)
 		}
 
-		logger.TInfof("✅ Configufation cache restored from Bitrise Build Cache ")
+		logger.TInfof("✅ Configuration cache restored from Bitrise Build Cache ")
 
 		return nil
 	},
