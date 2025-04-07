@@ -2,14 +2,14 @@ package kv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 type UploadFilesStats struct {
@@ -24,12 +24,18 @@ type UploadFilesStats struct {
 func (c *Client) uploadFileToBuildCache(ctx context.Context, file *filegroup.FileInfo, mutex *sync.Mutex, stats *UploadFilesStats) {
 	const retries = 2
 	err := retry.Times(retries).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
-		if attempt != 0 {
-			c.logger.Debugf("Retrying archive upload... (attempt %d)", attempt+1)
+		if attempt > 0 {
+			c.logger.Debugf("Retrying upload... (attempt %d)", attempt)
 		}
+
 		_, err := c.uploadFile(ctx, file.Path, file.Hash, file.Hash)
 		if err != nil {
-			return fmt.Errorf("failed to upload file %s: %w", file.Path, err), false
+			c.logger.Errorf("Error in upload file attempt %d: %s", attempt, err)
+			if errors.Is(err, ErrCacheUnauthenticated) {
+				return ErrCacheUnauthenticated, true
+			}
+
+			return fmt.Errorf("upload file %s: %w", file.Path, err), false
 		}
 
 		return nil, false

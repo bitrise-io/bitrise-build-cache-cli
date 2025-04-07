@@ -16,6 +16,7 @@ import (
 
 // ErrCacheNotFound ...
 var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
+var ErrCacheUnauthenticated = errors.New("unauthenticated")
 
 // ErrFileExistsAndNotWritable ...
 var ErrFileExistsAndNotWritable = errors.New("file already exists and is not writable")
@@ -93,6 +94,9 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.NotFound {
 			return ErrCacheNotFound
+		}
+		if ok && st.Code() == codes.Unauthenticated {
+			return ErrCacheUnauthenticated
 		}
 
 		return fmt.Errorf("download archive: %w", err)

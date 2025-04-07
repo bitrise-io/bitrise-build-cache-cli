@@ -9,9 +9,12 @@ import (
 	"time"
 
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type PutParams struct {
@@ -26,12 +29,17 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
 
 	_, err := c.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.Unauthenticated {
+			return ErrCacheUnauthenticated
+		}
+
 		return fmt.Errorf("get capabilities: %w", err)
 	}
 
@@ -49,6 +57,11 @@ func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteClo
 
 	stream, err := c.bitriseKVClient.Put(ctx)
 	if err != nil {
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.Unauthenticated {
+			return nil, ErrCacheUnauthenticated
+		}
+
 		return nil, fmt.Errorf("initiate put: %w", err)
 	}
 
@@ -75,6 +88,11 @@ func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, e
 	}
 	stream, err := c.bitriseKVClient.Get(ctx, readReq)
 	if err != nil {
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.Unauthenticated {
+			return nil, ErrCacheUnauthenticated
+		}
+
 		return nil, fmt.Errorf("initiate get: %w", err)
 	}
 
@@ -104,8 +122,73 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
+func (c *Client) findMissing(ctx context.Context,
+	req *remoteexecution.FindMissingBlobsRequest) ([]*FileDigest, error) {
+	var resp *remoteexecution.FindMissingBlobsResponse
+	err := retry.Times(3).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt > 0 {
+			c.logger.Debugf("Retrying FindMissingBlobs... (attempt %d)", attempt)
+		}
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
+
+		var err error
+		resp, err = c.casClient.FindMissingBlobs(callCtx, req)
+
+		cancel()
+
+		if err != nil {
+			c.logger.Errorf("Error in FindMissingBlobs attempt %d: %s", attempt, err)
+
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.Unauthenticated {
+				return ErrCacheUnauthenticated, false
+			}
+
+			return fmt.Errorf("find missing blobs: %w", err), true
+		}
+
+		return nil, false
+	})
+	if err != nil {
+		return nil, fmt.Errorf("with retries: %w", err)
+	}
+
+	return convertToFileDigests(resp.GetMissingBlobDigests()), nil
+}
+
+func (c *Client) findMissingChunked(ctx context.Context,
+	req *remoteexecution.FindMissingBlobsRequest,
+	digests []*FileDigest,
+	blobDigests []*remoteexecution.Digest,
+	gRPCLimitBytes int) ([]*FileDigest, error) {
 	var missingBlobs []*FileDigest
+	// Chunk up request blobs to fit into gRPC limits
+	// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
+	digestUnitSize := float64(len(req.String())) / float64(len(digests))
+	maxDigests := int(float64(gRPCLimitBytes) / digestUnitSize)
+	for startIndex := 0; startIndex < len(digests); startIndex += maxDigests {
+		endIndex := startIndex + maxDigests
+		if endIndex > len(digests) {
+			endIndex = len(digests)
+		}
+		req.BlobDigests = blobDigests[startIndex:endIndex]
+		c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
+
+		var resp []*FileDigest
+		var err error
+		if resp, err = c.findMissing(ctx, req); err != nil {
+			return nil, fmt.Errorf("find missing blobs: %w", err)
+		}
+
+		missingBlobs = append(missingBlobs, resp...)
+	}
+
+	return missingBlobs, nil
+}
+
+func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
 	blobDigests := convertToBlobDigests(digests)
 	req := &remoteexecution.FindMissingBlobsRequest{
 		BlobDigests: blobDigests,
@@ -113,44 +196,10 @@ func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*Fil
 	c.logger.Debugf("Size of FindMissingBlobs request for %d blobs is %s", len(digests), humanize.Bytes(uint64(len(req.String()))))
 	gRPCLimitBytes := 4 * 1024 * 1024 // gRPC limit is 4 MiB
 	if len(req.String()) > gRPCLimitBytes {
-		// Chunk up request blobs to fit into gRPC limits
-		// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
-		digestUnitSize := float64(len(req.String())) / float64(len(digests))
-		maxDigests := int(float64(gRPCLimitBytes) / digestUnitSize)
-		for startIndex := 0; startIndex < len(digests); startIndex += maxDigests {
-			endIndex := startIndex + maxDigests
-			if endIndex > len(digests) {
-				endIndex = len(digests)
-			}
-			req.BlobDigests = blobDigests[startIndex:endIndex]
-
-			timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-			callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
-
-			c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
-			resp, err := c.casClient.FindMissingBlobs(callCtx, req)
-
-			cancel()
-			if err != nil {
-				return nil, fmt.Errorf("find missing blobs[%d:%d]: %w", startIndex, endIndex, err)
-			}
-			missingBlobs = append(missingBlobs, convertToFileDigests(resp.GetMissingBlobDigests())...)
-		}
-	} else {
-		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
-
-		resp, err := c.casClient.FindMissingBlobs(callCtx, req)
-
-		cancel()
-
-		if err != nil {
-			return nil, fmt.Errorf("find missing blobs: %w", err)
-		}
-		missingBlobs = convertToFileDigests(resp.GetMissingBlobDigests())
+		return c.findMissingChunked(ctx, req, digests, blobDigests, gRPCLimitBytes)
 	}
 
-	return missingBlobs, nil
+	return c.findMissing(ctx, req)
 }
 
 func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {
