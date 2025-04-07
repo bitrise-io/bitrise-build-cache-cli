@@ -58,7 +58,7 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 			return fmt.Errorf("save Gradle config cache into Bitrise Build Cache: %w", err)
 		}
 
-		logger.TInfof("✅ Configufation cache saved into Bitrise Build Cache ")
+		logger.TInfof("✅ Configuration cache saved into Bitrise Build Cache ")
 
 		return nil
 	},

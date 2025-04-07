@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
@@ -207,7 +206,7 @@ func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {
 
 	for _, d := range digests {
 		out = append(out, &remoteexecution.Digest{
-			Hash:      d.Sha256Sum + "/0",
+			Hash:      d.Sha256Sum,
 			SizeBytes: d.SizeInBytes,
 		})
 	}
@@ -220,7 +219,7 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 
 	for _, d := range digests {
 		out = append(out, &FileDigest{
-			Sha256Sum:   strings.TrimSuffix(d.GetHash(), "/0"),
+			Sha256Sum:   d.GetHash(),
 			SizeInBytes: d.GetSizeBytes(),
 		})
 	}
