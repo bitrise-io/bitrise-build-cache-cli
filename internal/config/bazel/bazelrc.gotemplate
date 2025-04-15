@@ -3,6 +3,7 @@ build --remote_cache={{ .CacheEndpointURL }}
 build --remote_executor={{ .RBEEndpointURL }}
 {{- end }}
 build --remote_timeout=600s
+build --bes_timeout=2m
 {{- if .WorkspaceID }}
 build --remote_header='x-org-id={{ .WorkspaceID }}'
 build --bes_header='x-org-id={{ .WorkspaceID }}'
