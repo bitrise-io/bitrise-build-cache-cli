@@ -48,6 +48,7 @@ func TestGenerateBazelrc(t *testing.T) {
 			want: `build --remote_cache=grpcs://TESTENDPOINT.bitrise.io
 build --remote_timeout=600s
 build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
 build --remote_header=authorization="Bearer 4uth70k3n"
 build --bes_header=authorization="Bearer 4uth70k3n"
 build --remote_header=x-flare-buildtool=bazel
@@ -69,6 +70,7 @@ build --build_event_publish_all_actions
 build --remote_executor=grpcs://RBE.bitrise.io
 build --remote_timeout=600s
 build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
 build --remote_header=authorization="Bearer 4uth70k3n"
 build --bes_header=authorization="Bearer 4uth70k3n"
 build --remote_header=x-flare-buildtool=bazel
@@ -99,6 +101,7 @@ build --build_event_publish_all_actions
 build --remote_executor=grpcs://RBE.bitrise.io
 build --remote_timeout=600s
 build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
 build --remote_header='x-org-id=W0rkSp4ceID'
 build --bes_header='x-org-id=W0rkSp4ceID'
 build --remote_header=authorization="Bearer 4uth70k3n"
@@ -141,6 +144,7 @@ build --bes_header='x-build-id=BitriseBuildID1'
 build --remote_executor=grpcs://RBE.bitrise.io
 build --remote_timeout=600s
 build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
 build --remote_header=authorization="Bearer 4uth70k3n"
 build --bes_header=authorization="Bearer 4uth70k3n"
 build --remote_header=x-flare-buildtool=bazel
@@ -166,6 +170,7 @@ build --bes_header='x-mem-size=1000'
 			want: `build --remote_cache=grpcs://TESTENDPOINT.bitrise.io
 build --remote_timeout=600s
 build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
 build --show_timestamps
 build --remote_header=authorization="Bearer 4uth70k3n"
 build --bes_header=authorization="Bearer 4uth70k3n"
