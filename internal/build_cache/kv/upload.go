@@ -26,6 +26,7 @@ func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key strin
 
 	err = c.uploadToBuildCache(ctx, func(ctx context.Context) error {
 		fileSize, err := c.uploadFile(ctx, filePath, key, checksum)
+		//nolint: gosec
 		c.logger.Infof("(i) Uploaded: %s", humanize.Bytes(uint64(fileSize)))
 
 		return err

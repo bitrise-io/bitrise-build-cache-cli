@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -39,7 +38,7 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		cmd := func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}
-		_, err := saveXcodeDerivedDataFilesCmdFn(context.Background(), common.CacheAuthConfig{}, "", "", "", "", "", false, false, mockLogger, mockTracker, time.Now(), envVars, cmd)
+		_, err := saveXcodeDerivedDataFilesCmdFn(t.Context(), common.CacheAuthConfig{}, "", "", "", "", "", false, false, mockLogger, mockTracker, time.Now(), envVars, cmd)
 
 		// then
 		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH env var is not set")

@@ -1,6 +1,6 @@
 module github.com/bitrise-io/bitrise-build-cache-cli
 
-go 1.22.3
+go 1.24.2
 
 require (
 	cloud.google.com/go/longrunning v0.6.0
@@ -36,8 +36,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	go.uber.org/multierr v1.10.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
