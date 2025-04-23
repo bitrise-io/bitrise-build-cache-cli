@@ -4,6 +4,9 @@ build --remote_executor={{ .RBEEndpointURL }}
 {{- end }}
 build --remote_timeout=600s
 build --bes_timeout=2m
+{{- if .IsTimestampsEnabled }}
+build --show_timestamps
+{{- end }}
 {{- if .WorkspaceID }}
 build --remote_header='x-org-id={{ .WorkspaceID }}'
 build --bes_header='x-org-id={{ .WorkspaceID }}'
