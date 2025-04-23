@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"context"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode/mocks"
@@ -38,7 +40,7 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		cmd := func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}
-		_, err := saveXcodeDerivedDataFilesCmdFn(t.Context(), common.CacheAuthConfig{}, "", "", "", "", "", false, false, mockLogger, mockTracker, time.Now(), envVars, cmd)
+		_, err := saveXcodeDerivedDataFilesCmdFn(context.Background(), common.CacheAuthConfig{}, "", "", "", "", "", false, false, mockLogger, mockTracker, time.Now(), envVars, cmd)
 
 		// then
 		require.EqualError(t, err, "get cache key: cache key is required if BITRISE_GIT_BRANCH env var is not set")

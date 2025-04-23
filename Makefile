@@ -5,6 +5,11 @@ GOLANGCI_LINT_VERSION = v1.64.8
 lint:					## Runs golangci-lint
 	go run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --timeout 5m
 
+.PHONY: lint-fix
+lint-fix:					## Runs golangci-lint
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --timeout 5m --fix
+
+
 .PHONY: govulncheck
 govulncheck:				## Runs govulncheck
 	go run golang.org/x/vuln/cmd/govulncheck@latest -test ./...

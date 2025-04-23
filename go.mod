@@ -1,6 +1,6 @@
 module github.com/bitrise-io/bitrise-build-cache-cli
 
-go 1.24.2
+go 1.23.8
 
 require (
 	cloud.google.com/go/longrunning v0.6.0
