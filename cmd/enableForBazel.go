@@ -49,9 +49,11 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 }
 
 var rbeEnabled bool //nolint:gochecknoglobals
+var timestamps bool //nolint:gochecknoglobals
 
 func init() {
 	enableForBazelCmd.Flags().BoolVar(&rbeEnabled, "with-rbe", false, "Enable Remote Build Execution (RBE)")
+	enableForBazelCmd.Flags().BoolVar(&timestamps, "timestamps", false, "Enable timestamps in build output")
 	enableForCmd.AddCommand(enableForBazelCmd)
 }
 
@@ -101,7 +103,12 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	logger.Debugf("isBazelrcExists: %t", isBazelrcExists)
 
 	logger.Infof("(i) Generate ~/.bazelrc")
-	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(cacheEndpointURL, rbeEndpointURL, authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig)
+	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(cacheEndpointURL,
+		authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig,
+		bazelconfig.Preferences{
+			RBEEndpointURL:      rbeEndpointURL,
+			IsTimestampsEnabled: timestamps,
+		})
 	if err != nil {
 		return fmt.Errorf("generate bazelrc: %w", err)
 	}

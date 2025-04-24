@@ -227,6 +227,7 @@ func (md *Metadata) Print(logger log.Logger, isDebugLogMode bool) {
 
 		logger.Debugf("  Largest files:")
 		for i, file := range sortedDDFiles {
+			//nolint: gosec
 			logger.Debugf("    %d. %s (%s)", i+1, file.Path, humanize.Bytes(uint64(file.Size)))
 		}
 	}

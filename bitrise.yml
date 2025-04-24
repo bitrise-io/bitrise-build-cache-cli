@@ -31,7 +31,8 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
 
-            asdf global golang 1.22
+            asdf install golang 1.23.8
+            asdf global golang 1.23.8
     - script:
         title: Install Goreleaser
         inputs:
@@ -469,7 +470,7 @@ step_bundles:
                 #!/bin/bash
                 set -ex
                 
-                asdf install golang 1.21.5
+                asdf install golang 1.23.8
       - script:
           title: Generate dependency matrix
           inputs:

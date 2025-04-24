@@ -93,6 +93,7 @@ func (c *Client) UploadFileGroupToBuildCache(ctx context.Context, dd filegroup.I
 
 	wg.Wait()
 
+	//nolint: gosec
 	c.logger.TInfof("(i) Uploaded %s in %d keys", humanize.Bytes(uint64(stats.UploadSize)), stats.FilesUploaded)
 
 	if stats.FilesFailedToUpload > 0 {

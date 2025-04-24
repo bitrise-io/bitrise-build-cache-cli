@@ -33,6 +33,7 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 		}
 	}
 
+	//nolint: gosec
 	c.logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
 
@@ -90,13 +91,13 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 			missingPlusFailed := filesMissing.Load() + filesFailedToDownload.Load()
 			switch {
 			case errors.Is(err, ErrCacheNotFound):
-				if missingPlusFailed < int32(maxLoggedDownloadErrors) {
+				if int(missingPlusFailed) < maxLoggedDownloadErrors {
 					c.logger.Infof("Cache entry not found for file %s (%s)", file.Path, file.Hash)
 				}
 
 				filesMissing.Add(1)
 			case err != nil:
-				if missingPlusFailed < int32(maxLoggedDownloadErrors) {
+				if int(missingPlusFailed) < maxLoggedDownloadErrors {
 					c.logger.Errorf("Failed to download file %s with error: %v", file.Path, err)
 				}
 
@@ -110,6 +111,7 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 
 	wg.Wait()
 
+	//nolint: gosec
 	c.logger.TInfof("(i) Downloaded: %d files (%s). Missing: %d files. Failed: %d files", filesDownloaded.Load(), humanize.Bytes(uint64(downloadSize.Load())), filesMissing.Load(), filesFailedToDownload.Load())
 
 	stats := DownloadFilesStats{
@@ -126,7 +128,9 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 	c.logger.Debugf("  Files missing: %d", stats.FilesMissing)
 	c.logger.Debugf("  Files failed to download: %d", stats.FilesFailedToDownload)
 	c.logger.Debugf("  Files skipped (existing): %d", skippedFiles.Load())
+	//nolint: gosec
 	c.logger.Debugf("  Download size: %s", humanize.Bytes(uint64(stats.DownloadSize)))
+	//nolint: gosec
 	c.logger.Debugf("  Largest file size: %s", humanize.Bytes(uint64(stats.LargestFileSize)))
 
 	if maxLoggedDownloadErrors < stats.FilesFailedToDownload+stats.FilesMissing {

@@ -2,7 +2,6 @@ package xcode
 
 import (
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,13 +17,7 @@ func Test_CreateMetadata(t *testing.T) {
 		outputFile string
 	}
 
-	testRootDir, err := os.MkdirTemp("", "testRootDir")
-	if err != nil {
-		t.Logf("Error creating temp directory: %v", err)
-
-		return
-	}
-	defer os.RemoveAll(testRootDir)
+	testRootDir := t.TempDir()
 
 	testInputFile, err := os.CreateTemp(testRootDir, "test-file.swift")
 	if err != nil {
@@ -66,7 +59,7 @@ func Test_CreateMetadata(t *testing.T) {
 
 				require.Len(t, md.ProjectFiles.Files, 1)
 				fi := md.ProjectFiles.Files[0]
-				require.True(t, strings.Contains(fi.Path, "test-file.swift"))
+				require.Contains(t, fi.Path, "test-file.swift")
 				require.NotEmpty(t, fi.Hash)
 
 				require.NotEmpty(t, md.CacheKey)
