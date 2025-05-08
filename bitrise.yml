@@ -471,6 +471,7 @@ step_bundles:
                 set -ex
                 
                 asdf install golang 1.23.8
+                asdf install golang 1.21.5
       - script:
           title: Generate dependency matrix
           inputs:
