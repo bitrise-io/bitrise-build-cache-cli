@@ -1,6 +1,9 @@
 package xcode
 
-import "fmt"
+import (
+	"fmt"
+	"runtime"
+)
 
 type CacheKeyParams struct {
 	IsFallback bool
@@ -17,9 +20,11 @@ func GetCacheKey(envProvider func(string) string, keyParams CacheKeyParams) (str
 		return "", fmt.Errorf("cache key is required if BITRISE_APP_SLUG env var is not set")
 	}
 
+	os := runtime.GOOS
+
 	if keyParams.IsFallback {
-		return fmt.Sprintf("xcode-cache-metadata-%s", appSlug), nil
+		return fmt.Sprintf("xcode-cache-metadata-%s-%s", appSlug, os), nil
 	}
 
-	return fmt.Sprintf("xcode-cache-metadata-%s-%s", appSlug, branch), nil
+	return fmt.Sprintf("xcode-cache-metadata-%s-%s-%s", appSlug, branch, os), nil
 }

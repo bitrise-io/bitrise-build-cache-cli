@@ -291,7 +291,7 @@ workflows:
   feature-e2e-gradle-bitwarden:
     envs:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
-    - BRANCH: main
+    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -389,6 +389,125 @@ workflows:
               '--bes_header=x-mem-size=[0-9]+' \
               '--bes_header=x-locale=\w+' \
               '--bes_header=x-default-charset=\w+' \
+    - deploy-to-bitrise-io@2: {}
+
+  gradle-configuration-e2e-osx:
+    meta:
+      bitrise.io:
+        machine_type_id: g2-m1.8core
+        stack: osx-xcode-edge
+    envs:
+    - TEST_APP_URL: git@github.com:bitwarden/android.git
+    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+    - script:
+        title: Create local configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ./gradlew debug --configuration-cache --dry-run
+    - script:
+        title: Save configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli save-gradle-configuration-cache \
+              --config-cache-dir "$PWD/.gradle/configuration-cache"
+    - script:
+        title: Delete local configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf .gradle/configuration-cache
+    - script:
+        title: Restore configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli restore-gradle-configuration-cache
+    - script:
+        title: Build and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (./gradlew debug --configuration-cache 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+              'Reusing configuration cache.' \
+              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+              '\[Bitrise Build Cache\].*Request metadata invocationId' \
+              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    - deploy-to-bitrise-io@2: {}
+    
+  gradle-configuration-e2e-linux:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+    envs:
+    - TEST_APP_URL: git@github.com:bitwarden/android.git
+    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+    - script:
+        title: Create local configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ./gradlew debug --configuration-cache --dry-run
+    - script:
+        title: Save configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli save-gradle-configuration-cache \
+              --config-cache-dir "$PWD/.gradle/configuration-cache"
+    - script:
+        title: Delete local configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf .gradle/configuration-cache
+    - script:
+        title: Restore configuration cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli restore-gradle-configuration-cache
+    - script:
+        title: Build and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (./gradlew debug --configuration-cache 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+              'Reusing configuration cache.' \
+              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+              '\[Bitrise Build Cache\].*Request metadata invocationId' \
+              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     - deploy-to-bitrise-io@2: {}
 
 step_bundles:
@@ -537,6 +656,7 @@ step_bundles:
             - repository_url: "$TEST_APP_URL"
             - clone_into_dir: "./_tmp"
             - branch: "$BRANCH"
+            - commit: "$COMMIT"
       - git-clone: {}
       - script:
           title: build CLI
@@ -555,7 +675,9 @@ pipelines:
       test: {}
       feature-e2e-bazel: {}
       feature-e2e-gradle-duckduck: {}
-      # feature-e2e-gradle-bitwarden: {} Until config cache is fixed in their repo
+      feature-e2e-gradle-bitwarden: {}
+      gradle-configuration-e2e-osx: {}
+      gradle-configuration-e2e-linux: {}
     triggers:
       pull_request:
         - source_branch: "*"
