@@ -26,60 +26,36 @@ compare_versions() {
     return 1
 }
 
-# Update gradle analytics
-current_version=$(grep 'GradleAnalyticsPluginDepVersion' "$VERSION_FILE" | sed 's/.*= "\(.*\)"/\1/')
-if [[ -z "$current_version" ]]; then
-    echo "Failed to get the current version of analytics plugin"
-    exit 1
-fi
-echo "Current version of gradle-analytics plugin: $current_version"
-
-latest_version=$(curl -s "https://s01.oss.sonatype.org/content/repositories/releases/io/bitrise/gradle/gradle-analytics/maven-metadata.xml" | xmllint --xpath 'string(//latest)' -)
-if [[ -z "$latest_version" ]]; then
-    echo "Failed to get the latest version of analytics plugin"
-    exit 1
-fi
-
-echo "Latest version of gradle-analytics plugin: $latest_version"
-
-if [[ $latest_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    # Compare versions and update if the latest is greater
-    if compare_versions "$current_version" "$latest_version"; then
-        sed "${SED_IN_PLACE_COMMAND[@]}" "s/GradleAnalyticsPluginDepVersion = \".*\"/GradleAnalyticsPluginDepVersion = \"$latest_version\"/" "$VERSION_FILE"
-        sed "${SED_IN_PLACE_COMMAND[@]}" "s/classpath(\"io.bitrise.gradle:gradle-analytics:.*\")/classpath(\"io.bitrise.gradle:gradle-analytics:$latest_version\")/" "$TEST_FILE"
-        echo "Updated to version $latest_version"
-    else
-        echo "No update needed. Current version ($current_version) is up-to-date or newer."
+update() {
+    current_version=$(grep "$dep_version_name" "$VERSION_FILE" | sed 's/.*= "\(.*\)"/\1/')
+    if [[ -z "$current_version" ]]; then
+        echo "Failed to get the current version of $plugin_name plugin"
+        exit 1
     fi
-else
-    echo "Latest version ($latest_version) is not a valid SemVer format."
-fi
+    echo "Current version of $plugin_name plugin: $current_version"
 
-# Update remote cache
-current_version=$(grep 'GradleRemoteBuildCachePluginDepVersion' "$VERSION_FILE" | sed 's/.*= "\(.*\)"/\1/')
-if [[ -z "$current_version" ]]; then
-    echo "Failed to get the current version of remote cache plugin"
-    exit 1
-fi
-echo "Current version of remote-cache plugin: $current_version"
-
-latest_version=$(curl -s "https://s01.oss.sonatype.org/content/repositories/releases/io/bitrise/gradle/remote-cache/maven-metadata.xml" | xmllint --xpath 'string(//latest)' -)
-if [[ -z "$latest_version" ]]; then
-    echo "Failed to get the latest version of remote cache plugin"
-    exit 1
-fi
-
-echo "Latest version of remote-cache plugin: $latest_version"
-
-if [[ $latest_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    # Compare versions and update if the latest is greater
-    if compare_versions "$current_version" "$latest_version"; then
-        sed "${SED_IN_PLACE_COMMAND[@]}" "s/GradleRemoteBuildCachePluginDepVersion = \".*\"/GradleRemoteBuildCachePluginDepVersion = \"$latest_version\"/" "$VERSION_FILE"
-        sed "${SED_IN_PLACE_COMMAND[@]}" "s/classpath(\"io.bitrise.gradle:remote-cache:.*\")/classpath(\"io.bitrise.gradle:remote-cache:$latest_version\")/" "$TEST_FILE"
-        echo "Updated to version $latest_version"
-    else
-        echo "No update needed. Current version ($current_version) is up-to-date or newer."
+    latest_version=$(curl -s "https://s01.oss.sonatype.org/content/repositories/releases/io/bitrise/gradle/$artifact_name/maven-metadata.xml" | xmllint --xpath 'string(//latest)' -)
+    if [[ -z "$latest_version" ]]; then
+        echo "Failed to get the latest version of $plugin_name plugin"
+        exit 1
     fi
-else
-    echo "Latest version ($latest_version) is not a valid SemVer format."
-fi
+    echo "Latest version of $artifact_name plugin: $latest_version"
+
+    if [[ $latest_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        # Compare versions and update if the latest is greater
+        if compare_versions "$current_version" "$latest_version"; then
+            sed "${SED_IN_PLACE_COMMAND[@]}" "s/$dep_version_name = \".*\"/$dep_version_name = \"$latest_version\"/" "$VERSION_FILE"
+            sed "${SED_IN_PLACE_COMMAND[@]}" "s/classpath(\"io.bitrise.gradle:$plugin_name:.*\")/classpath(\"io.bitrise.gradle:$plugin_name:$latest_version\")/" "$TEST_FILE"
+            echo "Updated to version $latest_version"
+        else
+            echo "No update needed. Current version ($current_version) is up-to-date or newer."
+        fi
+    else
+        echo "Latest version ($latest_version) is not a valid SemVer format."
+    fi
+}
+
+plugin_name='analytics' artifact_name='gradle-analytics' dep_version_name='GradleAnalyticsPluginDepVersion' update()
+plugin_name='cache' artifact_name='remote-cache' dep_version_name='GradleRemoteBuildCachePluginDepVersion' update()
+plugin_name='common' artifact_name='common' dep_version_name='GradleCommonPluginDepVersion' update()
+plugin_name='test-distribution' artifact_name='test-distribution' dep_version_name='GradleTestDistributionPluginDepVersion' update()
