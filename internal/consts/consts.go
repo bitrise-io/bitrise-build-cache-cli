@@ -33,4 +33,10 @@ const (
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsPort             = 443
+
+	// Gradle Common Plugin version
+	GradleCommonPluginDepVersion = "0.0.1"
+
+	// Gradle Test Distribution Plugin version
+	GradleTestDistributionPluginDepVersion = "0.0.1"
 )
