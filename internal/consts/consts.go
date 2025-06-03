@@ -26,17 +26,17 @@ const (
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.18"
+	GradleRemoteBuildCachePluginDepVersion = "1.2.19"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "2.1.25"
+	GradleAnalyticsPluginDepVersion = "2.1.28"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsPort             = 443
 
 	// Gradle Common Plugin version
-	GradleCommonPluginDepVersion = "0.0.1"
+	GradleCommonPluginDepVersion = "1.0.1"
 
 	// Gradle Test Distribution Plugin version
-	GradleTestDistributionPluginDepVersion = "0.0.1"
+	GradleTestDistributionPluginDepVersion = "2.1.24"
 )
