@@ -14,7 +14,7 @@ const (
 
 	// The default URL uses the public endpoint, which might not be context aware
 	// When this comment was written it simply pointed to the GCP us-east cache, but geo loadbalancing is planned.
-	EndpointURLDefault = "grpcs://remote-build-cache.services.bitrise.io"
+	EndpointURLDefault = "grpcs://bitrise-accelerate.services.bitrise.io"
 	EndpointURLLAS1    = CacheInternalEndpointURLUnified
 	EndpointURLATL1    = CacheInternalEndpointURLUnified
 	EndpointURLIAD1    = CacheInternalEndpointURLUnified
