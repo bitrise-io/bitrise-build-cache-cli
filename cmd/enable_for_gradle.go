@@ -79,7 +79,7 @@ func init() {
 	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
 }
 
-func writeGradleInit(logger log.Logger, gradleHomePath string, endpointURL string, authToken string, cacheConfigMetadata common.CacheConfigMetadata, prefs gradleconfig.Preferences) error {
+func writeGradleInit(logger log.Logger, gradleHomePath string, prefs gradleconfig.Preferences) error {
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
 	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
 	err := os.MkdirAll(gradleInitDPath, 0755) //nolint:gomnd,mnd
@@ -88,7 +88,7 @@ func writeGradleInit(logger log.Logger, gradleHomePath string, endpointURL strin
 	}
 
 	logger.Infof("(i) Generate ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts")
-	initGradleContent, err := gradleconfig.GenerateInitGradle(endpointURL, authToken, prefs, cacheConfigMetadata)
+	initGradleContent, err := gradleconfig.GenerateInitGradle(prefs)
 	if err != nil {
 		return fmt.Errorf("generate bitrise-build-cache.init.gradle.kts: %w", err)
 	}
@@ -141,14 +141,29 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		}, logger)
 	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
 
-	prefs := gradleconfig.Preferences{
-		IsDependencyOnly:     false,
-		IsPushEnabled:        paramIsPushEnabled,
-		CacheLevelValidation: gradleconfig.CacheValidationLevel(paramValidationLevel),
-		IsAnalyticsEnabled:   paramIsGradleMetricsEnabled,
-		IsDebugEnabled:       isDebugLogMode,
+	analyticsUsageLevel := gradleconfig.UsageLevelNone
+	if paramIsGradleMetricsEnabled {
+		analyticsUsageLevel = gradleconfig.UsageLevelEnabled
 	}
-	if err := writeGradleInit(logger, gradleHomePath, endpointURL, authToken, cacheConfigMetadata, prefs); err != nil {
+
+	prefs := gradleconfig.Preferences{
+		IsDebugEnabled: isDebugLogMode,
+		AuthToken:      authToken,
+		Cache: gradleconfig.CachePreferences{
+			Usage:                gradleconfig.UsageLevelEnabled,
+			EndpointURL:          endpointURL,
+			IsPushEnabled:        paramIsPushEnabled,
+			CacheLevelValidation: gradleconfig.CacheValidationLevel(paramValidationLevel),
+			Metadata:             cacheConfigMetadata,
+		},
+		Analytics: gradleconfig.AnalyticsPreferences{
+			Usage: analyticsUsageLevel,
+		},
+		TestDistro: gradleconfig.TestDistroPreferences{
+			Usage: gradleconfig.UsageLevelNone,
+		},
+	}
+	if err := writeGradleInit(logger, gradleHomePath, prefs); err != nil {
 		return err
 	}
 
