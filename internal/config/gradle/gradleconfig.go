@@ -28,59 +28,127 @@ var (
 	CacheValidationLevelError   CacheValidationLevel = "error"
 )
 
-type Preferences struct {
-	IsDependencyOnly     bool
+type UsageLevel string
+
+//nolint:gochecknoglobals
+var (
+	UsageLevelNone       UsageLevel = "none"
+	UsageLevelDependency UsageLevel = "dependency"
+	UsageLevelEnabled    UsageLevel = "enabled"
+)
+
+type CachePreferences struct {
+	Usage                UsageLevel
+	EndpointURL          string
 	IsPushEnabled        bool
 	CacheLevelValidation CacheValidationLevel
-	IsAnalyticsEnabled   bool
-	IsDebugEnabled       bool
+	Metadata             common.CacheConfigMetadata
 }
 
-type templateInventory struct {
-	IsDependencyOnly         bool
-	AuthToken                string
-	CacheEndpointURLWithPort string
-	CachePluginVersion       string
-	IsPushEnabled            bool
-	IsDebugEnabled           bool
-	ValidationLevel          string
-	IsAnalyticsEnabled       bool
-	AnalyticsPluginVersion   string
-	AnalyticsEndpoint        string
-	AnalyticsPort            int
-	AnalyticsHTTPEndpoint    string
-	// Metadata
-	CacheConfigMetadata common.CacheConfigMetadata
+type AnalyticsPreferences struct {
+	Usage UsageLevel
+}
+
+type TestDistroPreferences struct {
+	Usage UsageLevel
+}
+
+type Preferences struct {
+	IsDebugEnabled bool
+	AuthToken      string
+	AppSlug        string
+	Cache          CachePreferences
+	Analytics      AnalyticsPreferences
+	TestDistro     TestDistroPreferences
+}
+
+type CacheTemplateInventory struct {
+	Version             string
+	Enabled             bool
+	Dependency          bool
+	EndpointURLWithPort string
+	IsPushEnabled       bool
+	ValidationLevel     string
+	Metadata            common.CacheConfigMetadata
+}
+
+type AnalyticsTemplateInventory struct {
+	Enabled      bool
+	Dependency   bool
+	Version      string
+	Endpoint     string
+	Port         int
+	HttpEndpoint string
+}
+
+type TestDistroTemplateInventory struct {
+	Enabled    bool
+	Dependency bool
+	Version    string
+	Endpoint   string
+	KvEndpoint string
+	Port       int
+	LogLevel   string
+}
+
+type TemplateInventory struct {
+	AuthToken      string
+	IsDebugEnabled bool
+	AppSlug        string
+	Cache          CacheTemplateInventory
+	Analytics      AnalyticsTemplateInventory
+	TestDistro     TestDistroTemplateInventory
 }
 
 // Generate init.gradle content.
 // Recommended to save the content into $HOME/.gradle/init.d/ instead of
 // overwriting the $HOME/.gradle/init.gradle file.
-func GenerateInitGradle(endpointURL, authToken string, preferences Preferences, cacheConfigMetadata common.CacheConfigMetadata) (string, error) {
+func GenerateInitGradle(preferences Preferences) (string, error) {
 	// required check
-	if len(authToken) < 1 {
+	if len(preferences.AuthToken) < 1 {
 		return "", fmt.Errorf("generate init.gradle, error: %w", errAuthTokenNotProvided)
 	}
 
-	if len(endpointURL) < 1 {
+	if len(preferences.Cache.EndpointURL) < 1 && preferences.Cache.Usage == UsageLevelEnabled {
 		return "", fmt.Errorf("generate init.gradle, error: %w", errEndpointURLNotProvided)
 	}
 
+	logLevel := "warning"
+	if preferences.IsDebugEnabled {
+		logLevel = "debug"
+	}
+
 	// create inventory
-	inventory := templateInventory{
-		IsDependencyOnly:         preferences.IsDependencyOnly,
-		AuthToken:                authToken,
-		CacheEndpointURLWithPort: endpointURL,
-		CachePluginVersion:       consts.GradleRemoteBuildCachePluginDepVersion,
-		IsPushEnabled:            preferences.IsPushEnabled,
-		IsDebugEnabled:           preferences.IsDebugEnabled,
-		ValidationLevel:          string(preferences.CacheLevelValidation),
-		IsAnalyticsEnabled:       preferences.IsAnalyticsEnabled,
-		AnalyticsPluginVersion:   consts.GradleAnalyticsPluginDepVersion,
-		AnalyticsEndpoint:        consts.GradleAnalyticsEndpoint,
-		AnalyticsPort:            consts.GradleAnalyticsPort,
-		AnalyticsHTTPEndpoint:    consts.GradleAnalyticsHTTPEndpoint,
-		CacheConfigMetadata:      cacheConfigMetadata,
+	inventory := TemplateInventory{
+		AuthToken:      preferences.AuthToken,
+		IsDebugEnabled: preferences.IsDebugEnabled,
+		AppSlug:        preferences.AppSlug,
+		Cache: CacheTemplateInventory{
+			Enabled:             preferences.Cache.Usage == UsageLevelEnabled,
+			Dependency:          preferences.Cache.Usage == UsageLevelDependency || preferences.Cache.Usage == UsageLevelEnabled,
+			Version:             consts.GradleRemoteBuildCachePluginDepVersion,
+			EndpointURLWithPort: preferences.Cache.EndpointURL,
+			IsPushEnabled:       preferences.Cache.IsPushEnabled,
+			ValidationLevel:     string(preferences.Cache.CacheLevelValidation),
+			Metadata:            preferences.Cache.Metadata,
+		},
+		Analytics: AnalyticsTemplateInventory{
+			Enabled:      preferences.Analytics.Usage == UsageLevelEnabled,
+			Dependency:   preferences.Analytics.Usage == UsageLevelDependency || preferences.Analytics.Usage == UsageLevelEnabled,
+			Version:      consts.GradleAnalyticsPluginDepVersion,
+			Endpoint:     consts.GradleAnalyticsEndpoint,
+			Port:         consts.GradleAnalyticsPort,
+			HttpEndpoint: consts.GradleAnalyticsHTTPEndpoint,
+		},
+		TestDistro: TestDistroTemplateInventory{
+			Enabled:    preferences.TestDistro.Usage == UsageLevelEnabled,
+			Dependency: preferences.TestDistro.Usage == UsageLevelDependency || preferences.TestDistro.Usage == UsageLevelEnabled,
+			Version:    consts.GradleTestDistributionPluginDepVersion,
+			Endpoint:   consts.GradleTestDistributionEndpoint,
+			KvEndpoint: consts.GradleTestDistributionKvEndpoint,
+			Port:       consts.GradleTestDistributionPort,
+			LogLevel:   logLevel,
+		},
 	}
 
 	tmpl, err := template.New("init.gradle").Parse(gradleTemplateText)
