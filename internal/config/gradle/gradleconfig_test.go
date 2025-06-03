@@ -151,8 +151,8 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.18")
-        classpath("io.bitrise.gradle:gradle-analytics:2.1.25")
+        classpath("io.bitrise.gradle:remote-cache:1.2.19")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.28")
     }
 }
 
@@ -206,8 +206,8 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.18")
-        classpath("io.bitrise.gradle:gradle-analytics:2.1.25")
+        classpath("io.bitrise.gradle:remote-cache:1.2.19")
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.28")
     }
 }
 
@@ -260,7 +260,7 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.18")
+        classpath("io.bitrise.gradle:remote-cache:1.2.19")
     }
 }
 
@@ -294,7 +294,7 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.18")
+        classpath("io.bitrise.gradle:remote-cache:1.2.19")
     }
 }
 
@@ -328,7 +328,7 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:1.2.18")
+        classpath("io.bitrise.gradle:remote-cache:1.2.19")
     }
 }
 
