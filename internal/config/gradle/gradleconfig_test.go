@@ -80,12 +80,12 @@ func TestGenerateInitGradle(t *testing.T) {
 						IsPushEnabled:        true,
 						CacheLevelValidation: CacheValidationLevelWarning,
 						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+						Metadata:             common.CacheConfigMetadata{},
 					},
 					Analytics: AnalyticsPreferences{
 						UsageLevelEnabled,
 					},
 				},
-				cacheConfigMetadata: common.CacheConfigMetadata{},
 			},
 			want:    expectedInitScriptWithMetricsButNoMetadata,
 			wantErr: "",
@@ -101,12 +101,12 @@ func TestGenerateInitGradle(t *testing.T) {
 						IsPushEnabled:        false,
 						CacheLevelValidation: CacheValidationLevelError,
 						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+						Metadata:             common.CacheConfigMetadata{},
 					},
 					Analytics: AnalyticsPreferences{
 						UsageLevelNone,
 					},
 				},
-				cacheConfigMetadata: common.CacheConfigMetadata{},
 			},
 			want: expectedInitScriptNoPushYesDebugNoMetrics,
 		},
@@ -121,14 +121,92 @@ func TestGenerateInitGradle(t *testing.T) {
 						IsPushEnabled:        true,
 						CacheLevelValidation: CacheValidationLevelError,
 						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+						Metadata:             common.CacheConfigMetadata{},
 					},
 					Analytics: AnalyticsPreferences{
 						UsageLevelNone,
 					},
 				},
-				cacheConfigMetadata: common.CacheConfigMetadata{},
 			},
 			want: expectedInitScriptYesPushNoDebugNoMetrics,
+		},
+		{
+			name: "Add every plugin but only as dependency",
+			args: args{
+				userPrefs: Preferences{
+					IsDebugEnabled: false,
+					AuthToken:      "AuthT0ken",
+					Cache: CachePreferences{
+						Usage: UsageLevelDependency,
+					},
+					Analytics: AnalyticsPreferences{
+						UsageLevelDependency,
+					},
+					TestDistro: TestDistroPreferences{
+						UsageLevelDependency,
+					},
+				},
+			},
+			want: expectedAllDepOnly,
+		},
+		{
+			name: "Add test distribution plugin",
+			args: args{
+				userPrefs: Preferences{
+					IsDebugEnabled: false,
+					AuthToken:      "AuthT0ken",
+					AppSlug:        "AppSlug",
+					Cache: CachePreferences{
+						Usage: UsageLevelNone,
+					},
+					Analytics: AnalyticsPreferences{
+						UsageLevelNone,
+					},
+					TestDistro: TestDistroPreferences{
+						UsageLevelEnabled,
+					},
+				},
+			},
+			want: expectedTestDistributionPlugin,
+		},
+		{
+			name: "Add test distribution plugin when app slug is missing",
+			args: args{
+				userPrefs: Preferences{
+					IsDebugEnabled: false,
+					AuthToken:      "AuthT0ken",
+					Cache: CachePreferences{
+						Usage: UsageLevelNone,
+					},
+					Analytics: AnalyticsPreferences{
+						UsageLevelNone,
+					},
+					TestDistro: TestDistroPreferences{
+						UsageLevelEnabled,
+					},
+				},
+			},
+			wantErr: "generate init.gradle, error: AppSlug not provided when TestDistroEnabled",
+		},
+		{
+			name: "Add test distribution plugin with debug enabled",
+			args: args{
+				userPrefs: Preferences{
+					IsDebugEnabled: true,
+					AuthToken:      "AuthT0ken",
+					AppSlug:        "AppSlug",
+					Cache: CachePreferences{
+						Usage: UsageLevelNone,
+					},
+					Analytics: AnalyticsPreferences{
+						UsageLevelNone,
+					},
+					TestDistro: TestDistroPreferences{
+						UsageLevelEnabled,
+					},
+				},
+			},
+			want: expectedTestDistributionPluginWhenDebugEnabled,
 		},
 	}
 	for _, tt := range tests { //nolint:varnamelen
@@ -352,5 +430,90 @@ settingsEvaluated {
             blobValidationLevel.set("error")
         }
     }
+}
+`
+
+const expectedAllDepOnly = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+    }
+    dependencies {
+        classpath("io.bitrise.gradle:gradle-analytics:2.1.28")
+        classpath("io.bitrise.gradle:remote-cache:1.2.19")
+        classpath("io.bitrise.gradle:test-distribution:2.1.24")
+    }
+}
+
+settingsEvaluated {
+}
+`
+
+const expectedTestDistributionPlugin = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+    }
+    dependencies {
+        classpath("io.bitrise.gradle:test-distribution:2.1.24")
+    }
+}
+
+settingsEvaluated {
+}
+rootProject {
+    extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
+        endpoint.set("grpcs://remote-execution-ord.services.bitrise.io:443")
+        kvEndpoint.set("grpcs://build-cache-api-ord.services.bitrise.io:443")
+        authToken.set("AuthT0ken")
+        logLevel.set("warning")
+        bitrise {
+            appSlug.set("AppSlug")
+        }
+    }
+
+    apply<io.bitrise.gradle.rbe.RBEPlugin>()
+}
+`
+
+const expectedTestDistributionPluginWhenDebugEnabled = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+
+initscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        maven(url="https://jitpack.io")
+    }
+    dependencies {
+        classpath("io.bitrise.gradle:test-distribution:2.1.24")
+    }
+}
+
+settingsEvaluated {
+}
+rootProject {
+    extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
+        endpoint.set("grpcs://remote-execution-ord.services.bitrise.io:443")
+        kvEndpoint.set("grpcs://build-cache-api-ord.services.bitrise.io:443")
+        authToken.set("AuthT0ken")
+        logLevel.set("debug")
+        bitrise {
+            appSlug.set("AppSlug")
+        }
+    }
+
+    apply<io.bitrise.gradle.rbe.RBEPlugin>()
 }
 `

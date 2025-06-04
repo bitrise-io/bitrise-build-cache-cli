@@ -56,8 +56,8 @@ settingsEvaluated {
             providerName.set("{{ .Cache.Metadata.CIProvider }}")
 
             bitrise {
-                {{- if .Cache.Metadata.BitriseAppID }}
-                appSlug.set("{{ .Cache.Metadata.BitriseAppID }}")
+                {{- if .AppSlug }}
+                appSlug.set("{{ .AppSlug }}")
                 {{- end }}
             }
         }
