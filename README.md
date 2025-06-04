@@ -52,6 +52,8 @@ The CLI requires the following environment variables to be set for authenticatio
 
 Note: the easiest way to get these parameters and do a Bitrise Build Cache setup is by going to [bitrise.io/build-cache](https://app.bitrise.io/build-cache), clicking `Add new connection` on the page and follow the guide there. It'll automatically generate and show the information you need for the setup.
 
+Important: the `bitrise-build-cache` CLI configures the environment it's running in. If you're running commands in Docker containers you have to run the CLI in the same container in which you run Gradle/Bazel commands in.
+
 
 ## What does the CLI do on a high level?
 
