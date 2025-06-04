@@ -32,13 +32,13 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("{{ .Cache.EndpointURLWithPort }}")
-            authToken.set("{{ .AuthToken }}")
-            isPush.set({{ .Cache.IsPushEnabled }})
-            debug.set({{ .IsDebugEnabled }})
-            blobValidationLevel.set("{{ .Cache.ValidationLevel }}")
+            endpoint = "{{ .Cache.EndpointURLWithPort }}"
+            authToken = "{{ .AuthToken }}"
+            isPush = {{ .Cache.IsPushEnabled }}
+            debug = {{ .IsDebugEnabled }}
+            blobValidationLevel = "{{ .Cache.ValidationLevel }}"
             {{- if .Analytics.Enabled }}
-            collectMetadata.set(false)
+            collectMetadata = false
             {{- end }}
         }
     }

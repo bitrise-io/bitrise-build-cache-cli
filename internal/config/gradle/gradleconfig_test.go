@@ -1,225 +1,226 @@
 package gradleconfig
 
 import (
-	_ "embed"
-	"testing"
+    _ "embed"
+    "testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+    "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestGenerateInitGradle(t *testing.T) {
-	type args struct {
-		endpointURL         string
-		authToken           string
-		userPrefs           Preferences
-		cacheConfigMetadata common.CacheConfigMetadata
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    string
-		wantErr string
-	}{
-		{
-			name: "No Auth Token provided",
-			args: args{
-				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
-			},
-			want:    "",
-			wantErr: "generate init.gradle, error: AuthToken not provided",
-		},
-		{
-			name: "No EndpointURL provided",
-			args: args{
-				userPrefs: Preferences{
-					AuthToken: "AuthT0ken",
-					Cache: CachePreferences{
-						Usage: UsageLevelEnabled,
-					},
-				},
-			},
-			want:    "",
-			wantErr: "generate init.gradle, error: EndpointURL not provided",
-		},
-		{
-			name: "Analytics.Enabled = true",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: true,
-					AuthToken:      "AuthT0ken",
-					Cache: CachePreferences{
-						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
-						Usage:                UsageLevelEnabled,
-						IsPushEnabled:        true,
-						CacheLevelValidation: CacheValidationLevelWarning,
-						Metadata: common.CacheConfigMetadata{
-							CIProvider: "BestCI",
-							RepoURL:    "https://github.com/some/repo",
-							// Bitrise CI specific
-							BitriseAppID: "BitriseAppID1",
-						},
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelEnabled,
-					},
-				},
-			},
-			want:    expectedInitScriptWithMetrics,
-			wantErr: "",
-		},
-		{
-			name: "Analytics.Enabled = true but empty metadata",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: true,
-					AuthToken:      "AuthT0ken",
-					Cache: CachePreferences{
-						Usage:                UsageLevelEnabled,
-						IsPushEnabled:        true,
-						CacheLevelValidation: CacheValidationLevelWarning,
-						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
-						Metadata:             common.CacheConfigMetadata{},
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelEnabled,
-					},
-				},
-			},
-			want:    expectedInitScriptWithMetricsButNoMetadata,
-			wantErr: "",
-		},
-		{
-			name: "Push disabled, debug enabled, metrics disabled",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: true,
-					AuthToken:      "AuthT0ken",
-					Cache: CachePreferences{
-						Usage:                UsageLevelEnabled,
-						IsPushEnabled:        false,
-						CacheLevelValidation: CacheValidationLevelError,
-						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
-						Metadata:             common.CacheConfigMetadata{},
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelNone,
-					},
-				},
-			},
-			want: expectedInitScriptNoPushYesDebugNoMetrics,
-		},
-		{
-			name: "Push enabled, debug disabled, metrics disabled",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: false,
-					AuthToken:      "AuthT0ken",
-					Cache: CachePreferences{
-						Usage:                UsageLevelEnabled,
-						IsPushEnabled:        true,
-						CacheLevelValidation: CacheValidationLevelError,
-						EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
-						Metadata:             common.CacheConfigMetadata{},
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelNone,
-					},
-				},
-			},
-			want: expectedInitScriptYesPushNoDebugNoMetrics,
-		},
-		{
-			name: "Add every plugin but only as dependency",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: false,
-					AuthToken:      "AuthT0ken",
-					Cache: CachePreferences{
-						Usage: UsageLevelDependency,
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelDependency,
-					},
-					TestDistro: TestDistroPreferences{
-						UsageLevelDependency,
-					},
-				},
-			},
-			want: expectedAllDepOnly,
-		},
-		{
-			name: "Add test distribution plugin",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: false,
-					AuthToken:      "AuthT0ken",
-					AppSlug:        "AppSlug",
-					Cache: CachePreferences{
-						Usage: UsageLevelNone,
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelNone,
-					},
-					TestDistro: TestDistroPreferences{
-						UsageLevelEnabled,
-					},
-				},
-			},
-			want: expectedTestDistributionPlugin,
-		},
-		{
-			name: "Add test distribution plugin when app slug is missing",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: false,
-					AuthToken:      "AuthT0ken",
-					Cache: CachePreferences{
-						Usage: UsageLevelNone,
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelNone,
-					},
-					TestDistro: TestDistroPreferences{
-						UsageLevelEnabled,
-					},
-				},
-			},
-			wantErr: "generate init.gradle, error: AppSlug not provided when TestDistroEnabled",
-		},
-		{
-			name: "Add test distribution plugin with debug enabled",
-			args: args{
-				userPrefs: Preferences{
-					IsDebugEnabled: true,
-					AuthToken:      "AuthT0ken",
-					AppSlug:        "AppSlug",
-					Cache: CachePreferences{
-						Usage: UsageLevelNone,
-					},
-					Analytics: AnalyticsPreferences{
-						UsageLevelNone,
-					},
-					TestDistro: TestDistroPreferences{
-						UsageLevelEnabled,
-					},
-				},
-			},
-			want: expectedTestDistributionPluginWhenDebugEnabled,
-		},
-	}
-	for _, tt := range tests { //nolint:varnamelen
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateInitGradle(tt.args.userPrefs)
-			if tt.wantErr != "" {
-				require.EqualError(t, err, tt.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			assert.Equal(t, tt.want, got)
-		})
-	}
+    type args struct {
+        endpointURL         string
+        authToken           string
+        userPrefs           Preferences
+        cacheConfigMetadata common.CacheConfigMetadata
+    }
+    tests := []struct {
+        name    string
+        args    args
+        want    string
+        wantErr string
+    }{
+        {
+            name: "No Auth Token provided",
+            args: args{
+                endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
+            },
+            want:    "",
+            wantErr: "generate init.gradle, error: AuthToken not provided",
+        },
+        {
+            name: "No EndpointURL provided",
+            args: args{
+                userPrefs: Preferences{
+                    AuthToken: "AuthT0ken",
+                    Cache: CachePreferences{
+                        Usage: UsageLevelEnabled,
+                    },
+                },
+            },
+            want:    "",
+            wantErr: "generate init.gradle, error: EndpointURL not provided",
+        },
+        {
+            name: "Analytics.Enabled = true",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: true,
+                    AuthToken:      "AuthT0ken",
+                    AppSlug:        "BitriseAppID1",
+                    Cache: CachePreferences{
+                        EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+                        Usage:                UsageLevelEnabled,
+                        IsPushEnabled:        true,
+                        CacheLevelValidation: CacheValidationLevelWarning,
+                        Metadata: common.CacheConfigMetadata{
+                            CIProvider: "BestCI",
+                            RepoURL:    "https://github.com/some/repo",
+                            // Bitrise CI specific
+                            BitriseAppID: "BitriseAppID1",
+                        },
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelEnabled,
+                    },
+                },
+            },
+            want:    expectedInitScriptWithMetrics,
+            wantErr: "",
+        },
+        {
+            name: "Analytics.Enabled = true but empty metadata",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: true,
+                    AuthToken:      "AuthT0ken",
+                    Cache: CachePreferences{
+                        Usage:                UsageLevelEnabled,
+                        IsPushEnabled:        true,
+                        CacheLevelValidation: CacheValidationLevelWarning,
+                        EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+                        Metadata:             common.CacheConfigMetadata{},
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelEnabled,
+                    },
+                },
+            },
+            want:    expectedInitScriptWithMetricsButNoMetadata,
+            wantErr: "",
+        },
+        {
+            name: "Push disabled, debug enabled, metrics disabled",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: true,
+                    AuthToken:      "AuthT0ken",
+                    Cache: CachePreferences{
+                        Usage:                UsageLevelEnabled,
+                        IsPushEnabled:        false,
+                        CacheLevelValidation: CacheValidationLevelError,
+                        EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+                        Metadata:             common.CacheConfigMetadata{},
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelNone,
+                    },
+                },
+            },
+            want: expectedInitScriptNoPushYesDebugNoMetrics,
+        },
+        {
+            name: "Push enabled, debug disabled, metrics disabled",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: false,
+                    AuthToken:      "AuthT0ken",
+                    Cache: CachePreferences{
+                        Usage:                UsageLevelEnabled,
+                        IsPushEnabled:        true,
+                        CacheLevelValidation: CacheValidationLevelError,
+                        EndpointURL:          "grpcs://bitrise-accelerate.services.bitrise.io",
+                        Metadata:             common.CacheConfigMetadata{},
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelNone,
+                    },
+                },
+            },
+            want: expectedInitScriptYesPushNoDebugNoMetrics,
+        },
+        {
+            name: "Add every plugin but only as dependency",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: false,
+                    AuthToken:      "AuthT0ken",
+                    Cache: CachePreferences{
+                        Usage: UsageLevelDependency,
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelDependency,
+                    },
+                    TestDistro: TestDistroPreferences{
+                        UsageLevelDependency,
+                    },
+                },
+            },
+            want: expectedAllDepOnly,
+        },
+        {
+            name: "Add test distribution plugin",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: false,
+                    AuthToken:      "AuthT0ken",
+                    AppSlug:        "AppSlug",
+                    Cache: CachePreferences{
+                        Usage: UsageLevelNone,
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelNone,
+                    },
+                    TestDistro: TestDistroPreferences{
+                        UsageLevelEnabled,
+                    },
+                },
+            },
+            want: expectedTestDistributionPlugin,
+        },
+        {
+            name: "Add test distribution plugin when app slug is missing",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: false,
+                    AuthToken:      "AuthT0ken",
+                    Cache: CachePreferences{
+                        Usage: UsageLevelNone,
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelNone,
+                    },
+                    TestDistro: TestDistroPreferences{
+                        UsageLevelEnabled,
+                    },
+                },
+            },
+            wantErr: "generate init.gradle, error: AppSlug not provided when TestDistroEnabled",
+        },
+        {
+            name: "Add test distribution plugin with debug enabled",
+            args: args{
+                userPrefs: Preferences{
+                    IsDebugEnabled: true,
+                    AuthToken:      "AuthT0ken",
+                    AppSlug:        "AppSlug",
+                    Cache: CachePreferences{
+                        Usage: UsageLevelNone,
+                    },
+                    Analytics: AnalyticsPreferences{
+                        UsageLevelNone,
+                    },
+                    TestDistro: TestDistroPreferences{
+                        UsageLevelEnabled,
+                    },
+                },
+            },
+            want: expectedTestDistributionPluginWhenDebugEnabled,
+        },
+    }
+    for _, tt := range tests { //nolint:varnamelen
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := GenerateInitGradle(tt.args.userPrefs)
+            if tt.wantErr != "" {
+                require.EqualError(t, err, tt.wantErr)
+            } else {
+                require.NoError(t, err)
+            }
+            assert.Equal(t, tt.want, got)
+        })
+    }
 }
 
 const expectedInitScriptWithMetrics = `import io.bitrise.gradle.cache.BitriseBuildCache
@@ -248,12 +249,12 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://bitrise-accelerate.services.bitrise.io")
-            authToken.set("AuthT0ken")
-            isPush.set(true)
-            debug.set(true)
-            blobValidationLevel.set("warning")
-            collectMetadata.set(false)
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isPush = true
+            debug = true
+            blobValidationLevel = "warning"
+            collectMetadata = false
         }
     }
     rootProject {
@@ -301,12 +302,12 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://bitrise-accelerate.services.bitrise.io")
-            authToken.set("AuthT0ken")
-            isPush.set(true)
-            debug.set(true)
-            blobValidationLevel.set("warning")
-            collectMetadata.set(false)
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isPush = true
+            debug = true
+            blobValidationLevel = "warning"
+            collectMetadata = false
         }
     }
     rootProject {
@@ -352,12 +353,12 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://bitrise-accelerate.services.bitrise.io")
-            authToken.set("AuthT0ken")
-            isEnabled.set(true)
-            isPush.set(true)
-            debug.set(true)
-            blobValidationLevel.set("warning")
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isEnabled = true
+            isPush = true
+            debug = true
+            blobValidationLevel = "warning"
         }
     }
 }
@@ -388,11 +389,11 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://bitrise-accelerate.services.bitrise.io")
-            authToken.set("AuthT0ken")
-            isPush.set(false)
-            debug.set(true)
-            blobValidationLevel.set("error")
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isPush = false
+            debug = true
+            blobValidationLevel = "error"
         }
     }
 }
@@ -423,11 +424,11 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://bitrise-accelerate.services.bitrise.io")
-            authToken.set("AuthT0ken")
-            isPush.set(true)
-            debug.set(false)
-            blobValidationLevel.set("error")
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
+            authToken = "AuthT0ken"
+            isPush = true
+            debug = false
+            blobValidationLevel = "error"
         }
     }
 }
