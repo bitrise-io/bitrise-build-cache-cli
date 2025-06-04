@@ -190,11 +190,11 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://remote-build-cache.services.bitrise.io")
-            authToken.set("WorkspaceIDValue:AuthTokenValue")
-            isPush.set(false)
-            debug.set(false)
-            blobValidationLevel.set("warning")
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "WorkspaceIDValue:AuthTokenValue"
+            isPush = false
+            debug = false
+            blobValidationLevel = "warning"
         }
     }
 }
@@ -251,11 +251,11 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("EndpointValue")
-            authToken.set("WorkspaceIDValue:AuthTokenValue")
-            isPush.set(true)
-            debug.set(true)
-            blobValidationLevel.set("error")
+            endpoint = "EndpointValue"
+            authToken = "WorkspaceIDValue:AuthTokenValue"
+            isPush = true
+            debug = true
+            blobValidationLevel = "error"
         }
     }
 }
@@ -309,11 +309,11 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint.set("grpcs://remote-build-cache.services.bitrise.io")
-            authToken.set("WorkspaceIDValue:AuthTokenValue")
-            isPush.set(false)
-            debug.set(false)
-            blobValidationLevel.set("warning")
+            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            authToken = "WorkspaceIDValue:AuthTokenValue"
+            isPush = false
+            debug = false
+            blobValidationLevel = "warning"
         }
     }
 }
