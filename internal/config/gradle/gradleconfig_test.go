@@ -25,7 +25,7 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "No Auth Token provided",
 			args: args{
-				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
 			},
 			want:    "",
 			wantErr: "generate init.gradle, error: AuthToken not provided",
@@ -41,7 +41,7 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "MetricsEnabled=false",
 			args: args{
-				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
 				authToken:   "AuthT0ken",
 				userPrefs: Preferences{
 					IsPushEnabled:        true,
@@ -62,7 +62,7 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "MetricsEnabled=true",
 			args: args{
-				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
 				authToken:   "AuthT0ken",
 				userPrefs: Preferences{
 					IsPushEnabled:        true,
@@ -83,7 +83,7 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "MetricsEnabled=true but empty metadata",
 			args: args{
-				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
 				authToken:   "AuthT0ken",
 				userPrefs: Preferences{
 					IsPushEnabled:        true,
@@ -99,7 +99,7 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "Push disabled, debug enabled, metrics disabled",
 			args: args{
-				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
 				authToken:   "AuthT0ken",
 				userPrefs: Preferences{
 					IsPushEnabled:        false,
@@ -114,7 +114,7 @@ func TestGenerateInitGradle(t *testing.T) {
 		{
 			name: "Push enabled, debug disabled, metrics disabled",
 			args: args{
-				endpointURL: "grpcs://remote-build-cache.services.bitrise.io",
+				endpointURL: "grpcs://bitrise-accelerate.services.bitrise.io",
 				authToken:   "AuthT0ken",
 				userPrefs: Preferences{
 					IsPushEnabled:        true,
@@ -164,7 +164,7 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
             authToken = "AuthT0ken"
             isEnabled = true
             isPush = true
@@ -219,7 +219,7 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
             authToken = "AuthT0ken"
             isEnabled = true
             isPush = true
@@ -272,7 +272,7 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
             authToken = "AuthT0ken"
             isEnabled = true
             isPush = true
@@ -306,7 +306,7 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
             authToken = "AuthT0ken"
             isEnabled = true
             isPush = false
@@ -340,7 +340,7 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "grpcs://remote-build-cache.services.bitrise.io"
+            endpoint = "grpcs://bitrise-accelerate.services.bitrise.io"
             authToken = "AuthT0ken"
             isEnabled = true
             isPush = true
