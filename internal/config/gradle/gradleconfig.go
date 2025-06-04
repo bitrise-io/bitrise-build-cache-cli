@@ -15,8 +15,9 @@ import (
 var gradleTemplateText string
 
 var (
-	errAuthTokenNotProvided   = errors.New("AuthToken not provided")
-	errEndpointURLNotProvided = errors.New("EndpointURL not provided")
+	errAuthTokenNotProvided                = errors.New("AuthToken not provided")
+	errEndpointURLNotProvided              = errors.New("EndpointURL not provided")
+	errMissingAppSlugWhenTestDistroEnabled = errors.New("AppSlug not provided when TestDistroEnabled")
 )
 
 type CacheValidationLevel string
@@ -111,6 +112,10 @@ func GenerateInitGradle(preferences Preferences) (string, error) {
 
 	if len(preferences.Cache.EndpointURL) < 1 && preferences.Cache.Usage == UsageLevelEnabled {
 		return "", fmt.Errorf("generate init.gradle, error: %w", errEndpointURLNotProvided)
+	}
+
+	if len(preferences.AppSlug) < 1 && preferences.TestDistro.Usage == UsageLevelEnabled {
+		return "", fmt.Errorf("generate init.gradle, error: %w", errMissingAppSlugWhenTestDistroEnabled)
 	}
 
 	logLevel := "warning"
