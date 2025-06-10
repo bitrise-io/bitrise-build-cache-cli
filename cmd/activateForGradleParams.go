@@ -170,7 +170,7 @@ func (params ActivateForGradleParams) cacheTemplateInventory(
 	}
 
 	return gradleconfig.CacheTemplateInventory{
-		Usage:               gradleconfig.UsageLevelDependency,
+		Usage:               gradleconfig.UsageLevelEnabled,
 		Version:             consts.GradleRemoteBuildCachePluginDepVersion,
 		EndpointURLWithPort: cacheEndpointURL,
 		IsPushEnabled:       params.Cache.PushEnabled,
