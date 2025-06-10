@@ -24,7 +24,7 @@ type templateInventory struct {
 	WorkspaceID         string
 	AuthToken           string
 	IsTimestampsEnabled bool
-	// Metadata
+	// CacheConfigMetadata
 	CacheConfigMetadata common.CacheConfigMetadata
 }
 

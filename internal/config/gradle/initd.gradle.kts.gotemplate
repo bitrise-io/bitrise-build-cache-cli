@@ -11,20 +11,20 @@ initscript {
         maven(url="https://jitpack.io")
     }
     dependencies {
-        {{- if .Analytics.Dependency }}
+        {{- if eq .Analytics.Usage "dependency" "enabled" }}
         classpath("io.bitrise.gradle:gradle-analytics:{{ .Analytics.Version }}")
         {{- end }}
-        {{- if .Cache.Dependency }}
+        {{- if eq .Cache.Usage "dependency" "enabled" }}
         classpath("io.bitrise.gradle:remote-cache:{{ .Cache.Version }}")
         {{- end }}
-        {{- if .TestDistro.Dependency }}
+        {{- if eq .TestDistro.Usage "dependency" "enabled" }}
         classpath("io.bitrise.gradle:test-distribution:{{ .TestDistro.Version }}")
         {{- end }}
     }
 }
 
 settingsEvaluated {
-    {{- if .Cache.Enabled }}
+    {{- if eq .Cache.Usage "enabled" }}
     buildCache {
         local {
             isEnabled = false
@@ -33,46 +33,46 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "{{ .Cache.EndpointURLWithPort }}"
-            authToken = "{{ .AuthToken }}"
+            authToken = "{{ .Common.AuthToken }}"
             isPush = {{ .Cache.IsPushEnabled }}
-            debug = {{ .IsDebugEnabled }}
+            debug = {{ .Common.Debug }}
             blobValidationLevel = "{{ .Cache.ValidationLevel }}"
-            {{- if .Analytics.Enabled }}
+            {{- if eq .Analytics.Usage "dependency" "none" }}
             collectMetadata = false
             {{- end }}
         }
     }
     {{- end }}
-    {{- if .Analytics.Enabled }}
+    {{- if eq .Analytics.Usage "enabled" }}
     rootProject {
         apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
         extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
             endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
-            httpEndpoint.set("{{ .Analytics.HttpEndpoint }}")
-            authToken.set("{{ .AuthToken }}")
-            dumpEventsToFiles.set({{ .IsDebugEnabled }})
-            debug.set({{ .IsDebugEnabled }})
+            httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
+            authToken.set("{{ .Common.AuthToken }}")
+            dumpEventsToFiles.set({{ .Common.Debug }})
+            debug.set({{ .Common.Debug }})
 
-            providerName.set("{{ .Cache.Metadata.CIProvider }}")
+            providerName.set("{{ .Common.CIProvider }}")
 
             bitrise {
-                {{- if .AppSlug }}
-                appSlug.set("{{ .AppSlug }}")
+                {{- if .Common.AppSlug }}
+                appSlug.set("{{ .Common.AppSlug }}")
                 {{- end }}
             }
         }
     }
     {{- end }}
 }
-{{- if .TestDistro.Enabled }}
+{{- if eq .TestDistro.Usage "enabled" }}
 rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
         endpoint.set("{{ .TestDistro.Endpoint }}:{{ .TestDistro.Port }}")
         kvEndpoint.set("{{ .TestDistro.KvEndpoint }}:{{ .TestDistro.Port }}")
-        authToken.set("{{ .AuthToken }}")
+        authToken.set("{{ .Common.AuthToken }}")
         logLevel.set("{{ .TestDistro.LogLevel }}")
         bitrise {
-            appSlug.set("{{ .AppSlug }}")
+            appSlug.set("{{ .Common.AppSlug }}")
         }
     }
 
