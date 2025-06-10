@@ -47,7 +47,7 @@ func createKVClient(ctx context.Context,
 		ClientName:          params.ClientName,
 		AuthConfig:          params.AuthConfig,
 		Logger:              params.Logger,
-		CacheConfigMetadata: common.NewCacheConfigMetadata(params.EnvProvider, params.CommandFunc, params.Logger),
+		CacheConfigMetadata: common.NewMetadata(params.EnvProvider, params.CommandFunc, params.Logger),
 		CacheOperationID:    params.CacheOperationID,
 	})
 	if err != nil {

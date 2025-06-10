@@ -16,7 +16,7 @@ func TestReadAuthConfigFromEnvironments(t *testing.T) {
 		{
 			name:          "No envs specified",
 			envVars:       map[string]string{},
-			expectedError: errAuthTokenNotProvided,
+			expectedError: ErrAuthTokenNotProvided,
 		},
 		{
 			name: "Only BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN set",
@@ -45,14 +45,14 @@ func TestReadAuthConfigFromEnvironments(t *testing.T) {
 			envVars: map[string]string{
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN": "auth-token",
 			},
-			expectedError: errWorkspaceIDNotProvided,
+			expectedError: ErrWorkspaceIDNotProvided,
 		},
 		{
 			name: "Only BITRISE_BUILD_CACHE_WORKSPACE_ID set",
 			envVars: map[string]string{
 				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
 			},
-			expectedError: errAuthTokenNotProvided,
+			expectedError: ErrAuthTokenNotProvided,
 		},
 	}
 

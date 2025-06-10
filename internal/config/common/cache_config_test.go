@@ -200,10 +200,10 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := NewCacheConfigMetadata(tt.args.envProvider,
+			if got := NewMetadata(tt.args.envProvider,
 				tt.args.commandFunc,
 				log.NewLogger()); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewCacheConfigMetadata() = %v, want %v", got, tt.want)
+				t.Errorf("NewMetadata() = %v, want %v", got, tt.want)
 			}
 		})
 	}
