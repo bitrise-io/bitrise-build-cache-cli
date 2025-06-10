@@ -150,7 +150,7 @@ func Test_activateForGradleParams(t *testing.T) {
 					AuthToken: "WorkspaceIDValue:AuthTokenValue",
 				},
 				Cache: gradleconfig.CacheTemplateInventory{
-					Usage:               gradleconfig.UsageLevelDependency,
+					Usage:               gradleconfig.UsageLevelEnabled,
 					Version:             consts.GradleRemoteBuildCachePluginDepVersion,
 					EndpointURLWithPort: "EndpointValue",
 					IsPushEnabled:       true,

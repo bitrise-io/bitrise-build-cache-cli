@@ -29,9 +29,6 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		_ = os.MkdirAll(tmpGradleHomeDir, 0755)
 
 		propertyFilePath := filepath.Join(tmpGradleHomeDir, "gradle.properties")
-		os.Remove(propertyFilePath)
-		file, _ := os.Create(propertyFilePath)
-		defer file.Close()
 
 		return mockLogger, tmpGradleHomeDir, propertyFilePath
 	}
