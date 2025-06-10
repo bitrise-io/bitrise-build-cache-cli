@@ -245,7 +245,9 @@ func Test_activateForGradleParams(t *testing.T) {
 			},
 			want: gradleconfig.TemplateInventory{
 				Common: gradleconfig.PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
+					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
+					AppSlug:    "AppSlugValue",
+					CIProvider: "bitrise",
 				},
 				Cache: gradleconfig.CacheTemplateInventory{
 					Usage: gradleconfig.UsageLevelNone,
@@ -307,8 +309,10 @@ func Test_activateForGradleParams(t *testing.T) {
 			},
 			want: gradleconfig.TemplateInventory{
 				Common: gradleconfig.PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Debug:     true,
+					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
+					Debug:      true,
+					AppSlug:    "AppSlugValue",
+					CIProvider: "bitrise",
 				},
 				Cache: gradleconfig.CacheTemplateInventory{
 					Usage: gradleconfig.UsageLevelNone,

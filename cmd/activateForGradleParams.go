@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -117,7 +116,7 @@ func (params ActivateForGradleParams) commonTemplateInventory(
 	}
 	authToken := authConfig.TokenInGradleFormat()
 
-	cacheConfig := common.NewMetadata(os.Getenv,
+	cacheConfig := common.NewMetadata(envProvider,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output()
 
