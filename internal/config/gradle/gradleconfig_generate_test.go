@@ -189,6 +189,7 @@ settingsEvaluated {
             authToken.set("AuthTokenValue")
             dumpEventsToFiles.set(true)
             debug.set(true)
+            enabled.set(true)
 
             providerName.set("CIProviderValue")
 
