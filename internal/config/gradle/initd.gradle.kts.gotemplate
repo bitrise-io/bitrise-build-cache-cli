@@ -52,6 +52,7 @@ settingsEvaluated {
             authToken.set("{{ .Common.AuthToken }}")
             dumpEventsToFiles.set({{ .Common.Debug }})
             debug.set({{ .Common.Debug }})
+            enabled.set(true)
 
             providerName.set("{{ .Common.CIProvider }}")
 
