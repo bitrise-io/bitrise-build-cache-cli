@@ -4,11 +4,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        mavenCentral()
+        maven(url="https://plugins.gradle.org/m2/")
         google()
         maven(url="https://jitpack.io")
     }
     dependencies {
+        classpath("gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:latest.release")
         classpath("io.bitrise.gradle:remote-cache:{{ .CachePluginVersion }}")
         {{- if .IsAnalyticsEnabled }}
         classpath("io.bitrise.gradle:gradle-analytics:{{ .AnalyticsPluginVersion }}")
