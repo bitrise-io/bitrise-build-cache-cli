@@ -9,7 +9,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -98,16 +97,16 @@ func writeGradleInit(logger log.Logger, gradleHomePath string, endpointURL strin
 	return nil
 }
 
-func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
+func enableForGradleCmdFn(logger log.Logger, _ string, envProvider func(string) string) error {
 	logger.Infof("(i) Checking parameters")
 
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
-	if err != nil {
-		return fmt.Errorf("read auth config from environment variables: %w", err)
-	}
-	authToken := authConfig.TokenInGradleFormat()
+	// authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	// if err != nil {
+	//	return fmt.Errorf("read auth config from environment variables: %w", err)
+	// }
+	// authToken := authConfig.TokenInGradleFormat()
 
 	// Optional configs
 	// EndpointURL
@@ -134,38 +133,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		}, logger)
 	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
 
-	prefs := gradleconfig.Preferences{
-		IsDependencyOnly:     false,
-		IsPushEnabled:        paramIsPushEnabled,
-		CacheLevelValidation: gradleconfig.CacheValidationLevel(paramValidationLevel),
-		IsAnalyticsEnabled:   paramIsGradleMetricsEnabled,
-		IsDebugEnabled:       isDebugLogMode,
-	}
-	if err := writeGradleInit(logger, gradleHomePath, endpointURL, authToken, cacheConfigMetadata, prefs); err != nil {
-		return err
-	}
-
-	logger.Infof("(i) Write ~/.gradle/gradle.properties")
-	{
-		gradlePropertiesPath := filepath.Join(gradleHomePath, "gradle.properties")
-		currentGradlePropsFileContent, isGradlePropsExists, err := readFileIfExists(gradlePropertiesPath)
-		if err != nil {
-			return fmt.Errorf("check if gradle.properties exists at %s, error: %w", gradlePropertiesPath, err)
-		}
-		logger.Debugf("isGradlePropsExists: %t", isGradlePropsExists)
-
-		gradlePropertiesContent := stringmerge.ChangeContentInBlock(
-			currentGradlePropsFileContent,
-			"# [start] generated-by-bitrise-build-cache",
-			"# [end] generated-by-bitrise-build-cache",
-			"org.gradle.caching=true",
-		)
-
-		err = os.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosec,gomnd,mnd
-		if err != nil {
-			return fmt.Errorf("write gradle.properties to %s, error: %w", gradlePropertiesPath, err)
-		}
-	}
+	logger.Errorf("Bitrise plugins are not available in temporarily")
 
 	return nil
 }
