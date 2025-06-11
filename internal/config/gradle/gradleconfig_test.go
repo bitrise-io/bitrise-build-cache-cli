@@ -146,11 +146,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        mavenCentral()
+        maven(url="https://plugins.gradle.org/m2/")
         google()
         maven(url="https://jitpack.io")
     }
     dependencies {
+        classpath("gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:latest.release")
         classpath("io.bitrise.gradle:remote-cache:1.2.19")
         classpath("io.bitrise.gradle:gradle-analytics:2.1.28")
     }
@@ -201,11 +202,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        mavenCentral()
+        maven(url="https://plugins.gradle.org/m2/")
         google()
         maven(url="https://jitpack.io")
     }
     dependencies {
+        classpath("gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:latest.release")
         classpath("io.bitrise.gradle:remote-cache:1.2.19")
         classpath("io.bitrise.gradle:gradle-analytics:2.1.28")
     }
@@ -255,11 +257,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        mavenCentral()
+        maven(url="https://plugins.gradle.org/m2/")
         google()
         maven(url="https://jitpack.io")
     }
     dependencies {
+        classpath("gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:latest.release")
         classpath("io.bitrise.gradle:remote-cache:1.2.19")
     }
 }
@@ -289,11 +292,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        mavenCentral()
+        maven(url="https://plugins.gradle.org/m2/")
         google()
         maven(url="https://jitpack.io")
     }
     dependencies {
+        classpath("gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:latest.release")
         classpath("io.bitrise.gradle:remote-cache:1.2.19")
     }
 }
@@ -323,11 +327,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        mavenCentral()
+        maven(url="https://plugins.gradle.org/m2/")
         google()
         maven(url="https://jitpack.io")
     }
     dependencies {
+        classpath("gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:latest.release")
         classpath("io.bitrise.gradle:remote-cache:1.2.19")
     }
 }
