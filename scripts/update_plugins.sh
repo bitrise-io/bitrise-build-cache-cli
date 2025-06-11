@@ -2,7 +2,6 @@
 set -e
 
 VERSION_FILE="./internal/consts/consts.go"
-TEST_FILE="./internal/config/gradle/gradleconfig_test.go"
 
 SED_IN_PLACE_COMMAND=(-i)
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -45,7 +44,6 @@ update() {
         # Compare versions and update if the latest is greater
         if compare_versions "$current_version" "$latest_version"; then
             sed "${SED_IN_PLACE_COMMAND[@]}" "s/$dep_version_name = \".*\"/$dep_version_name = \"$latest_version\"/" "$VERSION_FILE"
-            sed "${SED_IN_PLACE_COMMAND[@]}" "s/classpath(\"io.bitrise.gradle:$artifact_name:.*\")/classpath(\"io.bitrise.gradle:$artifact_name:$latest_version\")/" "$TEST_FILE"
             echo "Updated to version $latest_version"
         else
             echo "No update needed. Current version ($current_version) is up-to-date or newer."
