@@ -90,8 +90,8 @@ func createCacheConfigMetadata(provider, repoURL string,
 	}
 }
 
-// NewCacheConfigMetadata creates a new CacheConfigMetadata instance based on the environment variables.
-func NewCacheConfigMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
+// NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
+func NewMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
 	hostMetadata := generateHostMetadata(envProvider, commandFunc, logger)
 
 	provider := detectCIProvider(envProvider)
