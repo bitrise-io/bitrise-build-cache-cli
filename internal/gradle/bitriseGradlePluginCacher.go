@@ -2,9 +2,7 @@ package gradle
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 
@@ -12,7 +10,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-var (
+const (
 	errFmtPluginsCache       = "failed to cache plugins: %w"
 	errFmtPluginsFromKVCache = "failed to download plugins from cache: %w"
 	errFmtPluginsToKVCache   = "failed to upload plugins to cache: %w"
@@ -42,50 +40,46 @@ func (pluginCacher BitrisePluginCacher) CachePlugins(
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
-			// Try to fetch from cache
-			if downloaded, err := pluginCacher.fetchFromCache(ctx, kvClient, plugin); err == nil {
-				if !downloaded {
-					logger.Debugf("(i) " + plugin.id + ":" + plugin.version + " fetched from kv cache")
-				} else {
-					logger.Debugf("(i) " + plugin.id + ":" + plugin.version + " was already in the local repository")
+			for _, file := range plugin.files() {
+				// Try to fetch from cache
+				if downloaded, err := pluginCacher.fetchFromCache(ctx, kvClient, file); err == nil {
+					if !downloaded {
+						logger.Debugf("(i) " + file.name() + " fetched from kv cache")
+					} else {
+						logger.Debugf("(i) " + file.name() + " was already in the local repository")
+					}
+
+					continue
 				}
-				return
-			}
 
-			// Try to download from artifact repositories
-			downloader := GradlePluginDownloader{
-				groupID:         bitriseGradlePluginGroup,
-				artifactID:      plugin.id,
-				artifactVersion: plugin.version,
-			}
-			sources, err := downloader.Download()
-			if err != nil {
-				errs = append(errs, err)
-				return
-			}
+				// Try to download from artifact repositories
+				downloader := PluginDownloader{logger: logger}
+				source, err := downloader.Download(file)
+				if err != nil {
+					errs = append(errs, err)
 
-			sourcesUsed := ""
-			for key := range sources {
-				if sourcesUsed != "" {
-					sourcesUsed += ", "
+					return
 				}
-				sourcesUsed += key
+
+				logger.Debugf("(i) " + file.name() + " fetched from artifact repositories: " + source)
+
+				// Upload to cache if fetched from repositories
+				if err := pluginCacher.cache(ctx, kvClient, file); err != nil {
+					errs = append(errs, err)
+
+					return
+				}
 			}
-
-			logger.Debugf("(i) " + plugin.id + ":" + plugin.version + " fetched from artifact repositories: " + sourcesUsed)
-
-			// Upload to cache if fetched from repositories
-			if err := pluginCacher.cache(ctx, kvClient, plugin); err != nil {
-				errs = append(errs, err)
-				return
-			}
-
 		}(plugin)
 	}
 
 	wg.Wait()
 
 	if len(errs) > 0 {
+		for _, err := range errs {
+			logger.Debugf("(i) error while caching plugins: %s", err.Error())
+		}
+
 		return fmt.Errorf(errFmtPluginsCache, errs[0])
 	}
 
@@ -95,31 +89,20 @@ func (pluginCacher BitrisePluginCacher) CachePlugins(
 func (pluginCacher BitrisePluginCacher) fetchFromCache(
 	ctx context.Context,
 	kvClient *kv.Client,
-	plugin BitriseGradlePlugin,
+	file PluginFile,
 ) (bool, error) {
-	home, err := os.UserHomeDir()
+	downloaded, err := kvClient.DownloadFile(
+		ctx,
+		filepath.Join(file.dir(), file.name()),
+		file.key(),
+		0,
+		true,
+		true,
+		false,
+	)
+
 	if err != nil {
-		home = os.Getenv("PWD")
-	}
-	destination := filepath.Join(home, ".m2", "repository")
-
-	var downloaded = false
-	for _, file := range plugin.files() {
-		neededFetch, err := kvClient.DownloadFile(
-			ctx,
-			filepath.Join(destination, file.path()),
-			file.key(),
-			0,
-			true,
-			true,
-			false,
-		)
-
-		downloaded = downloaded || neededFetch
-
-		if err != nil {
-			return downloaded, fmt.Errorf(errFmtPluginsFromKVCache, err)
-		}
+		return downloaded, fmt.Errorf(errFmtPluginsFromKVCache, err)
 	}
 
 	return downloaded, nil
@@ -128,24 +111,16 @@ func (pluginCacher BitrisePluginCacher) fetchFromCache(
 func (pluginCacher BitrisePluginCacher) cache(
 	ctx context.Context,
 	kvClient *kv.Client,
-	plugin BitriseGradlePlugin,
+	file PluginFile,
 ) error {
-	home, err := os.UserHomeDir()
+	err := kvClient.UploadFileToBuildCache(
+		ctx,
+		filepath.Join(file.dir(), file.name()),
+		file.key(),
+	)
+
 	if err != nil {
-		home = os.Getenv("PWD")
-	}
-	destination := filepath.Join(home, ".m2", "repository")
-
-	for _, file := range plugin.files() {
-		err := kvClient.UploadFileToBuildCache(
-			ctx,
-			filepath.Join(destination, file.path()),
-			file.key(),
-		)
-
-		if err != nil {
-			return fmt.Errorf(errFmtPluginsToKVCache, err)
-		}
+		return fmt.Errorf(errFmtPluginsToKVCache, err)
 	}
 
 	return nil

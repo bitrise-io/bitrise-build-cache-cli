@@ -2,6 +2,8 @@ package gradle
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
@@ -11,7 +13,7 @@ const (
 	bitriseGradlePluginGroup = "io.bitrise.gradle"
 )
 
-type GradlePluginFile struct {
+type PluginFile struct {
 	groupID    string
 	id         string
 	version    string
@@ -19,7 +21,7 @@ type GradlePluginFile struct {
 	extension  string
 }
 
-func (gf *GradlePluginFile) name() string {
+func (gf *PluginFile) name() string {
 	classifierPart := ""
 	if gf.classifier != "" {
 		classifierPart = "-" + gf.classifier
@@ -34,21 +36,29 @@ func (gf *GradlePluginFile) name() string {
 	)
 }
 
-func (gf *GradlePluginFile) path() string {
+func (gf *PluginFile) path() string {
 	groupPath := strings.ReplaceAll(gf.groupID, ".", "/")
 
 	return fmt.Sprintf(
-		"%s/%s/%s/%s",
+		"%s/%s/%s",
 		groupPath,
 		gf.id,
 		gf.version,
-		gf.name(),
 	)
 }
 
-func (gf *GradlePluginFile) key() string {
+func (gf *PluginFile) dir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = os.Getenv("PWD")
+	}
+
+	return filepath.Join(home, ".m2", "repository", gf.path())
+}
+
+func (gf *PluginFile) key() string {
 	return fmt.Sprintf(
-		"%s:%s",
+		"%s:%s-test",
 		gf.groupID,
 		gf.name(),
 	)
@@ -59,47 +69,45 @@ type BitriseGradlePlugin struct {
 	version string
 }
 
-func (plugin BitriseGradlePlugin) files() []GradlePluginFile {
-	return []GradlePluginFile{
+func (plugin BitriseGradlePlugin) files() []PluginFile {
+	return []PluginFile{
 		{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, extension: "jar"},
 		{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, extension: "module"},
 		{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, extension: "pom"},
-		//{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, classifier: "javadoc", extension: "jar"},
-		//{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, classifier: "sources", extension: "jar"},
 	}
 }
 
-func GradlePlugins() []BitriseGradlePlugin {
+func Plugins() []BitriseGradlePlugin {
 	return []BitriseGradlePlugin{
-		//GradlePluginCommon(),
-		GradlePluginAnalytics(),
-		GradlePluginCache(),
-		//gradlePluginTestDistro(),
+		PluginCommon(),
+		PluginAnalytics(),
+		PluginCache(),
+		PluginTestDistro(),
 	}
 }
 
-func GradlePluginCommon() BitriseGradlePlugin {
+func PluginCommon() BitriseGradlePlugin {
 	return BitriseGradlePlugin{
 		id:      "common",
 		version: consts.GradleCommonPluginDepVersion,
 	}
 }
 
-func GradlePluginAnalytics() BitriseGradlePlugin {
+func PluginAnalytics() BitriseGradlePlugin {
 	return BitriseGradlePlugin{
 		id:      "gradle-analytics",
 		version: consts.GradleAnalyticsPluginDepVersion,
 	}
 }
 
-func GradlePluginCache() BitriseGradlePlugin {
+func PluginCache() BitriseGradlePlugin {
 	return BitriseGradlePlugin{
 		id:      "remote-cache",
 		version: consts.GradleRemoteBuildCachePluginDepVersion,
 	}
 }
 
-func GradlePluginTestDistro() BitriseGradlePlugin {
+func PluginTestDistro() BitriseGradlePlugin {
 	return BitriseGradlePlugin{
 		id:      "test-distribution",
 		version: consts.GradleTestDistributionPluginDepVersion,

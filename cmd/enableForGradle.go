@@ -205,10 +205,10 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 	pluginCacher := gradle.BitrisePluginCacher{}
 
 	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, []gradle.BitriseGradlePlugin{
-		gradle.GradlePluginAnalytics(),
-		gradle.GradlePluginCache(),
+		gradle.PluginAnalytics(),
+		gradle.PluginCache(),
 	}); err != nil {
-		return err
+		return fmt.Errorf("caching plugins: %w", err)
 	}
 
 	return nil

@@ -5,65 +5,58 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"time"
+	"path/filepath"
 
-	"github.com/bitrise-io/go-utils/retry"
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/retryhttp"
 )
 
-var (
-	errFmtDownloading = "Error while downloading %w"
-	errFmtBadStatus   = "Bad status: %s"
-	errFmtCreateFile  = "Error while creating file %w"
-	errFmtWritingFile = "Error while writing file %w"
+const (
+	errFmtDownloading = "error while downloading: %w"
+	errFmtBadStatus   = "bad status: %s"
+	errFmtCreateFile  = "error while creating file: %w"
+	errFmtWritingFile = "error while writing file: %w"
 )
 
-type GradlePluginFileDownloader struct {
-	fileName      string
+const (
+	maxHTTPClientRetries = 3
+)
+
+type PluginFileDownloader struct {
+	file          PluginFile
 	repositoryURL string
-	downloadPath  string
+	logger        log.Logger
 }
 
-func (downloader GradlePluginFileDownloader) Download() error {
-	const retries = 3
-	const timeout = 30 * time.Second
+func (downloader PluginFileDownloader) Download() error {
+	httpClient := retryhttp.NewClient(downloader.logger)
+	httpClient.RetryMax = maxHTTPClientRetries
 
-	err := retry.
-		Times(retries).
-		Wait(timeout).
-		TryWithAbort(func(attempt uint) (error, bool) {
-			resp, err := http.Get(downloader.repositoryURL + "/" + downloader.fileName)
-			if err != nil {
-				return fmt.Errorf(errFmtDownloading, err), true
-			}
-			defer func(Body io.ReadCloser) {
-				if err := Body.Close(); err != nil {
-					fmt.Println("Error closing file reader")
-				}
-			}(resp.Body)
+	resp, err := httpClient.Get(downloader.repositoryURL + "/" + downloader.file.path() + "/" + downloader.file.name())
+	if err != nil {
+		return fmt.Errorf(errFmtDownloading, err)
+	}
+	defer resp.Body.Close()
 
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf(errFmtBadStatus, resp.Status), true
-			}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(errFmtBadStatus, resp.Status)
+	}
 
-			// Create the file
-			out, err := os.Create(downloader.downloadPath)
-			if err != nil {
-				return fmt.Errorf(errFmtCreateFile, err), true
-			}
-			defer func(out *os.File) {
-				if err := out.Close(); err != nil {
-					fmt.Println("Error closing file")
-				}
-			}(out)
+	// Create the file
+	if err := os.MkdirAll(downloader.file.dir(), os.ModePerm); err != nil {
+		return fmt.Errorf(errFmtCreateFile, err)
+	}
+	out, err := os.Create(filepath.Join(downloader.file.dir(), downloader.file.name()))
+	if err != nil {
+		return fmt.Errorf(errFmtCreateFile, err)
+	}
+	defer out.Close()
 
-			// Copy response body to file
-			_, err = io.Copy(out, resp.Body)
-			if err != nil {
-				return fmt.Errorf(errFmtWritingFile, err), true
-			}
+	// Copy response body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf(errFmtWritingFile, err)
+	}
 
-			return nil, false
-		})
-
-	return err
+	return nil
 }
