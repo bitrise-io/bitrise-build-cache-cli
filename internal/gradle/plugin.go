@@ -64,12 +64,12 @@ func (gf *PluginFile) key() string {
 	)
 }
 
-type BitriseGradlePlugin struct {
+type Plugin struct {
 	id      string
 	version string
 }
 
-func (plugin BitriseGradlePlugin) files() []PluginFile {
+func (plugin Plugin) files() []PluginFile {
 	return []PluginFile{
 		{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, extension: "jar"},
 		{groupID: bitriseGradlePluginGroup, id: plugin.id, version: plugin.version, extension: "module"},
@@ -77,8 +77,8 @@ func (plugin BitriseGradlePlugin) files() []PluginFile {
 	}
 }
 
-func Plugins() []BitriseGradlePlugin {
-	return []BitriseGradlePlugin{
+func Plugins() []Plugin {
+	return []Plugin{
 		PluginCommon(),
 		PluginAnalytics(),
 		PluginCache(),
@@ -86,29 +86,29 @@ func Plugins() []BitriseGradlePlugin {
 	}
 }
 
-func PluginCommon() BitriseGradlePlugin {
-	return BitriseGradlePlugin{
+func PluginCommon() Plugin {
+	return Plugin{
 		id:      "common",
 		version: consts.GradleCommonPluginDepVersion,
 	}
 }
 
-func PluginAnalytics() BitriseGradlePlugin {
-	return BitriseGradlePlugin{
+func PluginAnalytics() Plugin {
+	return Plugin{
 		id:      "gradle-analytics",
 		version: consts.GradleAnalyticsPluginDepVersion,
 	}
 }
 
-func PluginCache() BitriseGradlePlugin {
-	return BitriseGradlePlugin{
+func PluginCache() Plugin {
+	return Plugin{
 		id:      "remote-cache",
 		version: consts.GradleRemoteBuildCachePluginDepVersion,
 	}
 }
 
-func PluginTestDistro() BitriseGradlePlugin {
-	return BitriseGradlePlugin{
+func PluginTestDistro() Plugin {
+	return Plugin{
 		id:      "test-distribution",
 		version: consts.GradleTestDistributionPluginDepVersion,
 	}

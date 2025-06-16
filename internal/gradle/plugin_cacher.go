@@ -16,13 +16,13 @@ const (
 	errFmtPluginsToKVCache   = "failed to upload plugins to cache: %w"
 )
 
-type BitrisePluginCacher struct{}
+type PluginCacher struct{}
 
-func (pluginCacher BitrisePluginCacher) CachePlugins(
+func (pluginCacher PluginCacher) CachePlugins(
 	ctx context.Context,
 	kvClient *kv.Client,
 	logger log.Logger,
-	plugins []BitriseGradlePlugin,
+	plugins []Plugin,
 ) error {
 	var errs []error
 
@@ -36,7 +36,7 @@ func (pluginCacher BitrisePluginCacher) CachePlugins(
 
 		logger.Infof("(i) Fetching " + plugin.id + ":" + plugin.version)
 
-		go func(plugin BitriseGradlePlugin) {
+		go func(plugin Plugin) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
@@ -86,7 +86,7 @@ func (pluginCacher BitrisePluginCacher) CachePlugins(
 	return nil
 }
 
-func (pluginCacher BitrisePluginCacher) fetchFromCache(
+func (pluginCacher PluginCacher) fetchFromCache(
 	ctx context.Context,
 	kvClient *kv.Client,
 	file PluginFile,
@@ -108,7 +108,7 @@ func (pluginCacher BitrisePluginCacher) fetchFromCache(
 	return downloaded, nil
 }
 
-func (pluginCacher BitrisePluginCacher) cache(
+func (pluginCacher PluginCacher) cache(
 	ctx context.Context,
 	kvClient *kv.Client,
 	file PluginFile,

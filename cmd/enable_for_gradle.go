@@ -202,9 +202,9 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	pluginCacher := gradle.BitrisePluginCacher{}
+	pluginCacher := gradle.PluginCacher{}
 
-	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, []gradle.BitriseGradlePlugin{
+	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, []gradle.Plugin{
 		gradle.PluginAnalytics(),
 		gradle.PluginCache(),
 	}); err != nil {
