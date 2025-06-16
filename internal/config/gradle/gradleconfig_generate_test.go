@@ -116,6 +116,8 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
+        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
+        maven(url="https://plugins.gradle.org/m2/")
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
@@ -134,6 +136,8 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
+        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
+        maven(url="https://plugins.gradle.org/m2/")
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
@@ -155,6 +159,8 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
+        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
+        maven(url="https://plugins.gradle.org/m2/")
         mavenCentral()
         google()
         maven(url="https://jitpack.io")
