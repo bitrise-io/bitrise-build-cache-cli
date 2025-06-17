@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,9 +10,11 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +45,7 @@ If it already exists a "# [start/end] generated-by-bitrise-build-cache" block wi
 If the "# [start/end] generated-by-bitrise-build-cache" block is already present in the file then only the block's content will be modified.
 `,
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
@@ -51,6 +54,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
 		if err != nil {
 			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
+		}
+
+		if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
+			return fmt.Errorf("failed to fetch plugins: %w", err)
 		}
 
 		//
@@ -165,6 +172,43 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		if err != nil {
 			return fmt.Errorf("write gradle.properties to %s, error: %w", gradlePropertiesPath, err)
 		}
+	}
+
+	return nil
+}
+
+func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string) string) error {
+	// Required configs
+	logger.Infof("(i) Check Auth Config")
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	if err != nil {
+		return fmt.Errorf("read auth config from environment variables: %w", err)
+	}
+
+	kvClient, err := createKVClient(ctx,
+		CreateKVClientParams{
+			CacheOperationID: uuid.NewString(),
+			ClientName:       ClientNameGradleConfigCache,
+			AuthConfig:       authConfig,
+			EnvProvider:      envProvider,
+			CommandFunc: func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output()
+
+				return string(output), err
+			},
+			Logger: logger,
+		})
+	if err != nil {
+		return fmt.Errorf("create kv client: %w", err)
+	}
+
+	pluginCacher := gradle.PluginCacher{}
+
+	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, []gradle.Plugin{
+		gradle.PluginAnalytics(),
+		gradle.PluginCache(),
+	}); err != nil {
+		return fmt.Errorf("caching plugins: %w", err)
 	}
 
 	return nil
