@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -14,7 +16,7 @@ import (
 )
 
 const (
-    gradleHomeNonExpanded = "~/.gradle"
+	gradleHomeNonExpanded   = "~/.gradle"
 	FmtErrorEnableForGradle = "adding Gradle plugins failed: %w"
 )
 
@@ -131,10 +133,7 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 
 	pluginCacher := gradle.PluginCacher{}
 
-	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, []gradle.Plugin{
-		gradle.PluginAnalytics(),
-		gradle.PluginCache(),
-	}); err != nil {
+	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, gradle.Plugins()); err != nil {
 		return fmt.Errorf("caching plugins: %w", err)
 	}
 

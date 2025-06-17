@@ -25,7 +25,7 @@ If it already exists a "# [start/end] generated-by-bitrise-build-cache" block wi
 If the "# [start/end] generated-by-bitrise-build-cache" block is already present in the file then only the block's content will be modified.
 `,
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Activate Bitrise plugins for Gradle")
@@ -33,6 +33,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
 		if err != nil {
 			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
+		}
+
+		if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
+			return fmt.Errorf("failed to fetch plugins: %w", err)
 		}
 
 		if err := activateForGradleCmdFn(
