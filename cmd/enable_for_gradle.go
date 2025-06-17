@@ -57,7 +57,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
-			return fmt.Errorf("failed to fetch plugins: %w", err)
+			logger.TWarnf("failed to prefetch plugins: %w", err)
 		}
 
 		//
