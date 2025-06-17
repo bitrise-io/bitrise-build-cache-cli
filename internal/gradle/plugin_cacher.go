@@ -32,11 +32,11 @@ func (pluginCacher PluginCacher) CachePlugins(
 	semaphore := make(chan struct{}, 4) // Limit parallelization
 	for _, plugin := range plugins {
 		wg.Add(1)
-		semaphore <- struct{}{}
 
 		logger.Infof("(i) Fetching " + plugin.id + ":" + plugin.version)
 
 		go func(plugin Plugin) {
+			semaphore <- struct{}{}
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release a slot in the semaphore
 
@@ -93,7 +93,7 @@ func (pluginCacher PluginCacher) fetchFromCache(
 ) (bool, error) {
 	downloaded, err := kvClient.DownloadFile(
 		ctx,
-		filepath.Join(file.dir(), file.name()),
+		filepath.Join(file.absoluteDirPath(), file.name()),
 		file.key(),
 		0,
 		true,
@@ -115,7 +115,7 @@ func (pluginCacher PluginCacher) cache(
 ) error {
 	err := kvClient.UploadFileToBuildCache(
 		ctx,
-		filepath.Join(file.dir(), file.name()),
+		filepath.Join(file.absoluteDirPath(), file.name()),
 		file.key(),
 	)
 

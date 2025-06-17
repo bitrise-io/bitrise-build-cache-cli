@@ -36,7 +36,7 @@ func (gf *PluginFile) name() string {
 	)
 }
 
-func (gf *PluginFile) path() string {
+func (gf *PluginFile) dirPath() string {
 	groupPath := strings.ReplaceAll(gf.groupID, ".", "/")
 
 	return fmt.Sprintf(
@@ -47,18 +47,18 @@ func (gf *PluginFile) path() string {
 	)
 }
 
-func (gf *PluginFile) dir() string {
+func (gf *PluginFile) absoluteDirPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = os.Getenv("PWD")
 	}
 
-	return filepath.Join(home, ".m2", "repository", gf.path())
+	return filepath.Join(home, ".m2", "repository", gf.dirPath())
 }
 
 func (gf *PluginFile) key() string {
 	return fmt.Sprintf(
-		"%s:%s-test",
+		"%s:%s",
 		gf.groupID,
 		gf.name(),
 	)
