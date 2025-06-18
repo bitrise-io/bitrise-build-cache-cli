@@ -47,3 +47,17 @@ type TemplateInventory struct {
 	Analytics  AnalyticsTemplateInventory
 	TestDistro TestDistroTemplateInventory
 }
+
+func (inventory TemplateInventory) HasDependencies() bool {
+	if inventory.Analytics.Usage == UsageLevelDependency || inventory.Analytics.Usage == UsageLevelEnabled {
+		return true
+	}
+	if inventory.Cache.Usage == UsageLevelDependency || inventory.Cache.Usage == UsageLevelEnabled {
+		return true
+	}
+	if inventory.TestDistro.Usage == UsageLevelDependency || inventory.TestDistro.Usage == UsageLevelEnabled {
+		return true
+	}
+
+	return false
+}

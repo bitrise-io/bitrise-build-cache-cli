@@ -110,68 +110,42 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
-const expectedNoPluginActivated = `import io.bitrise.gradle.cache.BitriseBuildCache
-import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+const expectedImports = `import io.bitrise.gradle.cache.BitriseBuildCache
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`
 
-initscript {
-    repositories {
+const expectedRepositories = `    repositories {
         mavenLocal()
-        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
-        maven(url="https://plugins.gradle.org/m2/")
+        maven {
+            name = "artifactRegistry"
+            url = uri("https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
+        }
+        maven {
+            name = "gradlePlugins"
+            url = uri("https://plugins.gradle.org/m2/")
+        }
         mavenCentral()
         google()
-        maven(url="https://jitpack.io")
-    }
-    dependencies {
-    }
-}
+        maven {
+            name = "jitpackIO"
+            url = uri("https://jitpack.io")
+        }
+    }`
 
-settingsEvaluated {
-}
-`
-
-const expectedDepOnlyPlugins = `import io.bitrise.gradle.cache.BitriseBuildCache
-import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
-
-initscript {
-    repositories {
-        mavenLocal()
-        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
-        maven(url="https://plugins.gradle.org/m2/")
-        mavenCentral()
-        google()
-        maven(url="https://jitpack.io")
-    }
-    dependencies {
+const expectedDependencies = `    dependencies {
         classpath("io.bitrise.gradle:gradle-analytics:AnalyticsVersionValue")
         classpath("io.bitrise.gradle:remote-cache:CacheVersionValue")
         classpath("io.bitrise.gradle:test-distribution:TestDistroVersionValue")
-    }
-}
+    }`
 
-settingsEvaluated {
-}
-`
+const expectedNoPluginActivated = "\ninitscript {\n" + expectedRepositories + "\n}"
 
-const expectedAllPlugins = `import io.bitrise.gradle.cache.BitriseBuildCache
-import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
+const expectedDepOnlyPlugins = "\ninitscript {\n" + expectedRepositories + "\n" + expectedDependencies + "\n}"
 
-initscript {
-    repositories {
-        mavenLocal()
-        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
-        maven(url="https://plugins.gradle.org/m2/")
-        mavenCentral()
-        google()
-        maven(url="https://jitpack.io")
-    }
-    dependencies {
-        classpath("io.bitrise.gradle:gradle-analytics:AnalyticsVersionValue")
-        classpath("io.bitrise.gradle:remote-cache:CacheVersionValue")
-        classpath("io.bitrise.gradle:test-distribution:TestDistroVersionValue")
-    }
-}
-
+const expectedAllPlugins = expectedImports +
+	"\n\ninitscript {\n" +
+	expectedRepositories + "\n" +
+	expectedDependencies + "\n}" +
+	`
 settingsEvaluated {
     buildCache {
         local {
@@ -185,6 +159,7 @@ settingsEvaluated {
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
+            collectMetadata = false
         }
     }
     rootProject {
@@ -217,5 +192,4 @@ rootProject {
     }
 
     apply<io.bitrise.gradle.rbe.RBEPlugin>()
-}
-`
+}`

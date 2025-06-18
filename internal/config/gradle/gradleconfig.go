@@ -78,7 +78,11 @@ type TemplateProxy struct {
 func DefaultTemplateProxy() TemplateProxy {
 	return TemplateProxy{
 		parse: func(name string, templateText string) (*template.Template, error) {
-			return template.New(name).Parse(templateText)
+			funcMap := template.FuncMap{
+				"hasDependencies": TemplateInventory.HasDependencies,
+			}
+
+			return template.New(name).Funcs(funcMap).Parse(templateText)
 		},
 		execute: func(template *template.Template, buffer *bytes.Buffer, inventory TemplateInventory) error {
 			return template.Execute(buffer, inventory)
