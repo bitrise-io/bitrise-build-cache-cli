@@ -2,6 +2,7 @@
 package gradleconfig
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -181,7 +182,7 @@ func Test_activateForGradleParams(t *testing.T) {
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 			},
-			wantErr: fmt.Errorf(errFmtCacheConfigCreation, errInvalidCacheLevel).Error(),
+			wantErr: fmt.Errorf(errFmtCacheConfigCreation, errors.New(errFmtInvalidCacheLevel)).Error(),
 		},
 		{
 			name: "activate analytics",
@@ -281,7 +282,7 @@ func Test_activateForGradleParams(t *testing.T) {
 				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 				"BITRISE_IO":                       "true",
 			},
-			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errTestDistroAppSlug).Error(),
+			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroAppSlug)).Error(),
 		},
 		{
 			name:  "activate plugins with debug mode",

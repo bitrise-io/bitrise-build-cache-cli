@@ -10,13 +10,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-//nolint:gochecknoglobals
-var (
-	errInvalidCacheLevel = errors.New("invalid cache validation level, valid options: none, warning, error")
-	errTestDistroAppSlug = errors.New("test distribution plugin was enabled but no BITRISE_APP_SLUG was specified")
-)
-
 const (
+	errFmtInvalidCacheLevel        = "invalid cache validation level, valid options: none, warning, error"
+	errFmtTestDistroAppSlug        = "test distribution plugin was enabled but no BITRISE_APP_SLUG was specified"
 	ErrFmtReadAutConfig            = "read auth config from environment variables: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
@@ -164,7 +160,7 @@ func (params ActivateForGradleParams) cacheTemplateInventory(
 		params.Cache.ValidationLevel != string(CacheValidationLevelError) {
 		logger.Errorf(errFmtInvalidValidationLevel, params.Cache.ValidationLevel)
 
-		return CacheTemplateInventory{}, errInvalidCacheLevel
+		return CacheTemplateInventory{}, errors.New(errFmtInvalidCacheLevel)
 	}
 
 	return CacheTemplateInventory{
@@ -233,7 +229,7 @@ func (params ActivateForGradleParams) testDistroTemplateInventory(
 
 	appSlug := envProvider("BITRISE_APP_SLUG")
 	if len(appSlug) < 1 {
-		return TestDistroTemplateInventory{}, errTestDistroAppSlug
+		return TestDistroTemplateInventory{}, errors.New(errFmtTestDistroAppSlug)
 	}
 
 	logLevel := "warning"
