@@ -52,7 +52,7 @@ sort -Vr | while read -r step_version; do
   cd ../bitrise-build-cache-cli
   git checkout "$cli_version"
 
-  go run main.go activate-for gradle --cache --test-distribution
+  go run main.go activate gradle --cache --test-distribution
 
   if [ ! -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" ]; then
     echo "Gradle build cache not enabled in $HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts"
