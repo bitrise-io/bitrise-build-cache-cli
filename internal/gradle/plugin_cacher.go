@@ -42,8 +42,8 @@ func (pluginCacher PluginCacher) CachePlugins(
 
 			for _, file := range plugin.files() {
 				// Try to fetch from cache
-				if downloaded, err := pluginCacher.fetchFromCache(ctx, kvClient, file); err == nil {
-					if !downloaded {
+				if skipped, err := pluginCacher.fetchFromCache(ctx, kvClient, file, logger); err == nil {
+					if !skipped {
 						logger.Debugf("(i) " + file.name() + " fetched from kv cache")
 					} else {
 						logger.Debugf("(i) " + file.name() + " was already in the local repository")
@@ -64,7 +64,7 @@ func (pluginCacher PluginCacher) CachePlugins(
 				logger.Debugf("(i) " + file.name() + " fetched from artifact repositories: " + source)
 
 				// Upload to cache if fetched from repositories
-				if err := pluginCacher.cache(ctx, kvClient, file); err != nil {
+				if err := pluginCacher.cache(ctx, kvClient, file, logger); err != nil {
 					errs = append(errs, err)
 
 					return
@@ -90,10 +90,11 @@ func (pluginCacher PluginCacher) fetchFromCache(
 	ctx context.Context,
 	kvClient *kv.Client,
 	file PluginFile,
+	logger log.Logger,
 ) (bool, error) {
 	downloaded, err := kvClient.DownloadFile(
 		ctx,
-		filepath.Join(file.absoluteDirPath(), file.name()),
+		filepath.Join(file.absoluteDirPath(logger), file.name()),
 		file.key(),
 		0,
 		true,
@@ -112,10 +113,11 @@ func (pluginCacher PluginCacher) cache(
 	ctx context.Context,
 	kvClient *kv.Client,
 	file PluginFile,
+	logger log.Logger,
 ) error {
 	err := kvClient.UploadFileToBuildCache(
 		ctx,
-		filepath.Join(file.absoluteDirPath(), file.name()),
+		filepath.Join(file.absoluteDirPath(logger), file.name()),
 		file.key(),
 	)
 

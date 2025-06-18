@@ -43,10 +43,10 @@ func (downloader PluginFileDownloader) Download() error {
 	}
 
 	// Create the file
-	if err := os.MkdirAll(downloader.file.absoluteDirPath(), os.ModePerm); err != nil {
+	if err := os.MkdirAll(downloader.file.absoluteDirPath(downloader.logger), os.ModePerm); err != nil {
 		return fmt.Errorf(errFmtCreateFile, err)
 	}
-	out, err := os.Create(filepath.Join(downloader.file.absoluteDirPath(), downloader.file.name()))
+	out, err := os.Create(filepath.Join(downloader.file.absoluteDirPath(downloader.logger), downloader.file.name()))
 	if err != nil {
 		return fmt.Errorf(errFmtCreateFile, err)
 	}
