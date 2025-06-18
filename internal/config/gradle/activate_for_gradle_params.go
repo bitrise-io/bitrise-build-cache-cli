@@ -47,9 +47,6 @@ type ActivateForGradleParams struct {
 	TestDistro TestDistroParams
 }
 
-//nolint:gochecknoglobals
-var GlobalActivateForGradleParams = DefaultActivateForGradleParams()
-
 func DefaultActivateForGradleParams() ActivateForGradleParams {
 	return ActivateForGradleParams{
 		Cache: CacheParams{

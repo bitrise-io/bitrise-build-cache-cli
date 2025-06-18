@@ -47,7 +47,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			logger,
 			gradleHome,
 			os.Getenv,
-			gradleconfig.GlobalActivateForGradleParams.TemplateInventory,
+			activateForGradleParams.TemplateInventory,
 			func(inventory gradleconfig.TemplateInventory,
 				logger log.Logger,
 				path string,
@@ -67,19 +67,22 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 	},
 }
 
+//nolint:gochecknoglobals
+var activateForGradleParams = gradleconfig.DefaultActivateForGradleParams()
+
 func init() {
 	activateCmd.AddCommand(activateForGradleCmd)
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Cache.Enabled, "cache", gradleconfig.GlobalActivateForGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Cache.JustDependency, "cache-dep", gradleconfig.GlobalActivateForGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Cache.PushEnabled, "cache-push", gradleconfig.GlobalActivateForGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
-	activateForGradleCmd.Flags().StringVar(&gradleconfig.GlobalActivateForGradleParams.Cache.ValidationLevel, "cache-validation", gradleconfig.GlobalActivateForGradleParams.Cache.ValidationLevel, "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
-	activateForGradleCmd.Flags().StringVar(&gradleconfig.GlobalActivateForGradleParams.Cache.Endpoint, "cache-endpoint", gradleconfig.GlobalActivateForGradleParams.Cache.Endpoint, "The endpoint can be manually provided here for caching operations.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.Enabled, "cache", activateForGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.JustDependency, "cache-dep", activateForGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.PushEnabled, "cache-push", activateForGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
+	activateForGradleCmd.Flags().StringVar(&activateForGradleParams.Cache.ValidationLevel, "cache-validation", activateForGradleParams.Cache.ValidationLevel, "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
+	activateForGradleCmd.Flags().StringVar(&activateForGradleParams.Cache.Endpoint, "cache-endpoint", activateForGradleParams.Cache.Endpoint, "The endpoint can be manually provided here for caching operations.")
 
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Analytics.Enabled, "analytics", gradleconfig.GlobalActivateForGradleParams.Analytics.Enabled, "Activate analytics plugin. Will override analytics-dep.")
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Analytics.JustDependency, "analytics-dep", gradleconfig.GlobalActivateForGradleParams.Analytics.JustDependency, "Add analytics plugin as a dependency only.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Analytics.Enabled, "analytics", activateForGradleParams.Analytics.Enabled, "Activate analytics plugin. Will override analytics-dep.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Analytics.JustDependency, "analytics-dep", activateForGradleParams.Analytics.JustDependency, "Add analytics plugin as a dependency only.")
 
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.TestDistro.Enabled, "test-distribution", gradleconfig.GlobalActivateForGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
-	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.TestDistro.JustDependency, "test-distribution-dep", gradleconfig.GlobalActivateForGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.TestDistro.Enabled, "test-distribution", activateForGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
+	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateForGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 }
 
 func activateForGradleCmdFn(
@@ -105,7 +108,7 @@ func activateForGradleCmdFn(
 		return err
 	}
 
-	if err := updater.UpdateGradleProps(gradleconfig.GlobalActivateForGradleParams, logger, gradleHomePath); err != nil {
+	if err := updater.UpdateGradleProps(activateForGradleParams, logger, gradleHomePath); err != nil {
 		return fmt.Errorf(errFmtFailedToUpdateProps, err)
 	}
 
