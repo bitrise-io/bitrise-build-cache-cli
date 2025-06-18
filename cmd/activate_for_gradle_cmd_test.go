@@ -181,9 +181,12 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			t,
 			err,
 			fmt.Errorf(
-				gradleconfig.ErrFmtGradlePropertyWrite,
-				"~/.gradle/gradle.properties",
-				gradlePropertiesUpdateError,
+				errFmtFailedToUpdateProps,
+				fmt.Errorf(
+					gradleconfig.ErrFmtGradlePropertyWrite,
+					"~/.gradle/gradle.properties",
+					gradlePropertiesUpdateError,
+				),
 			).Error(),
 		)
 	})
