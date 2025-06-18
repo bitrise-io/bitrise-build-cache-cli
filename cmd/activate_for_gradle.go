@@ -48,13 +48,16 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			gradleHome,
 			os.Getenv,
 			activateForGradleParams.TemplateInventory,
-			func(inventory gradleconfig.TemplateInventory,
-				logger log.Logger,
+			func(
+				inventory gradleconfig.TemplateInventory,
 				path string,
-				osProxy gradleconfig.OsProxy,
-				templateProxy gradleconfig.TemplateProxy,
 			) error {
-				return inventory.WriteToGradleInit(logger, path, osProxy, templateProxy)
+				return inventory.WriteToGradleInit(
+					logger,
+					path,
+					gradleconfig.DefaultOsProxy(),
+					gradleconfig.DefaultTemplateProxy(),
+				)
 			},
 			gradleconfig.DefaultGradlePropertiesUpdater(),
 		); err != nil {
@@ -90,7 +93,7 @@ func activateForGradleCmdFn(
 	gradleHomePath string,
 	envProvider func(string) string,
 	templateInventoryProvider func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error),
-	templateWriter func(gradleconfig.TemplateInventory, log.Logger, string, gradleconfig.OsProxy, gradleconfig.TemplateProxy) error,
+	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 ) error {
 	templateInventory, err := templateInventoryProvider(logger, envProvider, isDebugLogMode)
@@ -100,10 +103,7 @@ func activateForGradleCmdFn(
 
 	if err := templateWriter(
 		templateInventory,
-		logger,
 		gradleHomePath,
-		gradleconfig.DefaultOsProxy(),
-		gradleconfig.DefaultTemplateProxy(),
 	); err != nil {
 		return err
 	}

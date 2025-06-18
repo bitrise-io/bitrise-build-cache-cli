@@ -48,10 +48,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			},
 			func(
 				inventory gradleconfig.TemplateInventory,
-				_ log.Logger,
 				_ string,
-				_ gradleconfig.OsProxy,
-				_ gradleconfig.TemplateProxy,
 			) error {
 				actualTemplateInventory = &inventory
 
@@ -89,10 +86,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			},
 			func(
 				gradleconfig.TemplateInventory,
-				log.Logger,
 				string,
-				gradleconfig.OsProxy,
-				gradleconfig.TemplateProxy,
 			) error {
 				return nil
 			},
@@ -124,10 +118,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			},
 			func(
 				gradleconfig.TemplateInventory,
-				log.Logger,
 				string,
-				gradleconfig.OsProxy,
-				gradleconfig.TemplateProxy,
 			) error {
 				return templateWriteError
 			},
@@ -159,10 +150,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			},
 			func(
 				gradleconfig.TemplateInventory,
-				log.Logger,
 				string,
-				gradleconfig.OsProxy,
-				gradleconfig.TemplateProxy,
 			) error {
 				return nil
 			},
