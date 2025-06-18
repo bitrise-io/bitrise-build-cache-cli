@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -37,7 +38,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		err := enableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(errFmtReadAutConfig, common.ErrAuthTokenNotProvided)).Error())
+		require.EqualError(t, err, fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAutConfig, common.ErrAuthTokenNotProvided)).Error())
 	})
 
 	t.Run("Envs specified", func(t *testing.T) {

@@ -1,4 +1,4 @@
-package cmd
+package gradleconfig
 
 import (
 	"errors"
@@ -6,7 +6,6 @@ import (
 	"os/exec"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -15,13 +14,13 @@ import (
 var (
 	errInvalidCacheLevel = errors.New("invalid cache validation level, valid options: none, warning, error")
 	errTestDistroAppSlug = errors.New("test distribution plugin was enabled but no BITRISE_APP_SLUG was specified")
+)
 
-	errFmtReadAutConfig            = "read auth config from environment variables: %w"
+const (
+	ErrFmtReadAutConfig            = "read auth config from environment variables: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
 	errFmtInvalidValidationLevel   = "invalid validation level: '%s'"
-	errFmtGradlePropertiesCheck    = "check if gradle.properties exists at %s, error: %w"
-	errFmtGradlePropertyWrite      = "write gradle.properties to %s, error: %w"
 )
 
 type CacheParams struct {
@@ -49,7 +48,7 @@ type ActivateForGradleParams struct {
 }
 
 //nolint:gochecknoglobals
-var activateForGradleParams = DefaultActivateForGradleParams()
+var GlobalActivateForGradleParams = DefaultActivateForGradleParams()
 
 func DefaultActivateForGradleParams() ActivateForGradleParams {
 	return ActivateForGradleParams{
@@ -57,7 +56,7 @@ func DefaultActivateForGradleParams() ActivateForGradleParams {
 			Enabled:         false,
 			JustDependency:  false,
 			PushEnabled:     false,
-			ValidationLevel: string(gradleconfig.CacheValidationLevelWarning),
+			ValidationLevel: string(CacheValidationLevelWarning),
 		},
 		Analytics: AnalyticsParams{
 			Enabled:        true,
@@ -70,30 +69,31 @@ func DefaultActivateForGradleParams() ActivateForGradleParams {
 	}
 }
 
-func (params ActivateForGradleParams) templateInventory(
+func (params ActivateForGradleParams) TemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
-) (gradleconfig.TemplateInventory, error) {
+	isDebug bool,
+) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
-	commonInventory, err := params.commonTemplateInventory(logger, envProvider)
+	commonInventory, err := params.commonTemplateInventory(logger, envProvider, isDebug)
 	if err != nil {
-		return gradleconfig.TemplateInventory{}, err
+		return TemplateInventory{}, err
 	}
 
 	cacheInventory, err := params.cacheTemplateInventory(logger, envProvider)
 	if err != nil {
-		return gradleconfig.TemplateInventory{}, fmt.Errorf(errFmtCacheConfigCreation, err)
+		return TemplateInventory{}, fmt.Errorf(errFmtCacheConfigCreation, err)
 	}
 
 	analyticsInventory := params.analyticsTemplateInventory(logger)
 
-	testDistroInventory, err := params.testDistroTemplateInventory(logger, envProvider)
+	testDistroInventory, err := params.testDistroTemplateInventory(logger, envProvider, isDebug)
 	if err != nil {
-		return gradleconfig.TemplateInventory{}, fmt.Errorf(errFmtTestDistroConfigCreation, err)
+		return TemplateInventory{}, fmt.Errorf(errFmtTestDistroConfigCreation, err)
 	}
 
-	return gradleconfig.TemplateInventory{
+	return TemplateInventory{
 		Common:     commonInventory,
 		Cache:      cacheInventory,
 		Analytics:  analyticsInventory,
@@ -104,15 +104,16 @@ func (params ActivateForGradleParams) templateInventory(
 func (params ActivateForGradleParams) commonTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
-) (gradleconfig.PluginCommonTemplateInventory, error) {
-	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
+	isDebug bool,
+) (PluginCommonTemplateInventory, error) {
+	logger.Infof("(i) Debug mode and verbose logs: %t", isDebug)
 
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
-		return gradleconfig.PluginCommonTemplateInventory{},
-			fmt.Errorf(errFmtReadAutConfig, err)
+		return PluginCommonTemplateInventory{},
+			fmt.Errorf(ErrFmtReadAutConfig, err)
 	}
 	authToken := authConfig.TokenInGradleFormat()
 
@@ -125,9 +126,9 @@ func (params ActivateForGradleParams) commonTemplateInventory(
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
-	return gradleconfig.PluginCommonTemplateInventory{
+	return PluginCommonTemplateInventory{
 		AuthToken:  authToken,
-		Debug:      isDebugLogMode,
+		Debug:      isDebug,
 		AppSlug:    cacheConfig.BitriseAppID,
 		CIProvider: cacheConfig.CIProvider,
 	}, nil
@@ -136,41 +137,41 @@ func (params ActivateForGradleParams) commonTemplateInventory(
 func (params ActivateForGradleParams) cacheTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
-) (gradleconfig.CacheTemplateInventory, error) {
+) (CacheTemplateInventory, error) {
 	if !params.Cache.JustDependency && !params.Cache.Enabled {
-		logger.Infof("(i) Cache plugin usage: %+v", gradleconfig.UsageLevelNone)
+		logger.Infof("(i) Cache plugin usage: %+v", UsageLevelNone)
 
-		return gradleconfig.CacheTemplateInventory{
-			Usage: gradleconfig.UsageLevelNone,
+		return CacheTemplateInventory{
+			Usage: UsageLevelNone,
 		}, nil
 	}
 
 	if params.Cache.JustDependency && !params.Cache.Enabled {
-		logger.Infof("(i) Cache plugin usage: %+v", gradleconfig.UsageLevelDependency)
+		logger.Infof("(i) Cache plugin usage: %+v", UsageLevelDependency)
 
-		return gradleconfig.CacheTemplateInventory{
-			Usage:   gradleconfig.UsageLevelDependency,
+		return CacheTemplateInventory{
+			Usage:   UsageLevelDependency,
 			Version: consts.GradleRemoteBuildCachePluginDepVersion,
 		}, nil
 	}
 
-	logger.Infof("(i) Cache plugin usage: %+v", gradleconfig.UsageLevelEnabled)
+	logger.Infof("(i) Cache plugin usage: %+v", UsageLevelEnabled)
 
 	cacheEndpointURL := common.SelectCacheEndpointURL(params.Cache.Endpoint, envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", cacheEndpointURL)
 	logger.Infof("(i) Push new cache entries: %t", params.Cache.PushEnabled)
 	logger.Infof("(i) Cache entry validation level: %s", params.Cache.ValidationLevel)
 
-	if params.Cache.ValidationLevel != string(gradleconfig.CacheValidationLevelNone) &&
-		params.Cache.ValidationLevel != string(gradleconfig.CacheValidationLevelWarning) &&
-		params.Cache.ValidationLevel != string(gradleconfig.CacheValidationLevelError) {
+	if params.Cache.ValidationLevel != string(CacheValidationLevelNone) &&
+		params.Cache.ValidationLevel != string(CacheValidationLevelWarning) &&
+		params.Cache.ValidationLevel != string(CacheValidationLevelError) {
 		logger.Errorf(errFmtInvalidValidationLevel, params.Cache.ValidationLevel)
 
-		return gradleconfig.CacheTemplateInventory{}, errInvalidCacheLevel
+		return CacheTemplateInventory{}, errInvalidCacheLevel
 	}
 
-	return gradleconfig.CacheTemplateInventory{
-		Usage:               gradleconfig.UsageLevelEnabled,
+	return CacheTemplateInventory{
+		Usage:               UsageLevelEnabled,
 		Version:             consts.GradleRemoteBuildCachePluginDepVersion,
 		EndpointURLWithPort: cacheEndpointURL,
 		IsPushEnabled:       params.Cache.PushEnabled,
@@ -180,28 +181,28 @@ func (params ActivateForGradleParams) cacheTemplateInventory(
 
 func (params ActivateForGradleParams) analyticsTemplateInventory(
 	logger log.Logger,
-) gradleconfig.AnalyticsTemplateInventory {
+) AnalyticsTemplateInventory {
 	if !params.Analytics.JustDependency && !params.Analytics.Enabled {
-		logger.Infof("(i) Analytics plugin usage: %+v", gradleconfig.UsageLevelNone)
+		logger.Infof("(i) Analytics plugin usage: %+v", UsageLevelNone)
 
-		return gradleconfig.AnalyticsTemplateInventory{
-			Usage: gradleconfig.UsageLevelNone,
+		return AnalyticsTemplateInventory{
+			Usage: UsageLevelNone,
 		}
 	}
 
 	if params.Analytics.JustDependency && !params.Analytics.Enabled {
-		logger.Infof("(i) Analytics plugin usage: %+v", gradleconfig.UsageLevelDependency)
+		logger.Infof("(i) Analytics plugin usage: %+v", UsageLevelDependency)
 
-		return gradleconfig.AnalyticsTemplateInventory{
-			Usage:   gradleconfig.UsageLevelDependency,
+		return AnalyticsTemplateInventory{
+			Usage:   UsageLevelDependency,
 			Version: consts.GradleAnalyticsPluginDepVersion,
 		}
 	}
 
-	logger.Infof("(i) Analytics plugin usage: %+v", gradleconfig.UsageLevelEnabled)
+	logger.Infof("(i) Analytics plugin usage: %+v", UsageLevelEnabled)
 
-	return gradleconfig.AnalyticsTemplateInventory{
-		Usage:        gradleconfig.UsageLevelEnabled,
+	return AnalyticsTemplateInventory{
+		Usage:        UsageLevelEnabled,
 		Version:      consts.GradleAnalyticsPluginDepVersion,
 		Endpoint:     consts.GradleAnalyticsEndpoint,
 		Port:         consts.GradleAnalyticsPort,
@@ -212,38 +213,39 @@ func (params ActivateForGradleParams) analyticsTemplateInventory(
 func (params ActivateForGradleParams) testDistroTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
-) (gradleconfig.TestDistroTemplateInventory, error) {
+	isDebug bool,
+) (TestDistroTemplateInventory, error) {
 	if !params.TestDistro.JustDependency && !params.TestDistro.Enabled {
-		logger.Infof("(i) Test distribution plugin usage: %+v", gradleconfig.UsageLevelNone)
+		logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelNone)
 
-		return gradleconfig.TestDistroTemplateInventory{
-			Usage: gradleconfig.UsageLevelNone,
+		return TestDistroTemplateInventory{
+			Usage: UsageLevelNone,
 		}, nil
 	}
 
 	if params.TestDistro.JustDependency && !params.TestDistro.Enabled {
-		logger.Infof("(i) Test distribution plugin usage: %+v", gradleconfig.UsageLevelDependency)
+		logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelDependency)
 
-		return gradleconfig.TestDistroTemplateInventory{
-			Usage:   gradleconfig.UsageLevelDependency,
+		return TestDistroTemplateInventory{
+			Usage:   UsageLevelDependency,
 			Version: consts.GradleTestDistributionPluginDepVersion,
 		}, nil
 	}
 
-	logger.Infof("(i) Test distribution plugin usage: %+v", gradleconfig.UsageLevelEnabled)
+	logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelEnabled)
 
 	appSlug := envProvider("BITRISE_APP_SLUG")
 	if len(appSlug) < 1 {
-		return gradleconfig.TestDistroTemplateInventory{}, errTestDistroAppSlug
+		return TestDistroTemplateInventory{}, errTestDistroAppSlug
 	}
 
 	logLevel := "warning"
-	if isDebugLogMode {
+	if isDebug {
 		logLevel = "debug"
 	}
 
-	return gradleconfig.TestDistroTemplateInventory{
-		Usage:      gradleconfig.UsageLevelEnabled,
+	return TestDistroTemplateInventory{
+		Usage:      UsageLevelEnabled,
 		Version:    consts.GradleTestDistributionPluginDepVersion,
 		Endpoint:   consts.GradleTestDistributionEndpoint,
 		KvEndpoint: consts.GradleTestDistributionKvEndpoint,

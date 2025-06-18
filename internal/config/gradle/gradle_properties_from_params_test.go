@@ -1,4 +1,4 @@
-package cmd
+package gradleconfig
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
@@ -34,15 +33,12 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 	}
 
 	t.Run("Update gradle properties", func(t *testing.T) {
-		updater := gradlePropertiesUpdater{
-			readFileIfExists,
-			gradleconfig.DefaultOsProxy(),
-		}
+		updater := GradlePropertiesUpdater{DefaultOsProxy()}
 
 		mockLogger, tmpGradleHomeDir, propertyFilePath := prep()
 
 		// when
-		err := updater.updateGradleProps(
+		err := updater.UpdateGradleProps(
 			ActivateForGradleParams{
 				Cache: CacheParams{
 					Enabled: true,
@@ -62,15 +58,12 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 	})
 
 	t.Run("Update gradle properties when caching is disabled", func(t *testing.T) {
-		updater := gradlePropertiesUpdater{
-			readFileIfExists,
-			gradleconfig.DefaultOsProxy(),
-		}
+		updater := GradlePropertiesUpdater{DefaultOsProxy()}
 
 		mockLogger, tmpGradleHomeDir, propertyFilePath := prep()
 
 		// when
-		err := updater.updateGradleProps(
+		err := updater.UpdateGradleProps(
 			ActivateForGradleParams{
 				Cache: CacheParams{
 					Enabled: false,
@@ -91,17 +84,16 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 
 	t.Run("When gradle properties file is missing throws error", func(t *testing.T) {
 		noFileError := fmt.Errorf("there is no gradle properties file")
-		updater := gradlePropertiesUpdater{
-			func(string) (string, bool, error) {
-				return "", false, noFileError
-			},
-			gradleconfig.DefaultOsProxy(),
+		osProxy := DefaultOsProxy()
+		osProxy.ReadFileIfExists = func(string) (string, bool, error) {
+			return "", false, noFileError
 		}
+		updater := GradlePropertiesUpdater{osProxy}
 
 		mockLogger, tmpGradleHomeDir, propertyFilePath := prep()
 
 		// when
-		err := updater.updateGradleProps(
+		err := updater.UpdateGradleProps(
 			ActivateForGradleParams{
 				Cache: CacheParams{
 					Enabled: true,
@@ -112,24 +104,21 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(errFmtGradlePropertiesCheck, propertyFilePath, noFileError).Error())
+		require.EqualError(t, err, fmt.Errorf(ErrFmtGradlePropertiesCheck, propertyFilePath, noFileError).Error())
 	})
 
 	t.Run("When failing to update gradle.properties throws error", func(t *testing.T) {
 		failedToWriteError := fmt.Errorf("couldn't write gradle properties file")
-		updater := gradlePropertiesUpdater{
-			readFileIfExists,
-			gradleconfig.OsProxy{
-				WriteFile: func(string, []byte, os.FileMode) error {
-					return failedToWriteError
-				},
-			},
+		osProxy := DefaultOsProxy()
+		osProxy.WriteFile = func(string, []byte, os.FileMode) error {
+			return failedToWriteError
 		}
+		updater := GradlePropertiesUpdater{osProxy}
 
 		mockLogger, tmpGradleHomeDir, propertyFilePath := prep()
 
 		// when
-		err := updater.updateGradleProps(
+		err := updater.UpdateGradleProps(
 			ActivateForGradleParams{
 				Cache: CacheParams{
 					Enabled: true,
@@ -140,6 +129,6 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(errFmtGradlePropertyWrite, propertyFilePath, failedToWriteError).Error())
+		require.EqualError(t, err, fmt.Errorf(ErrFmtGradlePropertyWrite, propertyFilePath, failedToWriteError).Error())
 	})
 }

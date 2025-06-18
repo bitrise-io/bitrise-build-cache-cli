@@ -43,7 +43,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -57,13 +57,13 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 
 				return nil
 			},
-			gradlePropertiesUpdater{
-				readFileIfExists: func(pth string) (string, bool, error) {
-					actualPath = &pth
+			gradleconfig.GradlePropertiesUpdater{
+				OsProxy: gradleconfig.OsProxy{
+					ReadFileIfExists: func(pth string) (string, bool, error) {
+						actualPath = &pth
 
-					return "", true, nil
-				},
-				osProxy: gradleconfig.OsProxy{
+						return "", true, nil
+					},
 					WriteFile: func(string, []byte, os.FileMode) error { return nil },
 				},
 			},
@@ -84,7 +84,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -96,11 +96,11 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			) error {
 				return nil
 			},
-			gradlePropertiesUpdater{
-				readFileIfExists: func(string) (string, bool, error) {
-					return "", true, nil
-				},
-				osProxy: gradleconfig.OsProxy{
+			gradleconfig.GradlePropertiesUpdater{
+				OsProxy: gradleconfig.OsProxy{
+					ReadFileIfExists: func(string) (string, bool, error) {
+						return "", true, nil
+					},
 					WriteFile: func(string, []byte, os.FileMode) error { return nil },
 				},
 			},
@@ -119,7 +119,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -131,11 +131,11 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			) error {
 				return templateWriteError
 			},
-			gradlePropertiesUpdater{
-				readFileIfExists: func(string) (string, bool, error) {
-					return "", true, nil
-				},
-				osProxy: gradleconfig.OsProxy{
+			gradleconfig.GradlePropertiesUpdater{
+				OsProxy: gradleconfig.OsProxy{
+					ReadFileIfExists: func(string) (string, bool, error) {
+						return "", true, nil
+					},
 					WriteFile: func(string, []byte, os.FileMode) error { return nil },
 				},
 			},
@@ -154,7 +154,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -166,11 +166,11 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			) error {
 				return nil
 			},
-			gradlePropertiesUpdater{
-				readFileIfExists: func(string) (string, bool, error) {
-					return "", true, nil
-				},
-				osProxy: gradleconfig.OsProxy{
+			gradleconfig.GradlePropertiesUpdater{
+				OsProxy: gradleconfig.OsProxy{
+					ReadFileIfExists: func(string) (string, bool, error) {
+						return "", true, nil
+					},
 					WriteFile: func(string, []byte, os.FileMode) error { return gradlePropertiesUpdateError },
 				},
 			},
@@ -181,7 +181,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 			t,
 			err,
 			fmt.Errorf(
-				errFmtGradlePropertyWrite,
+				gradleconfig.ErrFmtGradlePropertyWrite,
 				"~/.gradle/gradle.properties",
 				gradlePropertiesUpdateError,
 			).Error(),

@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/pathutil"
 )
 
 //go:embed initd.gradle.kts.gotemplate
@@ -91,13 +92,33 @@ func DefaultTemplateProxy() TemplateProxy {
 }
 
 type OsProxy struct {
-	MkdirAll  func(string, os.FileMode) error
-	WriteFile func(string, []byte, os.FileMode) error
+	ReadFileIfExists func(pth string) (string, bool, error)
+	MkdirAll         func(string, os.FileMode) error
+	WriteFile        func(string, []byte, os.FileMode) error
 }
 
 func DefaultOsProxy() OsProxy {
 	return OsProxy{
-		MkdirAll:  os.MkdirAll,
-		WriteFile: os.WriteFile,
+		ReadFileIfExists: readFileIfExists,
+		MkdirAll:         os.MkdirAll,
+		WriteFile:        os.WriteFile,
 	}
+}
+
+func readFileIfExists(pth string) (string, bool, error) {
+	fileContent := ""
+	isFileExist, err := pathutil.NewPathChecker().IsPathExists(pth)
+	if err != nil {
+		return "", false, fmt.Errorf("check if file exists at %s, error: %w", pth, err)
+	}
+
+	if isFileExist {
+		fContent, err := os.ReadFile(pth)
+		if err != nil {
+			return "", false, fmt.Errorf("read file at %s, error: %w", pth, err)
+		}
+		fileContent = string(fContent)
+	}
+
+	return fileContent, isFileExist, nil
 }

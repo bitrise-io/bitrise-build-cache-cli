@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	errFmtFailedToUpdateProps = `failed to update gradle.properties: %w"`
+)
+
 // activateForGradleCmd represents the `gradle` subcommand under `activate`
 var activateForGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "gradle",
@@ -43,7 +47,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			logger,
 			gradleHome,
 			os.Getenv,
-			activateForGradleParams.templateInventory,
+			gradleconfig.GlobalActivateForGradleParams.TemplateInventory,
 			func(inventory gradleconfig.TemplateInventory,
 				logger log.Logger,
 				path string,
@@ -52,7 +56,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			) error {
 				return inventory.WriteToGradleInit(logger, path, osProxy, templateProxy)
 			},
-			defaultGradlePropertiesUpdater(),
+			gradleconfig.DefaultGradlePropertiesUpdater(),
 		); err != nil {
 			return fmt.Errorf("activate plugins for Gradle: %w", err)
 		}
@@ -65,28 +69,28 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 func init() {
 	activateCmd.AddCommand(activateForGradleCmd)
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.Enabled, "cache", activateForGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.JustDependency, "cache-dep", activateForGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.PushEnabled, "cache-push", activateForGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
-	activateForGradleCmd.Flags().StringVar(&activateForGradleParams.Cache.ValidationLevel, "cache-validation", activateForGradleParams.Cache.ValidationLevel, "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
-	activateForGradleCmd.Flags().StringVar(&activateForGradleParams.Cache.Endpoint, "cache-endpoint", activateForGradleParams.Cache.Endpoint, "The endpoint can be manually provided here for caching operations.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Cache.Enabled, "cache", gradleconfig.GlobalActivateForGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Cache.JustDependency, "cache-dep", gradleconfig.GlobalActivateForGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Cache.PushEnabled, "cache-push", gradleconfig.GlobalActivateForGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
+	activateForGradleCmd.Flags().StringVar(&gradleconfig.GlobalActivateForGradleParams.Cache.ValidationLevel, "cache-validation", gradleconfig.GlobalActivateForGradleParams.Cache.ValidationLevel, "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
+	activateForGradleCmd.Flags().StringVar(&gradleconfig.GlobalActivateForGradleParams.Cache.Endpoint, "cache-endpoint", gradleconfig.GlobalActivateForGradleParams.Cache.Endpoint, "The endpoint can be manually provided here for caching operations.")
 
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Analytics.Enabled, "analytics", activateForGradleParams.Analytics.Enabled, "Activate analytics plugin. Will override analytics-dep.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Analytics.JustDependency, "analytics-dep", activateForGradleParams.Analytics.JustDependency, "Add analytics plugin as a dependency only.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Analytics.Enabled, "analytics", gradleconfig.GlobalActivateForGradleParams.Analytics.Enabled, "Activate analytics plugin. Will override analytics-dep.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.Analytics.JustDependency, "analytics-dep", gradleconfig.GlobalActivateForGradleParams.Analytics.JustDependency, "Add analytics plugin as a dependency only.")
 
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.TestDistro.Enabled, "test-distribution", activateForGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateForGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.TestDistro.Enabled, "test-distribution", gradleconfig.GlobalActivateForGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
+	activateForGradleCmd.Flags().BoolVar(&gradleconfig.GlobalActivateForGradleParams.TestDistro.JustDependency, "test-distribution-dep", gradleconfig.GlobalActivateForGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 }
 
 func activateForGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider func(string) string,
-	templateInventoryProvider func(log.Logger, func(string) string) (gradleconfig.TemplateInventory, error),
+	templateInventoryProvider func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, log.Logger, string, gradleconfig.OsProxy, gradleconfig.TemplateProxy) error,
-	updater gradlePropertiesUpdater,
+	updater gradleconfig.GradlePropertiesUpdater,
 ) error {
-	templateInventory, err := templateInventoryProvider(logger, envProvider)
+	templateInventory, err := templateInventoryProvider(logger, envProvider, isDebugLogMode)
 	if err != nil {
 		return err
 	}
@@ -101,8 +105,8 @@ func activateForGradleCmdFn(
 		return err
 	}
 
-	if err := updater.updateGradleProps(activateForGradleParams, logger, gradleHomePath); err != nil {
-		return err
+	if err := updater.UpdateGradleProps(gradleconfig.GlobalActivateForGradleParams, logger, gradleHomePath); err != nil {
+		return fmt.Errorf(errFmtFailedToUpdateProps, err)
 	}
 
 	return nil

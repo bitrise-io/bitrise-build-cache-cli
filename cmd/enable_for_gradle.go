@@ -78,14 +78,14 @@ func init() {
 }
 
 func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
-	activateForGradleParams.Cache.Enabled = true
-	activateForGradleParams.Cache.PushEnabled = paramIsPushEnabled
-	activateForGradleParams.Cache.ValidationLevel = paramValidationLevel
-	activateForGradleParams.Cache.Endpoint = paramRemoteCacheEndpoint
-	activateForGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
-	activateForGradleParams.TestDistro.Enabled = false
+	gradleconfig.GlobalActivateForGradleParams.Cache.Enabled = true
+	gradleconfig.GlobalActivateForGradleParams.Cache.PushEnabled = paramIsPushEnabled
+	gradleconfig.GlobalActivateForGradleParams.Cache.ValidationLevel = paramValidationLevel
+	gradleconfig.GlobalActivateForGradleParams.Cache.Endpoint = paramRemoteCacheEndpoint
+	gradleconfig.GlobalActivateForGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
+	gradleconfig.GlobalActivateForGradleParams.TestDistro.Enabled = false
 
-	templateInventory, err := activateForGradleParams.templateInventory(logger, envProvider)
+	templateInventory, err := gradleconfig.GlobalActivateForGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
 	if err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
@@ -99,7 +99,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
 
-	if err := defaultGradlePropertiesUpdater().updateGradleProps(activateForGradleParams, logger, gradleHomePath); err != nil {
+	if err := gradleconfig.DefaultGradlePropertiesUpdater().UpdateGradleProps(gradleconfig.GlobalActivateForGradleParams, logger, gradleHomePath); err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
 
