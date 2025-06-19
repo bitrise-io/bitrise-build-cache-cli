@@ -130,6 +130,13 @@ func Test_Generate(t *testing.T) {
 					BuildID:      "build-id-12345",
 					RepoURL:      "https://repo-url",
 					WorkflowName: "workflow-name",
+					HostMetadata: HostMetadataInventory{
+						OS:             "Linux prd-linux-use4c-87a9aa94-fcd4-4c5d-919c-f214f05a986c",
+						Locale:         "en-US",
+						DefaultCharset: "UTF-8",
+						CPUCores:       "8",
+						MemSize:        "1024",
+					},
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -250,4 +257,9 @@ build --remote_header='x-workflow-name=workflow-name'
 build --bes_header='x-workflow-name=workflow-name'
 build --remote_header='x-flare-build-id=build-id-12345'
 build --bes_header='x-build-id=build-id-12345'
+build --bes_header='x-os=Linux prd-linux-use4c-87a9aa94-fcd4-4c5d-919c-f214f05a986c'
+build --bes_header='x-locale=en-US'
+build --bes_header='x-default-charset=UTF-8'
+build --bes_header='x-cpu-cores=8'
+build --bes_header='x-mem-size=1024'
 `
