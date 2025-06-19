@@ -169,9 +169,9 @@ build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
-build --remote_header=x-org-id=WorkspaceIDValue
-build --remote_header=x-app-slug=AppSlugValue
-build --remote_header=x-ci-provider=CIProviderValue
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-ci-provider=CIProviderValue'
 `
 
 const expectedBasicConfigJWT = `build --remote_cache=grpcs://cache.services.bitrise.io:443
@@ -180,8 +180,8 @@ build --remote_header=authorization="Bearer some-jwt-token"
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
-build --remote_header=x-app-slug=AppSlugValue
-build --remote_header=x-ci-provider=CIProviderValue
+build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-ci-provider=CIProviderValue'
 `
 
 const expectedConfigWithPushDisabled = `build --remote_cache=grpcs://cache.services.bitrise.io:443
@@ -190,9 +190,9 @@ build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --noremote_upload_local_results
-build --remote_header=x-org-id=WorkspaceIDValue
-build --remote_header=x-app-slug=AppSlugValue
-build --remote_header=x-ci-provider=CIProviderValue
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-ci-provider=CIProviderValue'
 `
 
 const expectedConfigWithTimestamps = `build --remote_cache=grpcs://cache.services.bitrise.io:443
@@ -202,9 +202,9 @@ build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --show_timestamps
-build --remote_header=x-org-id=WorkspaceIDValue
-build --remote_header=x-app-slug=AppSlugValue
-build --remote_header=x-ci-provider=CIProviderValue
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-ci-provider=CIProviderValue'
 `
 
 const expectedNoBESConfig = `build --remote_cache=grpcs://cache.services.bitrise.io:443
@@ -215,12 +215,12 @@ build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --verbose_failures
 build --show_timestamps
-build --remote_header=x-org-id=WorkspaceIDValue
-build --remote_header=x-app-slug=AppSlugValue
-build --remote_header=x-ci-provider=CIProviderValue
-build --remote_header=x-repository-url=https://repo-url
-build --remote_header=x-workflow-name=workflow-name
-build --remote_header=x-flare-build-id=build-id-12345
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-ci-provider=CIProviderValue'
+build --remote_header='x-repository-url=https://repo-url'
+build --remote_header='x-workflow-name=workflow-name'
+build --remote_header='x-flare-build-id=build-id-12345'
 `
 
 const expectedFullConfig = `build --remote_cache=grpcs://cache.services.bitrise.io:443
@@ -238,16 +238,16 @@ build --build_event_publish_all_actions
 build --remote_executor=grpcs://remote-execution.services.bitrise.io:6669
 build --verbose_failures
 build --show_timestamps
-build --remote_header=x-org-id=WorkspaceIDValue
-build --bes_header=x-org-id=WorkspaceIDValue
-build --remote_header=x-app-slug=AppSlugValue
-build --bes_header=x-app-slug=AppSlugValue
-build --remote_header=x-ci-provider=CIProviderValue
-build --bes_header=x-ci-provider=CIProviderValue
-build --remote_header=x-repository-url=https://repo-url
-build --bes_header=x-repository-url=https://repo-url
-build --remote_header=x-workflow-name=workflow-name
-build --bes_header=x-workflow-name=workflow-name
-build --remote_header=x-flare-build-id=build-id-12345
-build --bes_header=x-build-id=build-id-12345
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --bes_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-slug=AppSlugValue'
+build --bes_header='x-app-slug=AppSlugValue'
+build --remote_header='x-ci-provider=CIProviderValue'
+build --bes_header='x-ci-provider=CIProviderValue'
+build --remote_header='x-repository-url=https://repo-url'
+build --bes_header='x-repository-url=https://repo-url'
+build --remote_header='x-workflow-name=workflow-name'
+build --bes_header='x-workflow-name=workflow-name'
+build --remote_header='x-flare-build-id=build-id-12345'
+build --bes_header='x-build-id=build-id-12345'
 `

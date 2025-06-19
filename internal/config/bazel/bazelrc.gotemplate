@@ -38,55 +38,55 @@ build --show_timestamps
 
 {{- if .Common.WorkspaceID }}
 {{- if .Cache.Enabled }}
-build --remote_header=x-org-id={{ .Common.WorkspaceID }}
+build --remote_header='x-org-id={{ .Common.WorkspaceID }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header=x-org-id={{ .Common.WorkspaceID }}
+build --bes_header='x-org-id={{ .Common.WorkspaceID }}'
 {{- end }}
 {{- end }}
 
 {{- if .Common.AppSlug }}
 {{- if .Cache.Enabled }}
-build --remote_header=x-app-slug={{ .Common.AppSlug }}
+build --remote_header='x-app-slug={{ .Common.AppSlug }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header=x-app-slug={{ .Common.AppSlug }}
+build --bes_header='x-app-slug={{ .Common.AppSlug }}'
 {{- end }}
 {{- end }}
 
 {{- if .Common.CIProvider }}
 {{- if .Cache.Enabled }}
-build --remote_header=x-ci-provider={{ .Common.CIProvider }}
+build --remote_header='x-ci-provider={{ .Common.CIProvider }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header=x-ci-provider={{ .Common.CIProvider }}
+build --bes_header='x-ci-provider={{ .Common.CIProvider }}'
 {{- end }}
 {{- end }}
 
 {{- if .Common.RepoURL }}
 {{- if .Cache.Enabled }}
-build --remote_header=x-repository-url={{ .Common.RepoURL }}
+build --remote_header='x-repository-url={{ .Common.RepoURL }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header=x-repository-url={{ .Common.RepoURL }}
+build --bes_header='x-repository-url={{ .Common.RepoURL }}'
 {{- end }}
 {{- end }}
 
 {{- if .Common.WorkflowName }}
 {{- if .Cache.Enabled }}
-build --remote_header=x-workflow-name={{ .Common.WorkflowName }}
+build --remote_header='x-workflow-name={{ .Common.WorkflowName }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header=x-workflow-name={{ .Common.WorkflowName }}
+build --bes_header='x-workflow-name={{ .Common.WorkflowName }}'
 {{- end }}
 {{- end }}
 
 {{- if .Common.BuildID }}
 {{- if .Cache.Enabled }}
-build --remote_header=x-flare-build-id={{ .Common.BuildID }}
+build --remote_header='x-flare-build-id={{ .Common.BuildID }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header=x-build-id={{ .Common.BuildID }}
+build --bes_header='x-build-id={{ .Common.BuildID }}'
 {{- end }}
 {{- end }}
 
@@ -94,18 +94,18 @@ build --bes_header=x-build-id={{ .Common.BuildID }}
 
 {{- if .BES.Enabled }}
 {{- if .Common.HostMetadata.OS }}
-build --bes_header=x-os={{ .Common.HostMetadata.OS }}
+build --bes_header='x-os={{ .Common.HostMetadata.OS }}'
 {{- end }}
 {{- if .Common.HostMetadata.Locale }}
-build --bes_header=x-locale={{ .Common.HostMetadata.Locale }}
+build --bes_header='x-locale={{ .Common.HostMetadata.Locale }}'
 {{- end }}
 {{- if .Common.HostMetadata.DefaultCharset }}
-build --bes_header=x-default-charset={{ .Common.HostMetadata.DefaultCharset }}
+build --bes_header='x-default-charset={{ .Common.HostMetadata.DefaultCharset }}'
 {{- end }}
 {{- if .Common.HostMetadata.CPUCores }}
-build --bes_header=x-cpu-cores={{ .Common.HostMetadata.CPUCores }}
+build --bes_header='x-cpu-cores={{ .Common.HostMetadata.CPUCores }}'
 {{- end }}
 {{- if .Common.HostMetadata.MemSize }}
-build --bes_header=x-mem-size={{ .Common.HostMetadata.MemSize }}
+build --bes_header='x-mem-size={{ .Common.HostMetadata.MemSize }}'
 {{- end }}
 {{- end }}
