@@ -27,7 +27,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		return mockLogger
 	}
 
-	t.Run("activateGradleCmdFn", func(t *testing.T) {
+	t.Run("When no error activateGradleCmdFn creates template inventory and writes gradle config file", func(t *testing.T) {
 		mockLogger := prep()
 		templateInventory := gradleconfig.TemplateInventory{
 			Common: gradleconfig.PluginCommonTemplateInventory{
@@ -72,7 +72,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		require.Equal(t, "~/.gradle/gradle.properties", *actualPath)
 	})
 
-	t.Run("when templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
+	t.Run("When templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
 
@@ -104,7 +104,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		require.EqualError(t, err, inventoryCreationError.Error())
 	})
 
-	t.Run("when template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
+	t.Run("When template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
 
@@ -136,7 +136,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		require.EqualError(t, err, templateWriteError.Error())
 	})
 
-	t.Run("when gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
+	t.Run("When gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
 

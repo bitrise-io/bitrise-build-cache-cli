@@ -9,6 +9,7 @@ import (
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -60,27 +61,6 @@ func init() {
 func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string) error {
 	logger.Infof("(i) Checking parameters")
 
-	// Required configs
-	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
-	if err != nil {
-		return fmt.Errorf("read auth config from environments: %w", err)
-	}
-
-	// Optional configs
-	// CacheEndpointURL
-	cacheEndpointURL := common.SelectCacheEndpointURL(envProvider("BITRISE_BUILD_CACHE_ENDPOINT"), envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", cacheEndpointURL)
-	// RBEEndpointURL
-	var rbeEndpointURL string
-	if rbeEnabled {
-		rbeEndpointURL = common.SelectRBEEndpointURL(envProvider("BITRISE_RBE_ENDPOINT"), envProvider)
-		if rbeEndpointURL != "" {
-			logger.Infof("(i) RBE Endpoint URL: %s", rbeEndpointURL)
-		} else {
-			logger.Infof("(i) RBE is not available at this location")
-		}
-	}
 	// CacheConfigMetadata
 	cacheConfig := common.NewMetadata(os.Getenv,
 		func(name string, v ...string) (string, error) {
@@ -96,19 +76,25 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	if err != nil {
 		return fmt.Errorf("get absolute path of ~/.bazelrc, error: %w", err)
 	}
-	currentBazelrcFileContent, isBazelrcExists, err := readFileIfExists(bazelrcPath)
+	currentBazelrcFileContent, isBazelrcExists, err := utils.ReadFileIfExists(bazelrcPath)
 	if err != nil {
 		return fmt.Errorf("check if ~/.bazelrc exists at %s, error: %w", bazelrcPath, err)
 	}
 	logger.Debugf("isBazelrcExists: %t", isBazelrcExists)
 
 	logger.Infof("(i) Generate ~/.bazelrc")
-	bazelrcBlockContent, err := bazelconfig.GenerateBazelrc(cacheEndpointURL,
-		authConfig.WorkspaceID, authConfig.AuthToken, cacheConfig,
-		bazelconfig.Preferences{
-			RBEEndpointURL:      rbeEndpointURL,
-			IsTimestampsEnabled: timestamps,
-		})
+	params := bazelconfig.DefaultActivateBazelParams()
+	params.Cache.Enabled = true
+	params.Cache.PushEnabled = true
+	params.RBE.Enabled = rbeEnabled
+	params.Timestamps = timestamps
+
+	inventory, err := params.TemplateInventory(logger, envProvider, isDebugLogMode)
+	if err != nil {
+		return fmt.Errorf("template inventory error: %w", err)
+	}
+
+	bazelrcBlockContent, err := inventory.GenerateBazelrc(utils.DefaultTemplateProxy())
 	if err != nil {
 		return fmt.Errorf("generate bazelrc: %w", err)
 	}

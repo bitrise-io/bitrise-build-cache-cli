@@ -1,56 +1,102 @@
-build --remote_cache={{ .CacheEndpointURL }}
-{{- if .RBEEndpointURL }}
-build --remote_executor={{ .RBEEndpointURL }}
-{{- end }}
+{{- if .Cache.Enabled -}}
+build --remote_cache={{ .Cache.EndpointURLWithPort }}
 build --remote_timeout=600s
+build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
+build --remote_header=x-flare-buildtool=bazel
+build --remote_header=x-flare-builduser={{ .Common.CIProvider }}
+{{- if .Cache.IsPushEnabled }}
+build --remote_upload_local_results
+{{- else }}
+build --noremote_upload_local_results
+{{- end }}
+{{- end }}
+
+{{- if .BES.Enabled }}
+build --bes_backend={{ .BES.EndpointURLWithPort }}
+build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
-{{- if .IsTimestampsEnabled }}
+build --build_event_publish_all_actions
+{{- end }}
+
+{{- if .RBE.Enabled }}
+build --remote_executor={{ .RBE.EndpointURLWithPort }}
+{{- end }}
+
+{{- /* Common config */}}
+
+{{- if .Common.Debug }}
+build --verbose_failures
+build --remote_debug=true
+{{- end }}
+
+{{- if .Common.Timestamps }}
 build --show_timestamps
 {{- end }}
-{{- if .WorkspaceID }}
-build --remote_header='x-org-id={{ .WorkspaceID }}'
-build --bes_header='x-org-id={{ .WorkspaceID }}'
+
+{{- /* Bitrise common metadata */}}
+
+{{- if .Common.AppSlug }}
+{{- if .Cache.Enabled }}
+build --remote_header=x-app-slug={{ .Common.AppSlug }}
 {{- end }}
-build --remote_header=authorization="Bearer {{ .AuthToken }}"
-build --bes_header=authorization="Bearer {{ .AuthToken }}"
-build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser={{ .CacheConfigMetadata.CIProvider }}
-build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
-build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
-build --build_event_publish_all_actions
-{{- if .CacheConfigMetadata.CIProvider }}
-build --remote_header='x-ci-provider={{ .CacheConfigMetadata.CIProvider }}'
-build --bes_header='x-ci-provider={{ .CacheConfigMetadata.CIProvider }}'
+{{- if .BES.Enabled }}
+build --bes_header=x-app-slug={{ .Common.AppSlug }}
 {{- end }}
-{{- if .CacheConfigMetadata.RepoURL }}
-build --remote_header='x-repository-url={{ .CacheConfigMetadata.RepoURL }}'
-build --bes_header='x-repository-url={{ .CacheConfigMetadata.RepoURL }}'
 {{- end }}
-{{- if .CacheConfigMetadata.BitriseAppID }}
-build --remote_header='x-app-id={{ .CacheConfigMetadata.BitriseAppID }}'
-build --bes_header='x-app-id={{ .CacheConfigMetadata.BitriseAppID }}'
+
+{{- if .Common.CIProvider }}
+{{- if .Cache.Enabled }}
+build --remote_header=x-ci-provider={{ .Common.CIProvider }}
 {{- end }}
-{{- if .CacheConfigMetadata.BitriseWorkflowName }}
-build --remote_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName }}'
-build --bes_header='x-workflow-name={{ .CacheConfigMetadata.BitriseWorkflowName }}'
+{{- if .BES.Enabled }}
+build --bes_header=x-ci-provider={{ .Common.CIProvider }}
 {{- end }}
-{{- if .CacheConfigMetadata.BitriseBuildID }}
-build --remote_header='x-flare-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
-build --bes_header='x-build-id={{ .CacheConfigMetadata.BitriseBuildID }}'
 {{- end }}
-{{- if .CacheConfigMetadata.HostMetadata.OS }}
-build --bes_header='x-os={{ .CacheConfigMetadata.HostMetadata.OS }}'
+
+{{- if .Common.RepoURL }}
+{{- if .Cache.Enabled }}
+build --remote_header=x-repository-url={{ .Common.RepoURL }}
 {{- end }}
-{{- if .CacheConfigMetadata.HostMetadata.Locale }}
-build --bes_header='x-locale={{ .CacheConfigMetadata.HostMetadata.Locale }}'
+{{- if .BES.Enabled }}
+build --bes_header=x-repository-url={{ .Common.RepoURL }}
 {{- end }}
-{{- if .CacheConfigMetadata.HostMetadata.DefaultCharset }}
-build --bes_header='x-default-charset={{ .CacheConfigMetadata.HostMetadata.DefaultCharset }}'
 {{- end }}
-{{- if .CacheConfigMetadata.HostMetadata.CPUCores }}
-build --bes_header='x-cpu-cores={{ .CacheConfigMetadata.HostMetadata.CPUCores }}'
+
+{{- if .Common.WorkflowName }}
+{{- if .Cache.Enabled }}
+build --remote_header=x-workflow-name={{ .Common.WorkflowName }}
 {{- end }}
-{{- if .CacheConfigMetadata.HostMetadata.MemSize }}
-build --bes_header='x-mem-size={{ .CacheConfigMetadata.HostMetadata.MemSize }}'
+{{- if .BES.Enabled }}
+build --bes_header=x-workflow-name={{ .Common.WorkflowName }}
+{{- end }}
+{{- end }}
+
+{{- if .Common.BuildID }}
+{{- if .Cache.Enabled }}
+build --remote_header=x-flare-build-id={{ .Common.BuildID }}
+{{- end }}
+{{- if .BES.Enabled }}
+build --bes_header=x-build-id={{ .Common.BuildID }}
+{{- end }}
+{{- end }}
+
+{{- /* BES host metadata */}}
+
+{{- if .BES.Enabled }}
+{{- if .Common.HostMetadata.OS }}
+build --bes_header=x-os={{ .Common.HostMetadata.OS }}
+{{- end }}
+{{- if .Common.HostMetadata.Locale }}
+build --bes_header=x-locale={{ .Common.HostMetadata.Locale }}
+{{- end }}
+{{- if .Common.HostMetadata.DefaultCharset }}
+build --bes_header=x-default-charset={{ .Common.HostMetadata.DefaultCharset }}
+{{- end }}
+{{- if .Common.HostMetadata.CPUCores }}
+build --bes_header=x-cpu-cores={{ .Common.HostMetadata.CPUCores }}
+{{- end }}
+{{- if .Common.HostMetadata.MemSize }}
+build --bes_header=x-mem-size={{ .Common.HostMetadata.MemSize }}
+{{- end }}
 {{- end }}
