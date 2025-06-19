@@ -39,7 +39,7 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 
 		// when
 		err := updater.UpdateGradleProps(
-			ActivateForGradleParams{
+			ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: true,
 				},
@@ -64,7 +64,7 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 
 		// when
 		err := updater.UpdateGradleProps(
-			ActivateForGradleParams{
+			ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: false,
 				},
@@ -94,7 +94,7 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 
 		// when
 		err := updater.UpdateGradleProps(
-			ActivateForGradleParams{
+			ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: true,
 				},
@@ -119,7 +119,7 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 
 		// when
 		err := updater.UpdateGradleProps(
-			ActivateForGradleParams{
+			ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: true,
 				},

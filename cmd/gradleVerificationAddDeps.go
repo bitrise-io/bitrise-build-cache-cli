@@ -47,14 +47,14 @@ func init() {
 }
 
 func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
-	activateForGradleParams.Cache.Enabled = false
-	activateForGradleParams.Cache.JustDependency = true
-	activateForGradleParams.Analytics.Enabled = false
-	activateForGradleParams.Analytics.JustDependency = true
-	activateForGradleParams.TestDistro.Enabled = false
-	activateForGradleParams.TestDistro.JustDependency = true
+	activateGradleParams.Cache.Enabled = false
+	activateGradleParams.Cache.JustDependency = true
+	activateGradleParams.Analytics.Enabled = false
+	activateGradleParams.Analytics.JustDependency = true
+	activateGradleParams.TestDistro.Enabled = false
+	activateGradleParams.TestDistro.JustDependency = true
 
-	templateInventory, err := activateForGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
 	if err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

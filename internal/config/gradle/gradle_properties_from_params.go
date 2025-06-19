@@ -24,7 +24,7 @@ func DefaultGradlePropertiesUpdater() GradlePropertiesUpdater {
 }
 
 func (updater GradlePropertiesUpdater) UpdateGradleProps(
-	params ActivateForGradleParams,
+	params ActivateGradleParams,
 	logger log.Logger,
 	gradleHomePath string,
 ) error {
