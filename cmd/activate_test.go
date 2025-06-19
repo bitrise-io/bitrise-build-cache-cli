@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_activateForGradleCmdFn(t *testing.T) {
+func Test_activateGradleCmdFn(t *testing.T) {
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
@@ -27,7 +27,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 		return mockLogger
 	}
 
-	t.Run("activateForGradleCmdFn", func(t *testing.T) {
+	t.Run("activateGradleCmdFn", func(t *testing.T) {
 		mockLogger := prep()
 		templateInventory := gradleconfig.TemplateInventory{
 			Common: gradleconfig.PluginCommonTemplateInventory{
@@ -39,7 +39,7 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 		var actualPath *string
 
 		// when
-		err := activateForGradleCmdFn(
+		err := activateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -72,12 +72,12 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 		require.Equal(t, "~/.gradle/gradle.properties", *actualPath)
 	})
 
-	t.Run("when templateInventory creation fails activateForGradleCmdFn throws error", func(t *testing.T) {
+	t.Run("when templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
 
 		// when
-		err := activateForGradleCmdFn(
+		err := activateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -104,12 +104,12 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 		require.EqualError(t, err, inventoryCreationError.Error())
 	})
 
-	t.Run("when template writing fails activateForGradleCmdFn throws error", func(t *testing.T) {
+	t.Run("when template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
 
 		// when
-		err := activateForGradleCmdFn(
+		err := activateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -136,12 +136,12 @@ func Test_activateForGradleCmdFn(t *testing.T) {
 		require.EqualError(t, err, templateWriteError.Error())
 	})
 
-	t.Run("when gradle.property update fails activateForGradleCmdFn throws error", func(t *testing.T) {
+	t.Run("when gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
 
 		// when
-		err := activateForGradleCmdFn(
+		err := activateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
