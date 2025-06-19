@@ -81,8 +81,8 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 			logger.Infof("(i) RBE is not available at this location")
 		}
 	}
-	// Metadata
-	cacheConfig := common.NewCacheConfigMetadata(os.Getenv,
+	// CacheConfigMetadata
+	cacheConfig := common.NewMetadata(os.Getenv,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output()
 

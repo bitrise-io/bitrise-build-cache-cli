@@ -3,8 +3,8 @@ package common
 import "errors"
 
 var (
-	errAuthTokenNotProvided   = errors.New("BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
-	errWorkspaceIDNotProvided = errors.New("BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
+	ErrAuthTokenNotProvided   = errors.New("BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
+	ErrWorkspaceIDNotProvided = errors.New("BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
 )
 
 // CacheAuthConfig holds the auth config for the cache.
@@ -44,8 +44,8 @@ func ReadAuthConfigFromEnvironments(envProvider func(string) string) (CacheAuthC
 
 	// Write specific errors for each case.
 	if len(authTokenEnv) < 1 {
-		return CacheAuthConfig{}, errAuthTokenNotProvided
+		return CacheAuthConfig{}, ErrAuthTokenNotProvided
 	}
 
-	return CacheAuthConfig{}, errWorkspaceIDNotProvided
+	return CacheAuthConfig{}, ErrWorkspaceIDNotProvided
 }

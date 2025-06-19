@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const (
 	bitriseGradlePluginGroup = "io.bitrise.gradle"
+	WarnNoHome               = "Could not determine home directory, falling back to $PWD, error: %s"
 )
 
 type PluginFile struct {
@@ -47,10 +49,11 @@ func (gf *PluginFile) dirPath() string {
 	)
 }
 
-func (gf *PluginFile) absoluteDirPath() string {
+func (gf *PluginFile) absoluteDirPath(logger log.Logger) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = os.Getenv("PWD")
+		logger.Warnf(WarnNoHome, err)
 	}
 
 	return filepath.Join(home, ".m2", "repository", gf.dirPath())

@@ -20,8 +20,8 @@ git clone https://github.com/bitrise-io/bitrise-build-cache-cli.git
 git clone https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache.git
 
 export tmp_md="release-table.md"
-echo "| Step version | CLI version | Analytics plugin version | Cache plugin version |" >> $tmp_md
-echo "|--------------|-------------|--------------------------|----------------------|" >> $tmp_md
+echo "| Step version | CLI version | Analytics plugin version | Cache plugin version | Test Distribution plugin version |" >> $tmp_md
+echo "|--------------|-------------|--------------------------|----------------------|----------------------------------|" >> $tmp_md
 
 
 find "bitrise-steplib/steps/activate-build-cache-for-gradle" -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
@@ -52,7 +52,7 @@ sort -Vr | while read -r step_version; do
   cd ../bitrise-build-cache-cli
   git checkout "$cli_version"
 
-  go run main.go enable-for gradle
+  go run main.go activate gradle --cache --test-distribution
 
   if [ ! -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" ]; then
     echo "Gradle build cache not enabled in $HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts"
@@ -62,11 +62,12 @@ sort -Vr | while read -r step_version; do
 
   analytics_version=$(grep 'classpath("io.bitrise.gradle:gradle-analytics:' "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" | sed -n -E 's/.*gradle-analytics:([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
   cache_version=$(grep 'classpath("io.bitrise.gradle:remote-cache:' "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" | sed -n -E 's/.*remote-cache:([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
+  test_distro_version=$(grep 'classpath("io.bitrise.gradle:test-distribution:' "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" | sed -n -E 's/.*test-distribution:([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
 
-  echo "Gradle build cache enabled with analytics version: $analytics_version and cache version: $cache_version"
+  echo "Gradle build cache enabled with analytics version: $analytics_version, cache version: $cache_version, test-distribution version: $test_distro_version"
   cd ..
 
-  echo "| $step_version | [$cli_version]($CLI_RELEASE_URL_PREFIX/$cli_version) | $analytics_version | $cache_version |" >> $tmp_md
+  echo "| $step_version | [$cli_version]($CLI_RELEASE_URL_PREFIX/$cli_version) | $analytics_version | $cache_version | $test_distro_version |" >> $tmp_md
 done
 
 popd

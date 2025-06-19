@@ -3,9 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -15,8 +13,8 @@ import (
 // addGradleVerificationReferenceDeps represents the gradle command
 var addGradleVerificationReferenceDeps = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "add-reference-deps",
-	Short: "Add Bitrise Build Cache plugins to the project (but do not enable it)",
-	Long: `Add Bitrise Build Cache plugins to the project (but do not enable it)
+	Short: "Add Bitrise Build Cache plugins to the project (but do not enable them)",
+	Long: `Add Bitrise Build Cache plugins to the project (but do not enable them)
 This command will:
 
 - Create a ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts file with the necessary configs. This file will be overwritten.
@@ -49,33 +47,31 @@ func init() {
 }
 
 func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
-	logger.Infof("(i) Checking parameters")
+	activateForGradleParams.Cache.Enabled = false
+	activateForGradleParams.Cache.JustDependency = true
+	activateForGradleParams.Analytics.Enabled = false
+	activateForGradleParams.Analytics.JustDependency = true
+	activateForGradleParams.TestDistro.Enabled = false
+	activateForGradleParams.TestDistro.JustDependency = true
 
-	// Optional configs
-	// EndpointURL
-	endpointURL := common.SelectCacheEndpointURL(paramRemoteCacheEndpoint, envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
-
-	// Metadata
-	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv, func(name string, v ...string) (string, error) {
-		output, err := exec.Command(name, v...).Output()
-
-		return string(output), err
-	}, logger)
-	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
-
-	authToken := "placeholder-token"
-	prefs := gradleconfig.Preferences{
-		IsDependencyOnly:     true,
-		IsPushEnabled:        false,
-		CacheLevelValidation: gradleconfig.CacheValidationLevelNone,
-		IsAnalyticsEnabled:   true,
-		IsDebugEnabled:       isDebugLogMode,
+	templateInventory, err := activateForGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
+	if err != nil {
+		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}
-	if err := writeGradleInit(logger, gradleHomePath, endpointURL, authToken, cacheConfigMetadata, prefs); err != nil {
-		return err
+
+	if err := templateInventory.WriteToGradleInit(
+		logger,
+		gradleHomePath,
+		gradleconfig.DefaultOsProxy(),
+		gradleconfig.DefaultTemplateProxy(),
+	); err != nil {
+		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}
 
 	return nil
 }
+
+//nolint:gochecknoglobals
+var (
+	FmtErrorGradleVerification = "adding Gradle plugins failed: %w"
+)

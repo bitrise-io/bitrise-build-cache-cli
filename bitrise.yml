@@ -269,7 +269,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+            ../bitrise-build-cache-cli activate gradle -d --cache
     - script:
         title: Build and capture logs
         inputs:
@@ -299,7 +299,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+            ../bitrise-build-cache-cli activate gradle -d --cache
     - script:
         title: Create local configuration cache
         inputs:
@@ -406,7 +406,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+            ../bitrise-build-cache-cli activate gradle -d --cache
     - script:
         title: Create local configuration cache
         inputs:
@@ -465,7 +465,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli enable-for gradle --metrics -d
+            ../bitrise-build-cache-cli activate gradle -d --cache
     - script:
         title: Create local configuration cache
         inputs:

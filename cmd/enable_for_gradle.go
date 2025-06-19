@@ -2,23 +2,23 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
-const gradleHomeNonExpanded = "~/.gradle"
+const (
+	gradleHomeNonExpanded   = "~/.gradle"
+	FmtErrorEnableForGradle = "adding Gradle plugins failed: %w"
+)
 
 //nolint:gochecknoglobals
 var (
@@ -27,8 +27,6 @@ var (
 	paramValidationLevel        string
 	paramRemoteCacheEndpoint    string
 )
-
-var errInvalidCacheLevel = errors.New("invalid cache validation level, valid options: none, warning, error")
 
 // enableForGradleCmd represents the gradle command
 var enableForGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -79,99 +77,30 @@ func init() {
 	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
 }
 
-func writeGradleInit(logger log.Logger, gradleHomePath string, endpointURL string, authToken string, cacheConfigMetadata common.CacheConfigMetadata, prefs gradleconfig.Preferences) error {
-	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
-	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
-	err := os.MkdirAll(gradleInitDPath, 0755) //nolint:gomnd,mnd
-	if err != nil {
-		return fmt.Errorf("ensure ~/.gradle/init.d exists: %w", err)
-	}
-
-	logger.Infof("(i) Generate ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts")
-	initGradleContent, err := gradleconfig.GenerateInitGradle(endpointURL, authToken, prefs, cacheConfigMetadata)
-	if err != nil {
-		return fmt.Errorf("generate bitrise-build-cache.init.gradle.kts: %w", err)
-	}
-
-	logger.Infof("(i) Write ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts")
-	{
-		initGradlePath := filepath.Join(gradleInitDPath, "bitrise-build-cache.init.gradle.kts")
-		err = os.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,gomnd,mnd
-		if err != nil {
-			return fmt.Errorf("write bitrise-build-cache.init.gradle.kts to %s, error: %w", initGradlePath, err)
-		}
-	}
-
-	return nil
-}
-
 func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
-	logger.Infof("(i) Checking parameters")
+	activateForGradleParams.Cache.Enabled = true
+	activateForGradleParams.Cache.PushEnabled = paramIsPushEnabled
+	activateForGradleParams.Cache.ValidationLevel = paramValidationLevel
+	activateForGradleParams.Cache.Endpoint = paramRemoteCacheEndpoint
+	activateForGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
+	activateForGradleParams.TestDistro.Enabled = false
 
-	// Required configs
-	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	templateInventory, err := activateForGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
 	if err != nil {
-		return fmt.Errorf("read auth config from environment variables: %w", err)
-	}
-	authToken := authConfig.TokenInGradleFormat()
-
-	// Optional configs
-	// EndpointURL
-	endpointURL := common.SelectCacheEndpointURL(paramRemoteCacheEndpoint, envProvider)
-	logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
-	logger.Infof("(i) Push new cache entries: %t", paramIsPushEnabled)
-	logger.Infof("(i) Cache entry validation level: %s", paramValidationLevel)
-	logger.Infof("(i) Collect metrics for cache insights: %t", paramIsGradleMetricsEnabled)
-	logger.Infof("(i) Debug mode and verbose logs: %t", isDebugLogMode)
-
-	if paramValidationLevel != string(gradleconfig.CacheValidationLevelNone) &&
-		paramValidationLevel != string(gradleconfig.CacheValidationLevelWarning) &&
-		paramValidationLevel != string(gradleconfig.CacheValidationLevelError) {
-		logger.Errorf("Invalid validation level: '%s'", paramValidationLevel)
-
-		return errInvalidCacheLevel
-	}
-	// Metadata
-	cacheConfigMetadata := common.NewCacheConfigMetadata(os.Getenv,
-		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output()
-
-			return string(output), err
-		}, logger)
-	logger.Infof("(i) Cache Config Metadata: %+v", cacheConfigMetadata)
-
-	prefs := gradleconfig.Preferences{
-		IsDependencyOnly:     false,
-		IsPushEnabled:        paramIsPushEnabled,
-		CacheLevelValidation: gradleconfig.CacheValidationLevel(paramValidationLevel),
-		IsAnalyticsEnabled:   paramIsGradleMetricsEnabled,
-		IsDebugEnabled:       isDebugLogMode,
-	}
-	if err := writeGradleInit(logger, gradleHomePath, endpointURL, authToken, cacheConfigMetadata, prefs); err != nil {
-		return err
+		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
 
-	logger.Infof("(i) Write ~/.gradle/gradle.properties")
-	{
-		gradlePropertiesPath := filepath.Join(gradleHomePath, "gradle.properties")
-		currentGradlePropsFileContent, isGradlePropsExists, err := readFileIfExists(gradlePropertiesPath)
-		if err != nil {
-			return fmt.Errorf("check if gradle.properties exists at %s, error: %w", gradlePropertiesPath, err)
-		}
-		logger.Debugf("isGradlePropsExists: %t", isGradlePropsExists)
+	if err := templateInventory.WriteToGradleInit(
+		logger,
+		gradleHomePath,
+		gradleconfig.DefaultOsProxy(),
+		gradleconfig.DefaultTemplateProxy(),
+	); err != nil {
+		return fmt.Errorf(FmtErrorEnableForGradle, err)
+	}
 
-		gradlePropertiesContent := stringmerge.ChangeContentInBlock(
-			currentGradlePropsFileContent,
-			"# [start] generated-by-bitrise-build-cache",
-			"# [end] generated-by-bitrise-build-cache",
-			"org.gradle.caching=true",
-		)
-
-		err = os.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosec,gomnd,mnd
-		if err != nil {
-			return fmt.Errorf("write gradle.properties to %s, error: %w", gradlePropertiesPath, err)
-		}
+	if err := gradleconfig.DefaultGradlePropertiesUpdater().UpdateGradleProps(activateForGradleParams, logger, gradleHomePath); err != nil {
+		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
 
 	return nil
@@ -204,10 +133,7 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 
 	pluginCacher := gradle.PluginCacher{}
 
-	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, []gradle.Plugin{
-		gradle.PluginAnalytics(),
-		gradle.PluginCache(),
-	}); err != nil {
+	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, gradle.Plugins()); err != nil {
 		return fmt.Errorf("caching plugins: %w", err)
 	}
 

@@ -1,24 +1,42 @@
+{{- if eq .Cache.Usage "enabled" -}}
 import io.bitrise.gradle.cache.BitriseBuildCache
-import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory 
-
+import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
+{{ end }}
 initscript {
     repositories {
         mavenLocal()
-        maven(url="https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
-        maven(url="https://plugins.gradle.org/m2/")
+        maven {
+            name = "artifactRegistry"
+            url = uri("https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
+        }
+        maven {
+            name = "gradlePlugins"
+            url = uri("https://plugins.gradle.org/m2/")
+        }
         mavenCentral()
         google()
-        maven(url="https://jitpack.io")
+        maven {
+            name = "jitpackIO"
+            url = uri("https://jitpack.io")
+        }
     }
+    {{- if hasDependencies . }}
     dependencies {
-        classpath("io.bitrise.gradle:remote-cache:{{ .CachePluginVersion }}")
-        {{- if .IsAnalyticsEnabled }}
-        classpath("io.bitrise.gradle:gradle-analytics:{{ .AnalyticsPluginVersion }}")
+        {{- if eq .Analytics.Usage "dependency" "enabled" }}
+        classpath("io.bitrise.gradle:gradle-analytics:{{ .Analytics.Version }}")
+        {{- end }}
+        {{- if eq .Cache.Usage "dependency" "enabled" }}
+        classpath("io.bitrise.gradle:remote-cache:{{ .Cache.Version }}")
+        {{- end }}
+        {{- if eq .TestDistro.Usage "dependency" "enabled" }}
+        classpath("io.bitrise.gradle:test-distribution:{{ .TestDistro.Version }}")
         {{- end }}
     }
+    {{- end }}
 }
-
+{{- if or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") }}
 settingsEvaluated {
+    {{- if eq .Cache.Usage "enabled" }}
     buildCache {
         local {
             isEnabled = false
@@ -26,39 +44,52 @@ settingsEvaluated {
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
-            endpoint = "{{ .CacheEndpointURLWithPort }}"
-            authToken = "{{ .AuthToken }}"
-            isEnabled = {{ not .IsDependencyOnly }}
-            isPush = {{ .IsPushEnabled }}
-            debug = {{ .IsDebugEnabled }}
-            blobValidationLevel = "{{ .ValidationLevel }}"
-            {{- if .IsAnalyticsEnabled }}
+            endpoint = "{{ .Cache.EndpointURLWithPort }}"
+            authToken = "{{ .Common.AuthToken }}"
+            isPush = {{ .Cache.IsPushEnabled }}
+            debug = {{ .Common.Debug }}
+            blobValidationLevel = "{{ .Cache.ValidationLevel }}"
+            {{- if eq .Analytics.Usage "dependency" "enabled" }}
             collectMetadata = false
             {{- end }}
         }
     }
-}
+    {{- end }}
+    {{- if eq .Analytics.Usage "enabled" }}
+    rootProject {
+        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
+        extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
+            endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
+            httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
+            authToken.set("{{ .Common.AuthToken }}")
+            dumpEventsToFiles.set({{ .Common.Debug }})
+            debug.set({{ .Common.Debug }})
+            enabled.set(true)
 
-{{- if .IsAnalyticsEnabled }}
+            providerName.set("{{ .Common.CIProvider }}")
 
-rootProject {
-    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
-
-    extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
-        endpoint.set("{{ .AnalyticsEndpoint }}:{{ .AnalyticsPort }}")
-        httpEndpoint.set("{{ .AnalyticsHTTPEndpoint }}")
-        authToken.set("{{ .AuthToken }}")
-        dumpEventsToFiles.set({{ .IsDebugEnabled }})
-        debug.set({{ .IsDebugEnabled }})
-        enabled.set({{ not .IsDependencyOnly }})
-
-        providerName.set("{{ .CacheConfigMetadata.CIProvider }}")
-
-        bitrise {
-            {{- if .CacheConfigMetadata.BitriseAppID }}
-            appSlug.set("{{ .CacheConfigMetadata.BitriseAppID }}")
-            {{- end }}
+            bitrise {
+                {{- if .Common.AppSlug }}
+                appSlug.set("{{ .Common.AppSlug }}")
+                {{- end }}
+            }
         }
     }
+    {{- end }}
 }
-{{- end }}
+{{- end -}}
+{{- if eq .TestDistro.Usage "enabled" }}
+rootProject {
+    extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
+        endpoint.set("{{ .TestDistro.Endpoint }}:{{ .TestDistro.Port }}")
+        kvEndpoint.set("{{ .TestDistro.KvEndpoint }}:{{ .TestDistro.Port }}")
+        authToken.set("{{ .Common.AuthToken }}")
+        logLevel.set("{{ .TestDistro.LogLevel }}")
+        bitrise {
+            appSlug.set("{{ .Common.AppSlug }}")
+        }
+    }
+
+    apply<io.bitrise.gradle.rbe.RBEPlugin>()
+}
+{{- end -}}

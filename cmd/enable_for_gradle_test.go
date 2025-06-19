@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -35,10 +38,10 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		err := enableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
-		require.EqualError(t, err, "read auth config from environment variables: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
+		require.EqualError(t, err, fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAutConfig, common.ErrAuthTokenNotProvided)).Error())
 	})
 
-	t.Run("No envs specified", func(t *testing.T) {
+	t.Run("Envs specified", func(t *testing.T) {
 		mockLogger, tmpGradleHomeDir := prep()
 		envVars := createEnvProvider(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
