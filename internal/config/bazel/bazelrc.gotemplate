@@ -27,7 +27,6 @@ build --remote_executor={{ .RBE.EndpointURLWithPort }}
 
 {{- if .Common.Debug }}
 build --verbose_failures
-build --remote_debug=true
 {{- end }}
 
 {{- if .Common.Timestamps }}

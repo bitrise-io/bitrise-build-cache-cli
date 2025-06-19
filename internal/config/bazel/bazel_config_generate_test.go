@@ -178,7 +178,6 @@ build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --verbose_failures
-build --remote_debug=true
 build --show_timestamps
 build --remote_header=x-app-slug=AppSlugValue
 build --remote_header=x-ci-provider=CIProviderValue
@@ -200,7 +199,6 @@ build --bes_upload_mode=wait_for_upload_complete
 build --build_event_publish_all_actions
 build --remote_executor=grpcs://remote-execution.services.bitrise.io:6669
 build --verbose_failures
-build --remote_debug=true
 build --show_timestamps
 build --remote_header=x-app-slug=AppSlugValue
 build --bes_header=x-app-slug=AppSlugValue
