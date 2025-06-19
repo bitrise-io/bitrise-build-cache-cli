@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
@@ -158,7 +159,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		assert.Equal(t, "custom-bes:8080", inventory.BES.EndpointURLWithPort)
 	})
 
-	t.Run("TemplateInventory with RBE enabled but no endpoint", func(t *testing.T) {
+	t.Run("TemplateInventory with RBE enabled and default endpoint", func(t *testing.T) {
 		mockLogger := prep()
 		params := DefaultActivateBazelParams()
 		params.RBE.Enabled = true
@@ -166,6 +167,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+			"BITRISE_RBE_ENDPOINT":             consts.RBEInternalEndpointURLUnified,
 		})
 
 		// when
@@ -173,8 +175,8 @@ func Test_ActivateBazelParams(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
-		assert.False(t, inventory.RBE.Enabled)
-		assert.Empty(t, inventory.RBE.EndpointURLWithPort)
+		assert.True(t, inventory.RBE.Enabled)
+		assert.Equal(t, consts.RBEInternalEndpointURLUnified, inventory.RBE.EndpointURLWithPort)
 	})
 
 	t.Run("TemplateInventory with RBE enabled and custom endpoint", func(t *testing.T) {
