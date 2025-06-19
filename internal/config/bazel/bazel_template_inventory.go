@@ -10,6 +10,7 @@ type HostMetadataInventory struct {
 
 type CommonTemplateInventory struct {
 	AuthToken    string
+	WorkspaceID  string
 	Debug        bool
 	AppSlug      string
 	CIProvider   string

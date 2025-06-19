@@ -44,6 +44,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 
 		// Check common configuration
 		assert.Equal(t, "AuthTokenValue", inventory.Common.AuthToken)
+		assert.Equal(t, "WorkspaceIDValue", inventory.Common.WorkspaceID)
 		assert.True(t, inventory.Common.Debug)
 		assert.Equal(t, "AppSlugValue", inventory.Common.AppSlug)
 		assert.Equal(t, "bitrise", inventory.Common.CIProvider)

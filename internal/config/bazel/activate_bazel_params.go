@@ -98,6 +98,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 
 	return CommonTemplateInventory{
 		AuthToken:    authConfig.AuthToken,
+		WorkspaceID:  authConfig.WorkspaceID,
 		Debug:        isDebug,
 		AppSlug:      cacheConfig.BitriseAppID,
 		CIProvider:   cacheConfig.CIProvider,

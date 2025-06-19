@@ -13,6 +13,7 @@ build --noremote_upload_local_results
 
 {{- if .BES.Enabled }}
 build --bes_backend={{ .BES.EndpointURLWithPort }}
+build --bes_header=authorization="Bearer {{ .Common.AuthToken }}"
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
@@ -34,6 +35,15 @@ build --show_timestamps
 {{- end }}
 
 {{- /* Bitrise common metadata */}}
+
+{{- if .Common.WorkspaceID }}
+{{- if .Cache.Enabled }}
+build --remote_header=x-org-id={{ .Common.WorkspaceID }}
+{{- end }}
+{{- if .BES.Enabled }}
+build --bes_header=x-org-id={{ .Common.WorkspaceID }}
+{{- end }}
+{{- end }}
 
 {{- if .Common.AppSlug }}
 {{- if .Cache.Enabled }}

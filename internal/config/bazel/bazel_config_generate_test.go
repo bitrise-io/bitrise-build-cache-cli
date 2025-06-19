@@ -19,10 +19,11 @@ func Test_Generate(t *testing.T) {
 			name: "Basic configuration",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:  "AuthTokenValue",
-					Debug:      false,
-					AppSlug:    "AppSlugValue",
-					CIProvider: "CIProviderValue",
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					Debug:       false,
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "CIProviderValue",
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -34,13 +35,32 @@ func Test_Generate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "Cache with push disabled",
+			name: "Basic configuration with JWT",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:  "AuthTokenValue",
+					AuthToken:  "some-jwt-token",
 					Debug:      false,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+			},
+			want:    expectedBasicConfigJWT,
+			wantErr: "",
+		},
+		{
+			name: "Cache with push disabled",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					Debug:       false,
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "CIProviderValue",
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -55,11 +75,12 @@ func Test_Generate(t *testing.T) {
 			name: "With timestamps enabled",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:  "AuthTokenValue",
-					Debug:      false,
-					AppSlug:    "AppSlugValue",
-					CIProvider: "CIProviderValue",
-					Timestamps: true,
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					Debug:       false,
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "CIProviderValue",
+					Timestamps:  true,
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -75,6 +96,7 @@ func Test_Generate(t *testing.T) {
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
 					AuthToken:    "AuthTokenValue",
+					WorkspaceID:  "WorkspaceIDValue",
 					Debug:        true,
 					AppSlug:      "AppSlugValue",
 					CIProvider:   "CIProviderValue",
@@ -100,6 +122,7 @@ func Test_Generate(t *testing.T) {
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
 					AuthToken:    "AuthTokenValue",
+					WorkspaceID:  "WorkspaceIDValue",
 					Debug:        true,
 					AppSlug:      "AppSlugValue",
 					CIProvider:   "CIProviderValue",
@@ -146,6 +169,17 @@ build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
+build --remote_header=x-org-id=WorkspaceIDValue
+build --remote_header=x-app-slug=AppSlugValue
+build --remote_header=x-ci-provider=CIProviderValue
+`
+
+const expectedBasicConfigJWT = `build --remote_cache=grpcs://cache.services.bitrise.io:443
+build --remote_timeout=600s
+build --remote_header=authorization="Bearer some-jwt-token"
+build --remote_header=x-flare-buildtool=bazel
+build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_upload_local_results
 build --remote_header=x-app-slug=AppSlugValue
 build --remote_header=x-ci-provider=CIProviderValue
 `
@@ -156,6 +190,7 @@ build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --noremote_upload_local_results
+build --remote_header=x-org-id=WorkspaceIDValue
 build --remote_header=x-app-slug=AppSlugValue
 build --remote_header=x-ci-provider=CIProviderValue
 `
@@ -167,6 +202,7 @@ build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --show_timestamps
+build --remote_header=x-org-id=WorkspaceIDValue
 build --remote_header=x-app-slug=AppSlugValue
 build --remote_header=x-ci-provider=CIProviderValue
 `
@@ -179,6 +215,7 @@ build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --verbose_failures
 build --show_timestamps
+build --remote_header=x-org-id=WorkspaceIDValue
 build --remote_header=x-app-slug=AppSlugValue
 build --remote_header=x-ci-provider=CIProviderValue
 build --remote_header=x-repository-url=https://repo-url
@@ -193,6 +230,7 @@ build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
+build --bes_header=authorization="Bearer AuthTokenValue"
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
@@ -200,6 +238,8 @@ build --build_event_publish_all_actions
 build --remote_executor=grpcs://remote-execution.services.bitrise.io:6669
 build --verbose_failures
 build --show_timestamps
+build --remote_header=x-org-id=WorkspaceIDValue
+build --bes_header=x-org-id=WorkspaceIDValue
 build --remote_header=x-app-slug=AppSlugValue
 build --bes_header=x-app-slug=AppSlugValue
 build --remote_header=x-ci-provider=CIProviderValue
