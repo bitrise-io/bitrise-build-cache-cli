@@ -347,7 +347,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --rbe --bes --timestamps
+            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
     - script:
         title: Build and capture logs
         inputs:
