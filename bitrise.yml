@@ -329,7 +329,56 @@ workflows:
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     - deploy-to-bitrise-io@2: {}
 
-  feature-e2e-bazel:
+  feature-e2e-bazel-useast-no-rbe:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: standard
+    envs:
+      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+      - BRANCH: master
+    steps:
+      - bundle::feature-e2e-setup: { }
+      - script@1:
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -exo pipefail
+                ../scripts/install_bazel.sh
+          title: Install bazel
+      - script:
+          title: Enable build cache
+          inputs:
+            - content: |-
+                set -exo pipefail
+                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+      - script:
+          title: Build and capture logs
+          inputs:
+            - content: |-
+                set -exo pipefail
+                (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+      - script:
+          title: Check for cache invocations
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -exo pipefail
+                
+                ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+                  '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
+                  'Invocation ID: ' \
+                  '--bes_header=x-os=Linux' \
+                  '--bes_header=x-cpu-cores=[0-9]+' \
+                  '--bes_header=x-mem-size=[0-9]+' \
+                  '--bes_header=x-locale=\w+' \
+                  '--bes_header=x-default-charset=\w+' \
+      - deploy-to-bitrise-io@2: { }
+  feature-e2e-bazel-bitrisedc-no-rbe:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
@@ -362,7 +411,7 @@ workflows:
             set -exo pipefail
             
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
+              '--remote_cache=grpcs:\/\/cache\.services\.bitrise\.io' \
               'Invocation ID: ' \
               '--bes_header=x-os=Linux' \
               '--bes_header=x-cpu-cores=[0-9]+' \
@@ -653,7 +702,8 @@ pipelines:
   features-e2e:
     workflows:
       test: {}
-      feature-e2e-bazel: {}
+      feature-e2e-bazel-useast-no-rbe: {}
+      feature-e2e-bazel-bitrisedc-no-rbe: {}
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-bitwarden: {}
       gradle-configuration-e2e-osx: {}
