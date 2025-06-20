@@ -4,6 +4,7 @@ project_type: other
 meta:
   bitrise.io:
     stack: linux-docker-android-22.04
+    machine_type_id: g2.linux.medium
 
 app:
   envs:
@@ -89,7 +90,7 @@ workflows:
         run_if: ".IsBuildFailed"
     meta:
       bitrise.io:
-        machine_type_id: g2-m1.8core
+        machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
   test:
     steps:
@@ -112,7 +113,7 @@ workflows:
           - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     meta:
       bitrise.io:
-        machine_type_id: g2-m1.8core
+        machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
 
   generate_gradle_verification:
@@ -329,9 +330,6 @@ workflows:
     - deploy-to-bitrise-io@2: {}
 
   feature-e2e-bazel:
-    meta:
-      bitrise.io:
-        stack: linux-docker-android-22.04
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
@@ -376,7 +374,7 @@ workflows:
   gradle-configuration-e2e-osx:
     meta:
       bitrise.io:
-        machine_type_id: g2-m1.8core
+        machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
     envs:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
