@@ -37,14 +37,14 @@ type TestDistroParams struct {
 	JustDependency bool
 }
 
-type ActivateForGradleParams struct {
+type ActivateGradleParams struct {
 	Cache      CacheParams
 	Analytics  AnalyticsParams
 	TestDistro TestDistroParams
 }
 
-func DefaultActivateForGradleParams() ActivateForGradleParams {
-	return ActivateForGradleParams{
+func DefaultActivateGradleParams() ActivateGradleParams {
+	return ActivateGradleParams{
 		Cache: CacheParams{
 			Enabled:         false,
 			JustDependency:  false,
@@ -62,7 +62,7 @@ func DefaultActivateForGradleParams() ActivateForGradleParams {
 	}
 }
 
-func (params ActivateForGradleParams) TemplateInventory(
+func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
 	isDebug bool,
@@ -94,7 +94,7 @@ func (params ActivateForGradleParams) TemplateInventory(
 	}, nil
 }
 
-func (params ActivateForGradleParams) commonTemplateInventory(
+func (params ActivateGradleParams) commonTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
 	isDebug bool,
@@ -127,7 +127,7 @@ func (params ActivateForGradleParams) commonTemplateInventory(
 	}, nil
 }
 
-func (params ActivateForGradleParams) cacheTemplateInventory(
+func (params ActivateGradleParams) cacheTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
 ) (CacheTemplateInventory, error) {
@@ -172,7 +172,7 @@ func (params ActivateForGradleParams) cacheTemplateInventory(
 	}, nil
 }
 
-func (params ActivateForGradleParams) analyticsTemplateInventory(
+func (params ActivateGradleParams) analyticsTemplateInventory(
 	logger log.Logger,
 ) AnalyticsTemplateInventory {
 	if !params.Analytics.JustDependency && !params.Analytics.Enabled {
@@ -203,7 +203,7 @@ func (params ActivateForGradleParams) analyticsTemplateInventory(
 	}
 }
 
-func (params ActivateForGradleParams) testDistroTemplateInventory(
+func (params ActivateGradleParams) testDistroTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
 	isDebug bool,

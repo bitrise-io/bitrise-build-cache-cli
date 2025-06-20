@@ -1,4 +1,4 @@
-package cmd
+package utils
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 )
 
-func readFileIfExists(pth string) (string, bool, error) {
+func ReadFileIfExists(pth string) (string, bool, error) {
 	fileContent := ""
 	isFileExist, err := pathutil.NewPathChecker().IsPathExists(pth)
 	if err != nil {

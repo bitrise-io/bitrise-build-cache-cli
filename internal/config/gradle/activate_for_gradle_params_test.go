@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_activateForGradleParams(t *testing.T) {
+func Test_activateGradleParams(t *testing.T) {
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
@@ -31,14 +31,14 @@ func Test_activateForGradleParams(t *testing.T) {
 	tests := []struct {
 		name    string
 		debug   bool
-		params  ActivateForGradleParams
+		params  ActivateGradleParams
 		envVars map[string]string
 		want    TemplateInventory
 		wantErr string
 	}{
 		{
 			name: "no auth token",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache:      CacheParams{Enabled: false},
 				Analytics:  AnalyticsParams{Enabled: false},
 				TestDistro: TestDistroParams{Enabled: false},
@@ -48,7 +48,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "no workspaceID",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache:      CacheParams{Enabled: false},
 				Analytics:  AnalyticsParams{Enabled: false},
 				TestDistro: TestDistroParams{Enabled: false},
@@ -60,7 +60,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "no plugins",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache:      CacheParams{Enabled: false},
 				Analytics:  AnalyticsParams{Enabled: false},
 				TestDistro: TestDistroParams{Enabled: false},
@@ -86,7 +86,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "dependency only plugins",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled:        false,
 					JustDependency: true,
@@ -124,7 +124,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "activate cache",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled:         true,
 					JustDependency:  true, // gets overridden by enable
@@ -164,7 +164,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "given invalid cache validation level cache activation throws error",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled:         true,
 					ValidationLevel: "InvalidLevel",
@@ -186,7 +186,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "activate analytics",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: false,
 				},
@@ -223,7 +223,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "activate test distro",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: false,
 				},
@@ -265,7 +265,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		},
 		{
 			name: "activating test distro while missing app slug throws error",
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: false,
 				},
@@ -287,7 +287,7 @@ func Test_activateForGradleParams(t *testing.T) {
 		{
 			name:  "activate plugins with debug mode",
 			debug: true,
-			params: ActivateForGradleParams{
+			params: ActivateGradleParams{
 				Cache: CacheParams{
 					Enabled: false,
 				},
