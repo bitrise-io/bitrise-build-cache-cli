@@ -5,6 +5,7 @@ import (
 	"os"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -55,8 +56,8 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 				return inventory.WriteToGradleInit(
 					logger,
 					path,
-					gradleconfig.DefaultOsProxy(),
-					gradleconfig.DefaultTemplateProxy(),
+					utils.DefaultOsProxy(),
+					gradleconfig.GradleTemplateProxy(),
 				)
 			},
 			gradleconfig.DefaultGradlePropertiesUpdater(),

@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/google/uuid"
@@ -93,8 +94,8 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	if err := templateInventory.WriteToGradleInit(
 		logger,
 		gradleHomePath,
-		gradleconfig.DefaultOsProxy(),
-		gradleconfig.DefaultTemplateProxy(),
+		utils.DefaultOsProxy(),
+		gradleconfig.GradleTemplateProxy(),
 	); err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/mock"
@@ -55,7 +56,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return nil
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: gradleconfig.OsProxy{
+				OsProxy: utils.OsProxy{
 					ReadFileIfExists: func(pth string) (string, bool, error) {
 						actualPath = &pth
 
@@ -91,7 +92,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return nil
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: gradleconfig.OsProxy{
+				OsProxy: utils.OsProxy{
 					ReadFileIfExists: func(string) (string, bool, error) {
 						return "", true, nil
 					},
@@ -123,7 +124,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return templateWriteError
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: gradleconfig.OsProxy{
+				OsProxy: utils.OsProxy{
 					ReadFileIfExists: func(string) (string, bool, error) {
 						return "", true, nil
 					},
@@ -155,7 +156,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return nil
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: gradleconfig.OsProxy{
+				OsProxy: utils.OsProxy{
 					ReadFileIfExists: func(string) (string, bool, error) {
 						return "", true, nil
 					},

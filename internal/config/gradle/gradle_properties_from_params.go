@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -14,12 +15,12 @@ const (
 )
 
 type GradlePropertiesUpdater struct {
-	OsProxy OsProxy
+	OsProxy utils.OsProxy
 }
 
 func DefaultGradlePropertiesUpdater() GradlePropertiesUpdater {
 	return GradlePropertiesUpdater{
-		OsProxy: DefaultOsProxy(),
+		OsProxy: utils.DefaultOsProxy(),
 	}
 }
 

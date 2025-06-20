@@ -5,6 +5,7 @@ import (
 	"os"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -62,8 +63,8 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider fu
 	if err := templateInventory.WriteToGradleInit(
 		logger,
 		gradleHomePath,
-		gradleconfig.DefaultOsProxy(),
-		gradleconfig.DefaultTemplateProxy(),
+		utils.DefaultOsProxy(),
+		gradleconfig.GradleTemplateProxy(),
 	); err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

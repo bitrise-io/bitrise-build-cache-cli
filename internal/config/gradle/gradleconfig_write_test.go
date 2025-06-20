@@ -8,6 +8,7 @@ import (
 	"testing"
 	"text/template"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -37,7 +38,7 @@ func Test_writeGradleInitGradle(t *testing.T) {
 		inventory := TemplateInventory{}
 
 		// when
-		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, DefaultOsProxy(), DefaultTemplateProxy())
+		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, utils.DefaultOsProxy(), GradleTemplateProxy())
 
 		// then
 		require.NoError(t, err)
@@ -52,12 +53,12 @@ func Test_writeGradleInitGradle(t *testing.T) {
 
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to create directories")
-		osProxy := OsProxy{
+		osProxy := utils.OsProxy{
 			MkdirAll: func(string, os.FileMode) error { return expectedError },
 		}
 
 		// when
-		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, osProxy, DefaultTemplateProxy())
+		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, osProxy, GradleTemplateProxy())
 
 		// then
 		require.ErrorIs(t, err, expectedError)
@@ -68,14 +69,14 @@ func Test_writeGradleInitGradle(t *testing.T) {
 
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to parse template")
-		templateProxy := TemplateProxy{
-			parse: func(string, string) (*template.Template, error) {
+		templateProxy := utils.TemplateProxy{
+			Parse: func(string, string) (*template.Template, error) {
 				return nil, expectedError
 			},
 		}
 
 		// when
-		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, DefaultOsProxy(), templateProxy)
+		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, utils.DefaultOsProxy(), templateProxy)
 
 		// then
 		require.ErrorIs(t, err, expectedError)
@@ -86,15 +87,15 @@ func Test_writeGradleInitGradle(t *testing.T) {
 
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to execute template")
-		templateProxy := TemplateProxy{
-			parse: DefaultTemplateProxy().parse,
-			execute: func(*template.Template, *bytes.Buffer, TemplateInventory) error {
+		templateProxy := utils.TemplateProxy{
+			Parse: GradleTemplateProxy().Parse,
+			Execute: func(*template.Template, *bytes.Buffer, interface{}) error {
 				return expectedError
 			},
 		}
 
 		// when
-		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, DefaultOsProxy(), templateProxy)
+		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, utils.DefaultOsProxy(), templateProxy)
 
 		// then
 		require.ErrorIs(t, err, expectedError)
@@ -105,15 +106,15 @@ func Test_writeGradleInitGradle(t *testing.T) {
 
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to write init.gradle")
-		osProxy := OsProxy{
-			MkdirAll: DefaultOsProxy().MkdirAll,
+		osProxy := utils.OsProxy{
+			MkdirAll: utils.DefaultOsProxy().MkdirAll,
 			WriteFile: func(string, []byte, os.FileMode) error {
 				return expectedError
 			},
 		}
 
 		// when
-		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, osProxy, DefaultTemplateProxy())
+		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, osProxy, GradleTemplateProxy())
 
 		// then
 		require.ErrorIs(t, err, expectedError)
