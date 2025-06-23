@@ -5,6 +5,7 @@ import (
 	"os"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -14,8 +15,8 @@ const (
 	errFmtFailedToUpdateProps = `failed to update gradle.properties: %w"`
 )
 
-// activateForGradleCmd represents the `gradle` subcommand under `activate`
-var activateForGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
+// activateGradleCmd represents the `gradle` subcommand under `activate`
+var activateGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "gradle",
 	Short: "Activate Bitrise Plugins for Gradle",
 	Long: `Activate Bitrise Plugins for Gradle.
@@ -43,11 +44,11 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("failed to fetch plugins: %w", err)
 		}
 
-		if err := activateForGradleCmdFn(
+		if err := activateGradleCmdFn(
 			logger,
 			gradleHome,
 			os.Getenv,
-			activateForGradleParams.TemplateInventory,
+			activateGradleParams.TemplateInventory,
 			func(
 				inventory gradleconfig.TemplateInventory,
 				path string,
@@ -55,8 +56,8 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 				return inventory.WriteToGradleInit(
 					logger,
 					path,
-					gradleconfig.DefaultOsProxy(),
-					gradleconfig.DefaultTemplateProxy(),
+					utils.DefaultOsProxy(),
+					gradleconfig.GradleTemplateProxy(),
 				)
 			},
 			gradleconfig.DefaultGradlePropertiesUpdater(),
@@ -71,24 +72,24 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 }
 
 //nolint:gochecknoglobals
-var activateForGradleParams = gradleconfig.DefaultActivateForGradleParams()
+var activateGradleParams = gradleconfig.DefaultActivateGradleParams()
 
 func init() {
-	activateCmd.AddCommand(activateForGradleCmd)
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.Enabled, "cache", activateForGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.JustDependency, "cache-dep", activateForGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Cache.PushEnabled, "cache-push", activateForGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
-	activateForGradleCmd.Flags().StringVar(&activateForGradleParams.Cache.ValidationLevel, "cache-validation", activateForGradleParams.Cache.ValidationLevel, "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
-	activateForGradleCmd.Flags().StringVar(&activateForGradleParams.Cache.Endpoint, "cache-endpoint", activateForGradleParams.Cache.Endpoint, "The endpoint can be manually provided here for caching operations.")
+	activateCmd.AddCommand(activateGradleCmd)
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.Enabled, "cache", activateGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.JustDependency, "cache-dep", activateGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.PushEnabled, "cache-push", activateGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
+	activateGradleCmd.Flags().StringVar(&activateGradleParams.Cache.ValidationLevel, "cache-validation", activateGradleParams.Cache.ValidationLevel, "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
+	activateGradleCmd.Flags().StringVar(&activateGradleParams.Cache.Endpoint, "cache-endpoint", activateGradleParams.Cache.Endpoint, "The endpoint can be manually provided here for caching operations.")
 
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Analytics.Enabled, "analytics", activateForGradleParams.Analytics.Enabled, "Activate analytics plugin. Will override analytics-dep.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.Analytics.JustDependency, "analytics-dep", activateForGradleParams.Analytics.JustDependency, "Add analytics plugin as a dependency only.")
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Analytics.Enabled, "analytics", activateGradleParams.Analytics.Enabled, "Activate analytics plugin. Will override analytics-dep.")
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Analytics.JustDependency, "analytics-dep", activateGradleParams.Analytics.JustDependency, "Add analytics plugin as a dependency only.")
 
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.TestDistro.Enabled, "test-distribution", activateForGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
-	activateForGradleCmd.Flags().BoolVar(&activateForGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateForGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.Enabled, "test-distribution", activateGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
+	activateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 }
 
-func activateForGradleCmdFn(
+func activateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider func(string) string,
@@ -108,7 +109,7 @@ func activateForGradleCmdFn(
 		return err
 	}
 
-	if err := updater.UpdateGradleProps(activateForGradleParams, logger, gradleHomePath); err != nil {
+	if err := updater.UpdateGradleProps(activateGradleParams, logger, gradleHomePath); err != nil {
 		return fmt.Errorf(errFmtFailedToUpdateProps, err)
 	}
 

@@ -3,72 +3,71 @@ package bazelconfig
 import (
 	"bytes"
 	_ "embed"
-	"errors"
 	"fmt"
-	"text/template"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-)
-
-var (
-	errAuthTokenNotProvided   = errors.New("AuthToken not provided")
-	errEndpointURLNotProvided = errors.New("EndpointURL not provided")
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 //go:embed bazelrc.gotemplate
 var bazelrcTemplateText string
 
-type templateInventory struct {
-	CacheEndpointURL    string
-	RBEEndpointURL      string
-	WorkspaceID         string
-	AuthToken           string
-	IsTimestampsEnabled bool
-	// CacheConfigMetadata
-	CacheConfigMetadata common.CacheConfigMetadata
-}
+const (
+	errFmtInvalidTemplate    = "generate bazelrc: invalid template: %w"
+	errFmtBazelrcGeneration  = "couldn't generate bazelrc content: %w"
+	errFmtWritingBazelrcFile = "write bazelrc to %s, error: %w"
+)
 
-type Preferences struct {
-	RBEEndpointURL      string
-	IsTimestampsEnabled bool
-}
-
-// Generate bazelrc.
-func GenerateBazelrc(cacheEndpointURL, workspaceID, authToken string,
-	cacheConfigMetadata common.CacheConfigMetadata,
-	prefs Preferences) (string, error) {
-	// required check
-	if len(authToken) < 1 {
-		return "", fmt.Errorf("generate bazelrc, error: %w", errAuthTokenNotProvided)
-	}
-
-	if len(cacheEndpointURL) < 1 {
-		return "", fmt.Errorf("generate bazelrc, error: %w", errEndpointURLNotProvided)
-	}
-
-	if len(prefs.RBEEndpointURL) < 1 {
-		prefs.RBEEndpointURL = ""
-	}
-
-	// create inventory
-	inventory := templateInventory{
-		CacheEndpointURL:    cacheEndpointURL,
-		RBEEndpointURL:      prefs.RBEEndpointURL,
-		WorkspaceID:         workspaceID,
-		AuthToken:           authToken,
-		IsTimestampsEnabled: prefs.IsTimestampsEnabled,
-		CacheConfigMetadata: cacheConfigMetadata,
-	}
-
-	tmpl, err := template.New("bazelrc").Parse(bazelrcTemplateText)
+// GenerateBazelrc creates the bazelrc content from the inventory data
+func (inventory TemplateInventory) GenerateBazelrc(templateProxy utils.TemplateProxy) (string, error) {
+	tmpl, err := templateProxy.Parse("bazelrc", bazelrcTemplateText)
 	if err != nil {
-		return "", fmt.Errorf("generate bazelrc: invalid template: %w", err)
+		return "", fmt.Errorf(errFmtInvalidTemplate, err)
 	}
 
 	resultBuffer := bytes.Buffer{}
-	if err = tmpl.Execute(&resultBuffer, inventory); err != nil {
-		return "", fmt.Errorf("GenerateBazelrc: %w", err)
+	if err = templateProxy.Execute(tmpl, &resultBuffer, inventory); err != nil {
+		return "", fmt.Errorf(errFmtBazelrcGeneration, err)
 	}
 
 	return resultBuffer.String(), nil
+}
+
+const (
+	bazelBlockStart = "# [start] generated-by-bitrise-build-cache"
+	bazelBlockEnd   = "# [end] generated-by-bitrise-build-cache"
+)
+
+// WriteToBazelrc writes the Bazel configuration to the specified bazelrc file. If the file exists, it only appends the
+// generated content within the specified block. If it does not exist, it creates a new file with the content.
+// Previously written content will be updated.
+func (inventory TemplateInventory) WriteToBazelrc(
+	logger log.Logger,
+	bazelrcPath string,
+	osProxy utils.OsProxy,
+	templateProxy utils.TemplateProxy,
+) error {
+	logger.Infof("(i) Generate bazel configuration")
+	bazelrcContent, err := inventory.GenerateBazelrc(templateProxy)
+	if err != nil {
+		return fmt.Errorf(errFmtBazelrcGeneration, err)
+	}
+
+	currentContent, exists, err := osProxy.ReadFileIfExists(bazelrcPath)
+	if err != nil {
+		return fmt.Errorf("reading .bazelrc: %w", err)
+	}
+	if !exists {
+		currentContent = ""
+	}
+
+	finalContent := stringmerge.ChangeContentInBlock(currentContent, bazelBlockStart, bazelBlockEnd, bazelrcContent)
+
+	logger.Infof("(i) Write bazel configuration to %s", bazelrcPath)
+	if err = osProxy.WriteFile(bazelrcPath, []byte(finalContent), 0644); err != nil {
+		return fmt.Errorf(errFmtWritingBazelrcFile, bazelrcPath, err)
+	}
+
+	return nil
 }

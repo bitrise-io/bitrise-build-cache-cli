@@ -5,6 +5,7 @@ import (
 	"os"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -47,14 +48,14 @@ func init() {
 }
 
 func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
-	activateForGradleParams.Cache.Enabled = false
-	activateForGradleParams.Cache.JustDependency = true
-	activateForGradleParams.Analytics.Enabled = false
-	activateForGradleParams.Analytics.JustDependency = true
-	activateForGradleParams.TestDistro.Enabled = false
-	activateForGradleParams.TestDistro.JustDependency = true
+	activateGradleParams.Cache.Enabled = false
+	activateGradleParams.Cache.JustDependency = true
+	activateGradleParams.Analytics.Enabled = false
+	activateGradleParams.Analytics.JustDependency = true
+	activateGradleParams.TestDistro.Enabled = false
+	activateGradleParams.TestDistro.JustDependency = true
 
-	templateInventory, err := activateForGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, isDebugLogMode)
 	if err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}
@@ -62,8 +63,8 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider fu
 	if err := templateInventory.WriteToGradleInit(
 		logger,
 		gradleHomePath,
-		gradleconfig.DefaultOsProxy(),
-		gradleconfig.DefaultTemplateProxy(),
+		utils.DefaultOsProxy(),
+		gradleconfig.GradleTemplateProxy(),
 	); err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

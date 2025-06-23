@@ -99,7 +99,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.inventory.GenerateInitGradle(DefaultTemplateProxy())
+			got, err := tt.inventory.GenerateInitGradle(GradleTemplateProxy())
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
