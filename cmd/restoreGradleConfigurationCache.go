@@ -10,6 +10,8 @@ import (
 
 	"path/filepath"
 
+	"regexp"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
@@ -87,7 +89,20 @@ func checkGradleCachePathExists(logger log.Logger,
 	dirs, err := osProxy.ListDirectories(dirToCheck)
 	if err == nil && len(dirs) > 0 {
 		logger.Debugf("Found gradle cache directories: %s", strings.Join(dirs, ", "))
-		dirToCheck = filepath.Join(dirToCheck, dirs[0], "transforms")
+
+		// search for gradle version directories
+		rg := regexp.MustCompile(`^\d+\.\d+`)
+		for _, dir := range dirs {
+			if rg.MatchString(dir) {
+				dirToCheck = filepath.Join(dirToCheck, dir)
+
+				break
+			}
+		}
+	}
+
+	if dirToCheck != "" {
+		dirToCheck = filepath.Join(dirToCheck, "transforms")
 		logger.Debugf("Checking gradle cache directories in: %s", dirToCheck)
 
 		dirs, err = osProxy.ListDirectories(dirToCheck)
