@@ -33,7 +33,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 	t.Run("No envs specified", func(t *testing.T) {
 		mockLogger, tmpHomeDir := prep()
 		envVars := createEnvProvider(map[string]string{})
-		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.EqualError(t, err, "template inventory error: read auth config from environment variables: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
@@ -44,7 +44,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
 		})
-		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -56,7 +56,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -68,7 +68,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -91,7 +91,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err = enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err = enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -115,7 +115,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -133,7 +133,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -160,7 +160,7 @@ build --remote_upload_local_results
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err = enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err = enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)
@@ -234,7 +234,7 @@ build --show_timestamps
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
-		err = enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
+		err = enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars, utils.DefaultOsProxy())
 
 		// then
 		require.NoError(t, err)

@@ -39,7 +39,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("expand Bazel home path, error: %w", err)
 		}
 
-		if err := enableForBazelCmdFn(logger, bazelHomeDirPath, os.Getenv); err != nil {
+		if err := enableForBazelCmdFn(logger, bazelHomeDirPath, os.Getenv, utils.DefaultOsProxy()); err != nil {
 			return fmt.Errorf("enable Bazel Build Cache: %w", err)
 		}
 
@@ -58,7 +58,7 @@ func init() {
 	enableForCmd.AddCommand(enableForBazelCmd)
 }
 
-func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string) error {
+func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string, osProxy utils.OsProxy) error {
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata
@@ -76,7 +76,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	if err != nil {
 		return fmt.Errorf("get absolute path of ~/.bazelrc, error: %w", err)
 	}
-	currentBazelrcFileContent, isBazelrcExists, err := utils.ReadFileIfExists(bazelrcPath)
+	currentBazelrcFileContent, isBazelrcExists, err := osProxy.ReadFileIfExists(bazelrcPath)
 	if err != nil {
 		return fmt.Errorf("check if ~/.bazelrc exists at %s, error: %w", bazelrcPath, err)
 	}
