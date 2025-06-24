@@ -8,11 +8,15 @@ import (
 	"os/exec"
 	"strings"
 
+	"path/filepath"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -50,7 +54,9 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 				output, err := exec.Command(name, v...).Output()
 
 				return string(output), err
-			})
+			},
+			pathutil.NewPathModifier(),
+			utils.DefaultOsProxy())
 		if err != nil {
 			return fmt.Errorf("restore Gradle config cache from Bitrise Build Cache: %w", err)
 		}
@@ -67,12 +73,53 @@ func init() {
 	restoreGradleConfigCacheCmd.Flags().String("key", "", "The cache key used for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
 }
 
+func checkGradleCachePathExists(logger log.Logger,
+	pathModifier pathutil.PathModifier,
+	osProxy utils.OsProxy) error {
+	// Check if ~/.gradle/caches/**/transforms files exist, if not, fail as config cache will
+	// make the build fail otherwise.
+	gradleHome, err := pathModifier.AbsPath(gradleHomeNonExpanded)
+	if err != nil {
+		return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHomeNonExpanded, err)
+	}
+	dirToCheck := filepath.Join(gradleHome, "caches")
+	logger.Debugf("Checking gradle cache directories in: %s", dirToCheck)
+	dirs, err := osProxy.ListDirectories(dirToCheck)
+	if err == nil && len(dirs) > 0 {
+		logger.Debugf("Found gradle cache directories: %s", strings.Join(dirs, ", "))
+		dirToCheck = filepath.Join(dirToCheck, dirs[0], "transforms")
+		logger.Debugf("Checking gradle cache directories in: %s", dirToCheck)
+
+		dirs, err = osProxy.ListDirectories(dirToCheck)
+	}
+
+	if len(dirs) == 0 || err != nil {
+		logger.Errorf("No Gradle cache directories found in %s. "+
+			"Make sure to run a build with the Save Gradle Cache step added and "+
+			"with save transforms enabled before using configuration cache.", dirToCheck)
+
+		if err != nil {
+			return fmt.Errorf("list directories in %s: %w", dirToCheck, err)
+		}
+
+		return fmt.Errorf("no Gradle caches found in %s", dirToCheck)
+	}
+
+	return nil
+}
+
 func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	authConfig common.CacheAuthConfig,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider func(string) string,
-	commandFunc func(string, ...string) (string, error)) error {
+	commandFunc func(string, ...string) (string, error),
+	pathModifier pathutil.PathModifier,
+	osProxy utils.OsProxy) error {
+	if err := checkGradleCachePathExists(logger, pathModifier, osProxy); err != nil {
+		return fmt.Errorf("check Gradle cache path exists: %w", err)
+	}
+
 	kvClient, err := createKVClient(ctx,
 		CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
