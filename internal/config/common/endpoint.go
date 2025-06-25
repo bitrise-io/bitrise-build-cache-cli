@@ -1,10 +1,28 @@
 package common
 
 import (
+	"slices"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 )
 
 const datacenterEnvKey = "BITRISE_DEN_VM_DATACENTER"
+
+//nolint:gochecknoglobals
+var (
+	cacheDCs = []string{
+		consts.ATL1,
+		consts.LAS1,
+		consts.IAD1,
+		consts.ORD1,
+		consts.USEAST1,
+	}
+	rbeDCS = []string{
+		consts.IAD1,
+		consts.ORD1,
+		consts.USEAST1,
+	}
+)
 
 // SelectCacheEndpointURL - if endpointURL provided use that,
 // otherwise select the best build cache endpoint automatically
@@ -17,15 +35,8 @@ func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string)
 	}
 
 	bitriseDenVMDatacenter := envProvider(datacenterEnvKey)
-	switch bitriseDenVMDatacenter {
-	case consts.LAS1:
-		return consts.EndpointURLLAS1
-	case consts.ATL1:
-		return consts.EndpointURLATL1
-	case consts.IAD1:
-		return consts.EndpointURLIAD1
-	case consts.ORD1:
-		return consts.EndpointURLORD1
+	if slices.Contains(cacheDCs, bitriseDenVMDatacenter) {
+		return consts.CacheInternalEndpointURLUnified
 	}
 
 	return consts.EndpointURLDefault
@@ -42,11 +53,8 @@ func SelectRBEEndpointURL(endpointURL string, envProvider func(string) string) s
 	}
 
 	bitriseDenVMDatacenter := envProvider(datacenterEnvKey)
-	switch bitriseDenVMDatacenter {
-	case "IAD1":
-		return consts.RBEEndpointURLIAD1
-	case "ORD1":
-		return consts.RBEEndpointURLORD1
+	if slices.Contains(rbeDCS, bitriseDenVMDatacenter) {
+		return consts.RBEInternalEndpointURLUnified
 	}
 
 	return ""

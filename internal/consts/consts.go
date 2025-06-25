@@ -1,10 +1,11 @@
 package consts
 
 const (
-	LAS1 = "LAS1"
-	ATL1 = "ATL1"
-	IAD1 = "IAD1"
-	ORD1 = "ORD1"
+	LAS1    = "LAS1"
+	ATL1    = "ATL1"
+	IAD1    = "IAD1"
+	ORD1    = "ORD1"
+	USEAST1 = "US_EAST1"
 
 	// These URLs are internal only (for now) and environment aware.
 	// They point to the appropriate instance for the respective datacenter when used on VMs managed by Bitrise.
@@ -15,13 +16,6 @@ const (
 	// The default URL uses the public endpoint, which might not be context aware
 	// When this comment was written it simply pointed to the GCP us-east cache, but geo loadbalancing is planned.
 	EndpointURLDefault = "grpcs://bitrise-accelerate.services.bitrise.io"
-	EndpointURLLAS1    = CacheInternalEndpointURLUnified
-	EndpointURLATL1    = CacheInternalEndpointURLUnified
-	EndpointURLIAD1    = CacheInternalEndpointURLUnified
-	EndpointURLORD1    = CacheInternalEndpointURLUnified
-
-	RBEEndpointURLIAD1 = RBEInternalEndpointURLUnified
-	RBEEndpointURLORD1 = RBEInternalEndpointURLUnified
 
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
