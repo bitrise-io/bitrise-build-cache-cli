@@ -9,6 +9,7 @@ export CLI_RELEASE_URL_PREFIX="https://github.com/bitrise-io/bitrise-build-cache
 
 export BITRISE_BUILD_CACHE_AUTH_TOKEN=dummy
 export BITRISE_BUILD_CACHE_WORKSPACE_ID=dummy
+export BITRISE_APP_SLUG=dummy 
 
 cat $MD_HEADER_PATH > $RESULT_MD_PATH
 export tmpdir=$(mktemp -d)
