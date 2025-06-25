@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
@@ -15,6 +16,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+)
+
+const (
+	ErrFmtMetadataWrongOS = "no applicable metadata found with compatible OS"
 )
 
 // nolint: gochecknoglobals
@@ -102,6 +107,10 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	}
 
 	metadata.Print(logger)
+
+	if metadata.OS != runtime.GOOS {
+		return errors.New(ErrFmtMetadataWrongOS)
+	}
 
 	logger.TInfof("Downloading configuration cache files")
 	_, err = kvClient.DownloadFileGroupFromBuildCache(ctx, metadata.ConfigCacheFiles, isDebugLogMode, true, false, 100)

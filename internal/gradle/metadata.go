@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
@@ -16,6 +17,7 @@ const metadataVersion = 1
 type Metadata struct {
 	ConfigCacheFiles     filegroup.Info `json:"configCacheFiles"`
 	CacheKey             string         `json:"cacheKey"`
+	OS                   string         `json:"os"`
 	CreatedAt            time.Time      `json:"createdAt"`
 	AppID                string         `json:"appId,omitempty"`
 	BuildID              string         `json:"buildId,omitempty"`
@@ -39,6 +41,7 @@ func (g *Cache) CreateMetadata(cacheKey string, dir string) (*Metadata, error) {
 	m := Metadata{
 		ConfigCacheFiles:     fg,
 		CacheKey:             cacheKey,
+		OS:                   runtime.GOOS,
 		CreatedAt:            time.Now(),
 		AppID:                g.envProvider("BITRISE_APP_SLUG"),
 		BuildID:              g.envProvider("BITRISE_BUILD_SLUG"),
@@ -98,6 +101,7 @@ func (md *Metadata) Print(logger log.Logger) {
 		createdAt = md.CreatedAt.String()
 	}
 	logger.Infof("  Created at: %s", createdAt)
+	logger.Infof("  OS: %s", md.OS)
 	logger.Infof("  App ID: %s", md.AppID)
 	logger.Infof("  Build ID: %s", md.BuildID)
 	logger.Infof("  Git commit: %s", md.GitCommit)
