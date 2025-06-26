@@ -92,6 +92,7 @@ func (pluginCacher PluginCacher) fetchFromCache(
 	file PluginFile,
 	logger log.Logger,
 ) (bool, error) {
+	logger.Debugf("Fetching " + file.name() + " from kv cache with key: " + file.key())
 	downloaded, err := kvClient.DownloadFile(
 		ctx,
 		filepath.Join(file.absoluteDirPath(logger), file.name()),

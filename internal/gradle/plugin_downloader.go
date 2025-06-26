@@ -16,7 +16,6 @@ type PluginDownloader struct {
 
 func (downloader PluginDownloader) Download(file PluginFile) (string, error) {
 	artifactRepositories := []string{
-		"https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven",
 		"https://plugins.gradle.org/m2/",
 		"https://repo.maven.apache.org/maven2",
 		"https://repo1.maven.org/maven2",

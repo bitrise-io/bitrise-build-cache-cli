@@ -6,10 +6,6 @@ initscript {
     repositories {
         mavenLocal()
         maven {
-            name = "artifactRegistry"
-            url = uri("https://us-maven.pkg.dev/ip-build-cache-prod/build-cache-maven")
-        }
-        maven {
             name = "gradlePlugins"
             url = uri("https://plugins.gradle.org/m2/")
         }
@@ -22,6 +18,7 @@ initscript {
     }
     {{- if hasDependencies . }}
     dependencies {
+        classpath("io.bitrise.gradle:common:{{ .Common.Version }}")
         {{- if eq .Analytics.Usage "dependency" "enabled" }}
         classpath("io.bitrise.gradle:gradle-analytics:{{ .Analytics.Version }}")
         {{- end }}

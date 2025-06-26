@@ -72,6 +72,7 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken: "WorkspaceIDValue:AuthTokenValue",
+					Version:   consts.GradleCommonPluginDepVersion,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -107,6 +108,7 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken: "WorkspaceIDValue:AuthTokenValue",
+					Version:   consts.GradleCommonPluginDepVersion,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:   UsageLevelDependency,
@@ -146,6 +148,7 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken: "WorkspaceIDValue:AuthTokenValue",
+					Version:   consts.GradleCommonPluginDepVersion,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -205,6 +208,7 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken: "WorkspaceIDValue:AuthTokenValue",
+					Version:   consts.GradleCommonPluginDepVersion,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -246,6 +250,7 @@ func Test_activateGradleParams(t *testing.T) {
 					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
 					AppSlug:    "AppSlugValue",
 					CIProvider: "bitrise",
+					Version:    consts.GradleCommonPluginDepVersion,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -311,6 +316,7 @@ func Test_activateGradleParams(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "bitrise",
+					Version:    consts.GradleCommonPluginDepVersion,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,

@@ -39,6 +39,7 @@ type PluginCommonTemplateInventory struct {
 	Debug      bool
 	AppSlug    string
 	CIProvider string
+	Version    string
 }
 
 type TemplateInventory struct {
