@@ -254,6 +254,11 @@ workflows:
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache
     - script:
+        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+        inputs:
+          - content: |-
+              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+    - script:
         title: Build and capture logs
         inputs:
         - content: |-
@@ -283,6 +288,11 @@ workflows:
         - content: |-
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache
+    - script:
+        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+        inputs:
+          - content: |-
+              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
@@ -437,6 +447,11 @@ workflows:
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache
     - script:
+        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+        inputs:
+        - content: |-
+            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+    - script:
         title: Create local configuration cache
         inputs:
         - content: |-
@@ -495,6 +510,11 @@ workflows:
         - content: |-
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache
+    - script:
+        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+        inputs:
+          - content: |-
+              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
