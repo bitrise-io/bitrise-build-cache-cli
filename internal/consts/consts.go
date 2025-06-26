@@ -1,8 +1,6 @@
 package consts
 
 const (
-	LAS1    = "LAS1"
-	ATL1    = "ATL1"
 	IAD1    = "IAD1"
 	ORD1    = "ORD1"
 	USEAST1 = "US_EAST1"
