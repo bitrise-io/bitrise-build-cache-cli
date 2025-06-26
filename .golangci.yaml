@@ -1,20 +1,40 @@
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
-  - funlen
-  - gochecknoinits
-  - lll # line too long
-  - godot # "comment should end in a period"
-  - gofumpt
-  - wsl
-  - depguard
-  - exhaustruct
-  - paralleltest
-  - testpackage
-  - mnd
-  - err113
-  - perfsprint
-  - varnamelen
-  - gci
-  - nolintlint
-  - cyclop
+    - cyclop
+    - depguard
+    - err113
+    - exhaustruct
+    - funlen
+    - gochecknoinits
+    - godot
+    - lll
+    - mnd
+    - nolintlint
+    - paralleltest
+    - perfsprint
+    - testpackage
+    - varnamelen
+    - wsl
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

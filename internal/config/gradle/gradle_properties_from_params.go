@@ -50,7 +50,7 @@ func (updater GradlePropertiesUpdater) UpdateGradleProps(
 		cachingLine,
 	)
 
-	err = updater.OsProxy.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosec,gomnd,mnd
+	err = updater.OsProxy.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosecÏ,mnd
 	if err != nil {
 		return fmt.Errorf(ErrFmtGradlePropertyWrite, gradlePropertiesPath, err)
 	}
