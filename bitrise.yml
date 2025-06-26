@@ -263,7 +263,6 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew dependencies --configuration runtimeClasspath | grep bitrise
             (./gradlew debug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations

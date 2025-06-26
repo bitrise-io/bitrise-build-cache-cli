@@ -4,6 +4,7 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 {{ end }}
 initscript {
     repositories {
+        mavenLocal()
         maven {
             name = "gradlePlugins"
             url = uri("https://plugins.gradle.org/m2/")

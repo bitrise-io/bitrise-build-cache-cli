@@ -117,6 +117,7 @@ const expectedImports = `import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`
 
 const expectedRepositories = `    repositories {
+        mavenLocal()
         maven {
             name = "gradlePlugins"
             url = uri("https://plugins.gradle.org/m2/")

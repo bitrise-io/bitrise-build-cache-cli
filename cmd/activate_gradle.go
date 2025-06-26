@@ -40,9 +40,9 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
 		}
 
-		if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
-			return fmt.Errorf("failed to fetch plugins: %w", err)
-		}
+		//if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
+		//	return fmt.Errorf("failed to fetch plugins: %w", err)
+		//}
 
 		if err := activateGradleCmdFn(
 			logger,
