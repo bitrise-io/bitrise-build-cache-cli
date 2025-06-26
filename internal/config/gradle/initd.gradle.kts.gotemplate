@@ -22,6 +22,7 @@ initscript {
     }
     {{- if hasDependencies . }}
     dependencies {
+        classpath("io.bitrise.gradle:common:{{ .Common.Version }}")
         {{- if eq .Analytics.Usage "dependency" "enabled" }}
         classpath("io.bitrise.gradle:gradle-analytics:{{ .Analytics.Version }}")
         {{- end }}

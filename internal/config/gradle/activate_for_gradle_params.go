@@ -124,6 +124,7 @@ func (params ActivateGradleParams) commonTemplateInventory(
 		Debug:      isDebug,
 		AppSlug:    cacheConfig.BitriseAppID,
 		CIProvider: cacheConfig.CIProvider,
+		Version:    consts.GradleCommonPluginDepVersion,
 	}, nil
 }
 

@@ -22,6 +22,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
+					Version:    "CommonVersionValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -44,6 +45,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
+					Version:    "CommonVersionValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:   UsageLevelDependency,
@@ -69,6 +71,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
+					Version:    "CommonVersionValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -132,6 +135,7 @@ const expectedRepositories = `    repositories {
     }`
 
 const expectedDependencies = `    dependencies {
+        classpath("io.bitrise.gradle:common:CommonVersionValue")
         classpath("io.bitrise.gradle:gradle-analytics:AnalyticsVersionValue")
         classpath("io.bitrise.gradle:remote-cache:CacheVersionValue")
         classpath("io.bitrise.gradle:test-distribution:TestDistroVersionValue")
