@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
@@ -167,7 +166,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-			"BITRISE_RBE_ENDPOINT":             consts.RBEInternalEndpointURLUnified,
+			"BITRISE_RBE_ENDPOINT":             "rbe.yolo.com:443",
 		})
 
 		// when
@@ -176,7 +175,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.True(t, inventory.RBE.Enabled)
-		assert.Equal(t, consts.RBEInternalEndpointURLUnified, inventory.RBE.EndpointURLWithPort)
+		assert.Equal(t, "rbe.yolo.com:443", inventory.RBE.EndpointURLWithPort)
 	})
 
 	t.Run("TemplateInventory with RBE enabled and custom endpoint", func(t *testing.T) {
