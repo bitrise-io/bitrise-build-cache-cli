@@ -263,7 +263,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --info 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew debug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -298,7 +298,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew debug --configuration-cache --dry-run --info
+            ./gradlew debug --configuration-cache --dry-run --info --stacktrace
     - script:
         title: Save configuration cache
         inputs:
@@ -325,7 +325,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache --info 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -456,7 +456,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew debug --configuration-cache --dry-run --info
+            ./gradlew debug --configuration-cache --dry-run --info --stacktrace
     - script:
         title: Save configuration cache
         inputs:
@@ -481,7 +481,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache --info 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -520,7 +520,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew debug --configuration-cache --dry-run --info
+            ./gradlew debug --configuration-cache --dry-run --info --stacktrace
     - script:
         title: Save configuration cache
         inputs:
@@ -545,7 +545,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache --info 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
