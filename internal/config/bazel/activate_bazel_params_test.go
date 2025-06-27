@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"testing"
 
+	"slices"
+	"strings"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -18,6 +21,8 @@ func Test_ActivateBazelParams(t *testing.T) {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 
@@ -38,7 +43,22 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, true)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(cmd string, params ...string) (string, error) {
+			fullcommand := append([]string{cmd}, params...)
+			if slices.ContainsFunc(fullcommand, func(s string) bool {
+				return strings.Contains(s, "uname")
+			}) {
+				return "Linux", nil
+			}
+			if slices.ContainsFunc(fullcommand, func(s string) bool {
+				return strings.Contains(strings.ToLower(s), "memtotal") ||
+					strings.Contains(strings.ToLower(s), "memsize")
+			}) {
+				return "1024", nil
+			}
+
+			return "", nil
+		}, true)
 
 		// then
 		require.NoError(t, err)
@@ -52,6 +72,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		assert.Equal(t, "WorkflowName1", inventory.Common.WorkflowName)
 		assert.Equal(t, "BuildID1", inventory.Common.BuildID)
 		assert.True(t, inventory.Common.Timestamps)
+		assert.Equal(t, "bitrise", inventory.Common.CIProvider)
+
+		assert.Equal(t, "Linux", inventory.Common.HostMetadata.OS)
+		assert.Equal(t, int64(1024), inventory.Common.HostMetadata.MemSize)
 
 		// Check cache configuration (enabled by default)
 		assert.True(t, inventory.Cache.Enabled)
@@ -73,7 +97,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		envVars := createEnvProvider(map[string]string{})
 
 		// when
-		_, err := params.TemplateInventory(mockLogger, envVars, false)
+		_, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.EqualError(t, err, fmt.Errorf("read auth config from environment variables: %w", common.ErrAuthTokenNotProvided).Error())
@@ -92,7 +118,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)
@@ -112,7 +140,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)
@@ -131,7 +161,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)
@@ -151,7 +183,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)
@@ -171,7 +205,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)
@@ -191,7 +227,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)
@@ -210,7 +248,9 @@ func Test_ActivateBazelParams(t *testing.T) {
 		})
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 
 		// then
 		require.NoError(t, err)

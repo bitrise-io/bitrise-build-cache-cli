@@ -134,8 +134,8 @@ func Test_Generate(t *testing.T) {
 						OS:             "Linux prd-linux-use4c-87a9aa94-fcd4-4c5d-919c-f214f05a986c",
 						Locale:         "en-US",
 						DefaultCharset: "UTF-8",
-						CPUCores:       "8",
-						MemSize:        "1024",
+						CPUCores:       8,
+						MemSize:        1024,
 					},
 				},
 				Cache: CacheTemplateInventory{

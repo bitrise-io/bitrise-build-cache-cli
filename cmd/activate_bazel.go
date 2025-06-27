@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"os/exec"
+
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -66,6 +69,14 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		logger,
 		bazelrcPath,
 		os.Getenv,
+		func(cmd string, params ...string) (string, error) {
+			output, err2 := exec.Command(cmd, params...).CombinedOutput()
+			if err2 == nil {
+				return string(output), nil
+			}
+
+			return string(output), fmt.Errorf("run cmd: %w", err2)
+		},
 		activateBazelParams.TemplateInventory,
 		func(inventory bazelconfig.TemplateInventory, path string) error {
 			return inventory.WriteToBazelrc(logger, path, utils.DefaultOsProxy(), utils.DefaultTemplateProxy())
@@ -83,11 +94,12 @@ func activateBazelCmdFn(
 	logger log.Logger,
 	bazelrcPath string,
 	envProvider func(string) string,
-	templateInventoryProvider func(log.Logger, func(string) string, bool) (bazelconfig.TemplateInventory, error),
+	commandFunc common.CommandFunc,
+	templateInventoryProvider func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
 	templateWriter func(bazelconfig.TemplateInventory, string) error,
 ) error {
 	// Generate template inventory
-	inventory, err := templateInventoryProvider(logger, envProvider, isDebugLogMode)
+	inventory, err := templateInventoryProvider(logger, envProvider, commandFunc, isDebugLogMode)
 	if err != nil {
 		return err
 	}

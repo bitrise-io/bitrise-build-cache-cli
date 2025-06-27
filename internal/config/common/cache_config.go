@@ -114,7 +114,9 @@ func NewMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger lo
 			bitriseCISpecificMetadata{}, hostMetadata)
 	}
 
-	return CacheConfigMetadata{}
+	return CacheConfigMetadata{
+		HostMetadata: hostMetadata,
+	}
 }
 
 // nolint: funlen, nestif
