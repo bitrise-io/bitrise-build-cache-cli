@@ -20,6 +20,8 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 	// given
 	prep := func() (log.Logger, string) {
 		mockLogger := &mocks.Logger{}
+		mockLogger.On("Errorf", mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
@@ -194,7 +196,9 @@ build --remote_upload_local_results
 		params.Cache.PushEnabled = false
 
 		// First invoke with push disabled
-		inventory, err := params.TemplateInventory(mockLogger, envVars, false)
+		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+			return "", nil
+		}, false)
 		require.NoError(t, err)
 
 		bazelrcBlockContent, err := inventory.GenerateBazelrc(utils.DefaultTemplateProxy())

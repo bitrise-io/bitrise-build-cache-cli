@@ -89,7 +89,14 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	params.RBE.Enabled = rbeEnabled
 	params.Timestamps = timestamps
 
-	inventory, err := params.TemplateInventory(logger, envProvider, isDebugLogMode)
+	inventory, err := params.TemplateInventory(logger, envProvider, func(cmd string, params ...string) (string, error) {
+		output, err2 := exec.Command(cmd, params...).CombinedOutput()
+		if err2 == nil {
+			return string(output), nil
+		}
+
+		return string(output), fmt.Errorf("run cmd: %w", err2)
+	}, isDebugLogMode)
 	if err != nil {
 		return fmt.Errorf("template inventory error: %w", err)
 	}

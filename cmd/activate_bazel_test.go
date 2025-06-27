@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/mock"
@@ -40,7 +41,10 @@ func Test_activateBazelCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.bazelrc",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (bazelconfig.TemplateInventory, error) {
+			func(_ string, _ ...string) (string, error) {
+				return "", nil
+			},
+			func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -69,7 +73,10 @@ func Test_activateBazelCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.bazelrc",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (bazelconfig.TemplateInventory, error) {
+			func(_ string, _ ...string) (string, error) {
+				return "", nil
+			},
+			func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return bazelconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -93,7 +100,10 @@ func Test_activateBazelCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.bazelrc",
 			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (bazelconfig.TemplateInventory, error) {
+			func(_ string, _ ...string) (string, error) {
+				return "", nil
+			},
+			func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return bazelconfig.TemplateInventory{}, nil
 			},
 			func(

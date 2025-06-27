@@ -4,8 +4,8 @@ type HostMetadataInventory struct {
 	OS             string
 	Locale         string
 	DefaultCharset string
-	CPUCores       string
-	MemSize        string
+	CPUCores       int
+	MemSize        int64
 }
 
 type CommonTemplateInventory struct {

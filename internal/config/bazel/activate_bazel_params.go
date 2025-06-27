@@ -2,8 +2,6 @@ package bazelconfig
 
 import (
 	"fmt"
-	"os/exec"
-	"strconv"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -51,11 +49,12 @@ func DefaultActivateBazelParams() ActivateBazelParams {
 func (params ActivateBazelParams) TemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
+	commandFunc common.CommandFunc,
 	isDebug bool,
 ) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
-	commonInventory, err := params.commonTemplateInventory(logger, envProvider, isDebug)
+	commonInventory, err := params.commonTemplateInventory(logger, envProvider, commandFunc, isDebug)
 	if err != nil {
 		return TemplateInventory{}, err
 	}
@@ -75,6 +74,7 @@ func (params ActivateBazelParams) TemplateInventory(
 func (params ActivateBazelParams) commonTemplateInventory(
 	logger log.Logger,
 	envProvider func(string) string,
+	commandFunc common.CommandFunc,
 	isDebug bool,
 ) (CommonTemplateInventory, error) {
 	logger.Infof("(i) Debug mode and verbose logs: %t", isDebug)
@@ -88,11 +88,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	}
 
 	cacheConfig := common.NewMetadata(envProvider,
-		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output()
-
-			return string(output), err
-		},
+		commandFunc,
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
@@ -110,8 +106,8 @@ func (params ActivateBazelParams) commonTemplateInventory(
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,
 			DefaultCharset: cacheConfig.HostMetadata.DefaultCharset,
-			CPUCores:       strconv.Itoa(cacheConfig.HostMetadata.CPUCores),
-			MemSize:        strconv.FormatInt(cacheConfig.HostMetadata.MemSize, 10),
+			CPUCores:       cacheConfig.HostMetadata.CPUCores,
+			MemSize:        cacheConfig.HostMetadata.MemSize,
 		},
 	}, nil
 }
