@@ -10,9 +10,8 @@ const datacenterEnvKey = "BITRISE_DEN_VM_DATACENTER"
 
 //nolint:gochecknoglobals
 var (
-	rbeDCS = []string{
-		consts.IAD1,
-		consts.ORD1,
+	// nonRBEDCs are datacenters where RBE is not available
+	nonRBEDCs = []string{
 		consts.USEAST1,
 	}
 )
@@ -41,9 +40,9 @@ func SelectRBEEndpointURL(endpointURL string, envProvider func(string) string) s
 	}
 
 	bitriseDenVMDatacenter := envProvider(datacenterEnvKey)
-	if slices.Contains(rbeDCS, bitriseDenVMDatacenter) {
-		return consts.BitriseAccelerate
+	if slices.Contains(nonRBEDCs, bitriseDenVMDatacenter) {
+		return ""
 	}
 
-	return ""
+	return consts.BitriseAccelerate
 }
