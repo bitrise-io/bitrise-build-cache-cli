@@ -8,7 +8,7 @@ const (
 	// BitriseAccelerate currently pointing to IAD1, but in the same time, it's environment-aware.
 	// It points to the appropriate instance for the respective datacenter when used on VMs managed by Bitrise.
 	// More info: https://github.com/bitrise-io/build-prebooting-deployments/blob/production/preboot-reconciler/startup_script_extension_macos_bitvirt.sh#L72
-	BitriseAccelerate = "https://bitrise-accelerate.services.bitrise.io"
+	BitriseAccelerate = "grpcs://bitrise-accelerate.services.bitrise.io"
 
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
