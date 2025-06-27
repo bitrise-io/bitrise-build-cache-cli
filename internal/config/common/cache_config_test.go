@@ -22,16 +22,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		want CacheConfigMetadata
 	}{
 		{
-			name: "Unknown CI provider",
-			args: args{
-				envProvider: createEnvProvider(map[string]string{}),
-				commandFunc: func(_ string, _ ...string) (string, error) {
-					return "", nil
-				},
-			},
-			want: CacheConfigMetadata{},
-		},
-		{
 			name: "Bitrise CI",
 			args: args{
 				envProvider: createEnvProvider(map[string]string{
@@ -110,8 +100,27 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "Non-CI OS",
 			args: args{
-				envProvider: createEnvProvider(map[string]string{}),
-				commandFunc: func(c string, _ ...string) (string, error) {
+				envProvider: createEnvProvider(map[string]string{
+					"LANG": "en_US.UTF-8",
+				}),
+				commandFunc: func(c string, a ...string) (string, error) {
+					hasMemTotal := slices.ContainsFunc(a, func(s string) bool {
+						return strings.Contains(s, "MemTotal")
+					})
+					hasMemSize := strings.Contains(c, "sysctl") && slices.Contains(a, "hw.memsize")
+
+					if hasMemTotal {
+						return "1", nil
+					}
+					if hasMemSize {
+						return "1000", nil
+					}
+
+					if strings.Contains(c, "nproc") ||
+						(strings.Contains(c, "sysctl") && slices.Contains(a, "hw.ncpu")) {
+						return "4", nil
+					}
+
 					if strings.Contains(c, "uname") {
 						return "Linux", nil
 					}
@@ -120,8 +129,13 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				},
 			},
 			want: CacheConfigMetadata{
+				CIProvider: "",
 				HostMetadata: HostMetadata{
-					OS: "",
+					OS:             "Linux",
+					Locale:         "en_US",
+					DefaultCharset: "UTF-8",
+					CPUCores:       4,
+					MemSize:        1000,
 				},
 			},
 		},
