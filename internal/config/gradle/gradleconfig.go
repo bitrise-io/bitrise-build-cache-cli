@@ -48,7 +48,7 @@ func (inventory TemplateInventory) WriteToGradleInit(
 ) error {
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
 	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
-	err := osProxy.MkdirAll(gradleInitDPath, 0755) //nolint:gomnd,mnd
+	err := osProxy.MkdirAll(gradleInitDPath, 0755) //nolint:mnd
 	if err != nil {
 		return fmt.Errorf(errFmtEnsureGradleInitDirExists, err)
 	}
@@ -62,7 +62,7 @@ func (inventory TemplateInventory) WriteToGradleInit(
 	logger.Infof("(i) Write ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts")
 	{
 		initGradlePath := filepath.Join(gradleInitDPath, "bitrise-build-cache.init.gradle.kts")
-		err = osProxy.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,gomnd,mnd
+		err = osProxy.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,mnd
 		if err != nil {
 			return fmt.Errorf(errFmtWritingGradleInitFile, initGradlePath, err)
 		}

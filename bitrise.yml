@@ -375,7 +375,7 @@ workflows:
             set -exo pipefail
             
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              '--remote_cache=grpcs:\/\/cache\.services\.bitrise\.io' \
+              '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
               'Invocation ID: ' \
               '--bes_header=x-os=Linux' \
               '--bes_header=x-cpu-cores=[0-9]+' \

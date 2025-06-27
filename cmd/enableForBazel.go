@@ -114,7 +114,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	)
 
 	logger.Infof("(i) Writing config into ~/.bazelrc")
-	err = os.WriteFile(bazelrcPath, []byte(bazelrcContent), 0755) //nolint:gosec,gomnd,mnd
+	err = os.WriteFile(bazelrcPath, []byte(bazelrcContent), 0755) //nolint:gosec,mnd
 	if err != nil {
 		return fmt.Errorf("write bazelrc config to %s, error: %w", bazelrcPath, err)
 	}
