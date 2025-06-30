@@ -7,9 +7,7 @@ export RESULT_MD_PATH="docs/dependency-matrix.md"
 export MD_HEADER_PATH="assets/dependency-matrix-header.md"
 export CLI_RELEASE_URL_PREFIX="https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag"
 
-export BITRISE_BUILD_CACHE_AUTH_TOKEN=dummy
-export BITRISE_BUILD_CACHE_WORKSPACE_ID=dummy
-export BITRISE_APP_SLUG=dummy 
+export BITRISE_BUILD_CACHE_WORKSPACE_ID=322a005426441b60
 
 cat $MD_HEADER_PATH > $RESULT_MD_PATH
 export tmpdir=$(mktemp -d)
@@ -53,7 +51,24 @@ sort -Vr | while read -r step_version; do
   cd ../bitrise-build-cache-cli
   git checkout "$cli_version"
 
-  go run main.go activate gradle --cache --test-distribution
+  semver_regex='v?([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z.-]+))?(\+([0-9A-Za-z.-]+))?'
+
+  if [[ $cli_version =~ $semver_regex ]]; then
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    patch="${BASH_REMATCH[3]}"
+  else
+    echo "No semantic version found"
+    exit 1
+  fi
+
+  if (( major > 0 )); then
+    BITRISE_APP_SLUG=322a005426441b60 go run main.go activate gradle --cache --test-distribution -d
+  elif (( major == 0 && minor > 17 )); then
+    BITRISE_APP_SLUG=322a005426441b60 go run main.go activate gradle --cache --test-distribution -d
+  else
+    go run main.go enable-for gradle
+  fi
 
   if [ ! -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" ]; then
     echo "Gradle build cache not enabled in $HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts"
