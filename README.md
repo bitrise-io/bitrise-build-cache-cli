@@ -19,10 +19,10 @@ curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build
 If you want to install the CLI to somewhere else you can change the `-b PATH` parameter.
 
 If you want to install a specific version of the CLI you can use specify the version as the last parameter
-of the installer script. For example to install version `v0.4.0`:
+of the installer script. For example to install version `v0.17.0`:
 
 ```shell
-curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v0.4.0
+curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v0.17.0
 ```
 
 *Note: **DRAFT** versions aren't supported by the installer, but releases marked as **pre-release** are.*
@@ -32,21 +32,23 @@ curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build
 To configure Bitrise Build Cache for Gradle on the current machine:
 
 ```shell
-/tmp/bin/bitrise-build-cache enable-for gradle
+/tmp/bin/bitrise-build-cache activate gradle --cache --cache-push=false
 ```
 
 To configure Bitrise Build Cache for Bazel on the current machine:
 
 ```shell
-/tmp/bin/bitrise-build-cache enable-for bazel
+/tmp/bin/bitrise-build-cache activate bazel --cache --cache-push=false
 ```
 
 For the options and parameters accepted by the commands call the command with `--help` flag.
 
+You can also enable the `-d` flag for more verbose logging. This is helpful for troubleshooting.
+
 The CLI requires the following environment variables to be set for authentication:
 
 - If you're running it on Bitrise CI: no environment variable is required. Bitrise CI generates the necessary authentication config and exposes it as environment variable automatically for builds running on Bitrise CI.
-- In any other CI environment:
+- In any other CI environment or for local development:
   - Set `BITRISE_BUILD_CACHE_AUTH_TOKEN` to a Bitrise Personal Access Token which you can generate on [bitrise.io](https://bitrise.io/). Related documentation: [Bitrise DevCenter](https://devcenter.bitrise.io/en/accounts/personal-access-tokens.html#creating-a-personal-access-token).
   - Set the `BITRISE_BUILD_CACHE_WORKSPACE_ID` to the Bitrise Workspace's ID you have Bitrise Build Cache (Trial) enabled for. To find the Workspace ID navigate to the Workspace's page and find the ID in the URL. You can find the related documentation on the [Bitrise DevCenter](https://devcenter.bitrise.io/en/api/identifying-workspaces-and-apps-with-their-slugs.html#finding-a-slug-on-the-bitrise-website).
 
@@ -66,7 +68,7 @@ In case of Bazel it's done via creating or modifying `$HOME/.bazelrc`.
 
 ## High level description of the process
 
-When `enable-for gradle` or `enable-for bazel` is called:
+When `activate gradle` or `activate bazel` is called:
 
 1. CLI checks whether all the available inputs are available. Inputs (auth token, workspace ID, ...) are read from environment variables or via flags specified for the command.
 2. Then it checks whether the configuration file(s) already exist in the `$HOME` directory.
@@ -78,17 +80,18 @@ When `enable-for gradle` or `enable-for bazel` is called:
 
 ### Gradle
 
-- `$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts` is overwritten when you run `enable-for gradle`.
+- `$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts` is overwritten when you run `activate gradle`.
   Any modification you do in that file will be overwritten.
-- `$HOME/.gradle/gradle.properties` is modified in the following way: when you run `enable-for gradle`
+- `$HOME/.gradle/gradle.properties` is modified in the following way: when you run `activate gradle`
   the CLI will check whether a `# [start] generated-by-bitrise-build-cache / # [end] generated-by-bitrise-build-cache`
   block is already in the file. If there is, then only the block's content will be modified.
   If there's no marked block in the properties file yet then the CLI will append it to the file
   with the necessary content in the block (`org.gradle.caching=true`).
+- The CLI will also try to download the Bitrise gradle plugins from the Build Cache to avoid having to rely on maven central. 
 
 ### Bazel
 
-- `$HOME/.bazelrc` is modified in the following way: when you run `enable-for bazel`
+- `$HOME/.bazelrc` is modified in the following way: when you run `activate bazel`
   the CLI will check whether a `# [start] generated-by-bitrise-build-cache / # [end] generated-by-bitrise-build-cache`
   block is already in the file. If there is, then only the block's content will be modified.
   If there's no marked block in the bazelrc file yet then the CLI will append it to the file
@@ -96,61 +99,4 @@ When `enable-for gradle` or `enable-for bazel` is called:
 
 ## Release process
 
-### 1: Update Gradle verification reference file
-
-Run the `bitrise test` or `bitrise run generate_gradle_verification` command locally, and commit changes (workflows will fail if there are any) to the repository. In case the CI workflow is still failing, copy the generated metadata from the `Generate Gradle verification reference` Step's log.
-
-### 2: Create release
-
-To release a new version we use [goreleaser](https://github.com/goreleaser/goreleaser).
-
-The release is generated on Bitrise CI. To trigger it, create and push a new version tag
-in the following format: `vX.X.X` for example `v0.1.0`:
-
-```shell
-# first tag the new release
-git tag -a v0.1.0 -m "Initial test release"
-git push origin v0.1.0
-```
-
-This will trigger a build on Bitrise CI with the `release` workflow,
-which will create the new GitHub Release, generate the various archives
-based on the `.goreleaser.yaml` config (currently generating intel + arm, for linux + macos).
-
-**NOTE:** the GitHub Release will be created as a **draft**. After successful release creation
-and assets uploads you have to manually finish the release by editing the draft and clicking `Publish release`
-on the GitHub UI.
-
-**NOTE:** to test the new release before it'd be automatically downloaded by the installer when no version
-number is specified: edit the **draft** and enable the `Set as a pre-release` toggle option.
-This way you can test the new version by specifying it for the installer script, and if it
-looks good you can edit the release and change it to `Set as the latest release`,
-so it'll be the version downloaded by the installer when the installer is called without a specified version.
-
-
-### 3: Update downloader
-
-Now that the new release is available run `godownloader` to update the
-installer script.
-To generate the downloader/installer script we use [github.com/kamilsk/godownloader](https://github.com/kamilsk/godownloader).
-To install `godownloader` with Homebrew, use `brew install octolab/tap/godownloader`.
-
-```shell
-# generate the downloader/installer script into ./install/installer.sh based on the .goreleaser.yaml configuration.
-godownloader .goreleaser.yaml > ./install/installer.sh
-```
-
-If only the timestamp is changed at the top of `./install/installer.sh` you don't have to commit
-the change, just discard it. If something else also changes then commit and push the updated `installer.sh`.
-
-### 4: Update depending repos (steps, ...)
-
-The Bitrise Build Cache CLI is platform independent, but we have platform specific "adapters".
-These adapters depend on the Bitrise Build Cache CLI, either by importing it as a Go
-library, or by depending on the compiled and released CLI.
-
-When we do a new Bitrise Build Cache CLI release the following dependent "adapters" should also be updated:
-
-- Bitrise CI Steps:
-  - https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache
-  - https://github.com/bitrise-steplib/bitrise-step-activate-bazel-cache
+Refer to the [confluence page](https://bitrise.atlassian.net/wiki/spaces/RD/pages/3620110397/Build+cache+plugin+CLI+release+flow)
