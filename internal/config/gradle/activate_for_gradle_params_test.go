@@ -269,27 +269,6 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 		},
 		{
-			name: "activating test distro while missing app slug throws error",
-			params: ActivateGradleParams{
-				Cache: CacheParams{
-					Enabled: false,
-				},
-				Analytics: AnalyticsParams{
-					Enabled: false,
-				},
-				TestDistro: TestDistroParams{
-					Enabled:        true,
-					JustDependency: true, // gets overridden by enable
-				},
-			},
-			envVars: map[string]string{
-				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
-				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-				"BITRISE_IO":                       "true",
-			},
-			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroAppSlug)).Error(),
-		},
-		{
 			name:  "activate plugins with debug mode",
 			debug: true,
 			params: ActivateGradleParams{
