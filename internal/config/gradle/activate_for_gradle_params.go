@@ -81,10 +81,7 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	analyticsInventory := params.analyticsTemplateInventory(logger)
 
-	testDistroInventory, err := params.testDistroTemplateInventory(logger, envProvider, isDebug)
-	if err != nil {
-		return TemplateInventory{}, fmt.Errorf(errFmtTestDistroConfigCreation, err)
-	}
+	testDistroInventory := params.testDistroTemplateInventory(logger, isDebug)
 
 	return TemplateInventory{
 		Common:     commonInventory,
@@ -206,15 +203,14 @@ func (params ActivateGradleParams) analyticsTemplateInventory(
 
 func (params ActivateGradleParams) testDistroTemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
 	isDebug bool,
-) (TestDistroTemplateInventory, error) {
+) TestDistroTemplateInventory {
 	if !params.TestDistro.JustDependency && !params.TestDistro.Enabled {
 		logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelNone)
 
 		return TestDistroTemplateInventory{
 			Usage: UsageLevelNone,
-		}, nil
+		}
 	}
 
 	if params.TestDistro.JustDependency && !params.TestDistro.Enabled {
@@ -223,7 +219,7 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		return TestDistroTemplateInventory{
 			Usage:   UsageLevelDependency,
 			Version: consts.GradleTestDistributionPluginDepVersion,
-		}, nil
+		}
 	}
 
 	logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelEnabled)
@@ -240,5 +236,5 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 		Port:       consts.GradleTestDistributionPort,
 		LogLevel:   logLevel,
-	}, nil
+	}
 }
