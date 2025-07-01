@@ -63,9 +63,11 @@ sort -Vr | while read -r step_version; do
   fi
 
   if (( major > 0 )); then
-    BITRISE_APP_SLUG=322a005426441b60 go run main.go activate gradle --cache --test-distribution -d
-  elif (( major == 0 && minor > 17 )); then
-    BITRISE_APP_SLUG=322a005426441b60 go run main.go activate gradle --cache --test-distribution -d
+    go run main.go activate gradle --cache --test-distribution -d
+  elif (( major == 0 && minor > 16 )); then
+    go run main.go activate gradle --cache --test-distribution -d
+  elif (( major == 0 && minor == 16 && patch >= 10 )); then
+    go run main.go activate gradle --cache --test-distribution -d
   else
     go run main.go enable-for gradle
   fi
