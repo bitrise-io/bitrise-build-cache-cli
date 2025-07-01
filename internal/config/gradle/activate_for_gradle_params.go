@@ -228,11 +228,6 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 
 	logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelEnabled)
 
-	appSlug := envProvider("BITRISE_APP_SLUG")
-	if len(appSlug) < 1 {
-		return TestDistroTemplateInventory{}, errors.New(errFmtTestDistroAppSlug)
-	}
-
 	logLevel := "warning"
 	if isDebug {
 		logLevel = "debug"
