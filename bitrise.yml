@@ -672,6 +672,70 @@ step_bundles:
           inputs:
             - path: "./_tmp"
 
+  ai_pr_summary:
+    triggers:
+      # run for pull requests; changed_files filter exposes the list of changed files
+      pull_request:
+      - target_branch: '*'
+        source_branch: '*'
+        changed_files: '*'
+    # Set status_report_name to report the status of this workflow separately.
+    status_report_name: 'AI Review'
+    # Simple Medium Linux machine is enough
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    envs:
+    - GITHUB_TOKEN: $AI_PR_REVIEWER_GITHUB_TOKEN
+    - LLM_API_KEY: $AI_PR_REVIEWER_OPENAI_API_KEY
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.4.0: {}
+    - script@1.2.1:
+        title: Generate AI Review for PR
+        inputs:
+        - content: |-            
+            #!/bin/bash
+            set -e
+
+            # Parse repository name from repo URL (works for SSH & HTTPS)
+            REPO_URL="${GIT_REPOSITORY_URL}"
+            REPO=$(echo "$REPO_URL" | sed -E 's#(git@|https://)([^/:]+)[/:]([^/]+)/([^.]+)(\.git)?#\3/\4#')
+
+            # 1. Unshallow the repo if it's a shallow clone (safe to run even if already full)
+            git fetch --unshallow || true
+
+            # 2. Fetch all branch refs (this ensures both the PR and the target/destination branch are present)
+            git fetch origin
+
+            # 3. Fetch both relevant branches explicitly for safety (redundant but safe)
+            git fetch origin "$BITRISEIO_GIT_BRANCH_DEST"
+            git fetch origin "$BITRISE_GIT_BRANCH"
+
+            # 4. Create/reset local branches to match the remote
+            git checkout -B "$BITRISEIO_GIT_BRANCH_DEST" "origin/$BITRISEIO_GIT_BRANCH_DEST"
+            git checkout -B "$BITRISE_GIT_BRANCH" "origin/$BITRISE_GIT_BRANCH"
+
+            # (Optionally: check out the PR branch if that is the branch you want to analyze)
+            git checkout "$BITRISE_GIT_BRANCH"
+
+            # 5. Install AI reviewer plugin (customize source as needed)
+            bitrise plugin install --source https://github.com/bitrise-io/bitrise-plugins-ai-reviewer.git
+
+            # 6. Run your AI reviewer (customize flags as needed)
+            bitrise :ai-reviewer summarize \
+              -m=gpt-4.1 \
+              -c="${GIT_CLONE_COMMIT_HASH}" \
+              -b="${BITRISEIO_GIT_BRANCH_DEST}" \
+              -r=github \
+              --pr="${BITRISE_PULL_REQUEST}" \
+              --repo="${REPO}"
+              --log-level=debug
+
+            echo "Done! PR reviewed."
+
 pipelines:
   features-e2e:
     workflows:
