@@ -118,7 +118,7 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 	kvClient, err := createKVClient(ctx,
 		CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
-			ClientName:       ClientNameGradleConfigCache,
+			ClientName:       ClientNameGradle,
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
 			CommandFunc: func(name string, v ...string) (string, error) {

@@ -15,6 +15,7 @@ import (
 const (
 	ClientNameXcode             = "xcode"
 	ClientNameGradleConfigCache = "gradle-config"
+	ClientNameGradle            = "gradle"
 )
 
 type CreateKVClientParams struct {
