@@ -33,7 +33,7 @@ update() {
     fi
     echo "Current version of $plugin_name plugin: $current_version"
 
-    latest_version=$(curl -s "https://s01.oss.sonatype.org/content/repositories/releases/io/bitrise/gradle/$artifact_name/maven-metadata.xml" | xmllint --xpath 'string(//latest)' -)
+    latest_version=$(curl -s "https://repo1.maven.org/maven2/io/bitrise/gradle/$artifact_name/maven-metadata.xml" | xmllint --xpath 'string(//latest)' -)
     if [[ -z "$latest_version" ]]; then
         echo "Failed to get the latest version of $plugin_name plugin"
         exit 1
