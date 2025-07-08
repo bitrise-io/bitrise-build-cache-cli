@@ -696,7 +696,7 @@ step_bundles:
     - script@1.2.1:
         title: Generate AI Review for PR
         inputs:
-        - content: |-            
+        - content: |-
             #!/bin/bash
             set -e
 
@@ -731,7 +731,7 @@ step_bundles:
               -b="${BITRISEIO_GIT_BRANCH_DEST}" \
               -r=github \
               --pr="${BITRISE_PULL_REQUEST}" \
-              --repo="${REPO}"
+              --repo="${REPO}" \
               --log-level=debug
 
             echo "Done! PR reviewed."
