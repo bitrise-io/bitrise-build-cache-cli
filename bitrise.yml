@@ -673,14 +673,6 @@ step_bundles:
             - path: "./_tmp"
 
   ai_pr_summary:
-    triggers:
-      # run for pull requests; changed_files filter exposes the list of changed files
-      pull_request:
-      - target_branch: '*'
-        source_branch: '*'
-        changed_files: '*'
-    # Set status_report_name to report the status of this workflow separately.
-    status_report_name: 'AI Review'
     # Simple Medium Linux machine is enough
     meta:
       bitrise.io:
@@ -737,6 +729,17 @@ step_bundles:
             echo "Done! PR reviewed."
 
 pipelines:
+  ai_pr_summary_pipeline:
+    workflows:
+      ai_pr_summary: {}
+    triggers:
+      # run for pull requests; changed_files filter exposes the list of changed files
+      pull_request:
+      - target_branch: '*'
+        source_branch: '*'
+        changed_files: '*'
+    # Set status_report_name to report the status of this workflow separately.
+    status_report_name: 'AI Review'
   features-e2e:
     workflows:
       test: {}
