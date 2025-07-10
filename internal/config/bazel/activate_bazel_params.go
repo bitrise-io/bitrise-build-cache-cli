@@ -128,12 +128,18 @@ func (params ActivateBazelParams) cacheTemplateInventory(
 
 	cacheEndpointURL := common.SelectCacheEndpointURL(params.Cache.Endpoint, envProvider)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", cacheEndpointURL)
-	logger.Infof("(i) Push new cache entries: %t", params.Cache.PushEnabled)
+
+	pushEnabled := params.Cache.PushEnabled
+	if params.RBE.Enabled {
+		pushEnabled = false // Pushing local results up harms performance, workers upload results anyways
+		logger.Infof("(i) RBE is enabled, disabling cache push")
+	}
+	logger.Infof("(i) Push new cache entries: %t", pushEnabled)
 
 	return CacheTemplateInventory{
 		Enabled:             true,
 		EndpointURLWithPort: cacheEndpointURL,
-		IsPushEnabled:       params.Cache.PushEnabled,
+		IsPushEnabled:       pushEnabled,
 	}
 }
 

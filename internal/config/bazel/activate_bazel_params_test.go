@@ -196,6 +196,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		mockLogger := prep()
 		params := DefaultActivateBazelParams()
 		params.RBE.Enabled = true
+		params.Cache.PushEnabled = true
 
 		envVars := createEnvProvider(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
@@ -211,12 +212,14 @@ func Test_ActivateBazelParams(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.True(t, inventory.RBE.Enabled)
+		assert.False(t, inventory.Cache.IsPushEnabled)
 		assert.Equal(t, "rbe.yolo.com:443", inventory.RBE.EndpointURLWithPort)
 	})
 
 	t.Run("TemplateInventory with RBE enabled and custom endpoint", func(t *testing.T) {
 		mockLogger := prep()
 		params := DefaultActivateBazelParams()
+		params.Cache.PushEnabled = true
 		params.RBE.Enabled = true
 		params.RBE.Endpoint = "custom-rbe:8080"
 
@@ -233,6 +236,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.True(t, inventory.RBE.Enabled)
+		assert.False(t, inventory.Cache.IsPushEnabled)
 		assert.Equal(t, "custom-rbe:8080", inventory.RBE.EndpointURLWithPort)
 	})
 
