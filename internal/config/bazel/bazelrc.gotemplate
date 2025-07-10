@@ -47,10 +47,10 @@ build --bes_header='x-org-id={{ .Common.WorkspaceID }}'
 
 {{- if .Common.AppSlug }}
 {{- if .Cache.Enabled }}
-build --remote_header='x-app-slug={{ .Common.AppSlug }}'
+build --remote_header='x-app-id={{ .Common.AppSlug }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header='x-app-slug={{ .Common.AppSlug }}'
+build --bes_header='x-app-id={{ .Common.AppSlug }}'
 {{- end }}
 {{- end }}
 
