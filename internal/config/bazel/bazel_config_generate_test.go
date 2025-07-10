@@ -177,7 +177,7 @@ build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --remote_header='x-org-id=WorkspaceIDValue'
-build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
 `
 
@@ -187,7 +187,7 @@ build --remote_header=authorization="Bearer some-jwt-token"
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
-build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
 `
 
@@ -198,7 +198,7 @@ build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser=CIProviderValue
 build --noremote_upload_local_results
 build --remote_header='x-org-id=WorkspaceIDValue'
-build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
 `
 
@@ -210,7 +210,7 @@ build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --show_timestamps
 build --remote_header='x-org-id=WorkspaceIDValue'
-build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
 `
 
@@ -223,7 +223,7 @@ build --remote_upload_local_results
 build --verbose_failures
 build --show_timestamps
 build --remote_header='x-org-id=WorkspaceIDValue'
-build --remote_header='x-app-slug=AppSlugValue'
+build --remote_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
 build --remote_header='x-repository-url=https://repo-url'
 build --remote_header='x-workflow-name=workflow-name'
@@ -247,8 +247,8 @@ build --verbose_failures
 build --show_timestamps
 build --remote_header='x-org-id=WorkspaceIDValue'
 build --bes_header='x-org-id=WorkspaceIDValue'
-build --remote_header='x-app-slug=AppSlugValue'
-build --bes_header='x-app-slug=AppSlugValue'
+build --remote_header='x-app-id=AppSlugValue'
+build --bes_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
 build --bes_header='x-ci-provider=CIProviderValue'
 build --remote_header='x-repository-url=https://repo-url'
