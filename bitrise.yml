@@ -520,7 +520,7 @@ workflows:
                   '--bes_header=x-cpu-cores=[0-9]+' \
                   '--bes_header=x-mem-size=[0-9]+' \
                   '--bes_header=x-ci-provider=bitrise' \
-                  '--bes_header=x-app-slug=$BITRISE_APP_SLUG' \
+                  '--bes_header=x-app-id=$BITRISE_APP_SLUG' \
                   '--bes_header=x-locale=\w+' \
                   '--bes_header=x-default-charset=\w+'
                 
