@@ -869,6 +869,10 @@ step_bundles:
                 GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
                 
                 ls -la ./_e2e
+      - apt-get-install:
+          inputs:
+            - packages: 'bc'
+            - upgrade: "no"
       - script:
           title: Delete _tmp dirs
           inputs:
