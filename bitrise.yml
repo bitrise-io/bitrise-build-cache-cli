@@ -477,7 +477,7 @@ workflows:
       - bundle::feature-e2e-setup: { }
       - apt-get-install:
           inputs:
-            - packages: 'bc'
+            - packages: 'bc dnsutils'
             - upgrade: "no"
       - script@1:
           inputs:
@@ -492,8 +492,12 @@ workflows:
             - content: |-
                 set -exo pipefail
                 
+                dig bitrise-accelerate.services.bitrise.io
+                
                 docker run --rm \
                   -e HOME=/root \
+                  -e BITRISE_BUILD_CACHE_WORKSPACE_ID="$WORKSPACE_SLUG" \
+                  -e BITRISE_BUILD_CACHE_AUTH_TOKEN="$BITRISE_BUILD_CACHE_AUTH_TOKEN" \
                   -v $HOME:/root \
                   bitrise-build-cache-cli:latest activate bazel -d --cache --cache-push --bes --timestamps
       - script:
