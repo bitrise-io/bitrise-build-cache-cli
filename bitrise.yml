@@ -284,11 +284,11 @@ workflows:
             envman add --key INVOCATION_ID --value "$invocation_id"
     - script:
         title: Assert invocation from API
-        envs:
-          - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
         inputs:
           - content: |-
               set -exo pipefail
+
+              export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
   
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
@@ -368,11 +368,11 @@ workflows:
             envman add --key INVOCATION_ID --value "$invocation_id"
     - script:
         title: Assert invocation from API
-        envs:
-          - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
         inputs:
           - content: |-
               set -exo pipefail
+
+              export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
   
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
@@ -436,11 +436,11 @@ workflows:
               envman add --key INVOCATION_ID --value "$invocation_id"
     - script:
         title: Assert invocation from API
-        envs:
-          - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
         inputs:
           - content: |-
               set -exo pipefail
+              
+              export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
   
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
@@ -505,11 +505,11 @@ workflows:
                   envman add --key INVOCATION_ID --value "$invocation_id"
       - script:
           title: Assert invocation from API
-          envs:
-            - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
           inputs:
             - content: |-
                 set -exo pipefail
+                
+                export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
                 
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
@@ -877,11 +877,12 @@ step_bundles:
             - commit: "$COMMIT"
       - script:
           title: Source e2e scripts
-          envs:
-            - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
           inputs:
             - content: |-
                 set -exo pipefail
+                
+                export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
+                
                 source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
                 source $BITRISE_SOURCE_DIR/_e2e/scripts/download_logs.sh
                 source $BITRISE_SOURCE_DIR/_e2e/scripts/error.sh
