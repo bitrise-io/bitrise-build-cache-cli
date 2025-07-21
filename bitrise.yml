@@ -477,7 +477,7 @@ workflows:
       - bundle::feature-e2e-setup: { }
       - apt-get-install:
           inputs:
-            - packages: 'bc dnsutils'
+            - packages: 'bc dnsutils iputils-ping'
             - upgrade: "no"
       - script@1:
           inputs:
