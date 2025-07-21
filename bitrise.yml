@@ -449,6 +449,75 @@ workflows:
               assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
     - deploy-to-bitrise-io@2: {}
 
+  feature-e2e-bazel-public-no-rbe:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    envs:
+      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+      - BRANCH: master
+    steps:
+      - bundle::feature-e2e-setup: { }
+      - script@1:
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -exo pipefail
+                ../scripts/install_bazel.sh
+          title: Install bazel
+      - script:
+          title: Enable build cache
+          inputs:
+            - content: |-
+                set -exo pipefail
+                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+      - script:
+          title: Build and capture logs
+          inputs:
+            - content: |-
+                set -exo pipefail
+                (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+      - script:
+          title: Check for cache invocations
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -exo pipefail
+                
+                ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+                  '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
+                  'Invocation ID: ' \
+                  '--bes_header=x-os=Linux' \
+                  '--bes_header=x-cpu-cores=[0-9]+' \
+                  '--bes_header=x-mem-size=[0-9]+' \
+                  '--bes_header=x-ci-provider=bitrise' \
+                  '--bes_header=x-app-slug=$BITRISE_APP_SLUG' \
+                  '--bes_header=x-locale=\w+' \
+                  '--bes_header=x-default-charset=\w+'
+                
+                  invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
+                  if [[ -z "$invocation_id" ]]; then
+                    fatal "Invocation ID not found in logs"
+                  fi
+                
+                  echo "Found Invocation ID: $invocation_id"
+                  envman add --key INVOCATION_ID --value "$invocation_id"
+      - script:
+          title: Assert invocation from API
+          envs:
+            - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
+          inputs:
+            - content: |-
+                set -exo pipefail
+                
+                assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+                assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+                assert_invocation_targets_bazel "$INVOCATION_ID"
+                assert_build_performance "$INVOCATION_ID"
+                assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+      - deploy-to-bitrise-io@2: { }
+
   gradle-configuration-e2e-osx:
     meta:
       bitrise.io:
@@ -799,7 +868,7 @@ step_bundles:
       - script:
           title: Delete _tmp dirs
           inputs:
-            - content: rm -rf _tmp && rm -rf _e2e
+            - content: rm -rf _tmp
       - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
           inputs:
             - repository_url: "$TEST_APP_URL"
