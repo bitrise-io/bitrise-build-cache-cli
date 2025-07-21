@@ -10,6 +10,8 @@ app:
   envs:
   - PANDOC_VERSION: "3.6.2"
   - MAVEN_VERSION: "3.9.9"
+  - WORKSPACE_SLUG: 322a005426441b60
+  - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
 
 workflows:
   release:
@@ -288,8 +290,6 @@ workflows:
           - content: |-
               set -exo pipefail
 
-              export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
-  
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
               assert_invocation_tasks_gradle "$INVOCATION_ID"
@@ -372,8 +372,6 @@ workflows:
           - content: |-
               set -exo pipefail
 
-              export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
-  
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
               assert_invocation_tasks_gradle "$INVOCATION_ID"
@@ -440,8 +438,6 @@ workflows:
           - content: |-
               set -exo pipefail
               
-              export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
-  
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
               assert_invocation_targets_bazel "$INVOCATION_ID"
@@ -509,7 +505,8 @@ workflows:
             - content: |-
                 set -exo pipefail
                 
-                export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
+                export $MONOLITH_API_PAT
+                export $WORKSPACE_SLUG
                 
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
@@ -880,8 +877,6 @@ step_bundles:
           inputs:
             - content: |-
                 set -exo pipefail
-                
-                export MONOLITH_API_PAT="$BITRISE_BUILD_CACHE_AUTH_TOKEN"
                 
                 source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
                 source $BITRISE_SOURCE_DIR/_e2e/scripts/download_logs.sh
