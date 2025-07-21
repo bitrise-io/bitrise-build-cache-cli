@@ -487,18 +487,28 @@ workflows:
                 ../scripts/install_bazel.sh
           title: Install bazel
       - script:
-          title: Enable build cache using Docker
+          title: Redirect to public endpoint
+          inputs:
+              - content: |-
+                  #!/bin/bash
+                  set -exo pipefail
+                  
+                  cat /etc/hosts
+                  echo "Original IP: $(dig +short bitrise-accelerate.services.bitrise.io)"
+                  
+                  IP=$(docker run nixery.dev/shell/dig sh -c "dig +short bitrise-accelerate.services.bitrise.io" 2>/dev/null)
+                  echo "Public IP: $IP"
+                  
+                  echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
+                  
+                  dig bitrise-accelerate.services.bitrise.io
+      - script:
+          title: Enable build cache
           inputs:
             - content: |-
+                #!/bin/bash
                 set -exo pipefail
-                
-                dig bitrise-accelerate.services.bitrise.io
-                
-                IP=$(docker run nixery.dev/shell/dig sh -c "dig +short bitrise-accelerate.services.bitrise.io" 2>/dev/null)
-                echo "Original IP: $IP"
-                
-                echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
-                
+                                
                 ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs
