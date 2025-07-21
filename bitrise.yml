@@ -496,10 +496,14 @@ workflows:
                   cat /etc/hosts
                   echo "Original IP: $(dig +short bitrise-accelerate.services.bitrise.io)"
                   
+                  echo "--------------------------------------"
+                  echo "Redirecting to public endpoint..."
+                  
                   IP=$(docker run nixery.dev/shell/dig sh -c "dig +short bitrise-accelerate.services.bitrise.io" 2>/dev/null)
                   echo "Public IP: $IP"
                   
                   echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
+                  cat /etc/hosts
                   
                   dig bitrise-accelerate.services.bitrise.io
                   ping -c1 bitrise-accelerate.services.bitrise.io
