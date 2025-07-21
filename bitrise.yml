@@ -502,6 +502,7 @@ workflows:
                   echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
                   
                   dig bitrise-accelerate.services.bitrise.io
+                  ping -c1 bitrise-accelerate.services.bitrise.io
       - script:
           title: Enable build cache
           inputs:
