@@ -487,18 +487,15 @@ workflows:
                 ../scripts/install_bazel.sh
           title: Install bazel
       - script:
-          title: Enable build cache
+          title: Enable build cache using Docker
           inputs:
             - content: |-
                 set -exo pipefail
                 
-                sudo grep -v 'bitrise' /etc/hosts | sudo tee /etc/hosts > /dev/null
-                cat /etc/hosts
-                
-                envman add --key BITRISE_BUILD_CACHE_ENDPOINT --value ""
-                envman add --key BITRISE_DEN_VM_DATACENTER --value ""
-                
-                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+                docker run --rm \
+                  -e HOME=/root \
+                  -v $HOME:/root
+                  bitrise-build-cache-cli:latest activate bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs
           inputs:
@@ -909,6 +906,13 @@ step_bundles:
             - content: |-
                 set -exo pipefail
                 go build -o bitrise-build-cache-cli
+      - script:
+          title: Build docker image with CLI
+          inputs:
+            - content: |-
+                set -exo pipefail
+
+                docker build -t bitrise-build-cache-cli:latest .
       - change-workdir:
           title: Switch working dir to _tmp
           inputs:
