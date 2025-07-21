@@ -780,6 +780,18 @@ step_bundles:
       - activate-ssh-key:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
       - script:
+          title: Activate e2e repo ssh key
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -ex
+                
+                mkdir -p ~/.ssh
+                echo "$SSH_DEPLOY_KEY_E2E_TESTING" > ~/.ssh/github_deploy_build_cache_e2e_testing
+                chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
+                
+                ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
+      - script:
           title: Delete _tmp dirs
           inputs:
             - content: rm -rf _tmp && rm -rf _e2e
