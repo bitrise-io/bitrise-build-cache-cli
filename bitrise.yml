@@ -494,12 +494,12 @@ workflows:
                 
                 dig bitrise-accelerate.services.bitrise.io
                 
-                docker run --rm \
-                  -e HOME=/root \
-                  -e BITRISE_BUILD_CACHE_WORKSPACE_ID="$WORKSPACE_SLUG" \
-                  -e BITRISE_BUILD_CACHE_AUTH_TOKEN="$BITRISE_BUILD_CACHE_AUTH_TOKEN" \
-                  -v $HOME:/root \
-                  bitrise-build-cache-cli:latest activate bazel -d --cache --cache-push --bes --timestamps
+                IP=$(docker run nixery.dev/shell/dig --rm sh -c "dig +short bitrise-accelerate.services.bitrise.io")
+                echo "Original IP: $IP"
+                
+                echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
+                
+                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs
           inputs:
