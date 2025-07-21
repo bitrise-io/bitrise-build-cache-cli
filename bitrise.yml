@@ -277,6 +277,8 @@ workflows:
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
             
+            source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
+            
             invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
             if [[ -z "$invocation_id" ]]; then
               fatal "Invocation ID not found in logs"
@@ -289,6 +291,8 @@ workflows:
         inputs:
           - content: |-
               set -exo pipefail
+
+              source $BITRISE_SOURCE_DIR/_e2e/scripts/assert_invocations.sh
 
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
@@ -359,6 +363,8 @@ workflows:
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
             
+            source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
+            
             invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
             if [[ -z "$invocation_id" ]]; then
               fatal "Invocation ID not found in logs"
@@ -371,6 +377,8 @@ workflows:
         inputs:
           - content: |-
               set -exo pipefail
+
+              source $BITRISE_SOURCE_DIR/_e2e/scripts/assert_invocations.sh
 
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
@@ -425,6 +433,8 @@ workflows:
               '--bes_header=x-locale=\w+' \
               '--bes_header=x-default-charset=\w+'
             
+              source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
+            
               invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
               if [[ -z "$invocation_id" ]]; then
                 fatal "Invocation ID not found in logs"
@@ -437,6 +447,8 @@ workflows:
         inputs:
           - content: |-
               set -exo pipefail
+
+              source $BITRISE_SOURCE_DIR/_e2e/scripts/assert_invocations.sh
               
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
@@ -492,6 +504,8 @@ workflows:
                   '--bes_header=x-locale=\w+' \
                   '--bes_header=x-default-charset=\w+'
                 
+                  source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
+                
                   invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
                   if [[ -z "$invocation_id" ]]; then
                     fatal "Invocation ID not found in logs"
@@ -505,8 +519,7 @@ workflows:
             - content: |-
                 set -exo pipefail
                 
-                export $MONOLITH_API_PAT
-                export $WORKSPACE_SLUG
+                source $BITRISE_SOURCE_DIR/_e2e/scripts/assert_invocations.sh
                 
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
@@ -872,16 +885,6 @@ step_bundles:
             - clone_into_dir: "./_tmp"
             - branch: "$BRANCH"
             - commit: "$COMMIT"
-      - script:
-          title: Source e2e scripts
-          inputs:
-            - content: |-
-                set -exo pipefail
-                
-                source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
-                source $BITRISE_SOURCE_DIR/_e2e/scripts/download_logs.sh
-                source $BITRISE_SOURCE_DIR/_e2e/scripts/error.sh
-                source $BITRISE_SOURCE_DIR/_e2e/scripts/assert_invocations.sh
       - git-clone: {}
       - script:
           title: build CLI
