@@ -492,7 +492,8 @@ workflows:
             - content: |-
                 set -exo pipefail
                 
-                sudo sed -i '/bitrise/d' /etc/hosts
+                sudo sed '/bitrise/d' /etc/hosts > /tmp/hosts_modified
+                sudo mv /tmp/hosts_modified /etc/hosts
                 cat /etc/hosts
                 
                 envman add --key BITRISE_BUILD_CACHE_ENDPOINT --value ""
