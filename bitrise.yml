@@ -274,6 +274,27 @@ workflows:
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            
+            invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
+            if [[ -z "$invocation_id" ]]; then
+              fatal "Invocation ID not found in logs"
+            fi
+
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        envs:
+          - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
+        inputs:
+          - content: |-
+              set -exo pipefail
+  
+              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+              assert_invocation_tasks_gradle "$INVOCATION_ID"
+              assert_build_performance "$INVOCATION_ID"
+              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
     - deploy-to-bitrise-io@2: {}
 
   feature-e2e-gradle-bitwarden:
@@ -337,6 +358,27 @@ workflows:
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            
+            invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
+            if [[ -z "$invocation_id" ]]; then
+              fatal "Invocation ID not found in logs"
+            fi
+
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        envs:
+          - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
+        inputs:
+          - content: |-
+              set -exo pipefail
+  
+              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+              assert_invocation_tasks_gradle "$INVOCATION_ID"
+              assert_build_performance "$INVOCATION_ID"
+              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
     - deploy-to-bitrise-io@2: {}
   feature-e2e-bazel-bitrisedc-no-rbe:
     meta:
@@ -380,8 +422,31 @@ workflows:
               '--bes_header=x-os=Linux' \
               '--bes_header=x-cpu-cores=[0-9]+' \
               '--bes_header=x-mem-size=[0-9]+' \
+              '--bes_header=x-ci-provider=bitrise' \
+              '--bes_header=x-app-slug=$BITRISE_APP_SLUG' \
               '--bes_header=x-locale=\w+' \
-              '--bes_header=x-default-charset=\w+' \
+              '--bes_header=x-default-charset=\w+'
+            
+              invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
+              if [[ -z "$invocation_id" ]]; then
+                fatal "Invocation ID not found in logs"
+              fi
+
+              echo "Found Invocation ID: $invocation_id"
+              envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        envs:
+          - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
+        inputs:
+          - content: |-
+              set -exo pipefail
+  
+              assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+              assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+              assert_invocation_targets_bazel "$INVOCATION_ID"
+              assert_build_performance "$INVOCATION_ID"
+              assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
     - deploy-to-bitrise-io@2: {}
 
   gradle-configuration-e2e-osx:
@@ -715,15 +780,29 @@ step_bundles:
       - activate-ssh-key:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
       - script:
-          title: Delete _tmp dir
+          title: Delete _tmp dirs
           inputs:
-            - content: rm -rf _tmp
+            - content: rm -rf _tmp && rm -rf _e2e
       - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
           inputs:
             - repository_url: "$TEST_APP_URL"
             - clone_into_dir: "./_tmp"
             - branch: "$BRANCH"
             - commit: "$COMMIT"
+      - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+          inputs:
+            - repository_url: "git@github.com:bitrise-io/build-cache-e2e-testing.git"
+            - clone_into_dir: "./_e2e"
+            - branch: "master"
+      - script:
+          title: Source e2e scripts
+          inputs:
+            - content: |-
+                set -exo pipefail
+                source _e2e/scripts/extract_invocation_id.sh
+                source _e2e/scripts/download_logs.sh
+                source _e2e/scripts/error.sh
+                source _e2e/scripts/assert_invocations.sh
       - git-clone: {}
       - script:
           title: build CLI
