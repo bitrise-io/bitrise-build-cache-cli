@@ -780,7 +780,7 @@ step_bundles:
       - activate-ssh-key:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
       - script:
-          title: Activate e2e repo ssh key
+          title: Clone e2e testing repo with deploy key
           inputs:
             - content: |-
                 #!/bin/bash
@@ -794,6 +794,8 @@ step_bundles:
                 
                 mkdir -p ./_e2e
                 GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
+                
+                ls -la ./_e2e
       - script:
           title: Delete _tmp dirs
           inputs:
@@ -809,10 +811,10 @@ step_bundles:
           inputs:
             - content: |-
                 set -exo pipefail
-                source _e2e/scripts/extract_invocation_id.sh
-                source _e2e/scripts/download_logs.sh
-                source _e2e/scripts/error.sh
-                source _e2e/scripts/assert_invocations.sh
+                source $BITRISE_SOURCE_DIR/_e2e/scripts/extract_invocation_id.sh
+                source $BITRISE_SOURCE_DIR/_e2e/scripts/download_logs.sh
+                source $BITRISE_SOURCE_DIR/_e2e/scripts/error.sh
+                source $BITRISE_SOURCE_DIR/_e2e/scripts/assert_invocations.sh
       - git-clone: {}
       - script:
           title: build CLI
