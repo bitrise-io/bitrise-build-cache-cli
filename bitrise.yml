@@ -491,6 +491,13 @@ workflows:
           inputs:
             - content: |-
                 set -exo pipefail
+                
+                sudo sed -i '/bitrise/d' /etc/hosts
+                cat /etc/hosts
+                
+                envman add --key BITRISE_BUILD_CACHE_ENDPOINT --value ""
+                envman add --key BITRISE_DEN_VM_DATACENTER --value ""
+                
                 ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs
@@ -912,6 +919,7 @@ pipelines:
     workflows:
       test: {}
       feature-e2e-bazel-bitrisedc-no-rbe: {}
+      feature-e2e-bazel-public-no-rbe: {}
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-bitwarden: {}
       gradle-configuration-e2e-osx: {}
