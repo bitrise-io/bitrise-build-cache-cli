@@ -10,8 +10,10 @@ app:
   envs:
   - PANDOC_VERSION: "3.6.2"
   - MAVEN_VERSION: "3.9.9"
+    # These are needed for the E2E test assertion logic
   - WORKSPACE_SLUG: 322a005426441b60
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
+  - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
 
 workflows:
   release:
@@ -290,8 +292,6 @@ workflows:
         title: Assert invocation from API
         inputs:
           - content: |-
-              set -exo pipefail
-
               source ../_e2e/scripts/assert_invocations.sh
 
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
@@ -376,8 +376,6 @@ workflows:
         title: Assert invocation from API
         inputs:
           - content: |-
-              set -exo pipefail
-
               source ../_e2e/scripts/assert_invocations.sh
 
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
@@ -446,8 +444,6 @@ workflows:
         title: Assert invocation from API
         inputs:
           - content: |-
-              set -exo pipefail
-
               source ../_e2e/scripts/assert_invocations.sh
               
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
@@ -517,8 +513,6 @@ workflows:
           title: Assert invocation from API
           inputs:
             - content: |-
-                set -exo pipefail
-                
                 source ../_e2e/scripts/assert_invocations.sh
                 
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
