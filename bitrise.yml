@@ -494,7 +494,7 @@ workflows:
                 
                 docker run --rm \
                   -e HOME=/root \
-                  -v $HOME:/root
+                  -v $HOME:/root \
                   bitrise-build-cache-cli:latest activate bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs
