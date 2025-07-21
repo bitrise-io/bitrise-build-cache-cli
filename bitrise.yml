@@ -877,6 +877,8 @@ step_bundles:
             - commit: "$COMMIT"
       - script:
           title: Source e2e scripts
+          envs:
+            - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
           inputs:
             - content: |-
                 set -exo pipefail
