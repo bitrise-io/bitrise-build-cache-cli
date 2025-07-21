@@ -251,6 +251,10 @@ workflows:
     - BRANCH: develop
     steps:
     - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+          - packages: 'bc'
+          - upgrade: "no"
     - script:
         title: Enable build cache
         inputs:
@@ -307,6 +311,10 @@ workflows:
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
     - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+          - packages: 'bc'
+          - upgrade: "no"
     - script:
         title: Enable build cache
         inputs:
@@ -394,6 +402,10 @@ workflows:
     - BRANCH: master
     steps:
     - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+          - packages: 'bc'
+          - upgrade: "no"
     - script@1:
         inputs:
         - content: |
@@ -463,6 +475,10 @@ workflows:
       - BRANCH: master
     steps:
       - bundle::feature-e2e-setup: { }
+      - apt-get-install:
+          inputs:
+            - packages: 'bc'
+            - upgrade: "no"
       - script@1:
           inputs:
             - content: |
@@ -869,10 +885,6 @@ step_bundles:
                 GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
                 
                 ls -la ./_e2e
-      - apt-get-install:
-          inputs:
-            - packages: 'bc'
-            - upgrade: "no"
       - script:
           title: Delete _tmp dirs
           inputs:
