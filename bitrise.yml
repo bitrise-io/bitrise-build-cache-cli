@@ -791,6 +791,9 @@ step_bundles:
                 chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
                 
                 ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
+                
+                mkdir -p ./_e2e
+                GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
       - script:
           title: Delete _tmp dirs
           inputs:
@@ -801,11 +804,6 @@ step_bundles:
             - clone_into_dir: "./_tmp"
             - branch: "$BRANCH"
             - commit: "$COMMIT"
-      - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-          inputs:
-            - repository_url: "git@github.com:bitrise-io/build-cache-e2e-testing.git"
-            - clone_into_dir: "./_e2e"
-            - branch: "master"
       - script:
           title: Source e2e scripts
           inputs:
