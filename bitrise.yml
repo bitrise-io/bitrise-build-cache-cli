@@ -910,18 +910,6 @@ step_bundles:
             - content: |-
                 set -exo pipefail
                 go build -o bitrise-build-cache-cli
-      - script:
-          title: Build docker image with CLI
-          inputs:
-            - content: |-
-                set -exo pipefail
-
-                if [[ "$(uname -s)" != "Linux" ]]; then
-                  echo "Not on Linux, skipping Docker build."
-                  exit 0
-                fi
-
-                docker build -t bitrise-build-cache-cli:latest .
       - change-workdir:
           title: Switch working dir to _tmp
           inputs:
