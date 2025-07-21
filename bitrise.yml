@@ -494,7 +494,7 @@ workflows:
                 
                 dig bitrise-accelerate.services.bitrise.io
                 
-                IP=$(docker run nixery.dev/shell/dig --rm sh -c "dig +short bitrise-accelerate.services.bitrise.io")
+                IP=$(docker run nixery.dev/shell/dig -- sh -c "dig +short bitrise-accelerate.services.bitrise.io")
                 echo "Original IP: $IP"
                 
                 echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
