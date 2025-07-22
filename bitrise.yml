@@ -523,11 +523,11 @@ workflows:
                 set -exo pipefail
                 
                 docker run --rm \
-                  -v "$PWD:/workspace" \
                   -w "/workspace" \
-                  -v "$HOME/.bazelrc:/root/.bazelrc" \
-                  -v "$(readlink -f $(which bazel)):/usr/local/bin/bazel" \
-                  -v "$BITRISE_DEPLOY_DIR:/bitrise-deploy" \
+                  --mount "type=bind,source=$PWD,target=/workspace" \
+                  --mount "type=bind,source=$HOME/.bazelrc,target=/root/.bazelrc,ro" \
+                  --mount "type=bind,source=$(readlink -f $(which bazel)):/usr/local/bin/bazel,target=/usr/local/bin/bazel,ro" \
+                  --mount "type=bind,source=/bitrise/deploy,target=/bitrise-deploy" \
                   nixery.dev/shell \
                   sh -c "/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1" | tee "/bitrise-deploy/logs.txt"
                 
