@@ -510,7 +510,7 @@ workflows:
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   ubuntu:22.04 \
-                  sh -c "apt-get update && apt-get install -y curl build-essential xz-utils && \
+                  sh -c "set -o pipefail; apt-get update && apt-get install -y curl build-essential xz-utils zip unzip && \
                     curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
                     chmod +x bazelisk && \
                     ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
