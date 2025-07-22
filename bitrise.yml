@@ -525,7 +525,7 @@ workflows:
                 ls -hal $HOME
                 ls -hal $(readlink -f $(which bazel))
                 
-                docker run --rm \
+                sudo docker run --rm \
                   -w "/workspace" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$HOME/.bazelrc,target=/root/.bazelrc,ro" \
