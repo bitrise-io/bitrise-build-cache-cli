@@ -516,11 +516,21 @@ workflows:
                                 
                 ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
       - script:
-          title: Build and capture logs
+          title: Build and capture logs using Docker
           inputs:
             - content: |-
+                #!/bin/bash
                 set -exo pipefail
-                (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+                
+                docker run --rm \
+                  -v "$PWD:/workspace" \
+                  -w "/workspace" \
+                  -v "$HOME/.bazelrc:/root/.bazelrc" \
+                  -v "$(readlink -f $(which bazel)):/usr/local/bin/bazel" \
+                  -v "$BITRISE_DEPLOY_DIR:/bitrise-deploy" \
+                  nixery.dev/shell \
+                  sh -c "/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1" | tee "/bitrise-deploy/logs.txt"
+                
       - script:
           title: Check for cache invocations
           inputs:
