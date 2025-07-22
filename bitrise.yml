@@ -522,6 +522,9 @@ workflows:
                 #!/bin/bash
                 set -exo pipefail
                 
+                ls -hal $HOME
+                ls -hal $(readlink -f $(which bazel))
+                
                 docker run --rm \
                   -w "/workspace" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
@@ -529,7 +532,7 @@ workflows:
                   --mount "type=bind,source=$(readlink -f $(which bazel)):/usr/local/bin/bazel,target=/usr/local/bin/bazel,ro" \
                   --mount "type=bind,source=/bitrise/deploy,target=/bitrise-deploy" \
                   nixery.dev/shell \
-                  sh -c "/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1" | tee "/bitrise-deploy/logs.txt"
+                  sh -c "/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
                 
       - script:
           title: Check for cache invocations
