@@ -480,6 +480,7 @@ workflows:
             - packages: 'bc dnsutils iputils-ping'
             - upgrade: "no"
       - script@1:
+          run_if: "false"
           inputs:
             - content: |
                 #!/usr/bin/env bash
@@ -488,6 +489,7 @@ workflows:
           title: Install bazel
       - script:
           title: Redirect to public endpoint
+          run_if: "false"
           inputs:
               - content: |-
                   #!/bin/bash
@@ -527,16 +529,17 @@ workflows:
                 
                 mkdir -p ../_dockerroot
                 cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
-                cp "$(readlink -f $(which bazel))" ../_dockerroot/bazel
                 
                 sudo docker run --rm \
                   -w "/workspace" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
-                  --mount "type=bind,source=$(readlink -f ../_dockerroot)/bazel,target=/usr/local/bin/bazel,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
-                  nixery.dev/shell \
-                  sh -c "/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
+                  ubuntu:22.04 \
+                  sh -c "apt-get update && apt-get install -y curl xz-utils && \
+                    curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
+                    chmod +x bazelisk && \
+                    ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
                 
       - script:
           title: Check for cache invocations
