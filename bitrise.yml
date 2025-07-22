@@ -479,36 +479,6 @@ workflows:
           inputs:
             - packages: 'bc dnsutils iputils-ping'
             - upgrade: "no"
-      - script@1:
-          run_if: "false"
-          inputs:
-            - content: |
-                #!/usr/bin/env bash
-                set -exo pipefail
-                ../scripts/install_bazel.sh
-          title: Install bazel
-      - script:
-          title: Redirect to public endpoint
-          run_if: "false"
-          inputs:
-              - content: |-
-                  #!/bin/bash
-                  set -exo pipefail
-                  
-                  cat /etc/hosts
-                  echo "Original IP: $(dig +short bitrise-accelerate.services.bitrise.io)"
-                  
-                  echo "--------------------------------------"
-                  echo "Redirecting to public endpoint..."
-                  
-                  IP=$(docker run nixery.dev/shell/dig sh -c "dig +short bitrise-accelerate.services.bitrise.io" 2>/dev/null)
-                  echo "Public IP: $IP"
-                  
-                  echo "$IP bitrise-accelerate.services.bitrise.io" | sudo tee -a /etc/hosts
-                  cat /etc/hosts
-                  
-                  dig bitrise-accelerate.services.bitrise.io
-                  ping -c1 bitrise-accelerate.services.bitrise.io
       - script:
           title: Enable build cache
           inputs:
@@ -516,6 +486,7 @@ workflows:
                 #!/bin/bash
                 set -exo pipefail
                                 
+                echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
                 ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs using Docker
@@ -524,14 +495,14 @@ workflows:
                 #!/bin/bash
                 set -exo pipefail
                 
-                ls -hal $HOME
-                ls -hal $(readlink -f $(which bazel))
-                
                 mkdir -p ../_dockerroot
                 cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
                 
                 sudo docker run --rm \
                   -w "/workspace" \
+                  -e $BITRISE_APP_SLUG \
+                  -e $BITRISE_BUILD_SLUG \
+                  -e $BITRISE_STEP_EXECUTION_ID \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
