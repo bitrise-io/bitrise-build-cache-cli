@@ -497,15 +497,15 @@ workflows:
                 
                 mkdir -p ../_dockerroot
                 cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
-                
+                                
                 sudo docker run --rm \
                   -w "/workspace" \
-                  -e BITRISE_APP_SLUG \
-                  -e BITRISE_BUILD_SLUG \
-                  -e BITRISE_STEP_EXECUTION_ID \
-                  -e BITRISE_TRIGGERED_WORKFLOW_TITLE \
-                  -e GIT_REPOSITORY_URL \
-                  -e BITRISE_GIT_COMMIT \
+                  -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
+                  -e "BITRISE_BUILD_SLUG=$BITRISE_BUILD_SLUG" \
+                  -e "BITRISE_STEP_EXECUTION_ID=$BITRISE_STEP_EXECUTION_ID" \
+                  -e "BITRISE_TRIGGERED_WORKFLOW_TITLE=$BITRISE_TRIGGERED_WORKFLOW_TITLE" \
+                  -e "GIT_REPOSITORY_UR=$GIT_REPOSITORY_URL" \
+                  -e "BITRISE_GIT_COMMIT=$BITRISE_GIT_COMMIT" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
