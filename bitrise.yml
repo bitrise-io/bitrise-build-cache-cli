@@ -533,7 +533,7 @@ workflows:
                   -w "/workspace" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
-                  --mount "type=bind,source=$(readlink -f ../_dockerroot)/bazel:/usr/local/bin/bazel,target=/usr/local/bin/bazel,ro" \
+                  --mount "type=bind,source=$(readlink -f ../_dockerroot)/bazel,target=/usr/local/bin/bazel,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   nixery.dev/shell \
                   sh -c "/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
