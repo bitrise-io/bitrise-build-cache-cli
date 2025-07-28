@@ -497,7 +497,9 @@ workflows:
                 
                 mkdir -p ../_dockerroot
                 cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
-                                
+                
+                echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
+                
                 sudo docker run --rm \
                   -w "/workspace" \
                   -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
