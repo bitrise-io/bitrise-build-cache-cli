@@ -73,15 +73,16 @@ workflows:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -exo pipefail
+            set -eo pipefail
 
             DIST_DIR="dist"
             if [[ ! -d "$DIST_DIR" ]]; then
               echo "Directory $DIST_DIR does not exist."
               exit 1
             fi
+            tree -L 2 dist
             
-            tag=$BITRISE_GIT_TAG
+            tag="${BITRISE_GIT_TAG#v}" # Remove the v from the tag
             if [[ -z "$tag" ]]; then
               echo "BITRISE_GIT_TAG is not set. Exiting."
               exit 1
@@ -89,20 +90,23 @@ workflows:
             
             echo "Uploading with tag: $tag"
             
-            filenames=["bitrise-build-cache_$tag_darwin_amd64.tar.gz",
-                      "bitrise-build-cache_$tag_linux_amd64.tar.gz",
-                      "bitrise-build-cache_$tag_darwin_arm64.tar.gz",
-                      "bitrise-build-cache_$tag_linux_arm64.tar.gz"]
+            filenames=("bitrise-build-cache_${tag}_darwin_amd64.tar.gz"
+                      "bitrise-build-cache_${tag}_linux_amd64.tar.gz"
+                      "bitrise-build-cache_${tag}_darwin_arm64.tar.gz"
+                      "bitrise-build-cache_${tag}_linux_arm64.tar.gz")
             for filename in "${filenames[@]}"; do
               if [[ ! -f "$DIST_DIR/$filename" ]]; then
                 echo "File $DIST_DIR/$filename does not exist."
                 exit 1
               fi
               echo "Uploading $filename to GAR..."
+            
+              package_name="${filename/_${tag}/}" # Files will be versioned
+            
               gcloud artifacts generic upload \
                 --project=ip-build-cache-prod \
                 --source="$DIST_DIR/$filename" \
-                --package="$filename" \
+                --package="$package_name" \
                 --version="$tag" \
                 --location=us-central1 \
                 --repository=build-cache-cli-releases
