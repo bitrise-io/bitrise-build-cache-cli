@@ -29,6 +29,7 @@ var saveGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 		if err != nil {
 			return fmt.Errorf("get additional paths flag: %w", err)
 		}
+
 		return saveGradleOutputDataCmdFn(logger, additionalPaths)
 	},
 }
