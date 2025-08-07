@@ -49,10 +49,11 @@ func NewGradleDiagnosticOuptutSaver(
 	}
 }
 
-func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
+func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool, additionalPaths []string) error {
 	s.logger.Debugf("Cache key: %s", key)
 	s.logger.Debugf("Cache paths:")
-	s.logger.Debugf(strings.Join(paths, "\n"))
+	pathsToSave := append(paths, additionalPaths...)
+	s.logger.Debugf(strings.Join(pathsToSave, "\n"))
 
 	saver := cache.NewSaver(s.envRepo, s.logger, s.pathProvider, s.pathModifier, s.pathChecker, nil)
 
@@ -60,7 +61,7 @@ func (s GradleDiagnosticOutputSaver) Run(isVerboseMode bool) error {
 		StepId:      saveStepID,
 		Verbose:     isVerboseMode,
 		Key:         key,
-		Paths:       paths,
+		Paths:       pathsToSave,
 		IsKeyUnique: true,
 	}); err != nil {
 		return fmt.Errorf("save cache: %w", err)
