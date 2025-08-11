@@ -11,6 +11,8 @@ type OsProxy struct {
 	ReadFileIfExists func(pth string) (string, bool, error)
 	MkdirAll         func(string, os.FileMode) error
 	WriteFile        func(string, []byte, os.FileMode) error
+	UserHomeDir      func() (string, error)
+	Create           func(string) (*os.File, error)
 }
 
 func DefaultOsProxy() OsProxy {
@@ -18,6 +20,8 @@ func DefaultOsProxy() OsProxy {
 		ReadFileIfExists: readFileIfExists,
 		MkdirAll:         os.MkdirAll,
 		WriteFile:        os.WriteFile,
+		UserHomeDir:      os.UserHomeDir,
+		Create:           os.Create,
 	}
 }
 
