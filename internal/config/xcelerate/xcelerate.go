@@ -22,7 +22,7 @@ type Xcelerate struct {
 	Xcode xcode.Xcode `json:"xcode"`
 }
 
-func (config *Xcelerate) CreateConfig(os utils.OsProxy, encoder utils.EncoderProxyCreator) error {
+func (config *Xcelerate) CreateConfig(os utils.OsProxy, encoder utils.EncoderFactory) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf(ErrFmtDetermineHome, err)
@@ -40,7 +40,7 @@ func (config *Xcelerate) CreateConfig(os utils.OsProxy, encoder utils.EncoderPro
 	}
 	defer f.Close()
 
-	enc := encoder(f)
+	enc := encoder.Encoder(f)
 	if err := enc.Encode(config); err != nil {
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}

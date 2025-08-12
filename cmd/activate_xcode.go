@@ -24,7 +24,7 @@ var activateXcodeCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Long: `Activate Bitrise Build Cache for Xcode.
 This command will:
 
-- Create a config file at ~/.xcelerate/config.json with the Xcode proxy and wrapper versions.
+- Create a config file at ~/.bitrise-xcelerate/config.json with the Xcode proxy and wrapper versions.
 - Download an executable proxy to enable xcode compilation cache connecting to the Bitrise Build Cache.
 - Create an executable wrapper for xcodebuild that will use the proxy to connect to the Bitrise Build Cache.
 `,
@@ -37,7 +37,7 @@ This command will:
 		return activateXcodeCommandFn(
 			logger,
 			utils.DefaultOsProxy(),
-			utils.DefaultEncoderProxyCreator,
+			utils.DefaultEncoderFactory{},
 		)
 	},
 }
@@ -59,7 +59,7 @@ func DefaultActivateXcodeParams() ActivateXcodeParams {
 func activateXcodeCommandFn(
 	logger log.Logger,
 	osProxy utils.OsProxy,
-	encoder utils.EncoderProxyCreator,
+	encoder utils.EncoderFactory,
 ) error {
 	config := xcelerateConfig.Xcelerate{
 		Xcode: xcodeConfig.Xcode{

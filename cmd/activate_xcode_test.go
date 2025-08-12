@@ -4,12 +4,11 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	utilMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/mock"
@@ -29,44 +28,26 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		return mockLogger
 	}
 
-	mockOS := func(
-		home func() (string, error),
-		mkdir func(path string, perm os.FileMode) error,
-		create func(name string) (*os.File, error),
-	) utils.OsProxy {
-		return utils.OsProxy{
-			UserHomeDir: home,
-			MkdirAll:    mkdir,
-			Create:      create,
-		}
-	}
-
-	mockEncoder := func(err error) utils.EncoderProxyCreator {
-		return func(v io.Writer) utils.EncoderProxy {
-			return utils.EncoderProxy{
-				Encoder: utils.MockEncoder{
-					MockEncode: func(v any) error {
-						return err
-					},
-				},
-			}
-		}
-	}
-
 	t.Run("When no error activateXcodeCmdFn writes the xcode config file", func(t *testing.T) {
 		var configFilePath string
 
 		err := activateXcodeCommandFn(
 			mockLogger(),
-			mockOS(
-				func() (string, error) { return "/home/user", nil },
-				func(string, os.FileMode) error { return nil },
-				func(input string) (*os.File, error) {
+			utilMocks.MockOsProxy{
+				UserHomeDir: func() (string, error) { return "/home/user", nil },
+				MkdirAll:    func(string, os.FileMode) error { return nil },
+				Create: func(input string) (*os.File, error) {
 					configFilePath = input
 					return nil, nil
 				},
-			),
-			mockEncoder(nil),
+			}.Proxy(),
+			utilMocks.MockEncoderFactory{
+				Mock: utilMocks.MockEncoder{
+					MockEncode: func(any) error {
+						return nil
+					},
+				},
+			},
 		)
 
 		require.Equal(t, "/home/user/.bitrise-xcelerate/config.json", configFilePath)
@@ -76,16 +57,22 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 	t.Run("When error occurs when getting user home, it returns an error", func(t *testing.T) {
 		err := activateXcodeCommandFn(
 			mockLogger(),
-			mockOS(
-				func() (string, error) { return "", os.ErrNotExist },
-				func(string, os.FileMode) error { return nil },
-				func(string) (*os.File, error) { return nil, nil },
-			),
-			mockEncoder(nil),
+			utilMocks.MockOsProxy{
+				UserHomeDir: func() (string, error) { return "", os.ErrNotExist },
+				MkdirAll:    func(string, os.FileMode) error { return nil },
+				Create:      func(string) (*os.File, error) { return nil, nil },
+			}.Proxy(),
+			utilMocks.MockEncoderFactory{
+				Mock: utilMocks.MockEncoder{
+					MockEncode: func(any) error {
+						return nil
+					},
+				},
+			},
 		)
 
 		require.Error(t, err)
-		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(common.ErrFmtDetermineHome, os.ErrNotExist)).Error())
+		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(xcelerate.ErrFmtDetermineHome, os.ErrNotExist)).Error())
 	})
 
 	t.Run("When error occurs when making directories, it returns an error", func(t *testing.T) {
@@ -93,34 +80,46 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 
 		err := activateXcodeCommandFn(
 			mockLogger(),
-			mockOS(
-				func() (string, error) { return "/home/user", nil },
-				func(path string, _ os.FileMode) error {
+			utilMocks.MockOsProxy{
+				UserHomeDir: func() (string, error) { return "/home/user", nil },
+				MkdirAll: func(path string, _ os.FileMode) error {
 					mkdirPath = path
 					return os.ErrNotExist
 				},
-				func(string) (*os.File, error) { return nil, nil },
-			),
-			mockEncoder(nil),
+				Create: func(string) (*os.File, error) { return nil, nil },
+			}.Proxy(),
+			utilMocks.MockEncoderFactory{
+				Mock: utilMocks.MockEncoder{
+					MockEncode: func(any) error {
+						return nil
+					},
+				},
+			},
 		)
 
 		require.Error(t, err)
-		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(common.ErrFmtCreateFolder, mkdirPath, os.ErrNotExist)).Error())
+		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(xcelerate.ErrFmtCreateFolder, mkdirPath, os.ErrNotExist)).Error())
 	})
 
 	t.Run("When error occurs when creating config file, it returns an error", func(t *testing.T) {
 		err := activateXcodeCommandFn(
 			mockLogger(),
-			mockOS(
-				func() (string, error) { return "/home/user", nil },
-				func(string, os.FileMode) error { return nil },
-				func(string) (*os.File, error) { return nil, os.ErrNotExist },
-			),
-			mockEncoder(nil),
+			utilMocks.MockOsProxy{
+				UserHomeDir: func() (string, error) { return "/home/user", nil },
+				MkdirAll:    func(string, os.FileMode) error { return nil },
+				Create:      func(string) (*os.File, error) { return nil, os.ErrNotExist },
+			}.Proxy(),
+			utilMocks.MockEncoderFactory{
+				Mock: utilMocks.MockEncoder{
+					MockEncode: func(any) error {
+						return nil
+					},
+				},
+			},
 		)
 
 		require.Error(t, err)
-		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(common.ErrFmtCreateConfigFile, os.ErrNotExist)).Error())
+		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(xcelerate.ErrFmtCreateConfigFile, os.ErrNotExist)).Error())
 	})
 
 	t.Run("When error occurs when encoding config file, it returns an error", func(t *testing.T) {
@@ -128,15 +127,21 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 
 		err := activateXcodeCommandFn(
 			mockLogger(),
-			mockOS(
-				func() (string, error) { return "/home/user", nil },
-				func(string, os.FileMode) error { return nil },
-				func(string) (*os.File, error) { return nil, nil },
-			),
-			mockEncoder(encodingError),
+			utilMocks.MockOsProxy{
+				UserHomeDir: func() (string, error) { return "/home/user", nil },
+				MkdirAll:    func(string, os.FileMode) error { return nil },
+				Create:      func(string) (*os.File, error) { return nil, nil },
+			}.Proxy(),
+			utilMocks.MockEncoderFactory{
+				Mock: utilMocks.MockEncoder{
+					MockEncode: func(any) error {
+						return encodingError
+					},
+				},
+			},
 		)
 
 		require.Error(t, err)
-		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(common.ErrFmtEncodeConfigFile, encodingError)).Error())
+		require.EqualError(t, err, fmt.Errorf(errFmtCreateXcodeConfig, fmt.Errorf(xcelerate.ErrFmtEncodeConfigFile, encodingError)).Error())
 	})
 }

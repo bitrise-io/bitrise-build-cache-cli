@@ -9,30 +9,16 @@ type EncoderInterface interface {
 	Encode(any) error
 }
 
-type EncoderProxy struct {
-	Encoder EncoderInterface
+type EncoderFactory interface {
+	Encoder(v io.Writer) EncoderInterface
 }
 
-func (e EncoderProxy) Encode(v any) error {
-	return e.Encoder.Encode(v)
-}
+type DefaultEncoderFactory struct{}
 
-type EncoderProxyCreator func(v io.Writer) EncoderProxy
-
-var DefaultEncoderProxyCreator EncoderProxyCreator = func(v io.Writer) EncoderProxy {
+func (factory DefaultEncoderFactory) Encoder(v io.Writer) EncoderInterface {
 	encoder := json.NewEncoder(v)
 	encoder.SetIndent("", "    ")
 	encoder.SetEscapeHTML(false)
 
-	return EncoderProxy{
-		Encoder: encoder,
-	}
-}
-
-type MockEncoder struct {
-	MockEncode func(v any) error
-}
-
-func (m MockEncoder) Encode(v any) error {
-	return m.MockEncode(v)
+	return encoder
 }
