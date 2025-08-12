@@ -109,7 +109,7 @@ func (params ActivateGradleParams) commonTemplateInventory(
 
 	cacheConfig := common.NewMetadata(envProvider,
 		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output()
+			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
 			return string(output), err
 		},

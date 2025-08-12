@@ -70,7 +70,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		bazelrcPath,
 		os.Getenv,
 		func(cmd string, params ...string) (string, error) {
-			output, err2 := exec.Command(cmd, params...).CombinedOutput()
+			output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx
 			if err2 == nil {
 				return string(output), nil
 			}

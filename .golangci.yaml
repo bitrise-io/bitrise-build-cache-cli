@@ -11,12 +11,15 @@ linters:
     - godot
     - lll
     - mnd
+    - noinlineerr
     - nolintlint
     - paralleltest
     - perfsprint
+    - revive
     - testpackage
     - varnamelen
     - wsl
+    - wsl_v5
   exclusions:
     generated: lax
     presets:

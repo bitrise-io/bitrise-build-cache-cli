@@ -64,7 +64,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	// CacheConfigMetadata
 	cacheConfig := common.NewMetadata(os.Getenv,
 		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output()
+			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
 			return string(output), err
 		},
@@ -90,7 +90,7 @@ func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	params.Timestamps = timestamps
 
 	inventory, err := params.TemplateInventory(logger, envProvider, func(cmd string, params ...string) (string, error) {
-		output, err2 := exec.Command(cmd, params...).CombinedOutput()
+		output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx
 		if err2 == nil {
 			return string(output), nil
 		}
