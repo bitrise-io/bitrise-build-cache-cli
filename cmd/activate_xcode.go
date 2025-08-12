@@ -3,8 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	xcelerateConfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	xcodeConfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -36,8 +35,14 @@ This command will:
 
 		return activateXcodeCommandFn(
 			logger,
-			utils.DefaultOsProxy(),
+			utils.DefaultOsProxy{},
 			utils.DefaultEncoderFactory{},
+			&xcelerate.DefaultConfig{
+				ProxyVersion:           "1.0.0",
+				WrapperVersion:         "1.0.0",
+				OriginalXcodebuildPath: "/usr/bin/xcodebuild",
+				BuildCacheEnabled:      true,
+			},
 		)
 	},
 }
@@ -59,22 +64,14 @@ func DefaultActivateXcodeParams() ActivateXcodeParams {
 func activateXcodeCommandFn(
 	logger log.Logger,
 	osProxy utils.OsProxy,
-	encoder utils.EncoderFactory,
+	encoderFactory utils.EncoderFactory,
+	config xcelerate.Config,
 ) error {
-	config := xcelerateConfig.Xcelerate{
-		Xcode: xcodeConfig.Xcode{
-			ProxyVersion:           "1.0.0",
-			WrapperVersion:         "1.0.0",
-			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
-			BuildCacheEnabled:      true,
-		},
-	}
-
-	if err := config.CreateConfig(osProxy, encoder); err != nil {
+	if err := config.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(errFmtCreateXcodeConfig, err)
 	}
 
-	logger.Infof(activateXcodeSuccessful)
+	logger.TInfof(activateXcodeSuccessful)
 
 	return nil
 }

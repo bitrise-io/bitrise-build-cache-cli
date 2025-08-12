@@ -4,11 +4,10 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/mock"
@@ -37,7 +36,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		}
 
 		var actualTemplateInventory *gradleconfig.TemplateInventory
-		var actualPath *string
+
+		mockOsProxy := &utilsMocks.MockOsProxy{}
+		mockOsProxy.On("ReadFileIfExists", "~/.gradle/gradle.properties").Return("", true, nil)
+		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		// when
 		err := activateGradleCmdFn(
@@ -56,26 +58,23 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return nil
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: utils.OsProxy{
-					ReadFileIfExists: func(pth string) (string, bool, error) {
-						actualPath = &pth
-
-						return "", true, nil
-					},
-					WriteFile: func(string, []byte, os.FileMode) error { return nil },
-				},
+				OsProxy: mockOsProxy,
 			},
 		)
 
 		// then
 		require.NoError(t, err)
 		require.Equal(t, templateInventory, *actualTemplateInventory)
-		require.Equal(t, "~/.gradle/gradle.properties", *actualPath)
+		mockOsProxy.AssertCalled(t, "ReadFileIfExists", "~/.gradle/gradle.properties")
 	})
 
 	t.Run("When templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
+
+		mockOsProxy := &utilsMocks.MockOsProxy{}
+		mockOsProxy.On("ReadFileIfExists", "~/.gradle/gradle.properties").Return("", true, nil)
+		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		// when
 		err := activateGradleCmdFn(
@@ -92,12 +91,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return nil
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: utils.OsProxy{
-					ReadFileIfExists: func(string) (string, bool, error) {
-						return "", true, nil
-					},
-					WriteFile: func(string, []byte, os.FileMode) error { return nil },
-				},
+				OsProxy: mockOsProxy,
 			},
 		)
 
@@ -108,6 +102,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	t.Run("When template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
+
+		mockOsProxy := &utilsMocks.MockOsProxy{}
+		mockOsProxy.On("ReadFileIfExists", "~/.gradle/gradle.properties").Return("", true, nil)
+		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		// when
 		err := activateGradleCmdFn(
@@ -124,12 +122,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return templateWriteError
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: utils.OsProxy{
-					ReadFileIfExists: func(string) (string, bool, error) {
-						return "", true, nil
-					},
-					WriteFile: func(string, []byte, os.FileMode) error { return nil },
-				},
+				OsProxy: mockOsProxy,
 			},
 		)
 
@@ -140,6 +133,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	t.Run("When gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
+
+		mockOsProxy := &utilsMocks.MockOsProxy{}
+		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
+		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(gradlePropertiesUpdateError)
 
 		// when
 		err := activateGradleCmdFn(
@@ -156,12 +153,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 				return nil
 			},
 			gradleconfig.GradlePropertiesUpdater{
-				OsProxy: utils.OsProxy{
-					ReadFileIfExists: func(string) (string, bool, error) {
-						return "", true, nil
-					},
-					WriteFile: func(string, []byte, os.FileMode) error { return gradlePropertiesUpdateError },
-				},
+				OsProxy: mockOsProxy,
 			},
 		)
 

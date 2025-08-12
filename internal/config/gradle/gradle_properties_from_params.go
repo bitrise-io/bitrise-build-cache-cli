@@ -20,7 +20,7 @@ type GradlePropertiesUpdater struct {
 
 func DefaultGradlePropertiesUpdater() GradlePropertiesUpdater {
 	return GradlePropertiesUpdater{
-		OsProxy: utils.DefaultOsProxy(),
+		OsProxy: utils.DefaultOsProxy{},
 	}
 }
 

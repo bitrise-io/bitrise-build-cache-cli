@@ -5,20 +5,18 @@ import (
 	"io"
 )
 
-type EncoderInterface interface {
-	Encode(any) error
+type Encoder interface {
+	SetIndent(prefix, indent string)
+	SetEscapeHTML(escape bool)
+	Encode(data any) error
 }
 
 type EncoderFactory interface {
-	Encoder(v io.Writer) EncoderInterface
+	Encoder(v io.Writer) Encoder
 }
 
 type DefaultEncoderFactory struct{}
 
-func (factory DefaultEncoderFactory) Encoder(v io.Writer) EncoderInterface {
-	encoder := json.NewEncoder(v)
-	encoder.SetIndent("", "    ")
-	encoder.SetEscapeHTML(false)
-
-	return encoder
+func (factory DefaultEncoderFactory) Encoder(v io.Writer) Encoder {
+	return json.NewEncoder(v)
 }

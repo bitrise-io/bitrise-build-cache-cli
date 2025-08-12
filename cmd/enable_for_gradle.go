@@ -94,7 +94,7 @@ func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	if err := templateInventory.WriteToGradleInit(
 		logger,
 		gradleHomePath,
-		utils.DefaultOsProxy(),
+		utils.DefaultOsProxy{},
 		gradleconfig.GradleTemplateProxy(),
 	); err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)

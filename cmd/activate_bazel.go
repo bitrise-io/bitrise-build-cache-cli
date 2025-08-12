@@ -79,7 +79,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		},
 		activateBazelParams.TemplateInventory,
 		func(inventory bazelconfig.TemplateInventory, path string) error {
-			return inventory.WriteToBazelrc(logger, path, utils.DefaultOsProxy(), utils.DefaultTemplateProxy())
+			return inventory.WriteToBazelrc(logger, path, utils.DefaultOsProxy{}, utils.DefaultTemplateProxy())
 		},
 	); err != nil {
 		return fmt.Errorf("activate Bazel Build Cache: %w", err)

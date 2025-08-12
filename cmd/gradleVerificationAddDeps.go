@@ -63,7 +63,7 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider fu
 	if err := templateInventory.WriteToGradleInit(
 		logger,
 		gradleHomePath,
-		utils.DefaultOsProxy(),
+		utils.DefaultOsProxy{},
 		gradleconfig.GradleTemplateProxy(),
 	); err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
