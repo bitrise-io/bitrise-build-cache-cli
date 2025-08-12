@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	config "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	xcelerateConfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	xcodeConfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcode"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -61,7 +61,7 @@ func activateXcodeCommandFn(
 	osProxy utils.OsProxy,
 	encoder utils.EncoderProxyCreator,
 ) error {
-	config := config.Xcelerate{
+	config := xcelerateConfig.Xcelerate{
 		Xcode: xcodeConfig.Xcode{
 			ProxyVersion:           "1.0.0",
 			WrapperVersion:         "1.0.0",
