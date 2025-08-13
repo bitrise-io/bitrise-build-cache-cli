@@ -56,7 +56,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 				return inventory.WriteToGradleInit(
 					logger,
 					path,
-					utils.DefaultOsProxy(),
+					utils.DefaultOsProxy{},
 					gradleconfig.GradleTemplateProxy(),
 				)
 			},
