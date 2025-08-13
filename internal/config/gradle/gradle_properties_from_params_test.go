@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
@@ -51,10 +50,10 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		)
 
 		// then
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		//
 		data, err := os.ReadFile(propertyFilePath)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		content := string(data)
 		assert.Contains(t, content, "org.gradle.caching=true")
 	})
@@ -79,15 +78,18 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		require.NoError(t, err)
 		//
 		data, err := os.ReadFile(propertyFilePath)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		content := string(data)
 		assert.Contains(t, content, "org.gradle.caching=false")
 	})
 
 	t.Run("When gradle properties file is missing throws error", func(t *testing.T) {
 		noFileError := fmt.Errorf("there is no gradle properties file")
-		osProxy := &utilsMocks.MockOsProxy{}
-		osProxy.On("ReadFileIfExists", mock.Anything).Return("", false, noFileError)
+		osProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", false, noFileError
+			},
+		}
 
 		updater := GradlePropertiesUpdater{osProxy}
 
@@ -105,15 +107,20 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(ErrFmtGradlePropertiesCheck, propertyFilePath, noFileError).Error())
+		assert.EqualError(t, err, fmt.Errorf(ErrFmtGradlePropertiesCheck, propertyFilePath, noFileError).Error())
 	})
 
 	t.Run("When failing to update gradle.properties throws error", func(t *testing.T) {
 		failedToWriteError := fmt.Errorf("couldn't write gradle properties file")
 
-		osProxy := &utilsMocks.MockOsProxy{}
-		osProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
-		osProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(failedToWriteError)
+		osProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return failedToWriteError
+			},
+		}
 		updater := GradlePropertiesUpdater{osProxy}
 
 		mockLogger, tmpGradleHomeDir, propertyFilePath := prep()
@@ -130,6 +137,6 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(ErrFmtGradlePropertyWrite, propertyFilePath, failedToWriteError).Error())
+		assert.EqualError(t, err, fmt.Errorf(ErrFmtGradlePropertyWrite, propertyFilePath, failedToWriteError).Error())
 	})
 }

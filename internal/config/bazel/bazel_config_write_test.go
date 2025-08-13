@@ -3,11 +3,11 @@ package bazelconfig
 import (
 	"bytes"
 	"errors"
+	"os"
 	"testing"
 	"text/template"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	utilMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
@@ -39,18 +39,21 @@ func Test_WriteToBazelrc(t *testing.T) {
 			},
 		}
 
-		var writtenContent []byte
-
-		mockOsProxy := &utilMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-			writtenContent = args.Get(1).([]byte)
-		}).Return(nil)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, utils.DefaultTemplateProxy())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		// Verify written content
+		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
+		writtenContent := mockOsProxy.WriteFileCalls()[0].Bytes
 		assert.Contains(t, string(writtenContent), "# [start] generated-by-bitrise-build-cache")
 		assert.Contains(t, string(writtenContent), "# [end] generated-by-bitrise-build-cache")
 		assert.Contains(t, string(writtenContent), "--remote_header=authorization=\"Bearer AuthTokenValue\"")
@@ -77,18 +80,22 @@ build --remote_header=authorization="Bearer OldAuthToken"
 # Other settings
 build --cpp_opt="-O2"`
 
-		var writtenContent []byte
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return existingContent, true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 
-		osProxy := &utilMocks.MockOsProxy{}
-		osProxy.On("ReadFileIfExists", mock.Anything).Return(existingContent, true, nil)
-		osProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-			writtenContent = args.Get(1).([]byte)
-		}).Return(nil)
-
-		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", osProxy, utils.DefaultTemplateProxy())
-		require.NoError(t, err)
+		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, utils.DefaultTemplateProxy())
+		assert.NoError(t, err)
 
 		// Verify written content preserves original content
+		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
+		writtenContent := mockOsProxy.WriteFileCalls()[0].Bytes
+
 		assert.Contains(t, string(writtenContent), "# Existing bazel config")
 		assert.Contains(t, string(writtenContent), "build --cpu=x86_64")
 		assert.Contains(t, string(writtenContent), "# Other settings")
@@ -103,9 +110,14 @@ build --cpp_opt="-O2"`
 
 	t.Run("when template parsing fails throws error", func(t *testing.T) {
 		mockLogger := logger()
-		mockOsProxy := &utilMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to parse template")
 		templateProxy := utils.TemplateProxy{
@@ -116,14 +128,19 @@ build --cpp_opt="-O2"`
 		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, templateProxy)
-		require.ErrorContains(t, err, expectedError.Error())
+		assert.ErrorContains(t, err, expectedError.Error())
 	})
 
 	t.Run("when template execution fails throws error", func(t *testing.T) {
 		mockLogger := logger()
-		mockOsProxy := &utilMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to execute template")
 		templateProxy := utils.TemplateProxy{
@@ -134,7 +151,7 @@ build --cpp_opt="-O2"`
 		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, templateProxy)
-		require.ErrorContains(t, err, expectedError.Error())
+		assert.ErrorContains(t, err, expectedError.Error())
 	})
 
 	t.Run("when reading bazelrc fails throws error", func(t *testing.T) {
@@ -142,11 +159,14 @@ build --cpp_opt="-O2"`
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to read bazelrc")
 
-		mockOsProxy := &utilMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", false, expectedError)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", false, expectedError
+			},
+		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, utils.DefaultTemplateProxy())
-		require.ErrorContains(t, err, expectedError.Error())
+		assert.ErrorContains(t, err, expectedError.Error())
 	})
 
 	t.Run("when writing bazelrc fails throws error", func(t *testing.T) {
@@ -154,11 +174,16 @@ build --cpp_opt="-O2"`
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to write bazelrc")
 
-		mockOsProxy := &utilMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(expectedError)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return expectedError
+			},
+		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, utils.DefaultTemplateProxy())
-		require.ErrorContains(t, err, expectedError.Error())
+		assert.ErrorContains(t, err, expectedError.Error())
 	})
 }

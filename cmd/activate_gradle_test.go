@@ -4,12 +4,14 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -37,9 +39,14 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		var actualTemplateInventory *gradleconfig.TemplateInventory
 
-		mockOsProxy := &utilsMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", "~/.gradle/gradle.properties").Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", false, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 
 		// when
 		err := activateGradleCmdFn(
@@ -63,18 +70,24 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		)
 
 		// then
-		require.NoError(t, err)
-		require.Equal(t, templateInventory, *actualTemplateInventory)
-		mockOsProxy.AssertCalled(t, "ReadFileIfExists", "~/.gradle/gradle.properties")
+		assert.NoError(t, err)
+		assert.Equal(t, templateInventory, *actualTemplateInventory)
+		require.Len(t, mockOsProxy.ReadFileIfExistsCalls(), 1)
+		require.Equal(t, "~/.gradle/gradle.properties", mockOsProxy.ReadFileIfExistsCalls()[0].Pth)
 	})
 
 	t.Run("When templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
 
-		mockOsProxy := &utilsMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", "~/.gradle/gradle.properties").Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 
 		// when
 		err := activateGradleCmdFn(
@@ -96,16 +109,21 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(t, err, inventoryCreationError.Error())
+		assert.EqualError(t, err, inventoryCreationError.Error())
 	})
 
 	t.Run("When template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
 
-		mockOsProxy := &utilsMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", "~/.gradle/gradle.properties").Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return nil
+			},
+		}
 
 		// when
 		err := activateGradleCmdFn(
@@ -127,16 +145,21 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(t, err, templateWriteError.Error())
+		assert.EqualError(t, err, templateWriteError.Error())
 	})
 
 	t.Run("When gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
 		mockLogger := prep()
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
 
-		mockOsProxy := &utilsMocks.MockOsProxy{}
-		mockOsProxy.On("ReadFileIfExists", mock.Anything).Return("", true, nil)
-		mockOsProxy.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(gradlePropertiesUpdateError)
+		mockOsProxy := &utils.MockOsProxy{
+			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+				return "", true, nil
+			},
+			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+				return gradlePropertiesUpdateError
+			},
+		}
 
 		// when
 		err := activateGradleCmdFn(
@@ -158,7 +181,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		)
 
 		// then
-		require.EqualError(
+		assert.EqualError(
 			t,
 			err,
 			fmt.Errorf(
