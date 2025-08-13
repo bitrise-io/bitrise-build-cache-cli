@@ -7,11 +7,12 @@ package session;
 import "google/protobuf/empty.proto";
 
 service Session {
-  rpc SetSession(SetSessionRequest) returns (google.protobuf.Empty) {}
+    rpc SetSession (SetSessionRequest) returns (google.protobuf.Empty) {}
 }
 
 message SetSessionRequest {
-  string invocation_id = 1;
-  string build_slug = 2;
-  string step_slug = 3;
+    string invocation_id = 1;
+    string app_slug = 2;
+    string build_slug = 3;
+    string step_slug = 4;
 }

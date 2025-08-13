@@ -7,12 +7,15 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 )
 
+//go:generate moq -rm -out ./os_proxy_mock.go . OsProxy:MockOsProxy
+//nolint:inamedparam
 type OsProxy interface {
 	ReadFileIfExists(pth string) (string, bool, error)
 	MkdirAll(string, os.FileMode) error
 	WriteFile(string, []byte, os.FileMode) error
 	UserHomeDir() (string, error)
 	Create(string) (*os.File, error)
+	Remove(string) error
 }
 
 type DefaultOsProxy struct{}
@@ -33,17 +36,21 @@ func (d DefaultOsProxy) ReadFileIfExists(pth string) (string, bool, error) {
 }
 
 func (d DefaultOsProxy) MkdirAll(pth string, perm os.FileMode) error {
-	return os.MkdirAll(pth, perm)
+	return os.MkdirAll(pth, perm) //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) WriteFile(name string, data []byte, perm os.FileMode) error {
-	return os.WriteFile(name, data, perm)
+	return os.WriteFile(name, data, perm) //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) UserHomeDir() (string, error) {
-	return os.UserHomeDir()
+	return os.UserHomeDir() //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) Create(name string) (*os.File, error) {
-	return os.Create(name)
+	return os.Create(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Remove(name string) error {
+	return os.Remove(name) //nolint:wrapcheck
 }

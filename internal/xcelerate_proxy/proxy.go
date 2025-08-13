@@ -1,4 +1,4 @@
-package xcode_cache_proxy
+package xcelerate_proxy
 
 import (
 	"bytes"
@@ -34,7 +34,7 @@ import (
 //go:generate moq -rm -stub -pkg mock -out ./mock/remote_execution.go ./../../proto/build/bazel/remote/execution/v2 CapabilitiesClient
 
 const (
-	toolName                   = "llvm"
+	toolName                   = "xcelerate"
 	headerRequestMetadataKey   = "build.bazel.remote.execution.v2.requestmetadata-bin"
 	headerBuildToolMetadataKey = "x-flare-buildtool"
 	headerAppIdMetadataKey     = "x-app-id"
@@ -51,6 +51,7 @@ var (
 
 type sessionParams struct {
 	InvocationID    string
+	AppSlug         string
 	BuildSlug       string
 	StepExecutionID string
 }
@@ -64,7 +65,6 @@ type Proxy struct {
 	capabilitiesClient remoteexecution.CapabilitiesClient
 
 	token   string
-	appSlug string
 	orgID   string
 	session sessionParams
 
@@ -90,11 +90,10 @@ func NewProxy(
 		cacheClient:        cacheClient,
 		capabilitiesClient: capabilitiesClient,
 		token:              token,
-		appSlug:            appSlug,
 		orgID:              orgID,
 		logger:             logger,
 	}
-	p.setSession(invocationID, buildSlug, stepExecutionID)
+	p.setSession(invocationID, appSlug, buildSlug, stepExecutionID)
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(func(
@@ -123,7 +122,7 @@ func NewProxy(
 }
 
 func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest) (*emptypb.Empty, error) {
-	p.setSession(request.GetInvocationId(), request.GetBuildSlug(), request.GetStepSlug())
+	p.setSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
 
 	return &emptypb.Empty{}, nil
 }
@@ -510,7 +509,6 @@ func (p *Proxy) newContextWithAuth(ctx context.Context) (context.Context, error)
 			map[string]string{
 				headerBuildToolMetadataKey: toolName,
 				"authorization":            "bearer " + p.token,
-				headerAppIdMetadataKey:     p.appSlug,
 				headerOrgIdMetadataKey:     p.orgID,
 			},
 		),
@@ -536,6 +534,7 @@ func (p *Proxy) addSessionHeaders(ctx context.Context) (context.Context, error) 
 
 	ctx = p.addNonEmpty(ctx, map[string]string{
 		headerRequestMetadataKey: p.invocationRMD,
+		headerAppIdMetadataKey:   p.session.AppSlug,
 		headerBuildIdMetadataKey: p.session.BuildSlug,
 		headerStepIdMetadataKey:  p.session.StepExecutionID,
 	})
@@ -560,12 +559,13 @@ func (p *Proxy) addNonEmpty(ctx context.Context, headers map[string]string) cont
 	return ctx
 }
 
-func (p *Proxy) setSession(invocationID string, buildSlug string, stepSlug string) {
+func (p *Proxy) setSession(invocationID string, appSlug string, buildSlug string, stepSlug string) {
 	p.sessionMutex.Lock()
 	defer p.sessionMutex.Unlock()
 
 	p.invocationRMD = ""
 	p.session.InvocationID = cmp.Or(invocationID, uuid.New().String()) // never leave it empty
+	p.session.AppSlug = appSlug
 	p.session.BuildSlug = buildSlug
 	p.session.StepExecutionID = stepSlug
 

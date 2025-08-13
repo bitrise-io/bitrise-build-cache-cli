@@ -49,7 +49,7 @@ func Test_WriteToBazelrc(t *testing.T) {
 		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, utils.DefaultTemplateProxy())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify written content
 		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
@@ -90,7 +90,7 @@ build --cpp_opt="-O2"`
 		}
 
 		err := inventory.WriteToBazelrc(mockLogger, "test/.bazelrc", mockOsProxy, utils.DefaultTemplateProxy())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify written content preserves original content
 		require.Len(t, mockOsProxy.WriteFileCalls(), 1)

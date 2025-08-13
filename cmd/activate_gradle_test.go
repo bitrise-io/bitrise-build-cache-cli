@@ -70,7 +70,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		)
 
 		// then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, templateInventory, *actualTemplateInventory)
 		require.Len(t, mockOsProxy.ReadFileIfExistsCalls(), 1)
 		require.Equal(t, "~/.gradle/gradle.properties", mockOsProxy.ReadFileIfExistsCalls()[0].Pth)

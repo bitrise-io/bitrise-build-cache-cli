@@ -25,8 +25,9 @@ const (
 type SetSessionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InvocationId  string                 `protobuf:"bytes,1,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
-	BuildSlug     string                 `protobuf:"bytes,2,opt,name=build_slug,json=buildSlug,proto3" json:"build_slug,omitempty"`
-	StepSlug      string                 `protobuf:"bytes,3,opt,name=step_slug,json=stepSlug,proto3" json:"step_slug,omitempty"`
+	AppSlug       string                 `protobuf:"bytes,2,opt,name=app_slug,json=appSlug,proto3" json:"app_slug,omitempty"`
+	BuildSlug     string                 `protobuf:"bytes,3,opt,name=build_slug,json=buildSlug,proto3" json:"build_slug,omitempty"`
+	StepSlug      string                 `protobuf:"bytes,4,opt,name=step_slug,json=stepSlug,proto3" json:"step_slug,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -68,6 +69,13 @@ func (x *SetSessionRequest) GetInvocationId() string {
 	return ""
 }
 
+func (x *SetSessionRequest) GetAppSlug() string {
+	if x != nil {
+		return x.AppSlug
+	}
+	return ""
+}
+
 func (x *SetSessionRequest) GetBuildSlug() string {
 	if x != nil {
 		return x.BuildSlug
@@ -86,12 +94,13 @@ var File_llvm_session_session_proto protoreflect.FileDescriptor
 
 const file_llvm_session_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1allvm/session/session.proto\x12\asession\x1a\x1bgoogle/protobuf/empty.proto\"t\n" +
+	"\x1allvm/session/session.proto\x12\asession\x1a\x1bgoogle/protobuf/empty.proto\"\x8f\x01\n" +
 	"\x11SetSessionRequest\x12#\n" +
-	"\rinvocation_id\x18\x01 \x01(\tR\finvocationId\x12\x1d\n" +
+	"\rinvocation_id\x18\x01 \x01(\tR\finvocationId\x12\x19\n" +
+	"\bapp_slug\x18\x02 \x01(\tR\aappSlug\x12\x1d\n" +
 	"\n" +
-	"build_slug\x18\x02 \x01(\tR\tbuildSlug\x12\x1b\n" +
-	"\tstep_slug\x18\x03 \x01(\tR\bstepSlug2M\n" +
+	"build_slug\x18\x03 \x01(\tR\tbuildSlug\x12\x1b\n" +
+	"\tstep_slug\x18\x04 \x01(\tR\bstepSlug2M\n" +
 	"\aSession\x12B\n" +
 	"\n" +
 	"SetSession\x12\x1a.session.SetSessionRequest\x1a\x16.google.protobuf.Empty\"\x00BDZBgithub.com/bitrise-io/bitrise-build-cache-cli/llvm/session;sessionb\x06proto3"

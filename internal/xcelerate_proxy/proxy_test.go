@@ -1,4 +1,4 @@
-package xcode_cache_proxy
+package xcelerate_proxy
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode_cache_proxy/mock"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate_proxy/mock"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
@@ -85,6 +85,7 @@ func Test_Proxy_Headers(t *testing.T) {
 	// it's time to change the session
 	_, err = session.NewSessionClient(client).SetSession(context.Background(), &session.SetSessionRequest{
 		InvocationId: "new-invocation-id",
+		AppSlug:      "new-app-slug",
 		BuildSlug:    "new-build-slug",
 		StepSlug:     "new-step-execution-id",
 	})
@@ -102,9 +103,9 @@ func Test_Proxy_Headers(t *testing.T) {
 	// make sure only the fields that are expected to change are different
 	require.Equal(t, mds[0].Get(headerBuildToolMetadataKey), mds[2].Get(headerBuildToolMetadataKey))
 	require.Equal(t, mds[0].Get("authorization"), mds[2].Get("authorization"))
-	require.Equal(t, mds[0].Get(headerAppIdMetadataKey), mds[2].Get(headerAppIdMetadataKey))
 	require.Equal(t, mds[0].Get(headerOrgIdMetadataKey), mds[2].Get(headerOrgIdMetadataKey))
 	require.NotEqual(t, mds[0].Get(headerRequestMetadataKey), mds[2].Get(headerRequestMetadataKey))
+	require.NotEqual(t, mds[0].Get(headerAppIdMetadataKey), mds[2].Get(headerAppIdMetadataKey))
 	require.NotEqual(t, mds[0].Get(headerBuildIdMetadataKey), mds[2].Get(headerBuildIdMetadataKey))
 	require.NotEqual(t, mds[0].Get(headerStepIdMetadataKey), mds[2].Get(headerStepIdMetadataKey))
 

@@ -16,6 +16,7 @@ linters:
     - paralleltest
     - perfsprint
     - revive
+    - tagliatelle
     - testpackage
     - varnamelen
     - wsl
