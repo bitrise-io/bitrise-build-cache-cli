@@ -43,10 +43,6 @@ type XcelerateParams struct {
 	OrigArgs []string
 }
 
-func (params *XcelerateParams) GetOriginalArgs() []string {
-	return params.OrigArgs
-}
-
 func DefaultXcelerateParams() XcelerateParams {
 	return XcelerateParams{
 		Debug:    false,
