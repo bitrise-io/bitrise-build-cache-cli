@@ -7,14 +7,12 @@ import (
 
 //go:generate moq -out mocks/xcode_runner.go -pkg mocks . XcodeRunner
 type XcodeRunner interface {
-	RunXcode(args []string) error
+	Run(args []string) error
 }
-
-var _ XcodeRunner = &DefaultXcodeRunner{}
 
 type DefaultXcodeRunner struct{}
 
-func (runner *DefaultXcodeRunner) RunXcode(args []string) error {
+func (runner *DefaultXcodeRunner) Run(args []string) error {
 	innerCmd := exec.Command("xcodebuild", args...)
 	innerCmd.Stdout = os.Stdout
 	innerCmd.Stderr = os.Stderr

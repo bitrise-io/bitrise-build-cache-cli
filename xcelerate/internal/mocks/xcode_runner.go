@@ -19,8 +19,8 @@ var _ internal.XcodeRunner = &XcodeRunnerMock{}
 //
 //		// make and configure a mocked internal.XcodeRunner
 //		mockedXcodeRunner := &XcodeRunnerMock{
-//			RunXcodeFunc: func(args []string) error {
-//				panic("mock out the RunXcode method")
+//			RunFunc: func(args []string) error {
+//				panic("mock out the Run method")
 //			},
 //		}
 //
@@ -29,48 +29,48 @@ var _ internal.XcodeRunner = &XcodeRunnerMock{}
 //
 //	}
 type XcodeRunnerMock struct {
-	// RunXcodeFunc mocks the RunXcode method.
-	RunXcodeFunc func(args []string) error
+	// RunFunc mocks the Run method.
+	RunFunc func(args []string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// RunXcode holds details about calls to the RunXcode method.
-		RunXcode []struct {
+		// Run holds details about calls to the Run method.
+		Run []struct {
 			// Args is the args argument value.
 			Args []string
 		}
 	}
-	lockRunXcode sync.RWMutex
+	lockRun sync.RWMutex
 }
 
-// RunXcode calls RunXcodeFunc.
-func (mock *XcodeRunnerMock) RunXcode(args []string) error {
-	if mock.RunXcodeFunc == nil {
-		panic("XcodeRunnerMock.RunXcodeFunc: method is nil but XcodeRunner.RunXcode was just called")
+// Run calls RunFunc.
+func (mock *XcodeRunnerMock) Run(args []string) error {
+	if mock.RunFunc == nil {
+		panic("XcodeRunnerMock.RunFunc: method is nil but XcodeRunner.Run was just called")
 	}
 	callInfo := struct {
 		Args []string
 	}{
 		Args: args,
 	}
-	mock.lockRunXcode.Lock()
-	mock.calls.RunXcode = append(mock.calls.RunXcode, callInfo)
-	mock.lockRunXcode.Unlock()
-	return mock.RunXcodeFunc(args)
+	mock.lockRun.Lock()
+	mock.calls.Run = append(mock.calls.Run, callInfo)
+	mock.lockRun.Unlock()
+	return mock.RunFunc(args)
 }
 
-// RunXcodeCalls gets all the calls that were made to RunXcode.
+// RunCalls gets all the calls that were made to Run.
 // Check the length with:
 //
-//	len(mockedXcodeRunner.RunXcodeCalls())
-func (mock *XcodeRunnerMock) RunXcodeCalls() []struct {
+//	len(mockedXcodeRunner.RunCalls())
+func (mock *XcodeRunnerMock) RunCalls() []struct {
 	Args []string
 } {
 	var calls []struct {
 		Args []string
 	}
-	mock.lockRunXcode.RLock()
-	calls = mock.calls.RunXcode
-	mock.lockRunXcode.RUnlock()
+	mock.lockRun.RLock()
+	calls = mock.calls.Run
+	mock.lockRun.RUnlock()
 	return calls
 }

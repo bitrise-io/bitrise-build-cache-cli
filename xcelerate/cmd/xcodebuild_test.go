@@ -1,4 +1,4 @@
-package tests
+package cmd_test
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	gotuilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/bitrise-io/xcelerate/cmd"
 	internalMocks "github.com/bitrise-io/xcelerate/internal/mocks"
+	xcodeargsMocks "github.com/bitrise-io/xcelerate/internal/xcodeargs/mocks"
 	"github.com/c2fo/testify/mock"
 	"github.com/c2fo/testify/require"
 	"github.com/stretchr/testify/assert"
@@ -27,12 +28,12 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		logger.On("TDebugf", mock.Anything).Return()
 		logger.On("TDebugf", mock.Anything, mock.Anything).Return()
 
-		xcodeArgProvider := internalMocks.XcodeArgProviderMock{
-			XcodeArgsFunc: func() []string { return xcodeArgs },
+		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
+			ArgsFunc: func() []string { return xcodeArgs },
 		}
 
 		xcodeRunner := internalMocks.XcodeRunnerMock{
-			RunXcodeFunc: func(args []string) error { return nil },
+			RunFunc: func(args []string) error { return nil },
 		}
 
 		SUT := cmd.XcodebuildCmdFn
@@ -41,9 +42,9 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		_ = SUT(&logger, &xcodeRunner, &xcodeArgProvider)
 
 		// Then
-		assert.Len(t, xcodeArgProvider.XcodeArgsCalls(), 1)
-		require.Len(t, xcodeRunner.RunXcodeCalls(), 1)
-		assert.Equal(t, xcodeArgs, xcodeRunner.RunXcodeCalls()[0].Args)
+		assert.Len(t, xcodeArgProvider.ArgsCalls(), 1)
+		require.Len(t, xcodeRunner.RunCalls(), 1)
+		assert.Equal(t, xcodeArgs, xcodeRunner.RunCalls()[0].Args)
 
 		logger.AssertNumberOfCalls(t, "TDebugf", 1)
 		logger.AssertCalled(t, "TDebugf", cmd.MsgArgsPassedToXcodebuild, xcodeArgs)
@@ -59,12 +60,12 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		logger.On("TDebugf", mock.Anything).Return()
 		logger.On("TDebugf", mock.Anything, mock.Anything).Return()
 
-		xcodeArgProvider := internalMocks.XcodeArgProviderMock{
-			XcodeArgsFunc: func() []string { return xcodeArgs },
+		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
+			ArgsFunc: func() []string { return xcodeArgs },
 		}
 
 		xcodeRunner := internalMocks.XcodeRunnerMock{
-			RunXcodeFunc: func(args []string) error { return expected },
+			RunFunc: func(args []string) error { return expected },
 		}
 
 		SUT := cmd.XcodebuildCmdFn

@@ -3,7 +3,6 @@ package cmd
 import (
 	"os"
 
-	"github.com/bitrise-io/xcelerate/internal"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +22,7 @@ func init() {
 
 func Execute() {
 	cmd, _, err := rootCmd.Traverse(os.Args[1:])
-	xcelerateParams.OriginalArgs = os.Args[1:]
+	xcelerateParams.OrigArgs = os.Args[1:]
 
 	// default cmd if no cmd is given
 	if err == nil && cmd.Use == rootCmd.Use {
@@ -40,20 +39,18 @@ func Execute() {
 }
 
 type XcelerateParams struct {
-	Debug        bool
-	OriginalArgs []string
+	Debug    bool
+	OrigArgs []string
 }
 
-var _ internal.OriginalArgProvider = &XcelerateParams{}
-
 func (params *XcelerateParams) GetOriginalArgs() []string {
-	return params.OriginalArgs
+	return params.OrigArgs
 }
 
 func DefaultXcelerateParams() XcelerateParams {
 	return XcelerateParams{
-		Debug:        false,
-		OriginalArgs: []string{},
+		Debug:    false,
+		OrigArgs: []string{},
 	}
 }
 

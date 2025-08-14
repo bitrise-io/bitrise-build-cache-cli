@@ -1,15 +1,14 @@
-package tests
+package xcodeargs_test
 
 import (
 	"testing"
 
-	"github.com/bitrise-io/xcelerate/internal"
-	"github.com/bitrise-io/xcelerate/internal/mocks"
+	"github.com/bitrise-io/xcelerate/internal/xcodeargs"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_DefaultXcodeArgProvider(t *testing.T) {
+func Test_DefaultXcodeArgs(t *testing.T) {
 	flag1 := true
 	flag2 := true
 
@@ -22,7 +21,7 @@ func Test_DefaultXcodeArgProvider(t *testing.T) {
 		return cmd
 	}
 
-	t.Run("DefaultXcodeArgProvider passes all flags and args when none is part of the command", func(t *testing.T) {
+	t.Run("DefaultXcodeArgs passes all flags and args when none is part of the command", func(t *testing.T) {
 		// given
 		args := []string{
 			"subcommand",
@@ -31,23 +30,20 @@ func Test_DefaultXcodeArgProvider(t *testing.T) {
 			"--flag",
 		}
 		cmd := command(args)
-		originalArgProvider := mocks.OriginalArgProviderMock{
-			GetOriginalArgsFunc: func() []string { return args },
-		}
 
-		SUT := internal.DefaultXcodeArgProvider{
-			Cmd:                 &cmd,
-			OriginalArgProvider: &originalArgProvider,
+		SUT := xcodeargs.DefaultXcodeArgs{
+			Cmd:          &cmd,
+			OriginalArgs: args,
 		}
 
 		// when
-		result := SUT.XcodeArgs()
+		result := SUT.Args()
 
 		// then
 		assert.Equal(t, args, result)
 	})
 
-	t.Run("DefaultXcodeArgProvider filters out command use", func(t *testing.T) {
+	t.Run("DefaultXcodeArgs filters out command use", func(t *testing.T) {
 		// given
 		args := []string{
 			"testCommand",
@@ -57,17 +53,14 @@ func Test_DefaultXcodeArgProvider(t *testing.T) {
 			"--flag",
 		}
 		cmd := command(args)
-		originalArgProvider := mocks.OriginalArgProviderMock{
-			GetOriginalArgsFunc: func() []string { return args },
-		}
 
-		SUT := internal.DefaultXcodeArgProvider{
-			Cmd:                 &cmd,
-			OriginalArgProvider: &originalArgProvider,
+		SUT := xcodeargs.DefaultXcodeArgs{
+			Cmd:          &cmd,
+			OriginalArgs: args,
 		}
 
 		// when
-		result := SUT.XcodeArgs()
+		result := SUT.Args()
 
 		// then
 		assert.Equal(t, []string{
@@ -92,17 +85,13 @@ func Test_DefaultXcodeArgProvider(t *testing.T) {
 
 		cmd := command(args)
 
-		originalArgProvider := mocks.OriginalArgProviderMock{
-			GetOriginalArgsFunc: func() []string { return args },
-		}
-
-		SUT := internal.DefaultXcodeArgProvider{
-			Cmd:                 &cmd,
-			OriginalArgProvider: &originalArgProvider,
+		SUT := xcodeargs.DefaultXcodeArgs{
+			Cmd:          &cmd,
+			OriginalArgs: args,
 		}
 
 		// when
-		result := SUT.XcodeArgs()
+		result := SUT.Args()
 
 		// then
 		assert.Equal(t, []string{
