@@ -15,7 +15,6 @@ type OsProxy interface {
 	WriteFile(string, []byte, os.FileMode) error
 	UserHomeDir() (string, error)
 	Create(string) (*os.File, error)
-	Remove(string) error
 }
 
 type DefaultOsProxy struct{}
@@ -49,8 +48,4 @@ func (d DefaultOsProxy) UserHomeDir() (string, error) {
 
 func (d DefaultOsProxy) Create(name string) (*os.File, error) {
 	return os.Create(name) //nolint:wrapcheck
-}
-
-func (d DefaultOsProxy) Remove(name string) error {
-	return os.Remove(name) //nolint:wrapcheck
 }

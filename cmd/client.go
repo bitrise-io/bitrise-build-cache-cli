@@ -8,6 +8,8 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -16,19 +18,23 @@ const (
 	ClientNameXcode             = "xcode"
 	ClientNameGradleConfigCache = "gradle-config"
 	ClientNameGradle            = "gradle"
+	ClientNameXcelerate         = "xcelerate"
 )
 
 type CreateKVClientParams struct {
-	CacheOperationID string
-	ClientName       string
-	AuthConfig       common.CacheAuthConfig
-	EnvProvider      common.EnvProviderFunc
-	CommandFunc      common.CommandFunc
-	Logger           log.Logger
+	CacheOperationID   string
+	ClientName         string
+	InvocationID       string
+	AuthConfig         common.CacheAuthConfig
+	EnvProvider        common.EnvProviderFunc
+	CommandFunc        common.CommandFunc
+	Logger             log.Logger
+	BitriseKVClient    kv_storage.KVStorageClient         // nullable, if not provided, a new client will be created
+	CapabilitiesClient remoteexecution.CapabilitiesClient // nullable, if not provided, a new client will be created
+	SkipCapabilities   bool                               // if true, GetCapabilities will not be called
 }
 
-func createKVClient(ctx context.Context,
-	params CreateKVClientParams) (*kv.Client, error) {
+func createKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Client, error) {
 	endpointURL := common.SelectCacheEndpointURL("", params.EnvProvider)
 	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
@@ -50,9 +56,17 @@ func createKVClient(ctx context.Context,
 		Logger:              params.Logger,
 		CacheConfigMetadata: common.NewMetadata(params.EnvProvider, params.CommandFunc, params.Logger),
 		CacheOperationID:    params.CacheOperationID,
+		BitriseKVClient:     params.BitriseKVClient,
+		CapabilitiesClient:  params.CapabilitiesClient,
+		InvocationID:        params.InvocationID,
+		SkipCapabilities:    params.SkipCapabilities,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)
+	}
+
+	if params.SkipCapabilities {
+		return kvClient, nil
 	}
 
 	err = retry.Times(10).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {

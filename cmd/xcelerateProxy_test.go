@@ -1,9 +1,10 @@
-package xcelerate_proxy
+package cmd
 
 import (
 	"context"
 	"errors"
 	"net"
+	"os/exec"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,48 +18,80 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate_proxy/mock"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/mock"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
 )
 
-func Test_Proxy_Headers(t *testing.T) {
+func Test_XcelerateProxy(t *testing.T) {
 	var mds []metadata.MD
-	capabilitiesClient := &mock.CapabilitiesClientMock{}
-	server := NewProxy(
-		&mock.KVStorageClientMock{
-			GetFunc: func(
-				ctx context.Context,
-				in *bytestream.ReadRequest,
-				opts ...grpc.CallOption,
-			) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
-				md, ok := metadata.FromOutgoingContext(ctx)
-				require.True(t, ok)
-
-				mds = append(mds, md)
-
-				return nil, errors.New("not implemented")
-			},
+	capabilitiesClient := &mock.CapabilitiesClientMock{
+		GetCapabilitiesFunc: func(ctx context.Context, in *remoteexecution.GetCapabilitiesRequest, opts ...grpc.CallOption) (*remoteexecution.ServerCapabilities, error) {
+			return &remoteexecution.ServerCapabilities{}, nil
 		},
-		capabilitiesClient,
-		"test-token",
-		"test-app-slug",
-		"test-org-id",
-		"test-invocation-id",
-		"test-build-slug",
-		"test-step-execution-id",
-		log.NewLogger(),
-	)
+	}
 
-	listen := bufconn.Listen(1024 * 1024)
+	envVars := map[string]string{
+		"BITRISE_IO":                   "true",
+		"REMOTE_CACHE_TOKEN":           "test-token",
+		"BITRISE_BUILD_CACHE_ENDPOINT": "grpc://bufnet",
+		"BITRISE_APP_SLUG":             "test-app-slug",
+		"BITRISE_ORG_ID":               "test-org-id",
+		"INVOCATION_ID":                "test-invocation-id",
+		"BITRISE_BUILD_SLUG":           "test-build-slug",
+		"BITRISE_STEP_EXECUTION_ID":    "test-step-execution-id",
+	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	t.Cleanup(cancelFunc)
+
+	listener := bufconn.Listen(1024 * 1024)
+
+	t.Cleanup(func() {
+		require.NoError(t, listener.Close())
+	})
+
 	go func() {
-		assert.NoError(t, server.Serve(listen))
+		assert.NoError(t, startXcodeCacheProxy(
+			ctx,
+			log.NewLogger(),
+			func(key string) string {
+				if value, exists := envVars[key]; exists {
+					return value
+				}
+
+				t.Logf("Environment variable %s not set, returning empty string", key)
+
+				return ""
+			},
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+				return string(output), err
+			},
+			&mock.KVStorageClientMock{
+				GetFunc: func(
+					ctx context.Context,
+					in *bytestream.ReadRequest,
+					opts ...grpc.CallOption,
+				) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
+					md, ok := metadata.FromOutgoingContext(ctx)
+					require.True(t, ok)
+
+					mds = append(mds, md)
+
+					return nil, errors.New("not implemented")
+				},
+			},
+			capabilitiesClient,
+			listener,
+		))
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
 	client, err := grpc.NewClient("bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
-		return listen.Dial()
+		return listener.Dial()
 	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	keyValueDBClient := llvmkv.NewKeyValueDBClient(client)
@@ -101,13 +134,13 @@ func Test_Proxy_Headers(t *testing.T) {
 	assertMetadata(t, mds[2])
 
 	// make sure only the fields that are expected to change are different
-	require.Equal(t, mds[0].Get(headerBuildToolMetadataKey), mds[2].Get(headerBuildToolMetadataKey))
+	require.Equal(t, mds[0].Get("x-flare-buildtool"), mds[2].Get("x-flare-buildtool"))
 	require.Equal(t, mds[0].Get("authorization"), mds[2].Get("authorization"))
-	require.Equal(t, mds[0].Get(headerOrgIdMetadataKey), mds[2].Get(headerOrgIdMetadataKey))
-	require.NotEqual(t, mds[0].Get(headerRequestMetadataKey), mds[2].Get(headerRequestMetadataKey))
-	require.NotEqual(t, mds[0].Get(headerAppIdMetadataKey), mds[2].Get(headerAppIdMetadataKey))
-	require.NotEqual(t, mds[0].Get(headerBuildIdMetadataKey), mds[2].Get(headerBuildIdMetadataKey))
-	require.NotEqual(t, mds[0].Get(headerStepIdMetadataKey), mds[2].Get(headerStepIdMetadataKey))
+	require.Equal(t, mds[0].Get("x-org-id"), mds[2].Get("x-org-id"))
+	require.NotEqual(t, mds[0].Get("build.bazel.remote.execution.v2.requestmetadata-bin"), mds[2].Get("build.bazel.remote.execution.v2.requestmetadata-bin"))
+	require.NotEqual(t, mds[0].Get("x-app-id"), mds[2].Get("x-app-id"))
+	require.NotEqual(t, mds[0].Get("x-flare-build-id"), mds[2].Get("x-flare-build-id"))
+	require.NotEqual(t, mds[0].Get("x-flare-step-id"), mds[2].Get("x-flare-step-id"))
 
 	// Check capabilities call count again, it should be called again for the new invocation ID
 	_, _ = keyValueDBClient.GetValue(context.Background(), &llvmkv.GetValueRequest{
@@ -119,15 +152,15 @@ func Test_Proxy_Headers(t *testing.T) {
 func assertMetadata(t *testing.T, md metadata.MD) {
 	t.Helper()
 
-	assert.Len(t, md.Get(headerBuildToolMetadataKey), 1)
+	assert.Len(t, md.Get("x-flare-buildtool"), 1)
 	assert.Len(t, md.Get("authorization"), 1)
-	assert.Len(t, md.Get(headerAppIdMetadataKey), 1)
-	assert.Len(t, md.Get(headerOrgIdMetadataKey), 1)
-	assert.Len(t, md.Get(headerRequestMetadataKey), 1)
+	assert.Len(t, md.Get("x-app-id"), 1)
+	assert.Len(t, md.Get("x-org-id"), 1)
+	assert.Len(t, md.Get("build.bazel.remote.execution.v2.requestmetadata-bin"), 1)
 	rmd := &remoteexecution.RequestMetadata{}
-	require.NoError(t, proto.Unmarshal([]byte(md.Get(headerRequestMetadataKey)[0]), rmd))
+	require.NoError(t, proto.Unmarshal([]byte(md.Get("build.bazel.remote.execution.v2.requestmetadata-bin")[0]), rmd))
 	assert.NotEmpty(t, rmd.GetToolInvocationId())
 	assert.NotEmpty(t, rmd.GetToolDetails().GetToolName())
-	assert.Len(t, md.Get(headerBuildIdMetadataKey), 1)
-	assert.Len(t, md.Get(headerStepIdMetadataKey), 1)
+	assert.Len(t, md.Get("x-flare-build-id"), 1)
+	assert.Len(t, md.Get("x-flare-step-id"), 1)
 }

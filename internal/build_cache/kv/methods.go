@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type PutParams struct {
@@ -248,11 +249,26 @@ func (c *Client) getMethodCallMetadata() metadata.MD {
 	if c.cacheConfigMetadata.BitriseWorkflowName != "" {
 		md.Set("x-workflow-name", c.cacheConfigMetadata.BitriseWorkflowName)
 	}
+	if c.cacheConfigMetadata.BitriseStepExecutionID != "" {
+		md.Set("x-flare-step-id", c.cacheConfigMetadata.BitriseStepExecutionID)
+	}
 	if c.cacheConfigMetadata.RepoURL != "" {
 		md.Set("x-repository-url", c.cacheConfigMetadata.RepoURL)
 	}
 	if c.cacheConfigMetadata.CIProvider != "" {
 		md.Set("x-ci-provider", c.cacheConfigMetadata.CIProvider)
+	}
+
+	rmd, err := proto.Marshal(&remoteexecution.RequestMetadata{
+		ToolInvocationId: c.invocationID,
+		ToolDetails: &remoteexecution.ToolDetails{
+			ToolName: c.clientName,
+		},
+	})
+	if err != nil {
+		c.logger.Errorf("Failed to marshal RequestMetadata: %v", err)
+	} else {
+		md.Set("build.bazel.remote.execution.v2.requestmetadata-bin", string(rmd))
 	}
 
 	return md

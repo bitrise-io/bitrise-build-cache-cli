@@ -13,10 +13,11 @@ type CacheConfigMetadata struct {
 	RepoURL      string
 	HostMetadata HostMetadata
 	// BitriseCI specific
-	BitriseAppID        string
-	BitriseWorkflowName string
-	BitriseBuildID      string
-	Datacenter          string
+	BitriseAppID           string
+	BitriseWorkflowName    string
+	BitriseBuildID         string
+	BitriseStepExecutionID string
+	Datacenter             string
 }
 
 const (
@@ -57,10 +58,11 @@ func detectCIProvider(envProvider EnvProviderFunc) string {
 }
 
 type bitriseCISpecificMetadata struct {
-	BitriseAppID        string
-	BitriseWorkflowName string
-	BitriseBuildID      string
-	Datacenter          string
+	BitriseAppID           string
+	BitriseWorkflowName    string
+	BitriseBuildID         string
+	BitriseStepExecutionID string
+	Datacenter             string
 }
 
 // HostMetadata contains metadata about the local environment. Only used for Bazel to
@@ -81,10 +83,11 @@ func createCacheConfigMetadata(provider, repoURL string,
 		CIProvider: provider,
 		RepoURL:    repoURL,
 		// BitriseCI specific
-		BitriseAppID:        bitriseCIMetadata.BitriseAppID,
-		BitriseWorkflowName: bitriseCIMetadata.BitriseWorkflowName,
-		BitriseBuildID:      bitriseCIMetadata.BitriseBuildID,
-		Datacenter:          bitriseCIMetadata.Datacenter,
+		BitriseAppID:           bitriseCIMetadata.BitriseAppID,
+		BitriseWorkflowName:    bitriseCIMetadata.BitriseWorkflowName,
+		BitriseBuildID:         bitriseCIMetadata.BitriseBuildID,
+		BitriseStepExecutionID: bitriseCIMetadata.BitriseStepExecutionID,
+		Datacenter:             bitriseCIMetadata.Datacenter,
 		// Only used for Bazel and only on CI
 		HostMetadata: hostMetadata,
 	}
@@ -99,10 +102,11 @@ func NewMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger lo
 	case CIProviderBitrise:
 		return createCacheConfigMetadata(provider, envProvider("GIT_REPOSITORY_URL"),
 			bitriseCISpecificMetadata{
-				BitriseAppID:        envProvider("BITRISE_APP_SLUG"),
-				BitriseWorkflowName: envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
-				BitriseBuildID:      envProvider("BITRISE_BUILD_SLUG"),
-				Datacenter:          envProvider(datacenterEnvKey),
+				BitriseAppID:           envProvider("BITRISE_APP_SLUG"),
+				BitriseWorkflowName:    envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
+				BitriseBuildID:         envProvider("BITRISE_BUILD_SLUG"),
+				BitriseStepExecutionID: envProvider("BITRISE_STEP_EXECUTION_ID"),
+				Datacenter:             envProvider(datacenterEnvKey),
 			}, hostMetadata)
 	case CIProviderCircleCI:
 		return createCacheConfigMetadata(provider, envProvider("CIRCLE_REPOSITORY_URL"),

@@ -27,9 +27,6 @@ var _ OsProxy = &MockOsProxy{}
 //			ReadFileIfExistsFunc: func(pth string) (string, bool, error) {
 //				panic("mock out the ReadFileIfExists method")
 //			},
-//			RemoveFunc: func(s string) error {
-//				panic("mock out the Remove method")
-//			},
 //			UserHomeDirFunc: func() (string, error) {
 //				panic("mock out the UserHomeDir method")
 //			},
@@ -51,9 +48,6 @@ type MockOsProxy struct {
 
 	// ReadFileIfExistsFunc mocks the ReadFileIfExists method.
 	ReadFileIfExistsFunc func(pth string) (string, bool, error)
-
-	// RemoveFunc mocks the Remove method.
-	RemoveFunc func(s string) error
 
 	// UserHomeDirFunc mocks the UserHomeDir method.
 	UserHomeDirFunc func() (string, error)
@@ -80,11 +74,6 @@ type MockOsProxy struct {
 			// Pth is the pth argument value.
 			Pth string
 		}
-		// Remove holds details about calls to the Remove method.
-		Remove []struct {
-			// S is the s argument value.
-			S string
-		}
 		// UserHomeDir holds details about calls to the UserHomeDir method.
 		UserHomeDir []struct {
 		}
@@ -101,7 +90,6 @@ type MockOsProxy struct {
 	lockCreate           sync.RWMutex
 	lockMkdirAll         sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
-	lockRemove           sync.RWMutex
 	lockUserHomeDir      sync.RWMutex
 	lockWriteFile        sync.RWMutex
 }
@@ -203,38 +191,6 @@ func (mock *MockOsProxy) ReadFileIfExistsCalls() []struct {
 	mock.lockReadFileIfExists.RLock()
 	calls = mock.calls.ReadFileIfExists
 	mock.lockReadFileIfExists.RUnlock()
-	return calls
-}
-
-// Remove calls RemoveFunc.
-func (mock *MockOsProxy) Remove(s string) error {
-	if mock.RemoveFunc == nil {
-		panic("MockOsProxy.RemoveFunc: method is nil but OsProxy.Remove was just called")
-	}
-	callInfo := struct {
-		S string
-	}{
-		S: s,
-	}
-	mock.lockRemove.Lock()
-	mock.calls.Remove = append(mock.calls.Remove, callInfo)
-	mock.lockRemove.Unlock()
-	return mock.RemoveFunc(s)
-}
-
-// RemoveCalls gets all the calls that were made to Remove.
-// Check the length with:
-//
-//	len(mockedOsProxy.RemoveCalls())
-func (mock *MockOsProxy) RemoveCalls() []struct {
-	S string
-} {
-	var calls []struct {
-		S string
-	}
-	mock.lockRemove.RLock()
-	calls = mock.calls.Remove
-	mock.lockRemove.RUnlock()
 	return calls
 }
 
