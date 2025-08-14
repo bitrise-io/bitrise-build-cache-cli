@@ -17,5 +17,9 @@ func (runner *DefaultRunner) Run(args []string) error {
 	innerCmd.Stdout = os.Stdout
 	innerCmd.Stderr = os.Stderr
 	innerCmd.Stdin = os.Stdin
+
+	// Intentionally returning xcode error unwrapped
+
+	//nolint:wrapcheck
 	return innerCmd.Run()
 }

@@ -28,7 +28,7 @@ This command will:
 - Create an executable wrapper for xcodebuild that will use the proxy to connect to the Bitrise Build Cache.
 `,
 	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, _ []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof(activateXcode)

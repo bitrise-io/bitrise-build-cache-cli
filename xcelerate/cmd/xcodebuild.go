@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/xcelerate/xcodeargs"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ var xcodebuildCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Long: `xcodebuild -  Wrapper around xcodebuild to enable Bitrise Build Cache.
 TBD`,
 	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(xcelerateParams.Debug)
 
@@ -32,6 +32,7 @@ TBD`,
 
 		if err := XcodebuildCmdFn(logger, xcodeRunner, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
+
 			return err
 		}
 
@@ -52,5 +53,9 @@ func XcodebuildCmdFn(
 ) error {
 	toPass := xcodeArgs.Args()
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
+
+	// Intentionally returning xcode error unwrapped
+
+	//nolint:wrapcheck
 	return xcodeRunner.Run(toPass)
 }

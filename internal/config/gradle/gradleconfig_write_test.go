@@ -9,8 +9,9 @@ import (
 	"text/template"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/mocks"
+	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -19,7 +20,7 @@ import (
 
 func Test_writeGradleInitGradle(t *testing.T) {
 	prep := func() (log.Logger, string) {
-		mockLogger := &mocks.Logger{}
+		mockLogger := &utilsMocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
@@ -53,8 +54,8 @@ func Test_writeGradleInitGradle(t *testing.T) {
 
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to create directories")
-		osProxy := &utils.MockOsProxy{
-			MkdirAllFunc: func(path string, perm os.FileMode) error {
+		osProxy := &mocks.OsProxyMock{
+			MkdirAllFunc: func(_ string, _ os.FileMode) error {
 				return expectedError
 			},
 		}
@@ -108,11 +109,11 @@ func Test_writeGradleInitGradle(t *testing.T) {
 
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to write init.gradle")
-		osProxy := &utils.MockOsProxy{
-			MkdirAllFunc: func(path string, perm os.FileMode) error {
+		osProxy := &mocks.OsProxyMock{
+			MkdirAllFunc: func(_ string, _ os.FileMode) error {
 				return nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return expectedError
 			},
 		}

@@ -8,16 +8,18 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/mocks"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	goUtilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_activateXcodeCmdFn(t *testing.T) {
-	logger := func() *mocks.Logger {
-		mockLogger := &mocks.Logger{}
+	logger := func() *goUtilsMocks.Logger {
+		mockLogger := &goUtilsMocks.Logger{}
 		mockLogger.On("TInfof", mock.Anything).Return()
 		mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything).Return()
@@ -30,38 +32,38 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		return mockLogger
 	}
 
-	config := func() *xcelerate.MockConfig {
-		return &xcelerate.MockConfig{
+	config := func() *mocks.ConfigMock {
+		return &mocks.ConfigMock{
 			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
 				return nil
 			},
 		}
 	}
 
-	osProxy := func() *utils.MockOsProxy {
-		return &utils.MockOsProxy{
+	osProxy := func() *utilsMocks.OsProxyMock {
+		return &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
 				return "~", nil
 			},
-			MkdirAllFunc: func(path string, perm os.FileMode) error {
+			MkdirAllFunc: func(_ string, _ os.FileMode) error {
 				return nil
 			},
-			CreateFunc: func(path string) (*os.File, error) {
+			CreateFunc: func(_ string) (*os.File, error) {
 				return &os.File{}, nil
 			},
 		}
 	}
 
-	encoder := func() *utils.MockEncoder {
-		return &utils.MockEncoder{
+	encoder := func() *utilsMocks.EncoderMock {
+		return &utilsMocks.EncoderMock{
 			SetIndentFunc:     func(_ string, _ string) {},
 			SetEscapeHTMLFunc: func(_ bool) {},
 			EncodeFunc:        func(_ any) error { return nil },
 		}
 	}
 
-	encoderFactory := func() utils.EncoderFactory {
-		return &utils.MockEncoderFactory{
+	encoderFactory := func() *utilsMocks.EncoderFactoryMock {
+		return &utilsMocks.EncoderFactoryMock{
 			EncoderFunc: func(_ io.Writer) utils.Encoder {
 				return encoder()
 			},
@@ -79,13 +81,13 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		)
 
 		mockLogger.AssertCalled(t, "TInfof", activateXcodeSuccessful)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("When config save returns error activateXcodeCmdFn fails", func(t *testing.T) {
 		expectedError := errors.New("failed to save config")
 
-		mockConfig := &xcelerate.MockConfig{
+		mockConfig := &mocks.ConfigMock{
 			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
 				return expectedError
 			},

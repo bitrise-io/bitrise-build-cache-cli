@@ -11,12 +11,13 @@ const (
 	xceleratePath           = ".bitrise-xcelerate"
 	xcelerateConfigFileName = "config.json"
 
-	errFmtDetermineHome    = `could not determine home: %w`
-	errFmtCreateConfigFile = `failed to create xcelerate config file: %w`
-	errFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
-	errFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
+	ErrFmtDetermineHome    = `could not determine home: %w`
+	ErrFmtCreateConfigFile = `failed to create xcelerate config file: %w`
+	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
+	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
 )
 
+//go:generate moq -out mocks/config_mock.go -pkg mocks . Config
 type Config interface {
 	GetProxyVersion() string
 	GetWrapperVersion() string
@@ -27,43 +28,43 @@ type Config interface {
 }
 
 type DefaultConfig struct {
-	ProxyVersion           string `json:"proxy_version"`
-	WrapperVersion         string `json:"wrapper_version"`
-	OriginalXcodebuildPath string `json:"original_xcodebuild_path"`
-	BuildCacheEnabled      bool   `json:"build_cache_enabled"`
+	ProxyVersion           string `json:"proxyVersion"`
+	WrapperVersion         string `json:"wrapperVersion"`
+	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
+	BuildCacheEnabled      bool   `json:"buildCacheEnabled"`
 }
 
-func (config *DefaultConfig) GetProxyVersion() string {
+func (config DefaultConfig) GetProxyVersion() string {
 	return config.ProxyVersion
 }
 
-func (config *DefaultConfig) GetWrapperVersion() string {
+func (config DefaultConfig) GetWrapperVersion() string {
 	return config.WrapperVersion
 }
 
-func (config *DefaultConfig) GetOriginalXcodebuildPath() string {
+func (config DefaultConfig) GetOriginalXcodebuildPath() string {
 	return config.OriginalXcodebuildPath
 }
 
-func (config *DefaultConfig) GetBuildCacheEnabled() bool {
+func (config DefaultConfig) GetBuildCacheEnabled() bool {
 	return config.BuildCacheEnabled
 }
 
-func (config *DefaultConfig) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
+func (config DefaultConfig) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf(errFmtDetermineHome, err)
+		return fmt.Errorf(ErrFmtDetermineHome, err)
 	}
 
 	xcelerateFolder := filepath.Join(home, xceleratePath)
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
-		return fmt.Errorf(errFmtCreateFolder, xcelerateFolder, err)
+		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)
 	}
 
 	configFilePath := filepath.Join(home, xceleratePath, xcelerateConfigFileName)
 	f, err := os.Create(configFilePath)
 	if err != nil {
-		return fmt.Errorf(errFmtCreateConfigFile, err)
+		return fmt.Errorf(ErrFmtCreateConfigFile, err)
 	}
 	defer f.Close()
 
@@ -71,7 +72,7 @@ func (config *DefaultConfig) Save(os utils.OsProxy, encoderFactory utils.Encoder
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(config); err != nil {
-		return fmt.Errorf(errFmtEncodeConfigFile, err)
+		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}
 
 	return nil

@@ -3,7 +3,7 @@ package xcodeargs_test
 import (
 	"testing"
 
-	"github.com/bitrise-io/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
@@ -18,6 +18,7 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 		cmd.Flags().BoolVarP(&flag2, "flag2", "g", true, "Test")
 		cmd.FParseErrWhitelist = cobra.FParseErrWhitelist{UnknownFlags: true}
 		_ = cmd.ParseFlags(args)
+
 		return cmd
 	}
 
@@ -72,7 +73,6 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 	})
 
 	t.Run("DefaultXcodeArgProvider filters flags of its command", func(t *testing.T) {
-
 		// given
 		args := []string{
 			"subcommand",
