@@ -6,8 +6,7 @@ import (
 
 	gotuilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/bitrise-io/xcelerate/cmd"
-	internalMocks "github.com/bitrise-io/xcelerate/internal/mocks"
-	xcodeargsMocks "github.com/bitrise-io/xcelerate/internal/xcodeargs/mocks"
+	xcodeargsMocks "github.com/bitrise-io/xcelerate/xcodeargs/mocks"
 	"github.com/c2fo/testify/mock"
 	"github.com/c2fo/testify/require"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +31,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			ArgsFunc: func() []string { return xcodeArgs },
 		}
 
-		xcodeRunner := internalMocks.XcodeRunnerMock{
+		xcodeRunner := xcodeargsMocks.RunnerMock{
 			RunFunc: func(args []string) error { return nil },
 		}
 
@@ -64,7 +63,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			ArgsFunc: func() []string { return xcodeArgs },
 		}
 
-		xcodeRunner := internalMocks.XcodeRunnerMock{
+		xcodeRunner := xcodeargsMocks.RunnerMock{
 			RunFunc: func(args []string) error { return expected },
 		}
 

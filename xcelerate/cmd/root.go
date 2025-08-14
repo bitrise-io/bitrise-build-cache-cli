@@ -43,12 +43,8 @@ type XcelerateParams struct {
 	OrigArgs []string
 }
 
-func NewXcelerateParams() XcelerateParams {
-	return XcelerateParams{
-		Debug:    false,
-		OrigArgs: []string{},
-	}
-}
-
 //nolint:gochecknoglobals
-var xcelerateParams = NewXcelerateParams()
+var xcelerateParams = XcelerateParams{
+	Debug:    false,
+	OrigArgs: []string{},
+}

@@ -6,7 +6,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/bitrise-io/xcelerate/internal/xcodeargs"
+	"github.com/bitrise-io/xcelerate/xcodeargs"
 )
 
 // Ensure, that XcodeArgsMock does implement xcodeargs.XcodeArgs.

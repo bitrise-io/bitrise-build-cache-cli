@@ -2,8 +2,7 @@ package cmd
 
 import (
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/xcelerate/internal"
-	"github.com/bitrise-io/xcelerate/internal/xcodeargs"
+	"github.com/bitrise-io/xcelerate/xcodeargs"
 	"github.com/spf13/cobra"
 )
 
@@ -24,9 +23,12 @@ TBD`,
 		logger := log.NewLogger()
 		logger.EnableDebugLog(xcelerateParams.Debug)
 
-		xcodeArgs := xcodeargs.DefaultXcodeArgs{}
+		xcodeArgs := xcodeargs.Default{
+			Cmd:          cmd,
+			OriginalArgs: xcelerateParams.OrigArgs,
+		}
 
-		xcodeRunner := &internal.DefaultXcodeRunner{}
+		xcodeRunner := &xcodeargs.DefaultRunner{}
 
 		if err := XcodebuildCmdFn(logger, xcodeRunner, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
@@ -45,7 +47,7 @@ func init() {
 
 func XcodebuildCmdFn(
 	logger log.Logger,
-	xcodeRunner internal.XcodeRunner,
+	xcodeRunner xcodeargs.Runner,
 	xcodeArgs xcodeargs.XcodeArgs,
 ) error {
 	toPass := xcodeArgs.Args()

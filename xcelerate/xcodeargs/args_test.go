@@ -3,7 +3,7 @@ package xcodeargs_test
 import (
 	"testing"
 
-	"github.com/bitrise-io/xcelerate/internal/xcodeargs"
+	"github.com/bitrise-io/xcelerate/xcodeargs"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
@@ -31,7 +31,7 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 		}
 		cmd := command(args)
 
-		SUT := xcodeargs.DefaultXcodeArgs{
+		SUT := xcodeargs.Default{
 			Cmd:          &cmd,
 			OriginalArgs: args,
 		}
@@ -54,7 +54,7 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 		}
 		cmd := command(args)
 
-		SUT := xcodeargs.DefaultXcodeArgs{
+		SUT := xcodeargs.Default{
 			Cmd:          &cmd,
 			OriginalArgs: args,
 		}
@@ -85,7 +85,7 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 
 		cmd := command(args)
 
-		SUT := xcodeargs.DefaultXcodeArgs{
+		SUT := xcodeargs.Default{
 			Cmd:          &cmd,
 			OriginalArgs: args,
 		}

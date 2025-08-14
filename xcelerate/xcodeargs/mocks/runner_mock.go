@@ -6,29 +6,29 @@ package mocks
 import (
 	"sync"
 
-	"github.com/bitrise-io/xcelerate/internal"
+	"github.com/bitrise-io/xcelerate/xcodeargs"
 )
 
-// Ensure, that XcodeRunnerMock does implement internal.XcodeRunner.
+// Ensure, that RunnerMock does implement xcodeargs.Runner.
 // If this is not the case, regenerate this file with moq.
-var _ internal.XcodeRunner = &XcodeRunnerMock{}
+var _ xcodeargs.Runner = &RunnerMock{}
 
-// XcodeRunnerMock is a mock implementation of internal.XcodeRunner.
+// RunnerMock is a mock implementation of xcodeargs.Runner.
 //
-//	func TestSomethingThatUsesXcodeRunner(t *testing.T) {
+//	func TestSomethingThatUsesRunner(t *testing.T) {
 //
-//		// make and configure a mocked internal.XcodeRunner
-//		mockedXcodeRunner := &XcodeRunnerMock{
+//		// make and configure a mocked xcodeargs.Runner
+//		mockedRunner := &RunnerMock{
 //			RunFunc: func(args []string) error {
 //				panic("mock out the Run method")
 //			},
 //		}
 //
-//		// use mockedXcodeRunner in code that requires internal.XcodeRunner
+//		// use mockedRunner in code that requires xcodeargs.Runner
 //		// and then make assertions.
 //
 //	}
-type XcodeRunnerMock struct {
+type RunnerMock struct {
 	// RunFunc mocks the Run method.
 	RunFunc func(args []string) error
 
@@ -44,9 +44,9 @@ type XcodeRunnerMock struct {
 }
 
 // Run calls RunFunc.
-func (mock *XcodeRunnerMock) Run(args []string) error {
+func (mock *RunnerMock) Run(args []string) error {
 	if mock.RunFunc == nil {
-		panic("XcodeRunnerMock.RunFunc: method is nil but XcodeRunner.Run was just called")
+		panic("RunnerMock.RunFunc: method is nil but Runner.Run was just called")
 	}
 	callInfo := struct {
 		Args []string
@@ -62,8 +62,8 @@ func (mock *XcodeRunnerMock) Run(args []string) error {
 // RunCalls gets all the calls that were made to Run.
 // Check the length with:
 //
-//	len(mockedXcodeRunner.RunCalls())
-func (mock *XcodeRunnerMock) RunCalls() []struct {
+//	len(mockedRunner.RunCalls())
+func (mock *RunnerMock) RunCalls() []struct {
 	Args []string
 } {
 	var calls []struct {

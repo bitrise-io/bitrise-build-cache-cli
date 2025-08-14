@@ -7,17 +7,17 @@ import (
 	"github.com/spf13/pflag"
 )
 
-//go:generate moq -out mocks/xcode_args_mock.go -pkg mocks . XcodeArgs
+//go:generate moq -out mocks/args_mock.go -pkg mocks . XcodeArgs
 type XcodeArgs interface {
 	Args() []string
 }
 
-type DefaultXcodeArgs struct {
+type Default struct {
 	Cmd          *cobra.Command
 	OriginalArgs []string
 }
 
-func (provider DefaultXcodeArgs) Args() []string {
+func (provider Default) Args() []string {
 	flagsSet := make(map[string]struct{})
 	provider.Cmd.Flags().Visit(func(flag *pflag.Flag) {
 		flagsSet[flag.Name] = struct{}{}
