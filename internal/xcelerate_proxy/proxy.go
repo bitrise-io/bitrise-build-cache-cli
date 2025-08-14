@@ -162,7 +162,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 		var err error
 		data, err = os.ReadFile(request.GetData().GetBlob().GetFilePath())
 		if err != nil {
-			return nil, fmt.Errorf("failed to read file %s: %w", request.GetData().GetBlob().GetFilePath(), err)
+			return errorHandler(fmt.Errorf("failed to read file %s: %w", request.GetData().GetBlob().GetFilePath(), err)), nil
 		}
 	} else {
 		data = request.GetData().GetBlob().GetData()

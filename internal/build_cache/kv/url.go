@@ -3,10 +3,6 @@ package kv
 import (
 	"fmt"
 	"net/url"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func ParseURLGRPC(s string) (string, bool, error) {
@@ -31,20 +27,4 @@ func ParseURLGRPC(s string) (string, bool, error) {
 	}
 
 	return host, !isSecure, nil
-}
-
-func NewGRPCClient(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	host, insecureGRPC, err := ParseURLGRPC(addr)
-	if err != nil {
-		return nil, fmt.Errorf("the url grpc[s]://host:port format, %q is invalid: %w", addr, err)
-	}
-
-	var creds credentials.TransportCredentials
-	if insecureGRPC {
-		creds = insecure.NewCredentials()
-	} else {
-		creds = credentials.NewClientTLSFromCert(nil, "")
-	}
-
-	return grpc.NewClient(host, append([]grpc.DialOption{grpc.WithTransportCredentials(creds)}, opts...)...) //nolint:wrapcheck
 }

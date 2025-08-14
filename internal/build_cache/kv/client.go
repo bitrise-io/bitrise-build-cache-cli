@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -29,6 +30,7 @@ type Client struct {
 	logger              log.Logger
 	cacheOperationID    string
 	invocationID        string
+	sessionMutex        sync.Mutex
 }
 
 type NewClientParams struct {
