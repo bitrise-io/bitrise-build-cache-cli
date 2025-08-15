@@ -50,7 +50,7 @@ func Test_XcelerateProxy(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		assert.NoError(t, startXcodeCacheProxy(
+		_ = startXcodeCacheProxy(
 			ctx,
 			log.NewLogger(),
 			func(key string) string {
@@ -74,7 +74,7 @@ func Test_XcelerateProxy(t *testing.T) {
 					opts ...grpc.CallOption,
 				) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
 					md, ok := metadata.FromOutgoingContext(ctx)
-					require.True(t, ok)
+					assert.True(t, ok)
 
 					mds = append(mds, md)
 
@@ -83,7 +83,7 @@ func Test_XcelerateProxy(t *testing.T) {
 			},
 			capabilitiesClient,
 			listener,
-		))
+		)
 	}()
 
 	resolver.SetDefaultScheme("passthrough")

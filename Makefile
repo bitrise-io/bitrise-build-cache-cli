@@ -15,7 +15,7 @@ govulncheck:				## Runs govulncheck
 
 .PHONY: test-unit
 test-unit:				## Runs all tests
-	go test -tags unit ./...
+	go test -tags unit -race ./...
 
 .PHONY: protoc
 protoc:
