@@ -817,7 +817,7 @@ workflows:
         stack: osx-xcode-26.0.x-edge-iad
         machine_type_id: g2.mac.large
     envs:
-    - TEST_APP_URL: git@github.com:pointfreeco/swift-composable-architecture.git
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
     steps:
     - script:
