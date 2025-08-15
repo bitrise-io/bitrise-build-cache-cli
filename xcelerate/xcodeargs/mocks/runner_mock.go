@@ -6,7 +6,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/bitrise-io/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 )
 
 // Ensure, that RunnerMock does implement xcodeargs.Runner.
@@ -19,7 +19,7 @@ var _ xcodeargs.Runner = &RunnerMock{}
 //
 //		// make and configure a mocked xcodeargs.Runner
 //		mockedRunner := &RunnerMock{
-//			RunFunc: func(args []string) error {
+//			RunFunc: func(ctx xcodeargs.Context, args []string) error {
 //				panic("mock out the Run method")
 //			},
 //		}
@@ -30,12 +30,14 @@ var _ xcodeargs.Runner = &RunnerMock{}
 //	}
 type RunnerMock struct {
 	// RunFunc mocks the Run method.
-	RunFunc func(args []string) error
+	RunFunc func(ctx xcodeargs.Context, args []string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Run holds details about calls to the Run method.
 		Run []struct {
+			// Ctx is the ctx argument value.
+			Ctx xcodeargs.Context
 			// Args is the args argument value.
 			Args []string
 		}
@@ -44,19 +46,21 @@ type RunnerMock struct {
 }
 
 // Run calls RunFunc.
-func (mock *RunnerMock) Run(args []string) error {
+func (mock *RunnerMock) Run(ctx xcodeargs.Context, args []string) error {
 	if mock.RunFunc == nil {
 		panic("RunnerMock.RunFunc: method is nil but Runner.Run was just called")
 	}
 	callInfo := struct {
+		Ctx  xcodeargs.Context
 		Args []string
 	}{
+		Ctx:  ctx,
 		Args: args,
 	}
 	mock.lockRun.Lock()
 	mock.calls.Run = append(mock.calls.Run, callInfo)
 	mock.lockRun.Unlock()
-	return mock.RunFunc(args)
+	return mock.RunFunc(ctx, args)
 }
 
 // RunCalls gets all the calls that were made to Run.
@@ -64,9 +68,11 @@ func (mock *RunnerMock) Run(args []string) error {
 //
 //	len(mockedRunner.RunCalls())
 func (mock *RunnerMock) RunCalls() []struct {
+	Ctx  xcodeargs.Context
 	Args []string
 } {
 	var calls []struct {
+		Ctx  xcodeargs.Context
 		Args []string
 	}
 	mock.lockRun.RLock()

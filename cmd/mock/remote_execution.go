@@ -5,9 +5,10 @@ package mock
 
 import (
 	context "context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
-	grpc "google.golang.org/grpc"
 	sync "sync"
+
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	grpc "google.golang.org/grpc"
 )
 
 // Ensure, that CapabilitiesClientMock does implement remoteexecution.CapabilitiesClient.

@@ -4,10 +4,11 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"sync"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 )
 
 // Ensure, that StepAnalyticsTrackerMock does implement xcode.StepAnalyticsTracker.

@@ -4,12 +4,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
+	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs/mocks"
 	gotuilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
-	"github.com/bitrise-io/xcelerate/cmd"
-	xcodeargsMocks "github.com/bitrise-io/xcelerate/xcodeargs/mocks"
-	"github.com/c2fo/testify/mock"
-	"github.com/c2fo/testify/require"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_xcodebuildCmdFn(t *testing.T) {
@@ -32,13 +33,15 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		}
 
 		xcodeRunner := xcodeargsMocks.RunnerMock{
-			RunFunc: func(args []string) error { return nil },
+			RunFunc: func(_ xcodeargs.Context, _ []string) error { return nil },
 		}
+
+		ctx := xcodeargsMocks.ContextMock{}
 
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		_ = SUT(&logger, &xcodeRunner, &xcodeArgProvider)
+		_ = SUT(&ctx, &logger, &xcodeRunner, &xcodeArgProvider)
 
 		// Then
 		assert.Len(t, xcodeArgProvider.ArgsCalls(), 1)
@@ -64,15 +67,17 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		}
 
 		xcodeRunner := xcodeargsMocks.RunnerMock{
-			RunFunc: func(args []string) error { return expected },
+			RunFunc: func(_ xcodeargs.Context, _ []string) error { return expected },
 		}
+
+		ctx := xcodeargsMocks.ContextMock{}
 
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		actual := SUT(&logger, &xcodeRunner, &xcodeArgProvider)
+		actual := SUT(&ctx, &logger, &xcodeRunner, &xcodeArgProvider)
 
 		// Then
-		assert.Error(t, expected, actual)
+		require.EqualError(t, actual, expected.Error())
 	})
 }

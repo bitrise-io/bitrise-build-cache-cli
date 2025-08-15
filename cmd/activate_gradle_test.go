@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/mocks"
+	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -18,7 +18,7 @@ import (
 
 func Test_activateGradleCmdFn(t *testing.T) {
 	prep := func() log.Logger {
-		mockLogger := &mocks.Logger{}
+		mockLogger := &utilsMocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
@@ -39,11 +39,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		var actualTemplateInventory *gradleconfig.TemplateInventory
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", false, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -80,11 +80,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -116,11 +116,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -152,11 +152,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		mockLogger := prep()
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return gradlePropertiesUpdateError
 			},
 		}

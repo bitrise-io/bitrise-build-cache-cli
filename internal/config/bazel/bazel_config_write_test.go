@@ -8,8 +8,9 @@ import (
 	"text/template"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/mocks"
+	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,7 @@ import (
 
 func Test_WriteToBazelrc(t *testing.T) {
 	logger := func() log.Logger {
-		mockLogger := &mocks.Logger{}
+		mockLogger := &utilsMocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
@@ -39,11 +40,11 @@ func Test_WriteToBazelrc(t *testing.T) {
 			},
 		}
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -53,7 +54,7 @@ func Test_WriteToBazelrc(t *testing.T) {
 
 		// Verify written content
 		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
-		writtenContent := mockOsProxy.WriteFileCalls()[0].Bytes
+		writtenContent := mockOsProxy.WriteFileCalls()[0].Data
 		assert.Contains(t, string(writtenContent), "# [start] generated-by-bitrise-build-cache")
 		assert.Contains(t, string(writtenContent), "# [end] generated-by-bitrise-build-cache")
 		assert.Contains(t, string(writtenContent), "--remote_header=authorization=\"Bearer AuthTokenValue\"")
@@ -80,11 +81,11 @@ build --remote_header=authorization="Bearer OldAuthToken"
 # Other settings
 build --cpp_opt="-O2"`
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return existingContent, true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -94,7 +95,7 @@ build --cpp_opt="-O2"`
 
 		// Verify written content preserves original content
 		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
-		writtenContent := mockOsProxy.WriteFileCalls()[0].Bytes
+		writtenContent := mockOsProxy.WriteFileCalls()[0].Data
 
 		assert.Contains(t, string(writtenContent), "# Existing bazel config")
 		assert.Contains(t, string(writtenContent), "build --cpu=x86_64")
@@ -110,11 +111,11 @@ build --cpp_opt="-O2"`
 
 	t.Run("when template parsing fails throws error", func(t *testing.T) {
 		mockLogger := logger()
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -133,11 +134,11 @@ build --cpp_opt="-O2"`
 
 	t.Run("when template execution fails throws error", func(t *testing.T) {
 		mockLogger := logger()
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return nil
 			},
 		}
@@ -159,8 +160,8 @@ build --cpp_opt="-O2"`
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to read bazelrc")
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", false, expectedError
 			},
 		}
@@ -174,11 +175,11 @@ build --cpp_opt="-O2"`
 		inventory := TemplateInventory{}
 		expectedError := errors.New("failed to write bazelrc")
 
-		mockOsProxy := &utils.MockOsProxy{
-			ReadFileIfExistsFunc: func(path string) (string, bool, error) {
+		mockOsProxy := &mocks.OsProxyMock{
+			ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
 				return "", true, nil
 			},
-			WriteFileFunc: func(path string, data []byte, perm os.FileMode) error {
+			WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error {
 				return expectedError
 			},
 		}

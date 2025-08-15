@@ -7,12 +7,13 @@
 package kv_storage
 
 import (
-	bytestream "google.golang.org/genproto/googleapis/bytestream"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	bytestream "google.golang.org/genproto/googleapis/bytestream"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
