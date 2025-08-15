@@ -820,6 +820,8 @@ workflows:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
     steps:
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - script:
         title: Delete _tmp dirs
         inputs:
