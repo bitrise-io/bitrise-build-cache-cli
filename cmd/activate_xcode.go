@@ -122,8 +122,18 @@ func startProxy(
 
 	outf := xcelerate.XceleratePathFor(serverOut)
 	errf := xcelerate.XceleratePathFor(serverErr)
-	outFile, _ := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	errFile, _ := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer outFile.Close()
+
+	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open error file: %w", err)
+	}
+	defer errFile.Close()
+
 	cmd.SetStdout(outFile)
 	cmd.SetStderr(errFile)
 	cmd.SetStdin(nil)
@@ -176,6 +186,10 @@ func (cmd CommandWrapper) SetSysProcAttr(sysProcAttr *syscall.SysProcAttr) {
 }
 
 func (cmd CommandWrapper) PID() int {
+	if cmd.wrapped.Process == nil {
+		return 0
+	}
+
 	return cmd.wrapped.Process.Pid
 }
 

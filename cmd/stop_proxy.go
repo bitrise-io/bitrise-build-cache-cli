@@ -60,8 +60,8 @@ loop:
 		case <-timeout:
 			break loop
 		case <-tick:
-			// check existence with kill(pid, 0)
-			if innerErr := syscall.Kill(pid, 0); innerErr != nil {
+			// check existence
+			if innerErr := syscall.Kill(-pid, 0); innerErr != nil {
 				// ESRCH => no such process
 				break loop
 			}
