@@ -857,16 +857,16 @@ workflows:
 
               ../bin/bitrise-build-cache-cli activate xcode
 
-              ../bin/xcelerate xcodebuild build \
+              ../bin/xcelerate build \
                 -workspace ComposableArchitecture.xcworkspace \
-                -scheme swift-composable-architecture \
+                -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
                 -skipMacroValidation \
                 SWIFT_ENABLE_EXPLICIT_MODULES=YES \
                 COMPILATION_CACHE_ENABLE_CACHING=YES \
                 SWIFT_ENABLE_COMPILE_CACHE=1 \
                 COMPILATION_CACHE_REMOTE_SERVICE_PATH=$TMPDIR/xcelerate-proxy.sock \
-                COMPILATION_CACHE_ENABLE_PLUGIN=1
+                COMPILATION_CACHE_ENABLE_PLUGIN=1 | xcbeautify
 
 step_bundles:
   generate_gradle_verification_reference:

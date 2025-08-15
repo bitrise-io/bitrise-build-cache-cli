@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"regexp"
 
 	"github.com/spf13/cobra"
 )
@@ -17,6 +18,7 @@ TBD`,
 }
 
 func init() {
+	rootCmd.FParseErrWhitelist = cobra.FParseErrWhitelist{UnknownFlags: true}
 	rootCmd.PersistentFlags().BoolVarP(&xcelerateParams.Debug, "xcelerate-debug", "", xcelerateParams.Debug, "Enable debug logging mode")
 }
 
@@ -24,12 +26,16 @@ func Execute() {
 	cmd, _, err := rootCmd.Traverse(os.Args[1:])
 	xcelerateParams.OrigArgs = os.Args[1:]
 
+	// Remove single dash args (like `-scheme`) from args as they are definitely for Xcode
+	filteredArgs := removeSingleDashArgs(xcelerateParams.OrigArgs)
+
+	rootCmd.SetArgs(filteredArgs)
+
 	// default cmd if no cmd is given
 	if err == nil && cmd.Use == rootCmd.Use {
-		args := append([]string{xcodebuildCmd.Use}, os.Args[1:]...)
+		args := append([]string{xcodebuildCmd.Use}, filteredArgs...)
 
 		// IMPORTANT: silently skip flags not matching defined ones so we can pass them to xcodebuild
-		rootCmd.FParseErrWhitelist = cobra.FParseErrWhitelist{UnknownFlags: true}
 		rootCmd.SetArgs(args)
 	}
 
@@ -47,4 +53,17 @@ type XcelerateParams struct {
 var xcelerateParams = XcelerateParams{
 	Debug:    false,
 	OrigArgs: []string{},
+}
+
+func removeSingleDashArgs(args []string) []string {
+	filtered := []string{}
+	var expr = regexp.MustCompile(`^-\w\w+$`)
+
+	for _, arg := range args {
+		if !expr.MatchString(arg) {
+			filtered = append(filtered, arg)
+		}
+	}
+
+	return filtered
 }
