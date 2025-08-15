@@ -866,7 +866,7 @@ workflows:
                 COMPILATION_CACHE_ENABLE_CACHING=YES \
                 SWIFT_ENABLE_COMPILE_CACHE=1 \
                 COMPILATION_CACHE_REMOTE_SERVICE_PATH=$TMPDIR/xcelerate-proxy.sock \
-                COMPILATION_CACHE_ENABLE_PLUGIN=1 | xcbeautify
+                COMPILATION_CACHE_ENABLE_PLUGIN=1 | tee xcodebuild.log | xcpretty
     - script:
         title: gather info
         inputs:
@@ -876,6 +876,7 @@ workflows:
               cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
               cp ~/.bitrise-xcelerate/proxy.err $BITRISE_DEPLOY_DIR
               cp ~/.bitrise-xcelerate/proxy.out $BITRISE_DEPLOY_DIR
+              cp xcodebuild.log $BITRISE_DEPLOY_DIR
     - deploy-to-bitrise-io: {}
 
 
