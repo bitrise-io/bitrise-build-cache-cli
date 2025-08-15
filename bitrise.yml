@@ -814,7 +814,7 @@ workflows:
   e2e-xcode-comp-cache:
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-26.0.x-edge-iad
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
@@ -849,13 +849,6 @@ workflows:
         title: Switch working dir to _tmp
         inputs:
           - path: "./_tmp"
-    - script:
-        title: list xcode versions
-        inputs:
-          - content: |-
-              set -exo pipefail
-
-              system_profiler -json SPDeveloperToolsDataType | jq '.SPDeveloperToolsDataType[].spdevtools_apps.spxcode_app'
     - script:
         title: build app
         inputs:
