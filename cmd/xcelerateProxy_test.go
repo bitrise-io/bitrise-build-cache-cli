@@ -43,14 +43,11 @@ func Test_XcelerateProxy(t *testing.T) {
 		"BITRISE_STEP_EXECUTION_ID":    "test-step-execution-id",
 	}
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	t.Cleanup(cancelFunc)
-
 	listener := bufconn.Listen(1024 * 1024)
+	defer listener.Close()
 
-	t.Cleanup(func() {
-		require.NoError(t, listener.Close())
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	go func() {
 		assert.NoError(t, startXcodeCacheProxy(
