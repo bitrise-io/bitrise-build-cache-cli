@@ -33,14 +33,14 @@ func Test_XcelerateProxy(t *testing.T) {
 	}
 
 	envVars := map[string]string{
-		"BITRISE_IO":                   "true",
-		"REMOTE_CACHE_TOKEN":           "test-token",
-		"BITRISE_BUILD_CACHE_ENDPOINT": "grpc://bufnet",
-		"BITRISE_APP_SLUG":             "test-app-slug",
-		"BITRISE_ORG_ID":               "test-org-id",
-		"INVOCATION_ID":                "test-invocation-id",
-		"BITRISE_BUILD_SLUG":           "test-build-slug",
-		"BITRISE_STEP_EXECUTION_ID":    "test-step-execution-id",
+		"BITRISE_IO":                       "true",
+		"REMOTE_CACHE_TOKEN":               "test-token",
+		"BITRISE_BUILD_CACHE_ENDPOINT":     "grpc://bufnet",
+		"BITRISE_APP_SLUG":                 "test-app-slug",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "test-org-id",
+		"INVOCATION_ID":                    "test-invocation-id",
+		"BITRISE_BUILD_SLUG":               "test-build-slug",
+		"BITRISE_STEP_EXECUTION_ID":        "test-step-execution-id",
 	}
 
 	listener := bufconn.Listen(1024 * 1024)

@@ -22,20 +22,20 @@ import (
 //go:generate moq -rm -stub -pkg mock -out ./mock/remote_execution.go ./../proto/build/bazel/remote/execution/v2 CapabilitiesClient
 
 var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
-	Use:          "xcode-proxy",
-	Short:        "Xcode Cache Proxy",
+	Use:          "xcelerate-proxy",
+	Short:        "Xcelerate Proxy",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
-		logger.TInfof("Xcode Cache Proxy")
+		logger.TInfof("Xcelerate Proxy")
 
 		socketPath := os.Getenv("SOCKET_PATH")
 		if socketPath == "" {
 			socketPath = filepath.Join(os.TempDir(), "xcelerate-proxy.sock")
 		}
 
-		if err := os.Remove(socketPath); err != nil {
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove socket file, error: %w", err)
 		}
 
@@ -81,7 +81,7 @@ func startXcodeCacheProxy(
 		ClientName:       ClientNameXcelerate,
 		AuthConfig: common.CacheAuthConfig{
 			AuthToken:   envProvider("REMOTE_CACHE_TOKEN"),
-			WorkspaceID: envProvider("BITRISE_APP_SLUG"),
+			WorkspaceID: envProvider("BITRISE_BUILD_CACHE_WORKSPACE_ID"),
 		},
 		EnvProvider:        envProvider,
 		CommandFunc:        commandFunc,
