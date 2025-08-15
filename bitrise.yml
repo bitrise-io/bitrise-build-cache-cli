@@ -818,7 +818,7 @@ workflows:
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 48795d9064a11aeb66b8fa4a435992fb6f4abce4
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
     steps:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'

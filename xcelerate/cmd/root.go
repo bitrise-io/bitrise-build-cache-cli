@@ -23,21 +23,12 @@ func init() {
 }
 
 func Execute() {
-	cmd, _, err := rootCmd.Traverse(os.Args[1:])
 	xcelerateParams.OrigArgs = os.Args[1:]
 
-	// Remove single dash args (like `-scheme`) from args as they are definitely for Xcode
 	filteredArgs := removeSingleDashArgs(xcelerateParams.OrigArgs)
+	finalizedArgs := addSubcmdIfNone(filteredArgs)
 
-	rootCmd.SetArgs(filteredArgs)
-
-	// default cmd if no cmd is given
-	if err == nil && cmd.Use == rootCmd.Use {
-		args := append([]string{xcodebuildCmd.Use}, filteredArgs...)
-
-		// IMPORTANT: silently skip flags not matching defined ones so we can pass them to xcodebuild
-		rootCmd.SetArgs(args)
-	}
+	rootCmd.SetArgs(finalizedArgs)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -55,6 +46,7 @@ var xcelerateParams = XcelerateParams{
 	OrigArgs: []string{},
 }
 
+// Remove single dash args (like `-scheme`) from args as they are definitely for Xcode
 func removeSingleDashArgs(args []string) []string {
 	filtered := []string{}
 	var expr = regexp.MustCompile(`^-\w\w+$`)
@@ -66,4 +58,18 @@ func removeSingleDashArgs(args []string) []string {
 	}
 
 	return filtered
+}
+
+func addSubcmdIfNone(args []string) []string {
+	cmd, _, err := rootCmd.Traverse(os.Args[1:])
+
+	// default cmd if no cmd is given
+	if err == nil && cmd.Use == rootCmd.Use {
+		updated := append([]string{xcodebuildCmd.Use}, args...)
+
+		// IMPORTANT: silently skip flags not matching defined ones so we can pass them to xcodebuild
+		return updated
+	}
+
+	return args
 }
