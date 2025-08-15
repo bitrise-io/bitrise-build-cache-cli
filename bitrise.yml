@@ -814,7 +814,7 @@ workflows:
   e2e-xcode-comp-cache:
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge-iad
+        stack: osx-xcode-26.0.x-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
