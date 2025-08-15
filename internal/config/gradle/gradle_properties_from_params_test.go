@@ -50,10 +50,10 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		)
 
 		// then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		//
 		data, err := os.ReadFile(propertyFilePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		content := string(data)
 		assert.Contains(t, content, "org.gradle.caching=true")
 	})
@@ -78,7 +78,7 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 		require.NoError(t, err)
 		//
 		data, err := os.ReadFile(propertyFilePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		content := string(data)
 		assert.Contains(t, content, "org.gradle.caching=false")
 	})

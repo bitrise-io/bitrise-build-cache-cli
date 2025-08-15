@@ -48,7 +48,7 @@ This command will:
 }
 
 //nolint:gochecknoglobals
-//var activateXcodeParams = DefaultActivateXcodeParams()
+// var activateXcodeParams = DefaultActivateXcodeParams()
 
 func init() {
 	activateCmd.AddCommand(activateXcodeCmd)

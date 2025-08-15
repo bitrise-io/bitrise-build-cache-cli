@@ -122,7 +122,7 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 			AuthConfig:       authConfig,
 			EnvProvider:      envProvider,
 			CommandFunc: func(name string, v ...string) (string, error) {
-				output, err := exec.Command(name, v...).Output()
+				output, err := exec.Command(name, v...).Output() //nolint:noctx
 
 				return string(output), err
 			},

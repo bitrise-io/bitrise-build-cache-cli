@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_writeGradleInitGradle(t *testing.T) {
@@ -40,10 +41,10 @@ func Test_writeGradleInitGradle(t *testing.T) {
 		err := inventory.WriteToGradleInit(mockLogger, tmpGradleHomeDir, utils.DefaultOsProxy{}, GradleTemplateProxy())
 
 		// then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		//
 		isInitFileExists, err := pathutil.NewPathChecker().IsPathExists(filepath.Join(tmpGradleHomeDir, "init.d", "bitrise-build-cache.init.gradle.kts"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, isInitFileExists)
 	})
 

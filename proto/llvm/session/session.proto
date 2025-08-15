@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package = "github.com/bitrise-io/bitrise-build-cache-cli/llvm/session;session";
+
+package session;
+
+import "google/protobuf/empty.proto";
+
+service Session {
+    rpc SetSession (SetSessionRequest) returns (google.protobuf.Empty) {}
+}
+
+message SetSessionRequest {
+    string invocation_id = 1;
+    string app_slug = 2;
+    string build_slug = 3;
+    string step_slug = 4;
+}

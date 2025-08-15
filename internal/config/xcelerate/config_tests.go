@@ -13,7 +13,6 @@ import (
 )
 
 func Test_activateXcodeCmdFn(t *testing.T) {
-
 	osProxy := func() *utils.MockOsProxy {
 		return &utils.MockOsProxy{
 			UserHomeDirFunc: func() (string, error) {
@@ -64,17 +63,17 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		err := config.Save(mockOsProxy, mockEncoderFactory)
 
 		// then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		require.Len(t, mockOsProxy.MkdirAllCalls(), 1)
-		assert.Equal(t, mockOsProxy.MkdirAllCalls()[0].S, "~/.bitrise-xcelerate")
+		assert.Equal(t, "~/.bitrise-xcelerate", mockOsProxy.MkdirAllCalls()[0].S)
 		require.Len(t, mockOsProxy.CreateCalls(), 1)
-		assert.Equal(t, mockOsProxy.CreateCalls()[0].S, "~/.bitrise-xcelerate/config.json")
+		assert.Equal(t, "~/.bitrise-xcelerate/config.json", mockOsProxy.CreateCalls()[0].S)
 		require.Len(t, mockEncoder.SetIndentCalls(), 1)
-		assert.Equal(t, mockEncoder.SetIndentCalls()[0].Prefix, "")
-		assert.Equal(t, mockEncoder.SetIndentCalls()[0].Indent, "  ")
+		assert.Empty(t, mockEncoder.SetIndentCalls()[0].Prefix)
+		assert.Equal(t, "  ", mockEncoder.SetIndentCalls()[0].Indent)
 		require.Len(t, mockEncoder.SetEscapeHTMLCalls(), 1)
-		assert.Equal(t, mockEncoder.SetEscapeHTMLCalls()[0].Escape, false)
+		assert.False(t, mockEncoder.SetEscapeHTMLCalls()[0].Escape)
 		require.Len(t, mockEncoder.EncodeCalls(), 1)
 		assert.Equal(t, mockEncoder.EncodeCalls()[0].Data, &config)
 	})

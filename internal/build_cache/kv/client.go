@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -20,7 +21,6 @@ import (
 )
 
 type Client struct {
-	bytestreamClient    bytestream.ByteStreamClient
 	bitriseKVClient     kv_storage.KVStorageClient
 	capabilitiesClient  remoteexecution.CapabilitiesClient
 	casClient           remoteexecution.ContentAddressableStorageClient
@@ -29,6 +29,8 @@ type Client struct {
 	cacheConfigMetadata common.CacheConfigMetadata
 	logger              log.Logger
 	cacheOperationID    string
+	invocationID        string
+	sessionMutex        sync.Mutex
 }
 
 type NewClientParams struct {
@@ -40,6 +42,10 @@ type NewClientParams struct {
 	CacheConfigMetadata common.CacheConfigMetadata
 	Logger              log.Logger
 	CacheOperationID    string
+	BitriseKVClient     kv_storage.KVStorageClient
+	CapabilitiesClient  remoteexecution.CapabilitiesClient
+	InvocationID        string
+	SkipCapabilities    bool
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -53,16 +59,25 @@ func NewClient(p NewClientParams) (*Client, error) {
 		return nil, fmt.Errorf("dial %s: %w", p.Host, err)
 	}
 
+	bitriseKVClient := p.BitriseKVClient
+	if bitriseKVClient == nil {
+		bitriseKVClient = kv_storage.NewKVStorageClient(conn)
+	}
+	capabilitiesClient := p.CapabilitiesClient
+	if capabilitiesClient == nil {
+		capabilitiesClient = remoteexecution.NewCapabilitiesClient(conn)
+	}
+
 	return &Client{
-		bytestreamClient:    bytestream.NewByteStreamClient(conn),
-		bitriseKVClient:     kv_storage.NewKVStorageClient(conn),
-		capabilitiesClient:  remoteexecution.NewCapabilitiesClient(conn),
+		bitriseKVClient:     bitriseKVClient,
+		capabilitiesClient:  capabilitiesClient,
 		casClient:           remoteexecution.NewContentAddressableStorageClient(conn),
 		clientName:          p.ClientName,
 		authConfig:          p.AuthConfig,
 		logger:              p.Logger,
 		cacheConfigMetadata: p.CacheConfigMetadata,
 		cacheOperationID:    p.CacheOperationID,
+		invocationID:        p.InvocationID,
 	}, nil
 }
 
