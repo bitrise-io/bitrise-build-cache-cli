@@ -9,11 +9,15 @@ import (
 
 //go:generate moq -out mocks/os_proxy_mock.go -pkg mocks . OsProxy
 type OsProxy interface {
-	ReadFileIfExists(pth string) (string, bool, error)
-	MkdirAll(pth string, mode os.FileMode) error
-	WriteFile(pth string, data []byte, mode os.FileMode) error
-	UserHomeDir() (string, error)
 	Create(pth string) (*os.File, error)
+	Executable() (string, error)
+	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
+	MkdirAll(pth string, mode os.FileMode) error
+	ReadFileIfExists(pth string) (string, bool, error)
+	Remove(name string) error
+	TempDir() string
+	UserHomeDir() (string, error)
+	WriteFile(pth string, data []byte, mode os.FileMode) error
 }
 
 type DefaultOsProxy struct{}
@@ -35,22 +39,34 @@ func (d DefaultOsProxy) ReadFileIfExists(pth string) (string, bool, error) {
 
 // Intentionally passing errors back unwrapped
 
-//nolint:wrapcheck
 func (d DefaultOsProxy) MkdirAll(pth string, perm os.FileMode) error {
 	return os.MkdirAll(pth, perm) //nolint:wrapcheck
 }
 
-//nolint:wrapcheck
 func (d DefaultOsProxy) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return os.WriteFile(name, data, perm) //nolint:wrapcheck
 }
 
-//nolint:wrapcheck
 func (d DefaultOsProxy) UserHomeDir() (string, error) {
 	return os.UserHomeDir() //nolint:wrapcheck
 }
 
-//nolint:wrapcheck
 func (d DefaultOsProxy) Create(name string) (*os.File, error) {
 	return os.Create(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) TempDir() string {
+	return os.TempDir()
+}
+
+func (d DefaultOsProxy) Remove(name string) error {
+	return os.Remove(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	return os.OpenFile(name, flag, perm) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Executable() (string, error) {
+	return os.Executable() //nolint:wrapcheck
 }

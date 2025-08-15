@@ -23,11 +23,23 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			CreateFunc: func(pth string) (*os.File, error) {
 //				panic("mock out the Create method")
 //			},
+//			ExecutableFunc: func() (string, error) {
+//				panic("mock out the Executable method")
+//			},
 //			MkdirAllFunc: func(pth string, mode os.FileMode) error {
 //				panic("mock out the MkdirAll method")
 //			},
+//			OpenFileFunc: func(name string, flag int, perm os.FileMode) (*os.File, error) {
+//				panic("mock out the OpenFile method")
+//			},
 //			ReadFileIfExistsFunc: func(pth string) (string, bool, error) {
 //				panic("mock out the ReadFileIfExists method")
+//			},
+//			RemoveFunc: func(name string) error {
+//				panic("mock out the Remove method")
+//			},
+//			TempDirFunc: func() string {
+//				panic("mock out the TempDir method")
 //			},
 //			UserHomeDirFunc: func() (string, error) {
 //				panic("mock out the UserHomeDir method")
@@ -45,11 +57,23 @@ type OsProxyMock struct {
 	// CreateFunc mocks the Create method.
 	CreateFunc func(pth string) (*os.File, error)
 
+	// ExecutableFunc mocks the Executable method.
+	ExecutableFunc func() (string, error)
+
 	// MkdirAllFunc mocks the MkdirAll method.
 	MkdirAllFunc func(pth string, mode os.FileMode) error
 
+	// OpenFileFunc mocks the OpenFile method.
+	OpenFileFunc func(name string, flag int, perm os.FileMode) (*os.File, error)
+
 	// ReadFileIfExistsFunc mocks the ReadFileIfExists method.
 	ReadFileIfExistsFunc func(pth string) (string, bool, error)
+
+	// RemoveFunc mocks the Remove method.
+	RemoveFunc func(name string) error
+
+	// TempDirFunc mocks the TempDir method.
+	TempDirFunc func() string
 
 	// UserHomeDirFunc mocks the UserHomeDir method.
 	UserHomeDirFunc func() (string, error)
@@ -64,6 +88,9 @@ type OsProxyMock struct {
 			// Pth is the pth argument value.
 			Pth string
 		}
+		// Executable holds details about calls to the Executable method.
+		Executable []struct {
+		}
 		// MkdirAll holds details about calls to the MkdirAll method.
 		MkdirAll []struct {
 			// Pth is the pth argument value.
@@ -71,10 +98,27 @@ type OsProxyMock struct {
 			// Mode is the mode argument value.
 			Mode os.FileMode
 		}
+		// OpenFile holds details about calls to the OpenFile method.
+		OpenFile []struct {
+			// Name is the name argument value.
+			Name string
+			// Flag is the flag argument value.
+			Flag int
+			// Perm is the perm argument value.
+			Perm os.FileMode
+		}
 		// ReadFileIfExists holds details about calls to the ReadFileIfExists method.
 		ReadFileIfExists []struct {
 			// Pth is the pth argument value.
 			Pth string
+		}
+		// Remove holds details about calls to the Remove method.
+		Remove []struct {
+			// Name is the name argument value.
+			Name string
+		}
+		// TempDir holds details about calls to the TempDir method.
+		TempDir []struct {
 		}
 		// UserHomeDir holds details about calls to the UserHomeDir method.
 		UserHomeDir []struct {
@@ -90,8 +134,12 @@ type OsProxyMock struct {
 		}
 	}
 	lockCreate           sync.RWMutex
+	lockExecutable       sync.RWMutex
 	lockMkdirAll         sync.RWMutex
+	lockOpenFile         sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
+	lockRemove           sync.RWMutex
+	lockTempDir          sync.RWMutex
 	lockUserHomeDir      sync.RWMutex
 	lockWriteFile        sync.RWMutex
 }
@@ -125,6 +173,33 @@ func (mock *OsProxyMock) CreateCalls() []struct {
 	mock.lockCreate.RLock()
 	calls = mock.calls.Create
 	mock.lockCreate.RUnlock()
+	return calls
+}
+
+// Executable calls ExecutableFunc.
+func (mock *OsProxyMock) Executable() (string, error) {
+	if mock.ExecutableFunc == nil {
+		panic("OsProxyMock.ExecutableFunc: method is nil but OsProxy.Executable was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockExecutable.Lock()
+	mock.calls.Executable = append(mock.calls.Executable, callInfo)
+	mock.lockExecutable.Unlock()
+	return mock.ExecutableFunc()
+}
+
+// ExecutableCalls gets all the calls that were made to Executable.
+// Check the length with:
+//
+//	len(mockedOsProxy.ExecutableCalls())
+func (mock *OsProxyMock) ExecutableCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockExecutable.RLock()
+	calls = mock.calls.Executable
+	mock.lockExecutable.RUnlock()
 	return calls
 }
 
@@ -164,6 +239,46 @@ func (mock *OsProxyMock) MkdirAllCalls() []struct {
 	return calls
 }
 
+// OpenFile calls OpenFileFunc.
+func (mock *OsProxyMock) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	if mock.OpenFileFunc == nil {
+		panic("OsProxyMock.OpenFileFunc: method is nil but OsProxy.OpenFile was just called")
+	}
+	callInfo := struct {
+		Name string
+		Flag int
+		Perm os.FileMode
+	}{
+		Name: name,
+		Flag: flag,
+		Perm: perm,
+	}
+	mock.lockOpenFile.Lock()
+	mock.calls.OpenFile = append(mock.calls.OpenFile, callInfo)
+	mock.lockOpenFile.Unlock()
+	return mock.OpenFileFunc(name, flag, perm)
+}
+
+// OpenFileCalls gets all the calls that were made to OpenFile.
+// Check the length with:
+//
+//	len(mockedOsProxy.OpenFileCalls())
+func (mock *OsProxyMock) OpenFileCalls() []struct {
+	Name string
+	Flag int
+	Perm os.FileMode
+} {
+	var calls []struct {
+		Name string
+		Flag int
+		Perm os.FileMode
+	}
+	mock.lockOpenFile.RLock()
+	calls = mock.calls.OpenFile
+	mock.lockOpenFile.RUnlock()
+	return calls
+}
+
 // ReadFileIfExists calls ReadFileIfExistsFunc.
 func (mock *OsProxyMock) ReadFileIfExists(pth string) (string, bool, error) {
 	if mock.ReadFileIfExistsFunc == nil {
@@ -193,6 +308,65 @@ func (mock *OsProxyMock) ReadFileIfExistsCalls() []struct {
 	mock.lockReadFileIfExists.RLock()
 	calls = mock.calls.ReadFileIfExists
 	mock.lockReadFileIfExists.RUnlock()
+	return calls
+}
+
+// Remove calls RemoveFunc.
+func (mock *OsProxyMock) Remove(name string) error {
+	if mock.RemoveFunc == nil {
+		panic("OsProxyMock.RemoveFunc: method is nil but OsProxy.Remove was just called")
+	}
+	callInfo := struct {
+		Name string
+	}{
+		Name: name,
+	}
+	mock.lockRemove.Lock()
+	mock.calls.Remove = append(mock.calls.Remove, callInfo)
+	mock.lockRemove.Unlock()
+	return mock.RemoveFunc(name)
+}
+
+// RemoveCalls gets all the calls that were made to Remove.
+// Check the length with:
+//
+//	len(mockedOsProxy.RemoveCalls())
+func (mock *OsProxyMock) RemoveCalls() []struct {
+	Name string
+} {
+	var calls []struct {
+		Name string
+	}
+	mock.lockRemove.RLock()
+	calls = mock.calls.Remove
+	mock.lockRemove.RUnlock()
+	return calls
+}
+
+// TempDir calls TempDirFunc.
+func (mock *OsProxyMock) TempDir() string {
+	if mock.TempDirFunc == nil {
+		panic("OsProxyMock.TempDirFunc: method is nil but OsProxy.TempDir was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockTempDir.Lock()
+	mock.calls.TempDir = append(mock.calls.TempDir, callInfo)
+	mock.lockTempDir.Unlock()
+	return mock.TempDirFunc()
+}
+
+// TempDirCalls gets all the calls that were made to TempDir.
+// Check the length with:
+//
+//	len(mockedOsProxy.TempDirCalls())
+func (mock *OsProxyMock) TempDirCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockTempDir.RLock()
+	calls = mock.calls.TempDir
+	mock.lockTempDir.RUnlock()
 	return calls
 }
 

@@ -1,13 +1,16 @@
 //nolint:dupl
-package cmd
+package cmd_test
 
 import (
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mock"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
@@ -28,6 +31,8 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Errorf", mock.Anything).Return()
 		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
+		mockLogger.On("TDonef", mock.Anything).Return()
+		mockLogger.On("TDonef", mock.Anything, mock.Anything).Return()
 
 		return mockLogger
 	}
@@ -51,6 +56,13 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 			CreateFunc: func(_ string) (*os.File, error) {
 				return &os.File{}, nil
 			},
+			ExecutableFunc: func() (string, error) { return "exe", nil },
+			OpenFileFunc: func(name string, flag int, perm os.FileMode) (*os.File, error) {
+				return &os.File{}, nil
+			},
+			WriteFileFunc: func(pth string, data []byte, mode os.FileMode) error {
+				return nil
+			},
 		}
 	}
 
@@ -73,14 +85,25 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 	t.Run("When no error activateXcodeCmdFn logs success", func(t *testing.T) {
 		mockLogger := logger()
 
-		err := activateXcodeCommandFn(
+		err := cmd.ActivateXcodeCommandFn(
 			mockLogger,
 			osProxy(),
 			encoderFactory(),
 			config(),
+			func(path string, command string) cmd.Command {
+				return &cmdMocks.CommandMock{
+					SetSysProcAttrFunc: func(_ *syscall.SysProcAttr) {},
+					SetStderrFunc:      func(_ *os.File) {},
+					SetStdoutFunc:      func(_ *os.File) {},
+					SetStdinFunc:       func(_ *os.File) {},
+					PIDFunc:            func() int { return 444 },
+					StartFunc:          func() error { return nil },
+				}
+			},
+			func(pid int, signum syscall.Signal) {},
 		)
 
-		mockLogger.AssertCalled(t, "TInfof", activateXcodeSuccessful)
+		mockLogger.AssertCalled(t, "TInfof", cmd.ActivateXcodeSuccessful)
 		require.NoError(t, err)
 	})
 
@@ -93,13 +116,17 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 			},
 		}
 
-		err := activateXcodeCommandFn(
+		err := cmd.ActivateXcodeCommandFn(
 			logger(),
 			osProxy(),
 			encoderFactory(),
 			mockConfig,
+			func(path string, command string) cmd.Command {
+				return &cmdMocks.CommandMock{}
+			},
+			func(pid int, signum syscall.Signal) {},
 		)
 
-		assert.ErrorContains(t, err, fmt.Errorf(errFmtCreateXcodeConfig, expectedError).Error())
+		assert.ErrorContains(t, err, fmt.Errorf(cmd.ErrFmtCreateXcodeConfig, expectedError).Error())
 	})
 }

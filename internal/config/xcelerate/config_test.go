@@ -15,8 +15,8 @@ import (
 )
 
 func Test_activateXcodeCmdFn(t *testing.T) {
-	osProxy := func() *utils.MockOsProxy {
-		return &utils.MockOsProxy{
+	osProxy := func() *mocks.OsProxyMock {
+		return &mocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
 				return "~", nil
 			},
@@ -68,9 +68,9 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, mockOsProxy.MkdirAllCalls(), 1)
-		assert.Equal(t, "~/.bitrise-xcelerate", mockOsProxy.MkdirAllCalls()[0].S)
+		assert.Equal(t, xcelerate.XceleratePath(), mockOsProxy.MkdirAllCalls()[0].Pth)
 		require.Len(t, mockOsProxy.CreateCalls(), 1)
-		assert.Equal(t, "~/.bitrise-xcelerate/config.json", mockOsProxy.CreateCalls()[0].S)
+		assert.Equal(t, xcelerate.XceleratePathFor("config.json"), mockOsProxy.CreateCalls()[0].Pth)
 		require.Len(t, mockEncoder.SetIndentCalls(), 1)
 		assert.Empty(t, mockEncoder.SetIndentCalls()[0].Prefix)
 		assert.Equal(t, "  ", mockEncoder.SetIndentCalls()[0].Indent)
@@ -78,27 +78,6 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		assert.False(t, mockEncoder.SetEscapeHTMLCalls()[0].Escape)
 		require.Len(t, mockEncoder.EncodeCalls(), 1)
 		assert.Equal(t, config, mockEncoder.EncodeCalls()[0].Data)
-	})
-
-	t.Run("When error occurs when getting user home save returns an error", func(t *testing.T) {
-		// given
-		mockOsProxy := &mocks.OsProxyMock{
-			UserHomeDirFunc: func() (string, error) {
-				return "", os.ErrNotExist
-			},
-		}
-
-		// when
-		config := xcelerate.DefaultConfig{
-			ProxyVersion:           "1.0.0",
-			WrapperVersion:         "1.0.0",
-			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
-			BuildCacheEnabled:      true,
-		}
-		err := config.Save(mockOsProxy, encoderFactory())
-
-		// then
-		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtDetermineHome, os.ErrNotExist).Error())
 	})
 
 	t.Run("When error occurs making directories save returns an error", func(t *testing.T) {
@@ -122,7 +101,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		err := config.Save(mockOsProxy, encoderFactory())
 
 		// then
-		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, "~/.bitrise-xcelerate", os.ErrNotExist).Error())
+		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, xcelerate.XceleratePath(), os.ErrNotExist).Error())
 	})
 
 	t.Run("When error occurs when creating config file, it returns an error", func(t *testing.T) {
