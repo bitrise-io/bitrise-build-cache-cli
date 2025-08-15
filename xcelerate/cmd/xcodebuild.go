@@ -30,7 +30,7 @@ TBD`,
 
 		xcodeRunner := &xcodeargs.DefaultRunner{}
 
-		if err := XcodebuildCmdFn(logger, xcodeRunner, xcodeArgs); err != nil {
+		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
 
 			return err
@@ -47,6 +47,7 @@ func init() {
 }
 
 func XcodebuildCmdFn(
+	ctx xcodeargs.Context,
 	logger log.Logger,
 	xcodeRunner xcodeargs.Runner,
 	xcodeArgs xcodeargs.XcodeArgs,
@@ -57,5 +58,5 @@ func XcodebuildCmdFn(
 	// Intentionally returning xcode error unwrapped
 
 	//nolint:wrapcheck
-	return xcodeRunner.Run(toPass)
+	return xcodeRunner.Run(ctx, toPass)
 }

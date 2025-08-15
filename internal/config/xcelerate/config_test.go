@@ -68,9 +68,9 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, mockOsProxy.MkdirAllCalls(), 1)
-		assert.Equal(t, "~/.bitrise-xcelerate", mockOsProxy.MkdirAllCalls()[0].Pth)
+		assert.Equal(t, "~/.bitrise-xcelerate", mockOsProxy.MkdirAllCalls()[0].S)
 		require.Len(t, mockOsProxy.CreateCalls(), 1)
-		assert.Equal(t, "~/.bitrise-xcelerate/config.json", mockOsProxy.CreateCalls()[0].Pth)
+		assert.Equal(t, "~/.bitrise-xcelerate/config.json", mockOsProxy.CreateCalls()[0].S)
 		require.Len(t, mockEncoder.SetIndentCalls(), 1)
 		assert.Empty(t, mockEncoder.SetIndentCalls()[0].Prefix)
 		assert.Equal(t, "  ", mockEncoder.SetIndentCalls()[0].Indent)

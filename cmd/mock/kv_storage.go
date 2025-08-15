@@ -5,10 +5,11 @@ package mock
 
 import (
 	context "context"
+	sync "sync"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 	bytestream "google.golang.org/genproto/googleapis/bytestream"
 	grpc "google.golang.org/grpc"
-	sync "sync"
 )
 
 // Ensure, that KVStorageClientMock does implement kv_storage.KVStorageClient.
