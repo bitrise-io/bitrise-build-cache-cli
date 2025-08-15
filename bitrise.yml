@@ -81,15 +81,15 @@ workflows:
               exit 1
             fi
             tree -L 2 dist
-            
+
             tag="${BITRISE_GIT_TAG#v}" # Remove the v from the tag
             if [[ -z "$tag" ]]; then
               echo "BITRISE_GIT_TAG is not set. Exiting."
               exit 1
             fi
-            
+
             echo "Uploading with tag: $tag"
-            
+
             filenames=("bitrise-build-cache_${tag}_darwin_amd64.tar.gz"
                       "bitrise-build-cache_${tag}_linux_amd64.tar.gz"
                       "bitrise-build-cache_${tag}_darwin_arm64.tar.gz"
@@ -100,9 +100,9 @@ workflows:
                 exit 1
               fi
               echo "Uploading $filename to GAR..."
-            
+
               package_name="${filename/_${tag}/}" # Files will be versioned
-            
+
               gcloud artifacts generic upload \
                 --project=ip-build-cache-prod \
                 --source="$DIST_DIR/$filename" \
@@ -111,7 +111,7 @@ workflows:
                 --location=us-central1 \
                 --repository=build-cache-cli-releases
             done
-            
+
             echo "Uploaded artifacts to GAR."
     - deploy-to-bitrise-io@2: {}
     - script:
@@ -221,7 +221,7 @@ workflows:
             - content: |
                 #!/bin/bash
                 set -ex
-                
+
                 git fetch origin
                 if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
                   git checkout main
@@ -230,7 +230,7 @@ workflows:
       - script:
           title: Update plugins with latest version
           inputs:
-            - content: |                
+            - content: |
                 bash ./scripts/update_plugins.sh
       - bundle::generate_gradle_verification_reference: {}
       - script:
@@ -238,32 +238,32 @@ workflows:
           inputs:
             - content: |
                 set -ex
-                
+
                 # Check for existing PR with the same title
                 existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                   "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
-                  
+
                 if [ -n "$existing_pr" ]; then
                   echo "A pull request with this title already exists: $existing_pr"
                   exit 0
                 fi
-                
+
                 if [ -n "$(git status --porcelain)" ]; then
                   git branch -D update-plugins || true
                   git checkout -b update-plugins
-                
+
                   git add .
                   git commit -m "feat: update plugins to release"
                   git push -f origin update-plugins
-                  
+
                   # Create a pull request using GitHub API
                   pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
                     -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
                     "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
-                    
+
                     pr_url=$(echo "$pr_response" | jq -r .html_url)
-                    envman add --key PR_URL --value "$pr_url" 
-                    
+                    envman add --key PR_URL --value "$pr_url"
+
                     if [ "$pr_url" != "null" ]; then
                       echo "Pull request created successfully: $pr_url"
                     else
@@ -331,14 +331,14 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            
+
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-            
+
             source ../_e2e/scripts/extract_invocation_id.sh
-            
+
             invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
             if [[ -z "$invocation_id" ]]; then
               fatal "Invocation ID not found in logs"
@@ -424,9 +424,9 @@ workflows:
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-            
+
             source ../_e2e/scripts/extract_invocation_id.sh
-            
+
             invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
             if [[ -z "$invocation_id" ]]; then
               fatal "Invocation ID not found in logs"
@@ -485,7 +485,7 @@ workflows:
         - content: |-
             #!/bin/bash
             set -exo pipefail
-            
+
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
               'Invocation ID: ' \
@@ -496,9 +496,9 @@ workflows:
               "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
               '--bes_header=x-locale=\w+' \
               '--bes_header=x-default-charset=\w+'
-            
+
               source ../_e2e/scripts/extract_invocation_id.sh
-            
+
               invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
               if [[ -z "$invocation_id" ]]; then
                 fatal "Invocation ID not found in logs"
@@ -511,7 +511,7 @@ workflows:
         inputs:
           - content: |-
               source ../_e2e/scripts/assert_invocations.sh
-              
+
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
               assert_invocation_targets_bazel "$INVOCATION_ID"
@@ -539,7 +539,7 @@ workflows:
             - content: |-
                 #!/bin/bash
                 set -exo pipefail
-                                
+
                 echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
                 ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
       - script:
@@ -548,12 +548,12 @@ workflows:
             - content: |-
                 #!/bin/bash
                 set -exo pipefail
-                
+
                 mkdir -p ../_dockerroot
                 cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
-                
+
                 echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
-                
+
                 sudo docker run --rm \
                   -w "/workspace" \
                   -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
@@ -570,14 +570,14 @@ workflows:
                     curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
                     chmod +x bazelisk && \
                     ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
-                
+
       - script:
           title: Check for cache invocations
           inputs:
             - content: |-
                 #!/bin/bash
                 set -exo pipefail
-                
+
                 ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
                   '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
                   'Invocation ID: ' \
@@ -588,14 +588,14 @@ workflows:
                   "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
                   '--bes_header=x-locale=\w+' \
                   '--bes_header=x-default-charset=\w+'
-                
+
                   source ../_e2e/scripts/extract_invocation_id.sh
-                
+
                   invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
                   if [[ -z "$invocation_id" ]]; then
                     fatal "Invocation ID not found in logs"
                   fi
-                
+
                   echo "Found Invocation ID: $invocation_id"
                   envman add --key INVOCATION_ID --value "$invocation_id"
       - script:
@@ -603,7 +603,7 @@ workflows:
           inputs:
             - content: |-
                 source ../_e2e/scripts/assert_invocations.sh
-                
+
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
                 assert_invocation_targets_bazel "$INVOCATION_ID"
@@ -675,7 +675,7 @@ workflows:
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     - deploy-to-bitrise-io@2: {}
-    
+
   gradle-configuration-e2e-linux:
     meta:
       bitrise.io:
@@ -770,36 +770,36 @@ workflows:
             - content: |-
                 #!/bin/bash
                 set -e
-                
+
                 sudo apt update
                 sudo apt install ripgrep -y
-                
+
                 # Parse repository name from repo URL (works for SSH & HTTPS)
                 REPO_URL="${GIT_REPOSITORY_URL}"
                 REPO=$(echo "$REPO_URL" | sed -E 's#(git@|https://)([^/:]+)[/:]([^/]+)/([^.]+)(\.git)?#\3/\4#')
-                
+
                 # 1. Unshallow the repo if it's a shallow clone (safe to run even if already full)
                 git fetch --unshallow || true
-                
+
                 # 2. Fetch all branch refs (this ensures both the PR and the target/destination branch are present)
                 git fetch origin
-                
+
                 # 3. Fetch both relevant branches explicitly for safety (redundant but safe)
                 git fetch origin "$BITRISEIO_GIT_BRANCH_DEST"
                 git fetch origin "$BITRISE_GIT_BRANCH"
-                
+
                 # 4. Create/reset local branches to match the remote
                 git checkout -B "$BITRISEIO_GIT_BRANCH_DEST" "origin/$BITRISEIO_GIT_BRANCH_DEST"
                 git checkout -B "$BITRISE_GIT_BRANCH" "origin/$BITRISE_GIT_BRANCH"
-                
+
                 # (Optionally: check out the PR branch if that is the branch you want to analyze)
                 git checkout "$BITRISE_GIT_BRANCH"
-                
+
                 # Download and install bitcode
                 curl -L https://storage.googleapis.com/bitrise-bitcode/bitcode-linux-amd64.tar.gz -o /tmp/bitcode-linux-amd64.tar.gz
                 sudo tar -xzf /tmp/bitcode-linux-amd64.tar.gz -C /usr/local/bin/
                 sudo chmod +x /usr/local/bin/bitcode
-                
+
                 # 6. Run your AI reviewer (customize flags as needed)
                 bitcode review  \
                   --git-provider github \
@@ -808,8 +808,64 @@ workflows:
                   --max-token-usage 5000000 \
                   --session-id "${BITRISE_BUILD_SLUG}" \
                   --log-level info
-                
+
                 echo "Done! PR reviewed."
+
+  e2e-xcode-comp-cache:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge-iad
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:pointfreeco/swift-composable-architecture.git
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    steps:
+    - script:
+        title: Delete _tmp dirs
+        inputs:
+          - content: rm -rf _tmp
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+          - repository_url: "$TEST_APP_URL"
+          - clone_into_dir: "./_tmp"
+          - branch: "$BRANCH"
+          - commit: "$COMMIT"
+    - git-clone: {}
+    - script:
+        title: build CLI
+        inputs:
+          - content: |-
+              set -exo pipefail
+              go build -o bin/bitrise-build-cache-cli
+    - script:
+        title: build xcelerate
+        inputs:
+          - content: |-
+              set -exo pipefail
+              go build -o bin/xcelerate ./xcelerate
+    - change-workdir:
+        title: Switch working dir to _tmp
+        inputs:
+          - path: "./_tmp"
+    - script:
+        title: build app
+        inputs:
+          - content: |-
+              set -exo pipefail
+
+              ../bin/bitrise-build-cache-cli activate xcode
+
+              ../bin/xcelerate xcodebuild build \
+                -workspace ComposableArchitecture.xcworkspace \
+                -scheme swift-composable-architecture \
+                -destination "generic/platform=iOS" \
+                -skipMacroValidation \
+                SWIFT_ENABLE_EXPLICIT_MODULES=YES \
+                COMPILATION_CACHE_ENABLE_CACHING=YES \
+                SWIFT_ENABLE_COMPILE_CACHE=1 \
+                COMPILATION_CACHE_REMOTE_SERVICE_PATH=$TMPDIR/xcelerate-proxy.sock \
+                COMPILATION_CACHE_ENABLE_PLUGIN=1 \
+                | xcbeautify
 
 step_bundles:
   generate_gradle_verification_reference:
@@ -832,7 +888,7 @@ step_bundles:
             SAMPLE_PATH=$(realpath ./gradle_verification_sample)
             GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
             GRADLE_VERIFICATION_REF_TARGET_PATH=$(realpath ./cmd/asset/verification-metadata.xml)
-            
+
             # add plugin with CLI
             cd "$SAMPLE_PATH"
             /tmp/bin/bitrise-build-cache-cli gradle-verification add-reference-deps
@@ -843,11 +899,11 @@ step_bundles:
 
             cat $GRADLE_VERIFICATION_REF_PATH
             echo "Generated verification xml: $GRADLE_VERIFICATION_REF_PATH"
-            
+
             # Copy metadata to be included in the CLI binary
             mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
             envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-    
+
   check_gradle_verification_reference:
     steps:
     - script@1:
@@ -878,10 +934,10 @@ step_bundles:
                 wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
                 tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
                 sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
-                
+
                 rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
                 rm -rf pandoc-$PANDOC_VERSION
-                
+
                 pandoc --version
       - script:
           title: Install go versions
@@ -889,7 +945,7 @@ step_bundles:
             - content: |
                 #!/bin/bash
                 set -ex
-                
+
                 asdf install golang 1.23.8
                 asdf install golang 1.21.5
       - script:
@@ -906,7 +962,7 @@ step_bundles:
             - content: |
                 #!/bin/bash
                 set -ex
-                
+
                 pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
                 mv cleaned.md docs/dependency-matrix.md
       - script:
@@ -915,31 +971,31 @@ step_bundles:
             - content: |
                 #!/bin/bash
                 set -ex
-                          
-                git status  
+
+                git status
                 ls -l docs/dependency-matrix.md
                 git stash push -u -m "stash before switching to gh-pages"
-              
+
                 git fetch --all
                 git checkout gh-pages
-              
+
                 rm -f docs/dependency-matrix.md
                 git stash apply
-                
+
                 if [ ! -f docs/dependency-matrix.md ]; then
                   echo "No dependency matrix found, skipping commit."
                   exit -1
                 fi
-                
+
                 if [ -n "$(git status --porcelain)" ]; then
                   echo "Changes detected, committing and pushing to gh-pages branch."
-                                    
+
                   git add docs/dependency-matrix.md
                   git diff --cached docs/dependency-matrix.md
 
                   git commit -m "chore: update dependency matrix"
                   git push origin gh-pages
-                else 
+                else
                   echo "No changes detected, skipping commit."
                   exit 0
                 fi
@@ -954,16 +1010,16 @@ step_bundles:
             - content: |-
                 #!/bin/bash
                 set -ex
-                
+
                 mkdir -p ~/.ssh
                 echo "$SSH_DEPLOY_KEY_E2E_TESTING" > ~/.ssh/github_deploy_build_cache_e2e_testing
                 chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
-                
+
                 ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
-                
+
                 mkdir -p ./_e2e
                 GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
-                
+
                 ls -la ./_e2e
       - script:
           title: Delete _tmp dirs
