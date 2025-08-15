@@ -867,6 +867,17 @@ workflows:
                 SWIFT_ENABLE_COMPILE_CACHE=1 \
                 COMPILATION_CACHE_REMOTE_SERVICE_PATH=$TMPDIR/xcelerate-proxy.sock \
                 COMPILATION_CACHE_ENABLE_PLUGIN=1 | xcbeautify
+    - script:
+        title: gather info
+        inputs:
+          - content: |-
+              set -exo pipefail
+
+              cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
+              cp ~/.bitrise-xcelerate/proxy.err $BITRISE_DEPLOY_DIR
+              cp ~/.bitrise-xcelerate/proxy.out $BITRISE_DEPLOY_DIR
+    - deploy-to-bitrise-io: {}
+
 
 step_bundles:
   generate_gradle_verification_reference:
