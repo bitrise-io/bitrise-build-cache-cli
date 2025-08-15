@@ -850,6 +850,13 @@ workflows:
         inputs:
           - path: "./_tmp"
     - script:
+        title: list xcode versions
+        inputs:
+          - content: |-
+              set -exo pipefail
+
+              system_profiler -json SPDeveloperToolsDataType | jq '.SPDeveloperToolsDataType[].spdevtools_apps.spxcode_app'
+    - script:
         title: build app
         inputs:
           - content: |-
