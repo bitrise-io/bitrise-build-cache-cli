@@ -4,10 +4,9 @@
 package mocks
 
 import (
-	"sync"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"sync"
 )
 
 // Ensure, that ConfigMock does implement xcelerate.Config.

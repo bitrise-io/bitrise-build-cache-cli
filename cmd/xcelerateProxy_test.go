@@ -19,7 +19,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/mock"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
@@ -27,7 +28,7 @@ import (
 
 func Test_XcelerateProxy(t *testing.T) {
 	var mds []metadata.MD
-	capabilitiesClient := &mock.CapabilitiesClientMock{
+	capabilitiesClient := &mocks.CapabilitiesClientMock{
 		GetCapabilitiesFunc: func(ctx context.Context, in *remoteexecution.GetCapabilitiesRequest, opts ...grpc.CallOption) (*remoteexecution.ServerCapabilities, error) {
 			return &remoteexecution.ServerCapabilities{}, nil
 		},
@@ -35,13 +36,22 @@ func Test_XcelerateProxy(t *testing.T) {
 
 	envVars := map[string]string{
 		"BITRISE_IO":                       "true",
-		"REMOTE_CACHE_TOKEN":               "test-token",
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "test-token",
 		"BITRISE_BUILD_CACHE_ENDPOINT":     "grpc://bufnet",
 		"BITRISE_APP_SLUG":                 "test-app-slug",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "test-org-id",
 		"INVOCATION_ID":                    "test-invocation-id",
 		"BITRISE_BUILD_SLUG":               "test-build-slug",
 		"BITRISE_STEP_EXECUTION_ID":        "test-step-execution-id",
+	}
+	envProvider := func(key string) string {
+		if value, exists := envVars[key]; exists {
+			return value
+		}
+
+		t.Logf("Environment variable %s not set, returning empty string", key)
+
+		return ""
 	}
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -50,25 +60,20 @@ func Test_XcelerateProxy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	require.NoError(t, err)
+
 	go func() {
 		_ = cmd.StartXcodeCacheProxy(
 			ctx,
-			log.NewLogger(),
-			func(key string) string {
-				if value, exists := envVars[key]; exists {
-					return value
-				}
-
-				t.Logf("Environment variable %s not set, returning empty string", key)
-
-				return ""
-			},
+			authConfig,
+			envProvider,
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output() //nolint:noctx
 
 				return string(output), err
 			},
-			&mock.KVStorageClientMock{
+			&mocks.KVStorageClientMock{
 				GetFunc: func(
 					ctx context.Context,
 					in *bytestream.ReadRequest,
@@ -84,6 +89,7 @@ func Test_XcelerateProxy(t *testing.T) {
 			},
 			capabilitiesClient,
 			listener,
+			log.NewLogger(),
 		)
 	}()
 

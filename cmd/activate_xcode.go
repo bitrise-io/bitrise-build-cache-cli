@@ -155,7 +155,7 @@ func startProxy(
 	return nil
 }
 
-//go:generate moq -out mock/command_mock.go -pkg mock . Command
+//go:generate moq -out mocks/command_mock.go -pkg mocks . Command
 type Command interface {
 	Start() error
 	SetStdout(file *os.File)

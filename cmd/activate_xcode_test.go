@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mock"
+	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"

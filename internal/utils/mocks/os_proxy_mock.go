@@ -4,10 +4,9 @@
 package mocks
 
 import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"os"
 	"sync"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 // Ensure, that OsProxyMock does implement utils.OsProxy.
