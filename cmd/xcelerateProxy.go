@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -16,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate_proxy"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 )
 
 //go:generate moq -rm -stub -pkg mock -out ./mock/kv_storage.go ./../proto/kv_storage KVStorageClient
@@ -48,9 +48,14 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		}
 		defer listener.Close()
 
+		authConfig, err := common.ReadAuthConfigFromEnvironments(os.Getenv)
+		if err != nil {
+			return fmt.Errorf("read auth config from environments: %w", err)
+		}
+
 		return StartXcodeCacheProxy(
 			cmd.Context(),
-			logger,
+			authConfig,
 			os.Getenv,
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output()
@@ -60,6 +65,7 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 			nil,
 			nil,
 			listener,
+			logger,
 		)
 	},
 }
@@ -70,20 +76,18 @@ func init() {
 
 func StartXcodeCacheProxy(
 	ctx context.Context,
-	logger log.Logger,
+	auth common.CacheAuthConfig,
 	envProvider func(string) string,
 	commandFunc common.CommandFunc,
 	bitriseKVClient kv_storage.KVStorageClient,
 	capabilitiesClient remoteexecution.CapabilitiesClient,
 	listener net.Listener,
+	logger log.Logger,
 ) error {
 	client, err := createKVClient(ctx, CreateKVClientParams{
-		CacheOperationID: uuid.New().String(),
-		ClientName:       ClientNameXcelerate,
-		AuthConfig: common.CacheAuthConfig{
-			AuthToken:   envProvider("REMOTE_CACHE_TOKEN"),
-			WorkspaceID: envProvider("BITRISE_BUILD_CACHE_WORKSPACE_ID"),
-		},
+		CacheOperationID:   uuid.New().String(),
+		ClientName:         ClientNameXcelerate,
+		AuthConfig:         auth,
 		EnvProvider:        envProvider,
 		CommandFunc:        commandFunc,
 		Logger:             logger,
