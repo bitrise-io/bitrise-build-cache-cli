@@ -1,9 +1,19 @@
 package cmd
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
+	"context"
+	"os"
+	"strings"
+
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 )
 
 const (
@@ -27,6 +37,8 @@ TBD`,
 			Cmd:          cmd,
 			OriginalArgs: xcelerateParams.OrigArgs,
 		}
+
+		callProxySetSession(cmd.Context(), xcodeArgs, os.Getenv, logger)
 
 		xcodeRunner := &xcodeargs.DefaultRunner{}
 
@@ -59,4 +71,43 @@ func XcodebuildCmdFn(
 
 	//nolint:wrapcheck
 	return xcodeRunner.Run(ctx, toPass)
+}
+
+func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvider common.EnvProviderFunc, logger log.Logger) {
+	var proxySocket string
+	for _, arg := range args.Args() {
+		if !strings.HasPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH") {
+			continue
+		}
+
+		proxySocket = strings.TrimPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH=")
+	}
+	if proxySocket == "" {
+		logger.TErrorf("No proxy socket found in arguments, skipping session setting")
+
+		return
+	}
+	proxySocket = "unix://" + strings.TrimPrefix(proxySocket, "unix://")
+
+	logger.TInfof("Connecting to proxy socket: %s", proxySocket)
+
+	clientConn, err := grpc.NewClient(proxySocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logger.TErrorf("Failed to create gRPC client: %v", err)
+
+		return
+	}
+	defer clientConn.Close()
+
+	_, err = session.NewSessionClient(clientConn).SetSession(ctx, &session.SetSessionRequest{
+		InvocationId: uuid.New().String(),
+		AppSlug:      envProvider("BITRISE_APP_SLUG"),
+		BuildSlug:    envProvider("BITRISE_BUILD_SLUG"),
+		StepSlug:     envProvider("BITRISE_STEP_EXECUTION_ID"),
+	})
+	if err != nil {
+		logger.TErrorf("Failed to set session: %v", err)
+
+		return
+	}
 }

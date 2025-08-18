@@ -855,6 +855,8 @@ workflows:
         inputs:
           - content: |-
               set -exo pipefail
+              
+              export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
 
               ../bin/bitrise-build-cache-cli activate xcode
 
@@ -866,7 +868,7 @@ workflows:
                 SWIFT_ENABLE_EXPLICIT_MODULES=YES \
                 COMPILATION_CACHE_ENABLE_CACHING=YES \
                 SWIFT_ENABLE_COMPILE_CACHE=1 \
-                COMPILATION_CACHE_REMOTE_SERVICE_PATH=$TMPDIR/xcelerate-proxy.sock \
+                COMPILATION_CACHE_REMOTE_SERVICE_PATH=${BITRISE_XCELERATE_SOCKET_PATH} \
                 COMPILATION_CACHE_ENABLE_PLUGIN=1 | tee xcodebuild.log | xcpretty
     - script:
         title: gather info
@@ -875,8 +877,8 @@ workflows:
               set -exo pipefail
 
               cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
-              cp ~/.bitrise-xcelerate/proxy.err $BITRISE_DEPLOY_DIR
-              cp ~/.bitrise-xcelerate/proxy.out $BITRISE_DEPLOY_DIR
+              cp ~/.bitrise-xcelerate/proxy.err.log $BITRISE_DEPLOY_DIR
+              cp ~/.bitrise-xcelerate/proxy.out.log $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
     - deploy-to-bitrise-io: {}
 
