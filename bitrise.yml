@@ -854,13 +854,16 @@ workflows:
         title: build app
         inputs:
           - content: |-
-              set -exo pipefail
+              set -eo pipefail
               
               export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
 
               ../bin/bitrise-build-cache-cli activate xcode
 
-              ../bin/xcelerate build \
+              echo "PATH is:"
+              echo "$PATH"
+
+              xcodebuild build \
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
