@@ -18,8 +18,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 )
 
-//go:generate moq -rm -stub -pkg mock -out ./mock/kv_storage.go ./../proto/kv_storage KVStorageClient
-//go:generate moq -rm -stub -pkg mock -out ./mock/remote_execution.go ./../proto/build/bazel/remote/execution/v2 CapabilitiesClient
+//go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../proto/kv_storage KVStorageClient
+//go:generate moq -rm -stub -pkg mocks -out ./mocks/remote_execution.go ./../proto/build/bazel/remote/execution/v2 CapabilitiesClient
 
 // This command should go under an xcelerate subcommand together with stop-xcode-proxy
 var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals

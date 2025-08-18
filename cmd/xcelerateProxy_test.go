@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/mock"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
@@ -28,7 +28,7 @@ import (
 
 func Test_XcelerateProxy(t *testing.T) {
 	var mds []metadata.MD
-	capabilitiesClient := &mock.CapabilitiesClientMock{
+	capabilitiesClient := &mocks.CapabilitiesClientMock{
 		GetCapabilitiesFunc: func(ctx context.Context, in *remoteexecution.GetCapabilitiesRequest, opts ...grpc.CallOption) (*remoteexecution.ServerCapabilities, error) {
 			return &remoteexecution.ServerCapabilities{}, nil
 		},
@@ -73,7 +73,7 @@ func Test_XcelerateProxy(t *testing.T) {
 
 				return string(output), err
 			},
-			&mock.KVStorageClientMock{
+			&mocks.KVStorageClientMock{
 				GetFunc: func(
 					ctx context.Context,
 					in *bytestream.ReadRequest,

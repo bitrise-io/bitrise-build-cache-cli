@@ -4,9 +4,8 @@
 package mocks
 
 import (
-	"sync"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
+	"sync"
 )
 
 // Ensure, that RunnerMock does implement xcodeargs.Runner.

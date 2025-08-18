@@ -4,10 +4,9 @@
 package mocks
 
 import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"io"
 	"sync"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 // Ensure, that EncoderFactoryMock does implement utils.EncoderFactory.

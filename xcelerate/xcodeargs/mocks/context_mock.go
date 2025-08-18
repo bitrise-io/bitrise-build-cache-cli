@@ -4,10 +4,9 @@
 package mocks
 
 import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 	"sync"
 	"time"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 )
 
 // Ensure, that ContextMock does implement xcodeargs.Context.
