@@ -129,11 +129,11 @@ func ActivateXcodeCommandFn(
 // TODO move to utils package
 func AddXcelerateCommandToPath(logger log.Logger,
 	osProxy utils.OsProxy) error {
-	xceleratePath := xcelerate.XceleratePathFor("xcodebuild")
+	xceleratePath := xcelerate.PathFor(xcelerate.Xcodebuild)
 
 	homeDir, err := osProxy.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf(errFmtDetermineHome, err)
+		return fmt.Errorf(xcelerate.ErrFmtDetermineHome, err)
 	}
 
 	pathContent := fmt.Sprintf("export PATH=%s:$PATH", xceleratePath)
@@ -213,8 +213,8 @@ func startProxy(
 		Setpgid: true, // create a new process group with pgid = pid
 	})
 
-	outf := xcelerate.XceleratePathFor(serverOut)
-	errf := xcelerate.XceleratePathFor(serverErr)
+	outf := xcelerate.PathFor(serverOut)
+	errf := xcelerate.PathFor(serverErr)
 	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
@@ -236,7 +236,7 @@ func startProxy(
 	}
 
 	pid := cmd.PID()
-	pidFilePth := xcelerate.XceleratePathFor(pidFile)
+	pidFilePth := xcelerate.PathFor(pidFile)
 	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0644); err != nil {
 		killFunc(pid, syscall.SIGKILL)
 

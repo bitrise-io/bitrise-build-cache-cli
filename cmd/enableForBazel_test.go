@@ -111,7 +111,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 	//	assert.Contains(t, string(bazelrcContent), "build --show_timestamps")
 	// })
 	//
-	//t.Run("with timestamps disabled", func(t *testing.T) {
+	// t.Run("with timestamps disabled", func(t *testing.T) {
 	//	tmpHomeDir := t.TempDir()
 	//	timestamps = false
 	//

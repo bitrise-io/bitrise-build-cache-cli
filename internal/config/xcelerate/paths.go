@@ -7,10 +7,11 @@ import (
 
 const (
 	xceleratePath       = ".bitrise-xcelerate/"
+	Xcodebuild          = "xcodebuild"
 	ErrFmtDetermineHome = `could not determine home: %w`
 )
 
-func XcelerateDirPath() string {
+func DirPath() string {
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, xceleratePath)
 	}
@@ -29,6 +30,6 @@ func XcelerateDirPath() string {
 	return filepath.Join(".", xceleratePath)
 }
 
-func XceleratePathFor(subpath string) string {
-	return filepath.Join(XcelerateDirPath(), subpath)
+func PathFor(subpath string) string {
+	return filepath.Join(DirPath(), subpath)
 }

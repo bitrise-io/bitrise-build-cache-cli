@@ -41,13 +41,13 @@ func NewConfig(params Params, envProvider common.EnvProviderFunc) Config {
 }
 
 func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
-	xcelerateFolder := XcelerateDirPath()
+	xcelerateFolder := DirPath()
 
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
 		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)
 	}
 
-	configFilePath := XceleratePathFor(xcelerateConfigFileName)
+	configFilePath := PathFor(xcelerateConfigFileName)
 	f, err := os.Create(configFilePath)
 	if err != nil {
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)

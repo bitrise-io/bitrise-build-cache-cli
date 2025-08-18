@@ -34,7 +34,7 @@ func init() {
 func stopXcelerateProxyCommandFn(
 	logger log.Logger,
 ) error {
-	pidPath := xcelerate.XceleratePathFor(pidFile)
+	pidPath := xcelerate.PathFor(pidFile)
 
 	b, err := os.ReadFile(pidPath)
 	if err != nil {
