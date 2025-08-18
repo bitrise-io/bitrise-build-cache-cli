@@ -23,6 +23,7 @@ const (
 
 	activateXcode           = "Activate Bitrise Build Cache for Xcode"
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
+	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/xcodebuild:$PATH` or restart your terminal."
 	startedProxy            = "Started xcelerate_proxy pid = %d"
 
 	ErrFmtCreateXcodeConfig  = "failed to create Xcode config: %w"
@@ -103,14 +104,95 @@ func ActivateXcodeCommandFn(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	logger.TInfof(ActivateXcodeSuccessful)
-
-	return startProxy(
+	err := startProxy(
 		logger,
 		osProxy,
 		commandFunc,
 		killFunc,
 	)
+	if err != nil {
+		return fmt.Errorf(errFmtFailedToStartProxy, err)
+	}
+
+	if err := AddXcelerateCommandToPath(logger, osProxy); err != nil {
+		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+	}
+
+	logger.Debugf("Xcelerate command added to PATH in ~/.bashrc and ~/.zshrc")
+	logger.TInfof(ActivateXcodeSuccessful)
+	logger.TInfof(AddXcelerateToPath)
+
+	return nil
+}
+
+// nolint: godox
+// TODO move to utils package
+func AddXcelerateCommandToPath(logger log.Logger,
+	osProxy utils.OsProxy) error {
+	xceleratePath := xcelerate.XceleratePathFor("xcodebuild")
+
+	homeDir, err := osProxy.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf(errFmtDetermineHome, err)
+	}
+
+	pathContent := fmt.Sprintf("export PATH=%s:$PATH", xceleratePath)
+
+	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", xceleratePath)
+	err = AddContentOrCreateFile(logger,
+		osProxy,
+		filepath.Join(homeDir, ".bashrc"),
+		"# Bitrise Xcelerate",
+		pathContent)
+	if err != nil {
+		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+	}
+
+	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", xceleratePath)
+	err = AddContentOrCreateFile(logger,
+		osProxy,
+		filepath.Join(homeDir, ".zshrc"),
+		"# Bitrise Xcelerate",
+		pathContent)
+
+	return err
+}
+
+// nolint: godox
+// TODO move to utils package
+func AddContentOrCreateFile(
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	filePath string,
+	blockPrefix string,
+	content string,
+) error {
+	// Check if the file exists
+	currentContent, exists, err := osProxy.ReadFileIfExists(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+
+	if !exists {
+		currentContent = ""
+		logger.Debugf("File %s does not exist, creating", filePath)
+	}
+
+	content = stringmerge.ChangeContentInBlock(
+		currentContent,
+		fmt.Sprintf("%s START", blockPrefix),
+		fmt.Sprintf("%s END", blockPrefix),
+		content,
+	)
+
+	err = osProxy.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	logger.Debugf("Updated file %s with content in block %s", filePath, blockPrefix)
+
+	return nil
 }
 
 func startProxy(
