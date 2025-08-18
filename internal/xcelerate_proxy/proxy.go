@@ -82,6 +82,13 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 
 	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
 
+	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s",
+		request.GetInvocationId(),
+		request.GetAppSlug(),
+		request.GetBuildSlug(),
+		request.GetStepSlug(),
+	)
+
 	return &emptypb.Empty{}, nil
 }
 

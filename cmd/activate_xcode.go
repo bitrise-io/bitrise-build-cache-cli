@@ -15,15 +15,14 @@ import (
 
 const (
 	pidFile   = "proxy.pid"
-	serverOut = "proxy.out"
-	serverErr = "proxy.err"
+	serverOut = "proxy.out.log"
+	serverErr = "proxy.err.log"
 
 	activateXcode           = "Activate Bitrise Build Cache for Xcode"
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
 	startedProxy            = "Started xcelerate_proxy pid = %d"
 
 	ErrFmtCreateXcodeConfig  = "failed to create Xcode config: %w"
-	errFmtDetermineHome      = "could not determine home: %w"
 	errFmtExecutable         = "executable: %w"
 	errFmtFailedToStartProxy = "failed to start proxy: %w"
 	errFmtFailedToCreatePID  = "failed to create pid file: %w"
