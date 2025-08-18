@@ -870,6 +870,7 @@ workflows:
               echo "$PATH"
 
               xcodebuild build \
+                --xcelerate-debug \
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
