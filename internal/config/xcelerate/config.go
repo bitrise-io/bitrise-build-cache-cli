@@ -41,7 +41,7 @@ func NewConfig(params Params, envProvider common.EnvProviderFunc) Config {
 }
 
 func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
-	xcelerateFolder := XceleratePath()
+	xcelerateFolder := XcelerateDirPath()
 
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
 		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)

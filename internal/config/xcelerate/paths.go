@@ -10,7 +10,7 @@ const (
 	ErrFmtDetermineHome = `could not determine home: %w`
 )
 
-func XceleratePath() string {
+func XcelerateDirPath() string {
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, xceleratePath)
 	}
@@ -30,5 +30,5 @@ func XceleratePath() string {
 }
 
 func XceleratePathFor(subpath string) string {
-	return filepath.Join(XceleratePath(), subpath)
+	return filepath.Join(XcelerateDirPath(), subpath)
 }

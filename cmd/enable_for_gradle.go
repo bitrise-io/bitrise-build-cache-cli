@@ -60,7 +60,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		//
-		if err := enableForGradleCmdFn(logger, gradleHome, os.Getenv); err != nil {
+		if err := EnableForGradleCmdFn(logger, gradleHome, os.Getenv); err != nil {
 			return fmt.Errorf("enable Gradle Build Cache: %w", err)
 		}
 
@@ -78,7 +78,7 @@ func init() {
 	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
 }
 
-func enableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
+func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
 	activateGradleParams.Cache.Enabled = true
 	activateGradleParams.Cache.PushEnabled = paramIsPushEnabled
 	activateGradleParams.Cache.ValidationLevel = paramValidationLevel

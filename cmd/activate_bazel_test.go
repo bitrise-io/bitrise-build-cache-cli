@@ -1,32 +1,18 @@
-package cmd
+package cmd_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/mocks"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_activateBazelCmdFn(t *testing.T) {
-	prep := func() log.Logger {
-		mockLogger := &mocks.Logger{}
-		mockLogger.On("Infof", mock.Anything).Return()
-		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Errorf", mock.Anything).Return()
-		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
-
-		return mockLogger
-	}
-
 	t.Run("When no error activateBazelCmdFn creates template inventory and writes bazelrc", func(t *testing.T) {
-		mockLogger := prep()
 		templateInventory := bazelconfig.TemplateInventory{
 			Common: bazelconfig.CommonTemplateInventory{
 				AuthToken: "AuthTokenValue",
@@ -37,7 +23,7 @@ func Test_activateBazelCmdFn(t *testing.T) {
 		var actualPath *string
 
 		// when
-		err := activateBazelCmdFn(
+		err := cmd.ActivateBazelCmdFn(
 			mockLogger,
 			"~/.bazelrc",
 			func(string) string { return "" },
@@ -65,11 +51,10 @@ func Test_activateBazelCmdFn(t *testing.T) {
 	})
 
 	t.Run("When templateInventory creation fails activateBazelCmdFn throws error", func(t *testing.T) {
-		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
 
 		// when
-		err := activateBazelCmdFn(
+		err := cmd.ActivateBazelCmdFn(
 			mockLogger,
 			"~/.bazelrc",
 			func(string) string { return "" },
@@ -92,11 +77,10 @@ func Test_activateBazelCmdFn(t *testing.T) {
 	})
 
 	t.Run("When template writing fails activateBazelCmdFn throws error", func(t *testing.T) {
-		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
 
 		// when
-		err := activateBazelCmdFn(
+		err := cmd.ActivateBazelCmdFn(
 			mockLogger,
 			"~/.bazelrc",
 			func(string) string { return "" },

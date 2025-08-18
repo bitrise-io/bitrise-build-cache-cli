@@ -9,33 +9,17 @@ import (
 	"syscall"
 	"testing"
 
+	"strings"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
-	goUtilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_activateXcodeCmdFn(t *testing.T) {
-	logger := func() *goUtilsMocks.Logger {
-		mockLogger := &goUtilsMocks.Logger{}
-		mockLogger.On("TInfof", mock.Anything).Return()
-		mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Infof", mock.Anything).Return()
-		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Errorf", mock.Anything).Return()
-		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
-		mockLogger.On("TDonef", mock.Anything).Return()
-		mockLogger.On("TDonef", mock.Anything, mock.Anything).Return()
-
-		return mockLogger
-	}
-
+func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 	config := func() *cmdMocks.XcelerateConfigMock {
 		return &cmdMocks.XcelerateConfigMock{
 			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
@@ -82,8 +66,6 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 	}
 
 	t.Run("When no error activateXcodeCmdFn logs success", func(t *testing.T) {
-		mockLogger := logger()
-
 		err := cmd.ActivateXcodeCommandFn(
 			mockLogger,
 			osProxy(),
@@ -117,7 +99,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		err := cmd.ActivateXcodeCommandFn(
-			logger(),
+			mockLogger,
 			osProxy(),
 			encoderFactory(),
 			mockConfig,

@@ -39,7 +39,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("expand Bazel home path, error: %w", err)
 		}
 
-		if err := enableForBazelCmdFn(logger, bazelHomeDirPath, os.Getenv); err != nil {
+		if err := EnableForBazelCmdFn(logger, bazelHomeDirPath, os.Getenv); err != nil {
 			return fmt.Errorf("enable Bazel Build Cache: %w", err)
 		}
 
@@ -58,7 +58,7 @@ func init() {
 	enableForCmd.AddCommand(enableForBazelCmd)
 }
 
-func enableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string) error {
+func EnableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string) error {
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata

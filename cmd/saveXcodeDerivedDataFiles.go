@@ -52,7 +52,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
 
-		op, cmdError := saveXcodeDerivedDataFilesCmdFn(cmd.Context(),
+		op, cmdError := SaveXcodeDerivedDataFilesCmdFn(cmd.Context(),
 			authConfig,
 			XCodeCacheMetadataPath,
 			projectRoot,
@@ -110,7 +110,7 @@ func init() {
 	saveXcodeDerivedDataFilesCmd.Flags().Bool("skip-spm", false, "Skip saving files under \"DerivedData/*/SourcePackages\", i.e. skip SPM dependencies. Consider enabling this flag if using SPM cache steps. Default: false")
 }
 
-func saveXcodeDerivedDataFilesCmdFn(ctx context.Context,
+func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	authConfig common.CacheAuthConfig,
 	cacheMetadataPath,
 	projectRoot,

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	errFmtFailedToUpdateProps = `failed to update gradle.properties: %w"`
+	ErrFmtFailedToUpdateProps = `failed to update gradle.properties: %w"`
 )
 
 // activateGradleCmd represents the `gradle` subcommand under `activate`
@@ -44,7 +44,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("failed to fetch plugins: %w", err)
 		}
 
-		if err := activateGradleCmdFn(
+		if err := ActivateGradleCmdFn(
 			logger,
 			gradleHome,
 			os.Getenv,
@@ -89,7 +89,7 @@ func init() {
 	activateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 }
 
-func activateGradleCmdFn(
+func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider func(string) string,
@@ -110,7 +110,7 @@ func activateGradleCmdFn(
 	}
 
 	if err := updater.UpdateGradleProps(activateGradleParams, logger, gradleHomePath); err != nil {
-		return fmt.Errorf(errFmtFailedToUpdateProps, err)
+		return fmt.Errorf(ErrFmtFailedToUpdateProps, err)
 	}
 
 	return nil

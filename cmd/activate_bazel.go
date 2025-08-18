@@ -65,7 +65,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	bazelrcPath := filepath.Join(homeDir, ".bazelrc")
 
 	// Run main logic
-	if err := activateBazelCmdFn(
+	if err := ActivateBazelCmdFn(
 		logger,
 		bazelrcPath,
 		os.Getenv,
@@ -90,7 +90,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func activateBazelCmdFn(
+func ActivateBazelCmdFn(
 	logger log.Logger,
 	bazelrcPath string,
 	envProvider func(string) string,

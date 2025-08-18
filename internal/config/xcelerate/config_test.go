@@ -69,7 +69,7 @@ func TestConfig_Save(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, mockOsProxy.MkdirAllCalls(), 1)
-		assert.Equal(t, xcelerate.XceleratePath(), mockOsProxy.MkdirAllCalls()[0].Pth)
+		assert.Equal(t, xcelerate.XcelerateDirPath(), mockOsProxy.MkdirAllCalls()[0].Pth)
 		require.Len(t, mockOsProxy.CreateCalls(), 1)
 		assert.Equal(t, xcelerate.XceleratePathFor("config.json"), mockOsProxy.CreateCalls()[0].Pth)
 		require.Len(t, mockEncoder.SetIndentCalls(), 1)
@@ -102,7 +102,7 @@ func TestConfig_Save(t *testing.T) {
 		err := config.Save(mockOsProxy, encoderFactory())
 
 		// then
-		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, xcelerate.XceleratePath(), os.ErrNotExist).Error())
+		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, xcelerate.XcelerateDirPath(), os.ErrNotExist).Error())
 	})
 
 	t.Run("When error occurs when creating config file, it returns an error", func(t *testing.T) {

@@ -7,7 +7,10 @@ import (
 	"strconv"
 	"syscall"
 
+	"path/filepath"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -63,7 +66,7 @@ This command will:
 			utils.DefaultEncoderFactory{},
 			config,
 			func(path string, command string) Command {
-				return CommandWrapper{wrapped: exec.Command(path, command)}
+				return utils.CommandWrapper{Wrapped: exec.Command(path, command)}
 			},
 			func(pid int, signum syscall.Signal) {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
@@ -171,36 +174,4 @@ type Command interface {
 	SetStdin(file *os.File)
 	SetSysProcAttr(sysProcAttr *syscall.SysProcAttr)
 	PID() int
-}
-
-type CommandWrapper struct {
-	wrapped *exec.Cmd
-}
-
-func (cmd CommandWrapper) SetStdout(file *os.File) {
-	cmd.wrapped.Stdout = file
-}
-
-func (cmd CommandWrapper) SetStderr(file *os.File) {
-	cmd.wrapped.Stderr = file
-}
-
-func (cmd CommandWrapper) SetStdin(file *os.File) {
-	cmd.wrapped.Stdin = file
-}
-
-func (cmd CommandWrapper) SetSysProcAttr(sysProcAttr *syscall.SysProcAttr) {
-	cmd.wrapped.SysProcAttr = sysProcAttr
-}
-
-func (cmd CommandWrapper) PID() int {
-	if cmd.wrapped.Process == nil {
-		return 0
-	}
-
-	return cmd.wrapped.Process.Pid
-}
-
-func (cmd CommandWrapper) Start() error {
-	return cmd.wrapped.Start() //nolint:wrapcheck
 }
