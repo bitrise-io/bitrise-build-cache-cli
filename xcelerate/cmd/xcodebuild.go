@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
@@ -39,11 +38,7 @@ TBD`,
 			OriginalArgs: xcelerateParams.OrigArgs,
 		}
 
-		if err := callProxySetSession(cmd.Context(), xcodeArgs, os.Getenv, logger); err != nil {
-			logger.Errorf("Error setting session: %v", err)
-
-			return err
-		}
+		callProxySetSession(cmd.Context(), xcodeArgs, os.Getenv, logger)
 
 		xcodeRunner := &xcodeargs.DefaultRunner{}
 
@@ -78,7 +73,7 @@ func XcodebuildCmdFn(
 	return xcodeRunner.Run(ctx, toPass)
 }
 
-func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvider common.EnvProviderFunc, logger log.Logger) error {
+func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvider common.EnvProviderFunc, logger log.Logger) {
 	var proxySocket string
 	for _, arg := range args.Args() {
 		if !strings.HasPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH") {
@@ -88,7 +83,9 @@ func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvi
 		proxySocket = strings.TrimPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH=")
 	}
 	if proxySocket == "" {
-		return fmt.Errorf("COMPILATION_CACHE_REMOTE_SERVICE_PATH not found in arguments")
+		logger.TErrorf("No proxy socket found in arguments, skipping session setting")
+
+		return
 	}
 	proxySocket = "unix://" + strings.TrimPrefix(proxySocket, "unix://")
 
@@ -96,7 +93,9 @@ func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvi
 
 	clientConn, err := grpc.NewClient(proxySocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return fmt.Errorf("could not connect to proxy socket: %w", err)
+		logger.TErrorf("Failed to create gRPC client: %v", err)
+
+		return
 	}
 	defer clientConn.Close()
 
@@ -107,8 +106,8 @@ func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvi
 		StepSlug:     envProvider("BITRISE_STEP_EXECUTION_ID"),
 	})
 	if err != nil {
-		return fmt.Errorf("could not set session: %w", err)
-	}
+		logger.TErrorf("Failed to set session: %v", err)
 
-	return nil
+		return
+	}
 }
