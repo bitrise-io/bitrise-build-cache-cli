@@ -3,6 +3,7 @@ package xcelerate
 import (
 	"fmt"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -14,40 +15,32 @@ const (
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
 )
 
-//go:generate moq -out mocks/config_mock.go -pkg mocks . Config
-type Config interface {
-	GetProxyVersion() string
-	GetWrapperVersion() string
-	GetOriginalXcodebuildPath() string
-	GetBuildCacheEnabled() bool
-
-	Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error
+type Params struct {
+	BuildCacheEnabled bool
+	DebugLogging      bool
 }
 
-type DefaultConfig struct {
+type Config struct {
 	ProxyVersion           string `json:"proxyVersion"`
+	CLIVersion             string `json:"cliVersion"`
 	WrapperVersion         string `json:"wrapperVersion"`
 	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
 	BuildCacheEnabled      bool   `json:"buildCacheEnabled"`
+	DebugLogging           bool   `json:"debugLogging,omitempty"`
 }
 
-func (config DefaultConfig) GetProxyVersion() string {
-	return config.ProxyVersion
+func NewConfig(params Params, envProvider common.EnvProviderFunc) Config {
+	return Config{
+		ProxyVersion:           envProvider("BITRISE_XCELERATE_PROXY_VERSION"),
+		WrapperVersion:         envProvider("BITRISE_XCELERATE_WRAPPER_VERSION"),
+		CLIVersion:             envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		OriginalXcodebuildPath: "/usr/bin/xcodebuild",
+		BuildCacheEnabled:      params.BuildCacheEnabled,
+		DebugLogging:           params.DebugLogging,
+	}
 }
 
-func (config DefaultConfig) GetWrapperVersion() string {
-	return config.WrapperVersion
-}
-
-func (config DefaultConfig) GetOriginalXcodebuildPath() string {
-	return config.OriginalXcodebuildPath
-}
-
-func (config DefaultConfig) GetBuildCacheEnabled() bool {
-	return config.BuildCacheEnabled
-}
-
-func (config DefaultConfig) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
+func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 	xcelerateFolder := XceleratePath()
 
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {

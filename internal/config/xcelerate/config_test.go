@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_activateXcodeCmdFn(t *testing.T) {
+func TestConfig_Save(t *testing.T) {
 	osProxy := func() *mocks.OsProxyMock {
 		return &mocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
@@ -56,11 +56,12 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		mockOsProxy := osProxy()
 
 		// when
-		config := xcelerate.DefaultConfig{
+		config := xcelerate.Config{
 			ProxyVersion:           "1.0.0",
 			WrapperVersion:         "1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
 			BuildCacheEnabled:      true,
+			DebugLogging:           true,
 		}
 		err := config.Save(mockOsProxy, mockEncoderFactory)
 
@@ -92,7 +93,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		// when
-		config := xcelerate.DefaultConfig{
+		config := xcelerate.Config{
 			ProxyVersion:           "1.0.0",
 			WrapperVersion:         "1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
@@ -119,7 +120,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		// when
-		config := xcelerate.DefaultConfig{
+		config := xcelerate.Config{
 			ProxyVersion:           "1.0.0",
 			WrapperVersion:         "1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
@@ -148,7 +149,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		// when
-		config := xcelerate.DefaultConfig{
+		config := xcelerate.Config{
 			ProxyVersion:           "1.0.0",
 			WrapperVersion:         "1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",

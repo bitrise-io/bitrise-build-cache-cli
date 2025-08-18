@@ -11,7 +11,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	goUtilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
@@ -37,8 +36,8 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 		return mockLogger
 	}
 
-	config := func() *mocks.ConfigMock {
-		return &mocks.ConfigMock{
+	config := func() *cmdMocks.XcelerateConfigMock {
+		return &cmdMocks.XcelerateConfigMock{
 			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
 				return nil
 			},
@@ -101,6 +100,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 				}
 			},
 			func(pid int, signum syscall.Signal) {},
+			func(string) string { return "" }, // envProvider
 		)
 
 		mockLogger.AssertCalled(t, "TInfof", cmd.ActivateXcodeSuccessful)
@@ -110,7 +110,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 	t.Run("When config save returns error activateXcodeCmdFn fails", func(t *testing.T) {
 		expectedError := errors.New("failed to save config")
 
-		mockConfig := &mocks.ConfigMock{
+		mockConfig := &cmdMocks.XcelerateConfigMock{
 			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
 				return expectedError
 			},
@@ -125,6 +125,7 @@ func Test_activateXcodeCmdFn(t *testing.T) {
 				return &cmdMocks.CommandMock{}
 			},
 			func(pid int, signum syscall.Signal) {},
+			func(string) string { return "" }, // envProvider
 		)
 
 		assert.ErrorContains(t, err, fmt.Errorf(cmd.ErrFmtCreateXcodeConfig, expectedError).Error())
