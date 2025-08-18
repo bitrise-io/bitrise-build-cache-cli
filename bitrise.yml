@@ -854,11 +854,14 @@ workflows:
         title: build app
         inputs:
           - content: |-
+              #!/usr/bin/env bash
               set -eo pipefail
               
               export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
 
               ../bin/bitrise-build-cache-cli -d activate xcode
+
+              source ~/.bashrc
 
               echo "PATH is:"
               echo "$PATH"
