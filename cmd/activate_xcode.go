@@ -131,7 +131,7 @@ func ActivateXcodeCommandFn(
 // TODO move to utils package
 func AddXcelerateCommandToPath(logger log.Logger,
 	osProxy utils.OsProxy) error {
-	xceleratePath := xcelerate.PathFor(xcelerate.Xcodebuild)
+	xceleratePath := xcelerate.DirPath()
 
 	homeDir, err := osProxy.UserHomeDir()
 	if err != nil {
