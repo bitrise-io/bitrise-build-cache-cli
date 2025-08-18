@@ -150,43 +150,6 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 		assert.True(t, strings.HasSuffix(string(writtenContent), "# [end] generated-by-bitrise-build-cache\n"))
 	})
 
-	// t.Run("with timestamps enabled", func(t *testing.T) {
-	//	tmpHomeDir := t.TempDir()
-	//	timestamps = true
-	//	defer func() { timestamps = false }()
-	//
-	//	envVars := createEnvProvider(map[string]string{
-	//		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
-	//		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-	//	})
-	//	err := cmd.EnableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
-	//
-	//	// then
-	//	require.NoError(t, err)
-	//	bazelrcPath := filepath.Join(tmpHomeDir, ".bazelrc")
-	//	bazelrcContent, err := os.ReadFile(bazelrcPath)
-	//	require.NoError(t, err)
-	//	assert.Contains(t, string(bazelrcContent), "build --show_timestamps")
-	// })
-	//
-	// t.Run("with timestamps disabled", func(t *testing.T) {
-	//	tmpHomeDir := t.TempDir()
-	//	timestamps = false
-	//
-	//	envVars := createEnvProvider(map[string]string{
-	//		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
-	//		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-	//	})
-	//	err := enableForBazelCmdFn(mockLogger, tmpHomeDir, envVars)
-	//
-	//	// then
-	//	require.NoError(t, err)
-	//	bazelrcPath := filepath.Join(tmpHomeDir, ".bazelrc")
-	//	bazelrcContent, err := os.ReadFile(bazelrcPath)
-	//	require.NoError(t, err)
-	//	assert.NotContains(t, string(bazelrcContent), "build --show_timestamps")
-	// })
-
 	t.Run("existing bitrise block gets updated", func(t *testing.T) {
 		existingContent := `# existing content
 # [start] generated-by-bitrise-build-cache
