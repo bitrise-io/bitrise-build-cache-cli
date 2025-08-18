@@ -29,6 +29,11 @@ const (
 	errFmtFailedToCreatePID  = "failed to create pid file: %w"
 )
 
+//go:generate moq -out mocks/config_mock.go -pkg mocks . XcelerateConfig
+type XcelerateConfig interface {
+	Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error
+}
+
 // activateXcodeCmd represents the `xcode` subcommand under `activate`
 var activateXcodeCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "xcode",
@@ -46,22 +51,25 @@ This command will:
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof(activateXcode)
 
+		xparams := xcelerate.Params{
+			BuildCacheEnabled: true,
+			DebugLogging:      isDebugLogMode,
+		}
+
+		config := xcelerate.NewConfig(xparams, os.Getenv)
+
 		return ActivateXcodeCommandFn(
 			logger,
 			utils.DefaultOsProxy{},
 			utils.DefaultEncoderFactory{},
-			&xcelerate.DefaultConfig{
-				ProxyVersion:           "1.0.0",
-				WrapperVersion:         "1.0.0",
-				OriginalXcodebuildPath: "/usr/bin/xcodebuild",
-				BuildCacheEnabled:      true,
-			},
+			config,
 			func(path string, command string) Command {
 				return CommandWrapper{wrapped: exec.Command(path, command)}
 			},
 			func(pid int, signum syscall.Signal) {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
 			},
+			os.Getenv,
 		)
 	},
 }
@@ -84,11 +92,12 @@ func ActivateXcodeCommandFn(
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	encoderFactory utils.EncoderFactory,
-	config xcelerate.Config,
+	xconfig XcelerateConfig,
 	commandFunc func(path string, command string) Command,
 	killFunc func(pid int, signum syscall.Signal),
+	envProvider func(string) string,
 ) error {
-	if err := config.Save(osProxy, encoderFactory); err != nil {
+	if err := xconfig.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
