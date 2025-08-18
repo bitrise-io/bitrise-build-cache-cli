@@ -1067,6 +1067,7 @@ pipelines:
       feature-e2e-gradle-bitwarden: {}
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
+      e2e-xcode-comp-cache: {}
     triggers:
       pull_request:
         - source_branch: "*"
