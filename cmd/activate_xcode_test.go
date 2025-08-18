@@ -134,7 +134,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 			mockLogger,
 			osProxy,
 			"test.txt",
-			"# Bitrise Xcelerate",
+			"Bitrise Xcelerate",
 			"export PATH=/path/to/xcelerate:$PATH",
 		)
 
@@ -143,14 +143,14 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Pth)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
 		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Pth)
-		assert.Equal(t, "# Bitrise Xcelerate START\nexport PATH=/path/to/xcelerate:$PATH\n# Bitrise Xcelerate END\n", string(osProxy.WriteFileCalls()[0].Data))
+		assert.Equal(t, "# [start] Bitrise Xcelerate\nexport PATH=/path/to/xcelerate:$PATH\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
 	})
 
 	t.Run("When file exists with existing content, it updates the block", func(t *testing.T) {
 		osProxy := &utilsMocks.OsProxyMock{
 			ReadFileIfExistsFunc: func(pth string) (string, bool, error) {
 				if strings.Contains(pth, "test.txt") {
-					return "# Bitrise Xcelerate START\nold content\n# Bitrise Xcelerate END\n", true, nil // simulate file exists
+					return "# [start] Bitrise Xcelerate\nold content\n# [end] Bitrise Xcelerate\n", true, nil
 				}
 
 				return "", false, os.ErrNotExist
@@ -164,7 +164,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 			mockLogger,
 			osProxy,
 			"test.txt",
-			"# Bitrise Xcelerate",
+			"Bitrise Xcelerate",
 			"export PATH=/path/to/xcelerate:$PATH",
 		)
 
@@ -173,7 +173,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Pth)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
 		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Pth)
-		assert.Equal(t, "# Bitrise Xcelerate START\nexport PATH=/path/to/xcelerate:$PATH\n# Bitrise Xcelerate END\n", string(osProxy.WriteFileCalls()[0].Data))
+		assert.Equal(t, "# [start] Bitrise Xcelerate\nexport PATH=/path/to/xcelerate:$PATH\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
 	})
 
 	t.Run("When file writing returns error, returns error", func(t *testing.T) {

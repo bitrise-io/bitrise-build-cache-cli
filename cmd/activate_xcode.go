@@ -9,6 +9,8 @@ import (
 
 	"path/filepath"
 
+	"strings"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -142,7 +144,7 @@ func AddXcelerateCommandToPath(logger log.Logger,
 	err = AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".bashrc"),
-		"# Bitrise Xcelerate",
+		"Bitrise Xcelerate",
 		pathContent)
 	if err != nil {
 		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
@@ -164,7 +166,7 @@ func AddContentOrCreateFile(
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	filePath string,
-	blockPrefix string,
+	blockSuffix string,
 	content string,
 ) error {
 	// Check if the file exists
@@ -180,8 +182,8 @@ func AddContentOrCreateFile(
 
 	content = stringmerge.ChangeContentInBlock(
 		currentContent,
-		fmt.Sprintf("%s START", blockPrefix),
-		fmt.Sprintf("%s END", blockPrefix),
+		fmt.Sprintf("# [start] %s", strings.TrimSpace(blockSuffix)),
+		fmt.Sprintf("# [end] %s", strings.TrimSpace(blockSuffix)),
 		content,
 	)
 
@@ -190,7 +192,7 @@ func AddContentOrCreateFile(
 		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
-	logger.Debugf("Updated file %s with content in block %s", filePath, blockPrefix)
+	logger.Debugf("Updated file %s with content in block %s", filePath, blockSuffix)
 
 	return nil
 }

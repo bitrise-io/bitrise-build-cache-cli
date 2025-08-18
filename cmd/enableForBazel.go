@@ -8,7 +8,6 @@ import (
 
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -34,12 +33,8 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Enable Bitrise Build Cache for Bazel")
 		//
-		bazelHomeDirPath, err := pathutil.NewPathModifier().AbsPath("~")
-		if err != nil {
-			return fmt.Errorf("expand Bazel home path, error: %w", err)
-		}
 
-		if err := EnableForBazelCmdFn(logger, bazelHomeDirPath, os.Getenv); err != nil {
+		if err := EnableForBazelCmdFn(logger, utils.DefaultOsProxy{}, os.Getenv); err != nil {
 			return fmt.Errorf("enable Bazel Build Cache: %w", err)
 		}
 
@@ -58,7 +53,7 @@ func init() {
 	enableForCmd.AddCommand(enableForBazelCmd)
 }
 
-func EnableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func(string) string) error {
+func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider func(string) string) error {
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata
@@ -72,15 +67,16 @@ func EnableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
 	logger.Infof("(i) Check ~/.bazelrc")
-	bazelrcPath, err := pathutil.NewPathModifier().AbsPath(filepath.Join(homeDirPath, ".bazelrc"))
+
+	userHomeDir, err := osProxy.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get user home directory, error: %w", err)
+	}
+
+	bazelrcPath, err := pathutil.NewPathModifier().AbsPath(filepath.Join(userHomeDir, ".bazelrc"))
 	if err != nil {
 		return fmt.Errorf("get absolute path of ~/.bazelrc, error: %w", err)
 	}
-	currentBazelrcFileContent, isBazelrcExists, err := utils.ReadFileIfExists(bazelrcPath)
-	if err != nil {
-		return fmt.Errorf("check if ~/.bazelrc exists at %s, error: %w", bazelrcPath, err)
-	}
-	logger.Debugf("isBazelrcExists: %t", isBazelrcExists)
 
 	logger.Infof("(i) Generate ~/.bazelrc")
 	params := bazelconfig.DefaultActivateBazelParams()
@@ -106,17 +102,10 @@ func EnableForBazelCmdFn(logger log.Logger, homeDirPath string, envProvider func
 		return fmt.Errorf("generate bazelrc: %w", err)
 	}
 
-	bazelrcContent := stringmerge.ChangeContentInBlock(
-		currentBazelrcFileContent,
-		"# [start] generated-by-bitrise-build-cache",
-		"# [end] generated-by-bitrise-build-cache",
-		bazelrcBlockContent,
-	)
-
 	logger.Infof("(i) Writing config into ~/.bazelrc")
-	err = os.WriteFile(bazelrcPath, []byte(bazelrcContent), 0755) //nolint:gosec,mnd
+	err = AddContentOrCreateFile(logger, osProxy, bazelrcPath, "generated-by-bitrise-build-cache", bazelrcBlockContent)
 	if err != nil {
-		return fmt.Errorf("write bazelrc config to %s, error: %w", bazelrcPath, err)
+		return fmt.Errorf("add content to ~/.bazelrc, error: %w", err)
 	}
 
 	return nil
