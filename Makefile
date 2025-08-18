@@ -31,7 +31,7 @@ run-xcelerate-proxy:
 	# if you want to run the proxy against production, remove `BITRISE_BUILD_CACHE_ENDPOINT`, it will default to production
 
 	BITRISE_IO="true" \
-	SOCKET_PATH=/tmp/xcelerate-proxy.sock \
+	BITRISE_XCELERATE_SOCKET_PATH=/tmp/xcelerate-proxy.sock \
 	INVOCATION_ID=$(shell uuidgen | tr '[:upper:]' '[:lower:]') \
 	BITRISE_BUILD_CACHE_WORKSPACE_ID=322a005426441b60 \
 	BITRISE_APP_SLUG=fa115466-5993-4b2d-b00a-c82ab6a63fe5 \

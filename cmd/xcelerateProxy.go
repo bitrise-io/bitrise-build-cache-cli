@@ -31,7 +31,7 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Xcelerate Proxy")
 
-		socketPath := os.Getenv("SOCKET_PATH")
+		socketPath := os.Getenv("BITRISE_XCELERATE_SOCKET_PATH")
 		if socketPath == "" {
 			socketPath = filepath.Join(os.TempDir(), "xcelerate-proxy.sock")
 		}
