@@ -21,6 +21,7 @@ import (
 //go:generate moq -rm -stub -pkg mock -out ./mock/kv_storage.go ./../proto/kv_storage KVStorageClient
 //go:generate moq -rm -stub -pkg mock -out ./mock/remote_execution.go ./../proto/build/bazel/remote/execution/v2 CapabilitiesClient
 
+// This command should go under an xcelerate subcommand together with stop-xcode-proxy
 var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:          "xcelerate-proxy",
 	Short:        "Xcelerate Proxy",
@@ -47,7 +48,7 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		}
 		defer listener.Close()
 
-		return startXcodeCacheProxy(
+		return StartXcodeCacheProxy(
 			cmd.Context(),
 			logger,
 			os.Getenv,
@@ -67,7 +68,7 @@ func init() {
 	rootCmd.AddCommand(xcelerateProxyCmd)
 }
 
-func startXcodeCacheProxy(
+func StartXcodeCacheProxy(
 	ctx context.Context,
 	logger log.Logger,
 	envProvider func(string) string,

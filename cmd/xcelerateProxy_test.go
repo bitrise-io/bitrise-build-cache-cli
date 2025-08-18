@@ -1,4 +1,4 @@
-package cmd
+package cmd_test
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/mock"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
@@ -50,7 +51,7 @@ func Test_XcelerateProxy(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		_ = startXcodeCacheProxy(
+		_ = cmd.StartXcodeCacheProxy(
 			ctx,
 			log.NewLogger(),
 			func(key string) string {

@@ -2,16 +2,13 @@ package xcelerate
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 const (
-	xceleratePath           = ".bitrise-xcelerate"
 	xcelerateConfigFileName = "config.json"
 
-	ErrFmtDetermineHome    = `could not determine home: %w`
 	ErrFmtCreateConfigFile = `failed to create xcelerate config file: %w`
 	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
@@ -51,17 +48,13 @@ func (config DefaultConfig) GetBuildCacheEnabled() bool {
 }
 
 func (config DefaultConfig) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf(ErrFmtDetermineHome, err)
-	}
+	xcelerateFolder := XceleratePath()
 
-	xcelerateFolder := filepath.Join(home, xceleratePath)
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
 		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)
 	}
 
-	configFilePath := filepath.Join(home, xceleratePath, xcelerateConfigFileName)
+	configFilePath := XceleratePathFor(xcelerateConfigFileName)
 	f, err := os.Create(configFilePath)
 	if err != nil {
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)
