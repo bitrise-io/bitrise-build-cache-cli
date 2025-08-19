@@ -30,9 +30,9 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) error {
 		xcodePath = xcelerate.DefaultXcodePath
 	}
 
-	runner.logger.TInfof("Running xcodebuild command %s",
-		strings.Join(append([]string{xcodePath}, args...), ","))
-	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
+	runner.logger.TInfof("Running xcodebuild command sh -c %s",
+		strings.Join(append([]string{xcodePath}, args...), " "))
+	innerCmd := exec.CommandContext(ctx, "sh", append([]string{"-c", xcodePath}, args...)...)
 	innerCmd.Stdout = os.Stdout
 	innerCmd.Stderr = os.Stderr
 	innerCmd.Stdin = os.Stdin
