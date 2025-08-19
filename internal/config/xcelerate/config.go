@@ -2,7 +2,6 @@ package xcelerate
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -22,8 +21,6 @@ const (
 	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
 )
-
-var ErrConfigFileAlreadyExists = errors.New("xcelerate config file already exists")
 
 type Params struct {
 	BuildCacheEnabled       bool
@@ -131,19 +128,13 @@ func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc u
 }
 
 func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
-	configFilePath := PathFor(os, xcelerateConfigFileName)
-
-	if _, err := os.Stat(configFilePath); err == nil {
-		// If the file already exists, return an error
-		return fmt.Errorf("%w: %s", ErrConfigFileAlreadyExists, configFilePath)
-	}
-
 	xcelerateFolder := DirPath(os)
 
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
 		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)
 	}
 
+	configFilePath := PathFor(os, xcelerateConfigFileName)
 	f, err := os.Create(configFilePath)
 	if err != nil {
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)

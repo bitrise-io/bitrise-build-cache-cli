@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -116,11 +115,7 @@ func ActivateXcodeCommandFn(
 	killFunc func(pid int, signum syscall.Signal),
 ) error {
 	if err := xconfig.Save(osProxy, encoderFactory); err != nil {
-		if errors.Is(err, xcelerate.ErrConfigFileAlreadyExists) {
-			logger.Warnf(err.Error())
-		} else {
-			return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
-		}
+		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
 	err := startProxy(

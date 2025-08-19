@@ -84,9 +84,6 @@ func TestConfig_Save(t *testing.T) {
 		assert.False(t, mockEncoder.SetEscapeHTMLCalls()[0].Escape)
 		require.Len(t, mockEncoder.EncodeCalls(), 1)
 		assert.Equal(t, config, mockEncoder.EncodeCalls()[0].Data)
-
-		// second call to save should return an error
-		assert.ErrorIs(t, config.Save(mockOsProxy, mockEncoderFactory), xcelerate.ErrConfigFileAlreadyExists)
 	})
 
 	t.Run("When error occurs making directories save returns an error", func(t *testing.T) {
