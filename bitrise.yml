@@ -873,10 +873,6 @@ workflows:
 
               echo "PATH is:"
               echo "$PATH"
-              
-              echo "Current dir:"
-              pwd
-              tree -L 2
 
               xcodebuild build \
                 --xcelerate-debug \
@@ -900,7 +896,8 @@ workflows:
               cp ~/.bitrise-xcelerate/proxy.out.log $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               
-              head $BITRISE_DEPLOY_DIR/xcodebuild.log
+              head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
+              tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
     - deploy-to-bitrise-io: {}
 
 
