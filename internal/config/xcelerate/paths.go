@@ -7,7 +7,7 @@ import (
 
 const (
 	xceleratePath       = ".bitrise-xcelerate/"
-	Xcodebuild          = "xcodebuild"
+	BinDir              = "bin"
 	ErrFmtDetermineHome = `could not determine home: %w`
 )
 
