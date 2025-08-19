@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"path/filepath"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -24,12 +26,15 @@ const (
 var ErrConfigFileAlreadyExists = errors.New("xcelerate config file already exists")
 
 type Params struct {
-	BuildCacheEnabled bool
-	DebugLogging      bool
+	BuildCacheEnabled       bool
+	DebugLogging            bool
+	XcodePathOverride       string
+	ProxySocketPathOverride string
 }
 
 type Config struct {
 	ProxyVersion           string `json:"proxyVersion"`
+	ProxySocketPath        string `json:"proxySocketPath"`
 	CLIVersion             string `json:"cliVersion"`
 	WrapperVersion         string `json:"wrapperVersion"`
 	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
@@ -59,20 +64,41 @@ func DefaultConfig() Config {
 	return Config{}
 }
 
-func NewConfig(ctx context.Context, logger log.Logger, params Params, envProvider common.EnvProviderFunc, cmdFunc utils.CommandFunc) Config {
-	originalXcodebuildPath, err := getOriginalXcodebuildPath(ctx, logger, cmdFunc)
-	if err != nil {
-		logger.Warnf("Failed to determine xcodebuild path: %s. Using default: %s", err, DefaultXcodePath)
-		originalXcodebuildPath = DefaultXcodePath
-	} else {
-		logger.Infof("Using xcodebuild path: %s", originalXcodebuildPath)
+func NewConfig(ctx context.Context,
+	logger log.Logger,
+	params Params,
+	envProvider common.EnvProviderFunc,
+	osProxy utils.OsProxy,
+	cmdFunc utils.CommandFunc) Config {
+	xcodePath := params.XcodePathOverride
+	if xcodePath == "" {
+		originalXcodebuildPath, err := getOriginalXcodebuildPath(ctx, logger, cmdFunc)
+		if err != nil {
+			logger.Warnf("Failed to determine xcodebuild path: %s. Using default: %s", err, DefaultXcodePath)
+			originalXcodebuildPath = DefaultXcodePath
+		} else {
+			logger.Infof("Using xcodebuild path: %s", originalXcodebuildPath)
+		}
+		xcodePath = originalXcodebuildPath
+	}
+
+	proxySocketPath := params.ProxySocketPathOverride
+	if proxySocketPath == "" {
+		proxySocketPath = envProvider("BITRISE_XCELERATE_PROXY_SOCKET_PATH")
+		if proxySocketPath == "" {
+			proxySocketPath = filepath.Join(osProxy.TempDir(), "xcelerate-proxy.sock")
+			logger.Infof("Using new proxy socket path: %s", proxySocketPath)
+		} else {
+			logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
+		}
 	}
 
 	return Config{
 		ProxyVersion:           envProvider("BITRISE_XCELERATE_PROXY_VERSION"),
+		ProxySocketPath:        proxySocketPath,
 		WrapperVersion:         envProvider("BITRISE_XCELERATE_WRAPPER_VERSION"),
 		CLIVersion:             envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
-		OriginalXcodebuildPath: originalXcodebuildPath,
+		OriginalXcodebuildPath: xcodePath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		DebugLogging:           params.DebugLogging,
 	}

@@ -176,7 +176,7 @@ func TestConfig_Save(t *testing.T) {
 }
 
 func TestConfig_NewConfig(t *testing.T) {
-	t.Run("When `where xcodebuild` command returns path, returns new config", func(t *testing.T) {
+	t.Run("When all paths are defined, returns new config", func(t *testing.T) {
 		envMock := func(s string) string {
 			switch s {
 			case "BITRISE_BUILD_CACHE_CLI_VERSION":
@@ -185,6 +185,8 @@ func TestConfig_NewConfig(t *testing.T) {
 				return "proxy-version-1.0.0"
 			case "BITRISE_XCELERATE_WRAPPER_VERSION":
 				return "wrapper-version-1.0.0"
+			case "BITRISE_XCELERATE_PROXY_SOCKET_PATH":
+				return "/tmp/xcelerate-proxy.sock"
 			}
 
 			return ""
@@ -196,10 +198,16 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
+		}
+
 		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
 			BuildCacheEnabled: true,
 			DebugLogging:      true,
-		}, envMock, func(_ context.Context, command string, args ...string) utils.Command {
+		}, envMock, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
 			assert.Equal(t, "xcodebuild", args[0])
@@ -209,6 +217,7 @@ func TestConfig_NewConfig(t *testing.T) {
 
 		expected := xcelerate.Config{
 			ProxyVersion:           "proxy-version-1.0.0",
+			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			WrapperVersion:         "wrapper-version-1.0.0",
 			CLIVersion:             "cli-version-1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
@@ -219,9 +228,15 @@ func TestConfig_NewConfig(t *testing.T) {
 		assert.Equal(t, expected, actual)
 	})
 
-	t.Run("When `which xcodebuild` command fails, returns config with default path", func(t *testing.T) {
+	t.Run("When xcode path is overridden, returns config with that path", func(t *testing.T) {
 		envMock := func(s string) string {
 			return ""
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
@@ -231,14 +246,55 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
-			BuildCacheEnabled: true,
-			DebugLogging:      true,
-		}, envMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			BuildCacheEnabled:       true,
+			DebugLogging:            true,
+			XcodePathOverride:       "/usr/bin/xcodebuild-override",
+			ProxySocketPathOverride: "/tmp/xcelerate-proxy.sock",
+		}, envMock, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
 		})
 
 		expected := xcelerate.Config{
 			ProxyVersion:           "",
+			WrapperVersion:         "",
+			CLIVersion:             "",
+			OriginalXcodebuildPath: "/usr/bin/xcodebuild-override",
+			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
+			BuildCacheEnabled:      true,
+			DebugLogging:           true,
+		}
+
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When `which xcodebuild` command fails, returns config with default path", func(t *testing.T) {
+		envMock := func(s string) string {
+			return ""
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("something-else"), errors.New("something went wrong")
+			},
+		}
+
+		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled:       true,
+			DebugLogging:            true,
+			ProxySocketPathOverride: "/tmp/xcelerate-proxy.sock",
+		}, envMock, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		})
+
+		expected := xcelerate.Config{
+			ProxyVersion:           "",
+			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			WrapperVersion:         "",
 			CLIVersion:             "",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
