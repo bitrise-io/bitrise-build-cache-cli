@@ -79,15 +79,6 @@ func NewConfig(ctx context.Context, logger log.Logger, params Params, envProvide
 func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc utils.CommandFunc) (string, error) {
 	logger.Debugf("Determining original xcodebuild path...")
 	cmd := cmdFunc(ctx, "which", "xcodebuild")
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start xcodebuild command: %w", err)
-	}
-	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("failed to wait for xcodebuild command: %w", err)
-	}
-	if cmd.Err() != nil {
-		return "", fmt.Errorf("xcodebuild command error: %w", cmd.Err())
-	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("failed to get xcodebuild output: %w", err)

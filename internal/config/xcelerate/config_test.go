@@ -180,12 +180,9 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
-			StartFunc: func() error { return nil },
 			CombinedOutputFunc: func() ([]byte, error) {
 				return []byte("/usr/bin/xcodebuild2"), nil
 			},
-			WaitFunc: func() error { return nil },
-			ErrFunc:  func() error { return nil },
 		}
 
 		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
@@ -207,24 +204,19 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
 		}
-		require.Len(t, cmdMock.StartCalls(), 1)
 		require.Len(t, cmdMock.CombinedOutputCalls(), 1)
-		require.Len(t, cmdMock.WaitCalls(), 1)
 		assert.Equal(t, expected, actual)
 	})
 
-	t.Run("When `which xcodebuild` command Wait() fails, returns config with default path", func(t *testing.T) {
+	t.Run("When `which xcodebuild` command fails, returns config with default path", func(t *testing.T) {
 		envMock := func(s string) string {
 			return ""
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
-			StartFunc: func() error { return nil },
 			CombinedOutputFunc: func() ([]byte, error) {
-				return []byte("something-else"), nil
+				return []byte("something-else"), errors.New("something went wrong")
 			},
-			WaitFunc: func() error { return errors.New("command not found") },
-			ErrFunc:  func() error { return nil },
 		}
 
 		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
@@ -244,8 +236,5 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		assert.Equal(t, expected, actual)
-		require.Len(t, cmdMock.StartCalls(), 1)
-		require.Empty(t, cmdMock.CombinedOutputCalls())
-		require.Len(t, cmdMock.WaitCalls(), 1)
 	})
 }
