@@ -873,6 +873,10 @@ workflows:
 
               echo "PATH is:"
               echo "$PATH"
+              
+              echo "Current dir:"
+              pwd
+              tree -L 2
 
               xcodebuild build \
                 --xcelerate-debug \
