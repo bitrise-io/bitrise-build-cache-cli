@@ -867,7 +867,8 @@ workflows:
               echo "Original Xcodebuild command location:"
               which xcodebuild || true
 
-              ../bin/bitrise-build-cache-cli -d activate xcode
+              # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
+              ../bin/bitrise-build-cache-cli -d activate xcode --cache --proxy-socket-path "$BITRISE_XCELERATE_SOCKET_PATH" 
 
               source ~/.bashrc
 

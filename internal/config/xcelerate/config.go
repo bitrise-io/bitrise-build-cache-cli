@@ -60,6 +60,15 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 	return config, nil
 }
 
+func DefaultParams() Params {
+	return Params{
+		BuildCacheEnabled:       true,
+		DebugLogging:            false,
+		XcodePathOverride:       "",
+		ProxySocketPathOverride: "",
+	}
+}
+
 func DefaultConfig() Config {
 	return Config{}
 }

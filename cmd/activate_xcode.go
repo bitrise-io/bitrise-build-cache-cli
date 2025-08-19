@@ -57,16 +57,12 @@ This command will:
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof(activateXcode)
-
-		xparams := xcelerate.Params{
-			BuildCacheEnabled: true,
-			DebugLogging:      isDebugLogMode,
-		}
+		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		config := xcelerate.NewConfig(
 			cmd.Context(),
 			logger,
-			xparams,
+			activateXcodeParams,
 			os.Getenv,
 			utils.DefaultOsProxy{},
 			utils.DefaultCommandFunc(),
@@ -86,10 +82,27 @@ This command will:
 }
 
 //nolint:gochecknoglobals
-// var activateXcodeParams = DefaultActivateXcodeParams()
+var activateXcodeParams = xcelerate.DefaultParams()
 
 func init() {
 	activateCmd.AddCommand(activateXcodeCmd)
+	activateXcodeCmd.Flags().StringVar(
+		&activateXcodeParams.ProxySocketPathOverride,
+		"proxy-socket-path",
+		activateXcodeParams.ProxySocketPathOverride,
+		"Override the proxy socket path. This is useful for testing purposes.",
+	)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheEnabled,
+		"cache",
+		activateXcodeParams.BuildCacheEnabled,
+		"Activate xcode compilation cache.")
+	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
+		"xcode-path",
+		activateXcodeParams.XcodePathOverride,
+		`Override the xcodebuild path. By default it will use the $(which xcodebuild) command to determine the path, and if that fails, it will use the default path: /usr/bin/xcodebuild.
+
+Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
+	)
 }
 
 func ActivateXcodeCommandFn(
