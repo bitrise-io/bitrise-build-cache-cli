@@ -59,6 +59,8 @@ This command will:
 		logger.TInfof(activateXcode)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
+		activateXcodeParams.DebugLogging = isDebugLogMode
+
 		config := xcelerate.NewConfig(
 			cmd.Context(),
 			logger,
