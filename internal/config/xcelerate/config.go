@@ -60,7 +60,7 @@ func DefaultConfig() Config {
 func NewConfig(ctx context.Context, logger log.Logger, params Params, envProvider common.EnvProviderFunc, cmdFunc utils.CommandFunc) Config {
 	originalXcodebuildPath, err := getOriginalXcodebuildPath(ctx, logger, cmdFunc)
 	if err != nil {
-		logger.Warnf("Failed to determine xcodebuild path, using default: %s", DefaultXcodePath)
+		logger.Warnf("Failed to determine xcodebuild path: %s. Using default: %s", err, DefaultXcodePath)
 		originalXcodebuildPath = DefaultXcodePath
 	} else {
 		logger.Infof("Using xcodebuild path: %s", originalXcodebuildPath)
@@ -78,7 +78,7 @@ func NewConfig(ctx context.Context, logger log.Logger, params Params, envProvide
 
 func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc utils.CommandFunc) (string, error) {
 	logger.Debugf("Determining original xcodebuild path...")
-	cmd := cmdFunc(ctx, "where", "xcodebuild")
+	cmd := cmdFunc(ctx, "which", "xcodebuild")
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("failed to start xcodebuild command: %w", err)
 	}

@@ -865,7 +865,7 @@ workflows:
               export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
               
               echo "Original Xcodebuild command location:"
-              where xcodebuild
+              which xcodebuild || true
 
               ../bin/bitrise-build-cache-cli -d activate xcode
 
@@ -895,6 +895,8 @@ workflows:
               cp ~/.bitrise-xcelerate/proxy.err.log $BITRISE_DEPLOY_DIR
               cp ~/.bitrise-xcelerate/proxy.out.log $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
+              
+              head $BITRISE_DEPLOY_DIR/xcodebuild.log
     - deploy-to-bitrise-io: {}
 
 

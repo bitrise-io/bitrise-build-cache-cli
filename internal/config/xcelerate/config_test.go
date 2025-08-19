@@ -192,7 +192,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEnabled: true,
 			DebugLogging:      true,
 		}, envMock, func(_ context.Context, command string, args ...string) utils.Command {
-			assert.Equal(t, "where", command)
+			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
 			assert.Equal(t, "xcodebuild", args[0])
 
@@ -213,7 +213,7 @@ func TestConfig_NewConfig(t *testing.T) {
 		assert.Equal(t, expected, actual)
 	})
 
-	t.Run("When `where xcodebuild` command Wait() fails, returns config with default path", func(t *testing.T) {
+	t.Run("When `which xcodebuild` command Wait() fails, returns config with default path", func(t *testing.T) {
 		envMock := func(s string) string {
 			return ""
 		}
