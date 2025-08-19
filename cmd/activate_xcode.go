@@ -63,7 +63,14 @@ This command will:
 			DebugLogging:      isDebugLogMode,
 		}
 
-		config := xcelerate.NewConfig(cmd.Context(), logger, xparams, os.Getenv, utils.DefaultCommandFunc())
+		config := xcelerate.NewConfig(
+			cmd.Context(),
+			logger,
+			xparams,
+			os.Getenv,
+			utils.DefaultOsProxy{},
+			utils.DefaultCommandFunc(),
+		)
 
 		return ActivateXcodeCommandFn(
 			logger,
