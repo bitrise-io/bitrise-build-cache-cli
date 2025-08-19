@@ -846,6 +846,11 @@ workflows:
           - content: |-
               set -exo pipefail
               go build -o bin/xcelerate ./xcelerate
+              
+              mkdir -p ~/.bitrise-xcelerate/bin
+              mv bin/xcelerate ~/.bitrise-xcelerate/bin/xcodebuild
+              ls -l ~/.bitrise-xcelerate/bin/xcodebuild
+              ls -l /usr/bin/xcodebuild || true
     - change-workdir:
         title: Switch working dir to _tmp
         inputs:
@@ -854,13 +859,23 @@ workflows:
         title: build app
         inputs:
           - content: |-
-              set -exo pipefail
+              #!/usr/bin/env bash
+              set -eo pipefail
               
               export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
+              
+              echo "Original Xcodebuild command location:"
+              which xcodebuild || true
 
-              ../bin/bitrise-build-cache-cli activate xcode
+              ../bin/bitrise-build-cache-cli -d activate xcode
 
-              ../bin/xcelerate build \
+              source ~/.bashrc
+
+              echo "PATH is:"
+              echo "$PATH"
+
+              xcodebuild build \
+                --xcelerate-debug \
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
@@ -880,6 +895,9 @@ workflows:
               cp ~/.bitrise-xcelerate/proxy.err.log $BITRISE_DEPLOY_DIR
               cp ~/.bitrise-xcelerate/proxy.out.log $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
+              
+              head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
+              tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
     - deploy-to-bitrise-io: {}
 
 

@@ -19,23 +19,29 @@ var _ utils.OsProxy = &OsProxyMock{}
 //
 //		// make and configure a mocked utils.OsProxy
 //		mockedOsProxy := &OsProxyMock{
-//			CreateFunc: func(pth string) (*os.File, error) {
+//			CreateFunc: func(name string) (*os.File, error) {
 //				panic("mock out the Create method")
 //			},
 //			ExecutableFunc: func() (string, error) {
 //				panic("mock out the Executable method")
 //			},
-//			MkdirAllFunc: func(pth string, mode os.FileMode) error {
+//			GetwdFunc: func() (string, error) {
+//				panic("mock out the Getwd method")
+//			},
+//			MkdirAllFunc: func(name string, mode os.FileMode) error {
 //				panic("mock out the MkdirAll method")
 //			},
 //			OpenFileFunc: func(name string, flag int, perm os.FileMode) (*os.File, error) {
 //				panic("mock out the OpenFile method")
 //			},
-//			ReadFileIfExistsFunc: func(pth string) (string, bool, error) {
+//			ReadFileIfExistsFunc: func(name string) (string, bool, error) {
 //				panic("mock out the ReadFileIfExists method")
 //			},
 //			RemoveFunc: func(name string) error {
 //				panic("mock out the Remove method")
+//			},
+//			StatFunc: func(pth string) (os.FileInfo, error) {
+//				panic("mock out the Stat method")
 //			},
 //			TempDirFunc: func() string {
 //				panic("mock out the TempDir method")
@@ -43,7 +49,7 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			UserHomeDirFunc: func() (string, error) {
 //				panic("mock out the UserHomeDir method")
 //			},
-//			WriteFileFunc: func(pth string, data []byte, mode os.FileMode) error {
+//			WriteFileFunc: func(name string, data []byte, mode os.FileMode) error {
 //				panic("mock out the WriteFile method")
 //			},
 //		}
@@ -54,22 +60,28 @@ var _ utils.OsProxy = &OsProxyMock{}
 //	}
 type OsProxyMock struct {
 	// CreateFunc mocks the Create method.
-	CreateFunc func(pth string) (*os.File, error)
+	CreateFunc func(name string) (*os.File, error)
 
 	// ExecutableFunc mocks the Executable method.
 	ExecutableFunc func() (string, error)
 
+	// GetwdFunc mocks the Getwd method.
+	GetwdFunc func() (string, error)
+
 	// MkdirAllFunc mocks the MkdirAll method.
-	MkdirAllFunc func(pth string, mode os.FileMode) error
+	MkdirAllFunc func(name string, mode os.FileMode) error
 
 	// OpenFileFunc mocks the OpenFile method.
 	OpenFileFunc func(name string, flag int, perm os.FileMode) (*os.File, error)
 
 	// ReadFileIfExistsFunc mocks the ReadFileIfExists method.
-	ReadFileIfExistsFunc func(pth string) (string, bool, error)
+	ReadFileIfExistsFunc func(name string) (string, bool, error)
 
 	// RemoveFunc mocks the Remove method.
 	RemoveFunc func(name string) error
+
+	// StatFunc mocks the Stat method.
+	StatFunc func(pth string) (os.FileInfo, error)
 
 	// TempDirFunc mocks the TempDir method.
 	TempDirFunc func() string
@@ -78,22 +90,25 @@ type OsProxyMock struct {
 	UserHomeDirFunc func() (string, error)
 
 	// WriteFileFunc mocks the WriteFile method.
-	WriteFileFunc func(pth string, data []byte, mode os.FileMode) error
+	WriteFileFunc func(name string, data []byte, mode os.FileMode) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Create holds details about calls to the Create method.
 		Create []struct {
-			// Pth is the pth argument value.
-			Pth string
+			// Name is the name argument value.
+			Name string
 		}
 		// Executable holds details about calls to the Executable method.
 		Executable []struct {
 		}
+		// Getwd holds details about calls to the Getwd method.
+		Getwd []struct {
+		}
 		// MkdirAll holds details about calls to the MkdirAll method.
 		MkdirAll []struct {
-			// Pth is the pth argument value.
-			Pth string
+			// Name is the name argument value.
+			Name string
 			// Mode is the mode argument value.
 			Mode os.FileMode
 		}
@@ -108,13 +123,18 @@ type OsProxyMock struct {
 		}
 		// ReadFileIfExists holds details about calls to the ReadFileIfExists method.
 		ReadFileIfExists []struct {
-			// Pth is the pth argument value.
-			Pth string
+			// Name is the name argument value.
+			Name string
 		}
 		// Remove holds details about calls to the Remove method.
 		Remove []struct {
 			// Name is the name argument value.
 			Name string
+		}
+		// Stat holds details about calls to the Stat method.
+		Stat []struct {
+			// Pth is the pth argument value.
+			Pth string
 		}
 		// TempDir holds details about calls to the TempDir method.
 		TempDir []struct {
@@ -124,8 +144,8 @@ type OsProxyMock struct {
 		}
 		// WriteFile holds details about calls to the WriteFile method.
 		WriteFile []struct {
-			// Pth is the pth argument value.
-			Pth string
+			// Name is the name argument value.
+			Name string
 			// Data is the data argument value.
 			Data []byte
 			// Mode is the mode argument value.
@@ -134,29 +154,31 @@ type OsProxyMock struct {
 	}
 	lockCreate           sync.RWMutex
 	lockExecutable       sync.RWMutex
+	lockGetwd            sync.RWMutex
 	lockMkdirAll         sync.RWMutex
 	lockOpenFile         sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
 	lockRemove           sync.RWMutex
+	lockStat             sync.RWMutex
 	lockTempDir          sync.RWMutex
 	lockUserHomeDir      sync.RWMutex
 	lockWriteFile        sync.RWMutex
 }
 
 // Create calls CreateFunc.
-func (mock *OsProxyMock) Create(pth string) (*os.File, error) {
+func (mock *OsProxyMock) Create(name string) (*os.File, error) {
 	if mock.CreateFunc == nil {
 		panic("OsProxyMock.CreateFunc: method is nil but OsProxy.Create was just called")
 	}
 	callInfo := struct {
-		Pth string
+		Name string
 	}{
-		Pth: pth,
+		Name: name,
 	}
 	mock.lockCreate.Lock()
 	mock.calls.Create = append(mock.calls.Create, callInfo)
 	mock.lockCreate.Unlock()
-	return mock.CreateFunc(pth)
+	return mock.CreateFunc(name)
 }
 
 // CreateCalls gets all the calls that were made to Create.
@@ -164,10 +186,10 @@ func (mock *OsProxyMock) Create(pth string) (*os.File, error) {
 //
 //	len(mockedOsProxy.CreateCalls())
 func (mock *OsProxyMock) CreateCalls() []struct {
-	Pth string
+	Name string
 } {
 	var calls []struct {
-		Pth string
+		Name string
 	}
 	mock.lockCreate.RLock()
 	calls = mock.calls.Create
@@ -202,22 +224,49 @@ func (mock *OsProxyMock) ExecutableCalls() []struct {
 	return calls
 }
 
+// Getwd calls GetwdFunc.
+func (mock *OsProxyMock) Getwd() (string, error) {
+	if mock.GetwdFunc == nil {
+		panic("OsProxyMock.GetwdFunc: method is nil but OsProxy.Getwd was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockGetwd.Lock()
+	mock.calls.Getwd = append(mock.calls.Getwd, callInfo)
+	mock.lockGetwd.Unlock()
+	return mock.GetwdFunc()
+}
+
+// GetwdCalls gets all the calls that were made to Getwd.
+// Check the length with:
+//
+//	len(mockedOsProxy.GetwdCalls())
+func (mock *OsProxyMock) GetwdCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockGetwd.RLock()
+	calls = mock.calls.Getwd
+	mock.lockGetwd.RUnlock()
+	return calls
+}
+
 // MkdirAll calls MkdirAllFunc.
-func (mock *OsProxyMock) MkdirAll(pth string, mode os.FileMode) error {
+func (mock *OsProxyMock) MkdirAll(name string, mode os.FileMode) error {
 	if mock.MkdirAllFunc == nil {
 		panic("OsProxyMock.MkdirAllFunc: method is nil but OsProxy.MkdirAll was just called")
 	}
 	callInfo := struct {
-		Pth  string
+		Name string
 		Mode os.FileMode
 	}{
-		Pth:  pth,
+		Name: name,
 		Mode: mode,
 	}
 	mock.lockMkdirAll.Lock()
 	mock.calls.MkdirAll = append(mock.calls.MkdirAll, callInfo)
 	mock.lockMkdirAll.Unlock()
-	return mock.MkdirAllFunc(pth, mode)
+	return mock.MkdirAllFunc(name, mode)
 }
 
 // MkdirAllCalls gets all the calls that were made to MkdirAll.
@@ -225,11 +274,11 @@ func (mock *OsProxyMock) MkdirAll(pth string, mode os.FileMode) error {
 //
 //	len(mockedOsProxy.MkdirAllCalls())
 func (mock *OsProxyMock) MkdirAllCalls() []struct {
-	Pth  string
+	Name string
 	Mode os.FileMode
 } {
 	var calls []struct {
-		Pth  string
+		Name string
 		Mode os.FileMode
 	}
 	mock.lockMkdirAll.RLock()
@@ -279,19 +328,19 @@ func (mock *OsProxyMock) OpenFileCalls() []struct {
 }
 
 // ReadFileIfExists calls ReadFileIfExistsFunc.
-func (mock *OsProxyMock) ReadFileIfExists(pth string) (string, bool, error) {
+func (mock *OsProxyMock) ReadFileIfExists(name string) (string, bool, error) {
 	if mock.ReadFileIfExistsFunc == nil {
 		panic("OsProxyMock.ReadFileIfExistsFunc: method is nil but OsProxy.ReadFileIfExists was just called")
 	}
 	callInfo := struct {
-		Pth string
+		Name string
 	}{
-		Pth: pth,
+		Name: name,
 	}
 	mock.lockReadFileIfExists.Lock()
 	mock.calls.ReadFileIfExists = append(mock.calls.ReadFileIfExists, callInfo)
 	mock.lockReadFileIfExists.Unlock()
-	return mock.ReadFileIfExistsFunc(pth)
+	return mock.ReadFileIfExistsFunc(name)
 }
 
 // ReadFileIfExistsCalls gets all the calls that were made to ReadFileIfExists.
@@ -299,10 +348,10 @@ func (mock *OsProxyMock) ReadFileIfExists(pth string) (string, bool, error) {
 //
 //	len(mockedOsProxy.ReadFileIfExistsCalls())
 func (mock *OsProxyMock) ReadFileIfExistsCalls() []struct {
-	Pth string
+	Name string
 } {
 	var calls []struct {
-		Pth string
+		Name string
 	}
 	mock.lockReadFileIfExists.RLock()
 	calls = mock.calls.ReadFileIfExists
@@ -339,6 +388,38 @@ func (mock *OsProxyMock) RemoveCalls() []struct {
 	mock.lockRemove.RLock()
 	calls = mock.calls.Remove
 	mock.lockRemove.RUnlock()
+	return calls
+}
+
+// Stat calls StatFunc.
+func (mock *OsProxyMock) Stat(pth string) (os.FileInfo, error) {
+	if mock.StatFunc == nil {
+		panic("OsProxyMock.StatFunc: method is nil but OsProxy.Stat was just called")
+	}
+	callInfo := struct {
+		Pth string
+	}{
+		Pth: pth,
+	}
+	mock.lockStat.Lock()
+	mock.calls.Stat = append(mock.calls.Stat, callInfo)
+	mock.lockStat.Unlock()
+	return mock.StatFunc(pth)
+}
+
+// StatCalls gets all the calls that were made to Stat.
+// Check the length with:
+//
+//	len(mockedOsProxy.StatCalls())
+func (mock *OsProxyMock) StatCalls() []struct {
+	Pth string
+} {
+	var calls []struct {
+		Pth string
+	}
+	mock.lockStat.RLock()
+	calls = mock.calls.Stat
+	mock.lockStat.RUnlock()
 	return calls
 }
 
@@ -397,23 +478,23 @@ func (mock *OsProxyMock) UserHomeDirCalls() []struct {
 }
 
 // WriteFile calls WriteFileFunc.
-func (mock *OsProxyMock) WriteFile(pth string, data []byte, mode os.FileMode) error {
+func (mock *OsProxyMock) WriteFile(name string, data []byte, mode os.FileMode) error {
 	if mock.WriteFileFunc == nil {
 		panic("OsProxyMock.WriteFileFunc: method is nil but OsProxy.WriteFile was just called")
 	}
 	callInfo := struct {
-		Pth  string
+		Name string
 		Data []byte
 		Mode os.FileMode
 	}{
-		Pth:  pth,
+		Name: name,
 		Data: data,
 		Mode: mode,
 	}
 	mock.lockWriteFile.Lock()
 	mock.calls.WriteFile = append(mock.calls.WriteFile, callInfo)
 	mock.lockWriteFile.Unlock()
-	return mock.WriteFileFunc(pth, data, mode)
+	return mock.WriteFileFunc(name, data, mode)
 }
 
 // WriteFileCalls gets all the calls that were made to WriteFile.
@@ -421,12 +502,12 @@ func (mock *OsProxyMock) WriteFile(pth string, data []byte, mode os.FileMode) er
 //
 //	len(mockedOsProxy.WriteFileCalls())
 func (mock *OsProxyMock) WriteFileCalls() []struct {
-	Pth  string
+	Name string
 	Data []byte
 	Mode os.FileMode
 } {
 	var calls []struct {
-		Pth  string
+		Name string
 		Data []byte
 		Mode os.FileMode
 	}

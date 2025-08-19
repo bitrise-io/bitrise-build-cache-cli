@@ -1,5 +1,5 @@
 //nolint:dupl
-package cmd
+package cmd_test
 
 import (
 	"errors"
@@ -7,30 +7,16 @@ import (
 	"os"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
-	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_activateGradleCmdFn(t *testing.T) {
-	prep := func() log.Logger {
-		mockLogger := &utilsMocks.Logger{}
-		mockLogger.On("Infof", mock.Anything).Return()
-		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
-		mockLogger.On("Errorf", mock.Anything).Return()
-		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
-
-		return mockLogger
-	}
-
 	t.Run("When no error activateGradleCmdFn creates template inventory and writes gradle config file", func(t *testing.T) {
-		mockLogger := prep()
 		templateInventory := gradleconfig.TemplateInventory{
 			Common: gradleconfig.PluginCommonTemplateInventory{
 				AppSlug: "AppSlugValue",
@@ -49,7 +35,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		}
 
 		// when
-		err := activateGradleCmdFn(
+		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -73,11 +59,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, templateInventory, *actualTemplateInventory)
 		require.Len(t, mockOsProxy.ReadFileIfExistsCalls(), 1)
-		require.Equal(t, "~/.gradle/gradle.properties", mockOsProxy.ReadFileIfExistsCalls()[0].Pth)
+		require.Equal(t, "~/.gradle/gradle.properties", mockOsProxy.ReadFileIfExistsCalls()[0].Name)
 	})
 
 	t.Run("When templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
-		mockLogger := prep()
 		inventoryCreationError := errors.New("failed to create inventory")
 
 		mockOsProxy := &mocks.OsProxyMock{
@@ -90,7 +75,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		}
 
 		// when
-		err := activateGradleCmdFn(
+		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -113,7 +98,6 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	})
 
 	t.Run("When template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
-		mockLogger := prep()
 		templateWriteError := errors.New("failed to write template")
 
 		mockOsProxy := &mocks.OsProxyMock{
@@ -126,7 +110,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		}
 
 		// when
-		err := activateGradleCmdFn(
+		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -149,7 +133,6 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	})
 
 	t.Run("When gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
-		mockLogger := prep()
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
 
 		mockOsProxy := &mocks.OsProxyMock{
@@ -162,7 +145,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		}
 
 		// when
-		err := activateGradleCmdFn(
+		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
 			func(string) string { return "" },
@@ -185,7 +168,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			t,
 			err,
 			fmt.Errorf(
-				errFmtFailedToUpdateProps,
+				cmd.ErrFmtFailedToUpdateProps,
 				fmt.Errorf(
 					gradleconfig.ErrFmtGradlePropertyWrite,
 					"~/.gradle/gradle.properties",

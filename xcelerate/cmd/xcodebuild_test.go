@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"context"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
+	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd/mocks"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs/mocks"
-	gotuilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,32 +24,26 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			"-v",
 		}
 
-		logger := gotuilsMocks.Logger{}
-		logger.On("TDebugf", mock.Anything).Return()
-		logger.On("TDebugf", mock.Anything, mock.Anything).Return()
-
 		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
 			ArgsFunc: func() []string { return xcodeArgs },
 		}
 
-		xcodeRunner := xcodeargsMocks.RunnerMock{
-			RunFunc: func(_ xcodeargs.Context, _ []string) error { return nil },
+		xcodeRunner := &cmdMocks.XcodeRunnerMock{
+			RunFunc: func(_ context.Context, _ []string) error { return nil },
 		}
-
-		ctx := xcodeargsMocks.ContextMock{}
 
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		_ = SUT(&ctx, &logger, &xcodeRunner, &xcodeArgProvider)
+		_ = SUT(context.Background(), mockLogger, xcodeRunner, &xcodeArgProvider)
 
 		// Then
 		assert.Len(t, xcodeArgProvider.ArgsCalls(), 1)
 		require.Len(t, xcodeRunner.RunCalls(), 1)
 		assert.Equal(t, xcodeArgs, xcodeRunner.RunCalls()[0].Args)
 
-		logger.AssertNumberOfCalls(t, "TDebugf", 1)
-		logger.AssertCalled(t, "TDebugf", cmd.MsgArgsPassedToXcodebuild, xcodeArgs)
+		mockLogger.AssertNumberOfCalls(t, "TDebugf", 1)
+		mockLogger.AssertCalled(t, "TDebugf", cmd.MsgArgsPassedToXcodebuild, xcodeArgs)
 	})
 
 	t.Run("xcodebuildCmdFn returns any error happened in XcodeRunner", func(t *testing.T) {
@@ -58,24 +52,18 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 
 		xcodeArgs := []string{}
 
-		logger := gotuilsMocks.Logger{}
-		logger.On("TDebugf", mock.Anything).Return()
-		logger.On("TDebugf", mock.Anything, mock.Anything).Return()
-
 		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
 			ArgsFunc: func() []string { return xcodeArgs },
 		}
 
-		xcodeRunner := xcodeargsMocks.RunnerMock{
-			RunFunc: func(_ xcodeargs.Context, _ []string) error { return expected },
+		xcodeRunner := &cmdMocks.XcodeRunnerMock{
+			RunFunc: func(_ context.Context, _ []string) error { return expected },
 		}
-
-		ctx := xcodeargsMocks.ContextMock{}
 
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		actual := SUT(&ctx, &logger, &xcodeRunner, &xcodeArgProvider)
+		actual := SUT(context.Background(), mockLogger, xcodeRunner, &xcodeArgProvider)
 
 		// Then
 		require.EqualError(t, actual, expected.Error())

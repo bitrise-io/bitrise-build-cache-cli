@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
 	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 )
@@ -20,7 +22,13 @@ const (
 	MsgArgsPassedToXcodebuild = "Arguments passed to xcodebuild: %v"
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
+	ErrReadConfig     = "Error reading config: %v"
 )
+
+//go:generate moq -out mocks/runner_mock.go -pkg mocks . XcodeRunner
+type XcodeRunner interface {
+	Run(ctx context.Context, args []string) error
+}
 
 // rootCmd represents the base command when called without any subcommands
 var xcodebuildCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -40,12 +48,18 @@ TBD`,
 
 		callProxySetSession(cmd.Context(), xcodeArgs, os.Getenv, logger)
 
-		xcodeRunner := &xcodeargs.DefaultRunner{}
+		decoder := utils.DefaultDecoderFactory{}
+
+		config, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, decoder)
+		if err != nil {
+			logger.Errorf(ErrReadConfig, err)
+			config = xcelerate.DefaultConfig()
+		}
+
+		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
 		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
-
-			return err
 		}
 
 		return nil
@@ -59,9 +73,9 @@ func init() {
 }
 
 func XcodebuildCmdFn(
-	ctx xcodeargs.Context,
+	ctx context.Context,
 	logger log.Logger,
-	xcodeRunner xcodeargs.Runner,
+	xcodeRunner XcodeRunner,
 	xcodeArgs xcodeargs.XcodeArgs,
 ) error {
 	toPass := xcodeArgs.Args()

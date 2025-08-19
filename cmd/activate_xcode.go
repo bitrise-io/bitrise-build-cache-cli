@@ -1,13 +1,20 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"syscall"
 
+	"path/filepath"
+
+	"strings"
+
+	"context"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -20,6 +27,7 @@ const (
 
 	activateXcode           = "Activate Bitrise Build Cache for Xcode"
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
+	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
 	startedProxy            = "Started xcelerate_proxy pid = %d"
 
 	ErrFmtCreateXcodeConfig  = "failed to create Xcode config: %w"
@@ -55,20 +63,17 @@ This command will:
 			DebugLogging:      isDebugLogMode,
 		}
 
-		config := xcelerate.NewConfig(xparams, os.Getenv)
+		config := xcelerate.NewConfig(cmd.Context(), logger, xparams, os.Getenv, utils.DefaultCommandFunc())
 
 		return ActivateXcodeCommandFn(
 			logger,
 			utils.DefaultOsProxy{},
 			utils.DefaultEncoderFactory{},
 			config,
-			func(path string, command string) Command {
-				return CommandWrapper{wrapped: exec.Command(path, command)}
-			},
+			utils.DefaultCommandFunc(),
 			func(pid int, signum syscall.Signal) {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
 			},
-			os.Getenv,
 		)
 	},
 }
@@ -80,40 +85,117 @@ func init() {
 	activateCmd.AddCommand(activateXcodeCmd)
 }
 
-type ActivateXcodeParams struct {
-}
-
-func DefaultActivateXcodeParams() ActivateXcodeParams {
-	return ActivateXcodeParams{}
-}
-
 func ActivateXcodeCommandFn(
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	encoderFactory utils.EncoderFactory,
 	xconfig XcelerateConfig,
-	commandFunc func(path string, command string) Command,
+	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
-	envProvider func(string) string,
 ) error {
 	if err := xconfig.Save(osProxy, encoderFactory); err != nil {
-		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+		if errors.Is(err, xcelerate.ErrConfigFileAlreadyExists) {
+			logger.Warnf(err.Error())
+		} else {
+			return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+		}
 	}
 
-	logger.TInfof(ActivateXcodeSuccessful)
-
-	return startProxy(
+	err := startProxy(
 		logger,
 		osProxy,
 		commandFunc,
 		killFunc,
 	)
+	if err != nil {
+		return fmt.Errorf(errFmtFailedToStartProxy, err)
+	}
+
+	if err := AddXcelerateCommandToPath(logger, osProxy); err != nil {
+		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+	}
+
+	logger.Debugf("Xcelerate command added to PATH in ~/.bashrc and ~/.zshrc")
+	logger.TInfof(ActivateXcodeSuccessful)
+	logger.TInfof(AddXcelerateToPath)
+
+	return nil
+}
+
+// nolint: godox
+// TODO move to utils package
+func AddXcelerateCommandToPath(logger log.Logger,
+	osProxy utils.OsProxy) error {
+	xceleratePath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
+
+	homeDir, err := osProxy.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf(xcelerate.ErrFmtDetermineHome, err)
+	}
+
+	pathContent := fmt.Sprintf("export PATH=%s:$PATH", xceleratePath)
+
+	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", xceleratePath)
+	err = AddContentOrCreateFile(logger,
+		osProxy,
+		filepath.Join(homeDir, ".bashrc"),
+		"Bitrise Xcelerate",
+		pathContent)
+	if err != nil {
+		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+	}
+
+	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", xceleratePath)
+	err = AddContentOrCreateFile(logger,
+		osProxy,
+		filepath.Join(homeDir, ".zshrc"),
+		"# Bitrise Xcelerate",
+		pathContent)
+
+	return err
+}
+
+// nolint: godox
+// TODO move to utils package
+func AddContentOrCreateFile(
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	filePath string,
+	blockSuffix string,
+	content string,
+) error {
+	// Check if the file exists
+	currentContent, exists, err := osProxy.ReadFileIfExists(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+
+	if !exists {
+		currentContent = ""
+		logger.Debugf("File %s does not exist, creating", filePath)
+	}
+
+	content = stringmerge.ChangeContentInBlock(
+		currentContent,
+		fmt.Sprintf("# [start] %s", strings.TrimSpace(blockSuffix)),
+		fmt.Sprintf("# [end] %s", strings.TrimSpace(blockSuffix)),
+		content,
+	)
+
+	err = osProxy.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	logger.Debugf("Updated file %s with content in block %s", filePath, blockSuffix)
+
+	return nil
 }
 
 func startProxy(
 	logger log.Logger,
 	osProxy utils.OsProxy,
-	commandFunc func(path string, command string) Command,
+	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
 ) error {
 	exe, err := osProxy.Executable()
@@ -121,15 +203,15 @@ func startProxy(
 		return fmt.Errorf(errFmtExecutable, err)
 	}
 
-	cmd := commandFunc(exe, xcelerateProxyCmd.Use)
+	cmd := commandFunc(context.Background(), exe, xcelerateProxyCmd.Use)
 
 	// Detach into new process group so we can signal the whole group.
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{
 		Setpgid: true, // create a new process group with pgid = pid
 	})
 
-	outf := xcelerate.XceleratePathFor(serverOut)
-	errf := xcelerate.XceleratePathFor(serverErr)
+	outf := xcelerate.PathFor(osProxy, serverOut)
+	errf := xcelerate.PathFor(osProxy, serverErr)
 	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
@@ -151,7 +233,7 @@ func startProxy(
 	}
 
 	pid := cmd.PID()
-	pidFilePth := xcelerate.XceleratePathFor(pidFile)
+	pidFilePth := xcelerate.PathFor(osProxy, pidFile)
 	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0644); err != nil {
 		killFunc(pid, syscall.SIGKILL)
 
@@ -161,46 +243,4 @@ func startProxy(
 	logger.TDonef(startedProxy, pid)
 
 	return nil
-}
-
-//go:generate moq -out mocks/command_mock.go -pkg mocks . Command
-type Command interface {
-	Start() error
-	SetStdout(file *os.File)
-	SetStderr(file *os.File)
-	SetStdin(file *os.File)
-	SetSysProcAttr(sysProcAttr *syscall.SysProcAttr)
-	PID() int
-}
-
-type CommandWrapper struct {
-	wrapped *exec.Cmd
-}
-
-func (cmd CommandWrapper) SetStdout(file *os.File) {
-	cmd.wrapped.Stdout = file
-}
-
-func (cmd CommandWrapper) SetStderr(file *os.File) {
-	cmd.wrapped.Stderr = file
-}
-
-func (cmd CommandWrapper) SetStdin(file *os.File) {
-	cmd.wrapped.Stdin = file
-}
-
-func (cmd CommandWrapper) SetSysProcAttr(sysProcAttr *syscall.SysProcAttr) {
-	cmd.wrapped.SysProcAttr = sysProcAttr
-}
-
-func (cmd CommandWrapper) PID() int {
-	if cmd.wrapped.Process == nil {
-		return 0
-	}
-
-	return cmd.wrapped.Process.Pid
-}
-
-func (cmd CommandWrapper) Start() error {
-	return cmd.wrapped.Start() //nolint:wrapcheck
 }

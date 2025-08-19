@@ -4,39 +4,40 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
+	"context"
+	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd"
 	"sync"
 )
 
-// Ensure, that RunnerMock does implement xcodeargs.Runner.
+// Ensure, that XcodeRunnerMock does implement cmd.XcodeRunner.
 // If this is not the case, regenerate this file with moq.
-var _ xcodeargs.Runner = &RunnerMock{}
+var _ cmd.XcodeRunner = &XcodeRunnerMock{}
 
-// RunnerMock is a mock implementation of xcodeargs.Runner.
+// XcodeRunnerMock is a mock implementation of cmd.XcodeRunner.
 //
-//	func TestSomethingThatUsesRunner(t *testing.T) {
+//	func TestSomethingThatUsesXcodeRunner(t *testing.T) {
 //
-//		// make and configure a mocked xcodeargs.Runner
-//		mockedRunner := &RunnerMock{
-//			RunFunc: func(ctx xcodeargs.Context, args []string) error {
+//		// make and configure a mocked cmd.XcodeRunner
+//		mockedXcodeRunner := &XcodeRunnerMock{
+//			RunFunc: func(ctx context.Context, args []string) error {
 //				panic("mock out the Run method")
 //			},
 //		}
 //
-//		// use mockedRunner in code that requires xcodeargs.Runner
+//		// use mockedXcodeRunner in code that requires cmd.XcodeRunner
 //		// and then make assertions.
 //
 //	}
-type RunnerMock struct {
+type XcodeRunnerMock struct {
 	// RunFunc mocks the Run method.
-	RunFunc func(ctx xcodeargs.Context, args []string) error
+	RunFunc func(ctx context.Context, args []string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Run holds details about calls to the Run method.
 		Run []struct {
 			// Ctx is the ctx argument value.
-			Ctx xcodeargs.Context
+			Ctx context.Context
 			// Args is the args argument value.
 			Args []string
 		}
@@ -45,12 +46,12 @@ type RunnerMock struct {
 }
 
 // Run calls RunFunc.
-func (mock *RunnerMock) Run(ctx xcodeargs.Context, args []string) error {
+func (mock *XcodeRunnerMock) Run(ctx context.Context, args []string) error {
 	if mock.RunFunc == nil {
-		panic("RunnerMock.RunFunc: method is nil but Runner.Run was just called")
+		panic("XcodeRunnerMock.RunFunc: method is nil but XcodeRunner.Run was just called")
 	}
 	callInfo := struct {
-		Ctx  xcodeargs.Context
+		Ctx  context.Context
 		Args []string
 	}{
 		Ctx:  ctx,
@@ -65,13 +66,13 @@ func (mock *RunnerMock) Run(ctx xcodeargs.Context, args []string) error {
 // RunCalls gets all the calls that were made to Run.
 // Check the length with:
 //
-//	len(mockedRunner.RunCalls())
-func (mock *RunnerMock) RunCalls() []struct {
-	Ctx  xcodeargs.Context
+//	len(mockedXcodeRunner.RunCalls())
+func (mock *XcodeRunnerMock) RunCalls() []struct {
+	Ctx  context.Context
 	Args []string
 } {
 	var calls []struct {
-		Ctx  xcodeargs.Context
+		Ctx  context.Context
 		Args []string
 	}
 	mock.lockRun.RLock()
