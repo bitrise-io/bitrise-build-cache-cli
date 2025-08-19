@@ -4,22 +4,28 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"os"
 	"sync"
 	"syscall"
 )
 
-// Ensure, that CommandMock does implement cmd.Command.
+// Ensure, that CommandMock does implement utils.Command.
 // If this is not the case, regenerate this file with moq.
-var _ cmd.Command = &CommandMock{}
+var _ utils.Command = &CommandMock{}
 
-// CommandMock is a mock implementation of cmd.Command.
+// CommandMock is a mock implementation of utils.Command.
 //
 //	func TestSomethingThatUsesCommand(t *testing.T) {
 //
-//		// make and configure a mocked cmd.Command
+//		// make and configure a mocked utils.Command
 //		mockedCommand := &CommandMock{
+//			CombinedOutputFunc: func() ([]byte, error) {
+//				panic("mock out the CombinedOutput method")
+//			},
+//			ErrFunc: func() error {
+//				panic("mock out the Err method")
+//			},
 //			PIDFunc: func() int {
 //				panic("mock out the PID method")
 //			},
@@ -38,13 +44,22 @@ var _ cmd.Command = &CommandMock{}
 //			StartFunc: func() error {
 //				panic("mock out the Start method")
 //			},
+//			WaitFunc: func() error {
+//				panic("mock out the Wait method")
+//			},
 //		}
 //
-//		// use mockedCommand in code that requires cmd.Command
+//		// use mockedCommand in code that requires utils.Command
 //		// and then make assertions.
 //
 //	}
 type CommandMock struct {
+	// CombinedOutputFunc mocks the CombinedOutput method.
+	CombinedOutputFunc func() ([]byte, error)
+
+	// ErrFunc mocks the Err method.
+	ErrFunc func() error
+
 	// PIDFunc mocks the PID method.
 	PIDFunc func() int
 
@@ -63,8 +78,17 @@ type CommandMock struct {
 	// StartFunc mocks the Start method.
 	StartFunc func() error
 
+	// WaitFunc mocks the Wait method.
+	WaitFunc func() error
+
 	// calls tracks calls to the methods.
 	calls struct {
+		// CombinedOutput holds details about calls to the CombinedOutput method.
+		CombinedOutput []struct {
+		}
+		// Err holds details about calls to the Err method.
+		Err []struct {
+		}
 		// PID holds details about calls to the PID method.
 		PID []struct {
 		}
@@ -91,13 +115,73 @@ type CommandMock struct {
 		// Start holds details about calls to the Start method.
 		Start []struct {
 		}
+		// Wait holds details about calls to the Wait method.
+		Wait []struct {
+		}
 	}
+	lockCombinedOutput sync.RWMutex
+	lockErr            sync.RWMutex
 	lockPID            sync.RWMutex
 	lockSetStderr      sync.RWMutex
 	lockSetStdin       sync.RWMutex
 	lockSetStdout      sync.RWMutex
 	lockSetSysProcAttr sync.RWMutex
 	lockStart          sync.RWMutex
+	lockWait           sync.RWMutex
+}
+
+// CombinedOutput calls CombinedOutputFunc.
+func (mock *CommandMock) CombinedOutput() ([]byte, error) {
+	if mock.CombinedOutputFunc == nil {
+		panic("CommandMock.CombinedOutputFunc: method is nil but Command.CombinedOutput was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockCombinedOutput.Lock()
+	mock.calls.CombinedOutput = append(mock.calls.CombinedOutput, callInfo)
+	mock.lockCombinedOutput.Unlock()
+	return mock.CombinedOutputFunc()
+}
+
+// CombinedOutputCalls gets all the calls that were made to CombinedOutput.
+// Check the length with:
+//
+//	len(mockedCommand.CombinedOutputCalls())
+func (mock *CommandMock) CombinedOutputCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockCombinedOutput.RLock()
+	calls = mock.calls.CombinedOutput
+	mock.lockCombinedOutput.RUnlock()
+	return calls
+}
+
+// Err calls ErrFunc.
+func (mock *CommandMock) Err() error {
+	if mock.ErrFunc == nil {
+		panic("CommandMock.ErrFunc: method is nil but Command.Err was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockErr.Lock()
+	mock.calls.Err = append(mock.calls.Err, callInfo)
+	mock.lockErr.Unlock()
+	return mock.ErrFunc()
+}
+
+// ErrCalls gets all the calls that were made to Err.
+// Check the length with:
+//
+//	len(mockedCommand.ErrCalls())
+func (mock *CommandMock) ErrCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockErr.RLock()
+	calls = mock.calls.Err
+	mock.lockErr.RUnlock()
+	return calls
 }
 
 // PID calls PIDFunc.
@@ -279,5 +363,32 @@ func (mock *CommandMock) StartCalls() []struct {
 	mock.lockStart.RLock()
 	calls = mock.calls.Start
 	mock.lockStart.RUnlock()
+	return calls
+}
+
+// Wait calls WaitFunc.
+func (mock *CommandMock) Wait() error {
+	if mock.WaitFunc == nil {
+		panic("CommandMock.WaitFunc: method is nil but Command.Wait was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockWait.Lock()
+	mock.calls.Wait = append(mock.calls.Wait, callInfo)
+	mock.lockWait.Unlock()
+	return mock.WaitFunc()
+}
+
+// WaitCalls gets all the calls that were made to Wait.
+// Check the length with:
+//
+//	len(mockedCommand.WaitCalls())
+func (mock *CommandMock) WaitCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockWait.RLock()
+	calls = mock.calls.Wait
+	mock.lockWait.RUnlock()
 	return calls
 }

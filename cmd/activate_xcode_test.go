@@ -11,6 +11,8 @@ import (
 
 	"strings"
 
+	"context"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -72,8 +74,8 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			osProxy(),
 			encoderFactory(),
 			config(),
-			func(path string, command string) cmd.Command {
-				return &cmdMocks.CommandMock{
+			func(_ context.Context, _ string, _ ...string) utils.Command {
+				return &utilsMocks.CommandMock{
 					SetSysProcAttrFunc: func(_ *syscall.SysProcAttr) {},
 					SetStderrFunc:      func(_ *os.File) {},
 					SetStdoutFunc:      func(_ *os.File) {},
@@ -104,8 +106,8 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			osProxy(),
 			encoderFactory(),
 			mockConfig,
-			func(path string, command string) cmd.Command {
-				return &cmdMocks.CommandMock{}
+			func(_ context.Context, _ string, _ ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
 			},
 			func(pid int, signum syscall.Signal) {},
 			func(string) string { return "" }, // envProvider

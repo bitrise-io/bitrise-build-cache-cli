@@ -7,16 +7,18 @@ import (
 	"os"
 	"testing"
 
+	"context"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestConfig_Save(t *testing.T) {
-	osProxy := func() *mocks.OsProxyMock {
-		return &mocks.OsProxyMock{
+	osProxy := func() *utilsMocks.OsProxyMock {
+		return &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
 				return "~", nil
 			},
@@ -29,16 +31,16 @@ func TestConfig_Save(t *testing.T) {
 		}
 	}
 
-	encoder := func() *mocks.EncoderMock {
-		return &mocks.EncoderMock{
+	encoder := func() *utilsMocks.EncoderMock {
+		return &utilsMocks.EncoderMock{
 			SetIndentFunc:     func(_ string, _ string) {},
 			SetEscapeHTMLFunc: func(_ bool) {},
 			EncodeFunc:        func(_ any) error { return nil },
 		}
 	}
 
-	encoderFactory := func() *mocks.EncoderFactoryMock {
-		return &mocks.EncoderFactoryMock{
+	encoderFactory := func() *utilsMocks.EncoderFactoryMock {
+		return &utilsMocks.EncoderFactoryMock{
 			EncoderFunc: func(_ io.Writer) utils.Encoder {
 				return encoder()
 			},
@@ -48,7 +50,7 @@ func TestConfig_Save(t *testing.T) {
 	t.Run("When no error save will succeed", func(t *testing.T) {
 		// given
 		mockEncoder := encoder()
-		mockEncoderFactory := &mocks.EncoderFactoryMock{
+		mockEncoderFactory := &utilsMocks.EncoderFactoryMock{
 			EncoderFunc: func(_ io.Writer) utils.Encoder {
 				return mockEncoder
 			},
@@ -83,7 +85,7 @@ func TestConfig_Save(t *testing.T) {
 
 	t.Run("When error occurs making directories save returns an error", func(t *testing.T) {
 		// given
-		mockOsProxy := &mocks.OsProxyMock{
+		mockOsProxy := &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
 				return "~", nil
 			},
@@ -107,7 +109,7 @@ func TestConfig_Save(t *testing.T) {
 
 	t.Run("When error occurs when creating config file, it returns an error", func(t *testing.T) {
 		// given
-		mockOsProxy := &mocks.OsProxyMock{
+		mockOsProxy := &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
 				return "~", nil
 			},
@@ -136,13 +138,13 @@ func TestConfig_Save(t *testing.T) {
 		// given
 		encodingError := errors.New("encoding error")
 
-		mockEncoder := &mocks.EncoderMock{
+		mockEncoder := &utilsMocks.EncoderMock{
 			SetIndentFunc:     func(_ string, _ string) {},
 			SetEscapeHTMLFunc: func(_ bool) {},
 			EncodeFunc:        func(_ any) error { return encodingError },
 		}
 
-		mockEncoderFactory := &mocks.EncoderFactoryMock{
+		mockEncoderFactory := &utilsMocks.EncoderFactoryMock{
 			EncoderFunc: func(_ io.Writer) utils.Encoder {
 				return mockEncoder
 			},
@@ -159,5 +161,91 @@ func TestConfig_Save(t *testing.T) {
 
 		// then
 		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtEncodeConfigFile, encodingError).Error())
+	})
+}
+
+func TestConfig_NewConfig(t *testing.T) {
+	t.Run("When `where xcodebuild` command returns path, returns new config", func(t *testing.T) {
+		envMock := func(s string) string {
+			switch s {
+			case "BITRISE_BUILD_CACHE_CLI_VERSION":
+				return "cli-version-1.0.0"
+			case "BITRISE_XCELERATE_PROXY_VERSION":
+				return "proxy-version-1.0.0"
+			case "BITRISE_XCELERATE_WRAPPER_VERSION":
+				return "wrapper-version-1.0.0"
+			}
+
+			return ""
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			StartFunc: func() error { return nil },
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("/usr/bin/xcodebuild2"), nil
+			},
+			WaitFunc: func() error { return nil },
+			ErrFunc:  func() error { return nil },
+		}
+
+		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled: true,
+			DebugLogging:      true,
+		}, envMock, func(_ context.Context, command string, args ...string) utils.Command {
+			assert.Equal(t, "where", command)
+			require.Len(t, args, 1)
+			assert.Equal(t, "xcodebuild", args[0])
+
+			return cmdMock
+		})
+
+		expected := xcelerate.Config{
+			ProxyVersion:           "proxy-version-1.0.0",
+			WrapperVersion:         "wrapper-version-1.0.0",
+			CLIVersion:             "cli-version-1.0.0",
+			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
+			BuildCacheEnabled:      true,
+			DebugLogging:           true,
+		}
+		require.Len(t, cmdMock.StartCalls(), 1)
+		require.Len(t, cmdMock.CombinedOutputCalls(), 1)
+		require.Len(t, cmdMock.WaitCalls(), 1)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When `where xcodebuild` command Wait() fails, returns config with default path", func(t *testing.T) {
+		envMock := func(s string) string {
+			return ""
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			StartFunc: func() error { return nil },
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("something-else"), nil
+			},
+			WaitFunc: func() error { return errors.New("command not found") },
+			ErrFunc:  func() error { return nil },
+		}
+
+		actual := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled: true,
+			DebugLogging:      true,
+		}, envMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		})
+
+		expected := xcelerate.Config{
+			ProxyVersion:           "",
+			WrapperVersion:         "",
+			CLIVersion:             "",
+			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			BuildCacheEnabled:      true,
+			DebugLogging:           true,
+		}
+
+		assert.Equal(t, expected, actual)
+		require.Len(t, cmdMock.StartCalls(), 1)
+		require.Empty(t, cmdMock.CombinedOutputCalls())
+		require.Len(t, cmdMock.WaitCalls(), 1)
 	})
 }

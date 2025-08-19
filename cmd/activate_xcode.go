@@ -3,13 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"syscall"
 
 	"path/filepath"
 
 	"strings"
+
+	"context"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
@@ -61,16 +62,14 @@ This command will:
 			DebugLogging:      isDebugLogMode,
 		}
 
-		config := xcelerate.NewConfig(xparams, os.Getenv)
+		config := xcelerate.NewConfig(cmd.Context(), logger, xparams, os.Getenv, utils.DefaultCommandFunc())
 
 		return ActivateXcodeCommandFn(
 			logger,
 			utils.DefaultOsProxy{},
 			utils.DefaultEncoderFactory{},
 			config,
-			func(path string, command string) Command {
-				return utils.CommandWrapper{Wrapped: exec.Command(path, command)}
-			},
+			utils.DefaultCommandFunc(),
 			func(pid int, signum syscall.Signal) {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
 			},
@@ -98,7 +97,7 @@ func ActivateXcodeCommandFn(
 	osProxy utils.OsProxy,
 	encoderFactory utils.EncoderFactory,
 	xconfig XcelerateConfig,
-	commandFunc func(path string, command string) Command,
+	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
 	envProvider func(string) string,
 ) error {
@@ -200,7 +199,7 @@ func AddContentOrCreateFile(
 func startProxy(
 	logger log.Logger,
 	osProxy utils.OsProxy,
-	commandFunc func(path string, command string) Command,
+	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
 ) error {
 	exe, err := osProxy.Executable()
@@ -208,7 +207,7 @@ func startProxy(
 		return fmt.Errorf(errFmtExecutable, err)
 	}
 
-	cmd := commandFunc(exe, xcelerateProxyCmd.Use)
+	cmd := commandFunc(context.Background(), exe, xcelerateProxyCmd.Use)
 
 	// Detach into new process group so we can signal the whole group.
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{
@@ -248,14 +247,4 @@ func startProxy(
 	logger.TDonef(startedProxy, pid)
 
 	return nil
-}
-
-//go:generate moq -out mocks/command_mock.go -pkg mocks . Command
-type Command interface {
-	Start() error
-	SetStdout(file *os.File)
-	SetStderr(file *os.File)
-	SetStdin(file *os.File)
-	SetSysProcAttr(sysProcAttr *syscall.SysProcAttr)
-	PID() int
 }
