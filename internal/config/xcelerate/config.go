@@ -7,10 +7,11 @@ import (
 
 	"context"
 
+	"strings"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"strings"
 )
 
 const (
