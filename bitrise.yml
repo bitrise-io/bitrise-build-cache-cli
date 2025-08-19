@@ -847,8 +847,8 @@ workflows:
               set -exo pipefail
               go build -o bin/xcelerate ./xcelerate
               
-              mkdir -p ~/.bitrise-xcelerate
-              cp bin/xcelerate ~/.bitrise-xcelerate/xcodebuild
+              mkdir -p ~/.bitrise-xcelerate/bin
+              mv bin/xcelerate ~/.bitrise-xcelerate/bin/xcodebuild
     - change-workdir:
         title: Switch working dir to _tmp
         inputs:
