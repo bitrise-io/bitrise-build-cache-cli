@@ -23,8 +23,8 @@ import (
 
 // This command should go under an xcelerate subcommand together with stop-xcode-proxy
 var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
-	Use:          "xcelerate-proxy",
-	Short:        "Xcelerate Proxy",
+	Use:          "start-proxy",
+	Short:        "Start Xcelerate Proxy",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
@@ -71,7 +71,7 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 }
 
 func init() {
-	rootCmd.AddCommand(xcelerateProxyCmd)
+	xcelerateCommand.AddCommand(xcelerateProxyCmd)
 }
 
 func StartXcodeCacheProxy(
