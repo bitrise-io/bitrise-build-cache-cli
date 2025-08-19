@@ -849,6 +849,8 @@ workflows:
               
               mkdir -p ~/.bitrise-xcelerate/bin
               mv bin/xcelerate ~/.bitrise-xcelerate/bin/xcodebuild
+              ls -l ~/.bitrise-xcelerate/bin/xcodebuild
+              ls -l /usr/bin/xcodebuild || true
     - change-workdir:
         title: Switch working dir to _tmp
         inputs:
@@ -861,6 +863,9 @@ workflows:
               set -eo pipefail
               
               export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
+              
+              echo "Original Xcodebuild command location:"
+              where xcodebuild
 
               ../bin/bitrise-build-cache-cli -d activate xcode
 

@@ -27,11 +27,12 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) error {
 	xcodePath := runner.config.OriginalXcodebuildPath
 	if xcodePath == "" {
 		runner.logger.Warnf("no xcelerate xcode path specified, using default")
+		xcodePath = xcelerate.DefaultXcodePath
 	}
 
 	runner.logger.TInfof("Running xcodebuild command %s",
-		strings.Join(append([]string{runner.config.OriginalXcodebuildPath}, args...), ","))
-	innerCmd := exec.CommandContext(ctx, runner.config.OriginalXcodebuildPath, args...)
+		strings.Join(append([]string{xcodePath}, args...), ","))
+	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
 	innerCmd.Stdout = os.Stdout
 	innerCmd.Stderr = os.Stderr
 	innerCmd.Stdin = os.Stdin
