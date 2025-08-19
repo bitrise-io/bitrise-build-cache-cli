@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"strings"
 )
 
 const (
@@ -83,13 +84,14 @@ func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc u
 	if err != nil {
 		return "", fmt.Errorf("failed to get xcodebuild output: %w", err)
 	}
-	if len(output) == 0 {
+	trimmed := strings.TrimSpace(string(output))
+	if len(trimmed) == 0 {
 		logger.Warnf("No xcodebuild path found, using default: %s", DefaultXcodePath)
 
 		return DefaultXcodePath, nil
 	}
 
-	return string(output), nil
+	return trimmed, nil
 }
 
 func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
