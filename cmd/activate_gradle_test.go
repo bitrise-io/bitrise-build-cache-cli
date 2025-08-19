@@ -59,7 +59,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, templateInventory, *actualTemplateInventory)
 		require.Len(t, mockOsProxy.ReadFileIfExistsCalls(), 1)
-		require.Equal(t, "~/.gradle/gradle.properties", mockOsProxy.ReadFileIfExistsCalls()[0].Pth)
+		require.Equal(t, "~/.gradle/gradle.properties", mockOsProxy.ReadFileIfExistsCalls()[0].Name)
 	})
 
 	t.Run("When templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {

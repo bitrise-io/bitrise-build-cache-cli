@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -73,7 +74,6 @@ This command will:
 			func(pid int, signum syscall.Signal) {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
 			},
-			os.Getenv,
 		)
 	},
 }
@@ -85,13 +85,6 @@ func init() {
 	activateCmd.AddCommand(activateXcodeCmd)
 }
 
-type ActivateXcodeParams struct {
-}
-
-func DefaultActivateXcodeParams() ActivateXcodeParams {
-	return ActivateXcodeParams{}
-}
-
 func ActivateXcodeCommandFn(
 	logger log.Logger,
 	osProxy utils.OsProxy,
@@ -99,10 +92,13 @@ func ActivateXcodeCommandFn(
 	xconfig XcelerateConfig,
 	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
-	envProvider func(string) string,
 ) error {
 	if err := xconfig.Save(osProxy, encoderFactory); err != nil {
-		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+		if errors.Is(err, xcelerate.ErrConfigFileAlreadyExists) {
+			logger.Warnf(err.Error())
+		} else {
+			return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+		}
 	}
 
 	err := startProxy(
@@ -130,7 +126,7 @@ func ActivateXcodeCommandFn(
 // TODO move to utils package
 func AddXcelerateCommandToPath(logger log.Logger,
 	osProxy utils.OsProxy) error {
-	xceleratePath := xcelerate.PathFor(xcelerate.BinDir)
+	xceleratePath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
 
 	homeDir, err := osProxy.UserHomeDir()
 	if err != nil {
@@ -214,8 +210,8 @@ func startProxy(
 		Setpgid: true, // create a new process group with pgid = pid
 	})
 
-	outf := xcelerate.PathFor(serverOut)
-	errf := xcelerate.PathFor(serverErr)
+	outf := xcelerate.PathFor(osProxy, serverOut)
+	errf := xcelerate.PathFor(osProxy, serverErr)
 	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
@@ -237,7 +233,7 @@ func startProxy(
 	}
 
 	pid := cmd.PID()
-	pidFilePth := xcelerate.PathFor(pidFile)
+	pidFilePth := xcelerate.PathFor(osProxy, pidFile)
 	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0644); err != nil {
 		killFunc(pid, syscall.SIGKILL)
 

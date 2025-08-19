@@ -1,12 +1,10 @@
 package xcelerate
 
 import (
-	"fmt"
-
-	"os"
-
 	"context"
-
+	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -23,6 +21,8 @@ const (
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
 )
 
+var ErrConfigFileAlreadyExists = errors.New("xcelerate config file already exists")
+
 type Params struct {
 	BuildCacheEnabled bool
 	DebugLogging      bool
@@ -37,8 +37,8 @@ type Config struct {
 	DebugLogging           bool   `json:"debugLogging,omitempty"`
 }
 
-func ReadConfig(decoderFactory utils.DecoderFactory) (Config, error) {
-	configFilePath := PathFor(xcelerateConfigFileName)
+func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
+	configFilePath := PathFor(osProxy, xcelerateConfigFileName)
 
 	f, err := os.OpenFile(configFilePath, 0, 0)
 	if err != nil {
@@ -96,13 +96,19 @@ func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc u
 }
 
 func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
-	xcelerateFolder := DirPath()
+	configFilePath := PathFor(os, xcelerateConfigFileName)
+
+	if _, err := os.Stat(configFilePath); err == nil {
+		// If the file already exists, return an error
+		return fmt.Errorf("%w: %s", ErrConfigFileAlreadyExists, configFilePath)
+	}
+
+	xcelerateFolder := DirPath(os)
 
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
 		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)
 	}
 
-	configFilePath := PathFor(xcelerateConfigFileName)
 	f, err := os.Create(configFilePath)
 	if err != nil {
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)

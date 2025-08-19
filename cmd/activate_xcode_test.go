@@ -85,7 +85,6 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 				}
 			},
 			func(pid int, signum syscall.Signal) {},
-			func(string) string { return "" }, // envProvider
 		)
 
 		mockLogger.AssertCalled(t, "TInfof", cmd.ActivateXcodeSuccessful)
@@ -110,7 +109,6 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 				return &utilsMocks.CommandMock{}
 			},
 			func(pid int, signum syscall.Signal) {},
-			func(string) string { return "" }, // envProvider
 		)
 
 		assert.ErrorContains(t, err, fmt.Errorf(cmd.ErrFmtCreateXcodeConfig, expectedError).Error())
@@ -142,9 +140,9 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, osProxy.ReadFileIfExistsCalls(), 1)
-		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Pth)
+		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Name)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
-		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Pth)
+		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Name)
 		assert.Equal(t, "# [start] Bitrise Xcelerate\nexport PATH=/path/to/xcelerate:$PATH\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
 	})
 
@@ -172,9 +170,9 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, osProxy.ReadFileIfExistsCalls(), 1)
-		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Pth)
+		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Name)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
-		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Pth)
+		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Name)
 		assert.Equal(t, "# [start] Bitrise Xcelerate\nexport PATH=/path/to/xcelerate:$PATH\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
 	})
 
@@ -204,9 +202,9 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 
 		require.ErrorIs(t, err, expectedError)
 		require.Len(t, osProxy.ReadFileIfExistsCalls(), 1)
-		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Pth)
+		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Name)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
-		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Pth)
+		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Name)
 	})
 }
 
@@ -220,6 +218,9 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 		},
 		WriteFileFunc: func(pth string, data []byte, mode os.FileMode) error {
 			return nil
+		},
+		GetwdFunc: func() (string, error) {
+			return os.TempDir(), nil
 		},
 	}
 

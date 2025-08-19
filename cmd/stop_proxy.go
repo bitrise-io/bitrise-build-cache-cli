@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,7 @@ var stopXcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof(activateXcode)
 
-		return stopXcelerateProxyCommandFn(logger)
+		return stopXcelerateProxyCommandFn(utils.DefaultOsProxy{}, logger)
 	},
 }
 
@@ -31,10 +32,8 @@ func init() {
 	rootCmd.AddCommand(stopXcelerateProxyCmd)
 }
 
-func stopXcelerateProxyCommandFn(
-	logger log.Logger,
-) error {
-	pidPath := xcelerate.PathFor(pidFile)
+func stopXcelerateProxyCommandFn(osProxy utils.OsProxy, logger log.Logger) error {
+	pidPath := xcelerate.PathFor(osProxy, pidFile)
 
 	b, err := os.ReadFile(pidPath)
 	if err != nil {

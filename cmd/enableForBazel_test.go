@@ -102,8 +102,8 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 		require.Len(t, mockOsProxy.ReadFileIfExistsCalls(), 1)
 		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
 		// Verify the correct path is checked and written to
-		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.ReadFileIfExistsCalls()[0].Pth)
-		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.WriteFileCalls()[0].Pth)
+		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.ReadFileIfExistsCalls()[0].Name)
+		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.WriteFileCalls()[0].Name)
 		assert.NotEmpty(t, mockOsProxy.WriteFileCalls()[0].Data)
 	})
 
@@ -136,8 +136,8 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 		require.Len(t, mockOsProxy.WriteFileCalls(), 1)
 
 		// Verify the correct path is checked and written to
-		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.ReadFileIfExistsCalls()[0].Pth)
-		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.WriteFileCalls()[0].Pth)
+		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.ReadFileIfExistsCalls()[0].Name)
+		assert.Equal(t, "/mock/home/.bazelrc", mockOsProxy.WriteFileCalls()[0].Name)
 
 		// Verify content
 		writtenContent := mockOsProxy.WriteFileCalls()[0].Data

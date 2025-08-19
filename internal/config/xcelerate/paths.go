@@ -1,8 +1,9 @@
 package xcelerate
 
 import (
-	"os"
 	"path/filepath"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 const (
@@ -11,16 +12,16 @@ const (
 	ErrFmtDetermineHome = `could not determine home: %w`
 )
 
-func DirPath() string {
-	if home, err := os.UserHomeDir(); err == nil {
+func DirPath(osProxy utils.OsProxy) string {
+	if home, err := osProxy.UserHomeDir(); err == nil {
 		return filepath.Join(home, xceleratePath)
 	}
 
-	if wd, err := os.Getwd(); err == nil {
+	if wd, err := osProxy.Getwd(); err == nil {
 		return filepath.Join(wd, xceleratePath)
 	}
 
-	if exe, err := os.Executable(); err == nil {
+	if exe, err := osProxy.Executable(); err == nil {
 		if dir := filepath.Dir(exe); dir != "" {
 			return filepath.Join(dir, xceleratePath)
 		}
@@ -30,6 +31,6 @@ func DirPath() string {
 	return filepath.Join(".", xceleratePath)
 }
 
-func PathFor(subpath string) string {
-	return filepath.Join(DirPath(), subpath)
+func PathFor(osProxy utils.OsProxy, subpath string) string {
+	return filepath.Join(DirPath(osProxy), subpath)
 }

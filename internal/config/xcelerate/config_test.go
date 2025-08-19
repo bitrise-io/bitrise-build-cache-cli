@@ -17,17 +17,16 @@ import (
 )
 
 func TestConfig_Save(t *testing.T) {
+	temp := t.TempDir()
+
 	osProxy := func() *utilsMocks.OsProxyMock {
 		return &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
-				return "~", nil
+				return temp, nil
 			},
-			MkdirAllFunc: func(_ string, _ os.FileMode) error {
-				return nil
-			},
-			CreateFunc: func(_ string) (*os.File, error) {
-				return &os.File{}, nil
-			},
+			MkdirAllFunc: os.MkdirAll,
+			CreateFunc:   os.Create,
+			StatFunc:     os.Stat,
 		}
 	}
 
@@ -56,6 +55,9 @@ func TestConfig_Save(t *testing.T) {
 			},
 		}
 		mockOsProxy := osProxy()
+		t.Cleanup(func() {
+			_ = os.Remove(xcelerate.PathFor(mockOsProxy, "config.json"))
+		})
 
 		// when
 		config := xcelerate.Config{
@@ -71,9 +73,10 @@ func TestConfig_Save(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, mockOsProxy.MkdirAllCalls(), 1)
-		assert.Equal(t, xcelerate.DirPath(), mockOsProxy.MkdirAllCalls()[0].Pth)
+
+		assert.Equal(t, xcelerate.DirPath(mockOsProxy), mockOsProxy.MkdirAllCalls()[0].Name)
 		require.Len(t, mockOsProxy.CreateCalls(), 1)
-		assert.Equal(t, xcelerate.PathFor("config.json"), mockOsProxy.CreateCalls()[0].Pth)
+		assert.Equal(t, xcelerate.PathFor(mockOsProxy, "config.json"), mockOsProxy.CreateCalls()[0].Name)
 		require.Len(t, mockEncoder.SetIndentCalls(), 1)
 		assert.Empty(t, mockEncoder.SetIndentCalls()[0].Prefix)
 		assert.Equal(t, "  ", mockEncoder.SetIndentCalls()[0].Indent)
@@ -81,18 +84,25 @@ func TestConfig_Save(t *testing.T) {
 		assert.False(t, mockEncoder.SetEscapeHTMLCalls()[0].Escape)
 		require.Len(t, mockEncoder.EncodeCalls(), 1)
 		assert.Equal(t, config, mockEncoder.EncodeCalls()[0].Data)
+
+		// second call to save should return an error
+		assert.ErrorIs(t, config.Save(mockOsProxy, mockEncoderFactory), xcelerate.ErrConfigFileAlreadyExists)
 	})
 
 	t.Run("When error occurs making directories save returns an error", func(t *testing.T) {
 		// given
 		mockOsProxy := &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
-				return "~", nil
+				return os.TempDir(), nil
 			},
 			MkdirAllFunc: func(_ string, _ os.FileMode) error {
 				return os.ErrNotExist
 			},
+			StatFunc: os.Stat,
 		}
+		t.Cleanup(func() {
+			_ = os.Remove(xcelerate.PathFor(mockOsProxy, "config.json"))
+		})
 
 		// when
 		config := xcelerate.Config{
@@ -104,14 +114,14 @@ func TestConfig_Save(t *testing.T) {
 		err := config.Save(mockOsProxy, encoderFactory())
 
 		// then
-		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, xcelerate.DirPath(), os.ErrNotExist).Error())
+		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, xcelerate.DirPath(mockOsProxy), os.ErrNotExist).Error())
 	})
 
 	t.Run("When error occurs when creating config file, it returns an error", func(t *testing.T) {
 		// given
 		mockOsProxy := &utilsMocks.OsProxyMock{
 			UserHomeDirFunc: func() (string, error) {
-				return "~", nil
+				return os.TempDir(), nil
 			},
 			MkdirAllFunc: func(_ string, _ os.FileMode) error {
 				return nil
@@ -119,6 +129,7 @@ func TestConfig_Save(t *testing.T) {
 			CreateFunc: func(_ string) (*os.File, error) {
 				return nil, os.ErrNotExist
 			},
+			StatFunc: os.Stat,
 		}
 
 		// when

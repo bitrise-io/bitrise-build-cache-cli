@@ -50,7 +50,7 @@ TBD`,
 
 		decoder := utils.DefaultDecoderFactory{}
 
-		config, err := xcelerate.ReadConfig(decoder)
+		config, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, decoder)
 		if err != nil {
 			logger.Errorf(ErrReadConfig, err)
 			config = xcelerate.DefaultConfig()
@@ -59,7 +59,7 @@ TBD`,
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
 		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, xcodeArgs); err != nil {
-			logger.Errorf(ErrReadConfig, err)
+			logger.Errorf(ErrExecutingXcode, err)
 		}
 
 		return nil

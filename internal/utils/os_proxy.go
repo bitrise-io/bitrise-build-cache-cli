@@ -8,16 +8,19 @@ import (
 )
 
 //go:generate moq -out mocks/os_proxy_mock.go -pkg mocks . OsProxy
+//nolint:interfacebloat
 type OsProxy interface {
-	Create(pth string) (*os.File, error)
+	Create(name string) (*os.File, error)
 	Executable() (string, error)
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
-	MkdirAll(pth string, mode os.FileMode) error
-	ReadFileIfExists(pth string) (string, bool, error)
+	MkdirAll(name string, mode os.FileMode) error
+	ReadFileIfExists(name string) (string, bool, error)
 	Remove(name string) error
 	TempDir() string
 	UserHomeDir() (string, error)
-	WriteFile(pth string, data []byte, mode os.FileMode) error
+	WriteFile(name string, data []byte, mode os.FileMode) error
+	Stat(pth string) (os.FileInfo, error)
+	Getwd() (string, error)
 }
 
 type DefaultOsProxy struct{}
@@ -69,4 +72,12 @@ func (d DefaultOsProxy) OpenFile(name string, flag int, perm os.FileMode) (*os.F
 
 func (d DefaultOsProxy) Executable() (string, error) {
 	return os.Executable() //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Stat(name string) (os.FileInfo, error) {
+	return os.Stat(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Getwd() (string, error) {
+	return os.Getwd() //nolint:wrapcheck
 }
