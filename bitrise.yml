@@ -897,6 +897,13 @@ workflows:
               head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
               tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
     - deploy-to-bitrise-io: {}
+    - script:
+        title: Check for cache usage
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
 
 
 step_bundles:
