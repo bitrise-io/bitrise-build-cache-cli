@@ -15,7 +15,7 @@ import (
 
 // This command should go under an xcelerate subcommand together with stop-xcode-proxy IMO
 var stopXcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
-	Use:          "stop-xcode-proxy",
+	Use:          "stop-proxy",
 	Short:        "TBD",
 	Long:         `TBD`,
 	SilenceUsage: true,
@@ -29,7 +29,7 @@ var stopXcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 }
 
 func init() {
-	rootCmd.AddCommand(stopXcelerateProxyCmd)
+	xcelerateCommand.AddCommand(stopXcelerateProxyCmd)
 }
 
 func stopXcelerateProxyCommandFn(osProxy utils.OsProxy, logger log.Logger) error {
