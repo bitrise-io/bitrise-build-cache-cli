@@ -880,12 +880,9 @@ workflows:
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
-                -skipMacroValidation \
-                SWIFT_ENABLE_EXPLICIT_MODULES=YES \
-                COMPILATION_CACHE_ENABLE_CACHING=YES \
-                SWIFT_ENABLE_COMPILE_CACHE=1 \
-                COMPILATION_CACHE_REMOTE_SERVICE_PATH=${BITRISE_XCELERATE_SOCKET_PATH} \
-                COMPILATION_CACHE_ENABLE_PLUGIN=1 | tee xcodebuild.log | xcpretty
+                -skipMacroValidation | tee xcodebuild.log
+              
+              ../bin/bitrise-build-cache-cli -d xcelerate stop-proxy
     - script:
         title: gather info
         inputs:

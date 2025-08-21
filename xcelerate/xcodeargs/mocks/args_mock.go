@@ -18,7 +18,7 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //
 //		// make and configure a mocked xcodeargs.XcodeArgs
 //		mockedXcodeArgs := &XcodeArgsMock{
-//			ArgsFunc: func() []string {
+//			ArgsFunc: func(additional map[string]string) []string {
 //				panic("mock out the Args method")
 //			},
 //		}
@@ -29,28 +29,33 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //	}
 type XcodeArgsMock struct {
 	// ArgsFunc mocks the Args method.
-	ArgsFunc func() []string
+	ArgsFunc func(additional map[string]string) []string
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Args holds details about calls to the Args method.
 		Args []struct {
+			// Additional is the additional argument value.
+			Additional map[string]string
 		}
 	}
 	lockArgs sync.RWMutex
 }
 
 // Args calls ArgsFunc.
-func (mock *XcodeArgsMock) Args() []string {
+func (mock *XcodeArgsMock) Args(additional map[string]string) []string {
 	if mock.ArgsFunc == nil {
 		panic("XcodeArgsMock.ArgsFunc: method is nil but XcodeArgs.Args was just called")
 	}
 	callInfo := struct {
-	}{}
+		Additional map[string]string
+	}{
+		Additional: additional,
+	}
 	mock.lockArgs.Lock()
 	mock.calls.Args = append(mock.calls.Args, callInfo)
 	mock.lockArgs.Unlock()
-	return mock.ArgsFunc()
+	return mock.ArgsFunc(additional)
 }
 
 // ArgsCalls gets all the calls that were made to Args.
@@ -58,8 +63,10 @@ func (mock *XcodeArgsMock) Args() []string {
 //
 //	len(mockedXcodeArgs.ArgsCalls())
 func (mock *XcodeArgsMock) ArgsCalls() []struct {
+	Additional map[string]string
 } {
 	var calls []struct {
+		Additional map[string]string
 	}
 	mock.lockArgs.RLock()
 	calls = mock.calls.Args

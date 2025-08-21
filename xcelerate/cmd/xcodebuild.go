@@ -41,12 +41,11 @@ TBD`,
 		logger := log.NewLogger()
 		logger.EnableDebugLog(xcelerateParams.Debug)
 
-		xcodeArgs := xcodeargs.Default{
-			Cmd:          cmd,
-			OriginalArgs: xcelerateParams.OrigArgs,
-		}
-
-		callProxySetSession(cmd.Context(), xcodeArgs, os.Getenv, logger)
+		xcodeArgs := xcodeargs.NewDefault(
+			cmd,
+			xcelerateParams.OrigArgs,
+			logger,
+		)
 
 		decoder := utils.DefaultDecoderFactory{}
 
@@ -56,9 +55,11 @@ TBD`,
 			config = xcelerate.DefaultConfig()
 		}
 
+		callProxySetSession(cmd.Context(), config, os.Getenv, logger)
+
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
-		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, xcodeArgs); err != nil {
+		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, config, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
 		}
 
@@ -76,9 +77,12 @@ func XcodebuildCmdFn(
 	ctx context.Context,
 	logger log.Logger,
 	xcodeRunner XcodeRunner,
+	config xcelerate.Config,
 	xcodeArgs xcodeargs.XcodeArgs,
 ) error {
-	toPass := xcodeArgs.Args()
+	toPass := xcodeArgs.Args(map[string]string{
+		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": config.ProxySocketPath,
+	})
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
 	// Intentionally returning xcode error unwrapped
@@ -87,21 +91,8 @@ func XcodebuildCmdFn(
 	return xcodeRunner.Run(ctx, toPass)
 }
 
-func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvider common.EnvProviderFunc, logger log.Logger) {
-	var proxySocket string
-	for _, arg := range args.Args() {
-		if !strings.HasPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH") {
-			continue
-		}
-
-		proxySocket = strings.TrimPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH=")
-	}
-	if proxySocket == "" {
-		logger.TErrorf("No proxy socket found in arguments, skipping session setting")
-
-		return
-	}
-	proxySocket = "unix://" + strings.TrimPrefix(proxySocket, "unix://")
+func callProxySetSession(ctx context.Context, config xcelerate.Config, envProvider common.EnvProviderFunc, logger log.Logger) {
+	proxySocket := "unix://" + strings.TrimPrefix(config.ProxySocketPath, "unix://")
 
 	logger.TInfof("Connecting to proxy socket: %s", proxySocket)
 
