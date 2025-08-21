@@ -118,14 +118,18 @@ func ActivateXcodeCommandFn(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	err := startProxy(
-		logger,
-		osProxy,
-		commandFunc,
-		killFunc,
-	)
-	if err != nil {
-		return fmt.Errorf(errFmtFailedToStartProxy, err)
+	if activateXcodeParams.BuildCacheEnabled {
+		logger.TInfof("Cache enabled, starting xcelerate proxy...")
+
+		err := startProxy(
+			logger,
+			osProxy,
+			commandFunc,
+			killFunc,
+		)
+		if err != nil {
+			return fmt.Errorf(errFmtFailedToStartProxy, err)
+		}
 	}
 
 	if err := AddXcelerateCommandToPath(logger, osProxy); err != nil {
@@ -220,7 +224,7 @@ func startProxy(
 		return fmt.Errorf(errFmtExecutable, err)
 	}
 
-	cmd := commandFunc(context.Background(), exe, xcelerateProxyCmd.Use)
+	cmd := commandFunc(context.Background(), exe, "xcelerate", xcelerateProxyCmd.Use)
 
 	// Detach into new process group so we can signal the whole group.
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{

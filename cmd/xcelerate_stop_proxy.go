@@ -46,7 +46,7 @@ func stopXcelerateProxyCommandFn(osProxy utils.OsProxy, logger log.Logger) error
 
 	// Send SIGTERM to the process group: negative PID means group in unix kill
 	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
-		logger.Debugf("kill (TERM) failed: %w", err)
+		logger.Debugf("kill (TERM) failed: %s", err)
 		// maybe the process is already gone; continue to remove pidfile.
 	}
 
