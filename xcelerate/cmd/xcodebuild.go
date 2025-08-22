@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -55,13 +56,23 @@ TBD`,
 			config = xcelerate.DefaultConfig()
 		}
 
-		callProxySetSession(cmd.Context(), config, os.Getenv, logger)
+		var proxySessionClient session.SessionClient
+		if config.BuildCacheEnabled {
+			var cleanup func()
+
+			proxySessionClient, cleanup = createProxySessionClient(config, logger)
+			defer cleanup()
+		}
+
+		callProxySetSession(cmd.Context(), proxySessionClient, os.Getenv, logger)
 
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
 		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, config, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
 		}
+
+		callProxyGetSessionStats(cmd.Context(), proxySessionClient, logger)
 
 		return nil
 	},
@@ -91,7 +102,11 @@ func XcodebuildCmdFn(
 	return xcodeRunner.Run(ctx, toPass)
 }
 
-func callProxySetSession(ctx context.Context, config xcelerate.Config, envProvider common.EnvProviderFunc, logger log.Logger) {
+// createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
+// connection, it returns nil.
+//
+//nolint:ireturn
+func createProxySessionClient(config xcelerate.Config, logger log.Logger) (session.SessionClient, func()) {
 	proxySocket := "unix://" + strings.TrimPrefix(config.ProxySocketPath, "unix://")
 
 	logger.TInfof("Connecting to proxy socket: %s", proxySocket)
@@ -100,11 +115,22 @@ func callProxySetSession(ctx context.Context, config xcelerate.Config, envProvid
 	if err != nil {
 		logger.TErrorf("Failed to create gRPC client: %v", err)
 
+		return nil, func() {}
+	}
+
+	return session.NewSessionClient(clientConn), func() {
+		if err := clientConn.Close(); err != nil {
+			logger.TErrorf("Failed to close gRPC client connection: %v", err)
+		}
+	}
+}
+
+func callProxySetSession(ctx context.Context, sessionClient session.SessionClient, envProvider common.EnvProviderFunc, logger log.Logger) {
+	if sessionClient == nil {
 		return
 	}
-	defer clientConn.Close()
 
-	_, err = session.NewSessionClient(clientConn).SetSession(ctx, &session.SetSessionRequest{
+	_, err := sessionClient.SetSession(ctx, &session.SetSessionRequest{
 		InvocationId: uuid.New().String(),
 		AppSlug:      envProvider("BITRISE_APP_SLUG"),
 		BuildSlug:    envProvider("BITRISE_BUILD_SLUG"),
@@ -112,7 +138,20 @@ func callProxySetSession(ctx context.Context, config xcelerate.Config, envProvid
 	})
 	if err != nil {
 		logger.TErrorf("Failed to set session: %v", err)
+	}
+}
+
+func callProxyGetSessionStats(ctx context.Context, sessionClient session.SessionClient, logger log.Logger) {
+	if sessionClient == nil {
+		return
+	}
+
+	stats, err := sessionClient.GetSessionStats(ctx, &empty.Empty{})
+	if err != nil {
+		logger.TErrorf("Failed to get session stats: %v", err)
 
 		return
 	}
+
+	logger.TInfof("Session stats: downloaded_bytes=%d, uploaded_bytes=%d", stats.GetDownloadedBytes(), stats.GetUploadedBytes())
 }
