@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -41,12 +42,11 @@ TBD`,
 		logger := log.NewLogger()
 		logger.EnableDebugLog(xcelerateParams.Debug)
 
-		xcodeArgs := xcodeargs.Default{
-			Cmd:          cmd,
-			OriginalArgs: xcelerateParams.OrigArgs,
-		}
-
-		callProxySetSession(cmd.Context(), xcodeArgs, os.Getenv, logger)
+		xcodeArgs := xcodeargs.NewDefault(
+			cmd,
+			xcelerateParams.OrigArgs,
+			logger,
+		)
 
 		decoder := utils.DefaultDecoderFactory{}
 
@@ -56,11 +56,23 @@ TBD`,
 			config = xcelerate.DefaultConfig()
 		}
 
+		var proxySessionClient session.SessionClient
+		if config.BuildCacheEnabled {
+			var cleanup func()
+
+			proxySessionClient, cleanup = createProxySessionClient(config, logger)
+			defer cleanup()
+		}
+
+		callProxySetSession(cmd.Context(), proxySessionClient, os.Getenv, logger)
+
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
-		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, xcodeArgs); err != nil {
+		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, config, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
 		}
+
+		callProxyGetSessionStats(cmd.Context(), proxySessionClient, logger)
 
 		return nil
 	},
@@ -76,9 +88,12 @@ func XcodebuildCmdFn(
 	ctx context.Context,
 	logger log.Logger,
 	xcodeRunner XcodeRunner,
+	config xcelerate.Config,
 	xcodeArgs xcodeargs.XcodeArgs,
 ) error {
-	toPass := xcodeArgs.Args()
+	toPass := xcodeArgs.Args(map[string]string{
+		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": config.ProxySocketPath,
+	})
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
 	// Intentionally returning xcode error unwrapped
@@ -87,21 +102,12 @@ func XcodebuildCmdFn(
 	return xcodeRunner.Run(ctx, toPass)
 }
 
-func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvider common.EnvProviderFunc, logger log.Logger) {
-	var proxySocket string
-	for _, arg := range args.Args() {
-		if !strings.HasPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH") {
-			continue
-		}
-
-		proxySocket = strings.TrimPrefix(arg, "COMPILATION_CACHE_REMOTE_SERVICE_PATH=")
-	}
-	if proxySocket == "" {
-		logger.TErrorf("No proxy socket found in arguments, skipping session setting")
-
-		return
-	}
-	proxySocket = "unix://" + strings.TrimPrefix(proxySocket, "unix://")
+// createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
+// connection, it returns nil.
+//
+//nolint:ireturn
+func createProxySessionClient(config xcelerate.Config, logger log.Logger) (session.SessionClient, func()) {
+	proxySocket := "unix://" + strings.TrimPrefix(config.ProxySocketPath, "unix://")
 
 	logger.TInfof("Connecting to proxy socket: %s", proxySocket)
 
@@ -109,11 +115,22 @@ func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvi
 	if err != nil {
 		logger.TErrorf("Failed to create gRPC client: %v", err)
 
+		return nil, func() {}
+	}
+
+	return session.NewSessionClient(clientConn), func() {
+		if err := clientConn.Close(); err != nil {
+			logger.TErrorf("Failed to close gRPC client connection: %v", err)
+		}
+	}
+}
+
+func callProxySetSession(ctx context.Context, sessionClient session.SessionClient, envProvider common.EnvProviderFunc, logger log.Logger) {
+	if sessionClient == nil {
 		return
 	}
-	defer clientConn.Close()
 
-	_, err = session.NewSessionClient(clientConn).SetSession(ctx, &session.SetSessionRequest{
+	_, err := sessionClient.SetSession(ctx, &session.SetSessionRequest{
 		InvocationId: uuid.New().String(),
 		AppSlug:      envProvider("BITRISE_APP_SLUG"),
 		BuildSlug:    envProvider("BITRISE_BUILD_SLUG"),
@@ -121,7 +138,20 @@ func callProxySetSession(ctx context.Context, args xcodeargs.XcodeArgs, envProvi
 	})
 	if err != nil {
 		logger.TErrorf("Failed to set session: %v", err)
+	}
+}
+
+func callProxyGetSessionStats(ctx context.Context, sessionClient session.SessionClient, logger log.Logger) {
+	if sessionClient == nil {
+		return
+	}
+
+	stats, err := sessionClient.GetSessionStats(ctx, &empty.Empty{})
+	if err != nil {
+		logger.TErrorf("Failed to get session stats: %v", err)
 
 		return
 	}
+
+	logger.TInfof("Session stats: downloaded_bytes=%d, uploaded_bytes=%d", stats.GetDownloadedBytes(), stats.GetUploadedBytes())
 }

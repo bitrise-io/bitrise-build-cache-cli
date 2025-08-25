@@ -38,4 +38,4 @@ run-xcelerate-proxy:
 	BITRISE_BUILD_SLUG=$(shell uuidgen | tr '[:upper:]' '[:lower:]') \
 	BITRISE_STEP_EXECUTION_ID=$(shell uuidgen | tr '[:upper:]' '[:lower:]') \
 	BITRISE_BUILD_CACHE_ENDPOINT=grpc://localhost:6666 \
-	go run main.go xcelerate-proxy
+	go run main.go xcelerate start-proxy

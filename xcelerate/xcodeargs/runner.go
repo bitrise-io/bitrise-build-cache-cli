@@ -31,6 +31,7 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) error {
 	}
 
 	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
+
 	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
 	innerCmd.Stdout = os.Stdout
 	innerCmd.Stderr = os.Stderr
