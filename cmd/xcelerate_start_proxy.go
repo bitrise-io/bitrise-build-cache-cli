@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate_proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 )
@@ -101,7 +101,7 @@ func StartXcodeCacheProxy(
 	}
 
 	//nolint:wrapcheck
-	return xcelerate_proxy.
+	return proxy.
 		NewProxy(client, logger).
 		Serve(listener)
 }

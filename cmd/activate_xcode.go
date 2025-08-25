@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"syscall"
@@ -26,7 +27,7 @@ const (
 
 	activateXcode           = "Activate Bitrise Build Cache for Xcode"
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
-	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
+	AddXcelerateToPath      = "ℹ️ To start building, run `alias xcodebuild='~/.bitrise-xcelerate/bin/bitrise-build-cache-cli xcelerate xcodebuild'` or restart your terminal."
 	startedProxy            = "Started xcelerate_proxy pid = %d"
 
 	ErrFmtCreateXcodeConfig  = "failed to create Xcode config: %w"
@@ -60,18 +61,26 @@ This command will:
 
 		activateXcodeParams.DebugLogging = isDebugLogMode
 
+		osProxy := utils.DefaultOsProxy{}
 		config := xcelerate.NewConfig(
 			cmd.Context(),
 			logger,
 			activateXcodeParams,
 			os.Getenv,
-			utils.DefaultOsProxy{},
+			osProxy,
 			utils.DefaultCommandFunc(),
 		)
 
+		// copy cli into ~/.bitrise-xcelerate/bin
+		cliPath, err := copyCLIToXcelerateBinDir(osProxy)
+		if err != nil {
+			return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
+		}
+
 		return ActivateXcodeCommandFn(
+			cliPath,
 			logger,
-			utils.DefaultOsProxy{},
+			osProxy,
 			utils.DefaultEncoderFactory{},
 			config,
 			utils.DefaultCommandFunc(),
@@ -80,6 +89,38 @@ This command will:
 			},
 		)
 	},
+}
+
+func copyCLIToXcelerateBinDir(osProxy utils.OsProxy) (string, error) {
+	src, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine executable path: %w", err)
+	}
+
+	reader, err := os.Open(src)
+	if err != nil {
+		return "", fmt.Errorf("failed to open source executable: %w", err)
+	}
+	defer reader.Close()
+
+	binDir := xcelerate.PathFor(osProxy, "bin")
+	if err := osProxy.MkdirAll(binDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create bin dir: %w", err)
+	}
+
+	basename := filepath.Base(src)
+	target := filepath.Join(binDir, basename)
+	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return "", fmt.Errorf("failed to create destination executable: %w", err)
+	}
+	defer writer.Close()
+
+	if _, err = io.Copy(writer, reader); err != nil {
+		return "", fmt.Errorf("failed to copy executable: %w", err)
+	}
+
+	return target, nil
 }
 
 //nolint:gochecknoglobals
@@ -107,6 +148,7 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 }
 
 func ActivateXcodeCommandFn(
+	cliPath string,
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	encoderFactory utils.EncoderFactory,
@@ -132,11 +174,11 @@ func ActivateXcodeCommandFn(
 		}
 	}
 
-	if err := AddXcelerateCommandToPath(logger, osProxy); err != nil {
-		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+	if err := AddXcelerateCommandAlias(cliPath, logger, osProxy); err != nil {
+		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
-	logger.Debugf("Xcelerate command added to PATH in ~/.bashrc and ~/.zshrc")
+	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
 
@@ -145,18 +187,15 @@ func ActivateXcodeCommandFn(
 
 // nolint: godox
 // TODO move to utils package
-func AddXcelerateCommandToPath(logger log.Logger,
-	osProxy utils.OsProxy) error {
-	xceleratePath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
-
+func AddXcelerateCommandAlias(cliPath string, logger log.Logger, osProxy utils.OsProxy) error {
 	homeDir, err := osProxy.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf(xcelerate.ErrFmtDetermineHome, err)
 	}
 
-	pathContent := fmt.Sprintf("export PATH=%s:$PATH", xceleratePath)
+	pathContent := fmt.Sprintf("alias xcodebuild='%s xcelerate xcodebuild'", cliPath)
 
-	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", xceleratePath)
+	logger.Debugf("Adding xcelerate command as alias to ~/.bashrc: %s", pathContent)
 	err = AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".bashrc"),
@@ -166,7 +205,7 @@ func AddXcelerateCommandToPath(logger log.Logger,
 		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
 	}
 
-	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", xceleratePath)
+	logger.Debugf("Adding xcelerate command as alias to ~/.zshrc: %s", pathContent)
 	err = AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".zshrc"),

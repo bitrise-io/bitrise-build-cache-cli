@@ -1,4 +1,4 @@
-package xcelerate_proxy
+package proxy
 
 import (
 	"sync/atomic"

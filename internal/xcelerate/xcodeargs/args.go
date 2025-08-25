@@ -28,7 +28,7 @@ var cacheArgs = map[string]string{
 }
 
 type Default struct {
-	Cmd          *cobra.Command
+	Cmds         []*cobra.Command
 	OriginalArgs []string
 	logger       log.Logger
 }
@@ -38,8 +38,20 @@ func NewDefault(
 	originalArgs []string,
 	logger log.Logger,
 ) *Default {
+	var cmds []*cobra.Command
+
+	// collect the command hierarchy to filter out command names from args
+	for {
+		cmds = append(cmds, cmd)
+		if cmd.HasParent() {
+			cmd = cmd.Parent()
+		} else {
+			break
+		}
+	}
+
 	return &Default{
-		Cmd:          cmd,
+		Cmds:         cmds,
 		OriginalArgs: originalArgs,
 		logger:       logger,
 	}
@@ -47,19 +59,25 @@ func NewDefault(
 
 func (p Default) Args(additional map[string]string) []string {
 	flagsSet := make(map[string]struct{})
-	p.Cmd.Flags().Visit(func(flag *pflag.Flag) {
-		flagsSet[flag.Name] = struct{}{}
-		if flag.Shorthand != "" {
-			flagsSet[flag.Shorthand] = struct{}{}
-		}
-	})
+	for _, cmd := range p.Cmds {
+		cmd.Flags().Visit(func(flag *pflag.Flag) {
+			flagsSet[flag.Name] = struct{}{}
+			if flag.Shorthand != "" {
+				flagsSet[flag.Shorthand] = struct{}{}
+			}
+		})
+	}
 
 	toPass := []string{}
+
+next:
 	for _, arg := range p.OriginalArgs {
 		argName := strings.Trim(arg, "-")
 
-		if argName == p.Cmd.Use {
-			continue
+		for _, cmd := range p.Cmds {
+			if argName == cmd.Use {
+				continue next
+			}
 		}
 
 		if _, skip := flagsSet[argName]; skip {

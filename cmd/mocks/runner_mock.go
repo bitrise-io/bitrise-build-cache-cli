@@ -5,7 +5,7 @@ package mocks
 
 import (
 	"context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	"sync"
 )
 

@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -89,7 +88,7 @@ func Test_XcelerateProxy(t *testing.T) {
 			},
 			capabilitiesClient,
 			listener,
-			log.NewLogger(),
+			mockLogger,
 		)
 	}()
 

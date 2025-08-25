@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd"
-	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/cmd/mocks"
-	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs/mocks"
+	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs/mocks"
 )
 
 func Test_xcodebuildCmdFn(t *testing.T) {
@@ -43,7 +43,6 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		require.Len(t, xcodeRunner.RunCalls(), 1)
 		assert.Equal(t, xcodeArgs, xcodeRunner.RunCalls()[0].Args)
 
-		mockLogger.AssertNumberOfCalls(t, "TDebugf", 1)
 		mockLogger.AssertCalled(t, "TDebugf", cmd.MsgArgsPassedToXcodebuild, xcodeArgs)
 	})
 

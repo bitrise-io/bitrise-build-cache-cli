@@ -70,6 +70,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 
 	t.Run("When no error activateXcodeCmdFn logs success", func(t *testing.T) {
 		err := cmd.ActivateXcodeCommandFn(
+			"",
 			mockLogger,
 			osProxy(),
 			encoderFactory(),
@@ -101,6 +102,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		err := cmd.ActivateXcodeCommandFn(
+			"",
 			mockLogger,
 			osProxy(),
 			encoderFactory(),
@@ -225,7 +227,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 	}
 
 	t.Run("When adding xcelerate command to PATH succeeds", func(t *testing.T) {
-		err := cmd.AddXcelerateCommandToPath(mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
 
 		require.NoError(t, err)
 	})
@@ -241,7 +243,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 			return nil
 		}
 
-		err := cmd.AddXcelerateCommandToPath(mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
 
 		require.ErrorIs(t, err, expectedError)
 	})
@@ -257,7 +259,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 			return nil
 		}
 
-		err := cmd.AddXcelerateCommandToPath(mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
 
 		require.ErrorIs(t, err, expectedError)
 	})
@@ -267,7 +269,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 			return "", errors.New("failed to get home directory")
 		}
 
-		err := cmd.AddXcelerateCommandToPath(mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get home directory")

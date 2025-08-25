@@ -15,8 +15,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
-	"github.com/bitrise-io/bitrise-build-cache-cli/xcelerate/xcodeargs"
 )
 
 const (
@@ -31,16 +31,29 @@ type XcodeRunner interface {
 	Run(ctx context.Context, args []string) error
 }
 
+type XcelerateParams struct {
+	OrigArgs []string
+}
+
+//nolint:gochecknoglobals
+var xcelerateParams = XcelerateParams{
+	OrigArgs: []string{},
+}
+
 // rootCmd represents the base command when called without any subcommands
-var xcodebuildCmd = &cobra.Command{ //nolint:gochecknoglobals
+//
+//nolint:gochecknoglobals
+var xcodebuildCmd = &cobra.Command{
 	Use:   "xcodebuild",
 	Short: "TBD",
 	Long: `xcodebuild -  Wrapper around xcodebuild to enable Bitrise Build Cache.
 TBD`,
-	SilenceUsage: true,
+	SilenceUsage:       true,
+	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(xcelerateParams.Debug)
+
+		xcelerateParams.OrigArgs = os.Args[1:]
 
 		xcodeArgs := xcodeargs.NewDefault(
 			cmd,
@@ -55,6 +68,7 @@ TBD`,
 			logger.Errorf(ErrReadConfig, err)
 			config = xcelerate.DefaultConfig()
 		}
+		logger.EnableDebugLog(config.DebugLogging)
 
 		var proxySessionClient session.SessionClient
 		if config.BuildCacheEnabled {
@@ -80,8 +94,7 @@ TBD`,
 
 func init() {
 	// IMPORTANT: silently skip flags not matching defined ones so we can pass them to xcodebuild
-	xcodebuildCmd.FParseErrWhitelist = cobra.FParseErrWhitelist{UnknownFlags: true}
-	rootCmd.AddCommand(xcodebuildCmd)
+	xcelerateCommand.AddCommand(xcodebuildCmd)
 }
 
 func XcodebuildCmdFn(

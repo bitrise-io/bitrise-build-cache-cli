@@ -840,17 +840,6 @@ workflows:
           - content: |-
               set -exo pipefail
               go build -o bin/bitrise-build-cache-cli
-    - script:
-        title: build xcelerate
-        inputs:
-          - content: |-
-              set -exo pipefail
-              go build -o bin/xcelerate ./xcelerate
-              
-              mkdir -p ~/.bitrise-xcelerate/bin
-              mv bin/xcelerate ~/.bitrise-xcelerate/bin/xcodebuild
-              ls -l ~/.bitrise-xcelerate/bin/xcodebuild
-              ls -l /usr/bin/xcodebuild || true
     - change-workdir:
         title: Switch working dir to _tmp
         inputs:
@@ -861,26 +850,26 @@ workflows:
           - content: |-
               #!/usr/bin/env bash
               set -eo pipefail
-              
-              export BITRISE_XCELERATE_SOCKET_PATH=${TMPDIR}xcelerate-proxy.sock
-              
+              shopt -s expand_aliases
+
               echo "Original Xcodebuild command location:"
               which xcodebuild || true
 
               # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
-              ../bin/bitrise-build-cache-cli -d activate xcode --cache --proxy-socket-path "$BITRISE_XCELERATE_SOCKET_PATH" 
+              ../bin/bitrise-build-cache-cli -d activate xcode \
+                --cache \
+                --proxy-socket-path "${TMPDIR}xcelerate-proxy.sock"
 
               source ~/.bashrc
 
-              echo "PATH is:"
-              echo "$PATH"
+              echo "Xcodebuild command location after activation:"
+              which xcodebuild || true
 
               xcodebuild build \
-                --xcelerate-debug \
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
-                -skipMacroValidation | tee xcodebuild.log
+                -skipMacroValidation | tee xcodebuild.log | xcpretty
               
               ../bin/bitrise-build-cache-cli -d xcelerate stop-proxy
     - script:
