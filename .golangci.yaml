@@ -24,6 +24,7 @@ linters:
     - varnamelen
     - wsl
     - wsl_v5
+    - ireturn
   exclusions:
     generated: lax
     presets:

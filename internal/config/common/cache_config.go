@@ -9,12 +9,15 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"maps"
+
 	"os/user"
 )
 
 type CacheConfigMetadata struct {
 	CIProvider   string
 	CLIVersion   string
+	RedactedEnvs map[string]string
 	HostMetadata HostMetadata
 	GitMetadata  GitMetadata
 	// BitriseCI specific
@@ -40,21 +43,18 @@ const (
 	// CIProviderUnknown = "other"
 )
 
-// EnvProviderFunc is a function which returns the value of an environment variable.
-// It's compatible with os.Getenv - os.Getenv can be passed as an EnvProviderFunc.
-type EnvProviderFunc func(string) string
 type CommandFunc func(string, ...string) (string, error)
 
-func detectCIProvider(envProvider EnvProviderFunc) string {
-	if envProvider("BITRISE_IO") != "" {
+func detectCIProvider(envs map[string]string) string {
+	if envs["BITRISE_IO"] != "" {
 		// https://devcenter.bitrise.io/en/references/available-environment-variables.html
 		return CIProviderBitrise
 	}
-	if envProvider("CIRCLECI") != "" {
+	if envs["CIRCLECI"] != "" {
 		// https://circleci.com/docs/variables/#built-in-environment-variables
 		return CIProviderCircleCI
 	}
-	if envProvider("GITHUB_ACTIONS") != "" {
+	if envs["GITHUB_ACTIONS"] != "" {
 		// https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables
 		return CIProviderGitHubActions
 	}
@@ -82,26 +82,32 @@ type GitMetadata struct {
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
-func NewMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
-	hostMetadata := generateHostMetadata(envProvider, commandFunc, logger)
-	git := generateGitMetadata(logger, commandFunc, envProvider)
-	cliVersion := envProvider("BITRISE_BUILD_CACHE_CLI_VERSION")
-	provider := detectCIProvider(envProvider)
+func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
+	hostMetadata := generateHostMetadata(envs, commandFunc, logger)
+	git := generateGitMetadata(logger, commandFunc, envs)
+	cliVersion := envs["BITRISE_BUILD_CACHE_CLI_VERSION"]
+	provider := detectCIProvider(envs)
+
+	redactedEnvs := maps.Clone(envs)
+	redactBitriseEnvs(redactedEnvs)
+
 	if provider == CIProviderBitrise {
 		return CacheConfigMetadata{
+			RedactedEnvs:           redactedEnvs,
 			CIProvider:             provider,
 			CLIVersion:             cliVersion,
 			GitMetadata:            git,
 			HostMetadata:           hostMetadata,
-			BitriseAppID:           envProvider("BITRISE_APP_SLUG"),
-			BitriseWorkflowName:    envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
-			BitriseBuildID:         envProvider("BITRISE_BUILD_SLUG"),
-			BitriseStepExecutionID: envProvider("BITRISE_STEP_EXECUTION_ID"),
-			Datacenter:             envProvider(datacenterEnvKey),
+			BitriseAppID:           envs["BITRISE_APP_SLUG"],
+			BitriseWorkflowName:    envs["BITRISE_TRIGGERED_WORKFLOW_TITLE"],
+			BitriseBuildID:         envs["BITRISE_BUILD_SLUG"],
+			BitriseStepExecutionID: envs["BITRISE_STEP_EXECUTION_ID"],
+			Datacenter:             envs[datacenterEnvKey],
 		}
 	}
 
 	return CacheConfigMetadata{
+		RedactedEnvs: redactedEnvs,
 		CIProvider:   provider,
 		CLIVersion:   cliVersion,
 		GitMetadata:  git,
@@ -109,14 +115,30 @@ func NewMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger lo
 	}
 }
 
-func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envProvider EnvProviderFunc) GitMetadata {
+func redactBitriseEnvs(envs map[string]string) {
+	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
+	secretKeyList := strings.Split(secretKeys, ",")
+	for _, key := range secretKeyList {
+		if key == "" {
+			continue
+		}
+		if _, ok := envs[key]; ok {
+			envs[key] = "[REDACTED]"
+		}
+	}
+	if _, ok := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]; ok {
+		envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"] = "[REDACTED]"
+	}
+}
+
+func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[string]string) GitMetadata {
 	gitMetadata := GitMetadata{}
 
 	// Repo URL
 	repoURL, err := commandFunc("git", "config", "--get", "remote.origin.url")
 	if err != nil {
 		logger.Debugf("Error in get git repo URL: %v", err)
-		repoURL = envProvider("GIT_REPOSITORY_URL")
+		repoURL = envs["GIT_REPOSITORY_URL"]
 	}
 	gitMetadata.RepoURL = strings.TrimSpace(repoURL)
 
@@ -124,7 +146,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envProvider
 	commitHash, err := commandFunc("git", "rev-parse", "HEAD")
 	if err != nil {
 		logger.Debugf("Error in get git commit hash: %v", err)
-		commitHash = envProvider("GIT_CLONE_COMMIT_HASH")
+		commitHash = envs["GIT_CLONE_COMMIT_HASH"]
 	}
 	gitMetadata.CommitHash = strings.TrimSpace(commitHash)
 
@@ -132,7 +154,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envProvider
 	branch, err := commandFunc("git", "branch", "--show-current")
 	if err != nil {
 		logger.Debugf("Error in get git branch: %v", err)
-		branch = envProvider("BITRISE_GIT_BRANCH")
+		branch = envs["BITRISE_GIT_BRANCH"]
 	}
 	gitMetadata.Branch = strings.TrimSpace(branch)
 
@@ -140,7 +162,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envProvider
 	commitEmail, err := commandFunc("git", "show", "-s", "--format=%ae", gitMetadata.CommitHash)
 	if err != nil {
 		logger.Debugf("Error in get git commit email: %v", err)
-		commitEmail = envProvider("GIT_CLONE_COMMIT_AUTHOR_EMAIL")
+		commitEmail = envs["GIT_CLONE_COMMIT_AUTHOR_EMAIL"]
 	}
 	gitMetadata.CommitEmail = strings.TrimSpace(commitEmail)
 
@@ -148,7 +170,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envProvider
 }
 
 // nolint: funlen, nestif
-func generateHostMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger log.Logger) HostMetadata {
+func generateHostMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Logger) HostMetadata {
 	metadata := HostMetadata{}
 
 	// OS
@@ -216,7 +238,7 @@ func generateHostMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, 
 	metadata.MemSize = memSize
 
 	// Locale
-	localeRaw := getLocale(envProvider)
+	localeRaw := getLocale(envs)
 	localeComps := strings.Split(localeRaw, ".")
 	if len(localeComps) == 2 {
 		metadata.Locale = localeComps[0]
@@ -242,10 +264,10 @@ func generateHostMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, 
 	return metadata
 }
 
-func getLocale(envProvider EnvProviderFunc) string {
+func getLocale(envs map[string]string) string {
 	// Check various environment variables for locale information
-	lang := envProvider("LANG")
-	lcAll := envProvider("LC_ALL")
+	lang := envs["LANG"]
+	lcAll := envs["LC_ALL"]
 	if lcAll != "" {
 		return lcAll
 	}

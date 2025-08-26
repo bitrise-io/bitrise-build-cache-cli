@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -55,12 +54,13 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
 		}
 
-		if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
+		allEnvs := utils.AllEnvs()
+		if err := getPlugins(cmd.Context(), logger, allEnvs); err != nil {
 			logger.TWarnf("failed to prefetch plugins: %w", err)
 		}
 
 		//
-		if err := EnableForGradleCmdFn(logger, gradleHome, os.Getenv); err != nil {
+		if err := EnableForGradleCmdFn(logger, gradleHome, allEnvs); err != nil {
 			return fmt.Errorf("enable Gradle Build Cache: %w", err)
 		}
 
@@ -78,7 +78,7 @@ func init() {
 	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
 }
 
-func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
+func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider map[string]string) error {
 	activateGradleParams.Cache.Enabled = true
 	activateGradleParams.Cache.PushEnabled = paramIsPushEnabled
 	activateGradleParams.Cache.ValidationLevel = paramValidationLevel
@@ -107,7 +107,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	return nil
 }
 
-func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string) string) error {
+func getPlugins(ctx context.Context, logger log.Logger, envProvider map[string]string) error {
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
@@ -120,7 +120,7 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider func(string)
 			CacheOperationID: uuid.NewString(),
 			ClientName:       ClientNameGradle,
 			AuthConfig:       authConfig,
-			EnvProvider:      envProvider,
+			Envs:             envProvider,
 			CommandFunc: func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output() //nolint:noctx
 

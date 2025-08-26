@@ -24,9 +24,9 @@ import (
 
 const (
 	MsgArgsPassedToXcodebuild = "Arguments passed to xcodebuild: %v"
-	MsgInvocationSuccess      = "Invocation succeeded ✅ after %.2f seconds"
-	MsgInvocationFailed       = "Invocation failed ❌ after %.2f seconds: %s"
-	MsgInvocationSaved        = "Invocation data saved"
+	MsgInvocationSuccess      = "Invocation succeeded ✅ after %s"
+	MsgInvocationFailed       = "Invocation failed ❌ after %s: %s"
+	MsgInvocationSaved        = "Invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/xcode/%s"
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"
@@ -84,7 +84,7 @@ TBD`,
 			defer cleanup()
 		}
 
-		metadata := common.NewMetadata(os.Getenv, func(cmd string, args ...string) (string, error) {
+		metadata := common.NewMetadata(utils.AllEnvs(), func(cmd string, args ...string) (string, error) {
 			o, err := utils.DefaultCommandFunc()(cobraCmd.Context(), cmd, args...).CombinedOutput()
 
 			return string(o), err
@@ -133,9 +133,9 @@ func XcodebuildCmdFn(
 
 	runStats := xcodeRunner.Run(ctx, toPass)
 	if runStats.Error != nil {
-		logger.TErrorf(MsgInvocationFailed, (time.Duration(runStats.DurationMS) * time.Millisecond).Seconds(), runStats.Error)
+		logger.TErrorf(MsgInvocationFailed, time.Duration(runStats.DurationMS)*time.Millisecond, runStats.Error)
 	} else {
-		logger.TDonef(MsgInvocationSuccess, (time.Duration(runStats.DurationMS) * time.Millisecond).Seconds())
+		logger.TDonef(MsgInvocationSuccess, time.Duration(runStats.DurationMS)*time.Millisecond)
 	}
 	logger.Debugf("Run stats: %+v", runStats)
 
@@ -166,8 +166,9 @@ func XcodebuildCmdFn(
 
 	if err = client.PutInvocation(*inv); err != nil {
 		logger.Errorf("Failed to send invocation analytics: %v", err)
+	} else {
+		logger.TInfof(MsgInvocationSaved, invocationID)
 	}
-	logger.TInfof(MsgInvocationSaved)
 
 	return runStats.Error
 }

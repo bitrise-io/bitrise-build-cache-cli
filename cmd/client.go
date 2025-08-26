@@ -26,7 +26,7 @@ type CreateKVClientParams struct {
 	ClientName         string
 	InvocationID       string
 	AuthConfig         common.CacheAuthConfig
-	EnvProvider        common.EnvProviderFunc
+	Envs               map[string]string
 	CommandFunc        common.CommandFunc
 	Logger             log.Logger
 	BitriseKVClient    kv_storage.KVStorageClient         // nullable, if not provided, a new client will be created
@@ -35,7 +35,7 @@ type CreateKVClientParams struct {
 }
 
 func createKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Client, error) {
-	endpointURL := common.SelectCacheEndpointURL("", params.EnvProvider)
+	endpointURL := common.SelectCacheEndpointURL("", params.Envs)
 	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 
 	buildCacheHost, insecureGRPC, err := kv.ParseURLGRPC(endpointURL)
@@ -54,7 +54,7 @@ func createKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		ClientName:          params.ClientName,
 		AuthConfig:          params.AuthConfig,
 		Logger:              params.Logger,
-		CacheConfigMetadata: common.NewMetadata(params.EnvProvider, params.CommandFunc, params.Logger),
+		CacheConfigMetadata: common.NewMetadata(params.Envs, params.CommandFunc, params.Logger),
 		CacheOperationID:    params.CacheOperationID,
 		BitriseKVClient:     params.BitriseKVClient,
 		CapabilitiesClient:  params.CapabilitiesClient,

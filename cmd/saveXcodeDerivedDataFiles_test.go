@@ -18,9 +18,9 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 	mockTracker := &xcodeMocks.StepAnalyticsTrackerMock{}
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN specified", func(t *testing.T) {
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
-		})
+		}
 		command := func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}

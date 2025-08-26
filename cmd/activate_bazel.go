@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"os/exec"
@@ -68,7 +67,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	if err := ActivateBazelCmdFn(
 		logger,
 		bazelrcPath,
-		os.Getenv,
+		utils.AllEnvs(),
 		func(cmd string, params ...string) (string, error) {
 			output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx
 			if err2 == nil {
@@ -93,13 +92,13 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 func ActivateBazelCmdFn(
 	logger log.Logger,
 	bazelrcPath string,
-	envProvider func(string) string,
+	envs map[string]string,
 	commandFunc common.CommandFunc,
-	templateInventoryProvider func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
+	templateInventoryProvider func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
 	templateWriter func(bazelconfig.TemplateInventory, string) error,
 ) error {
 	// Generate template inventory
-	inventory, err := templateInventoryProvider(logger, envProvider, commandFunc, isDebugLogMode)
+	inventory, err := templateInventoryProvider(logger, envs, commandFunc, isDebugLogMode)
 	if err != nil {
 		return err
 	}

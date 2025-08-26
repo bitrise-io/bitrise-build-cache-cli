@@ -38,7 +38,7 @@ const (
 
 //go:generate moq -out mocks/config_mock.go -pkg mocks . XcelerateConfig
 type XcelerateConfig interface {
-	Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error
+	Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error
 }
 
 // activateXcodeCmd represents the `xcode` subcommand under `activate`
@@ -66,7 +66,7 @@ This command will:
 			cmd.Context(),
 			logger,
 			activateXcodeParams,
-			os.Getenv,
+			utils.AllEnvs(),
 			osProxy,
 			utils.DefaultCommandFunc(),
 		)
@@ -159,7 +159,7 @@ func ActivateXcodeCommandFn(
 	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
 ) error {
-	if err := xconfig.Save(osProxy, encoderFactory); err != nil {
+	if err := xconfig.Save(logger, osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 

@@ -864,7 +864,11 @@ workflows:
 
               echo "Xcodebuild command location after activation:"
               type xcodebuild || true
+              
+              echo "Config file content:"
+              cat "$HOME/.bitrise-xcelerate/config.json"
 
+              echo "Starting build..."
               xcodebuild build \
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \

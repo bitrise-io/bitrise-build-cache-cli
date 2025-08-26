@@ -17,6 +17,7 @@ import (
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +25,7 @@ import (
 func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 	config := func() *cmdMocks.XcelerateConfigMock {
 		return &cmdMocks.XcelerateConfigMock{
-			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
+			SaveFunc: func(_ log.Logger, _ utils.OsProxy, _ utils.EncoderFactory) error {
 				return nil
 			},
 		}
@@ -96,7 +97,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		expectedError := errors.New("failed to save config")
 
 		mockConfig := &cmdMocks.XcelerateConfigMock{
-			SaveFunc: func(_ utils.OsProxy, _ utils.EncoderFactory) error {
+			SaveFunc: func(_ log.Logger, _ utils.OsProxy, _ utils.EncoderFactory) error {
 				return expectedError
 			},
 		}

@@ -69,7 +69,7 @@ func TestConfig_Save(t *testing.T) {
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
 		}
-		err := config.Save(mockOsProxy, mockEncoderFactory)
+		err := config.Save(mockLogger, mockOsProxy, mockEncoderFactory)
 
 		// then
 		require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestConfig_Save(t *testing.T) {
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
 			BuildCacheEnabled:      true,
 		}
-		err := config.Save(mockOsProxy, encoderFactory())
+		err := config.Save(mockLogger, mockOsProxy, encoderFactory())
 
 		// then
 		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateFolder, xcelerate.DirPath(mockOsProxy), os.ErrNotExist).Error())
@@ -138,7 +138,7 @@ func TestConfig_Save(t *testing.T) {
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
 			BuildCacheEnabled:      true,
 		}
-		err := config.Save(mockOsProxy, encoderFactory())
+		err := config.Save(mockLogger, mockOsProxy, encoderFactory())
 
 		// then
 		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtCreateConfigFile, os.ErrNotExist).Error())
@@ -167,7 +167,7 @@ func TestConfig_Save(t *testing.T) {
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
 			BuildCacheEnabled:      true,
 		}
-		err := config.Save(osProxy(), mockEncoderFactory)
+		err := config.Save(mockLogger, osProxy(), mockEncoderFactory)
 
 		// then
 		assert.EqualError(t, err, fmt.Errorf(xcelerate.ErrFmtEncodeConfigFile, encodingError).Error())
@@ -176,34 +176,20 @@ func TestConfig_Save(t *testing.T) {
 
 func TestConfig_NewConfig(t *testing.T) {
 	t.Run("When auth env vars are not set, returns error", func(t *testing.T) {
-		envMock := func(s string) string {
-			return ""
-		}
-
 		osProxyMock := &utilsMocks.OsProxyMock{}
 
-		_, err := xcelerate.NewConfig(context.Background(), nil, xcelerate.Params{}, envMock, osProxyMock, nil)
+		_, err := xcelerate.NewConfig(context.Background(), nil, xcelerate.Params{}, map[string]string{}, osProxyMock, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fmt.Errorf(xcelerate.ErrNoAuthConfig, errors.New("")).Error())
 	})
 	t.Run("When all paths are defined, returns new config", func(t *testing.T) {
-		envMock := func(s string) string {
-			switch s {
-			case "BITRISE_BUILD_CACHE_AUTH_TOKEN":
-				return "auth-token"
-			case "BITRISE_BUILD_CACHE_WORKSPACE_ID":
-				return "workspace-id"
-			case "BITRISE_BUILD_CACHE_CLI_VERSION":
-				return "cli-version-1.0.0"
-			case "BITRISE_XCELERATE_PROXY_VERSION":
-				return "proxy-version-1.0.0"
-			case "BITRISE_XCELERATE_WRAPPER_VERSION":
-				return "wrapper-version-1.0.0"
-			case "BITRISE_XCELERATE_PROXY_SOCKET_PATH":
-				return "/tmp/xcelerate-proxy.sock"
-			}
-
-			return ""
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
+			"BITRISE_BUILD_CACHE_CLI_VERSION":     "cli-version-1.0.0",
+			"BITRISE_XCELERATE_PROXY_VERSION":     "proxy-version-1.0.0",
+			"BITRISE_XCELERATE_WRAPPER_VERSION":   "wrapper-version-1.0.0",
+			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
@@ -221,7 +207,7 @@ func TestConfig_NewConfig(t *testing.T) {
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
 			BuildCacheEnabled: true,
 			DebugLogging:      true,
-		}, envMock, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
+		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
 			assert.Equal(t, "xcodebuild", args[0])
@@ -248,15 +234,9 @@ func TestConfig_NewConfig(t *testing.T) {
 	})
 
 	t.Run("When xcode path is overridden, returns config with that path", func(t *testing.T) {
-		envMock := func(s string) string {
-			switch s {
-			case "BITRISE_BUILD_CACHE_AUTH_TOKEN":
-				return "auth-token"
-			case "BITRISE_BUILD_CACHE_WORKSPACE_ID":
-				return "workspace-id"
-			}
-
-			return ""
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
 		}
 
 		osProxyMock := &utilsMocks.OsProxyMock{
@@ -276,7 +256,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			DebugLogging:            true,
 			XcodePathOverride:       "/usr/bin/xcodebuild-override",
 			ProxySocketPathOverride: "/tmp/xcelerate-proxy.sock",
-		}, envMock, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
 		})
 		require.NoError(t, err)
@@ -299,15 +279,9 @@ func TestConfig_NewConfig(t *testing.T) {
 	})
 
 	t.Run("When `which xcodebuild` command fails, returns config with default path", func(t *testing.T) {
-		envMock := func(s string) string {
-			switch s {
-			case "BITRISE_BUILD_CACHE_AUTH_TOKEN":
-				return "auth-token"
-			case "BITRISE_BUILD_CACHE_WORKSPACE_ID":
-				return "workspace-id"
-			}
-
-			return ""
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
 		}
 
 		osProxyMock := &utilsMocks.OsProxyMock{
@@ -325,7 +299,7 @@ func TestConfig_NewConfig(t *testing.T) {
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
 			BuildCacheEnabled: true,
 			DebugLogging:      true,
-		}, envMock, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
 		})
 		require.NoError(t, err)

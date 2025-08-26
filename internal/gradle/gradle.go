@@ -8,10 +8,10 @@ import (
 type Cache struct {
 	logger      log.Logger
 	kvClient    *kv.Client
-	envProvider func(string) string
+	envProvider map[string]string
 }
 
-func NewCache(logger log.Logger, envProvider func(string) string, client *kv.Client) *Cache {
+func NewCache(logger log.Logger, envProvider map[string]string, client *kv.Client) *Cache {
 	return &Cache{
 		logger:      logger,
 		envProvider: envProvider,

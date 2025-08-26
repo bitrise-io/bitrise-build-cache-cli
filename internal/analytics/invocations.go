@@ -52,7 +52,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		WorkflowName:     commonMetadata.BitriseWorkflowName,
 		ProviderID:       commonMetadata.CIProvider,
 		CLIVersion:       commonMetadata.CLIVersion,
-		Envs:             map[string]string{}, // TODO
+		Envs:             commonMetadata.RedactedEnvs,
 		OS:               commonMetadata.HostMetadata.OS,
 		HwCPUCores:       commonMetadata.HostMetadata.CPUCores,
 		HwMemSize:        commonMetadata.HostMetadata.MemSize,

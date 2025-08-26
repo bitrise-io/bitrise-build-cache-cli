@@ -7,10 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createEnvProvider(envs map[string]string) func(string) string {
-	return func(s string) string { return envs[s] }
-}
-
 func Test_CreateMetadata(t *testing.T) {
 	type args struct {
 		rootDir    string
@@ -28,11 +24,11 @@ func Test_CreateMetadata(t *testing.T) {
 	testInputFile.Close()
 
 	tests := []struct {
-		name        string
-		args        args
-		wantErr     string
-		envProvider func(string) string
-		asserts     func(t *testing.T, md *Metadata)
+		name    string
+		args    args
+		wantErr string
+		envs    map[string]string
+		asserts func(t *testing.T, md *Metadata)
 	}{
 		{
 			name: "missing rootDir",
@@ -48,12 +44,12 @@ func Test_CreateMetadata(t *testing.T) {
 				rootDir:    testRootDir,
 				outputFile: "metadata.json",
 			},
-			envProvider: createEnvProvider(map[string]string{
+			envs: map[string]string{
 				"BITRISE_APP_SLUG":   "app-slug",
 				"BITRISE_BUILD_SLUG": "build-slug",
 				"BITRISE_GIT_COMMIT": "git-commit",
 				"BITRISE_GIT_BRANCH": "git-branch",
-			}),
+			},
 			asserts: func(t *testing.T, md *Metadata) {
 				t.Helper()
 
@@ -76,15 +72,11 @@ func Test_CreateMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			envProvider := tt.envProvider
-			if envProvider == nil {
-				envProvider = createEnvProvider(map[string]string{})
-			}
 			md, err := CreateMetadata(CreateMetadataParams{
 				ProjectRootDirPath: tt.args.rootDir,
 				DerivedDataPath:    tt.args.rootDir,
 				CacheKey:           "some-key",
-			}, envProvider, logger)
+			}, tt.envs, logger)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {

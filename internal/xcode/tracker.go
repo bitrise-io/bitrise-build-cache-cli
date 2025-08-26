@@ -26,19 +26,19 @@ type DefaultStepAnalyticsTracker struct {
 	cliVersion string
 }
 
-func NewDefaultStepTracker(stepID string, envProvider func(string) string, logger log.Logger) *DefaultStepAnalyticsTracker {
+func NewDefaultStepTracker(stepID string, envProvider map[string]string, logger log.Logger) *DefaultStepAnalyticsTracker {
 	p := analytics.Properties{
 		"step_id":     stepID,
-		"build_slug":  envProvider("BITRISE_BUILD_SLUG"),
-		"app_slug":    envProvider("BITRISE_APP_SLUG"),
-		"workflow":    envProvider("BITRISE_TRIGGERED_WORKFLOW_ID"),
-		"cli_version": envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		"build_slug":  envProvider["BITRISE_BUILD_SLUG"],
+		"app_slug":    envProvider["BITRISE_APP_SLUG"],
+		"workflow":    envProvider["BITRISE_TRIGGERED_WORKFLOW_ID"],
+		"cli_version": envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 	}
 
 	return &DefaultStepAnalyticsTracker{
 		tracker:    analytics.NewDefaultTracker(logger, p),
 		logger:     logger,
-		cliVersion: envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		cliVersion: envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"os/user"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -52,12 +52,13 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		logger.Infof("(i) Skip existing files: %t", skipExisting)
 		logger.Infof("(i) Force overwrite existing files: %t", forceOverwrite)
 
-		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", os.Getenv, logger)
+		allEnvs := utils.AllEnvs()
+		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", allEnvs, logger)
 		defer tracker.Wait()
 		startT := time.Now()
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, err := common.ReadAuthConfigFromEnvironments(os.Getenv)
+		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -70,7 +71,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 			logger,
 			tracker,
 			startT,
-			os.Getenv,
+			utils.AllEnvs(),
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output()
 
@@ -128,11 +129,11 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	logger log.Logger,
 	tracker xcode.StepAnalyticsTracker,
 	startT time.Time,
-	envProvider func(string) string,
+	envs map[string]string,
 	commandFunc func(string, ...string) (string, error),
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
-	commonMetadata := common.NewMetadata(envProvider, commandFunc, logger)
+	commonMetadata := common.NewMetadata(envs, commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
 	kvClient, err := createKVClient(ctx,
@@ -140,7 +141,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 			CacheOperationID: op.OperationID,
 			ClientName:       ClientNameXcode,
 			AuthConfig:       authConfig,
-			EnvProvider:      envProvider,
+			Envs:             envs,
 			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
@@ -149,7 +150,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
-	cacheKeyType, cacheKey, err := downloadXcodeMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envProvider)
+	cacheKeyType, cacheKey, err := downloadXcodeMetadata(ctx, cacheMetadataPath, providedCacheKey, kvClient, logger, envs)
 	op.CacheKey = cacheKey
 	if err != nil {
 		return op, fmt.Errorf("download cache metadata: %w", err)
@@ -238,12 +239,12 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
 	kvClient *kv.Client,
 	logger log.Logger,
-	envProvider func(string) string) (CacheKeyType, string, error) {
+	envs map[string]string) (CacheKeyType, string, error) {
 	var cacheKeyType CacheKeyType = CacheKeyTypeDefault
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
-		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
+		if cacheKey, err = xcode.GetCacheKey(envs, xcode.CacheKeyParams{}); err != nil {
 			return "", "", fmt.Errorf("get cache key: %w", err)
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
@@ -261,7 +262,7 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 
 	if errors.Is(err, kv.ErrCacheNotFound) {
 		cacheKeyType = CacheKeyTypeFallback
-		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envs, xcode.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
 			return cacheKeyType, fallbackCacheKey, errors.New("cache metadata not found in cache")
 		}

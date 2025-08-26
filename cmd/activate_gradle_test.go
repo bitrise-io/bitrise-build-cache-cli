@@ -38,8 +38,8 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
+			map[string]string{},
+			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -78,8 +78,8 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
+			map[string]string{},
+			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -113,8 +113,8 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
+			map[string]string{},
+			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -148,8 +148,8 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := cmd.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			func(string) string { return "" },
-			func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error) {
+			map[string]string{},
+			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(

@@ -39,7 +39,7 @@ type CreateMetadataParams struct {
 	SkipSPM            bool
 }
 
-func CreateMetadata(params CreateMetadataParams, envProvider func(string) string, logger log.Logger) (*Metadata, error) {
+func CreateMetadata(params CreateMetadataParams, envs map[string]string, logger log.Logger) (*Metadata, error) {
 	if params.ProjectRootDirPath == "" {
 		return nil, fmt.Errorf("missing project root directory path")
 	}
@@ -83,16 +83,16 @@ func CreateMetadata(params CreateMetadataParams, envProvider func(string) string
 		XcodeCacheDir:        xcodeCacheDir,
 		CacheKey:             params.CacheKey,
 		CreatedAt:            time.Now(),
-		AppID:                envProvider("BITRISE_APP_SLUG"),
-		BuildID:              envProvider("BITRISE_BUILD_SLUG"),
-		GitCommit:            envProvider("BITRISE_GIT_COMMIT"),
-		GitBranch:            envProvider("BITRISE_GIT_BRANCH"),
-		BuildCacheCLIVersion: envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		AppID:                envs["BITRISE_APP_SLUG"],
+		BuildID:              envs["BITRISE_BUILD_SLUG"],
+		GitCommit:            envs["BITRISE_GIT_COMMIT"],
+		GitBranch:            envs["BITRISE_GIT_BRANCH"],
+		BuildCacheCLIVersion: envs["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		MetadataVersion:      metadataVersion,
 	}
 
 	if m.GitCommit == "" {
-		m.GitCommit = envProvider("GIT_CLONE_COMMIT_HASH")
+		m.GitCommit = envs["GIT_CLONE_COMMIT_HASH"]
 	}
 
 	return &m, nil

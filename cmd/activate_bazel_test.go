@@ -26,11 +26,11 @@ func Test_activateBazelCmdFn(t *testing.T) {
 		err := cmd.ActivateBazelCmdFn(
 			mockLogger,
 			"~/.bazelrc",
-			func(string) string { return "" },
+			map[string]string{},
 			func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
-			func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -57,11 +57,11 @@ func Test_activateBazelCmdFn(t *testing.T) {
 		err := cmd.ActivateBazelCmdFn(
 			mockLogger,
 			"~/.bazelrc",
-			func(string) string { return "" },
+			map[string]string{},
 			func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
-			func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return bazelconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -83,11 +83,11 @@ func Test_activateBazelCmdFn(t *testing.T) {
 		err := cmd.ActivateBazelCmdFn(
 			mockLogger,
 			"~/.bazelrc",
-			func(string) string { return "" },
+			map[string]string{},
 			func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
-			func(log.Logger, func(string) string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return bazelconfig.TemplateInventory{}, nil
 			},
 			func(

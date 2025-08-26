@@ -18,9 +18,9 @@ var (
 
 // SelectCacheEndpointURL - if endpointURL provided use that,
 // otherwise select the best build cache endpoint automatically
-func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string) string {
+func SelectCacheEndpointURL(endpointURL string, envs map[string]string) string {
 	if endpointURL == "" {
-		endpointURL = envProvider("BITRISE_BUILD_CACHE_ENDPOINT")
+		endpointURL = envs["BITRISE_BUILD_CACHE_ENDPOINT"]
 	}
 	if len(endpointURL) > 0 {
 		return endpointURL
@@ -31,15 +31,15 @@ func SelectCacheEndpointURL(endpointURL string, envProvider func(string) string)
 
 // SelectRBEEndpointURL - if endpointURL provided use that,
 // otherwise select the RBE endpoint from environment
-func SelectRBEEndpointURL(endpointURL string, envProvider func(string) string) string {
+func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 	if endpointURL == "" {
-		endpointURL = envProvider("BITRISE_RBE_ENDPOINT")
+		endpointURL = envs["BITRISE_RBE_ENDPOINT"]
 	}
 	if len(endpointURL) > 0 {
 		return endpointURL
 	}
 
-	bitriseDenVMDatacenter := envProvider(datacenterEnvKey)
+	bitriseDenVMDatacenter := envs[datacenterEnvKey]
 	if slices.Contains(nonRBEDCs, bitriseDenVMDatacenter) {
 		return ""
 	}

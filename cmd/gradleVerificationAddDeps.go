@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -33,7 +32,8 @@ This command will:
 		}
 
 		//
-		if err := addGradlePluginsFn(logger, gradleHome, os.Getenv); err != nil {
+		allEnvs := utils.AllEnvs()
+		if err := addGradlePluginsFn(logger, gradleHome, allEnvs); err != nil {
 			return fmt.Errorf("enable Gradle Build Cache: %w", err)
 		}
 
@@ -47,7 +47,7 @@ func init() {
 	gradleVerification.AddCommand(addGradleVerificationReferenceDeps)
 }
 
-func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider func(string) string) error {
+func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider map[string]string) error {
 	activateGradleParams.Cache.Enabled = false
 	activateGradleParams.Cache.JustDependency = true
 	activateGradleParams.Analytics.Enabled = false

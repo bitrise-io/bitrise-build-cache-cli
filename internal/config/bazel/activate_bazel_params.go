@@ -48,20 +48,20 @@ func DefaultActivateBazelParams() ActivateBazelParams {
 
 func (params ActivateBazelParams) TemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 	commandFunc common.CommandFunc,
 	isDebug bool,
 ) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
-	commonInventory, err := params.commonTemplateInventory(logger, envProvider, commandFunc, isDebug)
+	commonInventory, err := params.commonTemplateInventory(logger, envs, commandFunc, isDebug)
 	if err != nil {
 		return TemplateInventory{}, err
 	}
 
-	cacheInventory := params.cacheTemplateInventory(logger, envProvider)
+	cacheInventory := params.cacheTemplateInventory(logger, envs)
 	besInventory := params.besTemplateInventory(logger)
-	rbeInventory := params.rbeTemplateInventory(logger, envProvider)
+	rbeInventory := params.rbeTemplateInventory(logger, envs)
 
 	return TemplateInventory{
 		Common: commonInventory,
@@ -73,7 +73,7 @@ func (params ActivateBazelParams) TemplateInventory(
 
 func (params ActivateBazelParams) commonTemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 	commandFunc common.CommandFunc,
 	isDebug bool,
 ) (CommonTemplateInventory, error) {
@@ -81,13 +81,13 @@ func (params ActivateBazelParams) commonTemplateInventory(
 
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("read auth config from environment variables: %w", err)
 	}
 
-	cacheConfig := common.NewMetadata(envProvider,
+	cacheConfig := common.NewMetadata(envs,
 		commandFunc,
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
@@ -114,7 +114,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 
 func (params ActivateBazelParams) cacheTemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 ) CacheTemplateInventory {
 	if !params.Cache.Enabled {
 		logger.Infof("(i) Cache disabled")
@@ -126,7 +126,7 @@ func (params ActivateBazelParams) cacheTemplateInventory(
 
 	logger.Infof("(i) Cache enabled")
 
-	cacheEndpointURL := common.SelectCacheEndpointURL(params.Cache.Endpoint, envProvider)
+	cacheEndpointURL := common.SelectCacheEndpointURL(params.Cache.Endpoint, envs)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", cacheEndpointURL)
 	logger.Infof("(i) Push new cache entries: %t", params.Cache.PushEnabled)
 
@@ -164,7 +164,7 @@ func (params ActivateBazelParams) besTemplateInventory(
 
 func (params ActivateBazelParams) rbeTemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 ) RBETemplateInventory {
 	if !params.RBE.Enabled {
 		logger.Infof("(i) RBE disabled")
@@ -176,7 +176,7 @@ func (params ActivateBazelParams) rbeTemplateInventory(
 
 	logger.Infof("(i) RBE enabled")
 
-	rbeEndpoint := common.SelectRBEEndpointURL(params.RBE.Endpoint, envProvider)
+	rbeEndpoint := common.SelectRBEEndpointURL(params.RBE.Endpoint, envs)
 	// If no endpoint is available, RBE should not be enabled
 	if rbeEndpoint == "" {
 		logger.Infof("(i) RBE is not available at this location")

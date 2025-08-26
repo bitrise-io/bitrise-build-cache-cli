@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -34,7 +33,8 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		logger.TInfof("Enable Bitrise Build Cache for Bazel")
 		//
 
-		if err := EnableForBazelCmdFn(logger, utils.DefaultOsProxy{}, os.Getenv); err != nil {
+		allEnvs := utils.AllEnvs()
+		if err := EnableForBazelCmdFn(logger, utils.DefaultOsProxy{}, allEnvs); err != nil {
 			return fmt.Errorf("enable Bazel Build Cache: %w", err)
 		}
 
@@ -53,11 +53,11 @@ func init() {
 	enableForCmd.AddCommand(enableForBazelCmd)
 }
 
-func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider func(string) string) error {
+func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider map[string]string) error {
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata
-	cacheConfig := common.NewMetadata(os.Getenv,
+	cacheConfig := common.NewMetadata(utils.AllEnvs(),
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 

@@ -22,7 +22,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 				return "/mock/home", nil
 			},
 		}
-		envVars := createEnvProvider(map[string]string{})
+		envVars := map[string]string{}
 		err := cmd.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
@@ -41,9 +41,9 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 				return nil // success
 			},
 		}
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
-		})
+		}
 		err := cmd.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
@@ -65,10 +65,10 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 				return nil // success
 			},
 		}
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 		err := cmd.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
@@ -90,10 +90,10 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 				return nil // success
 			},
 		}
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 		err := cmd.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
@@ -123,10 +123,10 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			},
 		}
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 		err := cmd.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
@@ -170,10 +170,10 @@ build --remote_upload_local_results
 			},
 		}
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 		err := cmd.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
@@ -199,10 +199,10 @@ build --remote_upload_local_results
 	})
 
 	t.Run("with cache push disabled", func(t *testing.T) {
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// Create params and disable push
 		params := bazelconfig.DefaultActivateBazelParams()
@@ -247,10 +247,10 @@ build --show_timestamps
 			},
 		}
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 		err := cmd.EnableForBazelCmdFn(mockLogger, proxyMock, envVars)
 
 		// then

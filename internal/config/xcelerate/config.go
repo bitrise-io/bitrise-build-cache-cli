@@ -75,7 +75,7 @@ func DefaultConfig() Config {
 func NewConfig(ctx context.Context,
 	logger log.Logger,
 	params Params,
-	envProvider common.EnvProviderFunc,
+	envProvider map[string]string,
 	osProxy utils.OsProxy,
 	cmdFunc utils.CommandFunc) (Config, error) {
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
@@ -97,7 +97,7 @@ func NewConfig(ctx context.Context,
 
 	proxySocketPath := params.ProxySocketPathOverride
 	if proxySocketPath == "" {
-		proxySocketPath = envProvider("BITRISE_XCELERATE_PROXY_SOCKET_PATH")
+		proxySocketPath = envProvider["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
 		if proxySocketPath == "" {
 			proxySocketPath = filepath.Join(osProxy.TempDir(), "xcelerate-proxy.sock")
 			logger.Infof("Using new proxy socket path: %s", proxySocketPath)
@@ -107,10 +107,10 @@ func NewConfig(ctx context.Context,
 	}
 
 	return Config{
-		ProxyVersion:           envProvider("BITRISE_XCELERATE_PROXY_VERSION"),
+		ProxyVersion:           envProvider["BITRISE_XCELERATE_PROXY_VERSION"],
 		ProxySocketPath:        proxySocketPath,
-		WrapperVersion:         envProvider("BITRISE_XCELERATE_WRAPPER_VERSION"),
-		CLIVersion:             envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		WrapperVersion:         envProvider["BITRISE_XCELERATE_WRAPPER_VERSION"],
+		CLIVersion:             envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		OriginalXcodebuildPath: xcodePath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		DebugLogging:           params.DebugLogging,
@@ -135,7 +135,7 @@ func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc u
 	return trimmed, nil
 }
 
-func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
+func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 	xcelerateFolder := DirPath(os)
 
 	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
@@ -155,6 +155,8 @@ func (config Config) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory)
 	if err := enc.Encode(config); err != nil {
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}
+
+	logger.TInfof("Config saved to: %s", configFilePath)
 
 	return nil
 }

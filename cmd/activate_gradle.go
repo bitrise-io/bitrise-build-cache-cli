@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -40,14 +39,15 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
 		}
 
-		if err := getPlugins(cmd.Context(), logger, os.Getenv); err != nil {
+		allEnvs := utils.AllEnvs()
+		if err := getPlugins(cmd.Context(), logger, allEnvs); err != nil {
 			return fmt.Errorf("failed to fetch plugins: %w", err)
 		}
 
 		if err := ActivateGradleCmdFn(
 			logger,
 			gradleHome,
-			os.Getenv,
+			allEnvs,
 			activateGradleParams.TemplateInventory,
 			func(
 				inventory gradleconfig.TemplateInventory,
@@ -92,8 +92,8 @@ func init() {
 func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
-	envProvider func(string) string,
-	templateInventoryProvider func(log.Logger, func(string) string, bool) (gradleconfig.TemplateInventory, error),
+	envProvider map[string]string,
+	templateInventoryProvider func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 ) error {

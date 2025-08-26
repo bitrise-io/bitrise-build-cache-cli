@@ -6,6 +6,7 @@ package mocks
 import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/go-utils/v2/log"
 	"sync"
 )
 
@@ -19,7 +20,7 @@ var _ cmd.XcelerateConfig = &XcelerateConfigMock{}
 //
 //		// make and configure a mocked cmd.XcelerateConfig
 //		mockedXcelerateConfig := &XcelerateConfigMock{
-//			SaveFunc: func(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
+//			SaveFunc: func(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 //				panic("mock out the Save method")
 //			},
 //		}
@@ -30,12 +31,14 @@ var _ cmd.XcelerateConfig = &XcelerateConfigMock{}
 //	}
 type XcelerateConfigMock struct {
 	// SaveFunc mocks the Save method.
-	SaveFunc func(os utils.OsProxy, encoderFactory utils.EncoderFactory) error
+	SaveFunc func(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Save holds details about calls to the Save method.
 		Save []struct {
+			// Logger is the logger argument value.
+			Logger log.Logger
 			// Os is the os argument value.
 			Os utils.OsProxy
 			// EncoderFactory is the encoderFactory argument value.
@@ -46,21 +49,23 @@ type XcelerateConfigMock struct {
 }
 
 // Save calls SaveFunc.
-func (mock *XcelerateConfigMock) Save(os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
+func (mock *XcelerateConfigMock) Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 	if mock.SaveFunc == nil {
 		panic("XcelerateConfigMock.SaveFunc: method is nil but XcelerateConfig.Save was just called")
 	}
 	callInfo := struct {
+		Logger         log.Logger
 		Os             utils.OsProxy
 		EncoderFactory utils.EncoderFactory
 	}{
+		Logger:         logger,
 		Os:             os,
 		EncoderFactory: encoderFactory,
 	}
 	mock.lockSave.Lock()
 	mock.calls.Save = append(mock.calls.Save, callInfo)
 	mock.lockSave.Unlock()
-	return mock.SaveFunc(os, encoderFactory)
+	return mock.SaveFunc(logger, os, encoderFactory)
 }
 
 // SaveCalls gets all the calls that were made to Save.
@@ -68,10 +73,12 @@ func (mock *XcelerateConfigMock) Save(os utils.OsProxy, encoderFactory utils.Enc
 //
 //	len(mockedXcelerateConfig.SaveCalls())
 func (mock *XcelerateConfigMock) SaveCalls() []struct {
+	Logger         log.Logger
 	Os             utils.OsProxy
 	EncoderFactory utils.EncoderFactory
 } {
 	var calls []struct {
+		Logger         log.Logger
 		Os             utils.OsProxy
 		EncoderFactory utils.EncoderFactory
 	}

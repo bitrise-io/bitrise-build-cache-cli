@@ -43,16 +43,16 @@ func (g *Cache) CreateMetadata(cacheKey string, dir string) (*Metadata, error) {
 		CacheKey:             cacheKey,
 		OS:                   runtime.GOOS,
 		CreatedAt:            time.Now(),
-		AppID:                g.envProvider("BITRISE_APP_SLUG"),
-		BuildID:              g.envProvider("BITRISE_BUILD_SLUG"),
-		GitCommit:            g.envProvider("BITRISE_GIT_COMMIT"),
-		GitBranch:            g.envProvider("BITRISE_GIT_BRANCH"),
-		BuildCacheCLIVersion: g.envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		AppID:                g.envProvider["BITRISE_APP_SLUG"],
+		BuildID:              g.envProvider["BITRISE_BUILD_SLUG"],
+		GitCommit:            g.envProvider["BITRISE_GIT_COMMIT"],
+		GitBranch:            g.envProvider["BITRISE_GIT_BRANCH"],
+		BuildCacheCLIVersion: g.envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		MetadataVersion:      metadataVersion,
 	}
 
 	if m.GitCommit == "" {
-		m.GitCommit = g.envProvider("GIT_CLONE_COMMIT_HASH")
+		m.GitCommit = g.envProvider["GIT_CLONE_COMMIT_HASH"]
 	}
 
 	return &m, nil

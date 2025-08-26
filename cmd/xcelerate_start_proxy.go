@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
@@ -31,7 +32,8 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		logger.EnableDebugLog(isDebugLogMode)
 		logger.TInfof("Xcelerate Proxy")
 
-		socketPath := os.Getenv("BITRISE_XCELERATE_SOCKET_PATH")
+		allEnvs := utils.AllEnvs()
+		socketPath := allEnvs["BITRISE_XCELERATE_SOCKET_PATH"]
 		if socketPath == "" {
 			socketPath = filepath.Join(os.TempDir(), "xcelerate-proxy.sock")
 		}
@@ -48,7 +50,7 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		}
 		defer listener.Close()
 
-		authConfig, err := common.ReadAuthConfigFromEnvironments(os.Getenv)
+		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -56,7 +58,7 @@ var xcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 		return StartXcodeCacheProxy(
 			cmd.Context(),
 			authConfig,
-			os.Getenv,
+			allEnvs,
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output()
 
@@ -77,7 +79,7 @@ func init() {
 func StartXcodeCacheProxy(
 	ctx context.Context,
 	auth common.CacheAuthConfig,
-	envProvider func(string) string,
+	envProvider map[string]string,
 	commandFunc common.CommandFunc,
 	bitriseKVClient kv_storage.KVStorageClient,
 	capabilitiesClient remoteexecution.CapabilitiesClient,
@@ -88,12 +90,12 @@ func StartXcodeCacheProxy(
 		CacheOperationID:   uuid.New().String(),
 		ClientName:         ClientNameXcelerate,
 		AuthConfig:         auth,
-		EnvProvider:        envProvider,
+		Envs:               envProvider,
 		CommandFunc:        commandFunc,
 		Logger:             logger,
 		BitriseKVClient:    bitriseKVClient,
 		CapabilitiesClient: capabilitiesClient,
-		InvocationID:       envProvider("INVOCATION_ID"),
+		InvocationID:       envProvider["INVOCATION_ID"],
 		SkipCapabilities:   true, // proxy handles capabilities calls internally
 	})
 	if err != nil {

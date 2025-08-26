@@ -317,8 +317,7 @@ func Test_activateGradleParams(t *testing.T) {
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := prep()
-			envProvider := func(key string) string { return tt.envVars[key] }
-			got, err := tt.params.TemplateInventory(mockLogger, envProvider, tt.debug)
+			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {

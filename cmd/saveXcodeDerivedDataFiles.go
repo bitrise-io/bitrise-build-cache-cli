@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -43,12 +43,13 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		followSymlinks, _ := cmd.Flags().GetBool("follow-symlinks")
 		skipSPM, _ := cmd.Flags().GetBool("skip-spm")
 
-		tracker := xcode.NewDefaultStepTracker("save-xcode-build-cache", os.Getenv, logger)
+		tracker := xcode.NewDefaultStepTracker("save-xcode-build-cache", utils.AllEnvs(), logger)
 		defer tracker.Wait()
 		startT := time.Now()
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, err := common.ReadAuthConfigFromEnvironments(os.Getenv)
+		allEnvs := utils.AllEnvs()
+		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -65,7 +66,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 			logger,
 			tracker,
 			startT,
-			os.Getenv,
+			utils.AllEnvs(),
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output()
 
@@ -130,13 +131,13 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	logger log.Logger,
 	tracker xcode.StepAnalyticsTracker,
 	startT time.Time,
-	envProvider func(string) string,
+	envs map[string]string,
 	commandFunc func(string, ...string) (string, error)) (*xa.CacheOperation, error) {
 	var err error
 	var cacheKey string
 	if providedCacheKey == "" {
 		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
-		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
+		if cacheKey, err = xcode.GetCacheKey(envs, xcode.CacheKeyParams{}); err != nil {
 			return nil, fmt.Errorf("get cache key: %w", err)
 		}
 	} else {
@@ -144,7 +145,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	commonMetadata := common.NewMetadata(envProvider, commandFunc, logger)
+	commonMetadata := common.NewMetadata(envs, commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeUpload, &commonMetadata)
 	op.CacheKey = cacheKey
@@ -155,7 +156,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 			CacheOperationID: op.OperationID,
 			ClientName:       ClientNameXcode,
 			AuthConfig:       authConfig,
-			EnvProvider:      envProvider,
+			Envs:             envs,
 			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
@@ -180,7 +181,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 		CacheKey:           cacheKey,
 		FollowSymlinks:     followSymlinks,
 		SkipSPM:            skipSPM,
-	}, envProvider, logger)
+	}, envs, logger)
 	if err != nil {
 		return op, fmt.Errorf("create metadata: %w", err)
 	}
@@ -228,7 +229,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 
 	if providedCacheKey == "" {
-		fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		fallbackCacheKey, err := xcode.GetCacheKey(envs, xcode.CacheKeyParams{IsFallback: true})
 		if err != nil {
 			logger.Warnf("Failed to get fallback cache key: %s", err)
 		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {

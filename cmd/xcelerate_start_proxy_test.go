@@ -43,15 +43,6 @@ func Test_XcelerateProxy(t *testing.T) {
 		"BITRISE_BUILD_SLUG":               "test-build-slug",
 		"BITRISE_STEP_EXECUTION_ID":        "test-step-execution-id",
 	}
-	envProvider := func(key string) string {
-		if value, exists := envVars[key]; exists {
-			return value
-		}
-
-		t.Logf("Environment variable %s not set, returning empty string", key)
-
-		return ""
-	}
 
 	listener := bufconn.Listen(1024 * 1024)
 	defer listener.Close()
@@ -59,14 +50,14 @@ func Test_XcelerateProxy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envVars)
 	require.NoError(t, err)
 
 	go func() {
 		_ = cmd.StartXcodeCacheProxy(
 			ctx,
 			authConfig,
-			envProvider,
+			envVars,
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output() //nolint:noctx
 

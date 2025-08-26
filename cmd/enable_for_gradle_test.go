@@ -13,27 +13,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createEnvProvider(envs map[string]string) func(string) string {
-	return func(s string) string { return envs[s] }
-}
-
 func Test_enableForGradleCmdFn(t *testing.T) {
 	tmpPath := t.TempDir()
 	tmpGradleHomeDir := filepath.Join(tmpPath, ".gradle")
 
 	t.Run("No envs specified", func(t *testing.T) {
-		envVars := createEnvProvider(map[string]string{})
+		envVars := map[string]string{}
 		err := cmd.EnableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
 		require.EqualError(t, err, fmt.Errorf(cmd.FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAutConfig, common.ErrAuthTokenNotProvided)).Error())
 	})
 
-	t.Run("Envs specified", func(t *testing.T) {
-		envVars := createEnvProvider(map[string]string{
+	t.Run("RedactedEnvs specified", func(t *testing.T) {
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		err := cmd.EnableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)

@@ -64,17 +64,17 @@ func DefaultActivateGradleParams() ActivateGradleParams {
 
 func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 	isDebug bool,
 ) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
-	commonInventory, err := params.commonTemplateInventory(logger, envProvider, isDebug)
+	commonInventory, err := params.commonTemplateInventory(logger, envs, isDebug)
 	if err != nil {
 		return TemplateInventory{}, err
 	}
 
-	cacheInventory, err := params.cacheTemplateInventory(logger, envProvider)
+	cacheInventory, err := params.cacheTemplateInventory(logger, envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(errFmtCacheConfigCreation, err)
 	}
@@ -93,21 +93,21 @@ func (params ActivateGradleParams) TemplateInventory(
 
 func (params ActivateGradleParams) commonTemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 	isDebug bool,
 ) (PluginCommonTemplateInventory, error) {
 	logger.Infof("(i) Debug mode and verbose logs: %t", isDebug)
 
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
 	if err != nil {
 		return PluginCommonTemplateInventory{},
 			fmt.Errorf(ErrFmtReadAutConfig, err)
 	}
 	authToken := authConfig.TokenInGradleFormat()
 
-	cacheConfig := common.NewMetadata(envProvider,
+	cacheConfig := common.NewMetadata(envs,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
@@ -127,7 +127,7 @@ func (params ActivateGradleParams) commonTemplateInventory(
 
 func (params ActivateGradleParams) cacheTemplateInventory(
 	logger log.Logger,
-	envProvider func(string) string,
+	envs map[string]string,
 ) (CacheTemplateInventory, error) {
 	if !params.Cache.JustDependency && !params.Cache.Enabled {
 		logger.Infof("(i) Cache plugin usage: %+v", UsageLevelNone)
@@ -148,7 +148,7 @@ func (params ActivateGradleParams) cacheTemplateInventory(
 
 	logger.Infof("(i) Cache plugin usage: %+v", UsageLevelEnabled)
 
-	cacheEndpointURL := common.SelectCacheEndpointURL(params.Cache.Endpoint, envProvider)
+	cacheEndpointURL := common.SelectCacheEndpointURL(params.Cache.Endpoint, envs)
 	logger.Infof("(i) Build Cache Endpoint URL: %s", cacheEndpointURL)
 	logger.Infof("(i) Push new cache entries: %t", params.Cache.PushEnabled)
 	logger.Infof("(i) Cache entry validation level: %s", params.Cache.ValidationLevel)

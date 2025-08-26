@@ -23,9 +23,9 @@ func (cac CacheAuthConfig) TokenInGradleFormat() string {
 }
 
 // ReadAuthConfigFromEnvironments reads auth information from the environment variables
-func ReadAuthConfigFromEnvironments(envProvider func(string) string) (CacheAuthConfig, error) {
-	authTokenEnv := envProvider("BITRISE_BUILD_CACHE_AUTH_TOKEN")
-	workspaceIDEnv := envProvider("BITRISE_BUILD_CACHE_WORKSPACE_ID")
+func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, error) {
+	authTokenEnv := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]
+	workspaceIDEnv := envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"]
 
 	if len(authTokenEnv) > 0 && len(workspaceIDEnv) > 0 {
 		return CacheAuthConfig{
@@ -36,7 +36,7 @@ func ReadAuthConfigFromEnvironments(envProvider func(string) string) (CacheAuthC
 
 	// Try to fall back to JWT which is always available on Bitrise.
 	// It's a JWT token which already includes the workspace ID.
-	if serviceToken := envProvider("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"); len(serviceToken) > 0 {
+	if serviceToken := envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"]; len(serviceToken) > 0 {
 		return CacheAuthConfig{
 			AuthToken: serviceToken,
 		}, nil

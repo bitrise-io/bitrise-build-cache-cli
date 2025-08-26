@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -38,7 +38,8 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 		cacheKey, _ := cmd.Flags().GetString("key")
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, err := common.ReadAuthConfigFromEnvironments(os.Getenv)
+		allEnvs := utils.AllEnvs()
+		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -48,7 +49,7 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 			configCacheDir,
 			cacheKey,
 			logger,
-			os.Getenv,
+			allEnvs,
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output()
 
@@ -76,7 +77,7 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 	configCacheDir,
 	providedCacheKey string,
 	logger log.Logger,
-	envProvider func(string) string,
+	envProvider map[string]string,
 	commandFunc func(string, ...string) (string, error)) error {
 	var err error
 
@@ -85,7 +86,7 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 			CacheOperationID: uuid.NewString(),
 			ClientName:       ClientNameGradleConfigCache,
 			AuthConfig:       authConfig,
-			EnvProvider:      envProvider,
+			Envs:             envProvider,
 			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})

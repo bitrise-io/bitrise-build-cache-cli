@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
@@ -38,7 +38,7 @@ var deleteXcodeDerivedDataCmd = &cobra.Command{
 		empty, _ := cmd.Flags().GetBool("empty")
 
 		if err := deleteXcodeDerivedDataCmdFn(cmd.Context(), cacheKey, empty, logger,
-			os.Getenv,
+			utils.AllEnvs(),
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output()
 
@@ -64,7 +64,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	providedCacheKey string,
 	uploadEmpty bool,
 	logger log.Logger,
-	envProvider func(string) string,
+	envProvider map[string]string,
 	commandFunc func(string, ...string) (string, error)) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
@@ -88,7 +88,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 			CacheOperationID: uuid.NewString(),
 			ClientName:       ClientNameXcode,
 			AuthConfig:       authConfig,
-			EnvProvider:      envProvider,
+			Envs:             envProvider,
 			CommandFunc:      commandFunc,
 			Logger:           logger,
 		})
@@ -103,7 +103,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	return uploadEmptyMetadata(ctx, providedCacheKey, cacheKey, envProvider, kvClient, logger)
 }
 
-func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
+func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string, envProvider map[string]string, client *kv.Client, logger log.Logger) error {
 	logger.TInfof("Saving empty metadata file %s", XCodeCacheMetadataPath)
 	_, err := xcode.SaveMetadata(&xcode.Metadata{
 		ProjectFiles:         filegroup.Info{},
@@ -111,11 +111,11 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 		XcodeCacheDir:        filegroup.Info{},
 		CacheKey:             cacheKey,
 		CreatedAt:            time.Now(),
-		AppID:                envProvider("BITRISE_APP_SLUG"),
-		BuildID:              envProvider("BITRISE_BUILD_SLUG"),
-		GitCommit:            envProvider("BITRISE_GIT_COMMIT"),
-		GitBranch:            envProvider("BITRISE_GIT_BRANCH"),
-		BuildCacheCLIVersion: envProvider("BITRISE_BUILD_CACHE_CLI_VERSION"),
+		AppID:                envProvider["BITRISE_APP_SLUG"],
+		BuildID:              envProvider["BITRISE_BUILD_SLUG"],
+		GitCommit:            envProvider["BITRISE_GIT_COMMIT"],
+		GitBranch:            envProvider["BITRISE_GIT_BRANCH"],
+		BuildCacheCLIVersion: envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		MetadataVersion:      1,
 	}, XCodeCacheMetadataPath, logger)
 	if err != nil {
@@ -155,7 +155,7 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 	return nil
 }
 
-func deleteCacheKey(ctx context.Context, providedCacheKey, cacheKey string, envProvider common.EnvProviderFunc, client *kv.Client, logger log.Logger) error {
+func deleteCacheKey(ctx context.Context, providedCacheKey, cacheKey string, envProvider map[string]string, client *kv.Client, logger log.Logger) error {
 	logger.TInfof("Deleting cache key %s", cacheKey)
 	err := client.Delete(ctx, cacheKey)
 	if err != nil {

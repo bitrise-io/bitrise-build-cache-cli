@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/beevik/etree"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ Missing dependencies of Bitrise build cache are appended.
 			return fmt.Errorf("expand metadata path (%s): %w", metadataPath, err)
 		}
 
-		if err := addGradleVerification(logger, projectMetadataPath, os.Getenv); err != nil {
+		if err := addGradleVerification(logger, projectMetadataPath, utils.AllEnvs()); err != nil {
 			return fmt.Errorf("adding Gradle verification: %w", err)
 		}
 
@@ -64,7 +65,7 @@ func init() {
 	writeGradleVerificationDeps.Flags().StringVar(&metadataPath, "metadata-path", "", "Path of verification-metadata.xml")
 }
 
-func addGradleVerification(logger log.Logger, projectMetadataPath string, _ func(string) string) error {
+func addGradleVerification(logger log.Logger, projectMetadataPath string, _ map[string]string) error {
 	logger.Infof("(i) Checking parameters")
 	logger.Infof("(i) Metadata path: %s", projectMetadataPath)
 
