@@ -1085,7 +1085,6 @@ pipelines:
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
       e2e-xcode-comp-cache: {}
-      e2e-xcode-comp-cache-with-disabled-cache: {}
     triggers:
       pull_request:
         - source_branch: "*"

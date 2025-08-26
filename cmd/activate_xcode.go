@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
@@ -60,6 +61,11 @@ This command will:
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		activateXcodeParams.DebugLogging = isDebugLogMode
+
+		// if there was an existing config, use its xcodebuild path if not overridden by flag
+		if existingConfig, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{}); err == nil {
+			activateXcodeParams.XcodePathOverride = cmp.Or(activateXcodeParams.XcodePathOverride, existingConfig.OriginalXcodebuildPath)
+		}
 
 		osProxy := utils.DefaultOsProxy{}
 		config, err := xcelerate.NewConfig(
