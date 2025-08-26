@@ -11,6 +11,7 @@ import (
 
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -76,7 +77,14 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 				op.Error = &errStr
 			}
 
-			if err := sendCacheOperationAnalytics(*op, logger, authConfig); err != nil {
+			op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
+
+			xaClient, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
+			if clientErr != nil {
+				return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
+			}
+
+			if err := xaClient.PutCacheOperation(op); err != nil {
 				logger.Warnf("Failed to send cache operation analytics: %s", err)
 			}
 		}
@@ -136,7 +144,9 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	op := newCacheOperation(startT, xa.OperationTypeUpload, envProvider)
+	commonMetadata := common.NewMetadata(envProvider, commandFunc, logger)
+
+	op := xa.NewCacheOperation(startT, xa.OperationTypeUpload, &commonMetadata)
 	op.CacheKey = cacheKey
 	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
@@ -193,7 +203,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	logger.TInfof("Uploading DerivedData files")
 	ddUploadStats, err := kvClient.UploadFileGroupToBuildCache(ctx, metadata.DerivedData)
 	ddUploadedT := time.Now()
-	fillCacheOperationWithUploadStats(op, ddUploadStats)
+	op.FillWithUploadStats(ddUploadStats)
 	tracker.LogDerivedDataUploaded(ddUploadedT.Sub(metadataSavedT), ddUploadStats)
 
 	if err != nil {

@@ -1,4 +1,3 @@
-// nolint: ireturn
 package utils
 
 import (
@@ -34,7 +33,6 @@ type DefaultDecoderFactory struct{}
 
 // Intentionally skipping interface return error - we are using this interface in many commands and their tests
 
-//nolint:ireturn
 func (factory DefaultEncoderFactory) Encoder(w io.Writer) Encoder {
 	return json.NewEncoder(w)
 }

@@ -6,9 +6,12 @@ linters:
     - depguard
     - err113
     - exhaustruct
+    - funcorder
     - funlen
     - gochecknoinits
     - godot
+    - godox
+    - ireturn
     - lll
     - mnd
     - noinlineerr

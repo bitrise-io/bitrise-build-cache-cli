@@ -13,6 +13,7 @@ import (
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -85,7 +86,14 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 				op.Error = &errStr
 			}
 
-			if err := sendCacheOperationAnalytics(*op, logger, authConfig); err != nil {
+			op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
+
+			xaClient, clientErr := xa.NewClient(consts.AnalyticsServiceEndpoint, authConfig.AuthToken, logger)
+			if clientErr != nil {
+				return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
+			}
+
+			if err := xaClient.PutCacheOperation(op); err != nil {
 				logger.Warnf("Failed to send cache operation analytics: %s", err)
 			}
 		}
@@ -124,7 +132,9 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	commandFunc func(string, ...string) (string, error),
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
-	op := newCacheOperation(startT, xa.OperationTypeDownload, envProvider)
+	commonMetadata := common.NewMetadata(envProvider, commandFunc, logger)
+
+	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
 	kvClient, err := createKVClient(ctx,
 		CreateKVClientParams{
 			CacheOperationID: op.OperationID,
@@ -175,7 +185,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	stats, err := kvClient.DownloadFileGroupFromBuildCache(ctx, metadata.DerivedData, isDebugLogMode, skipExisting, forceOverwrite, maxLoggedDownloadErrors)
 	ddDownloadedT := time.Now()
 	tracker.LogDerivedDataDownloaded(ddDownloadedT.Sub(metadataRestoredT), stats)
-	fillCacheOperationWithDownloadStats(op, stats)
+	op.FillWithDownloadStats(stats)
 	if err != nil {
 		logger.Infof("Failed to download DerivedData files, clearing")
 		// To prevent the build from failing

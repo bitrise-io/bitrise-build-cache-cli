@@ -4,23 +4,29 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/golang/protobuf/ptypes/empty"
 )
 
 const (
 	MsgArgsPassedToXcodebuild = "Arguments passed to xcodebuild: %v"
+	MsgInvocationSuccess      = "Invocation succeeded ✅ after %.2f seconds"
+	MsgInvocationFailed       = "Invocation failed ❌ after %.2f seconds: %s"
+	MsgInvocationSaved        = "Invocation data saved"
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"
@@ -28,7 +34,7 @@ const (
 
 //go:generate moq -out mocks/runner_mock.go -pkg mocks . XcodeRunner
 type XcodeRunner interface {
-	Run(ctx context.Context, args []string) error
+	Run(ctx context.Context, args []string) xcodeargs.RunStats
 }
 
 type XcelerateParams struct {
@@ -50,13 +56,13 @@ var xcodebuildCmd = &cobra.Command{
 TBD`,
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
-	RunE: func(cmd *cobra.Command, _ []string) error {
+	RunE: func(cobraCmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 
 		xcelerateParams.OrigArgs = os.Args[1:]
 
 		xcodeArgs := xcodeargs.NewDefault(
-			cmd,
+			cobraCmd,
 			xcelerateParams.OrigArgs,
 			logger,
 		)
@@ -78,15 +84,17 @@ TBD`,
 			defer cleanup()
 		}
 
-		callProxySetSession(cmd.Context(), proxySessionClient, os.Getenv, logger)
+		metadata := common.NewMetadata(os.Getenv, func(cmd string, args ...string) (string, error) {
+			o, err := utils.DefaultCommandFunc()(cobraCmd.Context(), cmd, args...).CombinedOutput()
+
+			return string(o), err
+		}, logger)
 
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
-		if err := XcodebuildCmdFn(cmd.Context(), logger, xcodeRunner, config, xcodeArgs); err != nil {
+		if err := XcodebuildCmdFn(cobraCmd.Context(), logger, xcodeRunner, proxySessionClient, config, metadata, xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
 		}
-
-		callProxyGetSessionStats(cmd.Context(), proxySessionClient, logger)
 
 		return nil
 	},
@@ -101,7 +109,9 @@ func XcodebuildCmdFn(
 	ctx context.Context,
 	logger log.Logger,
 	xcodeRunner XcodeRunner,
+	proxySessionClient session.SessionClient,
 	config xcelerate.Config,
+	metadata common.CacheConfigMetadata,
 	xcodeArgs xcodeargs.XcodeArgs,
 ) error {
 	toPass := xcodeArgs.Args(map[string]string{
@@ -109,16 +119,61 @@ func XcodebuildCmdFn(
 	})
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
-	// Intentionally returning xcode error unwrapped
+	invocationID := uuid.New().String()
 
-	//nolint:wrapcheck
-	return xcodeRunner.Run(ctx, toPass)
+	_, err := proxySessionClient.SetSession(ctx, &session.SetSessionRequest{
+		InvocationId: invocationID,
+		AppSlug:      metadata.BitriseAppID,
+		BuildSlug:    metadata.BitriseBuildID,
+		StepSlug:     metadata.BitriseStepExecutionID,
+	})
+	if err != nil {
+		logger.TErrorf("Failed to set session: %v", err)
+	}
+
+	runStats := xcodeRunner.Run(ctx, toPass)
+	if runStats.Error != nil {
+		logger.TErrorf(MsgInvocationFailed, (time.Duration(runStats.DurationMS) * time.Millisecond).Seconds(), runStats.Error)
+	} else {
+		logger.TDonef(MsgInvocationSuccess, (time.Duration(runStats.DurationMS) * time.Millisecond).Seconds())
+	}
+	logger.Debugf("Run stats: %+v", runStats)
+
+	proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
+	if err != nil {
+		logger.TErrorf("Failed to get session stats: %v", err)
+	}
+	logger.Debugf("Proxy stats: %+v", proxyStats)
+
+	inv := analytics.NewInvocation(analytics.InvocationRunStats{
+		InvocationDate: runStats.StartTime,
+		InvocationID:   invocationID,
+		Duration:       runStats.DurationMS,
+		HitRate:        0, // TODO from proxyStats
+		Command:        xcodeArgs.ShortCommand(),
+		FullCommand:    xcodeArgs.Command(),
+		Success:        runStats.Success,
+		Error:          runStats.Error,
+		XcodeVersion:   "", // TODO from logs
+	}, config.AuthConfig, metadata)
+
+	client, err := analytics.NewClient(consts.AnalyticsServiceEndpoint, config.AuthConfig.AuthToken, logger)
+	if err != nil {
+		logger.Errorf("Failed to create analytics client: %v", err)
+
+		return runStats.Error
+	}
+
+	if err = client.PutInvocation(*inv); err != nil {
+		logger.Errorf("Failed to send invocation analytics: %v", err)
+	}
+	logger.TInfof(MsgInvocationSaved)
+
+	return runStats.Error
 }
 
 // createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
 // connection, it returns nil.
-//
-//nolint:ireturn
 func createProxySessionClient(config xcelerate.Config, logger log.Logger) (session.SessionClient, func()) {
 	proxySocket := "unix://" + strings.TrimPrefix(config.ProxySocketPath, "unix://")
 
@@ -136,41 +191,4 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 			logger.TErrorf("Failed to close gRPC client connection: %v", err)
 		}
 	}
-}
-
-func callProxySetSession(ctx context.Context, sessionClient session.SessionClient, envProvider common.EnvProviderFunc, logger log.Logger) {
-	if sessionClient == nil {
-		return
-	}
-
-	_, err := sessionClient.SetSession(ctx, &session.SetSessionRequest{
-		InvocationId: uuid.New().String(),
-		AppSlug:      envProvider("BITRISE_APP_SLUG"),
-		BuildSlug:    envProvider("BITRISE_BUILD_SLUG"),
-		StepSlug:     envProvider("BITRISE_STEP_EXECUTION_ID"),
-	})
-	if err != nil {
-		logger.TErrorf("Failed to set session: %v", err)
-	}
-}
-
-func callProxyGetSessionStats(ctx context.Context, sessionClient session.SessionClient, logger log.Logger) {
-	if sessionClient == nil {
-		return
-	}
-
-	stats, err := sessionClient.GetSessionStats(ctx, &empty.Empty{})
-	if err != nil {
-		logger.TErrorf("Failed to get session stats: %v", err)
-
-		return
-	}
-
-	logger.TInfof(
-		"Session stats: downloaded_bytes=%d, uploaded_bytes=%d, hits=%d, misses=%d",
-		stats.GetDownloadedBytes(),
-		stats.GetUploadedBytes(),
-		stats.GetHits(),
-		stats.GetMisses(),
-	)
 }

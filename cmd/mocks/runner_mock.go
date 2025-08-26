@@ -6,6 +6,7 @@ package mocks
 import (
 	"context"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	"sync"
 )
 
@@ -19,7 +20,7 @@ var _ cmd.XcodeRunner = &XcodeRunnerMock{}
 //
 //		// make and configure a mocked cmd.XcodeRunner
 //		mockedXcodeRunner := &XcodeRunnerMock{
-//			RunFunc: func(ctx context.Context, args []string) error {
+//			RunFunc: func(ctx context.Context, args []string) xcodeargs.RunStats {
 //				panic("mock out the Run method")
 //			},
 //		}
@@ -30,7 +31,7 @@ var _ cmd.XcodeRunner = &XcodeRunnerMock{}
 //	}
 type XcodeRunnerMock struct {
 	// RunFunc mocks the Run method.
-	RunFunc func(ctx context.Context, args []string) error
+	RunFunc func(ctx context.Context, args []string) xcodeargs.RunStats
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -46,7 +47,7 @@ type XcodeRunnerMock struct {
 }
 
 // Run calls RunFunc.
-func (mock *XcodeRunnerMock) Run(ctx context.Context, args []string) error {
+func (mock *XcodeRunnerMock) Run(ctx context.Context, args []string) xcodeargs.RunStats {
 	if mock.RunFunc == nil {
 		panic("XcodeRunnerMock.RunFunc: method is nil but XcodeRunner.Run was just called")
 	}

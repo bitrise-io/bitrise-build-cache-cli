@@ -12,6 +12,8 @@ import (
 //go:generate moq -out mocks/args_mock.go -pkg mocks . XcodeArgs
 type XcodeArgs interface {
 	Args(additional map[string]string) []string
+	Command() string
+	ShortCommand() string
 }
 
 // nolint:gochecknoglobals
@@ -55,6 +57,38 @@ func NewDefault(
 		OriginalArgs: originalArgs,
 		logger:       logger,
 	}
+}
+
+func (p Default) nonCommands() []string {
+	nonCommands := make([]string, 0, len(p.OriginalArgs))
+	for _, cmd := range p.OriginalArgs {
+		var isCommand bool
+		for _, c := range p.Cmds {
+			if cmd == c.Use {
+				isCommand = true
+
+				break
+			}
+		}
+		if !isCommand {
+			nonCommands = append(nonCommands, cmd)
+		}
+	}
+
+	return nonCommands
+}
+
+func (p Default) Command() string {
+	return strings.Join(p.nonCommands(), " ")
+}
+
+func (p Default) ShortCommand() string {
+	nonCommands := p.nonCommands()
+	if len(nonCommands) == 0 {
+		return ""
+	}
+
+	return nonCommands[0]
 }
 
 func (p Default) Args(additional map[string]string) []string {

@@ -5,13 +5,18 @@ import (
 	"strconv"
 	"strings"
 
+	"os"
+
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"os/user"
 )
 
 type CacheConfigMetadata struct {
 	CIProvider   string
-	RepoURL      string
+	CLIVersion   string
 	HostMetadata HostMetadata
+	GitMetadata  GitMetadata
 	// BitriseCI specific
 	BitriseAppID           string
 	BitriseWorkflowName    string
@@ -57,14 +62,6 @@ func detectCIProvider(envProvider EnvProviderFunc) string {
 	return ""
 }
 
-type bitriseCISpecificMetadata struct {
-	BitriseAppID           string
-	BitriseWorkflowName    string
-	BitriseBuildID         string
-	BitriseStepExecutionID string
-	Datacenter             string
-}
-
 // HostMetadata contains metadata about the local environment. Only used for Bazel to
 // generate bazelrc. For Gradle, it's done by the plugin dynamically.
 type HostMetadata struct {
@@ -73,54 +70,81 @@ type HostMetadata struct {
 	MemSize        int64
 	Locale         string
 	DefaultCharset string
+	Hostname       string
+	Username       string
 }
 
-func createCacheConfigMetadata(provider, repoURL string,
-	bitriseCIMetadata bitriseCISpecificMetadata,
-	hostMetadata HostMetadata,
-) CacheConfigMetadata {
-	return CacheConfigMetadata{
-		CIProvider: provider,
-		RepoURL:    repoURL,
-		// BitriseCI specific
-		BitriseAppID:           bitriseCIMetadata.BitriseAppID,
-		BitriseWorkflowName:    bitriseCIMetadata.BitriseWorkflowName,
-		BitriseBuildID:         bitriseCIMetadata.BitriseBuildID,
-		BitriseStepExecutionID: bitriseCIMetadata.BitriseStepExecutionID,
-		Datacenter:             bitriseCIMetadata.Datacenter,
-		// Only used for Bazel and only on CI
-		HostMetadata: hostMetadata,
-	}
+type GitMetadata struct {
+	RepoURL     string
+	CommitHash  string
+	Branch      string
+	CommitEmail string
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
 func NewMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
 	hostMetadata := generateHostMetadata(envProvider, commandFunc, logger)
-
+	git := generateGitMetadata(logger, commandFunc, envProvider)
+	cliVersion := envProvider("BITRISE_BUILD_CACHE_CLI_VERSION")
 	provider := detectCIProvider(envProvider)
-	switch provider {
-	case CIProviderBitrise:
-		return createCacheConfigMetadata(provider, envProvider("GIT_REPOSITORY_URL"),
-			bitriseCISpecificMetadata{
-				BitriseAppID:           envProvider("BITRISE_APP_SLUG"),
-				BitriseWorkflowName:    envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
-				BitriseBuildID:         envProvider("BITRISE_BUILD_SLUG"),
-				BitriseStepExecutionID: envProvider("BITRISE_STEP_EXECUTION_ID"),
-				Datacenter:             envProvider(datacenterEnvKey),
-			}, hostMetadata)
-	case CIProviderCircleCI:
-		return createCacheConfigMetadata(provider, envProvider("CIRCLE_REPOSITORY_URL"),
-			bitriseCISpecificMetadata{}, hostMetadata)
-	case CIProviderGitHubActions:
-		repoURL := envProvider("GITHUB_SERVER_URL") + "/" + envProvider("GITHUB_REPOSITORY")
-
-		return createCacheConfigMetadata(provider, repoURL,
-			bitriseCISpecificMetadata{}, hostMetadata)
+	if provider == CIProviderBitrise {
+		return CacheConfigMetadata{
+			CIProvider:             provider,
+			CLIVersion:             cliVersion,
+			GitMetadata:            git,
+			HostMetadata:           hostMetadata,
+			BitriseAppID:           envProvider("BITRISE_APP_SLUG"),
+			BitriseWorkflowName:    envProvider("BITRISE_TRIGGERED_WORKFLOW_TITLE"),
+			BitriseBuildID:         envProvider("BITRISE_BUILD_SLUG"),
+			BitriseStepExecutionID: envProvider("BITRISE_STEP_EXECUTION_ID"),
+			Datacenter:             envProvider(datacenterEnvKey),
+		}
 	}
 
 	return CacheConfigMetadata{
+		CIProvider:   provider,
+		CLIVersion:   cliVersion,
+		GitMetadata:  git,
 		HostMetadata: hostMetadata,
 	}
+}
+
+func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envProvider EnvProviderFunc) GitMetadata {
+	gitMetadata := GitMetadata{}
+
+	// Repo URL
+	repoURL, err := commandFunc("git", "config", "--get", "remote.origin.url")
+	if err != nil {
+		logger.Debugf("Error in get git repo URL: %v", err)
+		repoURL = envProvider("GIT_REPOSITORY_URL")
+	}
+	gitMetadata.RepoURL = strings.TrimSpace(repoURL)
+
+	// Commit hash
+	commitHash, err := commandFunc("git", "rev-parse", "HEAD")
+	if err != nil {
+		logger.Debugf("Error in get git commit hash: %v", err)
+		commitHash = envProvider("GIT_CLONE_COMMIT_HASH")
+	}
+	gitMetadata.CommitHash = strings.TrimSpace(commitHash)
+
+	// Branch
+	branch, err := commandFunc("git", "branch", "--show-current")
+	if err != nil {
+		logger.Debugf("Error in get git branch: %v", err)
+		branch = envProvider("BITRISE_GIT_BRANCH")
+	}
+	gitMetadata.Branch = strings.TrimSpace(branch)
+
+	// Commit email
+	commitEmail, err := commandFunc("git", "show", "-s", "--format=%ae", gitMetadata.CommitHash)
+	if err != nil {
+		logger.Debugf("Error in get git commit email: %v", err)
+		commitEmail = envProvider("GIT_CLONE_COMMIT_AUTHOR_EMAIL")
+	}
+	gitMetadata.CommitEmail = strings.TrimSpace(commitEmail)
+
+	return gitMetadata
 }
 
 // nolint: funlen, nestif
@@ -200,6 +224,20 @@ func generateHostMetadata(envProvider EnvProviderFunc, commandFunc CommandFunc, 
 	}
 	logger.Debugf("Locale: %s", metadata.Locale)
 	logger.Debugf("Default charset: %s", metadata.DefaultCharset)
+
+	// Hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.Errorf("Error in get hostname: %v", err)
+	}
+	metadata.Hostname = strings.TrimSpace(hostname)
+
+	// Username
+	u, err := user.Current()
+	if err != nil {
+		logger.Errorf("Error in get username: %v", err)
+	}
+	metadata.Username = strings.TrimSpace(u.Username)
 
 	return metadata
 }

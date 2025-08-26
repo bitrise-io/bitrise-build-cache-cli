@@ -98,7 +98,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		Debug:        isDebug,
 		AppSlug:      cacheConfig.BitriseAppID,
 		CIProvider:   cacheConfig.CIProvider,
-		RepoURL:      cacheConfig.RepoURL,
+		RepoURL:      cacheConfig.GitMetadata.RepoURL,
 		WorkflowName: cacheConfig.BitriseWorkflowName,
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,

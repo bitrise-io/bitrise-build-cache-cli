@@ -20,6 +20,7 @@ const (
 	ErrFmtCreateConfigFile = `failed to create xcelerate config file: %w`
 	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
+	ErrNoAuthConfig        = "read auth config: %w"
 )
 
 type Params struct {
@@ -30,13 +31,14 @@ type Params struct {
 }
 
 type Config struct {
-	ProxyVersion           string `json:"proxyVersion"`
-	ProxySocketPath        string `json:"proxySocketPath"`
-	CLIVersion             string `json:"cliVersion"`
-	WrapperVersion         string `json:"wrapperVersion"`
-	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
-	BuildCacheEnabled      bool   `json:"buildCacheEnabled"`
-	DebugLogging           bool   `json:"debugLogging,omitempty"`
+	ProxyVersion           string                 `json:"proxyVersion"`
+	ProxySocketPath        string                 `json:"proxySocketPath"`
+	CLIVersion             string                 `json:"cliVersion"`
+	WrapperVersion         string                 `json:"wrapperVersion"`
+	OriginalXcodebuildPath string                 `json:"originalXcodebuildPath"`
+	BuildCacheEnabled      bool                   `json:"buildCacheEnabled"`
+	DebugLogging           bool                   `json:"debugLogging,omitempty"`
+	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
 
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
@@ -75,7 +77,12 @@ func NewConfig(ctx context.Context,
 	params Params,
 	envProvider common.EnvProviderFunc,
 	osProxy utils.OsProxy,
-	cmdFunc utils.CommandFunc) Config {
+	cmdFunc utils.CommandFunc) (Config, error) {
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	if err != nil {
+		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
+	}
+
 	xcodePath := params.XcodePathOverride
 	if xcodePath == "" {
 		originalXcodebuildPath, err := getOriginalXcodebuildPath(ctx, logger, cmdFunc)
@@ -107,7 +114,8 @@ func NewConfig(ctx context.Context,
 		OriginalXcodebuildPath: xcodePath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		DebugLogging:           params.DebugLogging,
-	}
+		AuthConfig:             authConfig,
+	}, nil
 }
 
 func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc utils.CommandFunc) (string, error) {

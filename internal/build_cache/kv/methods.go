@@ -252,8 +252,8 @@ func (c *Client) getMethodCallMetadata() metadata.MD {
 	if c.cacheConfigMetadata.BitriseStepExecutionID != "" {
 		md.Set("x-flare-step-id", c.cacheConfigMetadata.BitriseStepExecutionID)
 	}
-	if c.cacheConfigMetadata.RepoURL != "" {
-		md.Set("x-repository-url", c.cacheConfigMetadata.RepoURL)
+	if c.cacheConfigMetadata.GitMetadata.RepoURL != "" {
+		md.Set("x-repository-url", c.cacheConfigMetadata.GitMetadata.RepoURL)
 	}
 	if c.cacheConfigMetadata.CIProvider != "" {
 		md.Set("x-ci-provider", c.cacheConfigMetadata.CIProvider)

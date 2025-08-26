@@ -35,3 +35,35 @@ type CacheOperation struct {
 	CLIVersion           string    `json:"cliVersion"`
 	FileStats            FileStats `json:"fileStats"`
 }
+
+type Invocation struct {
+	InvocationID     string            `json:"invocationId"`
+	InvocationDate   time.Time         `json:"invocationDate"`
+	BitriseOrgSlug   string            `json:"bitriseOrgSlug"`
+	BitriseAppSlug   string            `json:"bitriseAppSlug"`
+	BitriseBuildSlug string            `json:"bitriseBuildSlug"`
+	BitriseStepID    string            `json:"bitriseStepId"`
+	Hostname         string            `json:"hostname"`
+	Username         string            `json:"username"`
+	CommitHash       string            `json:"commitHash"`
+	Branch           string            `json:"branch"`
+	RepositoryURL    string            `json:"repositoryUrl"`
+	CommitEmail      string            `json:"commitEmail"`
+	Command          string            `json:"command"`
+	FullCommand      string            `json:"fullCommand"`
+	DurationMs       int64             `json:"durationMs"`
+	HitRate          float32           `json:"hitRate"`
+	Success          bool              `json:"success"`
+	Error            string            `json:"error"`
+	XcodeVersion     string            `json:"xcodeVersion"`
+	WorkflowName     string            `json:"workflowName"`
+	ProviderID       string            `json:"providerId"`
+	CLIVersion       string            `json:"cliVersion"`
+	Envs             map[string]string `json:"envs"`
+	OS               string            `json:"os"`
+	HwCPUCores       int               `json:"hwCpuCores"`
+	HwMemSize        int64             `json:"hwMemSize"`
+	Datacenter       string            `json:"datacenter"`
+	DefaultCharset   string            `json:"defaultCharset"`
+	Locale           string            `json:"locale"`
+}

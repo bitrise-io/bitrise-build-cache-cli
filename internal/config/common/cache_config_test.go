@@ -1,10 +1,13 @@
+// nolint: gocognit, gocyclo, funlen, maintidx
 package common
 
 import (
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"errors"
+	"reflect"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 )
@@ -26,29 +29,36 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			args: args{
 				envProvider: createEnvProvider(map[string]string{
 					"BITRISE_IO":                       "true",
-					"GIT_REPOSITORY_URL":               "git/repo/url",
 					"BITRISE_APP_SLUG":                 "BitriseAppID1",
 					"BITRISE_BUILD_SLUG":               "BitriseBuildID1",
 					"BITRISE_TRIGGERED_WORKFLOW_TITLE": "BitriseWorkflowName1",
+					"GIT_REPOSITORY_URL":               "https://github.com/repo/url",
+					"GIT_CLONE_COMMIT_HASH":            "abcdef1234567890",
+					"BITRISE_GIT_BRANCH":               "main",
+					"GIT_CLONE_COMMIT_AUTHOR_EMAIL":    "john.doe@bitrise.io",
 				}),
 				commandFunc: func(_ string, _ ...string) (string, error) {
-					return "", nil
+					return "", errors.New("some error") // So that we get the git params from env vars
 				},
 			},
 			want: CacheConfigMetadata{
 				CIProvider:          CIProviderBitrise,
-				RepoURL:             "git/repo/url",
 				BitriseAppID:        "BitriseAppID1",
 				BitriseBuildID:      "BitriseBuildID1",
 				BitriseWorkflowName: "BitriseWorkflowName1",
+				GitMetadata: GitMetadata{
+					RepoURL:     "https://github.com/repo/url",
+					CommitHash:  "abcdef1234567890",
+					Branch:      "main",
+					CommitEmail: "john.doe@bitrise.io",
+				},
 			},
 		},
 		{
 			name: "CircleCI",
 			args: args{
 				envProvider: createEnvProvider(map[string]string{
-					"CIRCLECI":              "true",
-					"CIRCLE_REPOSITORY_URL": "git/repo/url",
+					"CIRCLECI": "true",
 				}),
 				commandFunc: func(_ string, _ ...string) (string, error) {
 					return "", nil
@@ -56,7 +66,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderCircleCI,
-				RepoURL:    "git/repo/url",
 			},
 		},
 		{
@@ -65,7 +74,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				envProvider: createEnvProvider(map[string]string{
 					"GITHUB_ACTIONS":    "true",
 					"GITHUB_SERVER_URL": "https://github.com",
-					"GITHUB_REPOSITORY": "owner/repo",
 				}),
 				commandFunc: func(_ string, _ ...string) (string, error) {
 					return "", nil
@@ -73,7 +81,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderGitHubActions,
-				RepoURL:    "https://github.com/owner/repo",
 			},
 		},
 		{
@@ -209,14 +216,79 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Git",
+			args: args{
+				envProvider: createEnvProvider(map[string]string{}),
+				commandFunc: func(c string, a ...string) (string, error) {
+					if strings.Contains(c, "git") && slices.Contains(a, "remote.origin.url") {
+						return "https://github.com/repo/url", nil
+					}
+					if strings.Contains(c, "git") && slices.Contains(a, "HEAD") {
+						return "abcdef12356", nil
+					}
+					if strings.Contains(c, "git") && slices.Contains(a, "branch") {
+						return "main", nil
+					}
+					if strings.Contains(c, "git") && slices.Contains(a, "show") {
+						return "john.doe@bitrise.io", nil
+					}
+
+					return "", nil
+				},
+			},
+			want: CacheConfigMetadata{
+				GitMetadata: GitMetadata{
+					RepoURL:     "https://github.com/repo/url",
+					CommitHash:  "abcdef12356",
+					Branch:      "main",
+					CommitEmail: "john.doe@bitrise.io",
+				},
+			},
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := NewMetadata(tt.args.envProvider,
+			got := NewMetadata(tt.args.envProvider,
 				tt.args.commandFunc,
-				log.NewLogger()); !reflect.DeepEqual(got, tt.want) {
+				log.NewLogger())
+
+			// Reset fields that we're not interested in comparing
+			if tt.want.HostMetadata.MemSize == 0 {
+				got.HostMetadata.MemSize = 0
+			}
+			if tt.want.HostMetadata.CPUCores == 0 {
+				got.HostMetadata.CPUCores = 0
+			}
+			if tt.want.HostMetadata.Username == "" {
+				got.HostMetadata.Username = ""
+			}
+			if tt.want.HostMetadata.Hostname == "" {
+				got.HostMetadata.Hostname = ""
+			}
+			if tt.want.HostMetadata.OS == "" {
+				got.HostMetadata.OS = ""
+			}
+			if tt.want.HostMetadata.Locale == "" {
+				got.HostMetadata.Locale = ""
+			}
+			if tt.want.GitMetadata.CommitHash == "" {
+				got.GitMetadata.CommitHash = ""
+			}
+			if tt.want.GitMetadata.Branch == "" {
+				got.GitMetadata.Branch = ""
+			}
+			if tt.want.GitMetadata.CommitEmail == "" {
+				got.GitMetadata.CommitEmail = ""
+			}
+			if tt.want.GitMetadata.RepoURL == "" {
+				got.GitMetadata.RepoURL = ""
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewMetadata() = %v, want %v", got, tt.want)
 			}
 		})

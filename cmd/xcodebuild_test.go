@@ -1,3 +1,4 @@
+// nolint: goconst
 package cmd_test
 
 import (
@@ -10,8 +11,13 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func Test_xcodebuildCmdFn(t *testing.T) {
@@ -25,18 +31,33 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			"-v",
 		}
 
+		sessionClientMock := &cmdMocks.SessionClientMock{
+			GetSessionStatsFunc: func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.GetSessionStatsResponse, error) {
+				return &session.GetSessionStatsResponse{}, nil
+			},
+			SetSessionFunc: func(ctx context.Context, in *session.SetSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+				return &emptypb.Empty{}, nil
+			},
+		}
+
 		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
 			ArgsFunc: func(_ map[string]string) []string { return xcodeArgs },
+			CommandFunc: func() string {
+				return "xcodebuild"
+			},
+			ShortCommandFunc: func() string {
+				return "xcodebuild"
+			},
 		}
 
 		xcodeRunner := &cmdMocks.XcodeRunnerMock{
-			RunFunc: func(_ context.Context, _ []string) error { return nil },
+			RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats { return xcodeargs.RunStats{} },
 		}
 
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		_ = SUT(context.Background(), mockLogger, xcodeRunner, xcelerate.Config{}, &xcodeArgProvider)
+		_ = SUT(context.Background(), mockLogger, xcodeRunner, sessionClientMock, xcelerate.Config{}, common.CacheConfigMetadata{}, &xcodeArgProvider)
 
 		// Then
 		assert.Len(t, xcodeArgProvider.ArgsCalls(), 1)
@@ -54,16 +75,31 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 
 		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
 			ArgsFunc: func(_ map[string]string) []string { return xcodeArgs },
+			CommandFunc: func() string {
+				return "xcodebuild"
+			},
+			ShortCommandFunc: func() string {
+				return "xcodebuild"
+			},
 		}
 
 		xcodeRunner := &cmdMocks.XcodeRunnerMock{
-			RunFunc: func(_ context.Context, _ []string) error { return expected },
+			RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats { return xcodeargs.RunStats{Error: expected} },
+		}
+
+		sessionClientMock := &cmdMocks.SessionClientMock{
+			GetSessionStatsFunc: func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.GetSessionStatsResponse, error) {
+				return &session.GetSessionStatsResponse{}, nil
+			},
+			SetSessionFunc: func(ctx context.Context, in *session.SetSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+				return &emptypb.Empty{}, nil
+			},
 		}
 
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		actual := SUT(context.Background(), mockLogger, xcodeRunner, xcelerate.Config{}, &xcodeArgProvider)
+		actual := SUT(context.Background(), mockLogger, xcodeRunner, sessionClientMock, xcelerate.Config{}, common.CacheConfigMetadata{}, &xcodeArgProvider)
 
 		// Then
 		require.EqualError(t, actual, expected.Error())

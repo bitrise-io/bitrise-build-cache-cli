@@ -62,7 +62,7 @@ This command will:
 		activateXcodeParams.DebugLogging = isDebugLogMode
 
 		osProxy := utils.DefaultOsProxy{}
-		config := xcelerate.NewConfig(
+		config, err := xcelerate.NewConfig(
 			cmd.Context(),
 			logger,
 			activateXcodeParams,
@@ -70,6 +70,9 @@ This command will:
 			osProxy,
 			utils.DefaultCommandFunc(),
 		)
+		if err != nil {
+			return fmt.Errorf("failed to create xcelerate config: %w", err)
+		}
 
 		// copy cli into ~/.bitrise-xcelerate/bin
 		cliPath, err := copyCLIToXcelerateBinDir(osProxy)

@@ -21,6 +21,7 @@ type OsProxy interface {
 	WriteFile(name string, data []byte, mode os.FileMode) error
 	Stat(pth string) (os.FileInfo, error)
 	Getwd() (string, error)
+	Hostname() (string, error)
 }
 
 type DefaultOsProxy struct{}
@@ -80,4 +81,8 @@ func (d DefaultOsProxy) Stat(name string) (os.FileInfo, error) {
 
 func (d DefaultOsProxy) Getwd() (string, error) {
 	return os.Getwd() //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Hostname() (string, error) {
+	return os.Hostname() //nolint:wrapcheck
 }

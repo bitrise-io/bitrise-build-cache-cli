@@ -28,6 +28,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			GetwdFunc: func() (string, error) {
 //				panic("mock out the Getwd method")
 //			},
+//			HostnameFunc: func() (string, error) {
+//				panic("mock out the Hostname method")
+//			},
 //			MkdirAllFunc: func(name string, mode os.FileMode) error {
 //				panic("mock out the MkdirAll method")
 //			},
@@ -68,6 +71,9 @@ type OsProxyMock struct {
 	// GetwdFunc mocks the Getwd method.
 	GetwdFunc func() (string, error)
 
+	// HostnameFunc mocks the Hostname method.
+	HostnameFunc func() (string, error)
+
 	// MkdirAllFunc mocks the MkdirAll method.
 	MkdirAllFunc func(name string, mode os.FileMode) error
 
@@ -104,6 +110,9 @@ type OsProxyMock struct {
 		}
 		// Getwd holds details about calls to the Getwd method.
 		Getwd []struct {
+		}
+		// Hostname holds details about calls to the Hostname method.
+		Hostname []struct {
 		}
 		// MkdirAll holds details about calls to the MkdirAll method.
 		MkdirAll []struct {
@@ -155,6 +164,7 @@ type OsProxyMock struct {
 	lockCreate           sync.RWMutex
 	lockExecutable       sync.RWMutex
 	lockGetwd            sync.RWMutex
+	lockHostname         sync.RWMutex
 	lockMkdirAll         sync.RWMutex
 	lockOpenFile         sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
@@ -248,6 +258,33 @@ func (mock *OsProxyMock) GetwdCalls() []struct {
 	mock.lockGetwd.RLock()
 	calls = mock.calls.Getwd
 	mock.lockGetwd.RUnlock()
+	return calls
+}
+
+// Hostname calls HostnameFunc.
+func (mock *OsProxyMock) Hostname() (string, error) {
+	if mock.HostnameFunc == nil {
+		panic("OsProxyMock.HostnameFunc: method is nil but OsProxy.Hostname was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockHostname.Lock()
+	mock.calls.Hostname = append(mock.calls.Hostname, callInfo)
+	mock.lockHostname.Unlock()
+	return mock.HostnameFunc()
+}
+
+// HostnameCalls gets all the calls that were made to Hostname.
+// Check the length with:
+//
+//	len(mockedOsProxy.HostnameCalls())
+func (mock *OsProxyMock) HostnameCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockHostname.RLock()
+	calls = mock.calls.Hostname
+	mock.lockHostname.RUnlock()
 	return calls
 }
 
