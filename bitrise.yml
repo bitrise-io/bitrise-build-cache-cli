@@ -853,7 +853,7 @@ workflows:
               shopt -s expand_aliases
 
               echo "Original Xcodebuild command location:"
-              which xcodebuild || true
+              type xcodebuild || true
 
               # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
               ../bin/bitrise-build-cache-cli -d activate xcode \
@@ -863,7 +863,7 @@ workflows:
               source ~/.bashrc
 
               echo "Xcodebuild command location after activation:"
-              which xcodebuild || true
+              type xcodebuild || true
 
               xcodebuild build \
                 -workspace ComposableArchitecture.xcworkspace \
