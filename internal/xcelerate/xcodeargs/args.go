@@ -1,7 +1,6 @@
 package xcodeargs
 
 import (
-	"maps"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,7 +16,7 @@ type XcodeArgs interface {
 }
 
 // nolint:gochecknoglobals
-var cacheArgs = map[string]string{
+var CacheArgs = map[string]string{
 	"COMPILATION_CACHE_ENABLE_PLUGIN":               "YES",
 	"COMPILATION_CACHE_ENABLE_STRICT_CAS_ERRORS":    "YES",
 	"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS":   "YES",
@@ -121,10 +120,7 @@ next:
 		toPass = append(toPass, arg)
 	}
 
-	defaultArgs := maps.Clone(cacheArgs)
-	maps.Copy(defaultArgs, additional)
-
-	for name, value := range defaultArgs {
+	for name, value := range additional {
 		var found bool
 		for _, arg := range toPass {
 			if strings.HasPrefix(arg, name+"=") {
