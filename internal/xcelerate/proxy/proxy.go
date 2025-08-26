@@ -37,7 +37,7 @@ type Proxy struct {
 	sessionMutex       sync.Mutex
 	capabilitiesCalled bool
 
-	stats *stats
+	statsCollector *statsCollector
 
 	logger log.Logger
 }
@@ -48,9 +48,9 @@ func NewProxy(
 ) *grpc.Server {
 	//nolint:exhaustruct
 	proxy := &Proxy{
-		kvClient: kvClient,
-		stats:    newStats(),
-		logger:   logger,
+		kvClient:       kvClient,
+		statsCollector: newStatsCollector(),
+		logger:         logger,
 	}
 
 	grpcServer := grpc.NewServer(
@@ -85,7 +85,7 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 
 	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
 
-	p.stats = newStats()
+	p.statsCollector = newStatsCollector()
 
 	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s",
 		request.GetInvocationId(),
@@ -98,11 +98,13 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 }
 
 func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.GetSessionStatsResponse, error) {
-	downloadBytes, uploadBytes := p.stats.getBytes()
+	collectedStats := p.statsCollector.getStats()
 
 	return &session.GetSessionStatsResponse{
-		UploadedBytes:   uploadBytes,
-		DownloadedBytes: downloadBytes,
+		UploadedBytes:   collectedStats.uploadBytes,
+		DownloadedBytes: collectedStats.downloadBytes,
+		Hits:            collectedStats.hits,
+		Misses:          collectedStats.misses,
 	}, nil
 }
 
@@ -113,7 +115,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.logger.TInfof("miss")
+			p.statsCollector.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -137,7 +139,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
-	p.stats.addDownloadBytes(int64(buffer.Len()))
+	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
 
 	data := blob{} //nolint:exhaustruct
 	if err := gob.NewDecoder(buffer).Decode(&data); err != nil {
@@ -149,6 +151,8 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			Id: ref,
 		})
 	}
+
+	p.statsCollector.incrementHits()
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -215,7 +219,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	p.logger.TInfof("Put: CAS ID: %s", key)
 
 	size := int64(buffer.Len())
-	p.stats.addUploadBytes(size)
+	p.statsCollector.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
 	if err != nil {
@@ -236,7 +240,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.logger.TInfof("miss")
+			p.statsCollector.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -262,12 +266,14 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
-	p.stats.addDownloadBytes(int64(buffer.Len()))
+	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
 
 	data, err := io.ReadAll(buffer)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to read data: %w", err)), nil
 	}
+
+	p.statsCollector.incrementHits()
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -343,7 +349,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		reader = bytes.NewBuffer(request.GetData().GetBlob().GetData())
 	}
 
-	p.stats.addUploadBytes(size)
+	p.statsCollector.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
 	if err != nil {
@@ -364,7 +370,8 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.logger.TInfof("miss")
+			p.statsCollector.incrementMisses()
+
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
 				Outcome: llvmkv.GetValueResponse_KEY_NOT_FOUND,
@@ -389,12 +396,14 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		return errorHandler(fmt.Errorf("failed to download value: %w", err)), nil
 	}
 
-	p.stats.addDownloadBytes(int64(buffer.Len()))
+	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
 
 	var entries map[string][]byte
 	if err := gob.NewDecoder(buffer).Decode(&entries); err != nil {
 		return errorHandler(fmt.Errorf("failed to decode value: %w", err)), nil
 	}
+
+	p.statsCollector.incrementHits()
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -427,7 +436,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}
 
 	size := int64(buffer.Len())
-	p.stats.addUploadBytes(size)
+	p.statsCollector.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
 	if err != nil {

@@ -166,5 +166,11 @@ func callProxyGetSessionStats(ctx context.Context, sessionClient session.Session
 		return
 	}
 
-	logger.TInfof("Session stats: downloaded_bytes=%d, uploaded_bytes=%d", stats.GetDownloadedBytes(), stats.GetUploadedBytes())
+	logger.TInfof(
+		"Session stats: downloaded_bytes=%d, uploaded_bytes=%d, hits=%d, misses=%d",
+		stats.GetDownloadedBytes(),
+		stats.GetUploadedBytes(),
+		stats.GetHits(),
+		stats.GetMisses(),
+	)
 }
