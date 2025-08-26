@@ -96,26 +96,6 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 		})
 	})
 
-	t.Run("DefaultXcodeArgProvider adds cache args", func(t *testing.T) {
-		// given
-		args := []string{
-			"subcommand",
-		}
-
-		cmd := command(args)
-
-		SUT := xcodeargs.NewDefault(cmd, args, &mocks.Logger{})
-
-		// when
-		result := SUT.Args(map[string]string{})
-
-		// then (not all asserted)
-		assert.Subset(t, result, []string{
-			"subcommand",
-			"COMPILATION_CACHE_ENABLE_PLUGIN=YES",
-		})
-	})
-
 	t.Run("DefaultXcodeArgProvider adds additional args also", func(t *testing.T) {
 		// given
 		args := []string{
@@ -132,7 +112,6 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 		// then (not all asserted)
 		assert.Subset(t, result, []string{
 			"subcommand",
-			"COMPILATION_CACHE_ENABLE_PLUGIN=YES",
 			"testArg=testValue",
 		})
 	})

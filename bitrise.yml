@@ -898,7 +898,6 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
 
-
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1086,6 +1085,7 @@ pipelines:
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
       e2e-xcode-comp-cache: {}
+      e2e-xcode-comp-cache-with-disabled-cache: {}
     triggers:
       pull_request:
         - source_branch: "*"

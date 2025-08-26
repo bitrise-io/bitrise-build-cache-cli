@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -114,21 +115,21 @@ func XcodebuildCmdFn(
 	metadata common.CacheConfigMetadata,
 	xcodeArgs xcodeargs.XcodeArgs,
 ) error {
-	toPass := xcodeArgs.Args(map[string]string{
-		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": config.ProxySocketPath,
-	})
+	toPass := getArgsToPass(config, xcodeArgs)
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
 	invocationID := uuid.New().String()
 
-	_, err := proxySessionClient.SetSession(ctx, &session.SetSessionRequest{
-		InvocationId: invocationID,
-		AppSlug:      metadata.BitriseAppID,
-		BuildSlug:    metadata.BitriseBuildID,
-		StepSlug:     metadata.BitriseStepExecutionID,
-	})
-	if err != nil {
-		logger.TErrorf("Failed to set session: %v", err)
+	if proxySessionClient != nil {
+		_, err := proxySessionClient.SetSession(ctx, &session.SetSessionRequest{
+			InvocationId: invocationID,
+			AppSlug:      metadata.BitriseAppID,
+			BuildSlug:    metadata.BitriseBuildID,
+			StepSlug:     metadata.BitriseStepExecutionID,
+		})
+		if err != nil {
+			logger.TErrorf("Failed to set session: %v", err)
+		}
 	}
 
 	runStats := xcodeRunner.Run(ctx, toPass)
@@ -139,17 +140,22 @@ func XcodebuildCmdFn(
 	}
 	logger.Debugf("Run stats: %+v", runStats)
 
-	proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
-	if err != nil {
-		logger.TErrorf("Failed to get session stats: %v", err)
+	var hitRate float32
+	if proxySessionClient != nil {
+		proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
+		if err != nil {
+			logger.TErrorf("Failed to get session stats: %v", err)
+		}
+		logger.Debugf("Proxy stats: %+v", proxyStats)
+
+		hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
 	}
-	logger.Debugf("Proxy stats: %+v", proxyStats)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate: runStats.StartTime,
 		InvocationID:   invocationID,
 		Duration:       runStats.DurationMS,
-		HitRate:        0, // TODO from proxyStats
+		HitRate:        hitRate,
 		Command:        xcodeArgs.ShortCommand(),
 		FullCommand:    xcodeArgs.Command(),
 		Success:        runStats.Success,
@@ -192,4 +198,17 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 			logger.TErrorf("Failed to close gRPC client connection: %v", err)
 		}
 	}
+}
+
+func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []string {
+	additional := map[string]string{}
+
+	if config.BuildCacheEnabled {
+		additional = maps.Clone(xcodeargs.CacheArgs)
+		maps.Copy(additional, map[string]string{
+			"COMPILATION_CACHE_REMOTE_SERVICE_PATH": config.ProxySocketPath,
+		})
+	}
+
+	return xcodeArgs.Args(additional)
 }
