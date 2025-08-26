@@ -1,15 +1,14 @@
 package proxy
 
 import (
-	"sync"
 	"sync/atomic"
 )
 
 type statsCollector struct {
 	downloadBytes atomic.Int64
 	uploadBytes   atomic.Int64
-	misses        sync.Map
-	hits          sync.Map
+	hits          atomic.Int64
+	misses        atomic.Int64
 }
 
 type stats struct {
@@ -35,27 +34,15 @@ func (s *statsCollector) getStats() stats {
 	return stats{
 		downloadBytes: s.downloadBytes.Load(),
 		uploadBytes:   s.uploadBytes.Load(),
-		misses:        s.countMap(&s.misses),
-		hits:          s.countMap(&s.hits),
+		hits:          s.hits.Load(),
+		misses:        s.misses.Load(),
 	}
 }
 
-func (s *statsCollector) addMiss(key string) {
-	s.misses.Store(key, struct{}{})
+func (s *statsCollector) incrementMisses() {
+	s.misses.Add(1)
 }
 
-func (s *statsCollector) addHit(key string) {
-	s.hits.Store(key, struct{}{})
-}
-
-func (s *statsCollector) countMap(m *sync.Map) int64 {
-	var count int64
-
-	m.Range(func(_, _ any) bool {
-		count++
-
-		return true
-	})
-
-	return count
+func (s *statsCollector) incrementHits() {
+	s.hits.Add(1)
 }

@@ -115,7 +115,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.statsCollector.addMiss(key)
+			p.statsCollector.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -139,7 +139,6 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
-	p.statsCollector.addHit(key)
 	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
 
 	data := blob{} //nolint:exhaustruct
@@ -152,6 +151,8 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			Id: ref,
 		})
 	}
+
+	p.statsCollector.incrementHits()
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -239,7 +240,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.statsCollector.addMiss(key)
+			p.statsCollector.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -265,13 +266,14 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
-	p.statsCollector.addHit(key)
 	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
 
 	data, err := io.ReadAll(buffer)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to read data: %w", err)), nil
 	}
+
+	p.statsCollector.incrementHits()
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -368,7 +370,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.statsCollector.addMiss(key)
+			p.statsCollector.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -394,13 +396,14 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		return errorHandler(fmt.Errorf("failed to download value: %w", err)), nil
 	}
 
-	p.statsCollector.addHit(key)
 	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
 
 	var entries map[string][]byte
 	if err := gob.NewDecoder(buffer).Decode(&entries); err != nil {
 		return errorHandler(fmt.Errorf("failed to decode value: %w", err)), nil
 	}
+
+	p.statsCollector.incrementHits()
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
