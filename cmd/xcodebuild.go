@@ -58,7 +58,7 @@ TBD`,
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithOutput(os.Stderr))
 
 		xcelerateParams.OrigArgs = os.Args[1:]
 

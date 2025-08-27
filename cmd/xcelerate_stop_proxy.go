@@ -22,7 +22,6 @@ var stopXcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
 		logger.EnableDebugLog(isDebugLogMode)
-		logger.TInfof(activateXcode)
 
 		return stopXcelerateProxyCommandFn(utils.DefaultOsProxy{}, logger)
 	},

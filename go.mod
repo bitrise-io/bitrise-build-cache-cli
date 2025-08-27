@@ -6,9 +6,9 @@ require (
 	cloud.google.com/go/longrunning v0.6.0
 	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
 	github.com/beevik/etree v1.4.1
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.33
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.38
 	github.com/bitrise-io/go-utils v1.0.13
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.26
 	github.com/dustin/go-humanize v1.0.1
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
@@ -26,7 +26,8 @@ require (
 )
 
 require (
-	github.com/bmatcuk/doublestar/v4 v4.2.0 // indirect
+	github.com/bitrise-io/got v0.0.0-20240902113940-25f6469d1456 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gofrs/uuid/v5 v5.2.0 // indirect
@@ -35,7 +36,6 @@ require (
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/melbahja/got v0.7.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect

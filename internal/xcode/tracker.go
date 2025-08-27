@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/go-utils/v2/analytics"
+	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -36,7 +37,7 @@ func NewDefaultStepTracker(stepID string, envProvider map[string]string, logger 
 	}
 
 	return &DefaultStepAnalyticsTracker{
-		tracker:    analytics.NewDefaultTracker(logger, p),
+		tracker:    analytics.NewDefaultTracker(logger, env.NewRepository(), p),
 		logger:     logger,
 		cliVersion: envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 	}
