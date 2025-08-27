@@ -5,14 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
-	"syscall"
-
 	"path/filepath"
-
 	"strings"
-
-	"context"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
@@ -31,10 +25,7 @@ const (
 	AddXcelerateToPath      = "ℹ️ To start building, run `alias xcodebuild='~/.bitrise-xcelerate/bin/bitrise-build-cache-cli xcelerate xcodebuild'` or restart your terminal."
 	startedProxy            = "Started xcelerate_proxy pid = %d"
 
-	ErrFmtCreateXcodeConfig  = "failed to create Xcode config: %w"
-	errFmtExecutable         = "executable: %w"
-	errFmtFailedToStartProxy = "failed to start proxy: %w"
-	errFmtFailedToCreatePID  = "failed to create pid file: %w"
+	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 )
 
 //go:generate moq -out mocks/config_mock.go -pkg mocks . XcelerateConfig
@@ -92,10 +83,6 @@ This command will:
 			osProxy,
 			utils.DefaultEncoderFactory{},
 			config,
-			utils.DefaultCommandFunc(),
-			func(pid int, signum syscall.Signal) {
-				_ = syscall.Kill(pid, syscall.SIGKILL)
-			},
 		)
 	},
 }
@@ -162,25 +149,9 @@ func ActivateXcodeCommandFn(
 	osProxy utils.OsProxy,
 	encoderFactory utils.EncoderFactory,
 	xconfig XcelerateConfig,
-	commandFunc utils.CommandFunc,
-	killFunc func(pid int, signum syscall.Signal),
 ) error {
 	if err := xconfig.Save(logger, osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
-	}
-
-	if activateXcodeParams.BuildCacheEnabled {
-		logger.TInfof("Cache enabled, starting xcelerate proxy...")
-
-		err := startProxy(
-			logger,
-			osProxy,
-			commandFunc,
-			killFunc,
-		)
-		if err != nil {
-			return fmt.Errorf(errFmtFailedToStartProxy, err)
-		}
 	}
 
 	if err := AddXcelerateCommandAlias(cliPath, logger, osProxy); err != nil {
@@ -257,59 +228,6 @@ func AddContentOrCreateFile(
 	}
 
 	logger.Debugf("Updated file %s with content in block %s", filePath, blockSuffix)
-
-	return nil
-}
-
-func startProxy(
-	logger log.Logger,
-	osProxy utils.OsProxy,
-	commandFunc utils.CommandFunc,
-	killFunc func(pid int, signum syscall.Signal),
-) error {
-	exe, err := osProxy.Executable()
-	if err != nil {
-		return fmt.Errorf(errFmtExecutable, err)
-	}
-
-	cmd := commandFunc(context.Background(), exe, "xcelerate", xcelerateProxyCmd.Use)
-
-	// Detach into new process group so we can signal the whole group.
-	cmd.SetSysProcAttr(&syscall.SysProcAttr{
-		Setpgid: true, // create a new process group with pgid = pid
-	})
-
-	outf := xcelerate.PathFor(osProxy, serverOut)
-	errf := xcelerate.PathFor(osProxy, serverErr)
-	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
-	}
-	defer outFile.Close()
-
-	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open error file: %w", err)
-	}
-	defer errFile.Close()
-
-	cmd.SetStdout(outFile)
-	cmd.SetStderr(errFile)
-	cmd.SetStdin(nil)
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf(errFmtFailedToStartProxy, err)
-	}
-
-	pid := cmd.PID()
-	pidFilePth := xcelerate.PathFor(osProxy, pidFile)
-	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0644); err != nil {
-		killFunc(pid, syscall.SIGKILL)
-
-		return fmt.Errorf(errFmtFailedToCreatePID, err)
-	}
-
-	logger.TDonef(startedProxy, pid)
 
 	return nil
 }

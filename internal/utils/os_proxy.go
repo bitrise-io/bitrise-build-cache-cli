@@ -12,16 +12,17 @@ import (
 type OsProxy interface {
 	Create(name string) (*os.File, error)
 	Executable() (string, error)
-	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
+	FindProcess(pid int) (*os.Process, error)
+	Getwd() (string, error)
+	Hostname() (string, error)
 	MkdirAll(name string, mode os.FileMode) error
+	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	ReadFileIfExists(name string) (string, bool, error)
 	Remove(name string) error
+	Stat(pth string) (os.FileInfo, error)
 	TempDir() string
 	UserHomeDir() (string, error)
 	WriteFile(name string, data []byte, mode os.FileMode) error
-	Stat(pth string) (os.FileInfo, error)
-	Getwd() (string, error)
-	Hostname() (string, error)
 }
 
 type DefaultOsProxy struct{}
@@ -85,4 +86,8 @@ func (d DefaultOsProxy) Getwd() (string, error) {
 
 func (d DefaultOsProxy) Hostname() (string, error) {
 	return os.Hostname() //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) FindProcess(pid int) (*os.Process, error) {
+	return os.FindProcess(pid) //nolint:wrapcheck
 }

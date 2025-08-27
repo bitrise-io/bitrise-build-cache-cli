@@ -874,8 +874,6 @@ workflows:
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
                 -skipMacroValidation | tee xcodebuild.log | xcpretty
-              
-              ../bin/bitrise-build-cache-cli -d xcelerate stop-proxy
     - script:
         title: gather info
         inputs:

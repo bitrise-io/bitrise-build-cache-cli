@@ -25,6 +25,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			ExecutableFunc: func() (string, error) {
 //				panic("mock out the Executable method")
 //			},
+//			FindProcessFunc: func(pid int) (*os.Process, error) {
+//				panic("mock out the FindProcess method")
+//			},
 //			GetwdFunc: func() (string, error) {
 //				panic("mock out the Getwd method")
 //			},
@@ -68,6 +71,9 @@ type OsProxyMock struct {
 	// ExecutableFunc mocks the Executable method.
 	ExecutableFunc func() (string, error)
 
+	// FindProcessFunc mocks the FindProcess method.
+	FindProcessFunc func(pid int) (*os.Process, error)
+
 	// GetwdFunc mocks the Getwd method.
 	GetwdFunc func() (string, error)
 
@@ -107,6 +113,11 @@ type OsProxyMock struct {
 		}
 		// Executable holds details about calls to the Executable method.
 		Executable []struct {
+		}
+		// FindProcess holds details about calls to the FindProcess method.
+		FindProcess []struct {
+			// Pid is the pid argument value.
+			Pid int
 		}
 		// Getwd holds details about calls to the Getwd method.
 		Getwd []struct {
@@ -163,6 +174,7 @@ type OsProxyMock struct {
 	}
 	lockCreate           sync.RWMutex
 	lockExecutable       sync.RWMutex
+	lockFindProcess      sync.RWMutex
 	lockGetwd            sync.RWMutex
 	lockHostname         sync.RWMutex
 	lockMkdirAll         sync.RWMutex
@@ -231,6 +243,38 @@ func (mock *OsProxyMock) ExecutableCalls() []struct {
 	mock.lockExecutable.RLock()
 	calls = mock.calls.Executable
 	mock.lockExecutable.RUnlock()
+	return calls
+}
+
+// FindProcess calls FindProcessFunc.
+func (mock *OsProxyMock) FindProcess(pid int) (*os.Process, error) {
+	if mock.FindProcessFunc == nil {
+		panic("OsProxyMock.FindProcessFunc: method is nil but OsProxy.FindProcess was just called")
+	}
+	callInfo := struct {
+		Pid int
+	}{
+		Pid: pid,
+	}
+	mock.lockFindProcess.Lock()
+	mock.calls.FindProcess = append(mock.calls.FindProcess, callInfo)
+	mock.lockFindProcess.Unlock()
+	return mock.FindProcessFunc(pid)
+}
+
+// FindProcessCalls gets all the calls that were made to FindProcess.
+// Check the length with:
+//
+//	len(mockedOsProxy.FindProcessCalls())
+func (mock *OsProxyMock) FindProcessCalls() []struct {
+	Pid int
+} {
+	var calls []struct {
+		Pid int
+	}
+	mock.lockFindProcess.RLock()
+	calls = mock.calls.FindProcess
+	mock.lockFindProcess.RUnlock()
 	return calls
 }
 
