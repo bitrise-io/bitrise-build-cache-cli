@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"os"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -31,6 +34,11 @@ const (
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"
+
+	errFmtExecutable         = "executable: %w"
+	errFmtFailedToStartProxy = "failed to start proxy: %w"
+	errFmtFailedToStopProxy  = "failed to stop proxy: %w"
+	errFmtFailedToCreatePID  = "failed to create pid file: %w"
 )
 
 //go:generate moq -out mocks/runner_mock.go -pkg mocks . XcodeRunner
@@ -56,7 +64,7 @@ var xcodebuildCmd = &cobra.Command{
 	Long: `xcodebuild -  Wrapper around xcodebuild to enable Bitrise Build Cache.
 TBD`,
 	SilenceUsage:       true,
-	DisableFlagParsing: true,
+	DisableFlagParsing: true, // pass all args to xcodebuild
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithOutput(os.Stderr))
 
@@ -69,8 +77,9 @@ TBD`,
 		)
 
 		decoder := utils.DefaultDecoderFactory{}
+		osProxy := utils.DefaultOsProxy{}
 
-		config, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, decoder)
+		config, err := xcelerate.ReadConfig(osProxy, decoder)
 		if err != nil {
 			logger.Errorf(ErrReadConfig, err)
 			config = xcelerate.DefaultConfig()
@@ -79,6 +88,27 @@ TBD`,
 
 		var proxySessionClient session.SessionClient
 		if config.BuildCacheEnabled {
+			logger.TInfof("Cache enabled, starting xcelerate proxy...")
+
+			err := startProxy(
+				logger,
+				osProxy,
+				utils.DefaultCommandFunc(),
+				func(pid int, signum syscall.Signal) {
+					_ = syscall.Kill(pid, syscall.SIGKILL)
+				},
+			)
+			if err != nil {
+				return fmt.Errorf(errFmtFailedToStartProxy, err)
+			}
+
+			defer func() {
+				err := stopProxy(osProxy, utils.DefaultCommandFunc())
+				if err != nil {
+					logger.TErrorf(err.Error())
+				}
+			}()
+
 			var cleanup func()
 
 			proxySessionClient, cleanup = createProxySessionClient(config, logger)
@@ -102,7 +132,6 @@ TBD`,
 }
 
 func init() {
-	// IMPORTANT: silently skip flags not matching defined ones so we can pass them to xcodebuild
 	xcelerateCommand.AddCommand(xcodebuildCmd)
 }
 
@@ -211,4 +240,109 @@ func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []str
 	}
 
 	return xcodeArgs.Args(additional)
+}
+
+func startProxy(
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	commandFunc utils.CommandFunc,
+	killFunc func(pid int, signum syscall.Signal),
+) error {
+	pidFilePth := xcelerate.PathFor(osProxy, pidFile)
+
+	content, exists, err := osProxy.ReadFileIfExists(pidFilePth)
+	if err != nil {
+		return fmt.Errorf("failed to read pid file: %w", err)
+	}
+	if exists {
+		pid, err := strconv.Atoi(strings.TrimSpace(content))
+		if err != nil {
+			return fmt.Errorf("failed to parse pid file content: %w", err)
+		}
+
+		logger.TInfof("Attempting to connect to an already running proxy (pid: %d)", pid)
+
+		process, err := osProxy.FindProcess(pid)
+		if err != nil {
+			return fmt.Errorf("failed to find process: %w", err)
+		}
+
+		if err := process.Signal(syscall.Signal(0)); err == nil {
+			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
+
+			return nil
+		}
+
+		logger.TWarnf("Removing stale pid file (pid: %d)", pid)
+		if err := osProxy.Remove(pidFilePth); err != nil {
+			return fmt.Errorf("failed to remove stale pid file: %w", err)
+		}
+	}
+
+	exe, err := osProxy.Executable()
+	if err != nil {
+		return fmt.Errorf(errFmtExecutable, err)
+	}
+
+	cmd := commandFunc(context.Background(), exe, xcelerateCommand.Use, xcelerateProxyCmd.Use)
+
+	// Detach into new process group so we can signal the whole group.
+	cmd.SetSysProcAttr(&syscall.SysProcAttr{
+		Setpgid: true, // create a new process group with pgid = pid
+	})
+
+	outf := xcelerate.PathFor(osProxy, serverOut)
+	errf := xcelerate.PathFor(osProxy, serverErr)
+	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer outFile.Close()
+
+	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open error file: %w", err)
+	}
+	defer errFile.Close()
+
+	cmd.SetStdout(outFile)
+	cmd.SetStderr(errFile)
+	cmd.SetStdin(nil)
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf(errFmtFailedToStartProxy, err)
+	}
+
+	pid := cmd.PID()
+	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0644); err != nil {
+		killFunc(pid, syscall.SIGKILL)
+
+		return fmt.Errorf(errFmtFailedToCreatePID, err)
+	}
+
+	logger.TDonef(startedProxy, pid)
+
+	return nil
+}
+
+func stopProxy(
+	osProxy utils.OsProxy,
+	commandFunc utils.CommandFunc,
+) error {
+	exe, err := osProxy.Executable()
+	if err != nil {
+		return fmt.Errorf(errFmtExecutable, err)
+	}
+
+	cmd := commandFunc(context.Background(), exe, xcelerateCommand.Use, stopXcelerateProxyCmd.Use)
+
+	cmd.SetStdout(os.Stdout)
+	cmd.SetStderr(os.Stderr)
+	cmd.SetStdin(nil)
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf(errFmtFailedToStopProxy, err)
+	}
+
+	return nil
 }

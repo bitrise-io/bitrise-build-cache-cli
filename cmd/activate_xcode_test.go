@@ -6,12 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 	"testing"
 
 	"strings"
-
-	"context"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
@@ -76,17 +73,6 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			osProxy(),
 			encoderFactory(),
 			config(),
-			func(_ context.Context, _ string, _ ...string) utils.Command {
-				return &utilsMocks.CommandMock{
-					SetSysProcAttrFunc: func(_ *syscall.SysProcAttr) {},
-					SetStderrFunc:      func(_ *os.File) {},
-					SetStdoutFunc:      func(_ *os.File) {},
-					SetStdinFunc:       func(_ *os.File) {},
-					PIDFunc:            func() int { return 444 },
-					StartFunc:          func() error { return nil },
-				}
-			},
-			func(pid int, signum syscall.Signal) {},
 		)
 
 		mockLogger.AssertCalled(t, "TInfof", cmd.ActivateXcodeSuccessful)
@@ -108,10 +94,6 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			osProxy(),
 			encoderFactory(),
 			mockConfig,
-			func(_ context.Context, _ string, _ ...string) utils.Command {
-				return &utilsMocks.CommandMock{}
-			},
-			func(pid int, signum syscall.Signal) {},
 		)
 
 		assert.ErrorContains(t, err, fmt.Errorf(cmd.ErrFmtCreateXcodeConfig, expectedError).Error())
@@ -138,7 +120,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 			osProxy,
 			"test.txt",
 			"Bitrise Xcelerate",
-			"export PATH=/path/to/xcelerate:$PATH",
+			"content",
 		)
 
 		require.NoError(t, err)
@@ -146,7 +128,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Name)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
 		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Name)
-		assert.Equal(t, "# [start] Bitrise Xcelerate\nexport PATH=/path/to/xcelerate:$PATH\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
+		assert.Equal(t, "# [start] Bitrise Xcelerate\ncontent\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
 	})
 
 	t.Run("When file exists with existing content, it updates the block", func(t *testing.T) {
@@ -168,7 +150,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 			osProxy,
 			"test.txt",
 			"Bitrise Xcelerate",
-			"export PATH=/path/to/xcelerate:$PATH",
+			"content",
 		)
 
 		require.NoError(t, err)
@@ -176,7 +158,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 		assert.Equal(t, "test.txt", osProxy.ReadFileIfExistsCalls()[0].Name)
 		require.Len(t, osProxy.WriteFileCalls(), 1)
 		assert.Equal(t, "test.txt", osProxy.WriteFileCalls()[0].Name)
-		assert.Equal(t, "# [start] Bitrise Xcelerate\nexport PATH=/path/to/xcelerate:$PATH\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
+		assert.Equal(t, "# [start] Bitrise Xcelerate\ncontent\n# [end] Bitrise Xcelerate\n", string(osProxy.WriteFileCalls()[0].Data))
 	})
 
 	t.Run("When file writing returns error, returns error", func(t *testing.T) {
@@ -200,7 +182,7 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 			osProxy,
 			"test.txt",
 			"# Bitrise Xcelerate",
-			"export PATH=/path/to/xcelerate:$PATH",
+			"content",
 		)
 
 		require.ErrorIs(t, err, expectedError)
@@ -227,7 +209,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 		},
 	}
 
-	t.Run("When adding xcelerate command to PATH succeeds", func(t *testing.T) {
+	t.Run("When adding xcelerate command as alias succeeds", func(t *testing.T) {
 		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
 
 		require.NoError(t, err)
