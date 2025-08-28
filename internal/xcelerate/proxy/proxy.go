@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/grpc"
@@ -113,6 +114,13 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 
 	p.logger.TInfof("Get called with request: %s", key)
 
+	var hit bool
+
+	start := time.Now()
+	defer func() {
+		p.logReadCallStats("Get", key, start, hit)
+	}()
+
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
 			p.statsCollector.incrementMisses()
@@ -152,6 +160,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		})
 	}
 
+	hit = true
 	p.statsCollector.incrementHits()
 
 	return &llvmcas.CASGetResponse{
@@ -184,6 +193,13 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 		}
 	}
 
+	var key string
+
+	start := time.Now()
+	defer func() {
+		p.logWriteCallStats("Save", key, start)
+	}()
+
 	var data []byte
 	if request.GetData().GetBlob().GetFilePath() != "" {
 		var err error
@@ -214,7 +230,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	casId := &llvmcas.CASDataID{
 		Id: hasher.Sum(nil),
 	}
-	key := createLLVMCasKey(casId)
+	key = createLLVMCasKey(casId)
 
 	p.logger.TInfof("Put: CAS ID: %s", key)
 
@@ -237,6 +253,13 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	key := createLLVMCasKey(request.GetCasId())
 
 	p.logger.TInfof("Load called with request: %s", key)
+
+	var hit bool
+
+	start := time.Now()
+	defer func() {
+		p.logReadCallStats("Load", key, start, hit)
+	}()
 
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
@@ -273,6 +296,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("failed to read data: %w", err)), nil
 	}
 
+	hit = true
 	p.statsCollector.incrementHits()
 
 	return &llvmcas.CASLoadResponse{
@@ -301,6 +325,13 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 			},
 		}
 	}
+
+	var key string
+
+	start := time.Now()
+	defer func() {
+		p.logWriteCallStats("Save", key, start)
+	}()
 
 	var reader io.Reader
 	var size int64
@@ -335,7 +366,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 	casId := &llvmcas.CASDataID{
 		Id: hasher.Sum(nil),
 	}
-	key := createLLVMCasKey(casId)
+	key = createLLVMCasKey(casId)
 
 	p.logger.TInfof("Save: CAS ID: %s", key)
 
@@ -366,7 +397,14 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (*llvmkv.GetValueResponse, error) {
 	key := createLLVMKVKey(request.GetKey())
 
+	var hit bool
+
 	p.logger.TInfof("GetValue called with key: %s", key)
+
+	start := time.Now()
+	defer func() {
+		p.logReadCallStats("GetValue", key, start, hit)
+	}()
 
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
@@ -403,6 +441,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		return errorHandler(fmt.Errorf("failed to decode value: %w", err)), nil
 	}
 
+	hit = true
 	p.statsCollector.incrementHits()
 
 	return &llvmkv.GetValueResponse{
@@ -419,6 +458,11 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	key := createLLVMKVKey(request.GetKey())
 
 	p.logger.TInfof("PutValue called with key: %s", key)
+
+	start := time.Now()
+	defer func() {
+		p.logWriteCallStats("PutValue", key, start)
+	}()
 
 	errorHandler := func(err error) *llvmkv.PutValueResponse {
 		p.logger.TErrorf("PutValue error: %s", err)
@@ -445,6 +489,23 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil
+}
+
+func (p *Proxy) logReadCallStats(method string, key string, start time.Time, hit bool) {
+	p.logger.TDebugf("%s with key %s took %s and was a hit: %t",
+		method,
+		key,
+		time.Since(start),
+		hit,
+	)
+}
+
+func (p *Proxy) logWriteCallStats(method string, key string, start time.Time) {
+	p.logger.TDebugf("%s with key %s took %s",
+		method,
+		key,
+		time.Since(start),
+	)
 }
 
 func (p *Proxy) callGetCapabilities(ctx context.Context) error {
