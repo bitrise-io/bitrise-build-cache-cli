@@ -86,7 +86,7 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 }
 
 func (runner *DefaultRunner) streamAndMatchStdOut(ctx context.Context, reader io.ReadCloser, runStats *RunStats) {
-	versionRegex := regexp.MustCompile(`/Applications/Xcode[-_]?([\w.]+).app/Contents`)
+	versionRegex := regexp.MustCompile(`/Applications/Xcode[-_]?([\w.-]+).app/Contents`)
 
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
