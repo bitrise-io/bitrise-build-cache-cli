@@ -24,7 +24,7 @@ import (
 
 var (
 	//nolint:gochecknoglobals
-	invocationID string
+	initialInvocationID string
 
 	//nolint:gochecknoglobals
 	xcelerateProxyCmd = &cobra.Command{
@@ -33,7 +33,6 @@ var (
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := log.NewLogger()
-			logger.EnableDebugLog(isDebugLogMode)
 			logger.TInfof("Xcelerate Proxy")
 
 			allEnvs := utils.AllEnvs()
@@ -42,6 +41,8 @@ var (
 			if err != nil {
 				return fmt.Errorf("read xcelerate config: %w", err)
 			}
+
+			logger.EnableDebugLog(config.DebugLogging)
 
 			if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove socket file, error: %w", err)
@@ -75,7 +76,7 @@ var (
 
 func init() {
 	xcelerateCommand.Flags().StringVar(
-		&invocationID,
+		&initialInvocationID,
 		"invocation-id",
 		uuid.NewString(),
 		"Invocation ID to be used in the proxy",
@@ -102,7 +103,7 @@ func StartXcodeCacheProxy(
 		Logger:             logger,
 		BitriseKVClient:    bitriseKVClient,
 		CapabilitiesClient: capabilitiesClient,
-		InvocationID:       invocationID,
+		InvocationID:       initialInvocationID,
 		SkipCapabilities:   true, // proxy handles capabilities calls internally
 	})
 	if err != nil {
