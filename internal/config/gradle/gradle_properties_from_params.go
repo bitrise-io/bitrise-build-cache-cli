@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const (
@@ -50,7 +51,7 @@ func (updater GradlePropertiesUpdater) UpdateGradleProps(
 		cachingLine,
 	)
 
-	err = updater.OsProxy.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0755) //nolint:gosecÏ,mnd
+	err = updater.OsProxy.WriteFile(gradlePropertiesPath, []byte(gradlePropertiesContent), 0o755) //nolint:gosecÏ,mnd
 	if err != nil {
 		return fmt.Errorf(ErrFmtGradlePropertyWrite, gradlePropertiesPath, err)
 	}

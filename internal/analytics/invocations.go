@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/hashicorp/go-retryablehttp"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 type InvocationRunStats struct {

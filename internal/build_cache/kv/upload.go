@@ -9,11 +9,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 )
 
 func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key string) error {
@@ -31,7 +32,6 @@ func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key strin
 
 		return err
 	})
-
 	if err != nil {
 		return fmt.Errorf("upload file: %w", err)
 	}

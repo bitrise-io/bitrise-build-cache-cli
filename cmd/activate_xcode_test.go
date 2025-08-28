@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
-	"strings"
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {

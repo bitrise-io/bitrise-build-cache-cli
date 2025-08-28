@@ -9,14 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/spf13/cobra"
+
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -132,7 +133,8 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	envs map[string]string,
 	commandFunc func(string, ...string) (string, error),
 	isDebugLogMode, skipExisting, forceOverwrite bool,
-	maxLoggedDownloadErrors int) (*xa.CacheOperation, error) {
+	maxLoggedDownloadErrors int,
+) (*xa.CacheOperation, error) {
 	commonMetadata := common.NewMetadata(envs, commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
@@ -239,7 +241,8 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
 	kvClient *kv.Client,
 	logger log.Logger,
-	envs map[string]string) (CacheKeyType, string, error) {
+	envs map[string]string,
+) (CacheKeyType, string, error) {
 	var cacheKeyType CacheKeyType = CacheKeyTypeDefault
 	var cacheKey string
 	var err error

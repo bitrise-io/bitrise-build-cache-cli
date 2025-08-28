@@ -8,14 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/spf13/cobra"
+
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/spf13/cobra"
 )
 
 const XCodeCacheMetadataPath = "dd-metadata.json"
@@ -132,7 +133,8 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	tracker xcode.StepAnalyticsTracker,
 	startT time.Time,
 	envs map[string]string,
-	commandFunc func(string, ...string) (string, error)) (*xa.CacheOperation, error) {
+	commandFunc func(string, ...string) (string, error),
+) (*xa.CacheOperation, error) {
 	var err error
 	var cacheKey string
 	if providedCacheKey == "" {

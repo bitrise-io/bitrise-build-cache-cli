@@ -8,8 +8,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 const metadataVersion = 1
@@ -69,7 +70,7 @@ func (g *Cache) SaveMetadata(metadata *Metadata, fileName string) (int64, error)
 		return 0, fmt.Errorf("create cache metadata directory: %w", err)
 	}
 
-	err = os.WriteFile(fileName, jsonData, 0600)
+	err = os.WriteFile(fileName, jsonData, 0o600)
 	if err != nil {
 		return 0, fmt.Errorf("writing JSON file: %w", err)
 	}

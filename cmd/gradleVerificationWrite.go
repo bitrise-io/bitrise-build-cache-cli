@@ -8,10 +8,11 @@ import (
 	"os"
 
 	"github.com/beevik/etree"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 //go:embed "asset/verification-metadata.xml"

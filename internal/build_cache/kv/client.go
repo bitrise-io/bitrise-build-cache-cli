@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -17,7 +18,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type Client struct {

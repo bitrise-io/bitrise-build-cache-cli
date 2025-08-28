@@ -1,17 +1,14 @@
 package common
 
 import (
+	"maps"
+	"os"
+	"os/user"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"os"
-
 	"github.com/bitrise-io/go-utils/v2/log"
-
-	"maps"
-
-	"os/user"
 )
 
 type CacheConfigMetadata struct {

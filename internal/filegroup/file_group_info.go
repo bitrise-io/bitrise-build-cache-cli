@@ -1,25 +1,23 @@
 package filegroup
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 	"github.com/pkg/xattr"
 
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
-	"syscall"
-
-	"strings"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type Info struct {
@@ -93,7 +91,8 @@ func CollectFileGroupInfo(cacheDirPath string,
 	collectAttributes,
 	followSymlinks bool,
 	skipSPM bool,
-	logger log.Logger) (Info, error) {
+	logger log.Logger,
+) (Info, error) {
 	var dd Info
 
 	fgi := fileGroupInfoCollector{
@@ -157,7 +156,8 @@ func followSymlink(rootPath, path, target string,
 	fgi *fileGroupInfoCollector,
 	followSymlinks,
 	skipSPM bool,
-	logger log.Logger) error {
+	logger log.Logger,
+) error {
 	if !followSymlinks {
 		logger.Debugf("Skipping symbolic link: %s", path)
 
@@ -213,7 +213,8 @@ func CollectFileMetadata(
 	isDirectory bool,
 	fgi *fileGroupInfoCollector,
 	collectAttributes, followSymlinks, skipSPM bool,
-	logger log.Logger) error {
+	logger log.Logger,
+) error {
 	if fgi.isSeen(path) {
 		logger.Debugf("Skipping path %s, already seen", path)
 

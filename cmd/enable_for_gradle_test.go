@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 )
 
 func Test_enableForGradleCmdFn(t *testing.T) {

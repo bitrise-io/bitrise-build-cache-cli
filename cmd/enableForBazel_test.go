@@ -6,12 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_enableForBazelCmdFn(t *testing.T) {

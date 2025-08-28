@@ -6,13 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 )
 
 func Test_gradlePropertiesFromParams(t *testing.T) {
@@ -27,7 +28,7 @@ func Test_gradlePropertiesFromParams(t *testing.T) {
 
 		tmpPath := t.TempDir()
 		tmpGradleHomeDir := filepath.Join(tmpPath, ".gradle")
-		_ = os.MkdirAll(tmpGradleHomeDir, 0755)
+		_ = os.MkdirAll(tmpGradleHomeDir, 0o755)
 
 		propertyFilePath := filepath.Join(tmpGradleHomeDir, "gradle.properties")
 

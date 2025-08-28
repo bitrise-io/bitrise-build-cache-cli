@@ -7,7 +7,6 @@ import (
 	"io"
 	"time"
 
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -15,6 +14,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 )
 
 type PutParams struct {
@@ -123,7 +124,8 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 }
 
 func (c *Client) findMissing(ctx context.Context,
-	req *remoteexecution.FindMissingBlobsRequest) ([]*FileDigest, error) {
+	req *remoteexecution.FindMissingBlobsRequest,
+) ([]*FileDigest, error) {
 	var resp *remoteexecution.FindMissingBlobsResponse
 	err := retry.Times(3).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt > 0 {
@@ -162,7 +164,8 @@ func (c *Client) findMissingChunked(ctx context.Context,
 	req *remoteexecution.FindMissingBlobsRequest,
 	digests []*FileDigest,
 	blobDigests []*remoteexecution.Digest,
-	gRPCLimitBytes int) ([]*FileDigest, error) {
+	gRPCLimitBytes int,
+) ([]*FileDigest, error) {
 	var missingBlobs []*FileDigest
 	// Chunk up request blobs to fit into gRPC limits
 	// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)

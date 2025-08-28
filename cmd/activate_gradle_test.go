@@ -7,12 +7,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 )
 
 func Test_activateGradleCmdFn(t *testing.T) {

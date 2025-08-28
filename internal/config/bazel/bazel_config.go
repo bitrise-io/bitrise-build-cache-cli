@@ -5,9 +5,10 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 //go:embed bazelrc.gotemplate
@@ -65,7 +66,7 @@ func (inventory TemplateInventory) WriteToBazelrc(
 	finalContent := stringmerge.ChangeContentInBlock(currentContent, bazelBlockStart, bazelBlockEnd, bazelrcContent)
 
 	logger.Infof("(i) Write bazel configuration to %s", bazelrcPath)
-	if err = osProxy.WriteFile(bazelrcPath, []byte(finalContent), 0644); err != nil {
+	if err = osProxy.WriteFile(bazelrcPath, []byte(finalContent), 0o644); err != nil {
 		return fmt.Errorf(errFmtWritingBazelrcFile, bazelrcPath, err)
 	}
 

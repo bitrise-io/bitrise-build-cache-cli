@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 const (

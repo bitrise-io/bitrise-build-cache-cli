@@ -2,16 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
 
-	"os/exec"
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/pathutil"
+	"github.com/spf13/cobra"
 
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/pathutil"
-	"github.com/spf13/cobra"
 )
 
 // activateBazelCmd represents the activate bazel command

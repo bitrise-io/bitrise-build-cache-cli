@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-retryablehttp"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func NewCacheOperation(startT time.Time, operationType string, metadata *common.CacheConfigMetadata) *CacheOperation {

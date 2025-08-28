@@ -7,17 +7,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
-	"github.com/spf13/cobra"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // nolint: gochecknoglobals
@@ -65,7 +66,8 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	uploadEmpty bool,
 	logger log.Logger,
 	envProvider map[string]string,
-	commandFunc func(string, ...string) (string, error)) error {
+	commandFunc func(string, ...string) (string, error),
+) error {
 	logger.Infof("(i) Check Auth Config")
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {

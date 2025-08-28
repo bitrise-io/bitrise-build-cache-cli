@@ -2,17 +2,17 @@ package bazelconfig
 
 import (
 	"fmt"
-	"testing"
-
 	"slices"
 	"strings"
+	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func Test_ActivateBazelParams(t *testing.T) {

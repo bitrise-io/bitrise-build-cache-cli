@@ -4,8 +4,9 @@ import (
 	"crypto/sha256"
 	"hash"
 
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/zeebo/blake3"
+
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 )
 
 func NewBlobHasher(hash remoteexecution.DigestFunction_Value) hash.Hash {

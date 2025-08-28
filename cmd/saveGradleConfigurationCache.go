@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
+	"github.com/spf13/cobra"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
-	"github.com/spf13/cobra"
 )
 
 const GradleConfigCacheMetadataPath = "gradle-config-cache-metadata.json"
@@ -78,7 +79,8 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider map[string]string,
-	commandFunc func(string, ...string) (string, error)) error {
+	commandFunc func(string, ...string) (string, error),
+) error {
 	var err error
 
 	kvClient, err := createKVClient(ctx,

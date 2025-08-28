@@ -1,10 +1,9 @@
 package xcode
 
 import (
-	"github.com/stretchr/testify/mock"
-
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
+	"github.com/stretchr/testify/mock"
 )
 
 func setupTests() log.Logger {

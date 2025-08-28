@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"strconv"
@@ -11,12 +12,11 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"io"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -25,7 +25,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
-	"github.com/golang/protobuf/ptypes/empty"
 )
 
 const (
@@ -343,13 +342,13 @@ func startProxy(
 
 	outf := xcelerate.PathFor(osProxy, serverOut)
 	errf := xcelerate.PathFor(osProxy, serverErr)
-	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer outFile.Close()
 
-	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open error file: %w", err)
 	}
@@ -364,7 +363,7 @@ func startProxy(
 	}
 
 	pid := cmd.PID()
-	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0644); err != nil {
+	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0o644); err != nil {
 		killFunc(pid, syscall.SIGKILL)
 
 		return fmt.Errorf(errFmtFailedToCreatePID, err)

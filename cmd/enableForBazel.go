@@ -5,12 +5,13 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
+
+	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 // enableForBazelCmd represents the bazel command
@@ -44,8 +45,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 	},
 }
 
-var rbeEnabled bool //nolint:gochecknoglobals
-var timestamps bool //nolint:gochecknoglobals
+var (
+	rbeEnabled bool //nolint:gochecknoglobals
+	timestamps bool //nolint:gochecknoglobals
+)
 
 func init() {
 	enableForBazelCmd.Flags().BoolVar(&rbeEnabled, "with-rbe", false, "Enable Remote Build Execution (RBE)")

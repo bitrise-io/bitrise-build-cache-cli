@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const (

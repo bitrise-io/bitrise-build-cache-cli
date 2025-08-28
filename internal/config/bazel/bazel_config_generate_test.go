@@ -3,9 +3,10 @@ package bazelconfig
 import (
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 func Test_Generate(t *testing.T) {

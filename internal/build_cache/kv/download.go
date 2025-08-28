@@ -14,9 +14,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// ErrCacheNotFound ...
-var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
-var ErrCacheUnauthenticated = errors.New("unauthenticated")
+var (
+	// ErrCacheNotFound ...
+	ErrCacheNotFound        = errors.New("no cache archive found for the provided keys")
+	ErrCacheUnauthenticated = errors.New("unauthenticated")
+)
 
 // ErrFileExistsAndNotWritable ...
 var ErrFileExistsAndNotWritable = errors.New("file already exists and is not writable")
@@ -43,7 +45,7 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 	}
 
 	if fileMode == 0 {
-		fileMode = 0666
+		fileMode = 0o666
 	}
 
 	if fileInfo, err := os.Stat(filePath); err == nil {
@@ -51,13 +53,13 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 			return true, nil
 		}
 
-		ownerWritable := (fileInfo.Mode().Perm() & 0200) != 0
+		ownerWritable := (fileInfo.Mode().Perm() & 0o200) != 0
 		if !ownerWritable {
 			if !forceOverwrite {
 				return false, ErrFileExistsAndNotWritable
 			}
 
-			if err := os.Chmod(filePath, 0666); err != nil {
+			if err := os.Chmod(filePath, 0o666); err != nil {
 				return false, fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
 			}
 

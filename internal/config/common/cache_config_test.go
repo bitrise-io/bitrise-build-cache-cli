@@ -2,12 +2,11 @@
 package common
 
 import (
+	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
-
-	"errors"
-	"reflect"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
@@ -53,7 +52,8 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "CircleCI",
 			envs: map[string]string{
-				"CIRCLECI": "true"},
+				"CIRCLECI": "true",
+			},
 			commandFunc: func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},

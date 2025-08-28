@@ -7,13 +7,14 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 )
 
 func Test_WriteToBazelrc(t *testing.T) {

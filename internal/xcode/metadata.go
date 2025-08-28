@@ -8,9 +8,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 const metadataVersion = 1
@@ -114,7 +115,7 @@ func SaveMetadata(metadata *Metadata, fileName string, logger log.Logger) (int64
 	}
 
 	// Write JSON data to a file
-	err = os.WriteFile(fileName, jsonData, 0600)
+	err = os.WriteFile(fileName, jsonData, 0o600)
 	if err != nil {
 		return 0, fmt.Errorf("writing JSON file: %w", err)
 	}

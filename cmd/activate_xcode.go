@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/spf13/cobra"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -100,13 +101,13 @@ func copyCLIToXcelerateBinDir(osProxy utils.OsProxy) (string, error) {
 	defer reader.Close()
 
 	binDir := xcelerate.PathFor(osProxy, "bin")
-	if err := osProxy.MkdirAll(binDir, 0755); err != nil {
+	if err := osProxy.MkdirAll(binDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create bin dir: %w", err)
 	}
 
 	basename := filepath.Base(src)
 	target := filepath.Join(binDir, basename)
-	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
 		return "", fmt.Errorf("failed to create destination executable: %w", err)
 	}
@@ -222,7 +223,7 @@ func AddContentOrCreateFile(
 		content,
 	)
 
-	err = osProxy.WriteFile(filePath, []byte(content), 0644)
+	err = osProxy.WriteFile(filePath, []byte(content), 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}

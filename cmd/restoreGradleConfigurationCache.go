@@ -9,14 +9,15 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
+	"github.com/spf13/cobra"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -79,7 +80,8 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider map[string]string,
-	commandFunc func(string, ...string) (string, error)) error {
+	commandFunc func(string, ...string) (string, error),
+) error {
 	kvClient, err := createKVClient(ctx,
 		CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
@@ -146,7 +148,8 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 func downloadGradleConfigCacheMetadata(ctx context.Context, cacheMetadataPath, providedCacheKey string,
 	gradleCache *gradle.Cache,
 	kvClient *kv.Client,
-	logger log.Logger) (CacheKeyType, string, error) {
+	logger log.Logger,
+) (CacheKeyType, string, error) {
 	var cacheKeyType CacheKeyType = CacheKeyTypeDefault
 	var cacheKey string
 	var err error

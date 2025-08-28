@@ -1,5 +1,3 @@
 package cmd
 
-var (
-	isDebugLogMode bool //nolint:gochecknoglobals
-)
+var isDebugLogMode bool //nolint:gochecknoglobals

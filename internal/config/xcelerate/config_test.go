@@ -2,20 +2,20 @@
 package xcelerate_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"testing"
 
-	"context"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConfig_Save(t *testing.T) {

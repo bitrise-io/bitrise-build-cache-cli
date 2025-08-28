@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"path/filepath"
+	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const (
@@ -77,7 +77,8 @@ func NewConfig(ctx context.Context,
 	params Params,
 	envProvider map[string]string,
 	osProxy utils.OsProxy,
-	cmdFunc utils.CommandFunc) (Config, error) {
+	cmdFunc utils.CommandFunc,
+) (Config, error) {
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
@@ -138,7 +139,7 @@ func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc u
 func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 	xcelerateFolder := DirPath(os)
 
-	if err := os.MkdirAll(xcelerateFolder, 0755); err != nil {
+	if err := os.MkdirAll(xcelerateFolder, 0o755); err != nil {
 		return fmt.Errorf(ErrFmtCreateFolder, xcelerateFolder, err)
 	}
 

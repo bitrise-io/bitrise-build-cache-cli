@@ -3,11 +3,12 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/diagnostics"
 	"github.com/bitrise-io/go-utils/v2/command"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/diagnostics"
 )
 
 var restoreGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals

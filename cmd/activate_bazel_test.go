@@ -4,11 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/stretchr/testify/require"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_activateBazelCmdFn(t *testing.T) {

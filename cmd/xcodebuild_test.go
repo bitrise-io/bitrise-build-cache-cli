@@ -6,8 +6,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
@@ -16,9 +19,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
-	"github.com/google/uuid"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func Test_xcodebuildCmdFn(t *testing.T) {
