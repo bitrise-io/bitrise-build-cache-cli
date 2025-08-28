@@ -10,15 +10,15 @@ import (
 	"time"
 )
 
-// Ensure, that StepAnalyticsTrackerMock does implement xcode.StepAnalyticsTracker.
+// Ensure, that StepAnalyticsTrackerMock does implement deriveddata.StepAnalyticsTracker.
 // If this is not the case, regenerate this file with moq.
 var _ deriveddata.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 
-// StepAnalyticsTrackerMock is a mock implementation of xcode.StepAnalyticsTracker.
+// StepAnalyticsTrackerMock is a mock implementation of deriveddata.StepAnalyticsTracker.
 //
 //	func TestSomethingThatUsesStepAnalyticsTracker(t *testing.T) {
 //
-//		// make and configure a mocked xcode.StepAnalyticsTracker
+//		// make and configure a mocked deriveddata.StepAnalyticsTracker
 //		mockedStepAnalyticsTracker := &StepAnalyticsTrackerMock{
 //			LogDerivedDataDownloadedFunc: func(duration time.Duration, stats kv.DownloadFilesStats)  {
 //				panic("mock out the LogDerivedDataDownloaded method")
@@ -43,7 +43,7 @@ var _ deriveddata.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 //			},
 //		}
 //
-//		// use mockedStepAnalyticsTracker in code that requires xcode.StepAnalyticsTracker
+//		// use mockedStepAnalyticsTracker in code that requires deriveddata.StepAnalyticsTracker
 //		// and then make assertions.
 //
 //	}
