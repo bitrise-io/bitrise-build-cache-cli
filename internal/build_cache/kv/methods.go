@@ -49,6 +49,7 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 }
 
 func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
+	//nolint:wrapcheck
 	return retry.Times(10).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt > 0 {
 			c.logger.Debugf("Retrying GetCapabilities... (attempt %d)", attempt)
