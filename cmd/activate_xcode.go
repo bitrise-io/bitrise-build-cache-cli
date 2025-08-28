@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/shirou/gopsutil/v4/process"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
@@ -73,7 +75,7 @@ This command will:
 		}
 
 		// copy cli into ~/.bitrise-xcelerate/bin
-		cliPath, err := copyCLIToXcelerateBinDir(osProxy)
+		cliPath, err := copyCLIToXcelerateBinDir(cmd.Context(), osProxy, logger)
 		if err != nil {
 			return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 		}
@@ -88,7 +90,7 @@ This command will:
 	},
 }
 
-func copyCLIToXcelerateBinDir(osProxy utils.OsProxy) (string, error) {
+func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) (string, error) {
 	src, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("failed to determine executable path: %w", err)
@@ -107,6 +109,11 @@ func copyCLIToXcelerateBinDir(osProxy utils.OsProxy) (string, error) {
 
 	basename := filepath.Base(src)
 	target := filepath.Join(binDir, basename)
+
+	if err := makeSureCLIIsNotRunning(context, target, logger); err != nil {
+		return "", fmt.Errorf("failed to ensure cli is not running: %w", err)
+	}
+
 	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
 		return "", fmt.Errorf("failed to create destination executable: %w", err)
@@ -118,6 +125,35 @@ func copyCLIToXcelerateBinDir(osProxy utils.OsProxy) (string, error) {
 	}
 
 	return target, nil
+}
+
+// makeSureCLIIsNotRunning checks if there is any running CLI and tries to terminate/kill it.
+func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logger) error {
+	processes, err := process.ProcessesWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list processes: %w", err)
+	}
+
+	for _, p := range processes {
+		exe, err := p.ExeWithContext(ctx)
+		if err != nil {
+			continue
+		}
+		if exe != target {
+			continue
+		}
+
+		logger.TWarnf("Terminating already running CLI (pid: %d)", p.Pid)
+		if err := p.TerminateWithContext(ctx); err != nil {
+			logger.TWarnf("Failed to terminate already running CLI, attempting to kill it")
+
+			if err := p.KillWithContext(ctx); err != nil {
+				return fmt.Errorf("failed to kill already running CLI (pid: %d): %w", p.Pid, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 //nolint:gochecknoglobals
