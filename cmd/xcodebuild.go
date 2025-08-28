@@ -222,8 +222,15 @@ func XcodebuildCmdFn(
 		if err != nil {
 			logger.TErrorf("Failed to get session stats: %v", err)
 		}
-		logger.Debugf("Proxy stats: %+v", proxyStats)
+		logger.Debugf(
+			"Proxy stats: uploaded bytes: %d, downloaded bytes: %d, hits: %d, misses: %d",
+			proxyStats.GetUploadedBytes(),
+			proxyStats.GetDownloadedBytes(),
+			proxyStats.GetHits(),
+			proxyStats.GetMisses(),
+		)
 
+		// hit rate is hits / (hits + misses)
 		if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
 			hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
 		}
