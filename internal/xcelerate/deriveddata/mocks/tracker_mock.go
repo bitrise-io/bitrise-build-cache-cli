@@ -5,14 +5,14 @@ package mocks
 
 import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata"
 	"sync"
 	"time"
 )
 
 // Ensure, that StepAnalyticsTrackerMock does implement xcode.StepAnalyticsTracker.
 // If this is not the case, regenerate this file with moq.
-var _ xcode.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
+var _ deriveddata.StepAnalyticsTracker = &StepAnalyticsTrackerMock{}
 
 // StepAnalyticsTrackerMock is a mock implementation of xcode.StepAnalyticsTracker.
 //

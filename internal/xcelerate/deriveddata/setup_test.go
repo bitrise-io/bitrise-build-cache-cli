@@ -1,4 +1,4 @@
-package xcode
+package deriveddata
 
 import (
 	"github.com/bitrise-io/go-utils/v2/log"

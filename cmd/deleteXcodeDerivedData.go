@@ -18,7 +18,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata"
 )
 
 // nolint: gochecknoglobals
@@ -77,7 +77,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	var cacheKey string
 	if providedCacheKey == "" {
 		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
-		if cacheKey, err = xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{}); err != nil {
+		if cacheKey, err = deriveddata.GetCacheKey(envProvider, deriveddata.CacheKeyParams{}); err != nil {
 			return fmt.Errorf("get cache key: %w", err)
 		}
 	} else {
@@ -107,7 +107,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 
 func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string, envProvider map[string]string, client *kv.Client, logger log.Logger) error {
 	logger.TInfof("Saving empty metadata file %s", XCodeCacheMetadataPath)
-	_, err := xcode.SaveMetadata(&xcode.Metadata{
+	_, err := deriveddata.SaveMetadata(&deriveddata.Metadata{
 		ProjectFiles:         filegroup.Info{},
 		DerivedData:          filegroup.Info{},
 		XcodeCacheDir:        filegroup.Info{},
@@ -141,7 +141,7 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 	}
 
 	if providedCacheKey == "" {
-		fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+		fallbackCacheKey, err := deriveddata.GetCacheKey(envProvider, deriveddata.CacheKeyParams{IsFallback: true})
 		if err != nil {
 			logger.Warnf("Failed to get fallback cache key: %s", err)
 		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {
@@ -171,7 +171,7 @@ func deleteCacheKey(ctx context.Context, providedCacheKey, cacheKey string, envP
 		return nil
 	}
 
-	fallbackCacheKey, err := xcode.GetCacheKey(envProvider, xcode.CacheKeyParams{IsFallback: true})
+	fallbackCacheKey, err := deriveddata.GetCacheKey(envProvider, deriveddata.CacheKeyParams{IsFallback: true})
 	if err != nil {
 		logger.Warnf("Failed to get fallback cache key: %s", err)
 

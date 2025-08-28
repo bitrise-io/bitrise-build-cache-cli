@@ -11,12 +11,12 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata"
 )
 
 const XCodeCacheMetadataPath = "dd-metadata.json"
@@ -44,7 +44,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 		followSymlinks, _ := cmd.Flags().GetBool("follow-symlinks")
 		skipSPM, _ := cmd.Flags().GetBool("skip-spm")
 
-		tracker := xcode.NewDefaultStepTracker("save-xcode-build-cache", utils.AllEnvs(), logger)
+		tracker := deriveddata.NewDefaultStepTracker("save-xcode-build-cache", utils.AllEnvs(), logger)
 		defer tracker.Wait()
 		startT := time.Now()
 
@@ -130,7 +130,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	followSymlinks bool,
 	skipSPM bool,
 	logger log.Logger,
-	tracker xcode.StepAnalyticsTracker,
+	tracker deriveddata.StepAnalyticsTracker,
 	startT time.Time,
 	envs map[string]string,
 	commandFunc func(string, ...string) (string, error),
@@ -139,7 +139,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	var cacheKey string
 	if providedCacheKey == "" {
 		logger.Infof("(i) Cache key is not explicitly specified, setting it based on the current Bitrise app's slug and git branch...")
-		if cacheKey, err = xcode.GetCacheKey(envs, xcode.CacheKeyParams{}); err != nil {
+		if cacheKey, err = deriveddata.GetCacheKey(envs, deriveddata.CacheKeyParams{}); err != nil {
 			return nil, fmt.Errorf("get cache key: %w", err)
 		}
 	} else {
@@ -176,7 +176,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 		metadataSaveMsg += fmt.Sprintf(", Xcode cache directory in %s", xcodeCachePath)
 	}
 	logger.TInfof(metadataSaveMsg)
-	metadata, err := xcode.CreateMetadata(xcode.CreateMetadataParams{
+	metadata, err := deriveddata.CreateMetadata(deriveddata.CreateMetadataParams{
 		ProjectRootDirPath: absoluteRootDir,
 		DerivedDataPath:    derivedDataPath,
 		XcodeCacheDirPath:  xcodeCachePath,
@@ -189,7 +189,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 
 	logger.TInfof("Saving metadata file %s", cacheMetadataPath)
-	metadataSize, err := xcode.SaveMetadata(metadata, cacheMetadataPath, logger)
+	metadataSize, err := deriveddata.SaveMetadata(metadata, cacheMetadataPath, logger)
 	if err != nil {
 		return op, fmt.Errorf("save metadata: %w", err)
 	}
@@ -231,7 +231,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 
 	if providedCacheKey == "" {
-		fallbackCacheKey, err := xcode.GetCacheKey(envs, xcode.CacheKeyParams{IsFallback: true})
+		fallbackCacheKey, err := deriveddata.GetCacheKey(envs, deriveddata.CacheKeyParams{IsFallback: true})
 		if err != nil {
 			logger.Warnf("Failed to get fallback cache key: %s", err)
 		} else if fallbackCacheKey != "" && cacheKey != fallbackCacheKey {

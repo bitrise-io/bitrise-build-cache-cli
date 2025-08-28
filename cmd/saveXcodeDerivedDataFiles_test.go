@@ -9,7 +9,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode/mocks"
+	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata/mocks"
 )
 
 func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {

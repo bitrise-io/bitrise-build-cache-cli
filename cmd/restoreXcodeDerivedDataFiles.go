@@ -12,12 +12,12 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcode"
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata"
 )
 
 const (
@@ -54,7 +54,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		logger.Infof("(i) Force overwrite existing files: %t", forceOverwrite)
 
 		allEnvs := utils.AllEnvs()
-		tracker := xcode.NewDefaultStepTracker("restore-xcode-build-cache", allEnvs, logger)
+		tracker := deriveddata.NewDefaultStepTracker("restore-xcode-build-cache", allEnvs, logger)
 		defer tracker.Wait()
 		startT := time.Now()
 
@@ -128,7 +128,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	authConfig common.CacheAuthConfig,
 	cacheMetadataPath, projectRoot, providedCacheKey string,
 	logger log.Logger,
-	tracker xcode.StepAnalyticsTracker,
+	tracker deriveddata.StepAnalyticsTracker,
 	startT time.Time,
 	envs map[string]string,
 	commandFunc func(string, ...string) (string, error),
@@ -162,9 +162,9 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	op.CacheKeyType = &cacheKeyTypeStr
 
 	logger.TInfof("Loading metadata of the cache archive from %s", cacheMetadataPath)
-	var metadata *xcode.Metadata
+	var metadata *deriveddata.Metadata
 	var metadataSize int64
-	if metadata, metadataSize, err = xcode.LoadMetadata(cacheMetadataPath); err != nil {
+	if metadata, metadataSize, err = deriveddata.LoadMetadata(cacheMetadataPath); err != nil {
 		return op, fmt.Errorf("load metadata: %w", err)
 	}
 
@@ -172,12 +172,12 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 
 	logger.TInfof("Restoring metadata of input files")
 	var filesUpdated int
-	if filesUpdated, err = xcode.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
+	if filesUpdated, err = deriveddata.RestoreFileInfos(metadata.ProjectFiles.Files, projectRoot, logger); err != nil {
 		return op, fmt.Errorf("restore modification time: %w", err)
 	}
 
 	logger.TInfof("Restoring metadata of input directories")
-	if err := xcode.RestoreDirectoryInfos(metadata.ProjectFiles.Directories, projectRoot, logger); err != nil {
+	if err := deriveddata.RestoreDirectoryInfos(metadata.ProjectFiles.Directories, projectRoot, logger); err != nil {
 		return op, fmt.Errorf("restore metadata of input directories: %w", err)
 	}
 
@@ -192,26 +192,26 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	if err != nil {
 		logger.Infof("Failed to download DerivedData files, clearing")
 		// To prevent the build from failing
-		xcode.DeleteFileGroup(metadata.DerivedData, logger)
+		deriveddata.DeleteFileGroup(metadata.DerivedData, logger)
 
 		return op, fmt.Errorf("download DerivedData files: %w", err)
 	}
 
 	logger.TInfof("Restoring DerivedData directory metadata")
-	if err := xcode.RestoreDirectoryInfos(metadata.DerivedData.Directories, "", logger); err != nil {
+	if err := deriveddata.RestoreDirectoryInfos(metadata.DerivedData.Directories, "", logger); err != nil {
 		return op, fmt.Errorf("restore DerivedData directories: %w", err)
 	}
 
 	if len(metadata.ProjectFiles.Symlinks) > 0 {
 		logger.TInfof("Restoring project symlinks")
-		if _, err = xcode.RestoreSymlinks(metadata.ProjectFiles.Symlinks, logger); err != nil {
+		if _, err = deriveddata.RestoreSymlinks(metadata.ProjectFiles.Symlinks, logger); err != nil {
 			return op, fmt.Errorf("restore project symlink: %w", err)
 		}
 	}
 
 	if len(metadata.DerivedData.Symlinks) > 0 {
 		logger.TInfof("Restoring DerivedData symlinks")
-		if _, err = xcode.RestoreSymlinks(metadata.DerivedData.Symlinks, logger); err != nil {
+		if _, err = deriveddata.RestoreSymlinks(metadata.DerivedData.Symlinks, logger); err != nil {
 			return op, fmt.Errorf("restore DerivedData symlink: %w", err)
 		}
 	}
@@ -223,14 +223,14 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 		}
 
 		logger.TInfof("Restoring Xcode cache directory metadata")
-		if err := xcode.RestoreDirectoryInfos(metadata.XcodeCacheDir.Directories, "", logger); err != nil {
+		if err := deriveddata.RestoreDirectoryInfos(metadata.XcodeCacheDir.Directories, "", logger); err != nil {
 			return op, fmt.Errorf("restore Xcode cache directories: %w", err)
 		}
 	}
 
 	if len(metadata.XcodeCacheDir.Symlinks) > 0 {
 		logger.TInfof("Restoring Xcode cache symlinks")
-		if _, err = xcode.RestoreSymlinks(metadata.XcodeCacheDir.Symlinks, logger); err != nil {
+		if _, err = deriveddata.RestoreSymlinks(metadata.XcodeCacheDir.Symlinks, logger); err != nil {
 			return op, fmt.Errorf("restore xcode symlink: %w", err)
 		}
 	}
@@ -247,7 +247,7 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
-		if cacheKey, err = xcode.GetCacheKey(envs, xcode.CacheKeyParams{}); err != nil {
+		if cacheKey, err = deriveddata.GetCacheKey(envs, deriveddata.CacheKeyParams{}); err != nil {
 			return "", "", fmt.Errorf("get cache key: %w", err)
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
@@ -265,7 +265,7 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 
 	if errors.Is(err, kv.ErrCacheNotFound) {
 		cacheKeyType = CacheKeyTypeFallback
-		fallbackCacheKey, fallbackErr := xcode.GetCacheKey(envs, xcode.CacheKeyParams{IsFallback: true})
+		fallbackCacheKey, fallbackErr := deriveddata.GetCacheKey(envs, deriveddata.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
 			return cacheKeyType, fallbackCacheKey, errors.New("cache metadata not found in cache")
 		}
