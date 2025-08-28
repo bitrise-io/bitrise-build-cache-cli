@@ -63,7 +63,7 @@ func NewProxy(
 			logger.TDebugf(info.FullMethod)
 
 			if err := proxy.callGetCapabilities(ctx); err != nil {
-				return nil, fmt.Errorf("failed to call GetCapabilities: %w", err)
+				return nil, err
 			}
 
 			return handler(ctx, req)
@@ -458,6 +458,8 @@ func (p *Proxy) callGetCapabilities(ctx context.Context) error {
 	p.capabilitiesCalled = true
 
 	if err := p.kvClient.GetCapabilitiesWithRetry(ctx); err != nil {
+		p.logger.TErrorf("GetCapabilities error: %s", err)
+
 		return fmt.Errorf("failed to call GetCapabilities: %w", err)
 	}
 
