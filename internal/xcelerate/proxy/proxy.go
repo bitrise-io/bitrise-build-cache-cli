@@ -457,7 +457,7 @@ func (p *Proxy) callGetCapabilities(ctx context.Context) error {
 
 	p.capabilitiesCalled = true
 
-	if err := p.kvClient.GetCapabilities(ctx); err != nil {
+	if err := p.kvClient.GetCapabilitiesWithRetry(ctx); err != nil {
 		return fmt.Errorf("failed to call GetCapabilities: %w", err)
 	}
 

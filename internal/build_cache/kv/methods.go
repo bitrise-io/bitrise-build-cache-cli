@@ -3,6 +3,7 @@ package kv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -45,6 +46,25 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
+	return retry.Times(10).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt > 0 {
+			c.logger.Debugf("Retrying GetCapabilities... (attempt %d)", attempt)
+		}
+
+		if err := c.GetCapabilities(ctx); err != nil {
+			c.logger.Errorf("Error in GetCapabilities attempt %d: %s", attempt, err)
+			if errors.Is(err, ErrCacheUnauthenticated) {
+				return ErrCacheUnauthenticated, true
+			}
+
+			return fmt.Errorf("get capabilities: %w", err), false
+		}
+
+		return nil, false
+	})
 }
 
 func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteCloser, error) {
