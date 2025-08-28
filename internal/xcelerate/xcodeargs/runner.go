@@ -2,21 +2,30 @@ package xcodeargs
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 
 	"time"
 
+	"bufio"
+	"regexp"
+
+	"fmt"
+
+	"sync"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type RunStats struct {
-	StartTime  time.Time
-	Success    bool
-	Error      error
-	DurationMS int64
+	StartTime    time.Time
+	Success      bool
+	Error        error
+	DurationMS   int64
+	XcodeVersion string
 }
 
 type DefaultRunner struct {
@@ -41,23 +50,70 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 
 	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
 
-	startTime := time.Now()
+	runStats := RunStats{
+		StartTime: time.Now(),
+	}
 
 	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
-	innerCmd.Stdout = os.Stdout
+
+	wg := sync.WaitGroup{}
+	stdOutReader, err := innerCmd.StdoutPipe()
+	if err != nil {
+		runner.logger.Errorf("Failed to get stdout pipe: %v", err)
+		innerCmd.Stdout = os.Stdout
+	} else {
+		wg.Add(1)
+		go func() {
+			runner.streamAndMatchStdOut(ctx, stdOutReader, &runStats)
+			wg.Done()
+		}()
+	}
+
 	innerCmd.Stderr = os.Stderr
 	innerCmd.Stdin = os.Stdin
 
-	err := innerCmd.Run()
+	err = innerCmd.Run()
 
-	duration := time.Since(startTime)
+	wg.Wait()
+	duration := time.Since(runStats.StartTime)
 
-	runstats := RunStats{
-		StartTime:  startTime,
-		Success:    err == nil,
-		Error:      err,
-		DurationMS: duration.Milliseconds(),
+	runStats.DurationMS = duration.Milliseconds()
+	if err != nil {
+		runStats.Error = err
+		runStats.Success = false
+	} else {
+		runStats.Success = true
 	}
 
-	return runstats
+	return runStats
+}
+
+func (runner *DefaultRunner) streamAndMatchStdOut(ctx context.Context, reader io.ReadCloser, runStats *RunStats) {
+	versionRegex := regexp.MustCompile(`/Applications/Xcode[-_]?([\w.]+).app/Contents`)
+
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		line := scanner.Text()
+
+		if runStats.XcodeVersion == "" {
+			matches := versionRegex.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				runStats.XcodeVersion = matches[1]
+				runner.logger.TInfof("Detected Xcode version: %s", runStats.XcodeVersion)
+			}
+		}
+
+		//nolint: errcheck
+		fmt.Fprintf(os.Stdout, "%s\n", line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		runner.logger.Errorf("Failed to scan stdout: %v", err)
+	}
 }

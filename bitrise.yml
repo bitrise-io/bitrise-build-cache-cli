@@ -821,29 +821,7 @@ workflows:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
     steps:
-    - activate-ssh-key:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - script:
-        title: Delete _tmp dirs
-        inputs:
-          - content: rm -rf _tmp
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-          - repository_url: "$TEST_APP_URL"
-          - clone_into_dir: "./_tmp"
-          - branch: "$BRANCH"
-          - commit: "$COMMIT"
-    - git-clone: {}
-    - script:
-        title: build CLI
-        inputs:
-          - content: |-
-              set -exo pipefail
-              go build -o bin/bitrise-build-cache-cli
-    - change-workdir:
-        title: Switch working dir to _tmp
-        inputs:
-          - path: "./_tmp"
+    - bundle::feature-e2e-setup: {}
     - script:
         title: build app
         inputs:
@@ -856,7 +834,7 @@ workflows:
               type xcodebuild || true
 
               # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
-              ../bin/bitrise-build-cache-cli -d activate xcode \
+              ../bitrise-build-cache-cli -d activate xcode \
                 --cache \
                 --proxy-socket-path "${TMPDIR}xcelerate-proxy.sock"
 
@@ -873,7 +851,8 @@ workflows:
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
-                -skipMacroValidation | tee xcodebuild.log | xcpretty
+                -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
+             
     - script:
         title: gather info
         inputs:
@@ -884,10 +863,32 @@ workflows:
               cp ~/.bitrise-xcelerate/proxy.err.log $BITRISE_DEPLOY_DIR
               cp ~/.bitrise-xcelerate/proxy.out.log $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
+              cp wrapper.log $BITRISE_DEPLOY_DIR
               
+              cat "$BITRISE_DEPLOY_DIR/wrapper.log"
               head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
               tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
-    - deploy-to-bitrise-io: {}
+              
+              source ../_e2e/scripts/error.sh
+              source ../_e2e/scripts/extract_invocation_id.sh
+              
+              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
+              if [[ -z "$invocation_id" ]]; then
+                fatal "Invocation ID not found in logs"
+              fi
+
+              echo "Found Invocation ID: $invocation_id"
+              envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+           - content: |-
+               source ../_e2e/scripts/assert_invocations.sh
+  
+               assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
+               assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
+               assert_build_performance "$INVOCATION_ID"
+               assert_invocation_in_build_performance "$INVOCATION_ID" "xcode"
     - script:
         title: Check for cache usage
         inputs:
@@ -895,6 +896,7 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - deploy-to-bitrise-io: {}
 
 step_bundles:
   generate_gradle_verification_reference:
@@ -1035,6 +1037,7 @@ step_bundles:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
       - script:
           title: Clone e2e testing repo with deploy key
+          run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | ne ""}}'
           inputs:
             - content: |-
                 #!/bin/bash
@@ -1049,6 +1052,19 @@ step_bundles:
                 mkdir -p ./_e2e
                 GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
 
+                ls -la ./_e2e
+      - script:
+          title: Clone e2e repo with existing SSH key
+          run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | eq ""}}'
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -ex
+                
+                rm -rf ./_e2e
+                mkdir -p ./_e2e
+                git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
+                
                 ls -la ./_e2e
       - script:
           title: Delete _tmp dirs

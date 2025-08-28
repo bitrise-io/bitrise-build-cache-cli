@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -57,7 +58,16 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		_ = SUT(context.Background(), mockLogger, xcodeRunner, sessionClientMock, xcelerate.Config{}, common.CacheConfigMetadata{}, &xcodeArgProvider)
+		_ = SUT(
+			context.Background(),
+			uuid.NewString(),
+			mockLogger,
+			xcodeRunner,
+			sessionClientMock,
+			xcelerate.Config{},
+			common.CacheConfigMetadata{},
+			&xcodeArgProvider,
+		)
 
 		// Then
 		assert.Len(t, xcodeArgProvider.ArgsCalls(), 1)
@@ -99,7 +109,16 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		SUT := cmd.XcodebuildCmdFn
 
 		// When
-		actual := SUT(context.Background(), mockLogger, xcodeRunner, sessionClientMock, xcelerate.Config{}, common.CacheConfigMetadata{}, &xcodeArgProvider)
+		actual := SUT(
+			context.Background(),
+			uuid.NewString(),
+			mockLogger,
+			xcodeRunner,
+			sessionClientMock,
+			xcelerate.Config{},
+			common.CacheConfigMetadata{},
+			&xcodeArgProvider,
+		)
 
 		// Then
 		require.EqualError(t, actual, expected.Error())

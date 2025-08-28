@@ -16,6 +16,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"io"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
@@ -66,7 +68,11 @@ TBD`,
 	SilenceUsage:       true,
 	DisableFlagParsing: true, // pass all args to xcodebuild
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger(log.WithOutput(os.Stderr))
+		invocationID := uuid.New().String()
+
+		logOutput, cleanup := logFile(invocationID, utils.DefaultOsProxy{}, utils.AllEnvs())
+		defer cleanup()
+		logger := log.NewLogger(log.WithOutput(logOutput))
 
 		xcelerateParams.OrigArgs = os.Args[1:]
 
@@ -123,7 +129,14 @@ TBD`,
 
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
-		if err := XcodebuildCmdFn(cobraCmd.Context(), logger, xcodeRunner, proxySessionClient, config, metadata, xcodeArgs); err != nil {
+		if err := XcodebuildCmdFn(cobraCmd.Context(),
+			invocationID,
+			logger,
+			xcodeRunner,
+			proxySessionClient,
+			config,
+			metadata,
+			xcodeArgs); err != nil {
 			logger.Errorf(ErrExecutingXcode, err)
 		}
 
@@ -135,8 +148,45 @@ func init() {
 	xcelerateCommand.AddCommand(xcodebuildCmd)
 }
 
+func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string) (io.Writer, func()) {
+	deployDir := envs["BITRISE_DEPLOY_DIR"]
+	var logDir string
+	if deployDir != "" {
+		logDir = deployDir
+	} else {
+		home, err := osProxy.UserHomeDir()
+		if err != nil {
+			return os.Stderr, func() {}
+		}
+		logDir = fmt.Sprintf("%s/.local/state/xcelerate/logs", home)
+		if err := osProxy.MkdirAll(logDir, 0o755); err != nil {
+			return os.Stderr, func() {}
+		}
+	}
+
+	logPath := fmt.Sprintf("%s/xcelerate-%s.log", logDir, invocationID)
+	f, err := osProxy.Create(logPath)
+	if err != nil {
+		return os.Stderr, func() {}
+	}
+
+	//nolint:errcheck
+	fmt.Fprintf(os.Stderr, "ℹ️ These logs are available at: %s\n", logPath)
+
+	// wrap stderr to also write to log file
+	mw := io.MultiWriter(os.Stderr, f)
+
+	return mw, func() {
+		if err := f.Close(); err != nil {
+			//nolint:errcheck
+			fmt.Fprintf(os.Stderr, "Failed to close log file: %v\n", err)
+		}
+	}
+}
+
 func XcodebuildCmdFn(
 	ctx context.Context,
+	invocationID string,
 	logger log.Logger,
 	xcodeRunner XcodeRunner,
 	proxySessionClient session.SessionClient,
@@ -146,8 +196,6 @@ func XcodebuildCmdFn(
 ) error {
 	toPass := getArgsToPass(config, xcodeArgs)
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
-
-	invocationID := uuid.New().String()
 
 	if proxySessionClient != nil {
 		_, err := proxySessionClient.SetSession(ctx, &session.SetSessionRequest{
@@ -177,7 +225,9 @@ func XcodebuildCmdFn(
 		}
 		logger.Debugf("Proxy stats: %+v", proxyStats)
 
-		hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
+		if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
+			hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
+		}
 	}
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
@@ -189,10 +239,10 @@ func XcodebuildCmdFn(
 		FullCommand:    xcodeArgs.Command(),
 		Success:        runStats.Success,
 		Error:          runStats.Error,
-		XcodeVersion:   "", // TODO from logs
+		XcodeVersion:   runStats.XcodeVersion,
 	}, config.AuthConfig, metadata)
 
-	client, err := analytics.NewClient(consts.AnalyticsServiceEndpoint, config.AuthConfig.AuthToken, logger)
+	client, err := analytics.NewClient(consts.AnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
 	if err != nil {
 		logger.Errorf("Failed to create analytics client: %v", err)
 
