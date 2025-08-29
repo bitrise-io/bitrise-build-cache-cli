@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "$TAG" == "" ]; then
+  echo "TAG environment variable is not set. Exiting."
+  exit 1
+fi
+
+
 DIST_DIR=dist
 
-git tag --delete v1.0.0
-git tag v1.0.0
+git tag --delete "$TAG" || true
+git tag $TAG
 
 rm -rf dist && goreleaser release --skip=publish
 
-tag=1.0.0
-clean_tag="${tag#v}"
+clean_tag="${TAG#v}"
 
 filenames=(
   "bitrise-build-cache_${clean_tag}_darwin_amd64.tar.gz"
