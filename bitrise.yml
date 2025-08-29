@@ -823,12 +823,11 @@ workflows:
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
-        title: build app
+        title: activate xcode using CLI
         inputs:
           - content: |-
               #!/usr/bin/env bash
               set -eo pipefail
-              shopt -s expand_aliases
 
               echo "Original Xcodebuild command location:"
               type xcodebuild || true
@@ -836,9 +835,10 @@ workflows:
               # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
               ../bitrise-build-cache-cli -d activate xcode \
                 --cache
-
-              source ~/.bashrc
-
+    - script:
+        title: build app
+        inputs:
+          - content: |-
               echo "Xcodebuild command location after activation:"
               type xcodebuild || true
               
