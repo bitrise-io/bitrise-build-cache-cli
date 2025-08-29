@@ -96,7 +96,7 @@ func StartXcodeCacheProxy(
 ) error {
 	client, err := createKVClient(ctx, CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
-		ClientName:         ClientNameXcelerate,
+		ClientName:         ClientNameXcode,
 		AuthConfig:         auth,
 		Envs:               envProvider,
 		CommandFunc:        commandFunc,

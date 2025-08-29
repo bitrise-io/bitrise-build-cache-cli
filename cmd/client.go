@@ -17,7 +17,6 @@ const (
 	ClientNameXcode             = "xcode"
 	ClientNameGradleConfigCache = "gradle-config"
 	ClientNameGradle            = "gradle"
-	ClientNameXcelerate         = "xcelerate"
 )
 
 type CreateKVClientParams struct {
