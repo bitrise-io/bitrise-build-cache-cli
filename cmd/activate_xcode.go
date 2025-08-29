@@ -25,10 +25,16 @@ const (
 
 	activateXcode           = "Activate Bitrise Build Cache for Xcode"
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
-	AddXcelerateToPath      = "ℹ️ To start building, run `alias xcodebuild='~/.bitrise-xcelerate/bin/bitrise-build-cache-cli xcelerate xcodebuild'` or restart your terminal."
+	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
 	startedProxy            = "Started xcelerate_proxy pid = %d"
 
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
+
+	cliBasename          = "bitrise-build-cache-cli"
+	wrapperScriptContent = `#!/bin/bash
+set -euxo pipefail
+%s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+`
 )
 
 //go:generate moq -out mocks/config_mock.go -pkg mocks . XcelerateConfig
@@ -74,14 +80,12 @@ This command will:
 			return fmt.Errorf("failed to create xcelerate config: %w", err)
 		}
 
-		// copy cli into ~/.bitrise-xcelerate/bin
-		cliPath, err := copyCLIToXcelerateBinDir(cmd.Context(), osProxy, logger)
-		if err != nil {
+		// copy cli to ~/.bitrise-xcelerate/bin/bitrise-build-cache-cli
+		if err := copyCLIToXcelerateBinDir(cmd.Context(), osProxy, logger); err != nil {
 			return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 		}
 
 		return ActivateXcodeCommandFn(
-			cliPath,
 			logger,
 			osProxy,
 			utils.DefaultEncoderFactory{},
@@ -90,41 +94,42 @@ This command will:
 	},
 }
 
-func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) (string, error) {
+func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) error {
 	src, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("failed to determine executable path: %w", err)
+		return fmt.Errorf("failed to determine executable path: %w", err)
 	}
 
 	reader, err := os.Open(src)
 	if err != nil {
-		return "", fmt.Errorf("failed to open source executable: %w", err)
+		return fmt.Errorf("failed to open source executable: %w", err)
 	}
 	defer reader.Close()
 
-	binDir := xcelerate.PathFor(osProxy, "bin")
-	if err := osProxy.MkdirAll(binDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create bin dir: %w", err)
+	binPath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
+	if err := osProxy.MkdirAll(binPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create bin dir: %w", err)
 	}
 
-	basename := filepath.Base(src)
-	target := filepath.Join(binDir, basename)
+	target := filepath.Join(binPath, cliBasename)
 
 	if err := makeSureCLIIsNotRunning(context, target, logger); err != nil {
-		return "", fmt.Errorf("failed to ensure cli is not running: %w", err)
+		return fmt.Errorf("failed to ensure cli is not running: %w", err)
 	}
 
 	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
-		return "", fmt.Errorf("failed to create destination executable: %w", err)
+		return fmt.Errorf("failed to create destination executable: %w", err)
 	}
 	defer writer.Close()
 
 	if _, err = io.Copy(writer, reader); err != nil {
-		return "", fmt.Errorf("failed to copy executable: %w", err)
+		return fmt.Errorf("failed to copy executable: %w", err)
 	}
 
-	return target, nil
+	logger.TInfof("Copied CLI to %s", target)
+
+	return nil
 }
 
 // makeSureCLIIsNotRunning checks if there is any running CLI and tries to terminate/kill it.
@@ -181,7 +186,6 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 }
 
 func ActivateXcodeCommandFn(
-	cliPath string,
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	encoderFactory utils.EncoderFactory,
@@ -191,7 +195,7 @@ func ActivateXcodeCommandFn(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	if err := AddXcelerateCommandAlias(cliPath, logger, osProxy); err != nil {
+	if err := AddXcelerateCommandToPathWithScriptWrapper(osProxy, logger); err != nil {
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
@@ -202,17 +206,29 @@ func ActivateXcodeCommandFn(
 	return nil
 }
 
-// nolint: godox
+// AddXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
 // TODO move to utils package
-func AddXcelerateCommandAlias(cliPath string, logger log.Logger, osProxy utils.OsProxy) error {
+func AddXcelerateCommandToPathWithScriptWrapper(osProxy utils.OsProxy, logger log.Logger) error {
 	homeDir, err := osProxy.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf(xcelerate.ErrFmtDetermineHome, err)
 	}
 
-	pathContent := fmt.Sprintf("alias xcodebuild='%s xcelerate xcodebuild'", cliPath)
+	binPath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
+	if err := osProxy.MkdirAll(binPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create bin dir: %w", err)
+	}
 
-	logger.Debugf("Adding xcelerate command as alias to ~/.bashrc: %s", pathContent)
+	// create a script that wraps the CLI to preserve any arguments and environment variables
+	scriptPath := filepath.Join(binPath, "xcodebuild")
+	logger.Debugf("Creating xcodebuild wrapper script: %s", scriptPath)
+	if err := osProxy.WriteFile(scriptPath, []byte(fmt.Sprintf(wrapperScriptContent, binPath)), 0o755); err != nil {
+		return fmt.Errorf("failed to create xcodebuild wrapper script: %w", err)
+	}
+
+	pathContent := fmt.Sprintf("export PATH=%s:$PATH", binPath)
+
+	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
 	err = AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".bashrc"),
@@ -222,7 +238,7 @@ func AddXcelerateCommandAlias(cliPath string, logger log.Logger, osProxy utils.O
 		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
 	}
 
-	logger.Debugf("Adding xcelerate command as alias to ~/.zshrc: %s", pathContent)
+	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", binPath)
 	err = AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".zshrc"),
@@ -232,7 +248,6 @@ func AddXcelerateCommandAlias(cliPath string, logger log.Logger, osProxy utils.O
 	return err
 }
 
-// nolint: godox
 // TODO move to utils package
 func AddContentOrCreateFile(
 	logger log.Logger,
