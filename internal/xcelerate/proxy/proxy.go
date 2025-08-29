@@ -131,6 +131,8 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			}
 		}
 
+		p.logger.TErrorf("Get error: %s", err)
+
 		return &llvmcas.CASGetResponse{
 			Outcome: llvmcas.CASGetResponse_ERROR,
 			Contents: &llvmcas.CASGetResponse_Error{
