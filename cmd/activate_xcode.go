@@ -86,10 +86,13 @@ This command will:
 		}
 
 		return ActivateXcodeCommandFn(
+			cmd.Context(),
 			logger,
 			osProxy,
+			utils.DefaultCommandFunc(),
 			utils.DefaultEncoderFactory{},
 			config,
+			utils.AllEnvs(),
 		)
 	},
 }
@@ -185,17 +188,12 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 	)
 }
 
-func ActivateXcodeCommandFn(
-	logger log.Logger,
-	osProxy utils.OsProxy,
-	encoderFactory utils.EncoderFactory,
-	xconfig XcelerateConfig,
-) error {
+func ActivateXcodeCommandFn(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, commandFunc utils.CommandFunc, encoderFactory utils.EncoderFactory, xconfig XcelerateConfig, envs map[string]string) error {
 	if err := xconfig.Save(logger, osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	if err := AddXcelerateCommandToPathWithScriptWrapper(osProxy, logger); err != nil {
+	if err := AddXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
@@ -208,7 +206,13 @@ func ActivateXcodeCommandFn(
 
 // AddXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
 // TODO move to utils package
-func AddXcelerateCommandToPathWithScriptWrapper(osProxy utils.OsProxy, logger log.Logger) error {
+func AddXcelerateCommandToPathWithScriptWrapper(
+	ctx context.Context,
+	osProxy utils.OsProxy,
+	commandFunc utils.CommandFunc,
+	logger log.Logger,
+	envs map[string]string,
+) error {
 	homeDir, err := osProxy.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf(xcelerate.ErrFmtDetermineHome, err)
@@ -228,6 +232,8 @@ func AddXcelerateCommandToPathWithScriptWrapper(osProxy utils.OsProxy, logger lo
 
 	pathContent := fmt.Sprintf("export PATH=%s:$PATH", binPath)
 
+	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
+
 	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
 	err = AddContentOrCreateFile(logger,
 		osProxy,
@@ -246,6 +252,36 @@ func AddXcelerateCommandToPathWithScriptWrapper(osProxy utils.OsProxy, logger lo
 		pathContent)
 
 	return err
+}
+
+func addPathToEnvman(
+	ctx context.Context,
+	commandFunc utils.CommandFunc,
+	binPath string,
+	envs map[string]string,
+	logger log.Logger,
+) {
+	// remove any existing entry
+	path := strings.ReplaceAll(envs["PATH"], binPath+":", "")
+	// prepend our bin path
+	path = strings.Join([]string{binPath, path}, ":")
+
+	command := commandFunc(
+		ctx,
+		"envman",
+		"add",
+		"--key",
+		"PATH",
+		"--value",
+		path,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		logger.Debugf("Failed to start envman command: %s", string(output))
+
+		return
+	}
+
+	logger.TInfof("Added xcelerate command to envman PATH: %s", path)
 }
 
 // TODO move to utils package

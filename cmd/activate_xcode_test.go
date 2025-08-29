@@ -2,6 +2,7 @@
 package cmd_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -62,10 +63,15 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 
 	t.Run("When no error activateXcodeCmdFn logs success", func(t *testing.T) {
 		err := cmd.ActivateXcodeCommandFn(
+			context.Background(),
 			mockLogger,
 			osProxy(),
+			func(ctx context.Context, command string, args ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
 			encoderFactory(),
 			config(),
+			map[string]string{},
 		)
 
 		mockLogger.AssertCalled(t, "TInfof", cmd.ActivateXcodeSuccessful)
@@ -82,10 +88,15 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		err := cmd.ActivateXcodeCommandFn(
+			context.Background(),
 			mockLogger,
 			osProxy(),
+			func(ctx context.Context, command string, args ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
 			encoderFactory(),
 			mockConfig,
+			map[string]string{},
 		)
 
 		assert.ErrorContains(t, err, fmt.Errorf(cmd.ErrFmtCreateXcodeConfig, expectedError).Error())
@@ -199,7 +210,15 @@ func TestActivateXcode_AddXcelerateCommandToPathWithScriptWrapper(t *testing.T) 
 	}
 
 	t.Run("When adding xcelerate command as PATH succeeds", func(t *testing.T) {
-		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(
+			context.Background(),
+			osProxy,
+			func(ctx context.Context, command string, args ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
+			mockLogger,
+			map[string]string{},
+		)
 
 		require.NoError(t, err)
 	})
@@ -215,7 +234,15 @@ func TestActivateXcode_AddXcelerateCommandToPathWithScriptWrapper(t *testing.T) 
 			return nil
 		}
 
-		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(
+			context.Background(),
+			osProxy,
+			func(ctx context.Context, command string, args ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
+			mockLogger,
+			map[string]string{},
+		)
 
 		require.ErrorIs(t, err, expectedError)
 	})
@@ -231,7 +258,15 @@ func TestActivateXcode_AddXcelerateCommandToPathWithScriptWrapper(t *testing.T) 
 			return nil
 		}
 
-		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(
+			context.Background(),
+			osProxy,
+			func(ctx context.Context, command string, args ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
+			mockLogger,
+			map[string]string{},
+		)
 
 		require.ErrorIs(t, err, expectedError)
 	})
@@ -241,7 +276,15 @@ func TestActivateXcode_AddXcelerateCommandToPathWithScriptWrapper(t *testing.T) 
 			return "", errors.New("failed to get home directory")
 		}
 
-		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(
+			context.Background(),
+			osProxy,
+			func(ctx context.Context, command string, args ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
+			mockLogger,
+			map[string]string{},
+		)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get home directory")

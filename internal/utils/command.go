@@ -7,7 +7,7 @@ import (
 	"syscall"
 )
 
-//go:generate moq -out mocks/command_mock.go -pkg mocks . Command
+//go:generate moq -stub -out mocks/command_mock.go -pkg mocks . Command
 type Command interface {
 	Start() error
 	Wait() error

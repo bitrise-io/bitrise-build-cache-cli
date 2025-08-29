@@ -132,14 +132,18 @@ type CommandMock struct {
 
 // CombinedOutput calls CombinedOutputFunc.
 func (mock *CommandMock) CombinedOutput() ([]byte, error) {
-	if mock.CombinedOutputFunc == nil {
-		panic("CommandMock.CombinedOutputFunc: method is nil but Command.CombinedOutput was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockCombinedOutput.Lock()
 	mock.calls.CombinedOutput = append(mock.calls.CombinedOutput, callInfo)
 	mock.lockCombinedOutput.Unlock()
+	if mock.CombinedOutputFunc == nil {
+		var (
+			bytesOut []byte
+			errOut   error
+		)
+		return bytesOut, errOut
+	}
 	return mock.CombinedOutputFunc()
 }
 
@@ -159,14 +163,17 @@ func (mock *CommandMock) CombinedOutputCalls() []struct {
 
 // Err calls ErrFunc.
 func (mock *CommandMock) Err() error {
-	if mock.ErrFunc == nil {
-		panic("CommandMock.ErrFunc: method is nil but Command.Err was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockErr.Lock()
 	mock.calls.Err = append(mock.calls.Err, callInfo)
 	mock.lockErr.Unlock()
+	if mock.ErrFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
 	return mock.ErrFunc()
 }
 
@@ -186,14 +193,17 @@ func (mock *CommandMock) ErrCalls() []struct {
 
 // PID calls PIDFunc.
 func (mock *CommandMock) PID() int {
-	if mock.PIDFunc == nil {
-		panic("CommandMock.PIDFunc: method is nil but Command.PID was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockPID.Lock()
 	mock.calls.PID = append(mock.calls.PID, callInfo)
 	mock.lockPID.Unlock()
+	if mock.PIDFunc == nil {
+		var (
+			nOut int
+		)
+		return nOut
+	}
 	return mock.PIDFunc()
 }
 
@@ -213,9 +223,6 @@ func (mock *CommandMock) PIDCalls() []struct {
 
 // SetStderr calls SetStderrFunc.
 func (mock *CommandMock) SetStderr(file *os.File) {
-	if mock.SetStderrFunc == nil {
-		panic("CommandMock.SetStderrFunc: method is nil but Command.SetStderr was just called")
-	}
 	callInfo := struct {
 		File *os.File
 	}{
@@ -224,6 +231,9 @@ func (mock *CommandMock) SetStderr(file *os.File) {
 	mock.lockSetStderr.Lock()
 	mock.calls.SetStderr = append(mock.calls.SetStderr, callInfo)
 	mock.lockSetStderr.Unlock()
+	if mock.SetStderrFunc == nil {
+		return
+	}
 	mock.SetStderrFunc(file)
 }
 
@@ -245,9 +255,6 @@ func (mock *CommandMock) SetStderrCalls() []struct {
 
 // SetStdin calls SetStdinFunc.
 func (mock *CommandMock) SetStdin(file *os.File) {
-	if mock.SetStdinFunc == nil {
-		panic("CommandMock.SetStdinFunc: method is nil but Command.SetStdin was just called")
-	}
 	callInfo := struct {
 		File *os.File
 	}{
@@ -256,6 +263,9 @@ func (mock *CommandMock) SetStdin(file *os.File) {
 	mock.lockSetStdin.Lock()
 	mock.calls.SetStdin = append(mock.calls.SetStdin, callInfo)
 	mock.lockSetStdin.Unlock()
+	if mock.SetStdinFunc == nil {
+		return
+	}
 	mock.SetStdinFunc(file)
 }
 
@@ -277,9 +287,6 @@ func (mock *CommandMock) SetStdinCalls() []struct {
 
 // SetStdout calls SetStdoutFunc.
 func (mock *CommandMock) SetStdout(file *os.File) {
-	if mock.SetStdoutFunc == nil {
-		panic("CommandMock.SetStdoutFunc: method is nil but Command.SetStdout was just called")
-	}
 	callInfo := struct {
 		File *os.File
 	}{
@@ -288,6 +295,9 @@ func (mock *CommandMock) SetStdout(file *os.File) {
 	mock.lockSetStdout.Lock()
 	mock.calls.SetStdout = append(mock.calls.SetStdout, callInfo)
 	mock.lockSetStdout.Unlock()
+	if mock.SetStdoutFunc == nil {
+		return
+	}
 	mock.SetStdoutFunc(file)
 }
 
@@ -309,9 +319,6 @@ func (mock *CommandMock) SetStdoutCalls() []struct {
 
 // SetSysProcAttr calls SetSysProcAttrFunc.
 func (mock *CommandMock) SetSysProcAttr(sysProcAttr *syscall.SysProcAttr) {
-	if mock.SetSysProcAttrFunc == nil {
-		panic("CommandMock.SetSysProcAttrFunc: method is nil but Command.SetSysProcAttr was just called")
-	}
 	callInfo := struct {
 		SysProcAttr *syscall.SysProcAttr
 	}{
@@ -320,6 +327,9 @@ func (mock *CommandMock) SetSysProcAttr(sysProcAttr *syscall.SysProcAttr) {
 	mock.lockSetSysProcAttr.Lock()
 	mock.calls.SetSysProcAttr = append(mock.calls.SetSysProcAttr, callInfo)
 	mock.lockSetSysProcAttr.Unlock()
+	if mock.SetSysProcAttrFunc == nil {
+		return
+	}
 	mock.SetSysProcAttrFunc(sysProcAttr)
 }
 
@@ -341,14 +351,17 @@ func (mock *CommandMock) SetSysProcAttrCalls() []struct {
 
 // Start calls StartFunc.
 func (mock *CommandMock) Start() error {
-	if mock.StartFunc == nil {
-		panic("CommandMock.StartFunc: method is nil but Command.Start was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockStart.Lock()
 	mock.calls.Start = append(mock.calls.Start, callInfo)
 	mock.lockStart.Unlock()
+	if mock.StartFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
 	return mock.StartFunc()
 }
 
@@ -368,14 +381,17 @@ func (mock *CommandMock) StartCalls() []struct {
 
 // Wait calls WaitFunc.
 func (mock *CommandMock) Wait() error {
-	if mock.WaitFunc == nil {
-		panic("CommandMock.WaitFunc: method is nil but Command.Wait was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockWait.Lock()
 	mock.calls.Wait = append(mock.calls.Wait, callInfo)
 	mock.lockWait.Unlock()
+	if mock.WaitFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
 	return mock.WaitFunc()
 }
 
