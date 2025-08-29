@@ -20,6 +20,7 @@ func init() {
 	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
 	mockLogger.On("Infof", mock.Anything).Return()
 	mockLogger.On("Infof").Return()
+	mockLogger.On("TDebugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("TDebugf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("TDebugf", mock.Anything).Return()
 	mockLogger.On("TDonef", mock.Anything, mock.Anything).Return()

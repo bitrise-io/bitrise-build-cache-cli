@@ -128,7 +128,8 @@ TBD`,
 
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
-		if err := XcodebuildCmdFn(cobraCmd.Context(),
+		if err := XcodebuildCmdFn(
+			cobraCmd.Context(),
 			invocationID,
 			logger,
 			xcodeRunner,
