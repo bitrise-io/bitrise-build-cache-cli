@@ -32,18 +32,12 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		return &utilsMocks.OsProxyMock{
 			ReadFileIfExistsFunc: func(pth string) (string, bool, error) { return "", true, nil },
 			UserHomeDirFunc: func() (string, error) {
-				return "~", nil
+				return t.TempDir(), nil
 			},
-			MkdirAllFunc: func(_ string, _ os.FileMode) error {
-				return nil
-			},
-			CreateFunc: func(_ string) (*os.File, error) {
-				return &os.File{}, nil
-			},
+			MkdirAllFunc:   os.MkdirAll,
+			CreateFunc:     os.Create,
 			ExecutableFunc: func() (string, error) { return "exe", nil },
-			OpenFileFunc: func(name string, flag int, perm os.FileMode) (*os.File, error) {
-				return &os.File{}, nil
-			},
+			OpenFileFunc:   os.OpenFile,
 			WriteFileFunc: func(pth string, data []byte, mode os.FileMode) error {
 				return nil
 			},
@@ -68,7 +62,6 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 
 	t.Run("When no error activateXcodeCmdFn logs success", func(t *testing.T) {
 		err := cmd.ActivateXcodeCommandFn(
-			"",
 			mockLogger,
 			osProxy(),
 			encoderFactory(),
@@ -89,7 +82,6 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		err := cmd.ActivateXcodeCommandFn(
-			"",
 			mockLogger,
 			osProxy(),
 			encoderFactory(),
@@ -193,24 +185,21 @@ func TestActivateXcode_addContentOrCreateFile(t *testing.T) {
 	})
 }
 
-func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
+func TestActivateXcode_AddXcelerateCommandToPathWithScriptWrapper(t *testing.T) {
 	osProxy := &utilsMocks.OsProxyMock{
 		ReadFileIfExistsFunc: func(pth string) (string, bool, error) {
 			return "", true, nil
 		},
 		UserHomeDirFunc: func() (string, error) {
-			return "/home/user", nil
+			return t.TempDir(), nil
 		},
-		WriteFileFunc: func(pth string, data []byte, mode os.FileMode) error {
-			return nil
-		},
-		GetwdFunc: func() (string, error) {
-			return os.TempDir(), nil
-		},
+		WriteFileFunc: os.WriteFile,
+		MkdirAllFunc:  os.MkdirAll,
+		OpenFileFunc:  os.OpenFile,
 	}
 
-	t.Run("When adding xcelerate command as alias succeeds", func(t *testing.T) {
-		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
+	t.Run("When adding xcelerate command as PATH succeeds", func(t *testing.T) {
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
 
 		require.NoError(t, err)
 	})
@@ -226,7 +215,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 			return nil
 		}
 
-		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
 
 		require.ErrorIs(t, err, expectedError)
 	})
@@ -242,7 +231,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 			return nil
 		}
 
-		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
 
 		require.ErrorIs(t, err, expectedError)
 	})
@@ -252,7 +241,7 @@ func TestActivateXcode_AddXcelerateCommandToPath(t *testing.T) {
 			return "", errors.New("failed to get home directory")
 		}
 
-		err := cmd.AddXcelerateCommandAlias("", mockLogger, osProxy)
+		err := cmd.AddXcelerateCommandToPathWithScriptWrapper(osProxy, mockLogger)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get home directory")
