@@ -33,14 +33,12 @@ type Proxy struct {
 	llvmkv.UnimplementedKeyValueDBServer
 	session.UnimplementedSessionServer
 
-	kvClient *kv.Client
-
-	sessionMutex       sync.Mutex
-	capabilitiesCalled bool
-
-	statsCollector *statsCollector
-
-	logger log.Logger
+	kvClient                *kv.Client
+	sessionMutex            sync.Mutex
+	capabilitiesCalled      bool
+	statsCollector          *statsCollector
+	skipGetCapabilitiesCall []grpc.ServiceDesc
+	logger                  log.Logger
 }
 
 func NewProxy(
@@ -52,6 +50,9 @@ func NewProxy(
 		kvClient:       kvClient,
 		statsCollector: newStatsCollector(),
 		logger:         logger,
+		skipGetCapabilitiesCall: []grpc.ServiceDesc{
+			session.Session_ServiceDesc, // skip GetCapabilities call for session service methods
+		},
 	}
 
 	grpcServer := grpc.NewServer(
@@ -63,7 +64,7 @@ func NewProxy(
 		) (any, error) {
 			logger.TDebugf(info.FullMethod)
 
-			if err := proxy.callGetCapabilities(ctx); err != nil {
+			if err := proxy.callGetCapabilities(info, ctx); err != nil {
 				return nil, err
 			}
 
@@ -510,12 +511,20 @@ func (p *Proxy) logWriteCallStats(method string, key string, start time.Time) {
 	)
 }
 
-func (p *Proxy) callGetCapabilities(ctx context.Context) error {
+func (p *Proxy) callGetCapabilities(info *grpc.UnaryServerInfo, ctx context.Context) error {
 	p.sessionMutex.Lock()
 	defer p.sessionMutex.Unlock()
 
 	if p.capabilitiesCalled {
 		return nil
+	}
+
+	for _, desc := range p.skipGetCapabilitiesCall {
+		for _, method := range desc.Methods {
+			if info.FullMethod == fmt.Sprintf("/%s/%s", desc.ServiceName, method.MethodName) {
+				return nil
+			}
+		}
 	}
 
 	p.capabilitiesCalled = true
