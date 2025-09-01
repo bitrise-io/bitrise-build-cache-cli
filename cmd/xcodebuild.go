@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -207,6 +208,14 @@ func XcodebuildCmdFn(
 		if err != nil {
 			logger.TErrorf("Failed to set session: %v", err)
 		}
+
+		proxyCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go func() {
+			if err := streamProxyLogs(proxyCtx, logger, utils.DefaultOsProxy{}); err != nil {
+				logger.Errorf("Failed to stream proxy logs: %v", err)
+			}
+		}()
 	}
 
 	runStats := xcodeRunner.Run(ctx, toPass)
@@ -402,4 +411,46 @@ func stopProxy(
 	}
 
 	return nil
+}
+
+func streamProxyLogs(
+	ctx context.Context,
+	logger log.Logger,
+	osProxy utils.OsProxy,
+) error {
+	f, err := os.Open(xcelerate.PathFor(osProxy, serverOut))
+	if err != nil {
+		return fmt.Errorf("failed to open proxy log file: %w", err)
+	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			logger.Errorf("failed to close log file: %v", err)
+		}
+	}(f)
+
+	// Seek to end to only get this invocation's logs
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		return fmt.Errorf("failed to seek proxy log file: %w", err)
+	}
+
+	r := bufio.NewReader(f)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+		line, err := r.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				time.Sleep(500 * time.Millisecond)
+
+				continue
+			}
+
+			return fmt.Errorf("failed to read proxy log line: %w", err)
+		}
+		logger.Printf("[Bitrise Build Cache] " + strings.TrimSpace(line))
+	}
 }

@@ -113,7 +113,7 @@ func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.G
 func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmcas.CASGetResponse, error) {
 	key := createLLVMCasKey(request.GetCasId())
 
-	p.logger.TInfof("Get called with request: %s", key)
+	p.logger.TDebugf("Get called with request: %s", key)
 
 	var hit bool
 
@@ -182,7 +182,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 }
 
 func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmcas.CASPutResponse, error) {
-	p.logger.TInfof("Put called with references: %s", request.GetData().GetReferences())
+	p.logger.TDebugf("Put called with references: %s", request.GetData().GetReferences())
 
 	errorHandler := func(err error) *llvmcas.CASPutResponse {
 		p.logger.TErrorf("Put error: %s", err)
@@ -235,7 +235,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	}
 	key = createLLVMCasKey(casId)
 
-	p.logger.TInfof("Put: CAS ID: %s", key)
+	p.logger.TDebugf("Put: CAS ID: %s", key)
 
 	size := int64(buffer.Len())
 	p.statsCollector.addUploadBytes(size)
@@ -255,7 +255,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llvmcas.CASLoadResponse, error) {
 	key := createLLVMCasKey(request.GetCasId())
 
-	p.logger.TInfof("Load called with request: %s", key)
+	p.logger.TDebugf("Load called with request: %s", key)
 
 	var hit bool
 
@@ -371,7 +371,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 	}
 	key = createLLVMCasKey(casId)
 
-	p.logger.TInfof("Save: CAS ID: %s", key)
+	p.logger.TDebugf("Save: CAS ID: %s", key)
 
 	// reset the reader
 	if request.GetData().GetBlob().GetFilePath() != "" {
@@ -402,7 +402,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 
 	var hit bool
 
-	p.logger.TInfof("GetValue called with key: %s", key)
+	p.logger.TDebugf("GetValue called with key: %s", key)
 
 	start := time.Now()
 	defer func() {
@@ -460,7 +460,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (*llvmkv.PutValueResponse, error) {
 	key := createLLVMKVKey(request.GetKey())
 
-	p.logger.TInfof("PutValue called with key: %s", key)
+	p.logger.TDebugf("PutValue called with key: %s", key)
 
 	start := time.Now()
 	defer func() {

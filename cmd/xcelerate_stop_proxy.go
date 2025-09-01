@@ -35,6 +35,8 @@ func init() {
 func stopXcelerateProxyCommandFn(osProxy utils.OsProxy, logger log.Logger) error {
 	pidPath := xcelerate.PathFor(osProxy, pidFile)
 
+	logger.TInfof("Stopping xcelerate-proxy...")
+
 	b, err := os.ReadFile(pidPath)
 	if err != nil {
 		return fmt.Errorf("read pidfile: %w", err)
