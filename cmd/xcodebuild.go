@@ -451,6 +451,8 @@ func streamProxyLogs(
 
 			return fmt.Errorf("failed to read proxy log line: %w", err)
 		}
-		logger.Printf("[Bitrise Build Cache] " + strings.TrimSpace(line))
+		// To have a different prefix than the wrapper
+		// nolint: forbidigo
+		fmt.Println("[Bitrise Build Cache] " + strings.TrimSpace(line))
 	}
 }
