@@ -138,8 +138,7 @@ TBD`,
 			config,
 			metadata,
 			xcodeArgs); runStats.Error != nil {
-			logger.Errorf(ErrExecutingXcode, err)
-
+			logger.Errorf(ErrExecutingXcode, runStats.Error)
 			os.Exit(runStats.ExitCode)
 		}
 
