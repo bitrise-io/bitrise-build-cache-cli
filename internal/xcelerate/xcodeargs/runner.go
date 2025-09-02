@@ -3,6 +3,7 @@ package xcodeargs
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,6 +22,7 @@ type RunStats struct {
 	StartTime    time.Time
 	Success      bool
 	Error        error
+	ExitCode     int
 	DurationMS   int64
 	XcodeVersion string
 }
@@ -78,6 +80,13 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 	if err != nil {
 		runStats.Error = err
 		runStats.Success = false
+
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
+			runStats.ExitCode = exitError.ExitCode()
+		} else {
+			runStats.ExitCode = 1
+		}
 	} else {
 		runStats.Success = true
 	}

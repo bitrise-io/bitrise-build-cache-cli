@@ -129,7 +129,7 @@ TBD`,
 
 		xcodeRunner := xcodeargs.NewRunner(logger, config)
 
-		if err := XcodebuildCmdFn(
+		if runStats := XcodebuildCmdFn(
 			cobraCmd.Context(),
 			invocationID,
 			logger,
@@ -137,8 +137,10 @@ TBD`,
 			proxySessionClient,
 			config,
 			metadata,
-			xcodeArgs); err != nil {
+			xcodeArgs); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, err)
+
+			os.Exit(runStats.ExitCode)
 		}
 
 		return nil
@@ -194,7 +196,7 @@ func XcodebuildCmdFn(
 	config xcelerate.Config,
 	metadata common.CacheConfigMetadata,
 	xcodeArgs xcodeargs.XcodeArgs,
-) error {
+) xcodeargs.RunStats {
 	toPass := getArgsToPass(config, xcodeArgs)
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
@@ -262,7 +264,7 @@ func XcodebuildCmdFn(
 	if err != nil {
 		logger.Errorf("Failed to create analytics client: %v", err)
 
-		return runStats.Error
+		return runStats
 	}
 
 	if err = client.PutInvocation(*inv); err != nil {
@@ -271,7 +273,7 @@ func XcodebuildCmdFn(
 		logger.TInfof(MsgInvocationSaved, invocationID)
 	}
 
-	return runStats.Error
+	return runStats
 }
 
 // createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
