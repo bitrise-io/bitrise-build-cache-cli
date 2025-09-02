@@ -8,7 +8,7 @@ require (
 	github.com/beevik/etree v1.4.1
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.38
 	github.com/bitrise-io/go-utils v1.0.13
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.26
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.27
 	github.com/dustin/go-humanize v1.0.1
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0

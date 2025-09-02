@@ -72,7 +72,7 @@ TBD`,
 
 		logOutput, cleanup := logFile(invocationID, utils.DefaultOsProxy{}, utils.AllEnvs())
 		defer cleanup()
-		logger := log.NewLogger(log.WithOutput(logOutput))
+		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
 
 		xcelerateParams.OrigArgs = os.Args[1:]
 
