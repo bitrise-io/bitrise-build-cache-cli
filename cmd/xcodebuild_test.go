@@ -94,7 +94,9 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		}
 
 		xcodeRunner := &cmdMocks.XcodeRunnerMock{
-			RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats { return xcodeargs.RunStats{Error: expected} },
+			RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats {
+				return xcodeargs.RunStats{Error: expected, ExitCode: 55}
+			},
 		}
 
 		sessionClientMock := &cmdMocks.SessionClientMock{
@@ -121,6 +123,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		)
 
 		// Then
-		require.EqualError(t, actual, expected.Error())
+		require.EqualError(t, actual.Error, expected.Error())
+		require.Equal(t, 55, actual.ExitCode)
 	})
 }
