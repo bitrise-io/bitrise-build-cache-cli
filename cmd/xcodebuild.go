@@ -247,6 +247,12 @@ func XcodebuildCmdFn(
 		}
 	}
 
+	if !shouldSaveInvocation(xcodeArgs) {
+		logger.TDebugf("Save invocation skipped")
+
+		return runStats
+	}
+
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate: runStats.StartTime,
 		InvocationID:   invocationID,
@@ -273,6 +279,15 @@ func XcodebuildCmdFn(
 	}
 
 	return runStats
+}
+
+func shouldSaveInvocation(xcodeArgs xcodeargs.XcodeArgs) bool {
+	// nolint: staticcheck
+	if xcodeArgs.Command() == "-version" {
+		return false
+	}
+
+	return true
 }
 
 // createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
