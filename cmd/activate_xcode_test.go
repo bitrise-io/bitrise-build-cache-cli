@@ -24,7 +24,7 @@ import (
 func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 	config := &cmdMocks.XcelerateConfigMock{}
 
-	home := os.TempDir()
+	home := t.TempDir()
 
 	osProxy := &utilsMocks.OsProxyMock{
 		ReadFileIfExistsFunc: utils.DefaultOsProxy{}.ReadFileIfExists,
