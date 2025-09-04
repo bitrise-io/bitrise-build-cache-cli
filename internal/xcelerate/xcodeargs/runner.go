@@ -104,6 +104,9 @@ func (runner *DefaultRunner) streamAndMatchStdOut(ctx context.Context, reader io
 	versionRegex := regexp.MustCompile(`/Applications/Xcode[-_]?([\w.-]+).app/Contents`)
 
 	scanner := bufio.NewScanner(reader)
+	const maxTokenSize = 10 * 1024 * 1024
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxTokenSize)
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
