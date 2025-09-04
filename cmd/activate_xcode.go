@@ -67,6 +67,7 @@ This command will:
 			utils.DefaultOsProxy{},
 			utils.DefaultCommandFunc(),
 			utils.DefaultEncoderFactory{},
+			utils.DefaultDecoderFactory{},
 			activateXcodeParams,
 			utils.AllEnvs(),
 		)
@@ -103,11 +104,12 @@ func ActivateXcodeCommandFn(
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
 	encoderFactory utils.EncoderFactory,
+	decoderFactory utils.DecoderFactory,
 	activateXcodeParams xcelerate.Params,
 	envs map[string]string,
 ) error {
 	// if there was an existing config, use its xcodebuild path if not overridden by flag
-	if existingConfig, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{}); err == nil {
+	if existingConfig, err := xcelerate.ReadConfig(osProxy, decoderFactory); err == nil {
 		activateXcodeParams.XcodePathOverride = cmp.Or(
 			activateXcodeParams.XcodePathOverride,
 			existingConfig.OriginalXcodebuildPath,
