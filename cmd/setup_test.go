@@ -32,4 +32,5 @@ func init() {
 	mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
 	mockLogger.On("TInfof", mock.Anything).Return()
 	mockLogger.On("TInfof").Return()
+	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 }

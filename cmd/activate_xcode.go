@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -37,7 +36,7 @@ set -euxo pipefail
 `
 )
 
-//go:generate moq -out mocks/config_mock.go -pkg mocks . XcelerateConfig
+//go:generate moq -stub -out mocks/config_mock.go -pkg mocks . XcelerateConfig
 type XcelerateConfig interface {
 	Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error
 }
@@ -62,39 +61,91 @@ This command will:
 
 		activateXcodeParams.DebugLogging = isDebugLogMode
 
-		// if there was an existing config, use its xcodebuild path if not overridden by flag
-		if existingConfig, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{}); err == nil {
-			activateXcodeParams.XcodePathOverride = cmp.Or(activateXcodeParams.XcodePathOverride, existingConfig.OriginalXcodebuildPath)
-		}
-
-		osProxy := utils.DefaultOsProxy{}
-		config, err := xcelerate.NewConfig(
-			cmd.Context(),
-			logger,
-			activateXcodeParams,
-			utils.AllEnvs(),
-			osProxy,
-			utils.DefaultCommandFunc(),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create xcelerate config: %w", err)
-		}
-
-		// copy cli to ~/.bitrise-xcelerate/bin/bitrise-build-cache-cli
-		if err := copyCLIToXcelerateBinDir(cmd.Context(), osProxy, logger); err != nil {
-			return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
-		}
-
 		return ActivateXcodeCommandFn(
 			cmd.Context(),
 			logger,
-			osProxy,
+			utils.DefaultOsProxy{},
 			utils.DefaultCommandFunc(),
 			utils.DefaultEncoderFactory{},
-			config,
+			utils.DefaultDecoderFactory{},
+			activateXcodeParams,
 			utils.AllEnvs(),
 		)
 	},
+}
+
+//nolint:gochecknoglobals
+var activateXcodeParams = xcelerate.DefaultParams()
+
+func init() {
+	activateCmd.AddCommand(activateXcodeCmd)
+	activateXcodeCmd.Flags().StringVar(
+		&activateXcodeParams.ProxySocketPathOverride,
+		"proxy-socket-path",
+		activateXcodeParams.ProxySocketPathOverride,
+		"Override the proxy socket path. This is useful for testing purposes.",
+	)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheEnabled,
+		"cache",
+		activateXcodeParams.BuildCacheEnabled,
+		"Activate xcode compilation cache.")
+	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
+		"xcode-path",
+		activateXcodeParams.XcodePathOverride,
+		`Override the xcodebuild path. By default it will use the $(which xcodebuild) command to determine the path, and if that fails, it will use the default path: /usr/bin/xcodebuild.
+
+Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
+	)
+}
+
+func ActivateXcodeCommandFn(
+	ctx context.Context,
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	commandFunc utils.CommandFunc,
+	encoderFactory utils.EncoderFactory,
+	decoderFactory utils.DecoderFactory,
+	activateXcodeParams xcelerate.Params,
+	envs map[string]string,
+) error {
+	// if there was an existing config, use its xcodebuild path if not overridden by flag
+	if existingConfig, err := xcelerate.ReadConfig(osProxy, decoderFactory); err == nil {
+		activateXcodeParams.XcodePathOverride = cmp.Or(
+			activateXcodeParams.XcodePathOverride,
+			existingConfig.OriginalXcodebuildPath,
+		)
+	}
+
+	config, err := xcelerate.NewConfig(
+		ctx,
+		logger,
+		activateXcodeParams,
+		envs,
+		osProxy,
+		commandFunc,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create xcelerate config: %w", err)
+	}
+
+	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
+		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+	}
+
+	// copy cli to ~/.bitrise-xcelerate/bin/bitrise-build-cache-cli
+	if err := copyCLIToXcelerateBinDir(ctx, osProxy, logger); err != nil {
+		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
+	}
+
+	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
+		return fmt.Errorf("failed to add xcelerate command: %w", err)
+	}
+
+	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
+	logger.TInfof(ActivateXcodeSuccessful)
+	logger.TInfof(AddXcelerateToPath)
+
+	return nil
 }
 
 func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) error {
@@ -164,49 +215,8 @@ func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logg
 	return nil
 }
 
-//nolint:gochecknoglobals
-var activateXcodeParams = xcelerate.DefaultParams()
-
-func init() {
-	activateCmd.AddCommand(activateXcodeCmd)
-	activateXcodeCmd.Flags().StringVar(
-		&activateXcodeParams.ProxySocketPathOverride,
-		"proxy-socket-path",
-		activateXcodeParams.ProxySocketPathOverride,
-		"Override the proxy socket path. This is useful for testing purposes.",
-	)
-	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheEnabled,
-		"cache",
-		activateXcodeParams.BuildCacheEnabled,
-		"Activate xcode compilation cache.")
-	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
-		"xcode-path",
-		activateXcodeParams.XcodePathOverride,
-		`Override the xcodebuild path. By default it will use the $(which xcodebuild) command to determine the path, and if that fails, it will use the default path: /usr/bin/xcodebuild.
-
-Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
-	)
-}
-
-func ActivateXcodeCommandFn(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, commandFunc utils.CommandFunc, encoderFactory utils.EncoderFactory, xconfig XcelerateConfig, envs map[string]string) error {
-	if err := xconfig.Save(logger, osProxy, encoderFactory); err != nil {
-		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
-	}
-
-	if err := AddXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
-		return fmt.Errorf("failed to add xcelerate command: %w", err)
-	}
-
-	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
-	logger.TInfof(ActivateXcodeSuccessful)
-	logger.TInfof(AddXcelerateToPath)
-
-	return nil
-}
-
-// AddXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
-// TODO move to utils package
-func AddXcelerateCommandToPathWithScriptWrapper(
+// addXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
+func addXcelerateCommandToPathWithScriptWrapper(
 	ctx context.Context,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
@@ -235,23 +245,26 @@ func AddXcelerateCommandToPathWithScriptWrapper(
 	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
 
 	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
-	err = AddContentOrCreateFile(logger,
+	err = utils.AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".bashrc"),
 		"Bitrise Xcelerate",
 		pathContent)
 	if err != nil {
-		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+		return fmt.Errorf("failed to add xcelerate command to PATH in bashrc: %w", err)
 	}
 
 	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", binPath)
-	err = AddContentOrCreateFile(logger,
+	err = utils.AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".zshrc"),
 		"# Bitrise Xcelerate",
 		pathContent)
+	if err != nil {
+		return fmt.Errorf("failed to add xcelerate command to PATH in zshrc: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func addPathToEnvman(
@@ -282,40 +295,4 @@ func addPathToEnvman(
 	}
 
 	logger.TInfof("Added xcelerate command to envman PATH: %s", path)
-}
-
-// TODO move to utils package
-func AddContentOrCreateFile(
-	logger log.Logger,
-	osProxy utils.OsProxy,
-	filePath string,
-	blockSuffix string,
-	content string,
-) error {
-	// Check if the file exists
-	currentContent, exists, err := osProxy.ReadFileIfExists(filePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read file %s: %w", filePath, err)
-	}
-
-	if !exists {
-		currentContent = ""
-		logger.Debugf("File %s does not exist, creating", filePath)
-	}
-
-	content = stringmerge.ChangeContentInBlock(
-		currentContent,
-		fmt.Sprintf("# [start] %s", strings.TrimSpace(blockSuffix)),
-		fmt.Sprintf("# [end] %s", strings.TrimSpace(blockSuffix)),
-		content,
-	)
-
-	err = osProxy.WriteFile(filePath, []byte(content), 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", filePath, err)
-	}
-
-	logger.Debugf("Updated file %s with content in block %s", filePath, blockSuffix)
-
-	return nil
 }

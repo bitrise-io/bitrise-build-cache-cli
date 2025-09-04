@@ -106,7 +106,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	}
 
 	logger.Infof("(i) Writing config into ~/.bazelrc")
-	err = AddContentOrCreateFile(logger, osProxy, bazelrcPath, "generated-by-bitrise-build-cache", bazelrcBlockContent)
+	err = utils.AddContentOrCreateFile(logger, osProxy, bazelrcPath, "generated-by-bitrise-build-cache", bazelrcBlockContent)
 	if err != nil {
 		return fmt.Errorf("add content to ~/.bazelrc, error: %w", err)
 	}
