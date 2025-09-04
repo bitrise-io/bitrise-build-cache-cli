@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -37,7 +36,7 @@ set -euxo pipefail
 `
 )
 
-//go:generate moq -out mocks/config_mock.go -pkg mocks . XcelerateConfig
+//go:generate moq -stub -out mocks/config_mock.go -pkg mocks . XcelerateConfig
 type XcelerateConfig interface {
 	Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error
 }
@@ -193,7 +192,7 @@ func ActivateXcodeCommandFn(ctx context.Context, logger log.Logger, osProxy util
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	if err := AddXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
+	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
@@ -204,9 +203,8 @@ func ActivateXcodeCommandFn(ctx context.Context, logger log.Logger, osProxy util
 	return nil
 }
 
-// AddXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
-// TODO move to utils package
-func AddXcelerateCommandToPathWithScriptWrapper(
+// addXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
+func addXcelerateCommandToPathWithScriptWrapper(
 	ctx context.Context,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
@@ -235,23 +233,26 @@ func AddXcelerateCommandToPathWithScriptWrapper(
 	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
 
 	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
-	err = AddContentOrCreateFile(logger,
+	err = utils.AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".bashrc"),
 		"Bitrise Xcelerate",
 		pathContent)
 	if err != nil {
-		return fmt.Errorf("failed to add xcelerate command to PATH: %w", err)
+		return fmt.Errorf("failed to add xcelerate command to PATH in bashrc: %w", err)
 	}
 
 	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", binPath)
-	err = AddContentOrCreateFile(logger,
+	err = utils.AddContentOrCreateFile(logger,
 		osProxy,
 		filepath.Join(homeDir, ".zshrc"),
 		"# Bitrise Xcelerate",
 		pathContent)
+	if err != nil {
+		return fmt.Errorf("failed to add xcelerate command to PATH in zshrc: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func addPathToEnvman(
@@ -282,40 +283,4 @@ func addPathToEnvman(
 	}
 
 	logger.TInfof("Added xcelerate command to envman PATH: %s", path)
-}
-
-// TODO move to utils package
-func AddContentOrCreateFile(
-	logger log.Logger,
-	osProxy utils.OsProxy,
-	filePath string,
-	blockSuffix string,
-	content string,
-) error {
-	// Check if the file exists
-	currentContent, exists, err := osProxy.ReadFileIfExists(filePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read file %s: %w", filePath, err)
-	}
-
-	if !exists {
-		currentContent = ""
-		logger.Debugf("File %s does not exist, creating", filePath)
-	}
-
-	content = stringmerge.ChangeContentInBlock(
-		currentContent,
-		fmt.Sprintf("# [start] %s", strings.TrimSpace(blockSuffix)),
-		fmt.Sprintf("# [end] %s", strings.TrimSpace(blockSuffix)),
-		content,
-	)
-
-	err = osProxy.WriteFile(filePath, []byte(content), 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", filePath, err)
-	}
-
-	logger.Debugf("Updated file %s with content in block %s", filePath, blockSuffix)
-
-	return nil
 }

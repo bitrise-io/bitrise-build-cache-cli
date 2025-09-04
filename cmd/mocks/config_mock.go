@@ -50,9 +50,6 @@ type XcelerateConfigMock struct {
 
 // Save calls SaveFunc.
 func (mock *XcelerateConfigMock) Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error {
-	if mock.SaveFunc == nil {
-		panic("XcelerateConfigMock.SaveFunc: method is nil but XcelerateConfig.Save was just called")
-	}
 	callInfo := struct {
 		Logger         log.Logger
 		Os             utils.OsProxy
@@ -65,6 +62,12 @@ func (mock *XcelerateConfigMock) Save(logger log.Logger, os utils.OsProxy, encod
 	mock.lockSave.Lock()
 	mock.calls.Save = append(mock.calls.Save, callInfo)
 	mock.lockSave.Unlock()
+	if mock.SaveFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
 	return mock.SaveFunc(logger, os, encoderFactory)
 }
 
