@@ -61,39 +61,89 @@ This command will:
 
 		activateXcodeParams.DebugLogging = isDebugLogMode
 
-		// if there was an existing config, use its xcodebuild path if not overridden by flag
-		if existingConfig, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{}); err == nil {
-			activateXcodeParams.XcodePathOverride = cmp.Or(activateXcodeParams.XcodePathOverride, existingConfig.OriginalXcodebuildPath)
-		}
-
-		osProxy := utils.DefaultOsProxy{}
-		config, err := xcelerate.NewConfig(
-			cmd.Context(),
-			logger,
-			activateXcodeParams,
-			utils.AllEnvs(),
-			osProxy,
-			utils.DefaultCommandFunc(),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create xcelerate config: %w", err)
-		}
-
-		// copy cli to ~/.bitrise-xcelerate/bin/bitrise-build-cache-cli
-		if err := copyCLIToXcelerateBinDir(cmd.Context(), osProxy, logger); err != nil {
-			return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
-		}
-
 		return ActivateXcodeCommandFn(
 			cmd.Context(),
 			logger,
-			osProxy,
+			utils.DefaultOsProxy{},
 			utils.DefaultCommandFunc(),
 			utils.DefaultEncoderFactory{},
-			config,
+			activateXcodeParams,
 			utils.AllEnvs(),
 		)
 	},
+}
+
+//nolint:gochecknoglobals
+var activateXcodeParams = xcelerate.DefaultParams()
+
+func init() {
+	activateCmd.AddCommand(activateXcodeCmd)
+	activateXcodeCmd.Flags().StringVar(
+		&activateXcodeParams.ProxySocketPathOverride,
+		"proxy-socket-path",
+		activateXcodeParams.ProxySocketPathOverride,
+		"Override the proxy socket path. This is useful for testing purposes.",
+	)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheEnabled,
+		"cache",
+		activateXcodeParams.BuildCacheEnabled,
+		"Activate xcode compilation cache.")
+	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
+		"xcode-path",
+		activateXcodeParams.XcodePathOverride,
+		`Override the xcodebuild path. By default it will use the $(which xcodebuild) command to determine the path, and if that fails, it will use the default path: /usr/bin/xcodebuild.
+
+Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
+	)
+}
+
+func ActivateXcodeCommandFn(
+	ctx context.Context,
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	commandFunc utils.CommandFunc,
+	encoderFactory utils.EncoderFactory,
+	activateXcodeParams xcelerate.Params,
+	envs map[string]string,
+) error {
+	// if there was an existing config, use its xcodebuild path if not overridden by flag
+	if existingConfig, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{}); err == nil {
+		activateXcodeParams.XcodePathOverride = cmp.Or(
+			activateXcodeParams.XcodePathOverride,
+			existingConfig.OriginalXcodebuildPath,
+		)
+	}
+
+	config, err := xcelerate.NewConfig(
+		ctx,
+		logger,
+		activateXcodeParams,
+		envs,
+		osProxy,
+		commandFunc,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create xcelerate config: %w", err)
+	}
+
+	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
+		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+	}
+
+	// copy cli to ~/.bitrise-xcelerate/bin/bitrise-build-cache-cli
+	if err := copyCLIToXcelerateBinDir(ctx, osProxy, logger); err != nil {
+		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
+	}
+
+	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
+		return fmt.Errorf("failed to add xcelerate command: %w", err)
+	}
+
+	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
+	logger.TInfof(ActivateXcodeSuccessful)
+	logger.TInfof(AddXcelerateToPath)
+
+	return nil
 }
 
 func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) error {
@@ -159,46 +209,6 @@ func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logg
 			}
 		}
 	}
-
-	return nil
-}
-
-//nolint:gochecknoglobals
-var activateXcodeParams = xcelerate.DefaultParams()
-
-func init() {
-	activateCmd.AddCommand(activateXcodeCmd)
-	activateXcodeCmd.Flags().StringVar(
-		&activateXcodeParams.ProxySocketPathOverride,
-		"proxy-socket-path",
-		activateXcodeParams.ProxySocketPathOverride,
-		"Override the proxy socket path. This is useful for testing purposes.",
-	)
-	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheEnabled,
-		"cache",
-		activateXcodeParams.BuildCacheEnabled,
-		"Activate xcode compilation cache.")
-	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
-		"xcode-path",
-		activateXcodeParams.XcodePathOverride,
-		`Override the xcodebuild path. By default it will use the $(which xcodebuild) command to determine the path, and if that fails, it will use the default path: /usr/bin/xcodebuild.
-
-Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
-	)
-}
-
-func ActivateXcodeCommandFn(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, commandFunc utils.CommandFunc, encoderFactory utils.EncoderFactory, xconfig XcelerateConfig, envs map[string]string) error {
-	if err := xconfig.Save(logger, osProxy, encoderFactory); err != nil {
-		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
-	}
-
-	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
-		return fmt.Errorf("failed to add xcelerate command: %w", err)
-	}
-
-	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
-	logger.TInfof(ActivateXcodeSuccessful)
-	logger.TInfof(AddXcelerateToPath)
 
 	return nil
 }

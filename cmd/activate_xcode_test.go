@@ -4,66 +4,57 @@ package cmd_test
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	cmdMocks "github.com/bitrise-io/bitrise-build-cache-cli/cmd/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 )
 
 func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
-	config := &cmdMocks.XcelerateConfigMock{}
-
 	home := t.TempDir()
 
-	osProxy := &utilsMocks.OsProxyMock{
-		ReadFileIfExistsFunc: utils.DefaultOsProxy{}.ReadFileIfExists,
-		UserHomeDirFunc: func() (string, error) {
-			return home, nil
-		},
-		MkdirAllFunc:  os.MkdirAll,
-		CreateFunc:    os.Create,
-		OpenFileFunc:  os.OpenFile,
-		WriteFileFunc: os.WriteFile,
-	}
-
-	encoder := func() *utilsMocks.EncoderMock {
-		return &utilsMocks.EncoderMock{
-			SetIndentFunc:     func(_ string, _ string) {},
-			SetEscapeHTMLFunc: func(_ bool) {},
-			EncodeFunc:        func(_ any) error { return nil },
-		}
-	}
-
-	encoderFactory := func() *utilsMocks.EncoderFactoryMock {
-		return &utilsMocks.EncoderFactoryMock{
-			EncoderFunc: func(_ io.Writer) utils.Encoder {
-				return encoder()
-			},
-		}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "token",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "abc123",
 	}
 
 	t.Run("When no error activateXcodeCmdFn logs success", func(t *testing.T) {
+		osProxy := &utilsMocks.OsProxyMock{
+			ReadFileIfExistsFunc: utils.DefaultOsProxy{}.ReadFileIfExists,
+			UserHomeDirFunc: func() (string, error) {
+				return home, nil
+			},
+			MkdirAllFunc:  os.MkdirAll,
+			CreateFunc:    os.Create,
+			OpenFileFunc:  os.OpenFile,
+			WriteFileFunc: os.WriteFile,
+		}
+
 		err := cmd.ActivateXcodeCommandFn(
 			context.Background(),
 			mockLogger,
 			osProxy,
 			func(ctx context.Context, command string, args ...string) utils.Command {
+				assert.Equal(t, "envman", command)
+				assert.Subset(t, args, []string{"add", "--key", "PATH", "--value"})
+
 				return &utilsMocks.CommandMock{}
 			},
-			encoderFactory(),
-			config,
-			map[string]string{},
+			utils.DefaultEncoderFactory{},
+			xcelerate.Params{
+				BuildCacheEnabled:       true,
+				DebugLogging:            true,
+				XcodePathOverride:       "/xxx/xcodebuild",
+				ProxySocketPathOverride: "/xxx/xcelerate.sock",
+			},
+			envs,
 		)
 
 		mockLogger.AssertCalled(t, "TInfof", cmd.ActivateXcodeSuccessful)
@@ -72,19 +63,34 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		// make sure files were created
 		assert.FileExists(t, filepath.Join(home, ".bashrc"))
 		assert.FileExists(t, filepath.Join(home, ".zshrc"))
+		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "bitrise-build-cache-cli")))
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcodebuild")))
 
-		// make sure config save was called
-		require.Len(t, config.SaveCalls(), 1)
+		// make sure config was saved as expected
+		config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+		require.NoError(t, err)
+		require.NotNil(t, config)
+		require.Equal(t, "/xxx/xcodebuild", config.OriginalXcodebuildPath)
+		require.True(t, config.BuildCacheEnabled)
+		require.True(t, config.DebugLogging)
+		require.Equal(t, "/xxx/xcelerate.sock", config.ProxySocketPath)
+		require.Equal(t, "token", config.AuthConfig.AuthToken)
+		require.Equal(t, "abc123", config.AuthConfig.WorkspaceID)
 	})
 
 	t.Run("When config save returns error activateXcodeCmdFn fails", func(t *testing.T) {
 		expectedError := errors.New("failed to save config")
 
-		mockConfig := &cmdMocks.XcelerateConfigMock{
-			SaveFunc: func(_ log.Logger, _ utils.OsProxy, _ utils.EncoderFactory) error {
-				return expectedError
+		osProxy := &utilsMocks.OsProxyMock{
+			ReadFileIfExistsFunc: utils.DefaultOsProxy{}.ReadFileIfExists,
+			UserHomeDirFunc: func() (string, error) {
+				return home, nil
 			},
+			MkdirAllFunc: os.MkdirAll,
+			CreateFunc: func(name string) (*os.File, error) {
+				return nil, expectedError
+			},
+			TempDirFunc: os.TempDir,
 		}
 
 		err := cmd.ActivateXcodeCommandFn(
@@ -94,11 +100,11 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			func(ctx context.Context, command string, args ...string) utils.Command {
 				return &utilsMocks.CommandMock{}
 			},
-			encoderFactory(),
-			mockConfig,
-			map[string]string{},
+			utils.DefaultEncoderFactory{},
+			xcelerate.Params{},
+			envs,
 		)
 
-		assert.ErrorContains(t, err, fmt.Errorf(cmd.ErrFmtCreateXcodeConfig, expectedError).Error())
+		assert.ErrorIs(t, err, expectedError)
 	})
 }
