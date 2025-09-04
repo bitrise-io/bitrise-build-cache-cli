@@ -1,3 +1,4 @@
+// nolint:gochecknoglobals
 package xcodeargs
 
 import (
@@ -15,7 +16,6 @@ type XcodeArgs interface {
 	ShortCommand() string
 }
 
-// nolint:gochecknoglobals
 var CacheArgs = map[string]string{
 	"COMPILATION_CACHE_ENABLE_PLUGIN":               "YES",
 	"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS":   "YES",
@@ -25,6 +25,19 @@ var CacheArgs = map[string]string{
 	"SWIFT_ENABLE_EXPLICIT_MODULES":                 "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
+}
+
+var actions = []string{
+	"build",
+	"build-for-testing",
+	"analyze",
+	"archive",
+	"test",
+	"test-without-building",
+	"docbuild",
+	"installsrc",
+	"install",
+	"clean",
 }
 
 type Default struct {
@@ -77,7 +90,7 @@ func (p Default) nonCommands() []string {
 }
 
 func (p Default) Command() string {
-	return strings.Join(p.nonCommands(), " ")
+	return strings.TrimSpace(strings.Join(p.nonCommands(), " "))
 }
 
 func (p Default) ShortCommand() string {
@@ -85,8 +98,20 @@ func (p Default) ShortCommand() string {
 	if len(nonCommands) == 0 {
 		return ""
 	}
+	for _, cmd := range nonCommands {
+		trimmed := strings.TrimSpace(cmd)
+		for _, action := range actions {
+			if trimmed == action {
+				p.logger.Debugf("Short command found: %s", cmd)
 
-	return nonCommands[0]
+				return trimmed
+			}
+		}
+	}
+
+	p.logger.Infof("No short command found, defaulting to all: %s", strings.Join(p.nonCommands(), " "))
+
+	return strings.TrimSpace(strings.Join(p.nonCommands(), " "))
 }
 
 func (p Default) Args(additional map[string]string) []string {
