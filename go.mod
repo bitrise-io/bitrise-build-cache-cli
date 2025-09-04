@@ -3,23 +3,23 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.23.8
 
 require (
-	cloud.google.com/go/longrunning v0.6.0
-	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
-	github.com/beevik/etree v1.4.1
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.37
-	github.com/bitrise-io/go-utils v1.0.13
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
+	cloud.google.com/go/longrunning v0.6.7
+	github.com/bazelbuild/remote-apis e94a7ece2a1e
+	github.com/beevik/etree v1.6.0
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.39
+	github.com/bitrise-io/go-utils v1.0.15
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.27
 	github.com/dustin/go-humanize v1.0.1
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/go-retryablehttp v0.7.7
-	github.com/pkg/xattr v0.4.10
-	github.com/spf13/cobra v1.8.1
-	github.com/stretchr/testify v1.9.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/grpc v1.65.0
-	google.golang.org/protobuf v1.34.2
+	github.com/hashicorp/go-retryablehttp v0.7.8
+	github.com/pkg/xattr v0.4.12
+	github.com/spf13/cobra v1.10.1
+	github.com/stretchr/testify v1.11.1
+	google.golang.org/genproto/googleapis/api ef028d996bc1
+	google.golang.org/genproto/googleapis/bytestream ef028d996bc1
+	google.golang.org/genproto/googleapis/rpc ef028d996bc1
+	google.golang.org/grpc v1.75.0
+	google.golang.org/protobuf v1.36.8
 )
 
 require (
