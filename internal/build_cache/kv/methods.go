@@ -1,7 +1,6 @@
 package kv
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -68,7 +67,7 @@ func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
 	})
 }
 
-func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteCloser, error) {
+func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, error) {
 	md := metadata.Join(c.getMethodCallMetadata(false), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
@@ -97,7 +96,7 @@ func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteClo
 	}, nil
 }
 
-func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, error) {
+func (c *Client) InitiateGet(ctx context.Context, name string, offset int64) (io.ReadCloser, error) {
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	// Timeout is the responsibility of the caller
@@ -105,7 +104,7 @@ func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, e
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
-		ReadOffset:   0,
+		ReadOffset:   offset,
 		ReadLimit:    0,
 	}
 	stream, err := c.bitriseKVClient.Get(ctx, readReq)
@@ -120,7 +119,6 @@ func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, e
 
 	return &reader{
 		stream: stream,
-		buf:    bytes.Buffer{},
 	}, nil
 }
 

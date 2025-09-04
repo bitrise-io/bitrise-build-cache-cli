@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bitrise-io/go-utils/retry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -83,28 +84,41 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 }
 
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	var offset int64
 
-	kvReader, err := c.InitiateGet(timeoutCtx, key)
-	if err != nil {
-		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
-	}
-	defer kvReader.Close()
-
-	if _, err := io.Copy(destination, kvReader); err != nil {
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.NotFound {
-			return ErrCacheNotFound
-		}
-		if ok && st.Code() == codes.Unauthenticated {
-			return ErrCacheUnauthenticated
+	//nolint:wrapcheck
+	return retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt == 0 {
+			c.logger.Debugf("Downloading %s", key)
+		} else {
+			c.logger.Infof("%d. attempt to download %s with offset %d", attempt+1, key, offset)
 		}
 
-		return fmt.Errorf("download archive: %w", err)
-	}
+		timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
 
-	return nil
+		kvReader, err := c.InitiateGet(timeoutCtx, key, offset)
+		if err != nil {
+			return fmt.Errorf("create kv get client (with key %s): %w", key, err), true
+		}
+		defer kvReader.Close()
+
+		if n, err := io.Copy(destination, kvReader); err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.NotFound {
+				return ErrCacheNotFound, true
+			}
+			if ok && st.Code() == codes.Unauthenticated {
+				return ErrCacheUnauthenticated, true
+			}
+
+			offset += n
+
+			return fmt.Errorf("download archive: %w", err), false
+		}
+
+		return nil, false
+	})
 }
 
 func (c *Client) logFilePathDebugInfo(filePath string) {

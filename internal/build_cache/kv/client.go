@@ -20,6 +20,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
 )
 
+//go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../../proto/kv_storage KVStorageClient
+
 type Client struct {
 	bitriseKVClient     kv_storage.KVStorageClient
 	capabilitiesClient  remoteexecution.CapabilitiesClient
@@ -31,6 +33,10 @@ type Client struct {
 	cacheOperationID    string
 	invocationID        string
 	sessionMutex        sync.Mutex
+	downloadRetry       uint
+	downloadRetryWait   time.Duration
+	uploadRetry         uint
+	uploadRetryWait     time.Duration
 }
 
 type NewClientParams struct {
@@ -45,7 +51,10 @@ type NewClientParams struct {
 	BitriseKVClient     kv_storage.KVStorageClient
 	CapabilitiesClient  remoteexecution.CapabilitiesClient
 	InvocationID        string
-	SkipCapabilities    bool
+	DownloadRetry       uint
+	DownloadRetryWait   time.Duration
+	UploadRetry         uint
+	UploadRetryWait     time.Duration
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -68,6 +77,19 @@ func NewClient(p NewClientParams) (*Client, error) {
 		capabilitiesClient = remoteexecution.NewCapabilitiesClient(conn)
 	}
 
+	if p.DownloadRetry == 0 {
+		p.DownloadRetry = 3
+	}
+	if p.DownloadRetryWait == 0 {
+		p.DownloadRetryWait = 1 * time.Second
+	}
+	if p.UploadRetry == 0 {
+		p.UploadRetry = 3
+	}
+	if p.UploadRetryWait == 0 {
+		p.UploadRetryWait = 1 * time.Second
+	}
+
 	return &Client{
 		bitriseKVClient:     bitriseKVClient,
 		capabilitiesClient:  capabilitiesClient,
@@ -78,6 +100,10 @@ func NewClient(p NewClientParams) (*Client, error) {
 		cacheConfigMetadata: p.CacheConfigMetadata,
 		cacheOperationID:    p.CacheOperationID,
 		invocationID:        p.InvocationID,
+		downloadRetry:       p.DownloadRetry,
+		downloadRetryWait:   p.DownloadRetryWait,
+		uploadRetry:         p.UploadRetry,
+		uploadRetryWait:     p.UploadRetryWait,
 	}, nil
 }
 
@@ -86,6 +112,11 @@ type writer struct {
 	resourceName string
 	offset       int64
 	fileSize     int64
+	response     *bytestream.WriteResponse
+}
+
+func (w *writer) Response() *bytestream.WriteResponse {
+	return w.response
 }
 
 func (w *writer) Write(p []byte) (int, error) {
@@ -108,7 +139,8 @@ func (w *writer) Write(p []byte) (int, error) {
 }
 
 func (w *writer) Close() error {
-	_, err := w.stream.CloseAndRecv()
+	var err error
+	w.response, err = w.stream.CloseAndRecv()
 	if err != nil {
 		return fmt.Errorf("close stream: %w", err)
 	}
@@ -147,8 +179,8 @@ func (r *reader) Read(p []byte) (int, error) {
 		return n, nil
 	}
 
-	unwritenData := resp.GetData()[n:]
-	_, _ = r.buf.Write(unwritenData) // this will never fail
+	unwrittenData := resp.GetData()[n:]
+	_, _ = r.buf.Write(unwrittenData) // this will never fail
 
 	return n, nil
 }
