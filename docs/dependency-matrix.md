@@ -41,6 +41,7 @@ onwards.
 
 | Step version | CLI version | Analytics plugin version | Cache plugin version | Test Distribution plugin version |
 |----|----|----|----|----|
+| 2.7.54 | [v0.17.10](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.17.10) | 2.1.32 | 1.2.21 | 2.1.25 |
 | 2.7.53 | [v0.17.9](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.17.9) | 2.1.32 | 1.2.21 | 2.1.25 |
 | 2.7.52 | [v0.17.7](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.17.7) | 2.1.32 | 1.2.20 | 2.1.25 |
 | 2.7.50 | [v0.17.6](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v0.17.6) | 2.1.32 | 1.2.20 | 2.1.25 |
