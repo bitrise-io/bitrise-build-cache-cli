@@ -1,6 +1,7 @@
 package xcodeargs_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/mocks"
@@ -142,4 +143,63 @@ func Test_DefaultXcodeArgs(t *testing.T) {
 			"testArg=testValue",
 		})
 	})
+}
+
+func Test_ShortCommand(t *testing.T) {
+	type testCase struct {
+		name     string
+		args     string
+		expected string
+	}
+
+	tcs := []testCase{
+		{
+			name:     "just the short command",
+			args:     "xcodebuild test",
+			expected: "test",
+		},
+		{
+			name:     "with command at the end",
+			args:     "xcodebuild -destination 'platform=iOS Simulator,OS=18.1,name=iPhone 16 Pro' -scheme WordPress -workspace WordPress.xcworkspace  CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO -showBuildTimingSummary test\n",
+			expected: "test",
+		},
+		{
+			name:     "with command in the middle",
+			args:     "xcodebuild test -destination 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+			expected: "test",
+		},
+		{
+			name:     "with no action",
+			args:     "xcodebuild -exportArchive 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+			expected: "-exportArchive 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			// given
+			args := strings.Split(tc.args, " ")
+			cmd := &cobra.Command{Use: "xcodebuild"}
+			SUT := xcodeargs.NewDefault(cmd, args, mockLogger)
+
+			// when
+			result := SUT.ShortCommand()
+
+			// then
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func Test_Command(t *testing.T) {
+	// given
+	args := strings.Split("xcodebuild -destination 'platform=iOS Simulator,OS=18.1,name=iPhone 16 Pro' -scheme WordPress -workspace WordPress.xcworkspace  CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO -showBuildTimingSummary test\n", " ")
+	cmd := &cobra.Command{Use: "xcodebuild"}
+	SUT := xcodeargs.NewDefault(cmd, args, mockLogger)
+
+	// when
+	result := SUT.Command()
+
+	// then
+	assert.Equal(t, "-destination 'platform=iOS Simulator,OS=18.1,name=iPhone 16 Pro' -scheme WordPress -workspace WordPress.xcworkspace  CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO -showBuildTimingSummary test", result)
 }
