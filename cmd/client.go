@@ -32,7 +32,7 @@ type CreateKVClientParams struct {
 	SkipCapabilities   bool                               // if true, GetCapabilities will not be called
 }
 
-func createKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Client, error) {
+func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Client, error) {
 	endpointURL := common.SelectCacheEndpointURL("", params.Envs)
 	params.Logger.Infof("(i) Build Cache Endpoint URL: %s", endpointURL)
 

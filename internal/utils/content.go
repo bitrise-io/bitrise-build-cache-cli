@@ -24,7 +24,6 @@ func AddContentOrCreateFile(
 	}
 
 	if !exists {
-		currentContent = ""
 		logger.Debugf("File %s does not exist, creating", filePath)
 	}
 

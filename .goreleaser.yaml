@@ -18,7 +18,7 @@ release:
     ### Gradle verification
     For reference, the verification metadata is available as an attached assset.
   extra_files:
-    - glob: ./cmd/asset/verification-metadata.xml
+    - glob: ./cmd/asset/gradle/verification-metadata.xml
 
 
 before:
