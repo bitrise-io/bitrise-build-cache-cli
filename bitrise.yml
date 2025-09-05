@@ -917,7 +917,7 @@ step_bundles:
 
             SAMPLE_PATH=$(realpath ./gradle_verification_sample)
             GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
-            GRADLE_VERIFICATION_REF_TARGET_PATH=$(realpath ./cmd/asset/verification-metadata.xml)
+            GRADLE_VERIFICATION_REF_TARGET_PATH=$(realpath ./cmd/gradle/asset/verification-metadata.xml)
 
             # add plugin with CLI
             cd "$SAMPLE_PATH"
@@ -942,7 +942,7 @@ step_bundles:
           - content: |-
               set -x
 
-              git update-index --refresh | grep "cmd/asset/verification-metadata.xml"
+              git update-index --refresh | grep "cmd/gradle/asset/verification-metadata.xml"
               if [[ $? == 0 ]]; then
                 echo "Please manually commit the changes to the repo:"
                 echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
