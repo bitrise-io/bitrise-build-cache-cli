@@ -169,9 +169,14 @@ func Test_ShortCommand(t *testing.T) {
 			expected: "test",
 		},
 		{
+			name:     "with dashed command",
+			args:     "xcodebuild -exportArchive -destination 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+			expected: "-exportArchive",
+		},
+		{
 			name:     "with no action",
-			args:     "xcodebuild -exportArchive 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
-			expected: "-exportArchive 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+			args:     "-destination mars 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+			expected: "-destination mars 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
 		},
 	}
 

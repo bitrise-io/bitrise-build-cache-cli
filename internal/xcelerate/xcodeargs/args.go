@@ -38,6 +38,16 @@ var actions = []string{
 	"installsrc",
 	"install",
 	"clean",
+	"-showsdks",
+	"-showBuildSettings",
+	"-showdestinations",
+	"-showTestPlans",
+	"-version",
+	"-list",
+	"-exportArchive",
+	"-exportLocalizations",
+	"-importLocalizations",
+	"-exportNotarizedApp",
 }
 
 type Default struct {
