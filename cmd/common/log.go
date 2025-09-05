@@ -10,6 +10,8 @@ func LogCurrentUserInfo(logger log.Logger) {
 	currentUser, err := user.Current()
 	if err != nil {
 		logger.Debugf("Error getting current user: %v", err)
+
+		return
 	}
 
 	logger.Debugf("Current user info:")
