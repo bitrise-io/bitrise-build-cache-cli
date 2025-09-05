@@ -7,7 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -33,7 +33,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Activate Bitrise plugins for Gradle")
 
 		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
@@ -77,7 +77,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 var activateGradleParams = gradleconfig.DefaultActivateGradleParams()
 
 func init() {
-	clicmd.ActivateCmd.AddCommand(activateGradleCmd)
+	common.ActivateCmd.AddCommand(activateGradleCmd)
 	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.Enabled, "cache", activateGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
 	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.JustDependency, "cache-dep", activateGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
 	activateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.PushEnabled, "cache-push", activateGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
@@ -99,7 +99,7 @@ func ActivateGradleCmdFn(
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 ) error {
-	templateInventory, err := templateInventoryProvider(logger, envProvider, clicmd.IsDebugLogMode)
+	templateInventory, err := templateInventoryProvider(logger, envProvider, common.IsDebugLogMode)
 	if err != nil {
 		return err
 	}

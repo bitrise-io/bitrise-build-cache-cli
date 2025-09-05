@@ -11,9 +11,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/analytics"
@@ -28,12 +28,12 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
-		clicmd.LogCurrentUserInfo(logger)
+		logger.EnableDebugLog(common.IsDebugLogMode)
+		common.LogCurrentUserInfo(logger)
 
 		logger.TInfof("Restore Xcode DerivedData from Bitrise Build Cache")
 
-		logger.Infof("(i) Debug mode and verbose logs: %t", clicmd.IsDebugLogMode)
+		logger.Infof("(i) Debug mode and verbose logs: %t", common.IsDebugLogMode)
 
 		logger.Infof("(i) Checking parameters")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
@@ -51,7 +51,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		startT := time.Now()
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
+		authConfig, err := configcommon.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -70,7 +70,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 
 				return string(output), err
 			},
-			clicmd.IsDebugLogMode,
+			common.IsDebugLogMode,
 			skipExisting,
 			forceOverwrite,
 			maxLoggedErrors)
@@ -104,7 +104,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 }
 
 func init() {
-	clicmd.RootCmd.AddCommand(restoreXcodeDerivedDataFilesCmd)
+	common.RootCmd.AddCommand(restoreXcodeDerivedDataFilesCmd)
 
 	restoreXcodeDerivedDataFilesCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
 	restoreXcodeDerivedDataFilesCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when restoring the modification time of the source files)")
@@ -117,7 +117,7 @@ func init() {
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
-	authConfig common.CacheAuthConfig,
+	authConfig configcommon.CacheAuthConfig,
 	cacheMetadataPath, projectRoot, providedCacheKey string,
 	logger log.Logger,
 	tracker deriveddata.StepAnalyticsTracker,
@@ -127,13 +127,13 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int,
 ) (*xa.CacheOperation, error) {
-	commonMetadata := common.NewMetadata(envs, commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
-	kvClient, err := clicmd.CreateKVClient(ctx,
-		clicmd.CreateKVClientParams{
+	kvClient, err := common.CreateKVClient(ctx,
+		common.CreateKVClientParams{
 			CacheOperationID: op.OperationID,
-			ClientName:       clicmd.ClientNameXcode,
+			ClientName:       common.ClientNameXcode,
 			AuthConfig:       authConfig,
 			Envs:             envs,
 			CommandFunc:      commandFunc,
@@ -234,8 +234,8 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 	kvClient *kv.Client,
 	logger log.Logger,
 	envs map[string]string,
-) (clicmd.CacheKeyType, string, error) {
-	var cacheKeyType clicmd.CacheKeyType = clicmd.CacheKeyTypeDefault
+) (common.CacheKeyType, string, error) {
+	var cacheKeyType common.CacheKeyType = common.CacheKeyTypeDefault
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
@@ -244,7 +244,7 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
 	} else {
-		cacheKeyType = clicmd.CacheKeyTypeProvided
+		cacheKeyType = common.CacheKeyTypeProvided
 		cacheKey = providedCacheKey
 		logger.TInfof("Downloading cache metadata checksum for provided key %s", cacheKey)
 	}
@@ -256,7 +256,7 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 	}
 
 	if errors.Is(err, kv.ErrCacheNotFound) {
-		cacheKeyType = clicmd.CacheKeyTypeFallback
+		cacheKeyType = common.CacheKeyTypeFallback
 		fallbackCacheKey, fallbackErr := deriveddata.GetCacheKey(envs, deriveddata.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
 			return cacheKeyType, fallbackCacheKey, errors.New("cache metadata not found in cache")

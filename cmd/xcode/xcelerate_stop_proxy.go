@@ -10,7 +10,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -23,7 +23,7 @@ var stopXcelerateProxyCmd = &cobra.Command{ //nolint:gochecknoglobals
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 
 		return stopXcelerateProxyCommandFn(utils.DefaultOsProxy{}, logger)
 	},

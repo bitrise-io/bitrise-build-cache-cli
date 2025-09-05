@@ -11,8 +11,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -30,12 +30,12 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
-		clicmd.LogCurrentUserInfo(logger)
+		logger.EnableDebugLog(common.IsDebugLogMode)
+		common.LogCurrentUserInfo(logger)
 
 		logger.TInfof("Save Xcode DerivedData into Bitrise Build Cache")
 
-		logger.Infof("(i) Debug mode and verbose logs: %t", clicmd.IsDebugLogMode)
+		logger.Infof("(i) Debug mode and verbose logs: %t", common.IsDebugLogMode)
 
 		logger.Infof("(i) Checking parameters")
 		projectRoot, _ := cmd.Flags().GetString("project-root")
@@ -51,7 +51,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
+		authConfig, err := configcommon.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -104,7 +104,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 }
 
 func init() {
-	clicmd.RootCmd.AddCommand(saveXcodeDerivedDataFilesCmd)
+	common.RootCmd.AddCommand(saveXcodeDerivedDataFilesCmd)
 
 	saveXcodeDerivedDataFilesCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
 	saveXcodeDerivedDataFilesCmd.Flags().String("project-root", "", "Path to the iOS project folder to be built (this is used when saving the modification time of the source files)")
@@ -122,7 +122,7 @@ func init() {
 }
 
 func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
-	authConfig common.CacheAuthConfig,
+	authConfig configcommon.CacheAuthConfig,
 	cacheMetadataPath,
 	projectRoot,
 	providedCacheKey,
@@ -148,16 +148,16 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	commonMetadata := common.NewMetadata(envs, commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeUpload, &commonMetadata)
 	op.CacheKey = cacheKey
 	logger.Infof("(i) Cache operation ID: %s", op.OperationID)
 
-	kvClient, err := clicmd.CreateKVClient(ctx,
-		clicmd.CreateKVClientParams{
+	kvClient, err := common.CreateKVClient(ctx,
+		common.CreateKVClientParams{
 			CacheOperationID: op.OperationID,
-			ClientName:       clicmd.ClientNameXcode,
+			ClientName:       common.ClientNameXcode,
 			AuthConfig:       authConfig,
 			Envs:             envs,
 			CommandFunc:      commandFunc,

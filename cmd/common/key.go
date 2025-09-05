@@ -1,4 +1,4 @@
-package cmd
+package common
 
 const (
 	CacheKeyTypeDefault  = "default"

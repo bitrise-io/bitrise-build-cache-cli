@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -33,19 +33,19 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
-		clicmd.LogCurrentUserInfo(logger)
+		logger.EnableDebugLog(common.IsDebugLogMode)
+		common.LogCurrentUserInfo(logger)
 
 		logger.TInfof("Restore the Gradle configuration cache directory from Bitrise Build Cache")
 
-		logger.Infof("(i) Debug mode and verbose logs: %t", clicmd.IsDebugLogMode)
+		logger.Infof("(i) Debug mode and verbose logs: %t", common.IsDebugLogMode)
 
 		logger.Infof("(i) Checking parameters")
 		cacheKey, _ := cmd.Flags().GetString("key")
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
+		authConfig, err := configcommon.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -71,22 +71,22 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 }
 
 func init() {
-	clicmd.RootCmd.AddCommand(restoreGradleConfigCacheCmd)
+	common.RootCmd.AddCommand(restoreGradleConfigCacheCmd)
 
 	restoreGradleConfigCacheCmd.Flags().String("key", "", "The cache key used for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
 }
 
 func restoreGradleConfigCacheCmdFn(ctx context.Context,
-	authConfig common.CacheAuthConfig,
+	authConfig configcommon.CacheAuthConfig,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider map[string]string,
 	commandFunc func(string, ...string) (string, error),
 ) error {
-	kvClient, err := clicmd.CreateKVClient(ctx,
-		clicmd.CreateKVClientParams{
+	kvClient, err := common.CreateKVClient(ctx,
+		common.CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
-			ClientName:       clicmd.ClientNameGradleConfigCache,
+			ClientName:       common.ClientNameGradleConfigCache,
 			AuthConfig:       authConfig,
 			Envs:             envProvider,
 			CommandFunc:      commandFunc,
@@ -118,7 +118,7 @@ func restoreGradleConfigCacheCmdFn(ctx context.Context,
 	}
 
 	logger.TInfof("Downloading configuration cache files")
-	_, err = kvClient.DownloadFileGroupFromBuildCache(ctx, metadata.ConfigCacheFiles, clicmd.IsDebugLogMode, true, false, 100)
+	_, err = kvClient.DownloadFileGroupFromBuildCache(ctx, metadata.ConfigCacheFiles, common.IsDebugLogMode, true, false, 100)
 	if err != nil {
 		logger.Infof("Failed to download DerivedData files, clearing")
 		// To prevent the build from failing
@@ -150,8 +150,8 @@ func downloadGradleConfigCacheMetadata(ctx context.Context, cacheMetadataPath, p
 	gradleCache *gradle.Cache,
 	kvClient *kv.Client,
 	logger log.Logger,
-) (clicmd.CacheKeyType, string, error) {
-	var cacheKeyType clicmd.CacheKeyType = clicmd.CacheKeyTypeDefault
+) (common.CacheKeyType, string, error) {
+	var cacheKeyType common.CacheKeyType = common.CacheKeyTypeDefault
 	var cacheKey string
 	var err error
 	if providedCacheKey == "" {
@@ -160,7 +160,7 @@ func downloadGradleConfigCacheMetadata(ctx context.Context, cacheMetadataPath, p
 		}
 		logger.TInfof("Downloading cache metadata checksum for key %s", cacheKey)
 	} else {
-		cacheKeyType = clicmd.CacheKeyTypeProvided
+		cacheKeyType = common.CacheKeyTypeProvided
 		cacheKey = providedCacheKey
 		logger.TInfof("Downloading cache metadata checksum for provided key %s", cacheKey)
 	}
@@ -172,7 +172,7 @@ func downloadGradleConfigCacheMetadata(ctx context.Context, cacheMetadataPath, p
 	}
 
 	if errors.Is(err, kv.ErrCacheNotFound) {
-		cacheKeyType = clicmd.CacheKeyTypeFallback
+		cacheKeyType = common.CacheKeyTypeFallback
 		fallbackCacheKey, fallbackErr := gradleCache.GetCacheKey(gradle.CacheKeyParams{IsFallback: true})
 		if fallbackErr != nil {
 			return cacheKeyType, fallbackCacheKey, errors.New("cache metadata not found in cache")

@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -30,10 +30,10 @@ var deleteXcodeDerivedDataCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Delete the Xcode DerivedData archive from the Bitrise Build Cache")
 
-		logger.Infof("(i) Debug mode and verbose logs: %t", clicmd.IsDebugLogMode)
+		logger.Infof("(i) Debug mode and verbose logs: %t", common.IsDebugLogMode)
 
 		logger.Infof("(i) Checking parameters")
 		cacheKey, _ := cmd.Flags().GetString("key")
@@ -56,7 +56,7 @@ var deleteXcodeDerivedDataCmd = &cobra.Command{
 }
 
 func init() {
-	clicmd.RootCmd.AddCommand(deleteXcodeDerivedDataCmd)
+	common.RootCmd.AddCommand(deleteXcodeDerivedDataCmd)
 
 	deleteXcodeDerivedDataCmd.Flags().String("key", "", "The cache key to be delete (set to the Bitrise app's slug and current git branch by default)")
 	deleteXcodeDerivedDataCmd.Flags().Bool("empty", false, "If true, upload an empty metadata")
@@ -70,7 +70,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	commandFunc func(string, ...string) (string, error),
 ) error {
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environments: %w", err)
 	}
@@ -86,10 +86,10 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	kvClient, err := clicmd.CreateKVClient(ctx,
-		clicmd.CreateKVClientParams{
+	kvClient, err := common.CreateKVClient(ctx,
+		common.CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
-			ClientName:       clicmd.ClientNameXcode,
+			ClientName:       common.ClientNameXcode,
 			AuthConfig:       authConfig,
 			Envs:             envProvider,
 			CommandFunc:      commandFunc,

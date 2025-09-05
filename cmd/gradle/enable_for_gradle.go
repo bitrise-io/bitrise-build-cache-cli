@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -48,7 +48,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Enable Bitrise Build Cache for Gradle")
 		//
 		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
@@ -73,7 +73,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 }
 
 func init() {
-	clicmd.EnableForCmd.AddCommand(enableForGradleCmd)
+	common.EnableForCmd.AddCommand(enableForGradleCmd)
 	enableForGradleCmd.Flags().BoolVar(&paramIsGradleMetricsEnabled, "metrics", true, "Gradle Metrics collection enabled/disabled. Used for cache insights.")
 	enableForGradleCmd.Flags().BoolVar(&paramIsPushEnabled, "push", true, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
 	enableForGradleCmd.Flags().StringVar(&paramValidationLevel, "validation-level", "warning", "Level of cache entry validation for both uploads and downloads. Possible values: none, warning, error")
@@ -88,7 +88,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	activateGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
 	activateGradleParams.TestDistro.Enabled = false
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, clicmd.IsDebugLogMode)
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode)
 	if err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
@@ -112,15 +112,15 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 func getPlugins(ctx context.Context, logger log.Logger, envProvider map[string]string) error {
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environment variables: %w", err)
 	}
 
-	kvClient, err := clicmd.CreateKVClient(ctx,
-		clicmd.CreateKVClientParams{
+	kvClient, err := common.CreateKVClient(ctx,
+		common.CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
-			ClientName:       clicmd.ClientNameGradle,
+			ClientName:       common.ClientNameGradle,
 			AuthConfig:       authConfig,
 			Envs:             envProvider,
 			CommandFunc: func(name string, v ...string) (string, error) {

@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -28,12 +28,12 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
-		clicmd.LogCurrentUserInfo(logger)
+		logger.EnableDebugLog(common.IsDebugLogMode)
+		common.LogCurrentUserInfo(logger)
 
 		logger.TInfof("Save the Gradle configuration cache directory into Bitrise Build Cache")
 
-		logger.Infof("(i) Debug mode and verbose logs: %t", clicmd.IsDebugLogMode)
+		logger.Infof("(i) Debug mode and verbose logs: %t", common.IsDebugLogMode)
 
 		logger.Infof("(i) Checking parameters")
 		configCacheDir, _ := cmd.Flags().GetString("config-cache-dir")
@@ -41,7 +41,7 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, err := common.ReadAuthConfigFromEnvironments(allEnvs)
+		authConfig, err := configcommon.ReadAuthConfigFromEnvironments(allEnvs)
 		if err != nil {
 			return fmt.Errorf("read auth config from environments: %w", err)
 		}
@@ -68,14 +68,14 @@ var saveGradleConfigCacheCmd = &cobra.Command{
 }
 
 func init() {
-	clicmd.RootCmd.AddCommand(saveGradleConfigCacheCmd)
+	common.RootCmd.AddCommand(saveGradleConfigCacheCmd)
 
 	saveGradleConfigCacheCmd.Flags().String("key", "", "The cache key to use for the saved cache item (set to the Bitrise app's slug and current git branch by default)")
 	saveGradleConfigCacheCmd.Flags().String("config-cache-dir", "./.gradle/configuration-cache", "Path to the Gradle configuration cache folder. It's usually the $PROJECT_ROOT/.gradle/configuration-cache")
 }
 
 func saveGradleConfigCacheCmdFn(ctx context.Context,
-	authConfig common.CacheAuthConfig,
+	authConfig configcommon.CacheAuthConfig,
 	configCacheDir,
 	providedCacheKey string,
 	logger log.Logger,
@@ -84,10 +84,10 @@ func saveGradleConfigCacheCmdFn(ctx context.Context,
 ) error {
 	var err error
 
-	kvClient, err := clicmd.CreateKVClient(ctx,
-		clicmd.CreateKVClientParams{
+	kvClient, err := common.CreateKVClient(ctx,
+		common.CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
-			ClientName:       clicmd.ClientNameGradleConfigCache,
+			ClientName:       common.ClientNameGradleConfigCache,
 			AuthConfig:       authConfig,
 			Envs:             envProvider,
 			CommandFunc:      commandFunc,

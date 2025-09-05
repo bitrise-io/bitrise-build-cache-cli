@@ -9,9 +9,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/bazel"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -31,7 +31,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 	RunE: func(_ *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
-		logger.EnableDebugLog(cmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Enable Bitrise Build Cache for Bazel")
 		//
 
@@ -54,14 +54,14 @@ var (
 func init() {
 	enableForBazelCmd.Flags().BoolVar(&rbeEnabled, "with-rbe", false, "Enable Remote Build Execution (RBE)")
 	enableForBazelCmd.Flags().BoolVar(&timestamps, "timestamps", false, "Enable timestamps in build output")
-	cmd.EnableForCmd.AddCommand(enableForBazelCmd)
+	common.EnableForCmd.AddCommand(enableForBazelCmd)
 }
 
 func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider map[string]string) error {
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata
-	cacheConfig := common.NewMetadata(utils.AllEnvs(),
+	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(),
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
@@ -96,7 +96,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 		}
 
 		return string(output), fmt.Errorf("run cmd: %w", err2)
-	}, cmd.IsDebugLogMode)
+	}, common.IsDebugLogMode)
 	if err != nil {
 		return fmt.Errorf("template inventory error: %w", err)
 	}

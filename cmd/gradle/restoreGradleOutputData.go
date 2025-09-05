@@ -8,7 +8,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/diagnostics"
 )
 
@@ -23,7 +23,7 @@ This command will:
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(cmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Restore Gradle output data from cache, for running diagnostics builds")
 
 		return restoreGradleOutputDataCmdFn(logger)
@@ -31,7 +31,7 @@ This command will:
 }
 
 func init() {
-	cmd.RootCmd.AddCommand(restoreGradleOutputDataCmd)
+	common.RootCmd.AddCommand(restoreGradleOutputDataCmd)
 }
 
 func restoreGradleOutputDataCmdFn(logger log.Logger) error {
@@ -44,7 +44,7 @@ func restoreGradleOutputDataCmdFn(logger log.Logger) error {
 		envRepo,
 	)
 
-	foundRestoredData, err := restorer.Run(cmd.IsDebugLogMode)
+	foundRestoredData, err := restorer.Run(common.IsDebugLogMode)
 	if err != nil {
 		return fmt.Errorf("restore Gradle output: %w", err)
 	}

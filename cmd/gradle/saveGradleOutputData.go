@@ -8,7 +8,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/diagnostics"
 )
 
@@ -24,7 +24,7 @@ var saveGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Save Gradle output data to cache, for running diagnostics builds")
 
 		additionalPaths, err := cmd.Flags().GetStringSlice("additional-paths")
@@ -40,7 +40,7 @@ func init() {
 	saveGradleOutputDataCmd.Flags().StringSlice("additional-paths",
 		[]string{},
 		"Additional paths to save, relative to the current working directory. These paths will be added to the default paths: **/build/ + .gradle/")
-	clicmd.RootCmd.AddCommand(saveGradleOutputDataCmd)
+	common.RootCmd.AddCommand(saveGradleOutputDataCmd)
 }
 
 func saveGradleOutputDataCmdFn(logger log.Logger, additionalPaths []string) error {
@@ -51,7 +51,7 @@ func saveGradleOutputDataCmdFn(logger log.Logger, additionalPaths []string) erro
 
 	saveGradleDiagnosticOutputStep := diagnostics.NewGradleDiagnosticOuptutSaver(logger, pathChecker, pathProvider, pathModifier, envRepo)
 
-	if err := saveGradleDiagnosticOutputStep.Run(clicmd.IsDebugLogMode, additionalPaths); err != nil {
+	if err := saveGradleDiagnosticOutputStep.Run(common.IsDebugLogMode, additionalPaths); err != nil {
 		return fmt.Errorf("save Gradle output: %w", err)
 	}
 

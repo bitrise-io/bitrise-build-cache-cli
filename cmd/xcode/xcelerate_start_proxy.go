@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
@@ -87,17 +87,17 @@ func init() {
 
 func StartXcodeCacheProxy(
 	ctx context.Context,
-	auth common.CacheAuthConfig,
+	auth configcommon.CacheAuthConfig,
 	envProvider map[string]string,
-	commandFunc common.CommandFunc,
+	commandFunc configcommon.CommandFunc,
 	bitriseKVClient kv_storage.KVStorageClient,
 	capabilitiesClient remoteexecution.CapabilitiesClient,
 	listener net.Listener,
 	logger log.Logger,
 ) error {
-	client, err := cmd.CreateKVClient(ctx, cmd.CreateKVClientParams{
+	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
-		ClientName:         cmd.ClientNameXcode,
+		ClientName:         common.ClientNameXcode,
 		AuthConfig:         auth,
 		Envs:               envProvider,
 		CommandFunc:        commandFunc,

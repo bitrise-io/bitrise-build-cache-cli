@@ -13,7 +13,7 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 	"github.com/spf13/cobra"
 
-	clicmd "github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -56,11 +56,11 @@ This command will:
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger()
-		logger.EnableDebugLog(clicmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof(activateXcode)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		activateXcodeParams.DebugLogging = clicmd.IsDebugLogMode
+		activateXcodeParams.DebugLogging = common.IsDebugLogMode
 
 		return ActivateXcodeCommandFn(
 			cmd.Context(),
@@ -79,7 +79,7 @@ This command will:
 var activateXcodeParams = xcelerate.DefaultParams()
 
 func init() {
-	clicmd.ActivateCmd.AddCommand(activateXcodeCmd)
+	common.ActivateCmd.AddCommand(activateXcodeCmd)
 	activateXcodeCmd.Flags().StringVar(
 		&activateXcodeParams.ProxySocketPathOverride,
 		"proxy-socket-path",

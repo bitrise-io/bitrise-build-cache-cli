@@ -7,7 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -25,7 +25,7 @@ This command will:
 	RunE: func(_ *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
-		logger.EnableDebugLog(cmd.IsDebugLogMode)
+		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Add Bitrise Build Cache for Gradle plugins")
 		//
 		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
@@ -57,7 +57,7 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider ma
 	activateGradleParams.TestDistro.Enabled = false
 	activateGradleParams.TestDistro.JustDependency = true
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, cmd.IsDebugLogMode)
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode)
 	if err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

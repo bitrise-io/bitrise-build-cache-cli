@@ -12,7 +12,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd"
+	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -62,7 +62,7 @@ Missing dependencies of Bitrise build cache are appended.
 }
 
 func init() {
-	cmd.RootCmd.AddCommand(gradleVerification)
+	common.RootCmd.AddCommand(gradleVerification)
 	gradleVerification.AddCommand(writeGradleVerificationDeps)
 	writeGradleVerificationDeps.Flags().StringVar(&metadataPath, "metadata-path", "", "Path of verification-metadata.xml")
 }
