@@ -48,6 +48,7 @@ var actions = []string{
 	"-exportLocalizations",
 	"-importLocalizations",
 	"-exportNotarizedApp",
+	"-resolvePackageDependencies",
 }
 
 type Default struct {
