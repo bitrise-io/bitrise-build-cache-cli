@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -39,7 +40,6 @@ const (
 
 	errFmtExecutable         = "executable: %w"
 	errFmtFailedToStartProxy = "failed to start proxy: %w"
-	errFmtFailedToStopProxy  = "failed to stop proxy: %w"
 	errFmtFailedToCreatePID  = "failed to create pid file: %w"
 )
 
@@ -107,13 +107,6 @@ TBD`,
 			if err != nil {
 				return fmt.Errorf(errFmtFailedToStartProxy, err)
 			}
-
-			defer func() {
-				err := stopProxy(osProxy, utils.DefaultCommandFunc())
-				if err != nil {
-					logger.TErrorf(err.Error())
-				}
-			}()
 
 			var cleanup func()
 
@@ -233,10 +226,10 @@ func XcodebuildCmdFn(
 		if err != nil {
 			logger.TErrorf("Failed to get session stats: %v", err)
 		}
-		logger.Debugf(
-			"Proxy stats: uploaded bytes: %d, downloaded bytes: %d, hits: %d, misses: %d",
-			proxyStats.GetUploadedBytes(),
-			proxyStats.GetDownloadedBytes(),
+		logger.Infof(
+			"Proxy stats: uploaded bytes: %s, downloaded bytes: %s, hits: %d, misses: %d",
+			humanize.Bytes(uint64(proxyStats.GetUploadedBytes())),
+			humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())),
 			proxyStats.GetHits(),
 			proxyStats.GetMisses(),
 		)
@@ -403,28 +396,6 @@ func startProxy(
 	}
 
 	logger.TDonef(startedProxy, pid)
-
-	return nil
-}
-
-func stopProxy(
-	osProxy utils.OsProxy,
-	commandFunc utils.CommandFunc,
-) error {
-	exe, err := osProxy.Executable()
-	if err != nil {
-		return fmt.Errorf(errFmtExecutable, err)
-	}
-
-	cmd := commandFunc(context.Background(), exe, xcelerateCommand.Use, stopXcelerateProxyCmd.Use)
-
-	cmd.SetStdout(os.Stdout)
-	cmd.SetStderr(os.Stderr)
-	cmd.SetStdin(nil)
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf(errFmtFailedToStopProxy, err)
-	}
 
 	return nil
 }
