@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -90,6 +91,10 @@ func init() {
 		"cache",
 		activateXcodeParams.BuildCacheEnabled,
 		"Activate xcode compilation cache.")
+	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.BuildCacheEndpoint,
+		"cache-endpoint",
+		activateXcodeParams.BuildCacheEndpoint,
+		"Build Cache endpoint URL.")
 	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
 		"xcode-path",
 		activateXcodeParams.XcodePathOverride,
@@ -109,11 +114,15 @@ func ActivateXcodeCommandFn(
 	activateXcodeParams xcelerate.Params,
 	envs map[string]string,
 ) error {
-	// if there was an existing config, use its xcodebuild path if not overridden by flag
+	// if there was an existing config, use it for some values
 	if existingConfig, err := xcelerate.ReadConfig(osProxy, decoderFactory); err == nil {
 		activateXcodeParams.XcodePathOverride = cmp.Or(
 			activateXcodeParams.XcodePathOverride,
 			existingConfig.OriginalXcodebuildPath,
+		)
+		activateXcodeParams.BuildCacheEndpoint = cmp.Or(
+			activateXcodeParams.BuildCacheEndpoint,
+			configcommon.SelectCacheEndpointURL(existingConfig.BuildCacheEndpoint, envs),
 		)
 	}
 

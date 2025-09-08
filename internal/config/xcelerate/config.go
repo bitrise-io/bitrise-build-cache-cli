@@ -25,6 +25,7 @@ const (
 
 type Params struct {
 	BuildCacheEnabled       bool
+	BuildCacheEndpoint      string
 	DebugLogging            bool
 	XcodePathOverride       string
 	ProxySocketPathOverride string
@@ -37,6 +38,7 @@ type Config struct {
 	WrapperVersion         string                 `json:"wrapperVersion"`
 	OriginalXcodebuildPath string                 `json:"originalXcodebuildPath"`
 	BuildCacheEnabled      bool                   `json:"buildCacheEnabled"`
+	BuildCacheEndpoint     string                 `json:"buildCacheEndpoint"`
 	DebugLogging           bool                   `json:"debugLogging,omitempty"`
 	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
@@ -62,6 +64,7 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 func DefaultParams() Params {
 	return Params{
 		BuildCacheEnabled:       true,
+		BuildCacheEndpoint:      "",
 		DebugLogging:            false,
 		XcodePathOverride:       "",
 		ProxySocketPathOverride: "",
@@ -114,6 +117,7 @@ func NewConfig(ctx context.Context,
 		CLIVersion:             envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		OriginalXcodebuildPath: xcodePath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
+		BuildCacheEndpoint:     params.BuildCacheEndpoint,
 		DebugLogging:           params.DebugLogging,
 		AuthConfig:             authConfig,
 	}, nil
