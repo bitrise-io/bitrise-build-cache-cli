@@ -110,6 +110,8 @@ func NewConfig(ctx context.Context,
 		}
 	}
 
+	logger.Infof("Using Build Cache Endpoint: %s", params.BuildCacheEndpoint)
+
 	return Config{
 		ProxyVersion:           envProvider["BITRISE_XCELERATE_PROXY_VERSION"],
 		ProxySocketPath:        proxySocketPath,
