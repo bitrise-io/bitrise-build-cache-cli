@@ -96,7 +96,7 @@ TBD`,
 
 		var proxySessionClient session.SessionClient
 		if config.BuildCacheEnabled {
-			logger.TInfof("Cache enabled, starting xcelerate proxy...")
+			logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
 
 			err := startProxy(
 				logger,

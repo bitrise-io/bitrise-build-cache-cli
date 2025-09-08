@@ -20,6 +20,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
@@ -36,7 +37,6 @@ func Test_XcelerateProxy(t *testing.T) {
 	envVars := map[string]string{
 		"BITRISE_IO":                       "true",
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "test-token",
-		"BITRISE_BUILD_CACHE_ENDPOINT":     "grpc://bufnet",
 		"BITRISE_APP_SLUG":                 "test-app-slug",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "test-org-id",
 		"INVOCATION_ID":                    "test-invocation-id",
@@ -53,10 +53,14 @@ func Test_XcelerateProxy(t *testing.T) {
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envVars)
 	require.NoError(t, err)
 
+	config := xcelerate.Config{
+		AuthConfig: authConfig,
+	}
+
 	go func() {
 		_ = xcode.StartXcodeCacheProxy(
 			ctx,
-			authConfig,
+			config,
 			envVars,
 			func(name string, v ...string) (string, error) {
 				output, err := exec.Command(name, v...).Output() //nolint:noctx

@@ -59,7 +59,7 @@ var (
 
 			return StartXcodeCacheProxy(
 				cmd.Context(),
-				config.AuthConfig,
+				config,
 				allEnvs,
 				func(name string, v ...string) (string, error) {
 					output, err := exec.Command(name, v...).Output()
@@ -87,7 +87,7 @@ func init() {
 
 func StartXcodeCacheProxy(
 	ctx context.Context,
-	auth configcommon.CacheAuthConfig,
+	config xcelerate.Config,
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
 	bitriseKVClient kv_storage.KVStorageClient,
@@ -98,11 +98,12 @@ func StartXcodeCacheProxy(
 	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
 		ClientName:         common.ClientNameXcode,
-		AuthConfig:         auth,
+		AuthConfig:         config.AuthConfig,
 		Envs:               envProvider,
 		CommandFunc:        commandFunc,
 		Logger:             logger,
 		BitriseKVClient:    bitriseKVClient,
+		EndpointURL:        config.BuildCacheEndpoint,
 		CapabilitiesClient: capabilitiesClient,
 		InvocationID:       initialInvocationID,
 		SkipCapabilities:   true, // proxy handles capabilities calls internally
