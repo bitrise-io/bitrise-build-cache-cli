@@ -9,6 +9,7 @@ import (
 type RecvResult[Res any] struct {
 	Response *Res
 	Error    error
+	Metadata map[string]string
 }
 
 type ServerStreamingClientMock[Res any] struct {
@@ -30,13 +31,17 @@ func (s *ServerStreamingClientMock[Res]) Recv() (*Res, error) {
 }
 
 func (s *ServerStreamingClientMock[Res]) Header() (metadata.MD, error) {
-	//TODO implement me
-	panic("implement me")
+	md := metadata.MD{}
+	for _, res := range s.recvResults {
+		for k, v := range res.Metadata {
+			md.Append(k, v)
+		}
+	}
+	return md, nil
 }
 
 func (s *ServerStreamingClientMock[Res]) Trailer() metadata.MD {
-	//TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (s *ServerStreamingClientMock[Res]) CloseSend() error {

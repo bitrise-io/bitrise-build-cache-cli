@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/bitrise-io/go-utils/retry"
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc/codes"
@@ -96,7 +96,7 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	}, nil
 }
 
-func (c *Client) InitiateGet(ctx context.Context, name string, offset int64) (io.ReadCloser, error) {
+func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string, offset int64) (*reader, error) {
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	// Timeout is the responsibility of the caller
@@ -117,9 +117,14 @@ func (c *Client) InitiateGet(ctx context.Context, name string, offset int64) (io
 		return nil, fmt.Errorf("initiate get: %w", err)
 	}
 
-	return &reader{
-		stream: stream,
-	}, nil
+	r := &reader{
+		logger:        logger,
+		stream:        stream,
+		metadataReady: make(chan struct{}),
+	}
+	go r.readStreamMetadata()
+
+	return r, nil
 }
 
 func (c *Client) Delete(ctx context.Context, name string) error {
@@ -251,47 +256,38 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 }
 
 func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
-	mdForLogger := make(map[string]string)
-
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", c.clientName)
 
-	mdForLogger["x-flare-buildtool"] = c.clientName
-
 	if c.cacheOperationID != "" {
 		md.Set("x-cache-operation-id", c.cacheOperationID)
-		mdForLogger["x-cache-operation-id"] = c.cacheOperationID
 	}
 
 	if c.authConfig.WorkspaceID != "" {
 		md.Set("x-org-id", c.authConfig.WorkspaceID)
-		mdForLogger["x-org-id"] = c.authConfig.WorkspaceID
 	}
 	if c.cacheConfigMetadata.BitriseAppID != "" {
 		md.Set("x-app-id", c.cacheConfigMetadata.BitriseAppID)
-		mdForLogger["x-app-id"] = c.cacheConfigMetadata.BitriseAppID
 	}
 	if c.cacheConfigMetadata.BitriseBuildID != "" {
 		md.Set("x-flare-build-id", c.cacheConfigMetadata.BitriseBuildID)
-		mdForLogger["x-flare-build-id"] = c.cacheConfigMetadata.BitriseBuildID
 	}
 	if c.cacheConfigMetadata.BitriseWorkflowName != "" {
 		md.Set("x-workflow-name", c.cacheConfigMetadata.BitriseWorkflowName)
-		mdForLogger["x-workflow-name"] = c.cacheConfigMetadata.BitriseWorkflowName
 	}
 	if c.cacheConfigMetadata.BitriseStepExecutionID != "" {
 		md.Set("x-flare-step-id", c.cacheConfigMetadata.BitriseStepExecutionID)
-		mdForLogger["x-flare-step-id"] = c.cacheConfigMetadata.BitriseStepExecutionID
 	}
 	if c.cacheConfigMetadata.GitMetadata.RepoURL != "" {
 		md.Set("x-repository-url", c.cacheConfigMetadata.GitMetadata.RepoURL)
-		mdForLogger["x-repository-url"] = c.cacheConfigMetadata.GitMetadata.RepoURL
 	}
 	if c.cacheConfigMetadata.CIProvider != "" {
 		md.Set("x-ci-provider", c.cacheConfigMetadata.CIProvider)
-		mdForLogger["x-ci-provider"] = c.cacheConfigMetadata.CIProvider
 	}
+
+	md.Set("x-flare-blob-validation-level", "WARN")
+	md.Set("x-flare-ac-validation-mode", "fast")
 
 	rmd, err := proto.Marshal(&remoteexecution.RequestMetadata{
 		ToolInvocationId: c.invocationID,
@@ -303,15 +299,12 @@ func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
 		c.logger.Errorf("Failed to marshal RequestMetadata: %v", err)
 	} else {
 		md.Set("build.bazel.remote.execution.v2.requestmetadata-bin", string(rmd))
-		mdForLogger["build.bazel.remote.execution.v2.requestmetadata-bin"] = fmt.Sprintf(
-			"{invocation_id:%s, tool_name:%s}",
-			c.invocationID,
-			c.clientName,
-		)
 	}
 
 	if logMD {
-		c.logger.TDebugf("metadata: %+v", mdForLogger)
+		logMd := md.Copy()
+		logMd.Delete("authorization")
+		c.logger.TDebugf("metadata: %+v", logMd)
 	}
 
 	return md
