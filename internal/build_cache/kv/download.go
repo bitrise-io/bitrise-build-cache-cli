@@ -2,11 +2,14 @@ package kv
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -86,8 +89,11 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
 	var offset int64
 
-	//nolint:wrapcheck
-	return retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
+	hasher := sha256.New()
+	multiWriter := io.MultiWriter(hasher, destination)
+	expectedHash := ""
+
+	downloadErr := retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt == 0 {
 			c.logger.Debugf("Downloading %s", key)
 		} else {
@@ -97,13 +103,13 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 
-		kvReader, err := c.InitiateGet(timeoutCtx, key, offset)
+		kvReader, err := c.initiateGet(timeoutCtx, c.logger, key, offset)
 		if err != nil {
 			return fmt.Errorf("create kv get client (with key %s): %w", key, err), true
 		}
 		defer kvReader.Close()
 
-		if n, err := io.Copy(destination, kvReader); err != nil {
+		if n, err := io.Copy(multiWriter, kvReader); err != nil {
 			st, ok := status.FromError(err)
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true
@@ -117,8 +123,27 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 			return fmt.Errorf("download archive: %w", err), false
 		}
 
+		c.logger.Debugf("Response metadata: %+v", kvReader.Metadata())
+		expectedHash = kvReader.Metadata()["x-flare-blob-validation-sha256"]
+		expectedHash = strings.TrimPrefix(expectedHash, "blob/")
+
 		return nil, false
 	})
+	if downloadErr != nil {
+		//nolint: wrapcheck
+		return downloadErr
+	}
+
+	if expectedHash != "" {
+		fileHash := hex.EncodeToString(hasher.Sum(nil))
+		if expectedHash != fileHash {
+			return fmt.Errorf("downloaded file hash mismatch: expected %s, got %s", expectedHash, fileHash)
+		} else {
+			c.logger.Debugf("Downloaded hash matches expected: %s", expectedHash)
+		}
+	}
+
+	return nil
 }
 
 func (c *Client) logFilePathDebugInfo(filePath string) {

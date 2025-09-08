@@ -230,8 +230,8 @@ func XcodebuildCmdFn(
 		}
 		logger.Infof(
 			"Proxy stats: uploaded bytes: %s, downloaded bytes: %s, hits: %d, misses: %d",
-			humanize.Bytes(uint64(proxyStats.GetUploadedBytes())),   //nolint:gosec
-			humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())), //nolint:gosec
+			humanize.Bytes(uint64(proxyStats.GetUploadedBytes())),   // nolint: gosec
+			humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())), // nolint: gosec
 			proxyStats.GetHits(),
 			proxyStats.GetMisses(),
 		)

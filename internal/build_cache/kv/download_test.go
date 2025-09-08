@@ -24,6 +24,9 @@ func TestClient_DownloadStream_AllGood(t *testing.T) {
 	streamingClientMock := mocks.NewServerStreamingClientMock[bytestream.ReadResponse]([]mocks.RecvResult[bytestream.ReadResponse]{
 		{
 			Response: &bytestream.ReadResponse{Data: downloadTestData},
+			Metadata: map[string]string{
+				"x-flare-blob-validation-sha256": "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72",
+			},
 		},
 		{
 			Error: io.EOF,
@@ -147,4 +150,34 @@ func TestClient_DownloadStream_NonRetryableError(t *testing.T) {
 	require.Error(t, err)
 
 	require.Len(t, kvClient.GetCalls(), 1)
+}
+
+func TestClient_DownloadStream_MismatchValidation(t *testing.T) {
+	streamingClientMock := mocks.NewServerStreamingClientMock[bytestream.ReadResponse]([]mocks.RecvResult[bytestream.ReadResponse]{
+		{
+			Response: &bytestream.ReadResponse{Data: downloadTestData},
+			Metadata: map[string]string{
+				"x-flare-blob-validation-sha256": "3fc6540b6002f7622d978ea8c6fcb6a661089de0f4952f42390a694107269893",
+			},
+		},
+		{
+			Error: io.EOF,
+		},
+	})
+
+	client, err := kv.NewClient(kv.NewClientParams{
+		Logger: mockLogger,
+		BitriseKVClient: &mocks.KVStorageClientMock{
+			GetFunc: func(ctx context.Context, in *bytestream.ReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
+				return streamingClientMock, nil
+			},
+		},
+		DownloadRetryWait: 1, // to make tests faster
+	})
+	require.NoError(t, err)
+
+	destination := bytes.NewBuffer(nil)
+
+	err = client.DownloadStream(context.Background(), destination, "test-key")
+	require.Error(t, err)
 }

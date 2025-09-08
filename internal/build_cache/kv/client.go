@@ -149,8 +149,12 @@ func (w *writer) Close() error {
 }
 
 type reader struct {
-	stream bytestream.ByteStream_ReadClient
-	buf    bytes.Buffer
+	logger   log.Logger
+	stream   bytestream.ByteStream_ReadClient
+	metadata sync.Map
+	buf      bytes.Buffer
+
+	metadataReady chan struct{}
 }
 
 func (r *reader) Read(p []byte) (int, error) {
@@ -169,8 +173,12 @@ func (r *reader) Read(p []byte) (int, error) {
 	resp, err := r.stream.Recv()
 	switch {
 	case errors.Is(err, io.EOF):
+		r.readTrailerMetadata()
+
 		return 0, io.EOF
 	case err != nil:
+		r.readTrailerMetadata()
+
 		return 0, fmt.Errorf("stream receive: %w", err)
 	}
 
@@ -183,6 +191,48 @@ func (r *reader) Read(p []byte) (int, error) {
 	_, _ = r.buf.Write(unwrittenData) // this will never fail
 
 	return n, nil
+}
+
+func (r *reader) readStreamMetadata() {
+	if header, err := r.stream.Header(); err == nil {
+		for k, v := range header {
+			if len(v) > 0 {
+				r.metadata.Store(k, v[0])
+			}
+		}
+	} else {
+		r.logger.Errorf("Failed to read stream header: %v", err)
+	}
+
+	go func() {
+		close(r.metadataReady)
+	}()
+}
+
+func (r *reader) readTrailerMetadata() {
+	if trailer := r.stream.Trailer(); trailer != nil {
+		for k, v := range trailer {
+			if len(v) > 0 {
+				r.metadata.Store(k, v[0])
+			}
+		}
+	}
+}
+
+func (r *reader) Metadata() map[string]string {
+	<-r.metadataReady
+	m := make(map[string]string)
+	r.metadata.Range(func(key, value any) bool {
+		k, ok1 := key.(string)
+		v, ok2 := value.(string)
+		if ok1 && ok2 {
+			m[k] = v
+		}
+
+		return true
+	})
+
+	return m
 }
 
 func (r *reader) Close() error {
