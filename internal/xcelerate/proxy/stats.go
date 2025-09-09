@@ -49,7 +49,7 @@ func (s *sessionState) incrementHits() {
 	s.hits.Add(1)
 }
 
-func (s *sessionState) isKeyAlreadySaved(key string) bool {
+func (s *sessionState) saveKeyOnce(key string) bool {
 	_, loaded := s.savedKeys.LoadOrStore(key, struct{}{})
 
 	return loaded
