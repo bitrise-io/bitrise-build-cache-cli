@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -30,6 +31,11 @@ import (
 )
 
 const (
+	pidFile      = "proxy.pid"
+	serverOut    = "proxy.out.%s.log"
+	serverErr    = "proxy.err.%s.log"
+	startedProxy = "Started xcelerate_proxy pid = %d"
+
 	MsgArgsPassedToXcodebuild = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess      = "Invocation succeeded ✅ after %s"
 	MsgInvocationFailed       = "Invocation failed ❌ after %s: %s"
@@ -99,6 +105,7 @@ TBD`,
 			logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
 
 			err := startProxy(
+				invocationID,
 				logger,
 				osProxy,
 				utils.DefaultCommandFunc(),
@@ -151,12 +158,9 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string)
 	if deployDir != "" {
 		logDir = deployDir
 	} else {
-		home, err := osProxy.UserHomeDir()
+		var err error
+		logDir, err = getLogDir(osProxy)
 		if err != nil {
-			return os.Stderr, func() {}
-		}
-		logDir = fmt.Sprintf("%s/.local/state/xcelerate/logs", home)
-		if err := osProxy.MkdirAll(logDir, 0o755); err != nil {
 			return os.Stderr, func() {}
 		}
 	}
@@ -208,7 +212,7 @@ func XcodebuildCmdFn(
 		proxyCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go func() {
-			if err := streamProxyLogs(proxyCtx, logger, utils.DefaultOsProxy{}); err != nil {
+			if err := streamProxyLogs(proxyCtx, invocationID, logger, utils.DefaultOsProxy{}); err != nil {
 				logger.Errorf("Failed to stream proxy logs: %v", err)
 			}
 		}()
@@ -320,6 +324,7 @@ func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []str
 }
 
 func startProxy(
+	invocationID string,
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
@@ -368,15 +373,20 @@ func startProxy(
 		Setpgid: true, // create a new process group with pgid = pid
 	})
 
-	outf := xcelerate.PathFor(osProxy, serverOut)
-	errf := xcelerate.PathFor(osProxy, serverErr)
-	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	logDir, err := getLogDir(osProxy)
+	if err != nil {
+		return fmt.Errorf("failed to get log dir: %w", err)
+	}
+
+	outf := getProxyLogFile(logDir, invocationID)
+	errf := filepath.Join(logDir, fmt.Sprintf(serverErr, invocationID))
+	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer outFile.Close()
 
-	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open error file: %w", err)
 	}
@@ -402,12 +412,17 @@ func startProxy(
 	return nil
 }
 
-func streamProxyLogs(
-	ctx context.Context,
-	logger log.Logger,
-	osProxy utils.OsProxy,
-) error {
-	f, err := os.Open(xcelerate.PathFor(osProxy, serverOut))
+func getProxyLogFile(logDir string, invocationID string) string {
+	return filepath.Join(logDir, fmt.Sprintf(serverOut, invocationID))
+}
+
+func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger, osProxy utils.OsProxy) error {
+	logDir, err := getLogDir(osProxy)
+	if err != nil {
+		return fmt.Errorf("failed to get log dir: %w", err)
+	}
+
+	f, err := os.Open(getProxyLogFile(logDir, invocationID))
 	if err != nil {
 		return fmt.Errorf("failed to open proxy log file: %w", err)
 	}
@@ -444,4 +459,19 @@ func streamProxyLogs(
 		// nolint: forbidigo
 		fmt.Println("[Bitrise Build Cache] " + strings.TrimSpace(line))
 	}
+}
+
+func getLogDir(osProxy utils.OsProxy) (string, error) {
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	logDir := fmt.Sprintf("%s/.local/state/xcelerate/logs", home)
+
+	if err := osProxy.MkdirAll(logDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create log dir: %w", err)
+	}
+
+	return logDir, nil
 }

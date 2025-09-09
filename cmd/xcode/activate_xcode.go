@@ -20,14 +20,9 @@ import (
 )
 
 const (
-	pidFile   = "proxy.pid"
-	serverOut = "proxy.out.log"
-	serverErr = "proxy.err.log"
-
 	activateXcode           = "Activate Bitrise Build Cache for Xcode"
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
 	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
-	startedProxy            = "Started xcelerate_proxy pid = %d"
 
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
