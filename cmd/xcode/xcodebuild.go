@@ -370,13 +370,13 @@ func startProxy(
 
 	outf := xcelerate.PathFor(osProxy, serverOut)
 	errf := xcelerate.PathFor(osProxy, serverErr)
-	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0o644)
+	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer outFile.Close()
 
-	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0o644)
+	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open error file: %w", err)
 	}
