@@ -289,21 +289,23 @@ func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
 	md.Set("x-flare-blob-validation-level", "WARN")
 	md.Set("x-flare-ac-validation-mode", "fast")
 
-	rmd, err := proto.Marshal(&remoteexecution.RequestMetadata{
+	rmd := &remoteexecution.RequestMetadata{
 		ToolInvocationId: c.invocationID,
 		ToolDetails: &remoteexecution.ToolDetails{
 			ToolName: c.clientName,
 		},
-	})
+	}
+	serializedRMD, err := proto.Marshal(rmd)
 	if err != nil {
 		c.logger.Errorf("Failed to marshal RequestMetadata: %v", err)
 	} else {
-		md.Set("build.bazel.remote.execution.v2.requestmetadata-bin", string(rmd))
+		md.Set("build.bazel.remote.execution.v2.requestmetadata-bin", string(serializedRMD))
 	}
 
 	if logMD {
 		logMd := md.Copy()
 		logMd.Delete("authorization")
+		logMd.Set("build.bazel.remote.execution.v2.requestmetadata-bin", rmd.String())
 		c.logger.TDebugf("metadata: %+v", logMd)
 	}
 
