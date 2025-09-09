@@ -323,6 +323,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
+	p.sessionState.saveKeyOnce(key)
 	p.sessionState.addDownloadBytes(int64(buffer.Len()))
 
 	data, err := io.ReadAll(buffer)
