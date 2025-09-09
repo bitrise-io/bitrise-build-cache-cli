@@ -1,14 +1,16 @@
 package proxy
 
 import (
+	"sync"
 	"sync/atomic"
 )
 
-type statsCollector struct {
+type sessionState struct {
 	downloadBytes atomic.Int64
 	uploadBytes   atomic.Int64
 	hits          atomic.Int64
 	misses        atomic.Int64
+	savedKeys     sync.Map
 }
 
 type stats struct {
@@ -18,19 +20,19 @@ type stats struct {
 	hits          int64
 }
 
-func newStatsCollector() *statsCollector {
-	return &statsCollector{}
+func newSessionState() *sessionState {
+	return &sessionState{}
 }
 
-func (s *statsCollector) addDownloadBytes(n int64) {
+func (s *sessionState) addDownloadBytes(n int64) {
 	s.downloadBytes.Add(n)
 }
 
-func (s *statsCollector) addUploadBytes(n int64) {
+func (s *sessionState) addUploadBytes(n int64) {
 	s.uploadBytes.Add(n)
 }
 
-func (s *statsCollector) getStats() stats {
+func (s *sessionState) getStats() stats {
 	return stats{
 		downloadBytes: s.downloadBytes.Load(),
 		uploadBytes:   s.uploadBytes.Load(),
@@ -39,10 +41,20 @@ func (s *statsCollector) getStats() stats {
 	}
 }
 
-func (s *statsCollector) incrementMisses() {
+func (s *sessionState) incrementMisses() {
 	s.misses.Add(1)
 }
 
-func (s *statsCollector) incrementHits() {
+func (s *sessionState) incrementHits() {
 	s.hits.Add(1)
+}
+
+func (s *sessionState) isKeyAlreadySaved(key string) bool {
+	_, loaded := s.savedKeys.LoadOrStore(key, struct{}{})
+
+	return loaded
+}
+
+func (s *sessionState) markKeyUnsaved(key string) {
+	s.savedKeys.Delete(key)
 }

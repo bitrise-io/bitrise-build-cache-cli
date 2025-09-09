@@ -36,7 +36,7 @@ type Proxy struct {
 	kvClient                *kv.Client
 	sessionMutex            sync.Mutex
 	capabilitiesCalled      bool
-	statsCollector          *statsCollector
+	sessionState            *sessionState
 	skipGetCapabilitiesCall []grpc.ServiceDesc
 	logger                  log.Logger
 }
@@ -47,9 +47,9 @@ func NewProxy(
 ) *grpc.Server {
 	//nolint:exhaustruct
 	proxy := &Proxy{
-		kvClient:       kvClient,
-		statsCollector: newStatsCollector(),
-		logger:         logger,
+		kvClient:     kvClient,
+		sessionState: newSessionState(),
+		logger:       logger,
 		skipGetCapabilitiesCall: []grpc.ServiceDesc{
 			session.Session_ServiceDesc, // skip GetCapabilities call for session service methods
 		},
@@ -87,7 +87,7 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 
 	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
 
-	p.statsCollector = newStatsCollector()
+	p.sessionState = newSessionState()
 
 	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s",
 		request.GetInvocationId(),
@@ -100,7 +100,7 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 }
 
 func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.GetSessionStatsResponse, error) {
-	collectedStats := p.statsCollector.getStats()
+	collectedStats := p.sessionState.getStats()
 
 	return &session.GetSessionStatsResponse{
 		UploadedBytes:   collectedStats.uploadBytes,
@@ -124,7 +124,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.statsCollector.incrementMisses()
+			p.sessionState.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -150,7 +150,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
-	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
+	p.sessionState.addDownloadBytes(int64(buffer.Len()))
 
 	data := blob{} //nolint:exhaustruct
 	if err := gob.NewDecoder(buffer).Decode(&data); err != nil {
@@ -164,7 +164,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	hit = true
-	p.statsCollector.incrementHits()
+	p.sessionState.incrementHits()
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -184,7 +184,11 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmcas.CASPutResponse, error) {
 	p.logger.TDebugf("Put called with references: %s", request.GetData().GetReferences())
 
+	var key string
+
 	errorHandler := func(err error) *llvmcas.CASPutResponse {
+		p.sessionState.markKeyUnsaved(key)
+
 		p.logger.TErrorf("Put error: %s", err)
 
 		return &llvmcas.CASPutResponse{
@@ -195,8 +199,6 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 			},
 		}
 	}
-
-	var key string
 
 	start := time.Now()
 	defer func() {
@@ -237,8 +239,18 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	p.logger.TDebugf("Put: CAS ID: %s", key)
 
+	if p.sessionState.isKeyAlreadySaved(key) {
+		p.logger.TDebugf("Put: CAS ID already saved in this session: %s", key)
+
+		return &llvmcas.CASPutResponse{
+			Contents: &llvmcas.CASPutResponse_CasId{
+				CasId: casId,
+			},
+		}, nil
+	}
+
 	size := int64(buffer.Len())
-	p.statsCollector.addUploadBytes(size)
+	p.sessionState.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
 	if err != nil {
@@ -266,7 +278,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.statsCollector.incrementMisses()
+			p.sessionState.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -292,7 +304,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("failed to download data: %w", err)), nil
 	}
 
-	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
+	p.sessionState.addDownloadBytes(int64(buffer.Len()))
 
 	data, err := io.ReadAll(buffer)
 	if err != nil {
@@ -300,7 +312,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	hit = true
-	p.statsCollector.incrementHits()
+	p.sessionState.incrementHits()
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -317,7 +329,11 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 }
 
 func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llvmcas.CASSaveResponse, error) {
+	var key string
+
 	errorHandler := func(err error) *llvmcas.CASSaveResponse {
+		p.sessionState.markKeyUnsaved(key)
+
 		p.logger.TErrorf("Save error: %s", err)
 
 		return &llvmcas.CASSaveResponse{
@@ -328,8 +344,6 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 			},
 		}
 	}
-
-	var key string
 
 	start := time.Now()
 	defer func() {
@@ -373,6 +387,16 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 
 	p.logger.TDebugf("Save: CAS ID: %s", key)
 
+	if p.sessionState.isKeyAlreadySaved(key) {
+		p.logger.TDebugf("Save: CAS ID already saved in this session: %s", key)
+
+		return &llvmcas.CASSaveResponse{
+			Contents: &llvmcas.CASSaveResponse_CasId{
+				CasId: casId,
+			},
+		}, nil
+	}
+
 	// reset the reader
 	if request.GetData().GetBlob().GetFilePath() != "" {
 		//nolint:forcetypeassert
@@ -383,7 +407,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		reader = bytes.NewBuffer(request.GetData().GetBlob().GetData())
 	}
 
-	p.statsCollector.addUploadBytes(size)
+	p.sessionState.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
 	if err != nil {
@@ -411,7 +435,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.statsCollector.incrementMisses()
+			p.sessionState.incrementMisses()
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -437,7 +461,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		return errorHandler(fmt.Errorf("failed to download value: %w", err)), nil
 	}
 
-	p.statsCollector.addDownloadBytes(int64(buffer.Len()))
+	p.sessionState.addDownloadBytes(int64(buffer.Len()))
 
 	var entries map[string][]byte
 	if err := gob.NewDecoder(buffer).Decode(&entries); err != nil {
@@ -445,7 +469,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	hit = true
-	p.statsCollector.incrementHits()
+	p.sessionState.incrementHits()
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -483,7 +507,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}
 
 	size := int64(buffer.Len())
-	p.statsCollector.addUploadBytes(size)
+	p.sessionState.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
 	if err != nil {
