@@ -858,8 +858,7 @@ workflows:
               set -exo pipefail
 
               cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
-              cp ~/.bitrise-xcelerate/proxy.err.log $BITRISE_DEPLOY_DIR
-              cp ~/.bitrise-xcelerate/proxy.out.log $BITRISE_DEPLOY_DIR
+              cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               cp wrapper.log $BITRISE_DEPLOY_DIR
               
