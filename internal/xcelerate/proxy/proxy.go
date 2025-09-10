@@ -29,6 +29,8 @@ var (
 	_ session.SessionServer      = (*Proxy)(nil)
 )
 
+type LoggerFactory func(invocationID string) (log.Logger, error)
+
 type Proxy struct {
 	llvmcas.UnimplementedCASDBServiceServer
 	llvmkv.UnimplementedKeyValueDBServer
@@ -41,11 +43,13 @@ type Proxy struct {
 	sessionState            *sessionState
 	skipGetCapabilitiesCall []grpc.ServiceDesc
 	logger                  log.Logger
+	loggerFactory           LoggerFactory
 }
 
 func NewProxy(
 	kvClient *kv.Client,
 	logger log.Logger,
+	loggerFactory LoggerFactory,
 ) *grpc.Server {
 	// Note: Gradle plugin uses a client balancer, with multiple channels (min 2), each with multiple connections.
 	// For a simple implementation, we only have one channel with multiple connections.
@@ -55,10 +59,11 @@ func NewProxy(
 
 	//nolint:exhaustruct
 	proxy := &Proxy{
-		kvClient:     kvClient,
-		sessionState: newSessionState(),
-		logger:       logger,
-		ccSemaphore:  make(chan struct{}, ccLimit),
+		kvClient:      kvClient,
+		sessionState:  newSessionState(),
+		logger:        logger,
+		loggerFactory: loggerFactory,
+		ccSemaphore:   make(chan struct{}, ccLimit),
 		skipGetCapabilitiesCall: []grpc.ServiceDesc{
 			session.Session_ServiceDesc, // skip GetCapabilities call for session service methods
 		},
@@ -97,6 +102,12 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
 
 	p.sessionState = newSessionState()
+
+	var err error
+	p.logger, err = p.loggerFactory(request.GetInvocationId())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %w", err)
+	}
 
 	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s",
 		request.GetInvocationId(),
