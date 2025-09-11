@@ -148,12 +148,31 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 	gitMetadata.CommitHash = strings.TrimSpace(commitHash)
 
 	// Branch
-	branch, err := commandFunc("git", "branch", "--show-current")
-	if err != nil {
-		logger.Debugf("Error in get git branch: %v", err)
-		branch = envs["BITRISE_GIT_BRANCH"]
+	branch := envs["BITRISE_GIT_BRANCH"]
+	if branch == "" {
+		branch, err = commandFunc("git", "branch", "--show-current")
+		if err != nil {
+			logger.Debugf("Error in get git branch: %v", err)
+		}
 	}
-	gitMetadata.Branch = strings.TrimSpace(branch)
+	if branch == "" {
+		logger.Debugf("HEAD is probably detached, finding matching branches...")
+		branch, err = commandFunc("sh", "-c", "git branch --contains HEAD --format='%(refname:short)' | grep -v HEAD")
+		if err != nil {
+			logger.Debugf("Error in get git branch (2nd attempt): %v", err)
+		} else {
+			matchingBranches := strings.Split(branch, "\n")
+			if len(matchingBranches) == 1 {
+				// Only if there's a single matching branch, otherwise leave empty to avoid confusion
+				branch = matchingBranches[0]
+			}
+		}
+	}
+	branch = strings.TrimSpace(branch)
+	if branch != "" {
+		logger.Debugf("Detected git branch: %s", branch)
+	}
+	gitMetadata.Branch = branch
 
 	// Commit email
 	commitEmail, err := commandFunc("git", "show", "-s", "--format=%ae", gitMetadata.CommitHash)
