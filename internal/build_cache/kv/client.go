@@ -107,6 +107,10 @@ func NewClient(p NewClientParams) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) SetLogger(logger log.Logger) {
+	c.logger = logger
+}
+
 type writer struct {
 	stream       bytestream.ByteStream_WriteClient
 	resourceName string

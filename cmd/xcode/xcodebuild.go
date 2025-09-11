@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -389,15 +390,28 @@ func startProxy(
 }
 
 func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger, osProxy utils.OsProxy) error {
-	proxyLogFile, err := getProxyLogFile(osProxy, invocationID)
+	var f *os.File
+	err := retry.Times(10).Wait(1 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		proxyLogFile, err := getProxyLogFile(osProxy, invocationID)
+		if err != nil {
+			logger.TDebugf("Failed to get proxy log file, attempt: %d, error: %v", attempt+1, err)
+
+			return fmt.Errorf("failed to get proxy log file: %w", err), false
+		}
+
+		f, err = osProxy.OpenFile(proxyLogFile, os.O_RDONLY, 0)
+		if err != nil {
+			logger.TDebugf("Failed to open proxy log file, attempt: %d, error: %v", attempt+1, err)
+
+			return fmt.Errorf("failed to open proxy log file: %w", err), false
+		}
+
+		return nil, true
+	})
 	if err != nil {
-		return fmt.Errorf("failed to get proxy log file: %w", err)
+		return fmt.Errorf("failed to open proxy log file after retries: %w", err)
 	}
 
-	f, err := osProxy.OpenFile(proxyLogFile, os.O_RDONLY, 0)
-	if err != nil {
-		return fmt.Errorf("failed to open proxy log file: %w", err)
-	}
 	defer func(f *os.File) {
 		err := f.Close()
 		if err != nil {

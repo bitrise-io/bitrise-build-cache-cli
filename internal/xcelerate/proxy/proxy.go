@@ -103,11 +103,12 @@ func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest
 
 	p.sessionState = newSessionState()
 
-	var err error
-	p.logger, err = p.loggerFactory(request.GetInvocationId())
+	logger, err := p.loggerFactory(request.GetInvocationId())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logger: %w", err)
 	}
+	p.logger = logger
+	p.kvClient.SetLogger(p.logger)
 
 	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s",
 		request.GetInvocationId(),

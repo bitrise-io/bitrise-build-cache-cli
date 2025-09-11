@@ -79,18 +79,18 @@ var (
 				return logger, nil
 			}
 
-			logger, err := loggerFactory(initialInvocationID)
+			initialLogger, err := loggerFactory(initialInvocationID)
 			if err != nil {
-				return fmt.Errorf("failed to create logger: %w", err)
+				return fmt.Errorf("failed to create initialLogger: %w", err)
 			}
 
-			logger.TInfof("Xcelerate Proxy")
+			initialLogger.TInfof("Xcelerate Proxy")
 
 			if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove socket file, error: %w", err)
 			}
 
-			logger.TInfof("socketPath: %s", config.ProxySocketPath)
+			initialLogger.TInfof("socketPath: %s", config.ProxySocketPath)
 
 			listener, err := (&net.ListenConfig{}).Listen(cmd.Context(), "unix", config.ProxySocketPath)
 			if err != nil {
@@ -110,7 +110,7 @@ var (
 				nil,
 				nil,
 				listener,
-				logger,
+				initialLogger,
 				loggerFactory,
 			)
 		},
@@ -135,7 +135,7 @@ func StartXcodeCacheProxy(
 	bitriseKVClient kv_storage.KVStorageClient,
 	capabilitiesClient remoteexecution.CapabilitiesClient,
 	listener net.Listener,
-	logger log.Logger,
+	initialLogger log.Logger,
 	loggerFactory proxy.LoggerFactory,
 ) error {
 	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
@@ -144,7 +144,7 @@ func StartXcodeCacheProxy(
 		AuthConfig:         config.AuthConfig,
 		Envs:               envProvider,
 		CommandFunc:        commandFunc,
-		Logger:             logger,
+		Logger:             initialLogger,
 		BitriseKVClient:    bitriseKVClient,
 		EndpointURL:        config.BuildCacheEndpoint,
 		CapabilitiesClient: capabilitiesClient,
@@ -157,7 +157,7 @@ func StartXcodeCacheProxy(
 
 	//nolint:wrapcheck
 	return proxy.
-		NewProxy(client, logger, loggerFactory).
+		NewProxy(client, initialLogger, loggerFactory).
 		Serve(listener)
 }
 
