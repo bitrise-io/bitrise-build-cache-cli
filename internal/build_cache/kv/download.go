@@ -105,6 +105,8 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 
 		kvReader, err := c.initiateGet(timeoutCtx, c.logger, key, offset)
 		if err != nil {
+			c.logger.Warnf("Failed to download stream: attempt %d: initiate get: %s", attempt+1, err)
+
 			return fmt.Errorf("create kv get client (with key %s): %w", key, err), true
 		}
 		defer kvReader.Close()
@@ -119,6 +121,8 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 			}
 
 			offset += n
+
+			c.logger.Warnf("Failed to download stream: attempt %d: %s", attempt+1, err)
 
 			return fmt.Errorf("download archive: %w", err), false
 		}

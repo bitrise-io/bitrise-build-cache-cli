@@ -222,6 +222,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			WrapperVersion:         "wrapper-version-1.0.0",
 			CLIVersion:             "cli-version-1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
+			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
 			AuthConfig: common.CacheAuthConfig{
@@ -254,6 +255,7 @@ func TestConfig_NewConfig(t *testing.T) {
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
 			BuildCacheEnabled:       true,
 			DebugLogging:            true,
+			BuildCacheEndpoint:      "grpcs://bitrise-accelerate.services.bitrise.io",
 			XcodePathOverride:       "/usr/bin/xcodebuild-override",
 			ProxySocketPathOverride: "/tmp/xcelerate-proxy.sock",
 		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
@@ -265,6 +267,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxyVersion:           "",
 			WrapperVersion:         "",
 			CLIVersion:             "",
+			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild-override",
 			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
@@ -309,7 +312,99 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			WrapperVersion:         "",
 			CLIVersion:             "",
+			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			BuildCacheEnabled:      true,
+			DebugLogging:           true,
+			AuthConfig: common.CacheAuthConfig{
+				AuthToken:   "auth-token",
+				WorkspaceID: "workspace-id",
+			},
+		}
+
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When build cache url is overridden, returns config with that url", func(t *testing.T) {
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return "my-temp-dir"
+			},
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("something-else"), errors.New("something went wrong")
+			},
+		}
+
+		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled:  true,
+			DebugLogging:       true,
+			BuildCacheEndpoint: "grpc://localhost:6666",
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		})
+		require.NoError(t, err)
+
+		expected := xcelerate.Config{
+			ProxyVersion:           "",
+			WrapperVersion:         "",
+			CLIVersion:             "",
+			BuildCacheEndpoint:     "grpc://localhost:6666",
+			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
+			BuildCacheEnabled:      true,
+			DebugLogging:           true,
+			AuthConfig: common.CacheAuthConfig{
+				AuthToken:   "auth-token",
+				WorkspaceID: "workspace-id",
+			},
+		}
+
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When build cache url is overridden in the env, returns config with that url", func(t *testing.T) {
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
+			"BITRISE_BUILD_CACHE_ENDPOINT":     "grpc://localhost:6666",
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return "my-temp-dir"
+			},
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("something-else"), errors.New("something went wrong")
+			},
+		}
+
+		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled:  true,
+			DebugLogging:       true,
+			BuildCacheEndpoint: "",
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		})
+		require.NoError(t, err)
+
+		expected := xcelerate.Config{
+			ProxyVersion:           "",
+			WrapperVersion:         "",
+			CLIVersion:             "",
+			BuildCacheEndpoint:     "grpc://localhost:6666",
+			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
 			AuthConfig: common.CacheAuthConfig{

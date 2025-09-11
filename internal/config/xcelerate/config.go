@@ -78,30 +78,30 @@ func DefaultConfig() Config {
 func NewConfig(ctx context.Context,
 	logger log.Logger,
 	params Params,
-	envProvider map[string]string,
+	envs map[string]string,
 	osProxy utils.OsProxy,
 	cmdFunc utils.CommandFunc,
 ) (Config, error) {
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
 	xcodePath := params.XcodePathOverride
 	if xcodePath == "" {
+		logger.Debugf("No xcodebuild path override specified, determining original xcodebuild path...")
 		originalXcodebuildPath, err := getOriginalXcodebuildPath(ctx, logger, cmdFunc)
 		if err != nil {
 			logger.Warnf("Failed to determine xcodebuild path: %s. Using default: %s", err, DefaultXcodePath)
 			originalXcodebuildPath = DefaultXcodePath
-		} else {
-			logger.Infof("Using xcodebuild path: %s", originalXcodebuildPath)
 		}
 		xcodePath = originalXcodebuildPath
 	}
+	logger.Infof("Using xcodebuild path: %s. You can always override this by supplying --xcode-path.", xcodePath)
 
 	proxySocketPath := params.ProxySocketPathOverride
 	if proxySocketPath == "" {
-		proxySocketPath = envProvider["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
+		proxySocketPath = envs["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
 		if proxySocketPath == "" {
 			proxySocketPath = filepath.Join(osProxy.TempDir(), "xcelerate-proxy.sock")
 			logger.Infof("Using new proxy socket path: %s", proxySocketPath)
@@ -110,13 +110,16 @@ func NewConfig(ctx context.Context,
 		}
 	}
 
-	logger.Infof("Using Build Cache Endpoint: %s", params.BuildCacheEndpoint)
+	if params.BuildCacheEndpoint == "" {
+		params.BuildCacheEndpoint = common.SelectCacheEndpointURL("", envs)
+	}
+	logger.Infof("Using Build Cache Endpoint: %s. You can always override this by supplying --cache-endpoint.", params.BuildCacheEndpoint)
 
 	return Config{
-		ProxyVersion:           envProvider["BITRISE_XCELERATE_PROXY_VERSION"],
+		ProxyVersion:           envs["BITRISE_XCELERATE_PROXY_VERSION"],
 		ProxySocketPath:        proxySocketPath,
-		WrapperVersion:         envProvider["BITRISE_XCELERATE_WRAPPER_VERSION"],
-		CLIVersion:             envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
+		WrapperVersion:         envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
+		CLIVersion:             envs["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		OriginalXcodebuildPath: xcodePath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		BuildCacheEndpoint:     params.BuildCacheEndpoint,

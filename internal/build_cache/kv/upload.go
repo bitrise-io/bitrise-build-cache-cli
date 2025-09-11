@@ -100,6 +100,8 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 			FileSize:  size,
 		})
 		if err != nil {
+			c.logger.Warnf("Failed to upload stream: attempt %d: initiate put: %s", attempt+1, err)
+
 			return fmt.Errorf("create kv put client (with key %s): %w", key, err), false
 		}
 
@@ -120,6 +122,8 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 			return ErrCacheUnauthenticated, true
 		}
 		if err != nil {
+			c.logger.Warnf("Failed to upload stream: attempt %d: %s", attempt+1, err)
+
 			return fmt.Errorf("upload archive: %w", err), false
 		}
 

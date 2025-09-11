@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -109,17 +108,8 @@ func ActivateXcodeCommandFn(
 	activateXcodeParams xcelerate.Params,
 	envs map[string]string,
 ) error {
-	// if there was an existing config, use it for some values
-	if existingConfig, err := xcelerate.ReadConfig(osProxy, decoderFactory); err == nil {
-		activateXcodeParams.XcodePathOverride = cmp.Or(
-			activateXcodeParams.XcodePathOverride,
-			existingConfig.OriginalXcodebuildPath,
-		)
-		activateXcodeParams.BuildCacheEndpoint = cmp.Or(
-			activateXcodeParams.BuildCacheEndpoint,
-			configcommon.SelectCacheEndpointURL(existingConfig.BuildCacheEndpoint, envs),
-		)
-	}
+	overrideActivateXcodeParamsFromExistingConfig(
+		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
 	config, err := xcelerate.NewConfig(
 		ctx,
@@ -151,6 +141,42 @@ func ActivateXcodeCommandFn(
 	logger.TInfof(AddXcelerateToPath)
 
 	return nil
+}
+
+func overrideActivateXcodeParamsFromExistingConfig(
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	activateXcodeParams *xcelerate.Params,
+	decoderFactory utils.DecoderFactory,
+	envs map[string]string,
+) {
+	// if there was an existing config, use it for some values
+	if existingConfig, err := xcelerate.ReadConfig(osProxy, decoderFactory); err == nil {
+		if strings.Contains(existingConfig.OriginalXcodebuildPath, xcelerate.PathFor(osProxy, xcelerate.BinDir)) {
+			logger.Warnf("Removing xcelerate wrapper as original xcodebuild path...")
+			existingConfig.OriginalXcodebuildPath = ""
+		}
+		activateXcodeParams.XcodePathOverride = cmp.Or(
+			activateXcodeParams.XcodePathOverride,
+			existingConfig.OriginalXcodebuildPath,
+		)
+	} else if isXcelerateInPath(osProxy, envs) {
+		logger.Warnf("It seems that the xcelerate config file is missing, but xcelerate is already in the PATH. \n" +
+			"This will lead to unexpected behavior when determining the xcodebuild path. \n" +
+			"Defaulting to /usr/bin/xcodebuild...")
+		activateXcodeParams.XcodePathOverride = "/usr/bin/xcodebuild"
+	}
+}
+
+func isXcelerateInPath(osProxy utils.OsProxy, envs map[string]string) bool {
+	path := envs["PATH"]
+	for _, p := range strings.Split(path, ":") {
+		if strings.Contains(p, xcelerate.PathFor(osProxy, xcelerate.BinDir)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) error {
