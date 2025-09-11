@@ -39,3 +39,8 @@ run-xcelerate-proxy:
 	BITRISE_STEP_EXECUTION_ID=$(shell uuidgen | tr '[:upper:]' '[:lower:]') \
 	BITRISE_BUILD_CACHE_ENDPOINT=grpc://localhost:6666 \
 	go run main.go xcelerate start-proxy
+
+go-generate:
+	go generate ./...
+
+check: go-generate lint-fix test-unit

@@ -250,15 +250,16 @@ func XcodebuildCmdFn(
 	}
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
-		InvocationDate: runStats.StartTime,
-		InvocationID:   invocationID,
-		Duration:       runStats.DurationMS,
-		HitRate:        hitRate,
-		Command:        xcodeArgs.ShortCommand(),
-		FullCommand:    xcodeArgs.Command(),
-		Success:        runStats.Success,
-		Error:          runStats.Error,
-		XcodeVersion:   runStats.XcodeVersion,
+		InvocationDate:    runStats.StartTime,
+		InvocationID:      invocationID,
+		Duration:          runStats.DurationMS,
+		HitRate:           hitRate,
+		Command:           xcodeArgs.ShortCommand(),
+		FullCommand:       xcodeArgs.Command(),
+		Success:           runStats.Success,
+		Error:             runStats.Error,
+		XcodeVersion:      runStats.XcodeVersion,
+		XcodeBuildVersion: runStats.XcodeBuildVersion,
 	}, config.AuthConfig, metadata)
 
 	client, err := analytics.NewClient(consts.AnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)

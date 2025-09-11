@@ -12,15 +12,16 @@ import (
 )
 
 type InvocationRunStats struct {
-	InvocationDate time.Time
-	InvocationID   string
-	Duration       int64
-	HitRate        float32
-	Command        string
-	FullCommand    string
-	Success        bool
-	Error          error
-	XcodeVersion   string
+	InvocationDate    time.Time
+	InvocationID      string
+	Duration          int64
+	HitRate           float32
+	Command           string
+	FullCommand       string
+	Success           bool
+	Error             error
+	XcodeVersion      string
+	XcodeBuildVersion string
 }
 
 func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthConfig, commonMetadata common.CacheConfigMetadata) *Invocation {
@@ -49,16 +50,17 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		Success:          runStats.Success,
 		Error:            errorStr,
 		XcodeVersion:     runStats.XcodeVersion,
-		WorkflowName:     commonMetadata.BitriseWorkflowName,
-		ProviderID:       commonMetadata.CIProvider,
-		CLIVersion:       commonMetadata.CLIVersion,
-		Envs:             commonMetadata.RedactedEnvs,
-		OS:               commonMetadata.HostMetadata.OS,
-		HwCPUCores:       commonMetadata.HostMetadata.CPUCores,
-		HwMemSize:        commonMetadata.HostMetadata.MemSize,
-		Datacenter:       commonMetadata.Datacenter,
-		DefaultCharset:   commonMetadata.HostMetadata.DefaultCharset,
-		Locale:           commonMetadata.HostMetadata.Locale,
+		// ToolBuildNumber: runStats.XcodeBuildVersion, todo
+		WorkflowName:   commonMetadata.BitriseWorkflowName,
+		ProviderID:     commonMetadata.CIProvider,
+		CLIVersion:     commonMetadata.CLIVersion,
+		Envs:           commonMetadata.RedactedEnvs,
+		OS:             commonMetadata.HostMetadata.OS,
+		HwCPUCores:     commonMetadata.HostMetadata.CPUCores,
+		HwMemSize:      commonMetadata.HostMetadata.MemSize,
+		Datacenter:     commonMetadata.Datacenter,
+		DefaultCharset: commonMetadata.HostMetadata.DefaultCharset,
+		Locale:         commonMetadata.HostMetadata.Locale,
 	}
 }
 

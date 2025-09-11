@@ -1,17 +1,14 @@
 package xcodeargs
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -21,12 +18,13 @@ import (
 )
 
 type RunStats struct {
-	StartTime    time.Time
-	Success      bool
-	Error        error
-	ExitCode     int
-	DurationMS   int64
-	XcodeVersion string
+	StartTime         time.Time
+	Success           bool
+	Error             error
+	ExitCode          int
+	DurationMS        int64
+	XcodeVersion      string
+	XcodeBuildVersion string
 }
 
 type DefaultRunner struct {
@@ -49,36 +47,30 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 		xcodePath = xcelerate.DefaultXcodePath
 	}
 
-	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
-
 	runStats := RunStats{
 		StartTime: time.Now(),
 	}
 
-	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
+	if err := runner.determineXcodeVersionAndBuildNumber(ctx, xcodePath, &runStats); err != nil {
+		runner.logger.TErrorf("Failed to determine xcode version and build number: %+v", err)
 
-	wg := sync.WaitGroup{}
-	stdOutReader, err := innerCmd.StdoutPipe()
-	if err != nil {
-		runner.logger.Errorf("Failed to get stdout pipe: %v", err)
-		innerCmd.Stdout = os.Stdout
-	} else {
-		wg.Add(1)
-		go func() {
-			runner.streamAndMatchStdOut(ctx, stdOutReader, &runStats)
-			wg.Done()
-		}()
+		runStats.Error = err
+		runStats.Success = false
+
+		return runStats
 	}
 
+	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
+
+	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
 	innerCmd.Stderr = os.Stderr
 	innerCmd.Stdin = os.Stdin
 
 	interruptCtx, cancel := context.WithCancel(ctx)
 	runner.handleInterrupt(interruptCtx, innerCmd)
 
-	err = innerCmd.Run()
+	err := innerCmd.Run()
 
-	wg.Wait()
 	cancel()
 	duration := time.Since(runStats.StartTime)
 
@@ -98,39 +90,6 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 	}
 
 	return runStats
-}
-
-func (runner *DefaultRunner) streamAndMatchStdOut(ctx context.Context, reader io.ReadCloser, runStats *RunStats) {
-	versionRegex := regexp.MustCompile(`/Applications/Xcode[-_]?([\w.-]+).app/Contents`)
-
-	scanner := bufio.NewScanner(reader)
-	const maxTokenSize = 10 * 1024 * 1024
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, maxTokenSize)
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		line := scanner.Text()
-
-		if runStats.XcodeVersion == "" {
-			matches := versionRegex.FindStringSubmatch(line)
-			if len(matches) > 1 {
-				runStats.XcodeVersion = matches[1]
-				runner.logger.TInfof("Detected Xcode version: %s", runStats.XcodeVersion)
-			}
-		}
-
-		//nolint: errcheck
-		fmt.Fprintf(os.Stdout, "%s\n", line)
-	}
-
-	if err := scanner.Err(); err != nil {
-		runner.logger.Errorf("Failed to scan stdout: %v", err)
-	}
 }
 
 func (runner *DefaultRunner) handleInterrupt(ctx context.Context, cmd *exec.Cmd) {
@@ -164,4 +123,37 @@ func (runner *DefaultRunner) handleInterrupt(ctx context.Context, cmd *exec.Cmd)
 			runner.logger.Errorf("Graceful shutdown failed: %+v", err)
 		}
 	}()
+}
+
+func (runner *DefaultRunner) determineXcodeVersionAndBuildNumber(ctx context.Context, xcodebuild string, runStats *RunStats) error {
+	runner.logger.TDebugf("Checking xcodebuild version and build number: %s -version", xcodebuild)
+
+	versionRegexp := regexp.MustCompile(`Xcode\s+(.*)`)
+	buildVersionRegexp := regexp.MustCompile(`Build version\s+(.*)`)
+
+	output, err := exec.CommandContext(ctx, xcodebuild, "-version").Output()
+	if err != nil {
+		return fmt.Errorf("xcodebuild -version failed: %w", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	if len(lines) < 2 {
+		return fmt.Errorf("unexpected xcodebuild -version output: %s", string(output))
+	}
+
+	versionMatch := versionRegexp.FindStringSubmatch(strings.TrimSpace(lines[0]))
+	if len(versionMatch) < 2 {
+		return fmt.Errorf("failed to parse xcode version from: %s", lines[0])
+	}
+
+	runStats.XcodeVersion = versionMatch[1]
+
+	buildVersionMatch := buildVersionRegexp.FindStringSubmatch(strings.TrimSpace(lines[1]))
+	if len(buildVersionMatch) < 2 {
+		return fmt.Errorf("failed to parse xcode build number from: %s", lines[1])
+	}
+
+	runStats.XcodeBuildVersion = buildVersionMatch[1]
+
+	return nil
 }
