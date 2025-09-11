@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -30,6 +31,9 @@ import (
 )
 
 const (
+	pidFile      = "proxy.pid"
+	startedProxy = "Started xcelerate_proxy pid = %d"
+
 	MsgArgsPassedToXcodebuild = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess      = "Invocation succeeded ✅ after %s"
 	MsgInvocationFailed       = "Invocation failed ❌ after %s: %s"
@@ -151,12 +155,9 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string)
 	if deployDir != "" {
 		logDir = deployDir
 	} else {
-		home, err := osProxy.UserHomeDir()
+		var err error
+		logDir, err = getLogDir(osProxy)
 		if err != nil {
-			return os.Stderr, func() {}
-		}
-		logDir = fmt.Sprintf("%s/.local/state/xcelerate/logs", home)
-		if err := osProxy.MkdirAll(logDir, 0o755); err != nil {
 			return os.Stderr, func() {}
 		}
 	}
@@ -208,7 +209,7 @@ func XcodebuildCmdFn(
 		proxyCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go func() {
-			if err := streamProxyLogs(proxyCtx, logger, utils.DefaultOsProxy{}); err != nil {
+			if err := streamProxyLogs(proxyCtx, invocationID, logger, utils.DefaultOsProxy{}); err != nil {
 				logger.Errorf("Failed to stream proxy logs: %v", err)
 			}
 		}()
@@ -368,22 +369,8 @@ func startProxy(
 		Setpgid: true, // create a new process group with pgid = pid
 	})
 
-	outf := xcelerate.PathFor(osProxy, serverOut)
-	errf := xcelerate.PathFor(osProxy, serverErr)
-	outFile, err := osProxy.OpenFile(outf, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
-	}
-	defer outFile.Close()
-
-	errFile, err := osProxy.OpenFile(errf, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to open error file: %w", err)
-	}
-	defer errFile.Close()
-
-	cmd.SetStdout(outFile)
-	cmd.SetStderr(errFile)
+	cmd.SetStdout(nil) // handled by streamProxyLogs
+	cmd.SetStderr(nil)
 	cmd.SetStdin(nil)
 
 	if err := cmd.Start(); err != nil {
@@ -402,26 +389,35 @@ func startProxy(
 	return nil
 }
 
-func streamProxyLogs(
-	ctx context.Context,
-	logger log.Logger,
-	osProxy utils.OsProxy,
-) error {
-	f, err := os.Open(xcelerate.PathFor(osProxy, serverOut))
+func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger, osProxy utils.OsProxy) error {
+	var f *os.File
+	err := retry.Times(10).Wait(1 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		proxyLogFile, err := getProxyLogFile(osProxy, invocationID)
+		if err != nil {
+			logger.TDebugf("Failed to get proxy log file, attempt: %d, error: %v", attempt+1, err)
+
+			return fmt.Errorf("failed to get proxy log file: %w", err), false
+		}
+
+		f, err = osProxy.OpenFile(proxyLogFile, os.O_RDONLY, 0)
+		if err != nil {
+			logger.TDebugf("Failed to open proxy log file, attempt: %d, error: %v", attempt+1, err)
+
+			return fmt.Errorf("failed to open proxy log file: %w", err), false
+		}
+
+		return nil, true
+	})
 	if err != nil {
-		return fmt.Errorf("failed to open proxy log file: %w", err)
+		return fmt.Errorf("failed to open proxy log file after retries: %w", err)
 	}
+
 	defer func(f *os.File) {
 		err := f.Close()
 		if err != nil {
 			logger.Errorf("failed to close log file: %v", err)
 		}
 	}(f)
-
-	// Seek to end to only get this invocation's logs
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		return fmt.Errorf("failed to seek proxy log file: %w", err)
-	}
 
 	r := bufio.NewReader(f)
 	for {
