@@ -175,7 +175,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	p.sessionState.saveKeyOnce(key)
-	p.sessionState.addDownloadBytes(int64(buffer.Len()))
+	size := int64(buffer.Len())
 
 	data := blob{} //nolint:exhaustruct
 	if err := gob.NewDecoder(buffer).Decode(&data); err != nil {
@@ -189,6 +189,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	hit = true
+	p.sessionState.addDownloadBytes(size)
 	p.sessionState.incrementHits()
 
 	return &llvmcas.CASGetResponse{
@@ -278,12 +279,13 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	}
 
 	size := int64(buffer.Len())
-	p.sessionState.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
+
+	p.sessionState.addUploadBytes(size)
 
 	return &llvmcas.CASPutResponse{
 		Contents: &llvmcas.CASPutResponse_CasId{
@@ -336,7 +338,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	p.sessionState.saveKeyOnce(key)
-	p.sessionState.addDownloadBytes(int64(buffer.Len()))
+	size := int64(buffer.Len())
 
 	data, err := io.ReadAll(buffer)
 	if err != nil {
@@ -344,6 +346,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	hit = true
+	p.sessionState.addDownloadBytes(size)
 	p.sessionState.incrementHits()
 
 	return &llvmcas.CASLoadResponse{
@@ -442,12 +445,12 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		reader = bytes.NewBuffer(request.GetData().GetBlob().GetData())
 	}
 
-	p.sessionState.addUploadBytes(size)
-
 	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
+
+	p.sessionState.addUploadBytes(size)
 
 	return &llvmcas.CASSaveResponse{
 		Contents: &llvmcas.CASSaveResponse_CasId{
@@ -499,7 +502,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		return errorHandler(fmt.Errorf("failed to download value: %w", err)), nil
 	}
 
-	p.sessionState.addDownloadBytes(int64(buffer.Len()))
+	size := int64(buffer.Len())
 
 	var entries map[string][]byte
 	if err := gob.NewDecoder(buffer).Decode(&entries); err != nil {
@@ -507,6 +510,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	hit = true
+	p.sessionState.addDownloadBytes(size)
 	p.sessionState.incrementHits()
 
 	return &llvmkv.GetValueResponse{
@@ -548,12 +552,13 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}
 
 	size := int64(buffer.Len())
-	p.sessionState.addUploadBytes(size)
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to upload value: %w", err)), nil
 	}
+
+	p.sessionState.addUploadBytes(size)
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil
