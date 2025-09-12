@@ -18,13 +18,13 @@ import (
 )
 
 type RunStats struct {
-	StartTime         time.Time
-	Success           bool
-	Error             error
-	ExitCode          int
-	DurationMS        int64
-	XcodeVersion      string
-	XcodeBuildVersion string
+	StartTime        time.Time
+	Success          bool
+	Error            error
+	ExitCode         int
+	DurationMS       int64
+	XcodeVersion     string
+	XcodeBuildNumber string
 }
 
 type DefaultRunner struct {
@@ -53,11 +53,6 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 
 	if err := runner.determineXcodeVersionAndBuildNumber(ctx, xcodePath, &runStats); err != nil {
 		runner.logger.TErrorf("Failed to determine xcode version and build number: %+v", err)
-
-		runStats.Error = err
-		runStats.Success = false
-
-		return runStats
 	}
 
 	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
@@ -129,12 +124,14 @@ func (runner *DefaultRunner) determineXcodeVersionAndBuildNumber(ctx context.Con
 	runner.logger.TDebugf("Checking xcodebuild version and build number: %s -version", xcodebuild)
 
 	versionRegexp := regexp.MustCompile(`Xcode\s+(.*)`)
-	buildVersionRegexp := regexp.MustCompile(`Build version\s+(.*)`)
+	buildNumberRegexp := regexp.MustCompile(`Build version\s+(.*)`)
 
 	output, err := exec.CommandContext(ctx, xcodebuild, "-version").Output()
 	if err != nil {
 		return fmt.Errorf("xcodebuild -version failed: %w", err)
 	}
+
+	runner.logger.TDebugf("xcodebuild -version output: %s", string(output))
 
 	lines := strings.Split(string(output), "\n")
 	if len(lines) < 2 {
@@ -142,18 +139,20 @@ func (runner *DefaultRunner) determineXcodeVersionAndBuildNumber(ctx context.Con
 	}
 
 	versionMatch := versionRegexp.FindStringSubmatch(strings.TrimSpace(lines[0]))
+	runner.logger.TDebugf("xcode version match: %+v", versionMatch)
 	if len(versionMatch) < 2 {
 		return fmt.Errorf("failed to parse xcode version from: %s", lines[0])
 	}
 
 	runStats.XcodeVersion = versionMatch[1]
 
-	buildVersionMatch := buildVersionRegexp.FindStringSubmatch(strings.TrimSpace(lines[1]))
-	if len(buildVersionMatch) < 2 {
+	buildNumberMatch := buildNumberRegexp.FindStringSubmatch(strings.TrimSpace(lines[1]))
+	runner.logger.TDebugf("xcode build number match: %+v", buildNumberMatch)
+	if len(buildNumberMatch) < 2 {
 		return fmt.Errorf("failed to parse xcode build number from: %s", lines[1])
 	}
 
-	runStats.XcodeBuildVersion = buildVersionMatch[1]
+	runStats.XcodeBuildNumber = buildNumberMatch[1]
 
 	return nil
 }

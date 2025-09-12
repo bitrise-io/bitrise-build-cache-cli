@@ -66,5 +66,5 @@ type Invocation struct {
 	Datacenter       string            `json:"datacenter"`
 	DefaultCharset   string            `json:"defaultCharset"`
 	Locale           string            `json:"locale"`
-	// ToolBuildNumber  string            `json:"toolBuildNumber"`
+	ToolBuildNumber  string            `json:"toolBuildNumber"`
 }
