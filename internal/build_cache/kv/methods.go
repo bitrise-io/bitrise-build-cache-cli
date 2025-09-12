@@ -1,19 +1,21 @@
 package kv
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"time"
 
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/go-utils/retry"
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 )
 
 type PutParams struct {
@@ -30,7 +32,7 @@ type FileDigest struct {
 func (c *Client) GetCapabilities(ctx context.Context) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(true))
 
 	_, err := c.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
@@ -45,8 +47,28 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteCloser, error) {
-	md := metadata.Join(c.getMethodCallMetadata(), metadata.Pairs(
+func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
+	//nolint:wrapcheck
+	return retry.Times(10).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt > 0 {
+			c.logger.Debugf("Retrying GetCapabilities... (attempt %d)", attempt)
+		}
+
+		if err := c.GetCapabilities(ctx); err != nil {
+			c.logger.Errorf("Error in GetCapabilities attempt %d: %s", attempt, err)
+			if errors.Is(err, ErrCacheUnauthenticated) {
+				return ErrCacheUnauthenticated, true
+			}
+
+			return err, false
+		}
+
+		return nil, false
+	})
+}
+
+func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, error) {
+	md := metadata.Join(c.getMethodCallMetadata(false), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
@@ -74,15 +96,15 @@ func (c *Client) InitiatePut(ctx context.Context, params PutParams) (io.WriteClo
 	}, nil
 }
 
-func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, error) {
+func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string, offset int64) (*reader, error) {
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	// Timeout is the responsibility of the caller
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata())
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(false))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
-		ReadOffset:   0,
+		ReadOffset:   offset,
 		ReadLimit:    0,
 	}
 	stream, err := c.bitriseKVClient.Get(ctx, readReq)
@@ -95,10 +117,14 @@ func (c *Client) InitiateGet(ctx context.Context, name string) (io.ReadCloser, e
 		return nil, fmt.Errorf("initiate get: %w", err)
 	}
 
-	return &reader{
-		stream: stream,
-		buf:    bytes.Buffer{},
-	}, nil
+	r := &reader{
+		logger:        logger,
+		stream:        stream,
+		metadataReady: make(chan struct{}),
+	}
+	go r.readStreamMetadata()
+
+	return r, nil
 }
 
 func (c *Client) Delete(ctx context.Context, name string) error {
@@ -106,7 +132,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -122,7 +148,8 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 }
 
 func (c *Client) findMissing(ctx context.Context,
-	req *remoteexecution.FindMissingBlobsRequest) ([]*FileDigest, error) {
+	req *remoteexecution.FindMissingBlobsRequest,
+) ([]*FileDigest, error) {
 	var resp *remoteexecution.FindMissingBlobsResponse
 	err := retry.Times(3).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt > 0 {
@@ -130,7 +157,7 @@ func (c *Client) findMissing(ctx context.Context,
 		}
 
 		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata())
+		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
 
 		var err error
 		resp, err = c.casClient.FindMissingBlobs(callCtx, req)
@@ -161,7 +188,8 @@ func (c *Client) findMissingChunked(ctx context.Context,
 	req *remoteexecution.FindMissingBlobsRequest,
 	digests []*FileDigest,
 	blobDigests []*remoteexecution.Digest,
-	gRPCLimitBytes int) ([]*FileDigest, error) {
+	gRPCLimitBytes int,
+) ([]*FileDigest, error) {
 	var missingBlobs []*FileDigest
 	// Chunk up request blobs to fit into gRPC limits
 	// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
@@ -227,7 +255,7 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 	return out
 }
 
-func (c *Client) getMethodCallMetadata() metadata.MD {
+func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
 		"x-flare-buildtool", c.clientName)
@@ -248,11 +276,37 @@ func (c *Client) getMethodCallMetadata() metadata.MD {
 	if c.cacheConfigMetadata.BitriseWorkflowName != "" {
 		md.Set("x-workflow-name", c.cacheConfigMetadata.BitriseWorkflowName)
 	}
-	if c.cacheConfigMetadata.RepoURL != "" {
-		md.Set("x-repository-url", c.cacheConfigMetadata.RepoURL)
+	if c.cacheConfigMetadata.BitriseStepExecutionID != "" {
+		md.Set("x-flare-step-id", c.cacheConfigMetadata.BitriseStepExecutionID)
+	}
+	if c.cacheConfigMetadata.GitMetadata.RepoURL != "" {
+		md.Set("x-repository-url", c.cacheConfigMetadata.GitMetadata.RepoURL)
 	}
 	if c.cacheConfigMetadata.CIProvider != "" {
 		md.Set("x-ci-provider", c.cacheConfigMetadata.CIProvider)
+	}
+
+	md.Set("x-flare-blob-validation-level", "WARN")
+	md.Set("x-flare-ac-validation-mode", "fast")
+
+	rmd := &remoteexecution.RequestMetadata{
+		ToolInvocationId: c.invocationID,
+		ToolDetails: &remoteexecution.ToolDetails{
+			ToolName: c.clientName,
+		},
+	}
+	serializedRMD, err := proto.Marshal(rmd)
+	if err != nil {
+		c.logger.Errorf("Failed to marshal RequestMetadata: %v", err)
+	} else {
+		md.Set("build.bazel.remote.execution.v2.requestmetadata-bin", string(serializedRMD))
+	}
+
+	if logMD {
+		logMd := md.Copy()
+		logMd.Delete("authorization")
+		logMd.Set("build.bazel.remote.execution.v2.requestmetadata-bin", rmd.String())
+		c.logger.TDebugf("metadata: %+v", logMd)
 	}
 
 	return md

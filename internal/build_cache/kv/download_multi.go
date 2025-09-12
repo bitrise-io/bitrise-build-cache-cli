@@ -9,9 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 type DownloadFilesStats struct {
@@ -25,7 +26,8 @@ type DownloadFilesStats struct {
 
 // nolint: gocognit
 func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegroup.Info,
-	isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int) (DownloadFilesStats, error) {
+	isDebugLogMode, skipExisting, forceOverwrite bool, maxLoggedDownloadErrors int,
+) (DownloadFilesStats, error) {
 	var largestFileSize int64
 	for _, file := range dd.Files {
 		if file.Size > largestFileSize {

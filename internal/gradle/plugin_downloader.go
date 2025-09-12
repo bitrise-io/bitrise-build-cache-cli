@@ -27,7 +27,6 @@ func (downloader PluginDownloader) Download(file PluginFile) (string, error) {
 			repositoryURL: artifactRepository,
 			logger:        downloader.logger,
 		}.Download()
-
 		if err != nil {
 			downloader.logger.Errorf("downloading %s from %s: %w", file.name(), artifactRepository, err)
 

@@ -6,17 +6,25 @@ linters:
     - depguard
     - err113
     - exhaustruct
+    - funcorder
     - funlen
     - gochecknoinits
     - godot
+    - godox
+    - ireturn
     - lll
     - mnd
+    - noinlineerr
     - nolintlint
     - paralleltest
     - perfsprint
+    - revive
+    - tagliatelle
     - testpackage
     - varnamelen
     - wsl
+    - wsl_v5
+    - ireturn
   exclusions:
     generated: lax
     presets:
@@ -28,10 +36,20 @@ linters:
       - third_party$
       - builtin$
       - examples$
+      - proto/*
+      - mocks/*
 formatters:
   enable:
-    - gofmt
-    - goimports
+  - gci
+  - gofmt
+  - gofumpt
+  - goimports
+  settings:
+    gci:
+      sections:
+      - standard # Standard section: captures all standard packages.
+      - default # Default section: contains all imports that could not be matched to another section type.
+      - localmodule # Local module section: contains all local packages. This section is not present unless explicitly enabled.
   exclusions:
     generated: lax
     paths:

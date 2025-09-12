@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -16,11 +18,11 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+//go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../../proto/kv_storage KVStorageClient
+
 type Client struct {
-	bytestreamClient    bytestream.ByteStreamClient
 	bitriseKVClient     kv_storage.KVStorageClient
 	capabilitiesClient  remoteexecution.CapabilitiesClient
 	casClient           remoteexecution.ContentAddressableStorageClient
@@ -29,6 +31,12 @@ type Client struct {
 	cacheConfigMetadata common.CacheConfigMetadata
 	logger              log.Logger
 	cacheOperationID    string
+	invocationID        string
+	sessionMutex        sync.Mutex
+	downloadRetry       uint
+	downloadRetryWait   time.Duration
+	uploadRetry         uint
+	uploadRetryWait     time.Duration
 }
 
 type NewClientParams struct {
@@ -40,6 +48,13 @@ type NewClientParams struct {
 	CacheConfigMetadata common.CacheConfigMetadata
 	Logger              log.Logger
 	CacheOperationID    string
+	BitriseKVClient     kv_storage.KVStorageClient
+	CapabilitiesClient  remoteexecution.CapabilitiesClient
+	InvocationID        string
+	DownloadRetry       uint
+	DownloadRetryWait   time.Duration
+	UploadRetry         uint
+	UploadRetryWait     time.Duration
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -53,17 +68,47 @@ func NewClient(p NewClientParams) (*Client, error) {
 		return nil, fmt.Errorf("dial %s: %w", p.Host, err)
 	}
 
+	bitriseKVClient := p.BitriseKVClient
+	if bitriseKVClient == nil {
+		bitriseKVClient = kv_storage.NewKVStorageClient(conn)
+	}
+	capabilitiesClient := p.CapabilitiesClient
+	if capabilitiesClient == nil {
+		capabilitiesClient = remoteexecution.NewCapabilitiesClient(conn)
+	}
+
+	if p.DownloadRetry == 0 {
+		p.DownloadRetry = 3
+	}
+	if p.DownloadRetryWait == 0 {
+		p.DownloadRetryWait = 1 * time.Second
+	}
+	if p.UploadRetry == 0 {
+		p.UploadRetry = 3
+	}
+	if p.UploadRetryWait == 0 {
+		p.UploadRetryWait = 1 * time.Second
+	}
+
 	return &Client{
-		bytestreamClient:    bytestream.NewByteStreamClient(conn),
-		bitriseKVClient:     kv_storage.NewKVStorageClient(conn),
-		capabilitiesClient:  remoteexecution.NewCapabilitiesClient(conn),
+		bitriseKVClient:     bitriseKVClient,
+		capabilitiesClient:  capabilitiesClient,
 		casClient:           remoteexecution.NewContentAddressableStorageClient(conn),
 		clientName:          p.ClientName,
 		authConfig:          p.AuthConfig,
 		logger:              p.Logger,
 		cacheConfigMetadata: p.CacheConfigMetadata,
 		cacheOperationID:    p.CacheOperationID,
+		invocationID:        p.InvocationID,
+		downloadRetry:       p.DownloadRetry,
+		downloadRetryWait:   p.DownloadRetryWait,
+		uploadRetry:         p.UploadRetry,
+		uploadRetryWait:     p.UploadRetryWait,
 	}, nil
+}
+
+func (c *Client) SetLogger(logger log.Logger) {
+	c.logger = logger
 }
 
 type writer struct {
@@ -71,6 +116,11 @@ type writer struct {
 	resourceName string
 	offset       int64
 	fileSize     int64
+	response     *bytestream.WriteResponse
+}
+
+func (w *writer) Response() *bytestream.WriteResponse {
+	return w.response
 }
 
 func (w *writer) Write(p []byte) (int, error) {
@@ -93,7 +143,8 @@ func (w *writer) Write(p []byte) (int, error) {
 }
 
 func (w *writer) Close() error {
-	_, err := w.stream.CloseAndRecv()
+	var err error
+	w.response, err = w.stream.CloseAndRecv()
 	if err != nil {
 		return fmt.Errorf("close stream: %w", err)
 	}
@@ -102,8 +153,12 @@ func (w *writer) Close() error {
 }
 
 type reader struct {
-	stream bytestream.ByteStream_ReadClient
-	buf    bytes.Buffer
+	logger   log.Logger
+	stream   bytestream.ByteStream_ReadClient
+	metadata sync.Map
+	buf      bytes.Buffer
+
+	metadataReady chan struct{}
 }
 
 func (r *reader) Read(p []byte) (int, error) {
@@ -122,8 +177,12 @@ func (r *reader) Read(p []byte) (int, error) {
 	resp, err := r.stream.Recv()
 	switch {
 	case errors.Is(err, io.EOF):
+		r.readTrailerMetadata()
+
 		return 0, io.EOF
 	case err != nil:
+		r.readTrailerMetadata()
+
 		return 0, fmt.Errorf("stream receive: %w", err)
 	}
 
@@ -132,10 +191,52 @@ func (r *reader) Read(p []byte) (int, error) {
 		return n, nil
 	}
 
-	unwritenData := resp.GetData()[n:]
-	_, _ = r.buf.Write(unwritenData) // this will never fail
+	unwrittenData := resp.GetData()[n:]
+	_, _ = r.buf.Write(unwrittenData) // this will never fail
 
 	return n, nil
+}
+
+func (r *reader) readStreamMetadata() {
+	if header, err := r.stream.Header(); err == nil {
+		for k, v := range header {
+			if len(v) > 0 {
+				r.metadata.Store(k, v[0])
+			}
+		}
+	} else {
+		r.logger.Errorf("Failed to read stream header: %v", err)
+	}
+
+	go func() {
+		close(r.metadataReady)
+	}()
+}
+
+func (r *reader) readTrailerMetadata() {
+	if trailer := r.stream.Trailer(); trailer != nil {
+		for k, v := range trailer {
+			if len(v) > 0 {
+				r.metadata.Store(k, v[0])
+			}
+		}
+	}
+}
+
+func (r *reader) Metadata() map[string]string {
+	<-r.metadataReady
+	m := make(map[string]string)
+	r.metadata.Range(func(key, value any) bool {
+		k, ok1 := key.(string)
+		v, ok2 := value.(string)
+		if ok1 && ok2 {
+			m[k] = v
+		}
+
+		return true
+	})
+
+	return m
 }
 
 func (r *reader) Close() error {

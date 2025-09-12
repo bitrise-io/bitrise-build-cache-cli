@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 	"github.com/bitrise-io/go-utils/retry"
 	"github.com/dustin/go-humanize"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
 type UploadFilesStats struct {

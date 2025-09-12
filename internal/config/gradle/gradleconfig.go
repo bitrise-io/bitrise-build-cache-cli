@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 //go:embed initd.gradle.kts.gotemplate
@@ -48,7 +49,7 @@ func (inventory TemplateInventory) WriteToGradleInit(
 ) error {
 	logger.Infof("(i) Ensure ~/.gradle and ~/.gradle/init.d directories exist")
 	gradleInitDPath := filepath.Join(gradleHomePath, "init.d")
-	err := osProxy.MkdirAll(gradleInitDPath, 0755) //nolint:mnd
+	err := osProxy.MkdirAll(gradleInitDPath, 0o755) //nolint:mnd
 	if err != nil {
 		return fmt.Errorf(errFmtEnsureGradleInitDirExists, err)
 	}
@@ -62,7 +63,7 @@ func (inventory TemplateInventory) WriteToGradleInit(
 	logger.Infof("(i) Write ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts")
 	{
 		initGradlePath := filepath.Join(gradleInitDPath, "bitrise-build-cache.init.gradle.kts")
-		err = osProxy.WriteFile(initGradlePath, []byte(initGradleContent), 0755) //nolint:gosec,mnd
+		err = osProxy.WriteFile(initGradlePath, []byte(initGradleContent), 0o755) //nolint:gosec,mnd
 		if err != nil {
 			return fmt.Errorf(errFmtWritingGradleInitFile, initGradlePath, err)
 		}

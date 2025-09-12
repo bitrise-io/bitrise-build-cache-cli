@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 )
 
 func Test_activateGradleParams(t *testing.T) {
@@ -317,8 +318,7 @@ func Test_activateGradleParams(t *testing.T) {
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := prep()
-			envProvider := func(key string) string { return tt.envVars[key] }
-			got, err := tt.params.TemplateInventory(mockLogger, envProvider, tt.debug)
+			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {

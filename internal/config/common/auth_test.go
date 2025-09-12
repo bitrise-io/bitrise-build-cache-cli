@@ -58,11 +58,7 @@ func TestReadAuthConfigFromEnvironments(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			envProvider := func(key string) string {
-				return tt.envVars[key]
-			}
-
-			config, err := ReadAuthConfigFromEnvironments(envProvider)
+			config, err := ReadAuthConfigFromEnvironments(tt.envVars)
 			if tt.expectedError != nil {
 				require.EqualError(t, err, tt.expectedError.Error())
 			} else {

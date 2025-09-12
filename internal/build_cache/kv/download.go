@@ -2,21 +2,27 @@ package kv
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/bitrise-io/go-utils/retry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// ErrCacheNotFound ...
-var ErrCacheNotFound = errors.New("no cache archive found for the provided keys")
-var ErrCacheUnauthenticated = errors.New("unauthenticated")
+var (
+	// ErrCacheNotFound ...
+	ErrCacheNotFound        = errors.New("no cache archive found for the provided keys")
+	ErrCacheUnauthenticated = errors.New("unauthenticated")
+)
 
 // ErrFileExistsAndNotWritable ...
 var ErrFileExistsAndNotWritable = errors.New("file already exists and is not writable")
@@ -43,7 +49,7 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 	}
 
 	if fileMode == 0 {
-		fileMode = 0666
+		fileMode = 0o666
 	}
 
 	if fileInfo, err := os.Stat(filePath); err == nil {
@@ -51,13 +57,13 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 			return true, nil
 		}
 
-		ownerWritable := (fileInfo.Mode().Perm() & 0200) != 0
+		ownerWritable := (fileInfo.Mode().Perm() & 0o200) != 0
 		if !ownerWritable {
 			if !forceOverwrite {
 				return false, ErrFileExistsAndNotWritable
 			}
 
-			if err := os.Chmod(filePath, 0666); err != nil {
+			if err := os.Chmod(filePath, 0o666); err != nil {
 				return false, fmt.Errorf("force overwrite - failed to change existing file permissions: %w", err)
 			}
 
@@ -81,25 +87,64 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 }
 
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	var offset int64
 
-	kvReader, err := c.InitiateGet(timeoutCtx, key)
-	if err != nil {
-		return fmt.Errorf("create kv get client (with key %s): %w", key, err)
+	hasher := sha256.New()
+	multiWriter := io.MultiWriter(hasher, destination)
+	expectedHash := ""
+
+	downloadErr := retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
+		if attempt == 0 {
+			c.logger.Debugf("Downloading %s", key)
+		} else {
+			c.logger.Infof("%d. attempt to download %s with offset %d", attempt+1, key, offset)
+		}
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
+		kvReader, err := c.initiateGet(timeoutCtx, c.logger, key, offset)
+		if err != nil {
+			c.logger.Warnf("Failed to download stream: attempt %d: initiate get: %s", attempt+1, err)
+
+			return fmt.Errorf("create kv get client (with key %s): %w", key, err), true
+		}
+		defer kvReader.Close()
+
+		if n, err := io.Copy(multiWriter, kvReader); err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.NotFound {
+				return ErrCacheNotFound, true
+			}
+			if ok && st.Code() == codes.Unauthenticated {
+				return ErrCacheUnauthenticated, true
+			}
+
+			offset += n
+
+			c.logger.Warnf("Failed to download stream: attempt %d: %s", attempt+1, err)
+
+			return fmt.Errorf("download archive: %w", err), false
+		}
+
+		c.logger.Debugf("Response metadata: %+v", kvReader.Metadata())
+		expectedHash = kvReader.Metadata()["x-flare-blob-validation-sha256"]
+		expectedHash = strings.TrimPrefix(expectedHash, "blob/")
+
+		return nil, false
+	})
+	if downloadErr != nil {
+		//nolint: wrapcheck
+		return downloadErr
 	}
-	defer kvReader.Close()
 
-	if _, err := io.Copy(destination, kvReader); err != nil {
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.NotFound {
-			return ErrCacheNotFound
+	if expectedHash != "" {
+		fileHash := hex.EncodeToString(hasher.Sum(nil))
+		if expectedHash != fileHash {
+			return fmt.Errorf("downloaded file hash mismatch: expected %s, got %s", expectedHash, fileHash)
+		} else {
+			c.logger.Debugf("Downloaded hash matches expected: %s", expectedHash)
 		}
-		if ok && st.Code() == codes.Unauthenticated {
-			return ErrCacheUnauthenticated
-		}
-
-		return fmt.Errorf("download archive: %w", err)
 	}
 
 	return nil

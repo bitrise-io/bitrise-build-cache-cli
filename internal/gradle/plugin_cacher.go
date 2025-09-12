@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 )
 
 const (
@@ -102,7 +103,6 @@ func (pluginCacher PluginCacher) fetchFromCache(
 		true,
 		false,
 	)
-
 	if err != nil {
 		return downloaded, fmt.Errorf(errFmtPluginsFromKVCache, err)
 	}
@@ -121,7 +121,6 @@ func (pluginCacher PluginCacher) cache(
 		filepath.Join(file.absoluteDirPath(logger), file.name()),
 		file.key(),
 	)
-
 	if err != nil {
 		return fmt.Errorf(errFmtPluginsToKVCache, err)
 	}

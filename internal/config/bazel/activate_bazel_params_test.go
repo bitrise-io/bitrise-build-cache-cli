@@ -2,17 +2,17 @@ package bazelconfig
 
 import (
 	"fmt"
-	"testing"
-
 	"slices"
 	"strings"
+	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func Test_ActivateBazelParams(t *testing.T) {
@@ -32,14 +32,14 @@ func Test_ActivateBazelParams(t *testing.T) {
 		mockLogger := prep()
 		params := DefaultActivateBazelParams()
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 			"BITRISE_IO":                       "true",
 			"BITRISE_APP_SLUG":                 "AppSlugValue",
 			"BITRISE_TRIGGERED_WORKFLOW_TITLE": "WorkflowName1",
 			"BITRISE_BUILD_SLUG":               "BuildID1",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(cmd string, params ...string) (string, error) {
@@ -93,7 +93,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 	t.Run("TemplateInventory with auth error returns error", func(t *testing.T) {
 		mockLogger := prep()
 		params := DefaultActivateBazelParams()
-		envVars := createEnvProvider(map[string]string{})
+		envVars := map[string]string{}
 
 		// when
 		_, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -111,10 +111,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params.Cache.PushEnabled = true
 		params.Cache.Endpoint = "custom-endpoint:8080"
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -133,10 +133,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params := DefaultActivateBazelParams()
 		params.Cache.Enabled = false
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -154,10 +154,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params := DefaultActivateBazelParams()
 		params.BES.Enabled = false
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -176,10 +176,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params.BES.Enabled = true
 		params.BES.Endpoint = "custom-bes:8080"
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -197,11 +197,11 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params := DefaultActivateBazelParams()
 		params.RBE.Enabled = true
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 			"BITRISE_RBE_ENDPOINT":             "rbe.yolo.com:443",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -220,10 +220,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params.RBE.Enabled = true
 		params.RBE.Endpoint = "custom-rbe:8080"
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -241,10 +241,10 @@ func Test_ActivateBazelParams(t *testing.T) {
 		params := DefaultActivateBazelParams()
 		params.Timestamps = true
 
-		envVars := createEnvProvider(map[string]string{
+		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-		})
+		}
 
 		// when
 		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
@@ -255,10 +255,4 @@ func Test_ActivateBazelParams(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, inventory.Common.Timestamps)
 	})
-}
-
-func createEnvProvider(envs map[string]string) func(string) string {
-	return func(key string) string {
-		return envs[key]
-	}
 }
