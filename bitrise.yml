@@ -1004,7 +1004,9 @@ workflows:
             mapfile -t apps <<< "$APPS"
 
             for app in "${apps[@]}"; do
-              pretty_diff "${app}_END" "${app}_START"
+              local start="${app}_START"
+              local end="${app}_END"
+              pretty_diff "${!end}" "${!start}"
             done
     envs:
     - APPS: |-
