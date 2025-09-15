@@ -894,7 +894,185 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
+  benchmark_build_baseline_wordpress:
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: WordPress
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf set ruby 3.2.2
 
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress
+    - xcode-build-for-simulator@3:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: WordPress
+  benchmark_build_baseline_tuist:
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: Tuist
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Tuist
+  benchmark_results:
+    steps:
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -exo pipefail
+
+            pretty_diff() {
+              local t1=$1
+              local t2=$2
+
+              local diff=$(( t2 - t1 ))
+              local sign=""
+              if (( diff < 0 )); then
+                sign="-"
+                diff=$(( -diff ))
+              fi
+
+              local minutes=$(( diff / 60 ))
+              local seconds=$(( rem % 60 ))
+
+              local out=""
+              (( minutes > 0 )) && out+="${minutes}m "
+              out+="${seconds}s"
+
+              printf '%s%s\n' "$sign" "$out"
+            }
+
+            mapfile -t apps <<< "$APPS"
+
+            for app in "${apps[@]}"; do
+              pretty_diff "${app}_END" "${app}_START"
+            done
+    envs:
+    - APPS: |-
+        WordPress
+        WordPress_CC
+        Tuist
+        Tuist_CC
+      opts:
+        is_expand: false
+  benchmark_build_cc_wordpress:
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: WordPress_CC
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf set ruby 3.2.2
+
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress_CC
+    - xcode-build-for-simulator@3:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: WordPress_CC
+  benchmark_build_cc_tuist:
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Tuist_CC
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist_CC
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Tuist_CC
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1105,3 +1283,15 @@ pipelines:
         - source_branch: "*"
       push:
         - branch: main
+  benchmark:
+    workflows:
+      benchmark_build_baseline_tuist: {}
+      benchmark_build_baseline_wordpress: {}
+      benchmark_results:
+        depends_on:
+        - benchmark_build_baseline_tuist
+        - benchmark_build_baseline_wordpress
+        - benchmark_build_cc_wordpress
+        - benchmark_build_cc_tuist
+      benchmark_build_cc_wordpress: {}
+      benchmark_build_cc_tuist: {}
