@@ -927,9 +927,9 @@ workflows:
             mapfile -t apps <<< "$APPS"
 
             for app in "${apps[@]}"; do
-              envman run bash -c 'start="${app}_START"'
-              envman run bash -c 'end="${app}_END"'
-              pretty_diff "${!end}" "${!start}"
+              start="${app}_START"
+              end="${app}_END"
+              envman run bash -c 'pretty_diff "${!end}" "${!start}"'
             done
     envs:
     - APPS: |-
