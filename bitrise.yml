@@ -916,17 +916,6 @@ workflows:
               "_Analyze_DD_SPM_CC"
             )
 
-            app_variants=()   # target array
-
-            for base in "${APPS[@]}"; do
-              # add the base itself
-              app_variants+=("$base")
-              for v in "${variants[@]}"; do
-                [[ -z "$v" ]] && continue   # skip empty variant already added as base
-                app_variants+=("${base}${v}")
-              done
-            done
-
             pretty_diff() {
               local t1=$1
               local t2=$2
@@ -948,7 +937,20 @@ workflows:
               printf '%s%s\n' "$sign" "$out"
             }
 
-            mapfile -t apps <<< "$APPS"
+            apps=()
+            while IFS= read -r line || [[ -n $line ]]; do
+              apps+=("$line")
+            done <<< "$APPS"
+
+            app_variants=()   # target array
+            for base in "${APPS[@]}"; do
+              # add the base itself
+              app_variants+=("$base")
+              for v in "${variants[@]}"; do
+                [[ -z "$v" ]] && continue   # skip empty variant already added as base
+                app_variants+=("${base}${v}")
+              done
+            done
 
             for app in "${app_variants[@]}"; do
               start="${app}_START"
