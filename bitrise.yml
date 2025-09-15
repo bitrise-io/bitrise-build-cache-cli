@@ -1573,6 +1573,14 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze
+    - script:
+        title: Resolve package dependencies
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            xcodebuild -resolvePackageDependencies -workspace Tuist.xcworkspace -scheme TuistApp
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1610,6 +1618,14 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC
+    - script:
+        title: Resolve package dependencies
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            xcodebuild -resolvePackageDependencies -workspace Tuist.xcworkspace -scheme TuistApp
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1647,6 +1663,14 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD
+    - script:
+        title: Resolve package dependencies
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            xcodebuild -resolvePackageDependencies -workspace Tuist.xcworkspace -scheme TuistApp
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1684,6 +1708,14 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_SPM
+    - script:
+        title: Resolve package dependencies
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            xcodebuild -resolvePackageDependencies -workspace Tuist.xcworkspace -scheme TuistApp
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1721,6 +1753,14 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD_SPM
+    - script:
+        title: Resolve package dependencies
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            xcodebuild -resolvePackageDependencies -workspace Tuist.xcworkspace -scheme TuistApp
     - xcode-analyze:
         inputs:
         - workdir: .
