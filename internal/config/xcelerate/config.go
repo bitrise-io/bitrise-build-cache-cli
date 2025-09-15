@@ -29,6 +29,7 @@ type Params struct {
 	DebugLogging            bool
 	XcodePathOverride       string
 	ProxySocketPathOverride string
+	PushEnabled             bool
 }
 
 type Config struct {
@@ -39,6 +40,7 @@ type Config struct {
 	OriginalXcodebuildPath string                 `json:"originalXcodebuildPath"`
 	BuildCacheEnabled      bool                   `json:"buildCacheEnabled"`
 	BuildCacheEndpoint     string                 `json:"buildCacheEndpoint"`
+	PushEnabled            bool                   `json:"pushEnabled"`
 	DebugLogging           bool                   `json:"debugLogging,omitempty"`
 	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
@@ -68,6 +70,7 @@ func DefaultParams() Params {
 		DebugLogging:            false,
 		XcodePathOverride:       "",
 		ProxySocketPathOverride: "",
+		PushEnabled:             true,
 	}
 }
 
@@ -123,6 +126,7 @@ func NewConfig(ctx context.Context,
 		OriginalXcodebuildPath: xcodePath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		BuildCacheEndpoint:     params.BuildCacheEndpoint,
+		PushEnabled:            params.PushEnabled,
 		DebugLogging:           params.DebugLogging,
 		AuthConfig:             authConfig,
 	}, nil

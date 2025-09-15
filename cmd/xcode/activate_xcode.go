@@ -89,6 +89,10 @@ func init() {
 		"cache-endpoint",
 		activateXcodeParams.BuildCacheEndpoint,
 		"Build Cache endpoint URL.")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.PushEnabled,
+		"cache-push",
+		activateXcodeParams.PushEnabled,
+		"Enable pushing new cache entries")
 	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
 		"xcode-path",
 		activateXcodeParams.XcodePathOverride,

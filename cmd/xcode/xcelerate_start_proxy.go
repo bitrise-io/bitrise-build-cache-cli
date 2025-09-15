@@ -157,7 +157,7 @@ func StartXcodeCacheProxy(
 
 	//nolint:wrapcheck
 	return proxy.
-		NewProxy(client, initialLogger, loggerFactory).
+		NewProxy(client, config.PushEnabled, initialLogger, loggerFactory).
 		Serve(listener)
 }
 
