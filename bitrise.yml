@@ -901,7 +901,7 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             # fail if any commands fails
-            set -exo pipefail
+            set -eo pipefail
 
             pretty_diff() {
               local t1=$1
@@ -927,8 +927,8 @@ workflows:
             mapfile -t apps <<< "$APPS"
 
             for app in "${apps[@]}"; do
-              start="${app}_START"
-              end="${app}_END"
+              envman run bash -c 'start="${app}_START"'
+              envman run bash -c 'end="${app}_END"'
               pretty_diff "${!end}" "${!start}"
             done
     envs:
