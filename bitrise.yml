@@ -929,7 +929,7 @@ workflows:
             for app in "${apps[@]}"; do
               start="${app}_START"
               end="${app}_END"
-              envman run bash -c 'pretty_diff "${!end}" "${!start}"'
+              pretty_diff "${!end}" "${!start}"
             done
     envs:
     - APPS: |-
@@ -1611,6 +1611,12 @@ step_bundles:
         - project_root_path: .
         - derived_data_path: $HOME/Library/Developer/Xcode/DerivedData
         - skip_spm: $USE_SPM
+    - share-pipeline-variable:
+        title: Share benchmark step results
+        inputs:
+        - variables: |-
+            ${BENCHMARK_APP_NAME}_END
+            ${BENCHMARK_APP_NAME}_START
 
 pipelines:
   features-e2e:
