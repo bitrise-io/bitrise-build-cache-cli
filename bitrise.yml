@@ -927,8 +927,8 @@ workflows:
             mapfile -t apps <<< "$APPS"
 
             for app in "${apps[@]}"; do
-              local start="${app}_START"
-              local end="${app}_END"
+              start="${app}_START"
+              end="${app}_END"
               pretty_diff "${!end}" "${!start}"
             done
     envs:
