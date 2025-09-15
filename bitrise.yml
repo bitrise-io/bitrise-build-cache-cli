@@ -948,8 +948,8 @@ workflows:
   benchmark_build_baseline_wordpress:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     steps:
     - bundle::benchmark-setup:
         inputs:
@@ -988,8 +988,8 @@ workflows:
   benchmark_build_baseline_tuist:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     tools:
       tuist: 4.70.0
     steps:
@@ -1025,8 +1025,8 @@ workflows:
   benchmark_build_cc_wordpress:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     steps:
     - bundle::benchmark-setup:
         inputs:
@@ -1065,8 +1065,8 @@ workflows:
   benchmark_build_dd_cc_wordpress:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     steps:
     - bundle::benchmark-setup:
         inputs:
@@ -1105,8 +1105,8 @@ workflows:
   benchmark_build_spm_cc_wordpress:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     steps:
     - bundle::benchmark-setup:
         inputs:
@@ -1145,8 +1145,8 @@ workflows:
   benchmark_build_dd_spm_cc_wordpress:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     steps:
     - bundle::benchmark-setup:
         inputs:
@@ -1185,8 +1185,8 @@ workflows:
   benchmark_build_cc_tuist:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     tools:
       tuist: 4.70.0
     steps:
@@ -1222,8 +1222,8 @@ workflows:
   benchmark_build_dd_cc_tuist:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     tools:
       tuist: 4.70.0
     steps:
@@ -1259,8 +1259,8 @@ workflows:
   benchmark_build_spm_cc_tuist:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     tools:
       tuist: 4.70.0
     steps:
@@ -1296,8 +1296,8 @@ workflows:
   benchmark_build_dd_spm_cc_tuist:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
     tools:
       tuist: 4.70.0
     steps:
