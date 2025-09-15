@@ -1228,12 +1228,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: WordPress_Analyze
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "false"
@@ -1268,12 +1268,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "false"
@@ -1308,12 +1308,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "true"
@@ -1348,12 +1348,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "false"
@@ -1388,12 +1388,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "true"
@@ -1573,12 +1573,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "false"
@@ -1610,12 +1610,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "false"
@@ -1647,12 +1647,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "true"
@@ -1684,12 +1684,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_SPM
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "false"
@@ -1721,12 +1721,12 @@ workflows:
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD_SPM
-    - xcode-build-for-simulator:
+    - xcode-analyze:
         inputs:
+        - workdir: .
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - cache_level: none
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: "true"
