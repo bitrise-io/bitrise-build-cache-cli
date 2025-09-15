@@ -903,6 +903,30 @@ workflows:
             # fail if any commands fails
             set -eo pipefail
 
+            variants=(
+              ""
+              "_CC"
+              "_DD_CC"
+              "_SPM_CC"
+              "_DD_SPM_CC"
+              "_Analyze"
+              "_Analyze_CC"
+              "_Analyze_DD_CC"
+              "_Analyze_SPM_CC"
+              "_Analyze_DD_SPM_CC"
+            )
+
+            app_variants=()   # target array
+
+            for base in "${APPS[@]}"; do
+              # add the base itself
+              app_variants+=("$base")
+              for v in "${variants[@]}"; do
+                [[ -z "$v" ]] && continue   # skip empty variant already added as base
+                app_variants+=("${base}${v}")
+              done
+            done
+
             pretty_diff() {
               local t1=$1
               local t2=$2
@@ -926,23 +950,16 @@ workflows:
 
             mapfile -t apps <<< "$APPS"
 
-            for app in "${apps[@]}"; do
+            for app in "${app_variants[@]}"; do
               start="${app}_START"
               end="${app}_END"
-              pretty_diff "${!end}" "${!start}"
+              echo "Time between ${app}_START and ${app}_END:"
+              pretty_diff "${!start}" "${!end}"
             done
     envs:
     - APPS: |-
         WordPress
-        WordPress_CC
-        WordPress_DD_CC
-        WordPress_SPM_CC
-        WordPress_DD_SPM_CC
         Tuist
-        Tuist_CC
-        Tuist_DD_CC
-        Tuist_SPM_CC
-        Tuist_DD_SPM_CC
       opts:
         is_expand: false
   benchmark_build_baseline_wordpress:
@@ -1182,6 +1199,206 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
+  benchmark_analyze_baseline_wordpress:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: WordPress_Analyze
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf install ruby 3.2.2
+            asdf global ruby 3.2.2
+
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress_Analyze
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: WordPress_Analyze
+  benchmark_analyze_cc_wordpress:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf install ruby 3.2.2
+            asdf global ruby 3.2.2
+
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC
+  benchmark_analyze_cc_dd_wordpress:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf install ruby 3.2.2
+            asdf global ruby 3.2.2
+
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
+  benchmark_analyze_cc_spm_wordpress:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf install ruby 3.2.2
+            asdf global ruby 3.2.2
+
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
+  benchmark_analyze_cc_dd_spm_wordpress:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+        - BRANCH: trunk
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -exo pipefail
+            asdf install ruby 3.2.2
+            asdf global ruby 3.2.2
+
+            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+            mkdir -p ~/DerivedData/Wordpress
+            rake dependencies
+            xcodebuild -resolvePackageDependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: WordPress.xcworkspace
+        - scheme: WordPress
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
   benchmark_build_cc_tuist:
     meta:
       bitrise.io:
@@ -1330,6 +1547,191 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
+  benchmark_analyze_baseline_tuist:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: Tuist_Analyze
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist_Analyze
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Tuist_Analyze
+  benchmark_analyze_cc_tuist:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC
+  benchmark_analyze_cc_dd_tuist:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD
+  benchmark_analyze_cc_spm_tuist:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_SPM
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_SPM
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_SPM
+  benchmark_analyze_cc_dd_spm_tuist:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:tuist/tuist.git
+        - BRANCH: main
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD_SPM
+    - script:
+        title: Generate workspace
+        inputs:
+        - content: |-
+            set -exo pipefail
+            tuist install
+            tuist generate
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD_SPM
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Tuist.xcworkspace
+        - scheme: TuistApp
+        - configuration: Debug
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD_SPM
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1646,6 +2048,16 @@ pipelines:
       benchmark_build_dd_cc_tuist: {}
       benchmark_build_spm_cc_tuist: {}
       benchmark_build_dd_spm_cc_tuist: {}
+      benchmark_analyze_baseline_tuist: {}
+      benchmark_analyze_cc_tuist: {}
+      benchmark_analyze_cc_dd_tuist: {}
+      benchmark_analyze_cc_spm_tuist: {}
+      benchmark_analyze_cc_dd_spm_tuist: {}
+      benchmark_analyze_baseline_wordpress: {}
+      benchmark_analyze_cc_wordpress: {}
+      benchmark_analyze_cc_dd_wordpress: {}
+      benchmark_analyze_cc_spm_wordpress: {}
+      benchmark_analyze_cc_dd_spm_wordpress: {}
       benchmark_results:
         depends_on:
         - benchmark_build_baseline_wordpress
@@ -1658,3 +2070,13 @@ pipelines:
         - benchmark_build_dd_cc_tuist
         - benchmark_build_spm_cc_tuist
         - benchmark_build_dd_spm_cc_tuist
+        - benchmark_analyze_baseline_tuist
+        - benchmark_analyze_cc_tuist
+        - benchmark_analyze_cc_dd_tuist
+        - benchmark_analyze_cc_spm_tuist
+        - benchmark_analyze_cc_dd_spm_tuist
+        - benchmark_analyze_baseline_wordpress
+        - benchmark_analyze_cc_wordpress
+        - benchmark_analyze_cc_dd_wordpress
+        - benchmark_analyze_cc_spm_wordpress
+        - benchmark_analyze_cc_dd_spm_wordpress
