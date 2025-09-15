@@ -894,6 +894,57 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
+  benchmark_results:
+    steps:
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -exo pipefail
+
+            pretty_diff() {
+              local t1=$1
+              local t2=$2
+
+              local diff=$(( t2 - t1 ))
+              local sign=""
+              if (( diff < 0 )); then
+                sign="-"
+                diff=$(( -diff ))
+              fi
+
+              local minutes=$(( diff / 60 ))
+              local seconds=$(( rem % 60 ))
+
+              local out=""
+              (( minutes > 0 )) && out+="${minutes}m "
+              out+="${seconds}s"
+
+              printf '%s%s\n' "$sign" "$out"
+            }
+
+            mapfile -t apps <<< "$APPS"
+
+            for app in "${apps[@]}"; do
+              local start="${app}_START"
+              local end="${app}_END"
+              pretty_diff "${!end}" "${!start}"
+            done
+    envs:
+    - APPS: |-
+        WordPress
+        WordPress_CC
+        WordPress_DD_CC
+        WordPress_SPM_CC
+        WordPress_DD_SPM_CC
+        Tuist
+        Tuist_CC
+        Tuist_DD_CC
+        Tuist_SPM_CC
+        Tuist_DD_SPM_CC
+      opts:
+        is_expand: false
   benchmark_build_baseline_wordpress:
     meta:
       bitrise.io:
@@ -971,51 +1022,6 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist
-  benchmark_results:
-    steps:
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -exo pipefail
-
-            pretty_diff() {
-              local t1=$1
-              local t2=$2
-
-              local diff=$(( t2 - t1 ))
-              local sign=""
-              if (( diff < 0 )); then
-                sign="-"
-                diff=$(( -diff ))
-              fi
-
-              local minutes=$(( diff / 60 ))
-              local seconds=$(( rem % 60 ))
-
-              local out=""
-              (( minutes > 0 )) && out+="${minutes}m "
-              out+="${seconds}s"
-
-              printf '%s%s\n' "$sign" "$out"
-            }
-
-            mapfile -t apps <<< "$APPS"
-
-            for app in "${apps[@]}"; do
-              local start="${app}_START"
-              local end="${app}_END"
-              pretty_diff "${!end}" "${!start}"
-            done
-    envs:
-    - APPS: |-
-        WordPress
-        WordPress_CC
-        Tuist
-        Tuist_CC
-      opts:
-        is_expand: false
   benchmark_build_cc_wordpress:
     meta:
       bitrise.io:
@@ -1069,7 +1075,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_DD_CC
     - script:
         title: Install dependencies
         inputs:
@@ -1084,7 +1090,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_DD_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1095,7 +1101,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_DD_CC
   benchmark_build_spm_cc_wordpress:
     meta:
       bitrise.io:
@@ -1109,7 +1115,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_SPM_CC
     - script:
         title: Install dependencies
         inputs:
@@ -1124,7 +1130,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_SPM_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1135,7 +1141,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_SPM_CC
   benchmark_build_dd_spm_cc_wordpress:
     meta:
       bitrise.io:
@@ -1149,7 +1155,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
     - script:
         title: Install dependencies
         inputs:
@@ -1164,7 +1170,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1175,7 +1181,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
   benchmark_build_cc_tuist:
     meta:
       bitrise.io:
@@ -1228,7 +1234,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_DD_CC
     - script:
         title: Generate workspace
         inputs:
@@ -1238,7 +1244,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_DD_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1249,7 +1255,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_DD_CC
   benchmark_build_spm_cc_tuist:
     meta:
       bitrise.io:
@@ -1265,7 +1271,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_SPM_CC
     - script:
         title: Generate workspace
         inputs:
@@ -1275,7 +1281,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_SPM_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1286,7 +1292,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_SPM_CC
   benchmark_build_dd_spm_cc_tuist:
     meta:
       bitrise.io:
@@ -1302,7 +1308,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
     - script:
         title: Generate workspace
         inputs:
@@ -1312,7 +1318,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1323,7 +1329,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
 step_bundles:
   generate_gradle_verification_reference:
     steps:
