@@ -962,7 +962,7 @@ workflows:
         Tuist
       opts:
         is_expand: false
-  benchmark_build_baseline_wordpress:
+  benchmark_wordpress_build_baseline:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1002,7 +1002,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: WordPress
-  benchmark_build_baseline_tuist:
+  benchmark_tuist_build_baseline:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1039,7 +1039,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist
-  benchmark_build_cc_wordpress:
+  benchmark_wordpress_build_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1079,7 +1079,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: WordPress_CC
-  benchmark_build_dd_cc_wordpress:
+  benchmark_wordpress_build_cc_dd:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1092,7 +1092,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_DD_CC
+        - BENCHMARK_APP_NAME: WordPress_CC_DD
     - script:
         title: Install dependencies
         inputs:
@@ -1107,7 +1107,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_DD_CC
+        - BENCHMARK_APP_NAME: WordPress_CC_DD
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1118,8 +1118,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_DD_CC
-  benchmark_build_spm_cc_wordpress:
+        - BENCHMARK_APP_NAME: WordPress_CC_DD
+  benchmark_wordpress_build_cc_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1132,7 +1132,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_SPM_CC
+        - BENCHMARK_APP_NAME: WordPress_CC_SPM
     - script:
         title: Install dependencies
         inputs:
@@ -1147,7 +1147,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_SPM_CC
+        - BENCHMARK_APP_NAME: WordPress_CC_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1158,8 +1158,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_SPM_CC
-  benchmark_build_dd_spm_cc_wordpress:
+        - BENCHMARK_APP_NAME: WordPress_CC_SPM
+  benchmark_wordpress_build_cc_dd_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1172,7 +1172,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
+        - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
     - script:
         title: Install dependencies
         inputs:
@@ -1187,7 +1187,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
+        - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1198,8 +1198,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_DD_SPM_CC
-  benchmark_analyze_baseline_wordpress:
+        - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
+  benchmark_wordpress_analyze_baseline:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1239,7 +1239,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: WordPress_Analyze
-  benchmark_analyze_cc_wordpress:
+  benchmark_wordpress_analyze_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1279,7 +1279,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC
-  benchmark_analyze_cc_dd_wordpress:
+  benchmark_wordpress_analyze_cc_dd:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1319,7 +1319,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
-  benchmark_analyze_cc_spm_wordpress:
+  benchmark_wordpress_analyze_cc_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1359,7 +1359,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
-  benchmark_analyze_cc_dd_spm_wordpress:
+  benchmark_wordpress_analyze_cc_dd_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1399,7 +1399,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
-  benchmark_build_cc_tuist:
+  benchmark_tuist_build_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1436,7 +1436,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist_CC
-  benchmark_build_dd_cc_tuist:
+  benchmark_tuist_build_dd_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1473,7 +1473,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist_DD_CC
-  benchmark_build_spm_cc_tuist:
+  benchmark_tuist_build_spm_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1510,7 +1510,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Tuist_SPM_CC
-  benchmark_build_dd_spm_cc_tuist:
+  benchmark_tuist_build_dd_spm_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1547,7 +1547,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
-  benchmark_analyze_baseline_tuist:
+  benchmark_tuist_analyze_baseline:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1584,7 +1584,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist_Analyze
-  benchmark_analyze_cc_tuist:
+  benchmark_tuist_analyze_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1621,7 +1621,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC
-  benchmark_analyze_cc_dd_tuist:
+  benchmark_tuist_analyze_cc_dd:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1658,7 +1658,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_DD
-  benchmark_analyze_cc_spm_tuist:
+  benchmark_tuist_analyze_cc_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1695,7 +1695,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Tuist_Analyze_CC_SPM
-  benchmark_analyze_cc_dd_spm_tuist:
+  benchmark_tuist_analyze_cc_dd_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -2038,45 +2038,45 @@ pipelines:
         - branch: main
   benchmark:
     workflows:
-      benchmark_build_baseline_wordpress: {}
-      benchmark_build_cc_wordpress: {}
-      benchmark_build_dd_cc_wordpress: {}
-      benchmark_build_spm_cc_wordpress: {}
-      benchmark_build_dd_spm_cc_wordpress: {}
-      benchmark_build_baseline_tuist: {}
-      benchmark_build_cc_tuist: {}
-      benchmark_build_dd_cc_tuist: {}
-      benchmark_build_spm_cc_tuist: {}
-      benchmark_build_dd_spm_cc_tuist: {}
-      benchmark_analyze_baseline_tuist: {}
-      benchmark_analyze_cc_tuist: {}
-      benchmark_analyze_cc_dd_tuist: {}
-      benchmark_analyze_cc_spm_tuist: {}
-      benchmark_analyze_cc_dd_spm_tuist: {}
-      benchmark_analyze_baseline_wordpress: {}
-      benchmark_analyze_cc_wordpress: {}
-      benchmark_analyze_cc_dd_wordpress: {}
-      benchmark_analyze_cc_spm_wordpress: {}
-      benchmark_analyze_cc_dd_spm_wordpress: {}
+      benchmark_wordpress_build_baseline: {}
+      benchmark_wordpress_build_cc: {}
+      benchmark_wordpress_build_cc_dd: {}
+      benchmark_wordpress_build_cc_spm: {}
+      benchmark_wordpress_build_cc_dd_spm: {}
+      benchmark_wordpress_analyze_baseline: {}
+      benchmark_wordpress_analyze_cc: {}
+      benchmark_wordpress_analyze_cc_dd: {}
+      benchmark_wordpress_analyze_cc_spm: {}
+      benchmark_wordpress_analyze_cc_dd_spm: {}
+      benchmark_tuist_build_baseline: {}
+      benchmark_tuist_build_cc: {}
+      benchmark_tuist_build_dd_cc: {}
+      benchmark_tuist_build_spm_cc: {}
+      benchmark_tuist_build_dd_spm_cc: {}
+      benchmark_tuist_analyze_baseline: {}
+      benchmark_tuist_analyze_cc: {}
+      benchmark_tuist_analyze_cc_dd: {}
+      benchmark_tuist_analyze_cc_spm: {}
+      benchmark_tuist_analyze_cc_dd_spm: {}
       benchmark_results:
         depends_on:
-        - benchmark_build_baseline_wordpress
-        - benchmark_build_cc_wordpress
-        - benchmark_build_dd_cc_wordpress
-        - benchmark_build_spm_cc_wordpress
-        - benchmark_build_dd_spm_cc_wordpress
-        - benchmark_build_baseline_tuist
-        - benchmark_build_cc_tuist
-        - benchmark_build_dd_cc_tuist
-        - benchmark_build_spm_cc_tuist
-        - benchmark_build_dd_spm_cc_tuist
-        - benchmark_analyze_baseline_tuist
-        - benchmark_analyze_cc_tuist
-        - benchmark_analyze_cc_dd_tuist
-        - benchmark_analyze_cc_spm_tuist
-        - benchmark_analyze_cc_dd_spm_tuist
-        - benchmark_analyze_baseline_wordpress
-        - benchmark_analyze_cc_wordpress
-        - benchmark_analyze_cc_dd_wordpress
-        - benchmark_analyze_cc_spm_wordpress
-        - benchmark_analyze_cc_dd_spm_wordpress
+        - benchmark_wordpress_build_baseline
+        - benchmark_wordpress_build_cc
+        - benchmark_wordpress_build_cc_dd
+        - benchmark_wordpress_build_cc_spm
+        - benchmark_wordpress_build_cc_dd_spm
+        - benchmark_wordpress_analyze_baseline
+        - benchmark_wordpress_analyze_cc
+        - benchmark_wordpress_analyze_cc_dd
+        - benchmark_wordpress_analyze_cc_spm
+        - benchmark_wordpress_analyze_cc_dd_spm
+        - benchmark_tuist_build_baseline
+        - benchmark_tuist_build_cc
+        - benchmark_tuist_build_dd_cc
+        - benchmark_tuist_build_spm_cc
+        - benchmark_tuist_build_dd_spm_cc
+        - benchmark_tuist_analyze_baseline
+        - benchmark_tuist_analyze_cc
+        - benchmark_tuist_analyze_cc_dd
+        - benchmark_tuist_analyze_cc_spm
+        - benchmark_tuist_analyze_cc_dd_spm
