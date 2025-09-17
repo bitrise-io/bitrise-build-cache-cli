@@ -1041,6 +1041,7 @@ workflows:
     - APPS: |-
         WordPress
         Tuist
+        Calendar
       opts:
         is_expand: false
   benchmark_wordpress_build_baseline:
@@ -1628,6 +1629,141 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
+  benchmark_calendar_build_baseline:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:richardtop/CalendarApp.git
+        - BRANCH: master
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: Calendar
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Calendar
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Calendar.xcodeproj
+        - scheme: Calendar
+        - configuration: Debug
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Calendar
+  benchmark_calendar_build_cc:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:richardtop/CalendarApp.git
+        - BRANCH: master
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Calendar
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Calendar
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Calendar.xcodeproj
+        - scheme: Calendar
+        - configuration: Debug
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Calendar
+  benchmark_calendar_build_cc_dd:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:richardtop/CalendarApp.git
+        - BRANCH: master
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Calendar
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Calendar
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Calendar.xcodeproj
+        - scheme: Calendar
+        - configuration: Debug
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: Calendar
+  benchmark_calendar_build_cc_spm:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:richardtop/CalendarApp.git
+        - BRANCH: master
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Calendar
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Calendar
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Calendar.xcodeproj
+        - scheme: Calendar
+        - configuration: Debug
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: Calendar
+  benchmark_calendar_build_cc_dd_spm:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:richardtop/CalendarApp.git
+        - BRANCH: master
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: Calendar
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: Calendar
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Calendar.xcodeproj
+        - scheme: Calendar
+        - configuration: Debug
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: Calendar
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1949,6 +2085,11 @@ pipelines:
       # benchmark_tuist_build_dd_cc: {}
       benchmark_tuist_build_spm_cc: {}
       # benchmark_tuist_build_dd_spm_cc: {}
+      benchmark_calendar_build_baseline: {}
+      benchmark_calendar_build_cc: {}
+      benchmark_calendar_build_cc_dd: {}
+      benchmark_calendar_build_cc_spm: {}
+      benchmark_calendar_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
         - benchmark_wordpress_build_baseline
@@ -1966,3 +2107,8 @@ pipelines:
         # - benchmark_tuist_build_dd_cc
         - benchmark_tuist_build_spm_cc
         # - benchmark_tuist_build_dd_spm_cc
+        - benchmark_calendar_build_baseline
+        - benchmark_calendar_build_cc
+        - benchmark_calendar_build_cc_dd
+        - benchmark_calendar_build_cc_spm
+        - benchmark_calendar_build_cc_dd_spm
