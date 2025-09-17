@@ -911,14 +911,6 @@ workflows:
               "_CC_SPM"
               "_DD_SPM_CC"
               "_CC_DD_SPM"
-              "_Analyze"
-              "_Analyze_CC"
-              "_Analyze_CC_DD"
-              "_Analyze_DD_CC"
-              "_Analyze_SPM_CC"
-              "_Analyze_CC_SPM"
-              "_Analyze_DD_SPM_CC"
-              "_Analyze_CC_DD_SPM"
             )
 
             pretty_diff() {
