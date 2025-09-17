@@ -1040,6 +1040,7 @@ workflows:
     envs:
     - APPS: |-
         WordPress
+        WordPress_Analyze
         Tuist
         Calendar
       opts:
