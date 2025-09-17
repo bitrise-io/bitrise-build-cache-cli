@@ -915,48 +915,45 @@ workflows:
               "_Analyze_SPM_CC"
               "_Analyze_DD_SPM_CC"
             )
-
+            
             pretty_diff() {
               local t1=$1
               local t2=$2
-
               local diff=$(( t2 - t1 ))
               local sign=""
               if (( diff < 0 )); then
                 sign="-"
                 diff=$(( -diff ))
               fi
-
               local minutes=$(( diff / 60 ))
-              local seconds=$(( rem % 60 ))
-
+              local seconds=$(( diff % 60 ))
               local out=""
               (( minutes > 0 )) && out+="${minutes}m "
               out+="${seconds}s"
-
               printf '%s%s\n' "$sign" "$out"
             }
-
+            
+            # read APPS into an array (trim newlines properly)
             apps=()
             while IFS= read -r line || [[ -n $line ]]; do
               apps+=("$line")
             done <<< "$APPS"
-
-            app_variants=()   # target array
-            for base in "${APPS[@]}"; do
-              # add the base itself
+            
+            # build app_variants from the parsed apps array (not from the raw APPS string)
+            app_variants=()
+            for base in "${apps[@]}"; do
               app_variants+=("$base")
               for v in "${variants[@]}"; do
-                [[ -z "$v" ]] && continue   # skip empty variant already added as base
+                [[ -z "$v" ]] && continue
                 app_variants+=("${base}${v}")
               done
             done
-
+            
             for app in "${app_variants[@]}"; do
               start="${app}_START"
               end="${app}_END"
-              [[ -z "${!start}" ]] && continue   # skip missing variant
-              [[ -z "${!end}" ]] && continue     # skip missing variant
+              [[ -z "${!start-}" ]] && continue
+              [[ -z "${!end-}" ]] && continue
               echo "Time between ${app}_START and ${app}_END:"
               pretty_diff "${!start}" "${!end}"
             done
