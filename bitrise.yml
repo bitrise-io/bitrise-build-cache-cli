@@ -1758,7 +1758,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
-  benchmark_icecubes_build_baseline:
+  benchmark_icecubesapp_build_baseline:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1771,7 +1771,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "false"
-        - BENCHMARK_APP_NAME: IceCubes
+        - BENCHMARK_APP_NAME: IceCubesApp
     - script:
         title:
         inputs:
@@ -1780,7 +1780,7 @@ workflows:
             cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: IceCubes
+        - BENCHMARK_APP_NAME: IceCubesApp
     - xcode-build-for-simulator:
         inputs:
         - project_path: IceCubesApp.xcodeproj
@@ -1791,8 +1791,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: IceCubes
-  benchmark_icecubes_build_cc:
+        - BENCHMARK_APP_NAME: IceCubesApp
+  benchmark_icecubesapp_build_cc:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1805,7 +1805,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: IceCubes_CC
+        - BENCHMARK_APP_NAME: IceCubesApp_CC
     - script:
         title:
         inputs:
@@ -1814,7 +1814,7 @@ workflows:
             cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: IceCubes_CC
+        - BENCHMARK_APP_NAME: IceCubesApp_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: IceCubesApp.xcodeproj
@@ -1825,8 +1825,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: IceCubes_CC
-  benchmark_icecubes_build_dd:
+        - BENCHMARK_APP_NAME: IceCubesApp_CC
+  benchmark_icecubesapp_build_dd:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1839,7 +1839,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "false"
-        - BENCHMARK_APP_NAME: IceCubes_DD
+        - BENCHMARK_APP_NAME: IceCubesApp_DD
     - script:
         title:
         inputs:
@@ -1848,7 +1848,7 @@ workflows:
             cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: IceCubes_DD
+        - BENCHMARK_APP_NAME: IceCubesApp_DD
     - xcode-build-for-simulator:
         inputs:
         - project_path: IceCubesApp.xcodeproj
@@ -1859,8 +1859,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: IceCubes_DD
-  benchmark_icecubes_build_cc_spm:
+        - BENCHMARK_APP_NAME: IceCubesApp_DD
+  benchmark_icecubesapp_build_cc_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1873,7 +1873,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: IceCubes_CC_SPM
+        - BENCHMARK_APP_NAME: IceCubesApp_CC_SPM
     - script:
         title:
         inputs:
@@ -1882,7 +1882,7 @@ workflows:
             cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: IceCubes_CC_SPM
+        - BENCHMARK_APP_NAME: IceCubesApp_CC_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: IceCubesApp.xcodeproj
@@ -1893,8 +1893,8 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: IceCubes_CC_SPM
-  benchmark_icecubes_build_cc_dd_spm:
+        - BENCHMARK_APP_NAME: IceCubesApp_CC_SPM
+  benchmark_icecubesapp_build_cc_dd_spm:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1907,7 +1907,7 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: IceCubes_CC_DD_SPM
+        - BENCHMARK_APP_NAME: IceCubesApp_CC_DD_SPM
     - script:
         title:
         inputs:
@@ -1916,7 +1916,7 @@ workflows:
             cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: IceCubes_CC_DD_SPM
+        - BENCHMARK_APP_NAME: IceCubesApp_CC_DD_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: IceCubesApp.xcodeproj
@@ -1927,7 +1927,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: IceCubes_CC_DD_SPM
+        - BENCHMARK_APP_NAME: IceCubesApp_CC_DD_SPM
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -2254,11 +2254,11 @@ pipelines:
 #      benchmark_calendar_build_cc_dd: {}
       benchmark_calendar_build_cc_spm: {}
 #      benchmark_calendar_build_cc_dd_spm: {}
-      benchmark_icecubes_build_baseline: {}
-      benchmark_icecubes_build_cc: {}
-#      benchmark_icecubes_build_cc_dd: {}
-      benchmark_icecubes_build_cc_spm: {}
-#      benchmark_icecubes_build_cc_dd_spm: {}
+      benchmark_icecubesapp_build_baseline: {}
+      benchmark_icecubesapp_build_cc: {}
+#      benchmark_icecubesapp_build_cc_dd: {}
+      benchmark_icecubesapp_build_cc_spm: {}
+#      benchmark_icecubesapp_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
         - benchmark_wordpress_build_baseline
@@ -2281,8 +2281,8 @@ pipelines:
         # - benchmark_calendar_build_cc_dd
         - benchmark_calendar_build_cc_spm
         # - benchmark_calendar_build_cc_dd_spm
-        - benchmark_icecubes_build_baseline
-        - benchmark_icecubes_build_cc
-        # - benchmark_icecubes_build_cc_dd
-        - benchmark_icecubes_build_cc_spm
-        # - benchmark_icecubes_build_cc_dd_spm
+        - benchmark_icecubesapp_build_baseline
+        - benchmark_icecubesapp_build_cc
+        # - benchmark_icecubesapp_build_cc_dd
+        - benchmark_icecubesapp_build_cc_spm
+        # - benchmark_icecubesapp_build_cc_dd_spm
