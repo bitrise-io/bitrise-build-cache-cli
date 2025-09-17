@@ -1873,7 +1873,7 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: IceCubes_SPM
+        - BENCHMARK_APP_NAME: IceCubes_CC_SPM
     - script:
         title:
         inputs:
@@ -1882,7 +1882,7 @@ workflows:
             cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: IceCubes_SPM
+        - BENCHMARK_APP_NAME: IceCubes_CC_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: IceCubesApp.xcodeproj
@@ -1893,7 +1893,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: IceCubes_SPM
+        - BENCHMARK_APP_NAME: IceCubes_CC_SPM
   benchmark_icecubes_build_cc_dd_spm:
     meta:
       bitrise.io:
