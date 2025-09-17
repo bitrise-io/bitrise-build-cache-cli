@@ -1035,6 +1035,7 @@ workflows:
         WordPress_Analyze
         Tuist
         Calendar
+        IceCubesApp
       opts:
         is_expand: false
   benchmark_wordpress_build_baseline:
@@ -1757,6 +1758,176 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
+  benchmark_icecubes_build_baseline:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: IceCubes
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: IceCubes
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: IceCubes
+  benchmark_icecubes_build_cc:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: IceCubes_CC
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: IceCubes_CC
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: IceCubes_CC
+  benchmark_icecubes_build_dd:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - USE_COMP_CACHE: "false"
+        - BENCHMARK_APP_NAME: IceCubes_DD
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: IceCubes_DD
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "false"
+        - BENCHMARK_APP_NAME: IceCubes_DD
+  benchmark_icecubes_build_cc_spm:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: IceCubes_SPM
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: IceCubes_SPM
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "false"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: IceCubes_SPM
+  benchmark_icecubes_build_cc_dd_spm:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - USE_COMP_CACHE: "true"
+        - BENCHMARK_APP_NAME: IceCubes_CC_DD_SPM
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: IceCubes_CC_DD_SPM
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: "true"
+        - USE_SPM: "true"
+        - BENCHMARK_APP_NAME: IceCubes_CC_DD_SPM
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -2083,6 +2254,11 @@ pipelines:
 #      benchmark_calendar_build_cc_dd: {}
       benchmark_calendar_build_cc_spm: {}
 #      benchmark_calendar_build_cc_dd_spm: {}
+      benchmark_icecubes_build_baseline: {}
+      benchmark_icecubes_build_cc: {}
+#      benchmark_icecubes_build_cc_dd: {}
+      benchmark_icecubes_build_cc_spm: {}
+#      benchmark_icecubes_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
         - benchmark_wordpress_build_baseline
@@ -2102,6 +2278,11 @@ pipelines:
         # - benchmark_tuist_build_dd_spm_cc
         - benchmark_calendar_build_baseline
         - benchmark_calendar_build_cc
-#        - benchmark_calendar_build_cc_dd
+        # - benchmark_calendar_build_cc_dd
         - benchmark_calendar_build_cc_spm
-#        - benchmark_calendar_build_cc_dd_spm
+        # - benchmark_calendar_build_cc_dd_spm
+        - benchmark_icecubes_build_baseline
+        - benchmark_icecubes_build_cc
+        # - benchmark_icecubes_build_cc_dd
+        - benchmark_icecubes_build_cc_spm
+        # - benchmark_icecubes_build_cc_dd_spm
