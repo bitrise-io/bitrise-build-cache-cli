@@ -1669,10 +1669,10 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1682,7 +1682,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC
   benchmark_calendar_build_cc_dd:
     meta:
       bitrise.io:
@@ -1696,10 +1696,10 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_DD
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_DD
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1709,7 +1709,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_DD
   benchmark_calendar_build_cc_spm:
     meta:
       bitrise.io:
@@ -1723,10 +1723,10 @@ workflows:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_SPM
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1736,7 +1736,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "false"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_SPM
   benchmark_calendar_build_cc_dd_spm:
     meta:
       bitrise.io:
@@ -1750,10 +1750,10 @@ workflows:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
         - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1763,7 +1763,7 @@ workflows:
         inputs:
         - USE_DD_CACHE: "true"
         - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
 step_bundles:
   generate_gradle_verification_reference:
     steps:
