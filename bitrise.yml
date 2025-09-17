@@ -902,12 +902,6 @@ workflows:
             #!/usr/bin/env bash
             set -euo pipefail
 
-            APPS=$(cat <<'EOF'
-            WordPress
-            Tuist
-            EOF
-            )
-
             variants=(
               ""
               "_CC"
