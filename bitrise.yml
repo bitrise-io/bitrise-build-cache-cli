@@ -2087,9 +2087,9 @@ pipelines:
       # benchmark_tuist_build_dd_spm_cc: {}
       benchmark_calendar_build_baseline: {}
       benchmark_calendar_build_cc: {}
-      benchmark_calendar_build_cc_dd: {}
+#      benchmark_calendar_build_cc_dd: {}
       benchmark_calendar_build_cc_spm: {}
-      benchmark_calendar_build_cc_dd_spm: {}
+#      benchmark_calendar_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
         - benchmark_wordpress_build_baseline
@@ -2109,6 +2109,6 @@ pipelines:
         # - benchmark_tuist_build_dd_spm_cc
         - benchmark_calendar_build_baseline
         - benchmark_calendar_build_cc
-        - benchmark_calendar_build_cc_dd
+#        - benchmark_calendar_build_cc_dd
         - benchmark_calendar_build_cc_spm
-        - benchmark_calendar_build_cc_dd_spm
+#        - benchmark_calendar_build_cc_dd_spm
