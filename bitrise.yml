@@ -2077,15 +2077,30 @@ workflows:
             
             ./bootstrap.sh
             xcodebuild -downloadComponent MetalToolchain
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -e
+            set -x
+
+            cd firefox-ios/Client.xcodeproj
+            sed -i '' 's/"Fennec Development"/"Bitrise Firefox iOS Dev"/' project.pbxproj
+            sed -i '' 's/Fennec ShareTo Development/Bitrise Firefox iOS Dev - Share To/' project.pbxproj
+            sed -i '' 's/Fennec WidgetKit Development/Bitrise Firefox iOS Dev - WidgetKit/' project.pbxproj
+            sed -i '' 's/"XCUITests"/"Bitrise Firefox iOS Dev - XCUI Tests"/' project.pbxproj
+            sed -i '' 's/Fennec NotificationService Development/Bitrise Firefox iOS Dev - Notification Service/' project.pbxproj
+            sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer"/CODE_SIGN_IDENTITY = "iPhone Distribution"/' project.pbxproj
+            cd -
+        title: Set provisioning to Bitrise in xcodeproj
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
-        - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - simulator_device: iPhone 17
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
