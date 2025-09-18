@@ -1034,6 +1034,7 @@ workflows:
         WordPress
         WordPress_Analyze
         Tuist
+        Tuist_Archive
         Calendar
         IceCubesApp
       opts:
@@ -1078,48 +1079,6 @@ workflows:
         - scheme: WordPress
         - configuration: Debug
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
-    - bundle::benchmark_finish:
-        inputs:
-        - USE_DD_CACHE: $USE_DD_CACHE
-        - USE_SPM: $USE_SPM
-        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-  benchmark_tuist_build_baseline:
-    envs:
-    - USE_DD_CACHE: "false"
-    - USE_SPM: "false"
-    - USE_COMP_CACHE: "false"
-    - BENCHMARK_APP_NAME: Tuist
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    tools:
-      tuist: 4.70.0
-    steps:
-    - bundle::benchmark-setup:
-        inputs:
-        - REPO_URL: git@github.com:tuist/tuist.git
-        - BRANCH: main
-        - USE_DD_CACHE: $USE_DD_CACHE
-        - USE_SPM: $USE_SPM
-        - USE_COMP_CACHE: $USE_COMP_CACHE
-        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-    - script:
-        title: Generate workspace
-        inputs:
-        - content: |-
-            set -exo pipefail
-            tuist install
-            tuist generate
-    - bundle::benchmark_start_measure:
-        inputs:
-        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-    - xcode-build-for-simulator:
-        inputs:
-        - project_path: Tuist.xcworkspace
-        - scheme: TuistApp
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1530,6 +1489,48 @@ workflows:
         - USE_DD_CACHE: $USE_DD_CACHE
         - USE_SPM: $USE_SPM
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_tuist_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: Tuist
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: git@github.com:tuist/tuist.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Generate workspace
+          inputs:
+            - content: |-
+                set -exo pipefail
+                tuist install
+                tuist generate
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: Tuist.xcworkspace
+            - scheme: TuistApp
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_cc:
     envs:
     - USE_DD_CACHE: "false"
@@ -1698,6 +1699,90 @@ workflows:
         - USE_DD_CACHE: $USE_DD_CACHE
         - USE_SPM: $USE_SPM
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_tuist_archive_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: Tuist_Archive
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: git@github.com:tuist/tuist.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Generate workspace
+          inputs:
+            - content: |-
+                set -exo pipefail
+                tuist install
+                tuist generate
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-archive:
+          inputs:
+            - project_path: Tuist.xcworkspace
+            - scheme: TuistApp
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_tuist_archive_cc:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "true"
+      - BENCHMARK_APP_NAME: Tuist_Archive_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    tools:
+      tuist: 4.70.0
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: git@github.com:tuist/tuist.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Generate workspace
+          inputs:
+            - content: |-
+                set -exo pipefail
+                tuist install
+                tuist generate
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-archive:
+          inputs:
+            - project_path: Tuist.xcworkspace
+            - scheme: TuistApp
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_baseline:
     envs:
     - USE_DD_CACHE: "false"
@@ -2382,6 +2467,8 @@ pipelines:
       # benchmark_tuist_build_dd_cc: {}
       benchmark_tuist_build_spm_cc: { }
       # benchmark_tuist_build_dd_spm_cc: {}
+      benchmark_tuist_archive_baseline: {}
+      benchmark_tuist_archive_cc: {}
       benchmark_calendar_build_baseline: { }
       benchmark_calendar_build_cc: { }
       #      benchmark_calendar_build_cc_dd: {}
@@ -2409,6 +2496,8 @@ pipelines:
         # - benchmark_tuist_build_dd_cc
         - benchmark_tuist_build_spm_cc
         # - benchmark_tuist_build_dd_spm_cc
+        - benchmark_tuist_archive_baseline
+        - benchmark_tuist_archive_cc
         - benchmark_calendar_build_baseline
         - benchmark_calendar_build_cc
         # - benchmark_calendar_build_cc_dd
