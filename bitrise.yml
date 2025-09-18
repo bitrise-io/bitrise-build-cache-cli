@@ -900,7 +900,9 @@ workflows:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -euo pipefail
+            set -exuo pipefail
+            
+            printenv
 
             variants=(
               ""
