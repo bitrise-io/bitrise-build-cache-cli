@@ -2086,6 +2086,9 @@ workflows:
             sed -i '' 's/Fennec NotificationService Development/Bitrise Firefox iOS Dev - Notification Service/' project.pbxproj
             sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer"/CODE_SIGN_IDENTITY = "iPhone Distribution"/' project.pbxproj
             cd -
+            
+            npm install
+            npm run build
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
