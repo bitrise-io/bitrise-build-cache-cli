@@ -62,12 +62,12 @@ workflows:
     - script:
         title: Authenticate to GCP
         inputs:
-          - content: |-
-              #!/bin/bash
-              set -euxo pipefail
-              KEY_FILE_PATH=$(mktemp -d)/keyfile.json
-              echo "${GAR_SERVICE_ACCOUNT_B64}" | base64 --decode > ${KEY_FILE_PATH}
-              gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+        - content: |-
+            #!/bin/bash
+            set -euxo pipefail
+            KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+            echo "${GAR_SERVICE_ACCOUNT_B64}" | base64 --decode > ${KEY_FILE_PATH}
+            gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
     - script:
         title: Upload release artifacts to GAR
         inputs:
@@ -113,7 +113,7 @@ workflows:
             done
 
             echo "Uploaded artifacts to GAR."
-    - deploy-to-bitrise-io@2: {}
+    - deploy-to-bitrise-io@2: { }
     - script:
         title: Update step
         inputs:
@@ -124,26 +124,26 @@ workflows:
             ./scripts/update_step.sh
     - slack@4:
         inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
-
-              Check PR here: $PR_URL
-          - emoji: ":gradle:"
-          - color: "#08a045"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        - channel: "#team-advanced-ci-alerts-website"
+        - text: |-
+            Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
+            
+            Check PR here: $PR_URL
+        - emoji: ":gradle:"
+        - color: "#08a045"
+        - webhook_url: "$SLACK_WEBHOOK_ALERTS"
         title: Send slack if PR opened
         run_if: '{{ getenv "PR_URL" | ne "" }}'
     - slack@4:
         inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              CLI release failed! :gopher_lift: :rotating_light:
-
-              Check build here: $BITRISE_BUILD_URL
-          - emoji: ":rotating_light:"
-          - color: "#ee003b"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        - channel: "#team-advanced-ci-alerts-website"
+        - text: |-
+            CLI release failed! :gopher_lift: :rotating_light:
+            
+            Check build here: $BITRISE_BUILD_URL
+        - emoji: ":rotating_light:"
+        - color: "#ee003b"
+        - webhook_url: "$SLACK_WEBHOOK_ALERTS"
         title: Send slack if failed
         run_if: ".IsBuildFailed"
     meta:
@@ -154,8 +154,8 @@ workflows:
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - go-list@1: {}
+    - git-clone@8: { }
+    - go-list@1: { }
     - script@1:
         title: golangci-lint
         inputs:
@@ -163,12 +163,12 @@ workflows:
             #!/bin/bash
             set -ex
             make lint
-    - go-test@1: {}
+    - go-test@1: { }
     - bundle::generate_gradle_verification_reference: { }
     - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2:
         inputs:
-          - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+        - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
@@ -184,131 +184,131 @@ workflows:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8:
         inputs:
-          - fetch_tags: "yes"
-          - shallow_clone: "false"
-          - clone_depth: "-1"
-    - bundle::generate_and_commit_dependency_matrix: {}
+        - fetch_tags: "yes"
+        - shallow_clone: "false"
+        - clone_depth: "-1"
+    - bundle::generate_and_commit_dependency_matrix: { }
     - slack@4:
         inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Dependency matrix generation failed! :matrix-code: :rotating_light:
-
-              Check build here: $BITRISE_BUILD_URL
-          - emoji: ":rotating_light:"
-          - color: "#ee003b"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        - channel: "#team-advanced-ci-alerts-website"
+        - text: |-
+            Dependency matrix generation failed! :matrix-code: :rotating_light:
+            
+            Check build here: $BITRISE_BUILD_URL
+        - emoji: ":rotating_light:"
+        - color: "#ee003b"
+        - webhook_url: "$SLACK_WEBHOOK_ALERTS"
         title: Send slack if failed
         run_if: ".IsBuildFailed"
 
   update_plugins:
     envs:
-      - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
+    - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
-      - activate-ssh-key@4:
-            run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-      - git-clone@8:
-          inputs:
-          - fetch_tags: "yes"
-          - shallow_clone: "false"
-          - clone_depth: "-1"
-      - apt-get-install:
-          inputs:
-            - packages: libxml2-utils
-      - script:
-          title: Ensure we're on main
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                git fetch origin
-                if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
-                  git checkout main
-                  git pull origin main
-                fi
-      - script:
-          title: Update plugins with latest version
-          inputs:
-            - content: |
-                bash ./scripts/update_plugins.sh
-      - bundle::generate_gradle_verification_reference: {}
-      - script:
-          title: Commit updated plugins and open PR
-          inputs:
-            - content: |
-                set -ex
-
-                # Check for existing PR with the same title
-                existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                  "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
-
-                if [ -n "$existing_pr" ]; then
-                  echo "A pull request with this title already exists: $existing_pr"
-                  exit 0
-                fi
-
-                if [ -n "$(git status --porcelain)" ]; then
-                  git branch -D update-plugins || true
-                  git checkout -b update-plugins
-
-                  git add .
-                  git commit -m "feat: update plugins to release"
-                  git push -f origin update-plugins
-
-                  # Create a pull request using GitHub API
-                  pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-                    -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
-                    "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
-
-                    pr_url=$(echo "$pr_response" | jq -r .html_url)
-                    envman add --key PR_URL --value "$pr_url"
-
-                    if [ "$pr_url" != "null" ]; then
-                      echo "Pull request created successfully: $pr_url"
-                    else
-                      echo "Failed to create pull request. Response: $pr_response"
-                      exit 1
-                    fi
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8:
+        inputs:
+        - fetch_tags: "yes"
+        - shallow_clone: "false"
+        - clone_depth: "-1"
+    - apt-get-install:
+        inputs:
+        - packages: libxml2-utils
+    - script:
+        title: Ensure we're on main
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+            
+            git fetch origin
+            if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
+              git checkout main
+              git pull origin main
+            fi
+    - script:
+        title: Update plugins with latest version
+        inputs:
+        - content: |
+            bash ./scripts/update_plugins.sh
+    - bundle::generate_gradle_verification_reference: { }
+    - script:
+        title: Commit updated plugins and open PR
+        inputs:
+        - content: |
+            set -ex
+            
+            # Check for existing PR with the same title
+            existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
+            
+            if [ -n "$existing_pr" ]; then
+              echo "A pull request with this title already exists: $existing_pr"
+              exit 0
+            fi
+            
+            if [ -n "$(git status --porcelain)" ]; then
+              git branch -D update-plugins || true
+              git checkout -b update-plugins
+            
+              git add .
+              git commit -m "feat: update plugins to release"
+              git push -f origin update-plugins
+            
+              # Create a pull request using GitHub API
+              pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+                -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
+                "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
+            
+                pr_url=$(echo "$pr_response" | jq -r .html_url)
+                envman add --key PR_URL --value "$pr_url"
+            
+                if [ "$pr_url" != "null" ]; then
+                  echo "Pull request created successfully: $pr_url"
                 else
-                  echo "No changes detected, skipping commit."
-                  exit 0
+                  echo "Failed to create pull request. Response: $pr_response"
+                  exit 1
                 fi
-      - slack@4:
-          inputs:
-            - channel: "#team-advanced-ci-alerts-website"
-            - text: |-
-                Gradle plugin update PR is ready! :tada: :rocket: :gradle:
-
-                Check PR here: $PR_URL
-            - emoji: ":gradle:"
-            - color: "#08a045"
-            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-          title: Send slack if PR opened
-          run_if: '{{ getenv "PR_URL" | ne "" }}'
-      - slack@4:
-          inputs:
-            - channel: "#team-advanced-ci-alerts-website"
-            - text: |-
-                CLI plugin update failed! :gradle: :gopher_lift: :rotating_light:
-
-                Check build here: $BITRISE_BUILD_URL
-            - emoji: ":rotating_light:"
-            - color: "#ee003b"
-            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-          title: Send slack if failed
-          run_if: ".IsBuildFailed"
+            else
+              echo "No changes detected, skipping commit."
+              exit 0
+            fi
+    - slack@4:
+        inputs:
+        - channel: "#team-advanced-ci-alerts-website"
+        - text: |-
+            Gradle plugin update PR is ready! :tada: :rocket: :gradle:
+            
+            Check PR here: $PR_URL
+        - emoji: ":gradle:"
+        - color: "#08a045"
+        - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if PR opened
+        run_if: '{{ getenv "PR_URL" | ne "" }}'
+    - slack@4:
+        inputs:
+        - channel: "#team-advanced-ci-alerts-website"
+        - text: |-
+            CLI plugin update failed! :gradle: :gopher_lift: :rotating_light:
+            
+            Check build here: $BITRISE_BUILD_URL
+        - emoji: ":rotating_light:"
+        - color: "#ee003b"
+        - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
 
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::feature-e2e-setup: { }
     - apt-get-install:
         inputs:
-          - packages: 'bc'
-          - upgrade: "no"
+        - packages: 'bc'
+        - upgrade: "no"
     - script:
         title: Enable build cache
         inputs:
@@ -318,8 +318,8 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: |-
+            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Build and capture logs
         inputs:
@@ -349,26 +349,26 @@ workflows:
     - script:
         title: Assert invocation from API
         inputs:
-          - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
-
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
-              assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
-    - deploy-to-bitrise-io@2: {}
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
+            
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+    - deploy-to-bitrise-io@2: { }
 
   feature-e2e-gradle-bitwarden:
     envs:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::feature-e2e-setup: { }
     - apt-get-install:
         inputs:
-          - packages: 'bc'
-          - upgrade: "no"
+        - packages: 'bc'
+        - upgrade: "no"
     - script:
         title: Enable build cache
         inputs:
@@ -378,8 +378,8 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: |-
+            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
@@ -437,15 +437,15 @@ workflows:
     - script:
         title: Assert invocation from API
         inputs:
-          - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
-
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
-              assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
-    - deploy-to-bitrise-io@2: {}
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
+            
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+    - deploy-to-bitrise-io@2: { }
   feature-e2e-bazel-bitrisedc-no-rbe:
     meta:
       bitrise.io:
@@ -455,11 +455,11 @@ workflows:
     - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
     - BRANCH: master
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::feature-e2e-setup: { }
     - apt-get-install:
         inputs:
-          - packages: 'bc'
-          - upgrade: "no"
+        - packages: 'bc'
+        - upgrade: "no"
     - script@1:
         inputs:
         - content: |
@@ -509,15 +509,15 @@ workflows:
     - script:
         title: Assert invocation from API
         inputs:
-          - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
-
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
-              assert_invocation_targets_bazel "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
-    - deploy-to-bitrise-io@2: {}
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
+            
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+            assert_invocation_targets_bazel "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+    - deploy-to-bitrise-io@2: { }
 
   feature-e2e-bazel-public-no-rbe:
     meta:
@@ -525,91 +525,91 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-      - BRANCH: master
+    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+    - BRANCH: master
     steps:
-      - bundle::feature-e2e-setup: { }
-      - apt-get-install:
-          inputs:
-            - packages: 'bc dnsutils iputils-ping'
-            - upgrade: "no"
-      - script:
-          title: Enable build cache
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -exo pipefail
+    - bundle::feature-e2e-setup: { }
+    - apt-get-install:
+        inputs:
+        - packages: 'bc dnsutils iputils-ping'
+        - upgrade: "no"
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
+            
+            echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
+            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+    - script:
+        title: Build and capture logs using Docker
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
+            
+            mkdir -p ../_dockerroot
+            cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
+            
+            echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
+            
+            sudo docker run --rm \
+              -w "/workspace" \
+              -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
+              -e "BITRISE_BUILD_SLUG=$BITRISE_BUILD_SLUG" \
+              -e "BITRISE_STEP_EXECUTION_ID=$BITRISE_STEP_EXECUTION_ID" \
+              -e "BITRISE_TRIGGERED_WORKFLOW_TITLE=$BITRISE_TRIGGERED_WORKFLOW_TITLE" \
+              -e "GIT_REPOSITORY_UR=$GIT_REPOSITORY_URL" \
+              -e "BITRISE_GIT_COMMIT=$BITRISE_GIT_COMMIT" \
+              --mount "type=bind,source=$PWD,target=/workspace" \
+              --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
+              --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
+              ubuntu:22.04 \
+              bash -c "set -o pipefail; apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
+                curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
+                chmod +x bazelisk && \
+                ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
 
-                echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
-                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
-      - script:
-          title: Build and capture logs using Docker
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -exo pipefail
-
-                mkdir -p ../_dockerroot
-                cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
-
-                echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
-
-                sudo docker run --rm \
-                  -w "/workspace" \
-                  -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
-                  -e "BITRISE_BUILD_SLUG=$BITRISE_BUILD_SLUG" \
-                  -e "BITRISE_STEP_EXECUTION_ID=$BITRISE_STEP_EXECUTION_ID" \
-                  -e "BITRISE_TRIGGERED_WORKFLOW_TITLE=$BITRISE_TRIGGERED_WORKFLOW_TITLE" \
-                  -e "GIT_REPOSITORY_UR=$GIT_REPOSITORY_URL" \
-                  -e "BITRISE_GIT_COMMIT=$BITRISE_GIT_COMMIT" \
-                  --mount "type=bind,source=$PWD,target=/workspace" \
-                  --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
-                  --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
-                  ubuntu:22.04 \
-                  bash -c "set -o pipefail; apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
-                    curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
-                    chmod +x bazelisk && \
-                    ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
-
-      - script:
-          title: Check for cache invocations
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -exo pipefail
-
-                ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-                  '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
-                  'Invocation ID: ' \
-                  '--bes_header=x-os=Linux' \
-                  '--bes_header=x-cpu-cores=[0-9]+' \
-                  '--bes_header=x-mem-size=[0-9]+' \
-                  '--bes_header=x-ci-provider=bitrise' \
-                  "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
-                  '--bes_header=x-locale=\w+' \
-                  '--bes_header=x-default-charset=\w+'
-
-                  source ../_e2e/scripts/extract_invocation_id.sh
-
-                  invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
-                  if [[ -z "$invocation_id" ]]; then
-                    fatal "Invocation ID not found in logs"
-                  fi
-
-                  echo "Found Invocation ID: $invocation_id"
-                  envman add --key INVOCATION_ID --value "$invocation_id"
-      - script:
-          title: Assert invocation from API
-          inputs:
-            - content: |-
-                source ../_e2e/scripts/assert_invocations.sh
-
-                assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
-                assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
-                assert_invocation_targets_bazel "$INVOCATION_ID"
-                assert_build_performance "$INVOCATION_ID"
-                assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
-      - deploy-to-bitrise-io@2: { }
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
+            
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+              '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
+              'Invocation ID: ' \
+              '--bes_header=x-os=Linux' \
+              '--bes_header=x-cpu-cores=[0-9]+' \
+              '--bes_header=x-mem-size=[0-9]+' \
+              '--bes_header=x-ci-provider=bitrise' \
+              "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
+              '--bes_header=x-locale=\w+' \
+              '--bes_header=x-default-charset=\w+'
+            
+              source ../_e2e/scripts/extract_invocation_id.sh
+            
+              invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
+              if [[ -z "$invocation_id" ]]; then
+                fatal "Invocation ID not found in logs"
+              fi
+            
+              echo "Found Invocation ID: $invocation_id"
+              envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
+            
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+            assert_invocation_targets_bazel "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+    - deploy-to-bitrise-io@2: { }
 
   gradle-configuration-e2e-osx:
     meta:
@@ -620,7 +620,7 @@ workflows:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::feature-e2e-setup: { }
     - script:
         title: Enable build cache
         inputs:
@@ -674,7 +674,7 @@ workflows:
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-    - deploy-to-bitrise-io@2: {}
+    - deploy-to-bitrise-io@2: { }
 
   gradle-configuration-e2e-linux:
     meta:
@@ -684,7 +684,7 @@ workflows:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::feature-e2e-setup: { }
     - script:
         title: Enable build cache
         inputs:
@@ -694,8 +694,8 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: |-
+            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
@@ -738,15 +738,15 @@ workflows:
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-    - deploy-to-bitrise-io@2: {}
+    - deploy-to-bitrise-io@2: { }
 
   ai_pr_summary:
     triggers:
       # run for pull requests; changed_files filter exposes the list of changed files
       pull_request:
-        - target_branch: '*'
-          source_branch: '*'
-          changed_files: '*'
+      - target_branch: '*'
+        source_branch: '*'
+        changed_files: '*'
     # Set status_report_name to report the status of this workflow separately.
     status_report_name: 'AI Review'
     # Simple Medium Linux machine is enough
@@ -755,61 +755,61 @@ workflows:
         machine_type_id: g2.linux.medium
         stack: linux-docker-android-22.04
     envs:
-      - GITHUB_TOKEN: $AI_GITHUB_TOKEN
-      - LITELLM_API_KEY: $LITELLM_API_KEY
-      - PUBSUB_TOPIC_ID: bitcode-analytics
-      - PUBSUB_PROJECT_ID: ip-ai-dev
-      - PUBSUB_CREDENTIALS_JSON_B64: $AI_PUBSUB_CREDENTIALS_JSON_B64
+    - GITHUB_TOKEN: $AI_GITHUB_TOKEN
+    - LITELLM_API_KEY: $LITELLM_API_KEY
+    - PUBSUB_TOPIC_ID: bitcode-analytics
+    - PUBSUB_PROJECT_ID: ip-ai-dev
+    - PUBSUB_CREDENTIALS_JSON_B64: $AI_PUBSUB_CREDENTIALS_JSON_B64
     steps:
-      - activate-ssh-key@4:
-          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-      - git-clone@8.4.0: { }
-      - script@1.2.1:
-          title: Generate AI Review for PR
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -e
-
-                sudo apt update
-                sudo apt install ripgrep -y
-
-                # Parse repository name from repo URL (works for SSH & HTTPS)
-                REPO_URL="${GIT_REPOSITORY_URL}"
-                REPO=$(echo "$REPO_URL" | sed -E 's#(git@|https://)([^/:]+)[/:]([^/]+)/([^.]+)(\.git)?#\3/\4#')
-
-                # 1. Unshallow the repo if it's a shallow clone (safe to run even if already full)
-                git fetch --unshallow || true
-
-                # 2. Fetch all branch refs (this ensures both the PR and the target/destination branch are present)
-                git fetch origin
-
-                # 3. Fetch both relevant branches explicitly for safety (redundant but safe)
-                git fetch origin "$BITRISEIO_GIT_BRANCH_DEST"
-                git fetch origin "$BITRISE_GIT_BRANCH"
-
-                # 4. Create/reset local branches to match the remote
-                git checkout -B "$BITRISEIO_GIT_BRANCH_DEST" "origin/$BITRISEIO_GIT_BRANCH_DEST"
-                git checkout -B "$BITRISE_GIT_BRANCH" "origin/$BITRISE_GIT_BRANCH"
-
-                # (Optionally: check out the PR branch if that is the branch you want to analyze)
-                git checkout "$BITRISE_GIT_BRANCH"
-
-                # Download and install bitcode
-                curl -L https://storage.googleapis.com/bitrise-bitcode/bitcode-linux-amd64.tar.gz -o /tmp/bitcode-linux-amd64.tar.gz
-                sudo tar -xzf /tmp/bitcode-linux-amd64.tar.gz -C /usr/local/bin/
-                sudo chmod +x /usr/local/bin/bitcode
-
-                # 6. Run your AI reviewer (customize flags as needed)
-                bitcode review  \
-                  --git-provider github \
-                  --pr-id="${BITRISE_PULL_REQUEST}" \
-                  --repo="${REPO}" \
-                  --max-token-usage 5000000 \
-                  --session-id "${BITRISE_BUILD_SLUG}" \
-                  --log-level info
-
-                echo "Done! PR reviewed."
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.4.0: { }
+    - script@1.2.1:
+        title: Generate AI Review for PR
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -e
+            
+            sudo apt update
+            sudo apt install ripgrep -y
+            
+            # Parse repository name from repo URL (works for SSH & HTTPS)
+            REPO_URL="${GIT_REPOSITORY_URL}"
+            REPO=$(echo "$REPO_URL" | sed -E 's#(git@|https://)([^/:]+)[/:]([^/]+)/([^.]+)(\.git)?#\3/\4#')
+            
+            # 1. Unshallow the repo if it's a shallow clone (safe to run even if already full)
+            git fetch --unshallow || true
+            
+            # 2. Fetch all branch refs (this ensures both the PR and the target/destination branch are present)
+            git fetch origin
+            
+            # 3. Fetch both relevant branches explicitly for safety (redundant but safe)
+            git fetch origin "$BITRISEIO_GIT_BRANCH_DEST"
+            git fetch origin "$BITRISE_GIT_BRANCH"
+            
+            # 4. Create/reset local branches to match the remote
+            git checkout -B "$BITRISEIO_GIT_BRANCH_DEST" "origin/$BITRISEIO_GIT_BRANCH_DEST"
+            git checkout -B "$BITRISE_GIT_BRANCH" "origin/$BITRISE_GIT_BRANCH"
+            
+            # (Optionally: check out the PR branch if that is the branch you want to analyze)
+            git checkout "$BITRISE_GIT_BRANCH"
+            
+            # Download and install bitcode
+            curl -L https://storage.googleapis.com/bitrise-bitcode/bitcode-linux-amd64.tar.gz -o /tmp/bitcode-linux-amd64.tar.gz
+            sudo tar -xzf /tmp/bitcode-linux-amd64.tar.gz -C /usr/local/bin/
+            sudo chmod +x /usr/local/bin/bitcode
+            
+            # 6. Run your AI reviewer (customize flags as needed)
+            bitcode review  \
+              --git-provider github \
+              --pr-id="${BITRISE_PULL_REQUEST}" \
+              --repo="${REPO}" \
+              --max-token-usage 5000000 \
+              --session-id "${BITRISE_BUILD_SLUG}" \
+              --log-level info
+            
+            echo "Done! PR reviewed."
 
   e2e-xcode-comp-cache:
     meta:
@@ -820,72 +820,72 @@ workflows:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::feature-e2e-setup: { }
     - script:
         title: activate xcode using CLI
         inputs:
-          - content: |-
-              #!/usr/bin/env bash
-              set -eo pipefail
-
-              echo "Original Xcodebuild command location:"
-              type xcodebuild || true
-
-              # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
-              ../bitrise-build-cache-cli -d activate xcode \
-                --cache
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            
+            echo "Original Xcodebuild command location:"
+            type xcodebuild || true
+            
+            # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
+            ../bitrise-build-cache-cli -d activate xcode \
+              --cache
     - script:
         title: build app
         inputs:
-          - content: |-
-              echo "Xcodebuild command location after activation:"
-              type xcodebuild || true
-
-              echo "Config file content:"
-              cat "$HOME/.bitrise-xcelerate/config.json"
-
-              echo "Starting build..."
-              xcodebuild build \
-                -workspace ComposableArchitecture.xcworkspace \
-                -scheme ComposableArchitecture \
-                -destination "generic/platform=iOS" \
-                -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
+        - content: |-
+            echo "Xcodebuild command location after activation:"
+            type xcodebuild || true
+            
+            echo "Config file content:"
+            cat "$HOME/.bitrise-xcelerate/config.json"
+            
+            echo "Starting build..."
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
 
     - script:
         title: gather info
         inputs:
-          - content: |-
-              set -exo pipefail
-
-              cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
-              cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
-              cp xcodebuild.log $BITRISE_DEPLOY_DIR
-              cp wrapper.log $BITRISE_DEPLOY_DIR
-
-              cat "$BITRISE_DEPLOY_DIR/wrapper.log"
-              head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
-              tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
-
-              source ../_e2e/scripts/error.sh
-              source ../_e2e/scripts/extract_invocation_id.sh
-
-              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
-              if [[ -z "$invocation_id" ]]; then
-                fatal "Invocation ID not found in logs"
-              fi
-
-              echo "Found Invocation ID: $invocation_id"
-              envman add --key INVOCATION_ID --value "$invocation_id"
+        - content: |-
+            set -exo pipefail
+            
+            cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
+            cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
+            cp xcodebuild.log $BITRISE_DEPLOY_DIR
+            cp wrapper.log $BITRISE_DEPLOY_DIR
+            
+            cat "$BITRISE_DEPLOY_DIR/wrapper.log"
+            head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
+            tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
+            
+            source ../_e2e/scripts/error.sh
+            source ../_e2e/scripts/extract_invocation_id.sh
+            
+            invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
+            if [[ -z "$invocation_id" ]]; then
+              fatal "Invocation ID not found in logs"
+            fi
+            
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
     - script:
         title: Assert invocation from API
         inputs:
-           - content: |-
-               source ../_e2e/scripts/assert_invocations.sh
-
-               assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
-               assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
-               assert_build_performance "$INVOCATION_ID"
-               assert_invocation_in_build_performance "$INVOCATION_ID" "xcode"
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
+            
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "xcode"
     - script:
         title: Check for cache usage
         inputs:
@@ -893,7 +893,7 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
-    - deploy-to-bitrise-io: {}
+    - deploy-to-bitrise-io: { }
   benchmark_results:
     steps:
     - script@1:
@@ -1035,9 +1035,15 @@ workflows:
         WordPress_Analyze
         Tuist
         Calendar
+        IceCubesApp
       opts:
         is_expand: false
   benchmark_wordpress_build_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: WordPress
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1047,10 +1053,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "false"
-        - BENCHMARK_APP_NAME: WordPress
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1065,7 +1071,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1074,10 +1080,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: Tuist
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1089,10 +1100,10 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:tuist/tuist.git
         - BRANCH: main
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "false"
-        - BENCHMARK_APP_NAME: Tuist
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Generate workspace
         inputs:
@@ -1102,7 +1113,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1111,10 +1122,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Tuist
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_build_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1124,10 +1140,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1142,7 +1158,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1151,10 +1167,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_build_cc_dd:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_CC_DD
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1164,10 +1185,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC_DD
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1182,7 +1203,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC_DD
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1191,10 +1212,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_CC_DD
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_build_cc_spm:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_CC_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1204,10 +1230,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1222,7 +1248,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1231,10 +1257,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_build_cc_dd_spm:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1244,10 +1275,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1262,7 +1293,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: WordPress.xcworkspace
@@ -1271,10 +1302,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_CC_DD_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_analyze_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: WordPress_Analyze
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1284,10 +1320,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "false"
-        - BENCHMARK_APP_NAME: WordPress_Analyze
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1302,7 +1338,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_Analyze
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1311,10 +1347,15 @@ workflows:
         - cache_level: none
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_Analyze
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_analyze_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_Analyze_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1324,10 +1365,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1342,7 +1383,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1351,10 +1392,15 @@ workflows:
         - cache_level: none
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_analyze_cc_dd:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1364,10 +1410,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1382,7 +1428,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1391,10 +1437,15 @@ workflows:
         - cache_level: none
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_analyze_cc_spm:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1404,10 +1455,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1422,7 +1473,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1431,10 +1482,15 @@ workflows:
         - cache_level: none
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_analyze_cc_dd_spm:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1444,10 +1500,10 @@ workflows:
         inputs:
         - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
         - BRANCH: trunk
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Install dependencies
         inputs:
@@ -1462,7 +1518,7 @@ workflows:
             xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-analyze:
         inputs:
         - workdir: .
@@ -1471,10 +1527,15 @@ workflows:
         - cache_level: none
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: WordPress_Analyze_CC_DD_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Tuist_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1486,10 +1547,10 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:tuist/tuist.git
         - BRANCH: main
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Generate workspace
         inputs:
@@ -1499,7 +1560,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1508,10 +1569,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Tuist_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_dd_cc:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Tuist_DD_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1523,10 +1589,10 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:tuist/tuist.git
         - BRANCH: main
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_DD_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Generate workspace
         inputs:
@@ -1536,7 +1602,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_DD_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1545,10 +1611,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Tuist_DD_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_spm_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Tuist_SPM_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1560,10 +1631,10 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:tuist/tuist.git
         - BRANCH: main
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_SPM_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Generate workspace
         inputs:
@@ -1573,7 +1644,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_SPM_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1582,10 +1653,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Tuist_SPM_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_dd_spm_cc:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1597,10 +1673,10 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:tuist/tuist.git
         - BRANCH: main
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
         title: Generate workspace
         inputs:
@@ -1610,7 +1686,7 @@ workflows:
             tuist generate
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Tuist.xcworkspace
@@ -1619,10 +1695,15 @@ workflows:
         - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Tuist_DD_SPM_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: Calendar
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1632,13 +1713,13 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:richardtop/CalendarApp.git
         - BRANCH: master
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "false"
-        - BENCHMARK_APP_NAME: Calendar
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1646,10 +1727,15 @@ workflows:
         - configuration: Debug
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Calendar
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Calendar_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1659,13 +1745,13 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:richardtop/CalendarApp.git
         - BRANCH: master
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar_CC
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1673,10 +1759,15 @@ workflows:
         - configuration: Debug
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Calendar_CC
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_cc_dd:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Calendar_CC_DD
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1686,13 +1777,13 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:richardtop/CalendarApp.git
         - BRANCH: master
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar_CC_DD
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar_CC_DD
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1700,10 +1791,15 @@ workflows:
         - configuration: Debug
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "false"
-        - BENCHMARK_APP_NAME: Calendar_CC_DD
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_cc_spm:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Calendar_CC_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1713,13 +1809,13 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:richardtop/CalendarApp.git
         - BRANCH: master
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar_CC_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar_CC_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1727,10 +1823,15 @@ workflows:
         - configuration: Debug
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "false"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Calendar_CC_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_cc_dd_spm:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -1740,13 +1841,13 @@ workflows:
         inputs:
         - REPO_URL: git@github.com:richardtop/CalendarApp.git
         - BRANCH: master
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - USE_COMP_CACHE: "true"
-        - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - bundle::benchmark_start_measure:
         inputs:
-        - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - xcode-build-for-simulator:
         inputs:
         - project_path: Calendar.xcodeproj
@@ -1754,9 +1855,204 @@ workflows:
         - configuration: Debug
     - bundle::benchmark_finish:
         inputs:
-        - USE_DD_CACHE: "true"
-        - USE_SPM: "true"
-        - BENCHMARK_APP_NAME: Calendar_CC_DD_SPM
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_icecubesapp_build_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: IceCubesApp
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_icecubesapp_build_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: IceCubesApp_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_icecubesapp_build_dd:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: IceCubesApp_DD
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_icecubesapp_build_cc_spm:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: IceCubesApp_CC_SPM
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_icecubesapp_build_cc_dd_spm:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: IceCubesApp_CC_DD_SPM
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:Dimillian/IceCubesApp.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cp IceCubesApp-release.xcconfig IceCubesApp.xcconfig
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: IceCubesApp.xcodeproj
+        - scheme: IceCubesApp
+        - configuration: Debug
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1799,157 +2095,157 @@ step_bundles:
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
-          - content: |-
-              set -x
-
-              git update-index --refresh | grep "cmd/gradle/asset/verification-metadata.xml"
-              if [[ $? == 0 ]]; then
-                echo "Please manually commit the changes to the repo:"
-                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 1
-              else
-                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 0
-              fi
+        - content: |-
+            set -x
+            
+            git update-index --refresh | grep "cmd/gradle/asset/verification-metadata.xml"
+            if [[ $? == 0 ]]; then
+              echo "Please manually commit the changes to the repo:"
+              echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+              exit 1
+            else
+              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
+              exit 0
+            fi
   generate_and_commit_dependency_matrix:
     steps:
-      - script:
-          run_if: ".IsCI"
-          title: Install pandoc
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
-                tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
-                sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
-
-                rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
-                rm -rf pandoc-$PANDOC_VERSION
-
-                pandoc --version
-      - script:
-          title: Install go versions
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                asdf install golang 1.23.8
-                asdf install golang 1.21.5
-      - script:
-          title: Generate dependency matrix
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                bash ./scripts/generate-dependency-matrix.sh
-      - script:
-          title: Reformat dependency matrix
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
-                mv cleaned.md docs/dependency-matrix.md
-      - script:
-          title: Commit dependency matrix
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                git status
-                ls -l docs/dependency-matrix.md
-                git stash push -u -m "stash before switching to gh-pages"
-
-                git fetch --all
-                git checkout gh-pages
-
-                rm -f docs/dependency-matrix.md
-                git stash apply
-
-                if [ ! -f docs/dependency-matrix.md ]; then
-                  echo "No dependency matrix found, skipping commit."
-                  exit -1
-                fi
-
-                if [ -n "$(git status --porcelain)" ]; then
-                  echo "Changes detected, committing and pushing to gh-pages branch."
-
-                  git add docs/dependency-matrix.md
-                  git diff --cached docs/dependency-matrix.md
-
-                  git commit -m "chore: update dependency matrix"
-                  git push origin gh-pages
-                else
-                  echo "No changes detected, skipping commit."
-                  exit 0
-                fi
+    - script:
+        run_if: ".IsCI"
+        title: Install pandoc
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+            
+            wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+            tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+            sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
+            
+            rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+            rm -rf pandoc-$PANDOC_VERSION
+            
+            pandoc --version
+    - script:
+        title: Install go versions
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+            
+            asdf install golang 1.23.8
+            asdf install golang 1.21.5
+    - script:
+        title: Generate dependency matrix
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+            
+            bash ./scripts/generate-dependency-matrix.sh
+    - script:
+        title: Reformat dependency matrix
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+            
+            pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
+            mv cleaned.md docs/dependency-matrix.md
+    - script:
+        title: Commit dependency matrix
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
+            
+            git status
+            ls -l docs/dependency-matrix.md
+            git stash push -u -m "stash before switching to gh-pages"
+            
+            git fetch --all
+            git checkout gh-pages
+            
+            rm -f docs/dependency-matrix.md
+            git stash apply
+            
+            if [ ! -f docs/dependency-matrix.md ]; then
+              echo "No dependency matrix found, skipping commit."
+              exit -1
+            fi
+            
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "Changes detected, committing and pushing to gh-pages branch."
+            
+              git add docs/dependency-matrix.md
+              git diff --cached docs/dependency-matrix.md
+            
+              git commit -m "chore: update dependency matrix"
+              git push origin gh-pages
+            else
+              echo "No changes detected, skipping commit."
+              exit 0
+            fi
 
   feature-e2e-setup:
     steps:
-      - activate-ssh-key:
-          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-      - script:
-          title: Clone e2e testing repo with deploy key
-          run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | ne ""}}'
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -ex
-
-                mkdir -p ~/.ssh
-                echo "$SSH_DEPLOY_KEY_E2E_TESTING" > ~/.ssh/github_deploy_build_cache_e2e_testing
-                chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
-
-                ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
-
-                mkdir -p ./_e2e
-                GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
-
-                ls -la ./_e2e
-      - script:
-          title: Clone e2e repo with existing SSH key
-          run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | eq ""}}'
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -ex
-
-                rm -rf ./_e2e
-                mkdir -p ./_e2e
-                git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
-
-                ls -la ./_e2e
-      - script:
-          title: Delete _tmp dirs
-          inputs:
-            - content: rm -rf _tmp
-      - script:
-          title: Delete DerivedData
-          inputs:
-            - content: rm -rf ~/Library/Developer/Xcode/DerivedData
-      - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-          inputs:
-            - repository_url: "$TEST_APP_URL"
-            - clone_into_dir: "./_tmp"
-            - branch: "$BRANCH"
-            - commit: "$COMMIT"
-      - git-clone: {}
-      - script:
-          title: build CLI
-          inputs:
-            - content: |-
-                set -exo pipefail
-                go build -o bitrise-build-cache-cli
-      - change-workdir:
-          title: Switch working dir to _tmp
-          inputs:
-            - path: "./_tmp"
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - script:
+        title: Clone e2e testing repo with deploy key
+        run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | ne ""}}'
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
+            
+            mkdir -p ~/.ssh
+            echo "$SSH_DEPLOY_KEY_E2E_TESTING" > ~/.ssh/github_deploy_build_cache_e2e_testing
+            chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
+            
+            ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
+            
+            mkdir -p ./_e2e
+            GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
+            
+            ls -la ./_e2e
+    - script:
+        title: Clone e2e repo with existing SSH key
+        run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | eq ""}}'
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
+            
+            rm -rf ./_e2e
+            mkdir -p ./_e2e
+            git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
+            
+            ls -la ./_e2e
+    - script:
+        title: Delete _tmp dirs
+        inputs:
+        - content: rm -rf _tmp
+    - script:
+        title: Delete DerivedData
+        inputs:
+        - content: rm -rf ~/Library/Developer/Xcode/DerivedData
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: "$TEST_APP_URL"
+        - clone_into_dir: "./_tmp"
+        - branch: "$BRANCH"
+        - commit: "$COMMIT"
+    - git-clone: { }
+    - script:
+        title: build CLI
+        inputs:
+        - content: |-
+            set -exo pipefail
+            go build -o bitrise-build-cache-cli
+    - change-workdir:
+        title: Switch working dir to _tmp
+        inputs:
+        - path: "./_tmp"
   benchmark-setup:
     inputs:
     - REPO_URL: ""
@@ -1969,7 +2265,7 @@ step_bundles:
         title: Clean _benchmark dir
         inputs:
         - content: rm -rf ./_benchmark
-    - git-clone: {}
+    - git-clone: { }
     - script:
         title: Build CLI
         run_if: '{{enveq "USE_COMP_CACHE" "true"}}'
@@ -2056,41 +2352,46 @@ step_bundles:
 pipelines:
   features-e2e:
     workflows:
-      test: {}
-      feature-e2e-bazel-bitrisedc-no-rbe: {}
-      feature-e2e-bazel-public-no-rbe: {}
-      feature-e2e-gradle-duckduck: {}
-      feature-e2e-gradle-bitwarden: {}
-      gradle-configuration-e2e-osx: {}
-      gradle-configuration-e2e-linux: {}
-      e2e-xcode-comp-cache: {}
+      test: { }
+      feature-e2e-bazel-bitrisedc-no-rbe: { }
+      feature-e2e-bazel-public-no-rbe: { }
+      feature-e2e-gradle-duckduck: { }
+      feature-e2e-gradle-bitwarden: { }
+      gradle-configuration-e2e-osx: { }
+      gradle-configuration-e2e-linux: { }
+      e2e-xcode-comp-cache: { }
     triggers:
       pull_request:
-        - source_branch: "*"
+      - source_branch: "*"
       push:
-        - branch: main
+      - branch: main
   benchmark:
     workflows:
-      benchmark_wordpress_build_baseline: {}
-      benchmark_wordpress_build_cc: {}
+      benchmark_wordpress_build_baseline: { }
+      benchmark_wordpress_build_cc: { }
       # benchmark_wordpress_build_cc_dd: {}
-      benchmark_wordpress_build_cc_spm: {}
+      benchmark_wordpress_build_cc_spm: { }
       # benchmark_wordpress_build_cc_dd_spm: {}
-      benchmark_wordpress_analyze_baseline: {}
-      benchmark_wordpress_analyze_cc: {}
+      benchmark_wordpress_analyze_baseline: { }
+      benchmark_wordpress_analyze_cc: { }
       # benchmark_wordpress_analyze_cc_dd: {}
-      benchmark_wordpress_analyze_cc_spm: {}
+      benchmark_wordpress_analyze_cc_spm: { }
       # benchmark_wordpress_analyze_cc_dd_spm: {}
-      benchmark_tuist_build_baseline: {}
-      benchmark_tuist_build_cc: {}
+      benchmark_tuist_build_baseline: { }
+      benchmark_tuist_build_cc: { }
       # benchmark_tuist_build_dd_cc: {}
-      benchmark_tuist_build_spm_cc: {}
+      benchmark_tuist_build_spm_cc: { }
       # benchmark_tuist_build_dd_spm_cc: {}
-      benchmark_calendar_build_baseline: {}
-      benchmark_calendar_build_cc: {}
-#      benchmark_calendar_build_cc_dd: {}
-      benchmark_calendar_build_cc_spm: {}
-#      benchmark_calendar_build_cc_dd_spm: {}
+      benchmark_calendar_build_baseline: { }
+      benchmark_calendar_build_cc: { }
+      #      benchmark_calendar_build_cc_dd: {}
+      benchmark_calendar_build_cc_spm: { }
+      #      benchmark_calendar_build_cc_dd_spm: {}
+      benchmark_icecubesapp_build_baseline: { }
+      benchmark_icecubesapp_build_cc: { }
+      #      benchmark_icecubesapp_build_cc_dd: {}
+      benchmark_icecubesapp_build_cc_spm: { }
+      #      benchmark_icecubesapp_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
         - benchmark_wordpress_build_baseline
@@ -2110,6 +2411,11 @@ pipelines:
         # - benchmark_tuist_build_dd_spm_cc
         - benchmark_calendar_build_baseline
         - benchmark_calendar_build_cc
-#        - benchmark_calendar_build_cc_dd
+        # - benchmark_calendar_build_cc_dd
         - benchmark_calendar_build_cc_spm
-#        - benchmark_calendar_build_cc_dd_spm
+        # - benchmark_calendar_build_cc_dd_spm
+        - benchmark_icecubesapp_build_baseline
+        - benchmark_icecubesapp_build_cc
+        # - benchmark_icecubesapp_build_cc_dd
+        - benchmark_icecubesapp_build_cc_spm
+        # - benchmark_icecubesapp_build_cc_dd_spm
