@@ -2091,7 +2091,7 @@ workflows:
     - USE_DD_CACHE: "false"
     - USE_SPM: "false"
     - USE_COMP_CACHE: "true"
-    - BENCHMARK_APP_NAME: Firefox
+    - BENCHMARK_APP_NAME: Firefox_CC
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -2128,7 +2128,7 @@ workflows:
     - USE_DD_CACHE: "true"
     - USE_SPM: "false"
     - USE_COMP_CACHE: "true"
-    - BENCHMARK_APP_NAME: Firefox
+    - BENCHMARK_APP_NAME: Firefox_CC_DD
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -2165,7 +2165,7 @@ workflows:
     - USE_DD_CACHE: "false"
     - USE_SPM: "true"
     - USE_COMP_CACHE: "true"
-    - BENCHMARK_APP_NAME: Firefox
+    - BENCHMARK_APP_NAME: Firefox_CC_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
@@ -2202,7 +2202,7 @@ workflows:
     - USE_DD_CACHE: "true"
     - USE_SPM: "true"
     - USE_COMP_CACHE: "true"
-    - BENCHMARK_APP_NAME: Firefox
+    - BENCHMARK_APP_NAME: Firefox_CC_DD_SPM
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
