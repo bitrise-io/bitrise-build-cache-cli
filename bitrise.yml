@@ -1708,7 +1708,7 @@ workflows:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
+        machine_type_id: g2.mac.medium
     tools:
       tuist: 4.70.0
     steps:
@@ -1752,7 +1752,7 @@ workflows:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
+        machine_type_id: g2.mac.medium
     tools:
       tuist: 4.70.0
     steps:
