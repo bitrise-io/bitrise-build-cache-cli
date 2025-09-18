@@ -2253,7 +2253,7 @@ step_bundles:
     - USE_DD_CACHE: "$USE_DD_CACHE"
     - USE_SPM: "$USE_SPM"
     - USE_COMP_CACHE: "$USE_COMP_CACHE"
-    - BENCHMARK_APP_NAME: ""
+    - BENCHMARK_APP_NAME: "$BENCHMARK_APP_NAME"
     steps:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -2316,9 +2316,9 @@ step_bundles:
             envman add --key "${BENCHMARK_APP_NAME}_START" --value "$(date +%s)"
   benchmark_finish:
     inputs:
-    - USE_DD_CACHE: "false"
-    - USE_SPM: "false"
-    - BENCHMARK_APP_NAME: ""
+    - USE_DD_CACHE: "$USE_DD_CACHE"
+    - USE_SPM: "$USE_SPM"
+    - BENCHMARK_APP_NAME: "$BENCHMARK_APP_NAME"
     steps:
     - script:
         title: Store action end time
