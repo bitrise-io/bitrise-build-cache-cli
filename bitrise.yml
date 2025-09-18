@@ -1038,6 +1038,7 @@ workflows:
         Tuist
         Calendar
         IceCubesApp
+        Firefox
       opts:
         is_expand: false
   benchmark_wordpress_build_baseline:
@@ -1880,7 +1881,6 @@ workflows:
         - USE_COMP_CACHE: $USE_COMP_CACHE
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
-        title:
         inputs:
         - content: |-
             set -exo pipefail
@@ -1919,7 +1919,6 @@ workflows:
         - USE_COMP_CACHE: $USE_COMP_CACHE
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
-        title:
         inputs:
         - content: |-
             set -exo pipefail
@@ -1958,7 +1957,6 @@ workflows:
         - USE_COMP_CACHE: $USE_COMP_CACHE
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
-        title:
         inputs:
         - content: |-
             set -exo pipefail
@@ -1997,7 +1995,6 @@ workflows:
         - USE_COMP_CACHE: $USE_COMP_CACHE
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
-        title:
         inputs:
         - content: |-
             set -exo pipefail
@@ -2036,7 +2033,6 @@ workflows:
         - USE_COMP_CACHE: $USE_COMP_CACHE
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - script:
-        title:
         inputs:
         - content: |-
             set -exo pipefail
@@ -2050,6 +2046,218 @@ workflows:
         - scheme: IceCubesApp
         - configuration: Debug
         - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_firefox_build_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: Firefox
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:mozilla-mobile/firefox-ios.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            
+            ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
+
+            cd firefox-ios/Client.xcodeproj
+            sed -i '' 's/"Fennec Development"/"Bitrise Firefox iOS Dev"/' project.pbxproj
+            sed -i '' 's/Fennec ShareTo Development/Bitrise Firefox iOS Dev - Share To/' project.pbxproj
+            sed -i '' 's/Fennec WidgetKit Development/Bitrise Firefox iOS Dev - WidgetKit/' project.pbxproj
+            sed -i '' 's/"XCUITests"/"Bitrise Firefox iOS Dev - XCUI Tests"/' project.pbxproj
+            sed -i '' 's/Fennec NotificationService Development/Bitrise Firefox iOS Dev - Notification Service/' project.pbxproj
+            sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer"/CODE_SIGN_IDENTITY = "iPhone Distribution"/' project.pbxproj
+            cd -
+            
+            npm install
+            npm run build
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: firefox-ios/Client.xcodeproj
+        - scheme: Fennec
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_firefox_build_cc:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Firefox_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:mozilla-mobile/firefox-ios.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            
+            ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: firefox-ios/Client.xcodeproj
+        - scheme: Fennec
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_firefox_build_cc_dd:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Firefox_CC_DD
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:mozilla-mobile/firefox-ios.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            
+            ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: firefox-ios/Client.xcodeproj
+        - scheme: Fennec
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_firefox_build_cc_spm:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Firefox_CC_SPM
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:mozilla-mobile/firefox-ios.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            
+            ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: firefox-ios/Client.xcodeproj
+        - scheme: Fennec
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_firefox_build_cc_dd_spm:
+    envs:
+    - USE_DD_CACHE: "true"
+    - USE_SPM: "true"
+    - USE_COMP_CACHE: "true"
+    - BENCHMARK_APP_NAME: Firefox_CC_DD_SPM
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:mozilla-mobile/firefox-ios.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            
+            ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: firefox-ios/Client.xcodeproj
+        - scheme: Fennec
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2303,7 +2511,7 @@ step_bundles:
     - restore-spm-cache@2.1.1:
         run_if: '{{enveq "USE_SPM" "true"}}'
         inputs:
-          - verbose: true
+        - verbose: true
   benchmark_start_measure:
     inputs:
     - BENCHMARK_APP_NAME: "$BENCHMARK_APP_NAME"
@@ -2333,7 +2541,7 @@ step_bundles:
     - save-spm-cache@1.3.1:
         run_if: '{{enveq "USE_SPM" "true"}}'
         inputs:
-          - verbose: true
+        - verbose: true
     - git::https://github.com/bitrise-steplib/bitrise-step-save-xcodebuild-cache.git@main:
         run_if: '{{enveq "USE_DD_CACHE" "true"}}'
         inputs:
@@ -2386,14 +2594,19 @@ pipelines:
       # benchmark_tuist_build_dd_spm_cc: {}
       benchmark_calendar_build_baseline: { }
       benchmark_calendar_build_cc: { }
-      #      benchmark_calendar_build_cc_dd: {}
+      # benchmark_calendar_build_cc_dd: {}
       benchmark_calendar_build_cc_spm: { }
-      #      benchmark_calendar_build_cc_dd_spm: {}
+      # benchmark_calendar_build_cc_dd_spm: {}
       benchmark_icecubesapp_build_baseline: { }
       benchmark_icecubesapp_build_cc: { }
-      #      benchmark_icecubesapp_build_cc_dd: {}
+      # benchmark_icecubesapp_build_cc_dd: {}
       benchmark_icecubesapp_build_cc_spm: { }
-      #      benchmark_icecubesapp_build_cc_dd_spm: {}
+      # benchmark_icecubesapp_build_cc_dd_spm: {}
+      benchmark_firefox_build_baseline: { }
+      benchmark_firefox_build_cc: { }
+      # benchmark_firefox_build_cc_dd: {}
+      benchmark_firefox_build_cc_spm: { }
+      # benchmark_firefox_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
         - benchmark_wordpress_build_baseline
@@ -2421,3 +2634,8 @@ pipelines:
         # - benchmark_icecubesapp_build_cc_dd
         - benchmark_icecubesapp_build_cc_spm
         # - benchmark_icecubesapp_build_cc_dd_spm
+        - benchmark_firefox_build_baseline
+        - benchmark_firefox_build_cc
+        # - benchmark_firefox_build_cc_dd
+        - benchmark_firefox_build_cc_spm
+        # - benchmark_firefox_build_cc_dd_spm
