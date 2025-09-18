@@ -901,6 +901,8 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -euo pipefail
+            
+            printenv
 
             variants=(
               ""
@@ -2500,7 +2502,7 @@ step_bundles:
         - verbose: true
   benchmark_start_measure:
     inputs:
-    - BENCHMARK_APP_NAME: ""
+    - BENCHMARK_APP_NAME: "$BENCHMARK_APP_NAME"
     steps:
     - script:
         title: Store action start time
