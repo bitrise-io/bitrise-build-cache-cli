@@ -2082,7 +2082,7 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - destination: 'generic/platform=iOS'
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2121,7 +2121,7 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - destination: 'generic/platform=iOS'
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2160,7 +2160,7 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - destination: 'generic/platform=iOS'
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2199,7 +2199,7 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - destination: 'generic/platform=iOS'
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2238,7 +2238,7 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - destination: 'generic/platform=iOS'
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
