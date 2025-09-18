@@ -2074,6 +2074,7 @@ workflows:
             set -exo pipefail
             
             ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2111,6 +2112,7 @@ workflows:
             set -exo pipefail
             
             ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2148,6 +2150,7 @@ workflows:
             set -exo pipefail
             
             ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2185,6 +2188,7 @@ workflows:
             set -exo pipefail
             
             ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2222,6 +2226,7 @@ workflows:
             set -exo pipefail
             
             ./bootstrap.sh
+            xcodebuild -downloadComponent MetalToolchain
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
