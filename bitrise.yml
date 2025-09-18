@@ -2082,7 +2082,8 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'generic/platform=iOS'
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2121,7 +2122,8 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'generic/platform=iOS'
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2160,7 +2162,8 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'generic/platform=iOS'
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2199,7 +2202,8 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'generic/platform=iOS'
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2238,7 +2242,8 @@ workflows:
         inputs:
         - project_path: firefox-ios/Client.xcodeproj
         - scheme: Fennec
-        - destination: 'generic/platform=iOS'
+        - destination: 'platform=iOS Simulator,name=iPhone 17,OS=26.0'
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
