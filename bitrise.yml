@@ -2248,11 +2248,11 @@ step_bundles:
         - path: "./_tmp"
   benchmark-setup:
     inputs:
-    - REPO_URL: ""
-    - BRANCH: ""
-    - USE_DD_CACHE: "false"
-    - USE_SPM: "false"
-    - USE_COMP_CACHE: "false"
+    - REPO_URL: "$REPO_URL"
+    - BRANCH: "$BRANCH"
+    - USE_DD_CACHE: "$USE_DD_CACHE"
+    - USE_SPM: "$USE_SPM"
+    - USE_COMP_CACHE: "$USE_COMP_CACHE"
     - BENCHMARK_APP_NAME: ""
     steps:
     - activate-ssh-key:
