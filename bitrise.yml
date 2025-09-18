@@ -1730,12 +1730,14 @@ workflows:
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-      - xcode-archive:
+      - script@1:
+          title: Build project
           inputs:
-            - project_path: Tuist.xcworkspace
-            - scheme: TuistApp
-            - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+            - content: |-
+                #!/bin/bash
+                set -ex
+                
+                xcodebuild -workspace Tuist.xcworkspace -scheme tuist build
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1772,12 +1774,14 @@ workflows:
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-      - xcode-archive:
+      - script@1:
+          title: Build project
           inputs:
-            - project_path: Tuist.xcworkspace
-            - scheme: TuistApp
-            - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+            - content: |-
+                #!/bin/bash
+                set -ex
+                
+                xcodebuild -workspace Tuist.xcworkspace -scheme tuist build
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
