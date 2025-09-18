@@ -2004,6 +2004,8 @@ step_bundles:
         - project_root_path: .
     - restore-spm-cache@2.1.1:
         run_if: '{{enveq "USE_SPM" "true"}}'
+        inputs:
+          - verbose: true
   benchmark_start_measure:
     inputs:
     - BENCHMARK_APP_NAME: ""
@@ -2032,12 +2034,18 @@ step_bundles:
             envman add --key "${BENCHMARK_APP_NAME}_END" --value "$(date +%s)"
     - save-spm-cache@1.3.1:
         run_if: '{{enveq "USE_SPM" "true"}}'
+        inputs:
+          - verbose: true
     - git::https://github.com/bitrise-steplib/bitrise-step-save-xcodebuild-cache.git@main:
         run_if: '{{enveq "USE_DD_CACHE" "true"}}'
         inputs:
         - project_root_path: .
         - derived_data_path: $HOME/Library/Developer/Xcode/DerivedData
         - skip_spm: $USE_SPM
+    - deploy-to-bitrise-io:
+        title: Upload logs to Bitrise
+        inputs:
+        - deploy_path: $BITRISE_DEPLOY_DIR
     - share-pipeline-variable:
         title: Share benchmark step results
         inputs:
