@@ -2055,6 +2055,45 @@ workflows:
         - USE_DD_CACHE: $USE_DD_CACHE
         - USE_SPM: $USE_SPM
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_signal_build_baseline:
+    envs:
+    - USE_DD_CACHE: "false"
+    - USE_SPM: "false"
+    - USE_COMP_CACHE: "false"
+    - BENCHMARK_APP_NAME: Signal
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::benchmark-setup:
+        inputs:
+        - REPO_URL: git@github.com:signalapp/Signal-iOS.git
+        - BRANCH: main
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - USE_COMP_CACHE: $USE_COMP_CACHE
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - script:
+        title:
+        inputs:
+        - content: |-
+            set -exo pipefail
+            
+            make dependencies
+    - bundle::benchmark_start_measure:
+        inputs:
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - xcode-build-for-simulator:
+        inputs:
+        - project_path: Signal.xcworkspace
+        - scheme: Signal
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    - bundle::benchmark_finish:
+        inputs:
+        - USE_DD_CACHE: $USE_DD_CACHE
+        - USE_SPM: $USE_SPM
+        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
 step_bundles:
   generate_gradle_verification_reference:
     steps:
