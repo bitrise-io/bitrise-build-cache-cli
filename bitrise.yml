@@ -1038,53 +1038,9 @@ workflows:
         Tuist
         Calendar
         IceCubesApp
+        VLC
       opts:
         is_expand: false
-  benchmark_wordpress_build_baseline:
-    envs:
-    - USE_DD_CACHE: "false"
-    - USE_SPM: "false"
-    - USE_COMP_CACHE: "false"
-    - BENCHMARK_APP_NAME: WordPress
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::benchmark-setup:
-        inputs:
-        - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
-        - BRANCH: trunk
-        - USE_DD_CACHE: $USE_DD_CACHE
-        - USE_SPM: $USE_SPM
-        - USE_COMP_CACHE: $USE_COMP_CACHE
-        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-    - script:
-        title: Install dependencies
-        inputs:
-        - content: |-
-            set -exo pipefail
-            asdf install ruby 3.2.2
-            asdf global ruby 3.2.2
-
-            mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
-            mkdir -p ~/DerivedData/Wordpress
-            rake dependencies
-            xcodebuild -resolvePackageDependencies
-    - bundle::benchmark_start_measure:
-        inputs:
-        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
-    - xcode-build-for-simulator:
-        inputs:
-        - project_path: WordPress.xcworkspace
-        - scheme: WordPress
-        - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
-    - bundle::benchmark_finish:
-        inputs:
-        - USE_DD_CACHE: $USE_DD_CACHE
-        - USE_SPM: $USE_SPM
-        - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_baseline:
     envs:
     - USE_DD_CACHE: "false"
@@ -1127,6 +1083,136 @@ workflows:
         - USE_DD_CACHE: $USE_DD_CACHE
         - USE_SPM: $USE_SPM
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_vlc_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: VLC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://code.videolan.org/videolan/vlc-ios.git
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                
+                gem install cocoapods
+                pod install
+                
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: VLC.xcworkspace
+            - scheme: VLC-iOS
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_vlc_build_cc:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "true"
+      - BENCHMARK_APP_NAME: VLC_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://code.videolan.org/videolan/vlc-ios.git
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                gem install cocoapods
+                pod install
+                
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: VLC.xcworkspace
+            - scheme: VLC-iOS
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_wordpress_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: WordPress
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+            - BRANCH: trunk
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                asdf install ruby 3.2.2
+                asdf global ruby 3.2.2
+                
+                mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+                mkdir -p ~/DerivedData/Wordpress
+                rake dependencies
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: WordPress.xcworkspace
+            - scheme: WordPress
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_build_cc:
     envs:
     - USE_DD_CACHE: "false"
@@ -2408,6 +2494,8 @@ pipelines:
       - branch: main
   benchmark:
     workflows:
+      benchmark_vlc_build_baseline: { }
+      benchmark_vlc_build_cc: { }
       benchmark_wordpress_build_baseline: { }
       benchmark_wordpress_build_cc: { }
       # benchmark_wordpress_build_cc_dd: {}
@@ -2435,6 +2523,8 @@ pipelines:
       #      benchmark_icecubesapp_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
+        - benchmark_vlc_build_baseline
+        - benchmark_vlc_build_cc
         - benchmark_wordpress_build_baseline
         - benchmark_wordpress_build_cc
         # - benchmark_wordpress_build_cc_dd
