@@ -1038,6 +1038,7 @@ workflows:
         Tuist
         Calendar
         IceCubesApp
+        VLC
       opts:
         is_expand: false
   benchmark_tuist_build_baseline:
