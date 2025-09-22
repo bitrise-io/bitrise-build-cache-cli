@@ -1065,6 +1065,11 @@ workflows:
           title: Switch working dir to /apps/ios
           inputs:
             - path: "./apps/ios"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1102,6 +1107,11 @@ workflows:
           title: Switch working dir to /apps/ios
           inputs:
             - path: "./apps/ios"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
