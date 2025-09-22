@@ -1061,6 +1061,11 @@ workflows:
             - USE_SPM: $USE_SPM
             - USE_COMP_CACHE: $USE_COMP_CACHE
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                ./scripts/ios/prepare-x86_64.sh
       - change-workdir:
           title: Switch working dir to /apps/ios
           inputs:
@@ -1103,6 +1108,11 @@ workflows:
             - USE_SPM: $USE_SPM
             - USE_COMP_CACHE: $USE_COMP_CACHE
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                ./scripts/ios/prepare-x86_64.sh
       - change-workdir:
           title: Switch working dir to /apps/ios
           inputs:
