@@ -166,6 +166,9 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 	logPath := fmt.Sprintf("%s/xcelerate-%s.log", logDir, invocationID)
 	f, err := osProxy.Create(logPath)
 	if err != nil {
+		if silent {
+			return io.Discard, func() {}
+		}
 		return os.Stderr, func() {}
 	}
 
