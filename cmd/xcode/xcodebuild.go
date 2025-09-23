@@ -186,7 +186,9 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 	return w, func() {
 		if err := f.Close(); err != nil {
 			//nolint:errcheck
-			fmt.Fprintf(os.Stderr, "Failed to close log file: %v\n", err)
+			if !silent {
+				fmt.Fprintf(os.Stderr, "Failed to close log file: %v\n", err)
+			}
 		}
 	}
 }
