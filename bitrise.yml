@@ -1201,7 +1201,7 @@ workflows:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
       - xcode-build-for-simulator:
           inputs:
-            - project_path: Kickstarter.xcproj
+            - project_path: Kickstarter.xcodeproj
             - scheme: Kickstarter-Framework-iOS
             - configuration: Debug
             - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
@@ -1242,7 +1242,7 @@ workflows:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
       - xcode-build-for-simulator:
           inputs:
-            - project_path: Kickstarter.xcproj
+            - project_path: Kickstarter.xcodeproj
             - scheme: Kickstarter-Framework-iOS
             - configuration: Debug
             - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
