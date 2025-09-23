@@ -100,6 +100,11 @@ func init() {
 
 Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
 	)
+
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.Silent,
+		"silent",
+		activateXcodeParams.Silent,
+		"Removes all stdout/err logging from the wrapper and proxy. Only xcodebuild logs will be logged.")
 }
 
 func ActivateXcodeCommandFn(
