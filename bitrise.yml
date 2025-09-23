@@ -1168,6 +1168,89 @@ workflows:
             - USE_DD_CACHE: $USE_DD_CACHE
             - USE_SPM: $USE_SPM
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_kickstarter_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: Kickstarter
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/kickstarter/ios-oss.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+
+                make dependencies
+
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: Kickstarter.xcproj
+            - scheme: Kickstarter-Framework-iOS
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_kickstarter_build_cc:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "true"
+      - BENCHMARK_APP_NAME: Kickstarter_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/kickstarter/ios-oss.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                make dependencies
+
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: Kickstarter.xcproj
+            - scheme: Kickstarter-Framework-iOS
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_wordpress_build_baseline:
     envs:
       - USE_DD_CACHE: "false"
@@ -2457,6 +2540,8 @@ pipelines:
     workflows:
       benchmark_vlc_build_baseline: { }
       benchmark_vlc_build_cc: { }
+      benchmark_kickstarter_build_baseline: { }
+      benchmark_kickstarter_build_cc: { }
       benchmark_wordpress_build_baseline: { }
       benchmark_wordpress_build_cc: { }
       # benchmark_wordpress_build_cc_dd: {}
@@ -2486,6 +2571,8 @@ pipelines:
         depends_on:
         - benchmark_vlc_build_baseline
         - benchmark_vlc_build_cc
+        - benchmark_kickstarter_build_baseline
+        - benchmark_kickstarter_build_cc
         - benchmark_wordpress_build_baseline
         - benchmark_wordpress_build_cc
         # - benchmark_wordpress_build_cc_dd
