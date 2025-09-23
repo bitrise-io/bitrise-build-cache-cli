@@ -159,6 +159,11 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 		var err error
 		logDir, err = getLogDir(osProxy)
 		if err != nil {
+			if silent {
+				return io.Discard, func() {}
+			}
+			fmt.Fprintf(os.Stderr, "Failed to get log dir, using stderr only: %v\n", err)
+
 			return os.Stderr, func() {}
 		}
 	}
@@ -169,6 +174,8 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 		if silent {
 			return io.Discard, func() {}
 		}
+		fmt.Fprintf(os.Stderr, "Failed to create log file at %s, using stderr only: %v\n", logPath, err)
+
 		return os.Stderr, func() {}
 	}
 
