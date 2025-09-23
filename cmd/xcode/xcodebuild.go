@@ -76,7 +76,16 @@ TBD`,
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
 		invocationID := uuid.New().String()
 
-		logOutput, cleanup := logFile(invocationID, utils.DefaultOsProxy{}, utils.AllEnvs())
+		decoder := utils.DefaultDecoderFactory{}
+		osProxy := utils.DefaultOsProxy{}
+		config, err := xcelerate.ReadConfig(osProxy, decoder)
+		if err != nil {
+			// we don't have the config yet, use default logger
+			log.NewLogger().Errorf(ErrReadConfig, err)
+			config = xcelerate.DefaultConfig()
+		}
+
+		logOutput, cleanup := logFile(invocationID, utils.DefaultOsProxy{}, utils.AllEnvs(), config.Silent)
 		defer cleanup()
 		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
 
@@ -88,14 +97,6 @@ TBD`,
 			logger,
 		)
 
-		decoder := utils.DefaultDecoderFactory{}
-		osProxy := utils.DefaultOsProxy{}
-
-		config, err := xcelerate.ReadConfig(osProxy, decoder)
-		if err != nil {
-			logger.Errorf(ErrReadConfig, err)
-			config = xcelerate.DefaultConfig()
-		}
 		logger.EnableDebugLog(config.DebugLogging)
 
 		var proxySessionClient session.SessionClient
@@ -149,7 +150,7 @@ func init() {
 	xcelerateCommand.AddCommand(xcodebuildCmd)
 }
 
-func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string) (io.Writer, func()) {
+func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string, silent bool) (io.Writer, func()) {
 	deployDir := envs["BITRISE_DEPLOY_DIR"]
 	var logDir string
 	if deployDir != "" {
@@ -168,13 +169,18 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string)
 		return os.Stderr, func() {}
 	}
 
-	//nolint:errcheck
-	fmt.Fprintf(os.Stderr, "ℹ️ These logs are available at: %s\n", logPath)
-
 	// wrap stderr to also write to log file
-	mw := io.MultiWriter(os.Stderr, f)
+	var w io.Writer
+	if silent {
+		w = f
+	} else {
+		//nolint:errcheck
+		fmt.Fprintf(os.Stderr, "ℹ️ These logs are available at: %s\n", logPath)
 
-	return mw, func() {
+		w = io.MultiWriter(os.Stderr, f)
+	}
+
+	return w, func() {
 		if err := f.Close(); err != nil {
 			//nolint:errcheck
 			fmt.Fprintf(os.Stderr, "Failed to close log file: %v\n", err)
@@ -206,13 +212,15 @@ func XcodebuildCmdFn(
 			logger.TErrorf("Failed to set session: %v", err)
 		}
 
-		proxyCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		go func() {
-			if err := streamProxyLogs(proxyCtx, invocationID, logger, utils.DefaultOsProxy{}); err != nil {
-				logger.Errorf("Failed to stream proxy logs: %v", err)
-			}
-		}()
+		if !config.Silent {
+			proxyCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go func() {
+				if err := streamProxyLogs(proxyCtx, invocationID, logger, utils.DefaultOsProxy{}); err != nil {
+					logger.Errorf("Failed to stream proxy logs: %v", err)
+				}
+			}()
+		}
 	}
 
 	runStats := xcodeRunner.Run(ctx, toPass)
@@ -439,6 +447,6 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 		}
 		// To have a different prefix than the wrapper
 		// nolint: forbidigo
-		fmt.Println("[Bitrise Build Cache] " + strings.TrimSpace(line))
+		fmt.Fprintln(os.Stderr, "[Bitrise Build Cache] "+strings.TrimSpace(line))
 	}
 }

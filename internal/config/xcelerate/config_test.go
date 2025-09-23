@@ -1,4 +1,4 @@
-// nolint: goconst
+// nolint: goconst, cyclop, maintidx
 package xcelerate_test
 
 import (
@@ -225,6 +225,56 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
+			AuthConfig: common.CacheAuthConfig{
+				AuthToken:   "auth-token",
+				WorkspaceID: "workspace-id",
+			},
+		}
+		require.Len(t, cmdMock.CombinedOutputCalls(), 1)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When silent and debug logging enabled, silent will take precedence", func(t *testing.T) {
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
+			"BITRISE_BUILD_CACHE_CLI_VERSION":     "cli-version-1.0.0",
+			"BITRISE_XCELERATE_PROXY_VERSION":     "proxy-version-1.0.0",
+			"BITRISE_XCELERATE_WRAPPER_VERSION":   "wrapper-version-1.0.0",
+			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("/usr/bin/xcodebuild2"), nil
+			},
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
+		}
+
+		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled: true,
+			DebugLogging:      true,
+			Silent:            true,
+		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
+			return cmdMock
+		})
+		require.NoError(t, err)
+
+		expected := xcelerate.Config{
+			ProxyVersion:           "proxy-version-1.0.0",
+			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
+			WrapperVersion:         "wrapper-version-1.0.0",
+			CLIVersion:             "cli-version-1.0.0",
+			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
+			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
+			BuildCacheEnabled:      true,
+			DebugLogging:           false,
+			Silent:                 true,
 			AuthConfig: common.CacheAuthConfig{
 				AuthToken:   "auth-token",
 				WorkspaceID: "workspace-id",
