@@ -2430,6 +2430,9 @@ step_bundles:
         title: Save files
         inputs:
         - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            
             echo "BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH path: $BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH"
             cp "$BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH" "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}_xcodebuild_result.txt" || echo "No xcodebuild result file found"
             
@@ -2437,7 +2440,7 @@ step_bundles:
             cp "$BITRISE_XCODEBUILD_BUILD_FOR_SIMULATOR_LOG_PATH" "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}_xcodebuild_simulator_log.txt" || echo "No xcodebuild simulator log file found"
             
             echo "BITRISE_XCRESULT_PATH path: $BITRISE_XCRESULT_PATH"
-            cp "$BITRISE_XCRESULT_PATH" "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}.xcresult.zip" || echo "No xcresult file found"
+            tar -czf "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}.xcresult.tar.gz" $BITRISE_XCRESULT_PATH/* || echo "No xcresult files found"
     - deploy-to-bitrise-io:
         title: Upload logs to Bitrise
         inputs:
