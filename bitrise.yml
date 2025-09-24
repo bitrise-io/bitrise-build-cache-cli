@@ -2460,12 +2460,12 @@ pipelines:
       benchmark_wordpress_build_baseline: { }
       benchmark_wordpress_build_cc: { }
       # benchmark_wordpress_build_cc_dd: {}
-      # benchmark_wordpress_build_cc_spm: { }
+      benchmark_wordpress_build_cc_spm: { }
       # benchmark_wordpress_build_cc_dd_spm: {}
       benchmark_wordpress_analyze_baseline: { }
       benchmark_wordpress_analyze_cc: { }
       # benchmark_wordpress_analyze_cc_dd: {}
-      # benchmark_wordpress_analyze_cc_spm: { }
+      benchmark_wordpress_analyze_cc_spm: { }
       # benchmark_wordpress_analyze_cc_dd_spm: {}
       # benchmark_tuist_build_baseline: { }
       # benchmark_tuist_build_cc: { }
@@ -2489,12 +2489,12 @@ pipelines:
         - benchmark_wordpress_build_baseline
         - benchmark_wordpress_build_cc
         # - benchmark_wordpress_build_cc_dd
-        # - benchmark_wordpress_build_cc_spm
+        - benchmark_wordpress_build_cc_spm
         # - benchmark_wordpress_build_cc_dd_spm
         - benchmark_wordpress_analyze_baseline
         - benchmark_wordpress_analyze_cc
         # - benchmark_wordpress_analyze_cc_dd
-        # - benchmark_wordpress_analyze_cc_spm
+        - benchmark_wordpress_analyze_cc_spm
         # - benchmark_wordpress_analyze_cc_dd_spm
         # - benchmark_tuist_build_baseline
         # - benchmark_tuist_build_cc
