@@ -2369,7 +2369,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            ./bitrise-build-cache-cli -d activate xcode --cache
+            ./bitrise-build-cache-cli activate xcode --cache
     - script:
         title: Git clone benchmark app
         inputs:
