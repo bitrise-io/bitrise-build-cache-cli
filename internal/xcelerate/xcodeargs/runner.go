@@ -1,24 +1,23 @@
 package xcodeargs
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"bufio"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/x
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"bufio"
-	"sync"
 )
 
 type RunStats struct {
