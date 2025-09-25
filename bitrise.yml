@@ -1034,6 +1034,7 @@ workflows:
     - APPS: |-
         WordPress
         WordPress_Analyze
+        WordPress_Random
         Tuist
         Calendar
         IceCubesApp
@@ -1236,6 +1237,116 @@ workflows:
                 asdf install ruby 3.2.2
                 asdf global ruby 3.2.2
                 
+                mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+                mkdir -p ~/DerivedData/Wordpress
+                rake dependencies
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: WordPress.xcworkspace
+            - scheme: WordPress
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_wordpress_random_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: WordPress_Random
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+            - BRANCH: trunk
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Random checkout
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -exo pipefail
+                
+                # pick a random commit from the last 30 commits (or fewer if repo has fewer)
+                commit=$(git rev-list --max-count=30 HEAD | shuf -n1)
+                git checkout "$commit"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                asdf install ruby 3.2.2
+                asdf global ruby 3.2.2
+
+                mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
+                mkdir -p ~/DerivedData/Wordpress
+                rake dependencies
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: WordPress.xcworkspace
+            - scheme: WordPress
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_wordpress_random_build_cc:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "true"
+      - BENCHMARK_APP_NAME: WordPress_Random_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/wordpress-mobile/WordPress-iOS.git
+            - BRANCH: trunk
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Random checkout
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -exo pipefail
+
+                # pick a random commit from the last 30 commits (or fewer if repo has fewer)
+                commit=$(git rev-list --max-count=30 HEAD | shuf -n1)
+                git checkout "$commit"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                asdf install ruby 3.2.2
+                asdf global ruby 3.2.2
+
                 mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
                 mkdir -p ~/DerivedData/Wordpress
                 rake dependencies
@@ -2508,7 +2619,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            git clone --depth 1 $REPO_URL -b $BRANCH ./_benchmark/$BENCHMARK_APP_NAME
+            git clone --depth 30 $REPO_URL -b $BRANCH ./_benchmark/$BENCHMARK_APP_NAME
     - change-workdir:
         title: Switch working dir to _benchmark
         inputs:
@@ -2607,6 +2718,8 @@ pipelines:
       benchmark_wordpress_build_baseline: { }
       benchmark_wordpress_build_spm: { }
       benchmark_wordpress_build_cc: { }
+      benchmark_wordpress_random_build_cc: { }
+      benchmark_wordpress_random_build_baseline: { }
       # benchmark_wordpress_build_cc_dd: {}
       benchmark_wordpress_build_cc_spm: { }
       # benchmark_wordpress_build_cc_dd_spm: {}
@@ -2639,6 +2752,8 @@ pipelines:
         - benchmark_wordpress_build_baseline
         - benchmark_wordpress_build_spm
         - benchmark_wordpress_build_cc
+        - benchmark_wordpress_random_build_cc
+        - benchmark_wordpress_random_build_baseline
         # - benchmark_wordpress_build_cc_dd
         - benchmark_wordpress_build_cc_spm
         # - benchmark_wordpress_build_cc_dd_spm
