@@ -901,8 +901,6 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -euo pipefail
-            
-            printenv
 
             variants=(
               ""
