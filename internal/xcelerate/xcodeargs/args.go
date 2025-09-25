@@ -23,6 +23,7 @@ var CacheArgs = map[string]string{
 	"COMPILATION_CACHE_ENABLE_DETACHED_KEY_QUERIES": "YES",
 	"SWIFT_ENABLE_COMPILE_CACHE":                    "YES",
 	"SWIFT_ENABLE_EXPLICIT_MODULES":                 "YES",
+	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
 }
