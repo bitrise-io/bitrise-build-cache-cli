@@ -1280,9 +1280,14 @@ workflows:
             - content: |-
                 #!/bin/bash
                 set -exo pipefail
+
+                # produce a numeric seed from the slug (sha1 -> hex -> decimal bytes)
+                seed_hex=$(printf '%s' "$BITRISE_BUILD_SLUG" | sha1sum | awk '{print $1}')
+                # turn hex into raw bytes for --random-source
+                seed_bytes=$(printf '%s' "$seed_hex" | xxd -r -p)
                 
-                # pick a random commit from the last 30 commits (or fewer if repo has fewer)
-                commit=$(git rev-list --max-count=30 HEAD | shuf -n1)
+                # pick a commit deterministically
+                commit=$(git rev-list --max-count=30 HEAD | shuf -n1 --random-source=<(printf '%s' "$seed_bytes"))
                 git checkout "$commit"
       - script:
           title: Install dependencies
