@@ -201,8 +201,10 @@ func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadClo
 
 		line := scanner.Text()
 
-		timestamp := time.Now().Format("15:04:05")
-		line = fmt.Sprintf("[%s] %s", timestamp, line)
+		if runner.config.XcodebuildTimestamps && !runner.config.Silent {
+			timestamp := time.Now().Format("15:04:05")
+			line = fmt.Sprintf("[%s] %s", timestamp, line)
+		}
 
 		//nolint: errcheck
 		fmt.Fprintf(writer, "%s\n", line)

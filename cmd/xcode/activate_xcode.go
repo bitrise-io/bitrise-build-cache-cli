@@ -105,6 +105,10 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 		"silent",
 		activateXcodeParams.Silent,
 		"Removes all stdout/err logging from the wrapper and proxy. Only xcodebuild logs will be logged.")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.XcodebuildTimestampsEnabled,
+		"timestamps",
+		activateXcodeParams.XcodebuildTimestampsEnabled,
+		"Enable xcodebuild timestamps. This will add timestamps to the xcodebuild output.")
 }
 
 func ActivateXcodeCommandFn(

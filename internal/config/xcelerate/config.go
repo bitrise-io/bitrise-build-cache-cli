@@ -24,13 +24,14 @@ const (
 )
 
 type Params struct {
-	BuildCacheEnabled       bool
-	BuildCacheEndpoint      string
-	DebugLogging            bool
-	Silent                  bool
-	XcodePathOverride       string
-	ProxySocketPathOverride string
-	PushEnabled             bool
+	BuildCacheEnabled           bool
+	BuildCacheEndpoint          string
+	DebugLogging                bool
+	Silent                      bool
+	XcodePathOverride           string
+	ProxySocketPathOverride     string
+	PushEnabled                 bool
+	XcodebuildTimestampsEnabled bool
 }
 
 type Config struct {
@@ -44,6 +45,7 @@ type Config struct {
 	PushEnabled            bool                   `json:"pushEnabled"`
 	DebugLogging           bool                   `json:"debugLogging,omitempty"`
 	Silent                 bool                   `json:"silent,omitempty"`
+	XcodebuildTimestamps   bool                   `json:"xcodebuildTimestamps,omitempty"`
 	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
 
@@ -67,13 +69,14 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 
 func DefaultParams() Params {
 	return Params{
-		BuildCacheEnabled:       true,
-		BuildCacheEndpoint:      "",
-		Silent:                  false,
-		DebugLogging:            false,
-		XcodePathOverride:       "",
-		ProxySocketPathOverride: "",
-		PushEnabled:             true,
+		BuildCacheEnabled:           true,
+		BuildCacheEndpoint:          "",
+		Silent:                      false,
+		DebugLogging:                false,
+		XcodePathOverride:           "",
+		ProxySocketPathOverride:     "",
+		PushEnabled:                 true,
+		XcodebuildTimestampsEnabled: false,
 	}
 }
 
@@ -125,6 +128,10 @@ func NewConfig(ctx context.Context,
 		logger.Warnf("Both debug and silent logging specified, silent will take precedence.")
 		params.DebugLogging = false
 	}
+	if params.XcodebuildTimestampsEnabled && params.Silent {
+		logger.Warnf("Both timestamps and silent logging specified, silent will take precedence.")
+		params.XcodebuildTimestampsEnabled = false
+	}
 
 	return Config{
 		ProxyVersion:           envs["BITRISE_XCELERATE_PROXY_VERSION"],
@@ -137,6 +144,7 @@ func NewConfig(ctx context.Context,
 		PushEnabled:            params.PushEnabled,
 		DebugLogging:           params.DebugLogging,
 		Silent:                 params.Silent,
+		XcodebuildTimestamps:   params.XcodebuildTimestampsEnabled,
 		AuthConfig:             authConfig,
 	}, nil
 }
