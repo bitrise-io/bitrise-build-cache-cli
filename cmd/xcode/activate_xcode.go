@@ -1,6 +1,7 @@
 package xcode
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"fmt"
@@ -287,6 +288,9 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	pathContent := fmt.Sprintf("export PATH=%s:$PATH", binPath)
 
 	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
+	if err = addPathToGithubPathFile(osProxy, scriptPath, envs, logger); err != nil {
+		logger.Errorf("failed to add path to github path file: %s", err)
+	}
 
 	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
 	err = utils.AddContentOrCreateFile(logger,
@@ -306,6 +310,30 @@ func addXcelerateCommandToPathWithScriptWrapper(
 		pathContent)
 	if err != nil {
 		return fmt.Errorf("failed to add xcelerate command to PATH in zshrc: %w", err)
+	}
+
+	return nil
+}
+
+func addPathToGithubPathFile(osProxy utils.OsProxy, binPath string, envs map[string]string, logger log.Logger) error {
+	filePath := envs["GITHUB_PATH"]
+	if filePath == "" {
+		return nil
+	}
+
+	logger.Infof("Adding path to %s", filePath)
+	f, err := osProxy.OpenFile(filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open GITHUB_PATH file: %w", err)
+	}
+	defer f.Close()
+
+	writer := bufio.NewWriter(f)
+	if _, err := writer.WriteString(binPath); err != nil {
+		return fmt.Errorf("failed to write to GITHUB_PATH file: %w", err)
+	}
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush GITHUB_PATH file: %w", err)
 	}
 
 	return nil
