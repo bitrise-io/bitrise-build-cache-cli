@@ -1111,7 +1111,6 @@ workflows:
                 gem install cocoapods
                 pod install
                 
-                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1300,7 +1299,6 @@ workflows:
                 mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
                 mkdir -p ~/DerivedData/Wordpress
                 rake dependencies
-                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1355,7 +1353,6 @@ workflows:
                 mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
                 mkdir -p ~/DerivedData/Wordpress
                 rake dependencies
-                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1400,7 +1397,6 @@ workflows:
                 mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
                 mkdir -p ~/DerivedData/Wordpress
                 rake dependencies
-                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1445,7 +1441,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1490,7 +1485,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1535,7 +1529,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1580,7 +1573,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1625,7 +1617,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1670,7 +1661,6 @@ workflows:
                 mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
                 mkdir -p ~/DerivedData/Wordpress
                 rake dependencies
-                xcodebuild -resolvePackageDependencies
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1715,7 +1705,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1760,7 +1749,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1805,7 +1793,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1850,7 +1837,6 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            xcodebuild -resolvePackageDependencies
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
