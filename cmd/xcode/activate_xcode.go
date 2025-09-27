@@ -288,7 +288,7 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	pathContent := fmt.Sprintf("export PATH=%s:$PATH", binPath)
 
 	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
-	if err = addPathToGithubPathFile(osProxy, scriptPath, envs, logger); err != nil {
+	if err = addPathToGithubPathFile(osProxy, binPath, envs, logger); err != nil {
 		logger.Errorf("failed to add path to github path file: %s", err)
 	}
 
