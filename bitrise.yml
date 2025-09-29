@@ -2659,7 +2659,7 @@ step_bundles:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -euxo pipefail
+            set -exo pipefail
             
             echo "BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH path: $BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH"
             cp "$BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH" "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}_xcodebuild_result.txt" || echo "No xcodebuild result file found"
