@@ -2678,6 +2678,16 @@ step_bundles:
               tar -C "$dir" -czf "$dest" .
             done
             ' _ {} +
+            
+            find "$HOME/Library/Developer/Xcode/DerivedData" -type d -name '*.xcactivitylog' -exec sh -c '
+            for dir do
+              name=$(basename "$dir")
+              dest="$BITRISE_DEPLOY_DIR/${name}.tar.gz"
+              echo "Creating $dest from $dir"
+              tar -C "$dir" -czf "$dest" .
+            done
+            ' _ {} +
+            
             tree -L 2 "$HOME/Library/Developer/Xcode/DerivedData"
     - deploy-to-bitrise-io:
         title: Upload logs to Bitrise
