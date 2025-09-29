@@ -68,6 +68,7 @@ func TestConfig_Save(t *testing.T) {
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
+			XcodebuildTimestamps:   true,
 		}
 		err := config.Save(mockLogger, mockOsProxy, mockEncoderFactory)
 
@@ -205,8 +206,9 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
-			BuildCacheEnabled: true,
-			DebugLogging:      true,
+			BuildCacheEnabled:           true,
+			DebugLogging:                true,
+			XcodebuildTimestampsEnabled: true,
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
@@ -225,6 +227,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
+			XcodebuildTimestamps:   true,
 			AuthConfig: common.CacheAuthConfig{
 				AuthToken:   "auth-token",
 				WorkspaceID: "workspace-id",
@@ -257,9 +260,10 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
-			BuildCacheEnabled: true,
-			DebugLogging:      true,
-			Silent:            true,
+			BuildCacheEnabled:           true,
+			DebugLogging:                true,
+			Silent:                      true,
+			XcodebuildTimestampsEnabled: true,
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			return cmdMock
 		})
@@ -274,6 +278,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
 			DebugLogging:           false,
+			XcodebuildTimestamps:   false,
 			Silent:                 true,
 			AuthConfig: common.CacheAuthConfig{
 				AuthToken:   "auth-token",

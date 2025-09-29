@@ -1,14 +1,17 @@
 package xcodeargs
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -58,14 +61,15 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
 
 	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
-	innerCmd.Stdout = os.Stdout
-	innerCmd.Stderr = os.Stderr
 	innerCmd.Stdin = os.Stdin
+	var wg sync.WaitGroup
+	runner.setupOutputPipes(ctx, innerCmd, &wg)
 
 	interruptCtx, cancel := context.WithCancel(ctx)
 	runner.handleInterrupt(interruptCtx, innerCmd)
 
 	err := innerCmd.Run()
+	wg.Wait()
 
 	cancel()
 	duration := time.Since(runStats.StartTime)
@@ -86,6 +90,31 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 	}
 
 	return runStats
+}
+
+func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd, wg *sync.WaitGroup) {
+	stdOutReader, err := cmd.StdoutPipe()
+	if err != nil {
+		runner.logger.Errorf("Failed to get stdout pipe: %v", err)
+		cmd.Stdout = os.Stdout
+	} else {
+		wg.Add(1)
+		go func() {
+			runner.streamOutput(ctx, stdOutReader, os.Stdout)
+			wg.Done()
+		}()
+	}
+	stdErrReader, err := cmd.StderrPipe()
+	if err != nil {
+		runner.logger.Errorf("Failed to get stderr pipe: %v", err)
+		cmd.Stderr = os.Stderr
+	} else {
+		wg.Add(1)
+		go func() {
+			runner.streamOutput(ctx, stdErrReader, os.Stderr)
+			wg.Done()
+		}()
+	}
 }
 
 func (runner *DefaultRunner) handleInterrupt(ctx context.Context, cmd *exec.Cmd) {
@@ -156,4 +185,32 @@ func (runner *DefaultRunner) determineXcodeVersionAndBuildNumber(ctx context.Con
 	runStats.XcodeBuildNumber = buildNumberMatch[1]
 
 	return nil
+}
+
+func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadCloser, writer io.Writer) {
+	scanner := bufio.NewScanner(reader)
+	const maxTokenSize = 10 * 1024 * 1024
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxTokenSize)
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		line := scanner.Text()
+
+		if runner.config.XcodebuildTimestamps && !runner.config.Silent {
+			timestamp := time.Now().Format("15:04:05")
+			line = fmt.Sprintf("[%s] %s", timestamp, line)
+		}
+
+		//nolint: errcheck
+		fmt.Fprintf(writer, "%s\n", line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		runner.logger.Errorf("Failed to scan stdout: %v", err)
+	}
 }
