@@ -2659,7 +2659,7 @@ step_bundles:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -eo pipefail
+            set -euxo pipefail
             
             echo "BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH path: $BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH"
             cp "$BITRISE_XCODE_BUILD_RAW_RESULT_TEXT_PATH" "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}_xcodebuild_result.txt" || echo "No xcodebuild result file found"
@@ -2671,6 +2671,7 @@ step_bundles:
             tar -czf "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}.xcresult.tar.gz" -C "$BITRISE_XCRESULT_PATH" . || echo "No xcarchive files found"
             
             find "$HOME/Library/Developer/Xcode/DerivedData" -type f -name '*.xcbuilddata' -exec cp {} "$BITRISE_DEPLOY_DIR/" \;
+            find "$HOME/Library/Developer/Xcode/DerivedData" -path '*/Build/Intermediates.noindex/*' -print
             tree -L 2 "$HOME/Library/Developer/Xcode/DerivedData"
     - deploy-to-bitrise-io:
         title: Upload logs to Bitrise
