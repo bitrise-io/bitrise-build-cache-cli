@@ -2669,6 +2669,8 @@ step_bundles:
             
             echo "BITRISE_XCRESULT_PATH path: $BITRISE_XCRESULT_PATH"
             tar -czf "$BITRISE_DEPLOY_DIR/${BENCHMARK_APP_NAME}.xcresult.tar.gz" -C "$BITRISE_XCRESULT_PATH" . || echo "No xcarchive files found"
+            
+            find "$HOME/Library/Developer/Xcode/DerivedData" -type f -name '*.xcbuilddata' -exec cp {} "$BITRISE_DEPLOY_DIR/" \;
     - deploy-to-bitrise-io:
         title: Upload logs to Bitrise
         inputs:
