@@ -1039,8 +1039,103 @@ workflows:
         Calendar
         IceCubesApp
         VLC
+        SimpleX
       opts:
         is_expand: false
+  benchmark_simplex_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: SimpleX
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/simplex-chat/simplex-chat.git
+            - BRANCH: stable
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                ./scripts/ios/prepare-x86_64.sh
+      - change-workdir:
+          title: Switch working dir to /apps/ios
+          inputs:
+            - path: "./apps/ios"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: SimpleX.xcodeproj
+            - scheme: "SimpleX (iOS)"
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_simplex_build_cc:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "true"
+      - BENCHMARK_APP_NAME: SimpleX_CC
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/simplex-chat/simplex-chat.git
+            - BRANCH: stable
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                ./scripts/ios/prepare-x86_64.sh
+      - change-workdir:
+          title: Switch working dir to /apps/ios
+          inputs:
+            - path: "./apps/ios"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                xcodebuild -resolvePackageDependencies
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: SimpleX.xcodeproj
+            - scheme: "SimpleX (iOS)"
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_tuist_build_baseline:
     envs:
     - USE_DD_CACHE: "false"
@@ -2711,6 +2806,8 @@ pipelines:
       - branch: main
   benchmark:
     workflows:
+      benchmark_simplex_build_baseline: { }
+      benchmark_simplex_build_cc: { }
       benchmark_vlc_build_baseline: { }
       benchmark_vlc_build_spm: { }
       benchmark_vlc_build_cc: { }
@@ -2745,6 +2842,8 @@ pipelines:
       #      benchmark_icecubesapp_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
+        - benchmark_simplex_build_baseline
+        - benchmark_simplex_build_cc
         - benchmark_vlc_build_baseline
         - benchmark_vlc_build_spm
         - benchmark_vlc_build_cc
