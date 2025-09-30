@@ -1,6 +1,7 @@
 package xcode
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"fmt"
@@ -89,6 +90,10 @@ func init() {
 		"cache-endpoint",
 		activateXcodeParams.BuildCacheEndpoint,
 		"Build Cache endpoint URL.")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.PushEnabled,
+		"cache-push",
+		activateXcodeParams.PushEnabled,
+		"Enable pushing new cache entries")
 	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcodePathOverride,
 		"xcode-path",
 		activateXcodeParams.XcodePathOverride,
@@ -96,6 +101,15 @@ func init() {
 
 Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
 	)
+
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.Silent,
+		"silent",
+		activateXcodeParams.Silent,
+		"Removes all stdout/err logging from the wrapper and proxy. Only xcodebuild logs will be logged.")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.XcodebuildTimestampsEnabled,
+		"timestamps",
+		activateXcodeParams.XcodebuildTimestampsEnabled,
+		"Enable xcodebuild timestamps. This will add timestamps to the xcodebuild output.")
 }
 
 func ActivateXcodeCommandFn(
@@ -274,6 +288,9 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	pathContent := fmt.Sprintf("export PATH=%s:$PATH", binPath)
 
 	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
+	if err = addPathToGithubPathFile(osProxy, binPath, envs, logger); err != nil {
+		logger.Errorf("failed to add path to github path file: %s", err)
+	}
 
 	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
 	err = utils.AddContentOrCreateFile(logger,
@@ -293,6 +310,30 @@ func addXcelerateCommandToPathWithScriptWrapper(
 		pathContent)
 	if err != nil {
 		return fmt.Errorf("failed to add xcelerate command to PATH in zshrc: %w", err)
+	}
+
+	return nil
+}
+
+func addPathToGithubPathFile(osProxy utils.OsProxy, binPath string, envs map[string]string, logger log.Logger) error {
+	filePath := envs["GITHUB_PATH"]
+	if filePath == "" {
+		return nil
+	}
+
+	logger.Infof("Adding path to %s", filePath)
+	f, err := osProxy.OpenFile(filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open GITHUB_PATH file: %w", err)
+	}
+	defer f.Close()
+
+	writer := bufio.NewWriter(f)
+	if _, err := writer.WriteString(binPath); err != nil {
+		return fmt.Errorf("failed to write to GITHUB_PATH file: %w", err)
+	}
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush GITHUB_PATH file: %w", err)
 	}
 
 	return nil

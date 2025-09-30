@@ -740,76 +740,6 @@ workflows:
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     - deploy-to-bitrise-io@2: { }
 
-  ai_pr_summary:
-    triggers:
-      # run for pull requests; changed_files filter exposes the list of changed files
-      pull_request:
-      - target_branch: '*'
-        source_branch: '*'
-        changed_files: '*'
-    # Set status_report_name to report the status of this workflow separately.
-    status_report_name: 'AI Review'
-    # Simple Medium Linux machine is enough
-    meta:
-      bitrise.io:
-        machine_type_id: g2.linux.medium
-        stack: linux-docker-android-22.04
-    envs:
-    - GITHUB_TOKEN: $AI_GITHUB_TOKEN
-    - LITELLM_API_KEY: $LITELLM_API_KEY
-    - PUBSUB_TOPIC_ID: bitcode-analytics
-    - PUBSUB_PROJECT_ID: ip-ai-dev
-    - PUBSUB_CREDENTIALS_JSON_B64: $AI_PUBSUB_CREDENTIALS_JSON_B64
-    steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8.4.0: { }
-    - script@1.2.1:
-        title: Generate AI Review for PR
-        inputs:
-        - content: |-
-            #!/bin/bash
-            set -e
-            
-            sudo apt update
-            sudo apt install ripgrep -y
-            
-            # Parse repository name from repo URL (works for SSH & HTTPS)
-            REPO_URL="${GIT_REPOSITORY_URL}"
-            REPO=$(echo "$REPO_URL" | sed -E 's#(git@|https://)([^/:]+)[/:]([^/]+)/([^.]+)(\.git)?#\3/\4#')
-            
-            # 1. Unshallow the repo if it's a shallow clone (safe to run even if already full)
-            git fetch --unshallow || true
-            
-            # 2. Fetch all branch refs (this ensures both the PR and the target/destination branch are present)
-            git fetch origin
-            
-            # 3. Fetch both relevant branches explicitly for safety (redundant but safe)
-            git fetch origin "$BITRISEIO_GIT_BRANCH_DEST"
-            git fetch origin "$BITRISE_GIT_BRANCH"
-            
-            # 4. Create/reset local branches to match the remote
-            git checkout -B "$BITRISEIO_GIT_BRANCH_DEST" "origin/$BITRISEIO_GIT_BRANCH_DEST"
-            git checkout -B "$BITRISE_GIT_BRANCH" "origin/$BITRISE_GIT_BRANCH"
-            
-            # (Optionally: check out the PR branch if that is the branch you want to analyze)
-            git checkout "$BITRISE_GIT_BRANCH"
-            
-            # Download and install bitcode
-            curl -L https://storage.googleapis.com/bitrise-bitcode/bitcode-linux-amd64.tar.gz -o /tmp/bitcode-linux-amd64.tar.gz
-            sudo tar -xzf /tmp/bitcode-linux-amd64.tar.gz -C /usr/local/bin/
-            sudo chmod +x /usr/local/bin/bitcode
-            
-            # 6. Run your AI reviewer (customize flags as needed)
-            bitcode review  \
-              --git-provider github \
-              --pr-id="${BITRISE_PULL_REQUEST}" \
-              --repo="${REPO}" \
-              --max-token-usage 5000000 \
-              --session-id "${BITRISE_BUILD_SLUG}" \
-              --log-level info
-            
-            echo "Done! PR reviewed."
 
   e2e-xcode-comp-cache:
     meta:
@@ -1110,7 +1040,7 @@ workflows:
                 
                 gem install cocoapods
                 pod install
-                
+
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME

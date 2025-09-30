@@ -29,6 +29,15 @@ var (
 	_ session.SessionServer      = (*Proxy)(nil)
 )
 
+//go:generate moq -rm -stub -pkg mocks -out ./mocks/client.go . Client
+type Client interface {
+	ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string)
+	SetLogger(logger log.Logger)
+	DownloadStream(ctx context.Context, writer io.Writer, key string) error
+	UploadStreamToBuildCache(ctx context.Context, reader io.Reader, key string, size int64) error
+	GetCapabilitiesWithRetry(ctx context.Context) error
+}
+
 type LoggerFactory func(invocationID string) (log.Logger, error)
 
 type Proxy struct {
@@ -36,7 +45,8 @@ type Proxy struct {
 	llvmkv.UnimplementedKeyValueDBServer
 	session.UnimplementedSessionServer
 
-	kvClient                *kv.Client
+	kvClient                Client
+	pushEnabled             bool
 	sessionMutex            sync.Mutex
 	ccSemaphore             chan struct{}
 	capabilitiesCalled      bool
@@ -46,11 +56,7 @@ type Proxy struct {
 	loggerFactory           LoggerFactory
 }
 
-func NewProxy(
-	kvClient *kv.Client,
-	logger log.Logger,
-	loggerFactory LoggerFactory,
-) *grpc.Server {
+func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory) *grpc.Server {
 	// Note: Gradle plugin uses a client balancer, with multiple channels (min 2), each with multiple connections.
 	// For a simple implementation, we only have one channel with multiple connections.
 	numChan := max(2, runtime.NumCPU()/6)
@@ -60,6 +66,7 @@ func NewProxy(
 	//nolint:exhaustruct
 	proxy := &Proxy{
 		kvClient:      kvClient,
+		pushEnabled:   pushEnabled,
 		sessionState:  newSessionState(),
 		logger:        logger,
 		loggerFactory: loggerFactory,
@@ -278,6 +285,16 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 		}, nil
 	}
 
+	if !p.pushEnabled {
+		p.logger.TDebugf("Put: Push disabled, not uploading CAS ID: %s", key)
+
+		return &llvmcas.CASPutResponse{
+			Contents: &llvmcas.CASPutResponse_CasId{
+				CasId: casId,
+			},
+		}, nil
+	}
+
 	size := int64(buffer.Len())
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
@@ -435,6 +452,16 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		}, nil
 	}
 
+	if !p.pushEnabled {
+		p.logger.TDebugf("Save: Push disabled, not uploading CAS ID: %s", key)
+
+		return &llvmcas.CASSaveResponse{
+			Contents: &llvmcas.CASSaveResponse_CasId{
+				CasId: casId,
+			},
+		}, nil
+	}
+
 	// reset the reader
 	if request.GetData().GetBlob().GetFilePath() != "" {
 		//nolint:forcetypeassert
@@ -544,6 +571,12 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 				Description: err.Error(),
 			},
 		}
+	}
+
+	if !p.pushEnabled {
+		p.logger.TDebugf("PutValue: Push disabled, not uploading key: %s", key)
+
+		return &llvmkv.PutValueResponse{}, nil
 	}
 
 	buffer := bytes.NewBuffer(nil)

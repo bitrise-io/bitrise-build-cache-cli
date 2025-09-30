@@ -23,6 +23,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "token",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "abc123",
+		"GITHUB_PATH":                      filepath.Join(home, ".github_path"),
 	}
 
 	t.Run("success", func(t *testing.T) {
@@ -61,6 +62,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		// make sure files were created
 		assert.FileExists(t, filepath.Join(home, ".bashrc"))
 		assert.FileExists(t, filepath.Join(home, ".zshrc"))
+		assert.FileExists(t, filepath.Join(home, ".github_path"))
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "bitrise-build-cache-cli")))
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcodebuild")))
 
