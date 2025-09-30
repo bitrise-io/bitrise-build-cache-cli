@@ -2889,9 +2889,7 @@ pipelines:
       benchmark_vlc_build_cc: { }
       benchmark_vlc_build_cc_spm: { }
       benchmark_wordpress_build_baseline: { }
-      benchmark_wordpress_build_baseline_16_4: { }
       benchmark_wordpress_build_spm: { }
-      benchmark_wordpress_build_spm_16_4: { }
       benchmark_wordpress_build_spm_explicit: { }
       benchmark_wordpress_build_cc: { }
       # benchmark_wordpress_random_build_cc: { }
