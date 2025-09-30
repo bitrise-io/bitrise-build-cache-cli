@@ -1077,7 +1077,7 @@ workflows:
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation -resultBundlePath "$BITRISE_DEPLOY_DIR/Tuist.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1119,7 +1119,7 @@ workflows:
             - project_path: VLC.xcworkspace
             - scheme: VLC-iOS
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/VLC.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1159,7 +1159,7 @@ workflows:
             - project_path: VLC.xcworkspace
             - scheme: VLC-iOS
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/VLC_CC.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1199,7 +1199,7 @@ workflows:
             - project_path: VLC.xcworkspace
             - scheme: VLC-iOS
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/VLC_SPM.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1243,7 +1243,7 @@ workflows:
             - project_path: WordPress.xcworkspace
             - scheme: WordPress
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1302,7 +1302,7 @@ workflows:
             - project_path: WordPress.xcworkspace
             - scheme: WordPress
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_Random.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1356,7 +1356,7 @@ workflows:
             - project_path: WordPress.xcworkspace
             - scheme: WordPress
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_Random_CC.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1400,7 +1400,7 @@ workflows:
             - project_path: WordPress.xcworkspace
             - scheme: WordPress
             - configuration: Debug
-            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_SPM.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -1444,7 +1444,7 @@ workflows:
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_CC.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1488,7 +1488,7 @@ workflows:
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_CC_DD.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1532,7 +1532,7 @@ workflows:
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_CC_SPM.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1576,7 +1576,7 @@ workflows:
         - project_path: WordPress.xcworkspace
         - scheme: WordPress
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/WordPress_CC_DD_SPM.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1882,7 +1882,7 @@ workflows:
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation -resultBundlePath "$BITRISE_DEPLOY_DIR/Tuist_CC.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1924,7 +1924,7 @@ workflows:
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation -resultBundlePath "$BITRISE_DEPLOY_DIR/Tuist_DD_CC.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -1966,7 +1966,7 @@ workflows:
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation -resultBundlePath "$BITRISE_DEPLOY_DIR/Tuist_SPM_CC.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2008,7 +2008,7 @@ workflows:
         - project_path: Tuist.xcworkspace
         - scheme: TuistApp
         - configuration: Debug
-        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation
+        - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -skipMacroValidation -resultBundlePath "$BITRISE_DEPLOY_DIR/Tuist_DD_SPM_CC.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
