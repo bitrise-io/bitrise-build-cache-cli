@@ -2015,6 +2015,7 @@ workflows:
         - project_path: Calendar.xcodeproj
         - scheme: Calendar
         - configuration: Debug
+        - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2047,6 +2048,7 @@ workflows:
         - project_path: Calendar.xcodeproj
         - scheme: Calendar
         - configuration: Debug
+        - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2079,6 +2081,7 @@ workflows:
         - project_path: Calendar.xcodeproj
         - scheme: Calendar
         - configuration: Debug
+        - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2111,6 +2114,7 @@ workflows:
             - project_path: Calendar.xcodeproj
             - scheme: Calendar
             - configuration: Debug
+            - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -2143,7 +2147,7 @@ workflows:
             - project_path: Calendar.xcodeproj
             - scheme: Calendar
             - configuration: Debug
-            - xcodebuild_options: SWIFT_ENABLE_EXPLICIT_MODULES=YES
+            - xcodebuild_options: SWIFT_ENABLE_EXPLICIT_MODULES=YES -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -2176,6 +2180,7 @@ workflows:
         - project_path: Calendar.xcodeproj
         - scheme: Calendar
         - configuration: Debug
+        - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
@@ -2208,6 +2213,7 @@ workflows:
         - project_path: Calendar.xcodeproj
         - scheme: Calendar
         - configuration: Debug
+        - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
     - bundle::benchmark_finish:
         inputs:
         - USE_DD_CACHE: $USE_DD_CACHE
