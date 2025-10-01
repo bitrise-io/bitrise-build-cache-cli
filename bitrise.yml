@@ -2198,6 +2198,114 @@ workflows:
         - USE_DD_CACHE: $USE_DD_CACHE
         - USE_SPM: $USE_SPM
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_sample_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: SampleApp
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/bitrise-io/sample-apps-ios-swiftpm
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - change-workdir:
+          inputs:
+            - workdir: sample-swiftpm4
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: sample-swiftpm2.xcodeproj
+            - scheme: sample-swiftpm2
+            - configuration: Debug
+            - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_sample_build_spm:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "true"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: SampleApp_SPM
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/bitrise-io/sample-apps-ios-swiftpm
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - change-workdir:
+          inputs:
+            - workdir: sample-swiftpm4
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: sample-swiftpm2.xcodeproj
+            - scheme: sample-swiftpm2
+            - configuration: Debug
+            - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_sample_build_spm_explicit:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "true"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: SampleApp_SPM_Explicit
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/bitrise-io/sample-apps-ios-swiftpm
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - change-workdir:
+          inputs:
+            - workdir: sample-swiftpm4
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: sample-swiftpm2.xcodeproj
+            - scheme: sample-swiftpm2
+            - configuration: Debug
+            - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult" -SWIFT_ENABLE_EXPLICIT_MODULES=YES
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_baseline:
     envs:
     - USE_DD_CACHE: "false"
@@ -3038,6 +3146,9 @@ pipelines:
 #      benchmark_vlc_build_spm_16_4: { }
 #      benchmark_vlc_build_cc: { }
 #      benchmark_vlc_build_cc_spm: { }
+      benchmark_sample_build_baseline: { }
+      benchmark_sample_build_spm: { }
+      benchmark_sample_build_spm_explicit: { }
       benchmark_wordpress_build_baseline: { }
       benchmark_wordpress_build_spm: { }
       benchmark_wordpress_build_spm_explicit: { }
