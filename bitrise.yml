@@ -3083,7 +3083,7 @@ step_bundles:
           - verbose: true
           - key: '{{ .OS }}-{{ .Arch }}-spm-cache-{{ getenv "BENCHMARK_APP_NAME" }}-{{ checksum "**/Package.resolved" }}'
           - paths: |
-              ~/Library/Developer/Xcode/DerivedData/SourcePackages/**
+              ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
     - git::https://github.com/bitrise-steplib/bitrise-step-save-xcodebuild-cache.git@main:
         run_if: '{{enveq "USE_DD_CACHE" "true"}}'
         inputs:
