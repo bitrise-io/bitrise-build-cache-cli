@@ -2218,8 +2218,9 @@ workflows:
             - USE_COMP_CACHE: $USE_COMP_CACHE
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
       - change-workdir:
+          title: Switch working dir to _tmp
           inputs:
-            - workdir: sample-swiftpm4
+            - path: "./sample-swiftpm4"
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2254,8 +2255,9 @@ workflows:
             - USE_COMP_CACHE: $USE_COMP_CACHE
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
       - change-workdir:
+          title: Switch working dir to _tmp
           inputs:
-            - workdir: sample-swiftpm4
+            - path: "./sample-swiftpm4"
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2290,8 +2292,9 @@ workflows:
             - USE_COMP_CACHE: $USE_COMP_CACHE
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
       - change-workdir:
+          title: Switch working dir to _tmp
           inputs:
-            - workdir: sample-swiftpm4
+            - path: "./sample-swiftpm4"
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
