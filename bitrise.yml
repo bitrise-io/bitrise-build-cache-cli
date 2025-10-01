@@ -3046,10 +3046,11 @@ step_bundles:
         run_if: '{{enveq "USE_DD_CACHE" "true"}}'
         inputs:
         - project_root_path: .
-    - restore-spm-cache:
+    - restore-cache:
         run_if: '{{enveq "USE_SPM" "true"}}'
         inputs:
           - verbose: true
+          - key: '{{ .OS }}-{{ .Arch }}-spm-cache-{{ getenv BENCHMARK_APP_NAME }}-{{ checksum "**/Package.resolved" }}'
   benchmark_start_measure:
     inputs:
     - BENCHMARK_APP_NAME: "$BENCHMARK_APP_NAME"
@@ -3076,10 +3077,13 @@ step_bundles:
             set -eo pipefail
 
             envman add --key "${BENCHMARK_APP_NAME}_END" --value "$(date +%s)"
-    - save-spm-cache:
+    - save-cache:
         run_if: '{{enveq "USE_SPM" "true"}}'
         inputs:
           - verbose: true
+          - key: '{{ .OS }}-{{ .Arch }}-spm-cache-{{ getenv BENCHMARK_APP_NAME }}-{{ checksum "**/Package.resolved" }}'
+          - paths: |
+              ~/Library/Developer/Xcode/DerivedData/SourcePackages/**
     - git::https://github.com/bitrise-steplib/bitrise-step-save-xcodebuild-cache.git@main:
         run_if: '{{enveq "USE_DD_CACHE" "true"}}'
         inputs:
