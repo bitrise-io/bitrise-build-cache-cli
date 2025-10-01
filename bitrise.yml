@@ -1055,6 +1055,48 @@ workflows:
             - USE_DD_CACHE: $USE_DD_CACHE
             - USE_SPM: $USE_SPM
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_vlc_build_baseline_16_4:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: VLC_16_4
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://code.videolan.org/videolan/vlc-ios.git
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+
+                gem install cocoapods
+                pod install
+
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: VLC.xcworkspace
+            - scheme: VLC-iOS
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_vlc_build_cc:
     envs:
       - USE_DD_CACHE: "false"
@@ -1144,6 +1186,46 @@ workflows:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://code.videolan.org/videolan/vlc-ios.git
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                set -exo pipefail
+                gem install cocoapods
+                pod install
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: VLC.xcworkspace
+            - scheme: VLC-iOS
+            - configuration: Debug
+            - xcodebuild_options: CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_vlc_build_spm_16_4:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "true"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: VLC_SPM_16_4
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
     steps:
       - bundle::benchmark-setup:
@@ -2149,6 +2231,39 @@ workflows:
         - USE_DD_CACHE: $USE_DD_CACHE
         - USE_SPM: $USE_SPM
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_calendar_build_baseline_16_4:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: Calendar_16_4
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: git@github.com:richardtop/CalendarApp.git
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: Calendar.xcodeproj
+            - scheme: Calendar
+            - configuration: Debug
+            - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   benchmark_calendar_build_cc:
     envs:
     - USE_DD_CACHE: "false"
@@ -2224,6 +2339,39 @@ workflows:
     meta:
       bitrise.io:
         stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: git@github.com:richardtop/CalendarApp.git
+            - BRANCH: master
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - xcode-build-for-simulator:
+          inputs:
+            - project_path: Calendar.xcodeproj
+            - scheme: Calendar
+            - configuration: Debug
+            - xcodebuild_options: -resultBundlePath "$BITRISE_DEPLOY_DIR/$BENCHMARK_APP_NAME.xcresult"
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+  benchmark_calendar_build_spm_16_4:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "true"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: Calendar_SPM_16_4
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
     steps:
       - bundle::benchmark-setup:
@@ -2885,7 +3033,9 @@ pipelines:
   benchmark:
     workflows:
       benchmark_vlc_build_baseline: { }
+      benchmark_vlc_build_baseline_16_4: { }
       benchmark_vlc_build_spm: { }
+      benchmark_vlc_build_spm_16_4: { }
       benchmark_vlc_build_cc: { }
       benchmark_vlc_build_cc_spm: { }
       benchmark_wordpress_build_baseline: { }
@@ -2909,7 +3059,9 @@ pipelines:
       # benchmark_tuist_build_spm_cc: { }
       # benchmark_tuist_build_dd_spm_cc: {}
       benchmark_calendar_build_baseline: { }
+      benchmark_calendar_build_baseline_16_4: { }
       benchmark_calendar_build_spm: { }
+      benchmark_calendar_build_spm_16_4: { }
       benchmark_calendar_build_spm_explicit: { }
       benchmark_calendar_build_cc: { }
       #      benchmark_calendar_build_cc_dd: {}
@@ -2923,7 +3075,9 @@ pipelines:
       benchmark_results:
         depends_on:
         - benchmark_vlc_build_baseline
+        - benchmark_vlc_build_baseline_16_4
         - benchmark_vlc_build_spm
+        - benchmark_vlc_build_spm_16_4
         - benchmark_vlc_build_cc
         - benchmark_vlc_build_cc_spm
         - benchmark_wordpress_build_baseline
@@ -2947,7 +3101,9 @@ pipelines:
         # - benchmark_tuist_build_spm_cc
         # - benchmark_tuist_build_dd_spm_cc
         - benchmark_calendar_build_baseline
+        - benchmark_calendar_build_baseline_16_4
         - benchmark_calendar_build_spm
+        - benchmark_calendar_build_spm_16_4
         - benchmark_calendar_build_spm_explicit
         - benchmark_calendar_build_cc
         # - benchmark_calendar_build_cc_dd
