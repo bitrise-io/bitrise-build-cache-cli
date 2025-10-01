@@ -3032,12 +3032,12 @@ pipelines:
       - branch: main
   benchmark:
     workflows:
-      benchmark_vlc_build_baseline: { }
-      benchmark_vlc_build_baseline_16_4: { }
-      benchmark_vlc_build_spm: { }
-      benchmark_vlc_build_spm_16_4: { }
-      benchmark_vlc_build_cc: { }
-      benchmark_vlc_build_cc_spm: { }
+#      benchmark_vlc_build_baseline: { }
+#      benchmark_vlc_build_baseline_16_4: { }
+#      benchmark_vlc_build_spm: { }
+#      benchmark_vlc_build_spm_16_4: { }
+#      benchmark_vlc_build_cc: { }
+#      benchmark_vlc_build_cc_spm: { }
       benchmark_wordpress_build_baseline: { }
       benchmark_wordpress_build_spm: { }
       benchmark_wordpress_build_spm_explicit: { }
@@ -3074,12 +3074,12 @@ pipelines:
       #      benchmark_icecubesapp_build_cc_dd_spm: {}
       benchmark_results:
         depends_on:
-        - benchmark_vlc_build_baseline
-        - benchmark_vlc_build_baseline_16_4
-        - benchmark_vlc_build_spm
-        - benchmark_vlc_build_spm_16_4
-        - benchmark_vlc_build_cc
-        - benchmark_vlc_build_cc_spm
+#        - benchmark_vlc_build_baseline
+#        - benchmark_vlc_build_baseline_16_4
+#        - benchmark_vlc_build_spm
+#        - benchmark_vlc_build_spm_16_4
+#        - benchmark_vlc_build_cc
+#        - benchmark_vlc_build_cc_spm
         - benchmark_wordpress_build_baseline
         - benchmark_wordpress_build_spm
         - benchmark_wordpress_build_spm_explicit
