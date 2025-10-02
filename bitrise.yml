@@ -1543,9 +1543,8 @@ workflows:
                 [ -f Package.swift.bak2 ] && rm -f Package.swift.bak2
 
                 # Remove pin from Package.resolved using jq
-                jq --arg name "$(echo "$PKG_NAME" | tr '[:upper:]' '[:lower:]')" \
-                   '(.object.pins) |= map(select( (.identity | ascii_downcase) != $name))' \
-                   Package.resolved > Package.resolved.tmp
+                jq --arg name "$PKG_NAME" '(.pins) |= map(select((.identity // "" | ascii_downcase) != $name))' \
+                  Package.resolved > Package.resolved.tmp && mv Package.resolved.tmp Package.resolved
 
                 mv Package.resolved Package.resolved.pre-removal
                 mv Package.resolved.tmp Package.resolved
