@@ -1528,35 +1528,110 @@ workflows:
                 #!/usr/bin/env bash
                 set -euo pipefail
 
-                pushd Modules
+                # Directory containing Package.swift and Package.resolved
+                TARGET_DIR="Modules"
+
                 # Name to remove (case-insensitive)
                 PKG_NAME="alamofire"
 
-                # Backup originals
-                cp Package.swift Package.swift.bak
-                cp Package.resolved Package.resolved.bak
+                # Files (within TARGET_DIR)
+                PKG_SWIFT="Package.swift"
+                PKG_RESOLVED="Package.resolved"
 
-                # Remove line from Package.swift (works if deps are one per line)
-                # Use bracket-case pattern to ensure portability across sed versions
-                sed -i.bak2 "/[Aa][Ll][Aa][Mm][Oo][Ff][Ii][Rr][Ee]/d" Package.swift
-                # remove the extra .bak2 created by sed on some platforms
-                [ -f Package.swift.bak2 ] && rm -f Package.swift.bak2
+                # Check target dir exists
+                if [ ! -d "$TARGET_DIR" ]; then
+                  echo "Error: target directory '$TARGET_DIR' not found in $(pwd)" >&2
+                  exit 1
+                fi
 
-                # Remove pin from Package.resolved using jq
-                jq --arg name "$PKG_NAME" '(.pins) |= map(select((.identity // "" | ascii_downcase) != $name))' \
-                  Package.resolved > Package.resolved.tmp && mv Package.resolved.tmp Package.resolved
+                # Enter target dir
+                pushd "$TARGET_DIR" >/dev/null
 
-                mv Package.resolved Package.resolved.pre-removal
-                mv Package.resolved.tmp Package.resolved
+                # Ensure files exist
+                if [ ! -f "$PKG_SWIFT" ]; then
+                  echo "Error: $PKG_SWIFT not found in $(pwd)" >&2
+                  popd >/dev/null
+                  exit 1
+                fi
+                if [ ! -f "$PKG_RESOLVED" ]; then
+                  echo "Error: $PKG_RESOLVED not found in $(pwd)" >&2
+                  popd >/dev/null
+                  exit 1
+                fi
 
-                echo "Removed package '$PKG_NAME' (case-insensitive). Backups: Package.swift.bak, Package.resolved.pre-removal"
-                
-                head -n 20 Package.swift
-                head -n 20 Package.resolved
-                grep -i "$PKG_NAME" Package.swift || echo "Removed successfully from Package.swift"
-                grep -i "$PKG_NAME" Package.resolved || echo "Removed successfully from Package.resolved"
-                
-                popd
+                # Check jq available
+                if ! command -v jq >/dev/null 2>&1; then
+                  echo "Error: jq is required but not found. Install with 'brew install jq' or your package manager." >&2
+                  popd >/dev/null
+                  exit 1
+                fi
+
+                # Backups
+                ts=$(date +%Y%m%d%H%M%S)
+                cp "$PKG_SWIFT" "${PKG_SWIFT}.bak.${ts}"
+                cp "$PKG_RESOLVED" "${PKG_RESOLVED}.bak.${ts}"
+                echo "Backups created in $TARGET_DIR: ${PKG_SWIFT}.bak.${ts}, ${PKG_RESOLVED}.bak.${ts}"
+
+                # Build bracketed case-insensitive pattern for sed
+                PATTERN=""
+                for c in $(echo "$PKG_NAME" | fold -w1); do
+                  lc=$(echo "$c" | tr '[:upper:]' '[:lower:]')
+                  uc=$(echo "$c" | tr '[:lower:]' '[:upper:]')
+                  PATTERN="${PATTERN}[${uc}${lc}]"
+                done
+
+                # Remove dependency line from Package.swift (single-line assumption)
+                # Use portable sed handling for GNU and BSD
+                if sed --version >/dev/null 2>&1; then
+                  # GNU sed
+                  sed -i.bak_pkg_swift "/$PATTERN/d" "$PKG_SWIFT"
+                  rm -f "${PKG_SWIFT}.bak_pkg_swift"
+                else
+                  # BSD sed (macOS)
+                  sed -i .bak_pkg_swift "/$PATTERN/d" "$PKG_SWIFT"
+                  rm -f "${PKG_SWIFT}.bak_pkg_swift"
+                fi
+
+                echo "Removed lines matching '$PKG_NAME' from $PKG_SWIFT (if any)."
+
+                # Remove pin from Package.resolved (newer Xcode format: top-level "pins")
+                PKG_LC=$(printf '%s' "$PKG_NAME" | tr '[:upper:]' '[:lower:]')
+
+                jq --arg name "$PKG_LC" '(.pins) |= map(select((.identity // "" | ascii_downcase) != $name))' \
+                  "$PKG_RESOLVED" > "${PKG_RESOLVED}.tmp"
+
+                # verify jq output is valid JSON before replacing
+                if jq empty "${PKG_RESOLVED}.tmp" >/dev/null 2>&1; then
+                  mv "${PKG_RESOLVED}.tmp" "$PKG_RESOLVED"
+                  echo "Updated $PKG_RESOLVED (removed pins with identity == '$PKG_NAME' case-insensitively)."
+                else
+                  echo "Error: jq produced invalid JSON; leaving original $PKG_RESOLVED in place." >&2
+                  rm -f "${PKG_RESOLVED}.tmp"
+                  popd >/dev/null
+                  exit 1
+                fi
+
+                # Quick checks
+                echo
+                echo "Quick checks (in $TARGET_DIR):"
+                echo "- Validate Package.resolved JSON (first 200 lines):"
+                jq . "$PKG_RESOLVED" | sed -n '1,200p'
+                echo
+                echo "- Look for any remaining identities matching '$PKG_NAME' (case-insensitive):"
+                if jq -r '.pins[]?.identity // empty' "$PKG_RESOLVED" | grep -i -E "$PKG_NAME" >/dev/null 2>&1; then
+                  echo "Warning: found remaining matches in Package.resolved"
+                  jq -r '.pins[]?.identity // empty' "$PKG_RESOLVED" | grep -i -E "$PKG_NAME" || true
+                else
+                  echo "No remaining matches for '$PKG_NAME' in Package.resolved"
+                fi
+
+                # Return to original dir
+                popd >/dev/null
+
+                echo
+                echo "Done. If anything looks wrong, restore backups located at:"
+                echo "  ${TARGET_DIR}/${PKG_SWIFT}.bak.${ts}"
+                echo "  ${TARGET_DIR}/${PKG_RESOLVED}.bak.${ts}"
       - script:
           title: Install dependencies
           inputs:
