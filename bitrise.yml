@@ -2072,16 +2072,21 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
-            
-            for sp in ~/Library/Developer/Xcode/DerivedData/*/SourcePackages; do
-              [ -d "$sp" ] || continue
-              echo "=== $sp ==="
-              if command -v tree >/dev/null 2>&1; then
-                tree -L 2 "$sp"
-              else
-                ls -la "$sp"
-              fi
-            done
+    - script:
+        title: Print SourcePackages
+        inputs:
+          - content: |-
+                for sp in ~/Library/Developer/Xcode/DerivedData/*/SourcePackages; do
+                  [ -d "$sp" ] || continue
+                  echo "=== $sp ==="
+                  if command -v tree >/dev/null 2>&1; then
+                    tree -L 2 "$sp"
+                  else
+                    ls -la "$sp"
+                  fi
+                  
+                  cat "$sp/workspace-state.json" | jq '{dependencies: [.object.dependencies[].subpath],artifacts: [.object.artifacts[].targetName]}'
+                done
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
