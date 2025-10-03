@@ -212,7 +212,9 @@ func TestConfig_NewConfig(t *testing.T) {
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
-			assert.Equal(t, "xcodebuild", args[0])
+			if args[0] != "xcodebuild" && args[0] != "xcrun" {
+				t.Fatalf("expected 'xcodebuild' or 'xcrun' as arg, got: %s", args[0])
+			}
 
 			return cmdMock
 		})
@@ -224,6 +226,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			WrapperVersion:         "wrapper-version-1.0.0",
 			CLIVersion:             "cli-version-1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
+			OriginalXcrunPath:      "/usr/bin/xcodebuild2",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
@@ -233,7 +236,7 @@ func TestConfig_NewConfig(t *testing.T) {
 				WorkspaceID: "workspace-id",
 			},
 		}
-		require.Len(t, cmdMock.CombinedOutputCalls(), 1)
+		require.Len(t, cmdMock.CombinedOutputCalls(), 2)
 		assert.Equal(t, expected, actual)
 	})
 
@@ -275,6 +278,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			WrapperVersion:         "wrapper-version-1.0.0",
 			CLIVersion:             "cli-version-1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
+			OriginalXcrunPath:      "/usr/bin/xcodebuild2",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
 			DebugLogging:           false,
@@ -285,7 +289,7 @@ func TestConfig_NewConfig(t *testing.T) {
 				WorkspaceID: "workspace-id",
 			},
 		}
-		require.Len(t, cmdMock.CombinedOutputCalls(), 1)
+		require.Len(t, cmdMock.CombinedOutputCalls(), 2)
 		assert.Equal(t, expected, actual)
 	})
 
@@ -312,6 +316,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			DebugLogging:            true,
 			BuildCacheEndpoint:      "grpcs://bitrise-accelerate.services.bitrise.io",
 			XcodePathOverride:       "/usr/bin/xcodebuild-override",
+			XcrunPathOverride:       "/usr/bin/xcrun-override",
 			ProxySocketPathOverride: "/tmp/xcelerate-proxy.sock",
 		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
@@ -324,6 +329,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			CLIVersion:             "",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild-override",
+			OriginalXcrunPath:      "/usr/bin/xcrun-override",
 			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
@@ -369,6 +375,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			CLIVersion:             "",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
 			AuthConfig: common.CacheAuthConfig{
@@ -413,6 +420,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			CLIVersion:             "",
 			BuildCacheEndpoint:     "grpc://localhost:6666",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,
 			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
@@ -459,6 +467,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			CLIVersion:             "",
 			BuildCacheEndpoint:     "grpc://localhost:6666",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
+			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,
 			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,

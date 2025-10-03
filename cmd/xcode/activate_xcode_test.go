@@ -51,6 +51,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 				BuildCacheEnabled:       true,
 				DebugLogging:            true,
 				XcodePathOverride:       "/xxx/xcodebuild",
+				XcrunPathOverride:       "/xxx/xcrun",
 				ProxySocketPathOverride: "/xxx/xcelerate.sock",
 			},
 			envs,
@@ -73,6 +74,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		require.True(t, config.BuildCacheEnabled)
 		require.True(t, config.DebugLogging)
 		require.Equal(t, "/xxx/xcodebuild", config.OriginalXcodebuildPath)
+		require.Equal(t, "/xxx/xcrun", config.OriginalXcrunPath)
 		require.Equal(t, "/xxx/xcelerate.sock", config.ProxySocketPath)
 		require.Equal(t, "token", config.AuthConfig.AuthToken)
 		require.Equal(t, "abc123", config.AuthConfig.WorkspaceID)
@@ -103,6 +105,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		require.True(t, config.BuildCacheEnabled)
 		require.True(t, config.DebugLogging)
 		require.Equal(t, "/xxx/xcodebuild", config.OriginalXcodebuildPath)
+		require.Equal(t, "/xxx/xcrun", config.OriginalXcrunPath)
 		require.Equal(t, "/xxx/xcelerate.sock", config.ProxySocketPath)
 		require.Equal(t, "token", config.AuthConfig.AuthToken)
 		require.Equal(t, "abc123", config.AuthConfig.WorkspaceID)
