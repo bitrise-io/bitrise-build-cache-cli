@@ -1948,8 +1948,7 @@ workflows:
     - restore-cache:
         inputs:
         - verbose: "true"
-        - cache_key: |-
-            darwin-arm64-spm-cache-Calendar_SPM-d6959daf9600d314a4772fa8f098060a37666a98a1f67605e18ce0294c82ab43
+        - key: 'darwin-arm64-spm-cache-Calendar_SPM-d6959daf9600d314a4772fa8f098060a37666a98a1f67605e18ce0294c82ab43'
     - script:
         title: Remove alamofire to make SPM invalid
         run_if: 'false'
