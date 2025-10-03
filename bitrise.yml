@@ -1945,8 +1945,14 @@ workflows:
         - USE_SPM: $USE_SPM
         - USE_COMP_CACHE: $USE_COMP_CACHE
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - restore-cache:
+        inputs:
+        - verbose: "true"
+        - cache_key: |-
+            darwin-arm64-spm-cache-Calendar_SPM-d6959daf9600d314a4772fa8f098060a37666a98a1f67605e18ce0294c82ab43
     - script:
         title: Remove alamofire to make SPM invalid
+        run_if: 'false'
         inputs:
         - content: |-
             #!/usr/bin/env bash
@@ -2067,6 +2073,16 @@ workflows:
             mv WordPress/Credentials/Secrets-example.swift WordPress/Credentials/Secrets.swift
             mkdir -p ~/DerivedData/Wordpress
             rake dependencies
+            
+            for sp in ~/Library/Developer/Xcode/DerivedData/*/SourcePackages; do
+              [ -d "$sp" ] || continue
+              echo "=== $sp ==="
+              if command -v tree >/dev/null 2>&1; then
+                tree -L 2 "$sp"
+              else
+                ls -la "$sp"
+              fi
+            done
     - bundle::benchmark_start_measure:
         inputs:
         - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -3035,6 +3051,23 @@ step_bundles:
         - verbose: true
         - key: '{{ .OS }}-{{ .Arch }}-spm-cache-{{ getenv "BENCHMARK_APP_NAME" }}-{{
             checksum "**/Package.resolved" }}'
+    - script:
+        title: "Print SourcePackages dir (if SPM is used)"
+        run_if: '{{enveq "USE_SPM" "true"}}'
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -eo pipefail
+
+              for sp in ~/Library/Developer/Xcode/DerivedData/*/SourcePackages; do
+                [ -d "$sp" ] || continue
+                echo "=== $sp ==="
+                if command -v tree >/dev/null 2>&1; then
+                  tree -L 2 "$sp"
+                else
+                  ls -la "$sp"
+                fi
+              done
   benchmark_finish:
     inputs:
     - USE_DD_CACHE: $USE_DD_CACHE
