@@ -31,7 +31,7 @@ const (
 set -euxo pipefail
 %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
 `
-	xcrunWrapperScriptContent = `##!/bin/bash
+	xcrunWrapperScriptContent = `#!/bin/bash
 set -euxo pipefail
 
 if [ "${1-}" = "xcodebuild" ]; then
