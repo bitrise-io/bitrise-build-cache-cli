@@ -116,7 +116,7 @@ func NewConfig(ctx context.Context,
 		logger.Debugf("No xcrun path override specified, determining original xcrun path...")
 		originalXcrunPath, err := getOriginalXcrunPath(ctx, logger, cmdFunc)
 		if err != nil {
-			logger.Warnf("Failed to determine xcodebuild path: %s. Using default: %s", err, DefaultXcrunPath)
+			logger.Warnf("Failed to determine xcrun path: %s. Using default: %s", err, DefaultXcrunPath)
 			originalXcrunPath = DefaultXcrunPath
 		}
 		xcrunPath = originalXcrunPath
