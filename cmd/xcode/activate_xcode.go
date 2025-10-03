@@ -26,10 +26,20 @@ const (
 
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
-	cliBasename          = "bitrise-build-cache-cli"
-	wrapperScriptContent = `#!/bin/bash
+	cliBasename                    = "bitrise-build-cache-cli"
+	xcodebuildWrapperScriptContent = `#!/bin/bash
 set -euxo pipefail
 %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+`
+	xcrunWrapperScriptContent = `##!/bin/bash
+set -euxo pipefail
+
+if [ "${1-}" = "xcodebuild" ]; then
+  shift
+  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+else
+  %s "$@"
+fi
 `
 )
 
@@ -101,6 +111,13 @@ func init() {
 
 Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
 	)
+	activateXcodeCmd.Flags().StringVar(&activateXcodeParams.XcrunPathOverride,
+		"xcrun-path",
+		activateXcodeParams.XcrunPathOverride,
+		`Override the xcrun path. By default it will use the $(which xcrun) command to determine the path, and if that fails, it will use the default path: /usr/bin/xcrun.
+
+Useful if there are multiple Xcode versions installed and you want to use a specific one.`,
+	)
 
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.Silent,
 		"silent",
@@ -146,7 +163,7 @@ func ActivateXcodeCommandFn(
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
 
-	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, osProxy, commandFunc, logger, envs); err != nil {
+	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, config, osProxy, commandFunc, logger, envs); err != nil {
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
@@ -173,6 +190,14 @@ func overrideActivateXcodeParamsFromExistingConfig(
 		activateXcodeParams.XcodePathOverride = cmp.Or(
 			activateXcodeParams.XcodePathOverride,
 			existingConfig.OriginalXcodebuildPath,
+		)
+		if strings.Contains(existingConfig.OriginalXcrunPath, xcelerate.PathFor(osProxy, xcelerate.BinDir)) {
+			logger.Warnf("Removing xcelerate wrapper as original xcrun path...")
+			existingConfig.OriginalXcrunPath = ""
+		}
+		activateXcodeParams.XcrunPathOverride = cmp.Or(
+			activateXcodeParams.XcrunPathOverride,
+			existingConfig.OriginalXcrunPath,
 		)
 	} else if isXcelerateInPath(osProxy, envs) {
 		logger.Warnf("It seems that the xcelerate config file is missing, but xcelerate is already in the PATH. \n" +
@@ -263,6 +288,7 @@ func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logg
 // addXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
 func addXcelerateCommandToPathWithScriptWrapper(
 	ctx context.Context,
+	config xcelerate.Config,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
 	logger log.Logger,
@@ -281,7 +307,13 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	// create a script that wraps the CLI to preserve any arguments and environment variables
 	scriptPath := filepath.Join(binPath, "xcodebuild")
 	logger.Debugf("Creating xcodebuild wrapper script: %s", scriptPath)
-	if err := osProxy.WriteFile(scriptPath, []byte(fmt.Sprintf(wrapperScriptContent, binPath)), 0o755); err != nil {
+	if err := osProxy.WriteFile(scriptPath, []byte(fmt.Sprintf(xcodebuildWrapperScriptContent, binPath)), 0o755); err != nil {
+		return fmt.Errorf("failed to create xcodebuild wrapper script: %w", err)
+	}
+
+	scriptPath = filepath.Join(binPath, "xcrun")
+	logger.Debugf("Creating xcrun wrapper script: %s", scriptPath)
+	if err := osProxy.WriteFile(scriptPath, []byte(fmt.Sprintf(xcrunWrapperScriptContent, binPath, config.OriginalXcrunPath)), 0o755); err != nil {
 		return fmt.Errorf("failed to create xcodebuild wrapper script: %w", err)
 	}
 

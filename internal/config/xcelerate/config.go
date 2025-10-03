@@ -15,6 +15,7 @@ import (
 
 const (
 	DefaultXcodePath        = "/usr/bin/xcodebuild"
+	DefaultXcrunPath        = "/usr/bin/xcrun"
 	xcelerateConfigFileName = "config.json"
 
 	ErrFmtCreateConfigFile = `failed to create xcelerate config file: %w`
@@ -29,6 +30,7 @@ type Params struct {
 	DebugLogging                bool
 	Silent                      bool
 	XcodePathOverride           string
+	XcrunPathOverride           string
 	ProxySocketPathOverride     string
 	PushEnabled                 bool
 	XcodebuildTimestampsEnabled bool
@@ -40,6 +42,7 @@ type Config struct {
 	CLIVersion             string                 `json:"cliVersion"`
 	WrapperVersion         string                 `json:"wrapperVersion"`
 	OriginalXcodebuildPath string                 `json:"originalXcodebuildPath"`
+	OriginalXcrunPath      string                 `json:"originalXcrunPath"`
 	BuildCacheEnabled      bool                   `json:"buildCacheEnabled"`
 	BuildCacheEndpoint     string                 `json:"buildCacheEndpoint"`
 	PushEnabled            bool                   `json:"pushEnabled"`
@@ -108,6 +111,18 @@ func NewConfig(ctx context.Context,
 	}
 	logger.Infof("Using xcodebuild path: %s. You can always override this by supplying --xcode-path.", xcodePath)
 
+	xcrunPath := params.XcrunPathOverride
+	if xcrunPath == "" {
+		logger.Debugf("No xcrun path override specified, determining original xcrun path...")
+		originalXcrunPath, err := getOriginalXcrunPath(ctx, logger, cmdFunc)
+		if err != nil {
+			logger.Warnf("Failed to determine xcodebuild path: %s. Using default: %s", err, DefaultXcrunPath)
+			originalXcrunPath = DefaultXcrunPath
+		}
+		xcrunPath = originalXcrunPath
+	}
+	logger.Infof("Using xcrun path: %s. You can always override this by supplying --xcrun-path.", xcrunPath)
+
 	proxySocketPath := params.ProxySocketPathOverride
 	if proxySocketPath == "" {
 		proxySocketPath = envs["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
@@ -139,6 +154,7 @@ func NewConfig(ctx context.Context,
 		WrapperVersion:         envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
 		CLIVersion:             envs["BITRISE_BUILD_CACHE_CLI_VERSION"],
 		OriginalXcodebuildPath: xcodePath,
+		OriginalXcrunPath:      xcrunPath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		BuildCacheEndpoint:     params.BuildCacheEndpoint,
 		PushEnabled:            params.PushEnabled,
@@ -161,6 +177,23 @@ func getOriginalXcodebuildPath(ctx context.Context, logger log.Logger, cmdFunc u
 		logger.Warnf("No xcodebuild path found, using default: %s", DefaultXcodePath)
 
 		return DefaultXcodePath, nil
+	}
+
+	return trimmed, nil
+}
+
+func getOriginalXcrunPath(ctx context.Context, logger log.Logger, cmdFunc utils.CommandFunc) (string, error) {
+	logger.Debugf("Determining original xcrun path...")
+	cmd := cmdFunc(ctx, "which", "xcrun")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to get xcrun output: %w", err)
+	}
+	trimmed := strings.TrimSpace(string(output))
+	if len(trimmed) == 0 {
+		logger.Warnf("No xcrun path found, using default: %s", DefaultXcrunPath)
+
+		return DefaultXcrunPath, nil
 	}
 
 	return trimmed, nil
