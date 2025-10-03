@@ -2079,12 +2079,9 @@ workflows:
                 for sp in ~/Library/Developer/Xcode/DerivedData/*/SourcePackages; do
                   [ -d "$sp" ] || continue
                   echo "=== $sp ==="
-                  if command -v tree >/dev/null 2>&1; then
-                    tree -L 2 "$sp"
-                  else
-                    ls -la "$sp"
-                  fi
-                  
+                  tree -L 2 "$sp"
+                  ls -hal "$sp"
+                  echo "workspace state sha1: $(cat "$sp/workspace-state.json" | sha1sum)"
                   cat "$sp/workspace-state.json" | jq '{dependencies: [.object.dependencies[].subpath],artifacts: [.object.artifacts[].targetName]}'
                 done
     - bundle::benchmark_start_measure:
