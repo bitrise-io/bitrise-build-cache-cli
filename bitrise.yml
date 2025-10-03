@@ -1951,7 +1951,6 @@ workflows:
         - key: 'darwin-arm64-spm-cache-WordPress_Explicit_SPM-ad8a2f69b293638b5ad9118881681f7a94a6dfb0b3f68de7c5210f26929bc400'
     - script:
         title: Remove alamofire to make SPM invalid
-        run_if: 'false'
         inputs:
         - content: |-
             #!/usr/bin/env bash
