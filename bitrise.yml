@@ -2242,6 +2242,10 @@ workflows:
                 sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
                 
                 sed -n '1,40p' ios/Podfile
+                
+                pushd ios
+                pod install --repo-update
+                popd
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
