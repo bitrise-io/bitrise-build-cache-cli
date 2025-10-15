@@ -2240,7 +2240,9 @@ workflows:
                 flutter pub get
                 sed -i '' "s/^#[[:space:]]*\(platform :ios.*\)/platform :ios, '13.0'/" ios/Podfile
                 sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
-                
+                sed -i '' "/^platform :ios/ a\\
+                use_modular_headers!
+                " ios/Podfile
                 sed -n '1,40p' ios/Podfile
                 
                 pushd ios
