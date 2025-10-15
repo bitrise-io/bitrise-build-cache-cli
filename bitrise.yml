@@ -2240,6 +2240,8 @@ workflows:
                 flutter pub get
                 sed -i '' "s/^#\s*platform :ios.*$/platform :ios, '13.0'/" ios/Podfile
                 sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
+                
+                cat ios/Podfile
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
