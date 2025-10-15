@@ -2217,6 +2217,44 @@ workflows:
       bitrise.io:
         machine_type_id: g2.mac.large
         stack: osx-xcode-26.0.x-edge
+  benchmark_doddle_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: WordPress
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/NaserElziadna/doddle.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+            - SILENT: "true"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                flutter pub get
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Build
+          inputs:
+            - content: |-
+                flutter build ios --debug --no-codesign
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.0.x-edge
   e2e-xcode-comp-cache:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
@@ -3001,6 +3039,8 @@ step_bundles:
       opts: {}
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
       opts: {}
+    - SILENT: false
+      opts: { }
     steps:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -3028,7 +3068,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            ./bitrise-build-cache-cli activate xcode --cache
+            ./bitrise-build-cache-cli activate xcode --cache --silent=${SILENT}
     - script:
         title: Git clone benchmark app
         inputs:
