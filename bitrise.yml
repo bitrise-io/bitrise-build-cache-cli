@@ -2246,6 +2246,9 @@ workflows:
                 sed -n '1,40p' ios/Podfile
                 
                 pushd ios
+                rm -rf Pods Podfile.lock .symlinks Podfile.xcworkspace
+                pod cache clean --all
+                pod deintegrate || true
                 pod install --repo-update
                 popd
       - bundle::benchmark_start_measure:
