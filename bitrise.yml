@@ -2241,7 +2241,7 @@ workflows:
                 sed -i '' "s/^#\s*\(platform :ios.*\)/\1/" ios/Podfile
                 sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
                 
-                cat ios/Podfile
+                sed -n '1,40p' ios/Podfile
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
