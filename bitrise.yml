@@ -2238,7 +2238,7 @@ workflows:
           inputs:
             - content: |-
                 flutter pub get
-                sed -i '' "s/^#\s*\(platform :ios.*\)/\1/" ios/Podfile
+                sed -i '' "s/^#[[:space:]]*\(platform :ios.*\)/\1/" ios/Podfile
                 sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
                 
                 sed -n '1,40p' ios/Podfile
