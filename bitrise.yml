@@ -2361,6 +2361,10 @@ workflows:
             - content: |-
                 #!/bin/bash
                 
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+                export PATH="$HOME/.cargo/bin:$PATH"
+                flutter upgrade
+                
                 cat << EOPATCH | patch --forward flutter/ios/Podfile
                 diff --git a/ios/Podfile b/ios/Podfile
                 index 9411102b..0446120a 100644
