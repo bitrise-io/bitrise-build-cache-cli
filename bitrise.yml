@@ -2356,9 +2356,7 @@ workflows:
           inputs:
             - content: |-
                 #!/bin/bash
-
-#                flutter pub get
-
+                
                 cat << EOPATCH | patch --forward flutter/ios/Podfile
                 diff --git a/ios/Podfile b/ios/Podfile
                 index 9411102b..0446120a 100644
