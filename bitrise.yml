@@ -2237,20 +2237,25 @@ workflows:
           title: Install dependencies
           inputs:
             - content: |-
+                asdf install ruby 3.4.6
+                asdf global ruby 3.4.6
+                flutter upgrade
+                gem install cocoapods
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
                 flutter pub get
-                sed -i '' "s/^#[[:space:]]*\(platform :ios.*\)/platform :ios, '13.0'/" ios/Podfile
-                sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
-                sed -i '' "/^platform :ios/ a\\
-                use_modular_headers!
-                " ios/Podfile
-                sed -n '1,40p' ios/Podfile
-                
-                pushd ios
-                rm -rf Pods Podfile.lock .symlinks Podfile.xcworkspace
-                pod cache clean --all
-                pod deintegrate || true
-                pod install --repo-update
-                popd
+#                sed -i '' "s/^#[[:space:]]*\(platform :ios.*\)/platform :ios, '13.0'/" ios/Podfile
+#                sed -i '' "/^[[:space:]]*target 'RunnerTests' do/,/^[[:space:]]*end/ d" ios/Podfile
+#                sed -i '' "/^platform :ios/ a\\
+#                use_modular_headers!
+#                " ios/Podfile
+#                sed -n '1,40p' ios/Podfile
+#
+#                pushd ios
+#                rm -rf Pods Podfile.lock .symlinks Podfile.xcworkspace
+#                pod cache clean --all
+#                pod deintegrate || true
+#                pod install --repo-update
+#                popd
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
