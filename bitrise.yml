@@ -2295,6 +2295,10 @@ workflows:
             - content: |-
                 #!/bin/bash
 
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+                export PATH="$HOME/.cargo/bin:$PATH"
+
+                flutter upgrade
                 flutter pub get
                 
                 cat << EOPATCH | patch --forward --reject-file=apple_please_fix_your_coreutils ios/Podfile
