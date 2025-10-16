@@ -2299,6 +2299,7 @@ workflows:
                 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
                 export PATH="$HOME/.cargo/bin:$PATH"
                 envman add --key PATH --value "$PATH"
+                rustup target add aarch64-apple-ios
 
                 flutter upgrade
                 flutter pub get
@@ -2369,6 +2370,7 @@ workflows:
                 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
                 export PATH="$HOME/.cargo/bin:$PATH"
                 envman add --key PATH --value "$PATH"
+                rustup target add aarch64-apple-ios
                 flutter upgrade
                 
                 cat << EOPATCH | patch --forward flutter/ios/Podfile
