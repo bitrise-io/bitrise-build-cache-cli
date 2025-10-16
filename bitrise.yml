@@ -2320,11 +2320,7 @@ workflows:
                 EOPATCH
                 rm -f apple_please_fix_your_coreutils
                 
-                cat << EOPATCH | patch --forward ios/Podfile
-                *** Podfile
-                @@
-                -      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
-                EOPATCH
+                sed -i '' "/config\.build_settings\[[[:space:]]*'IPHONEOS_DEPLOYMENT_TARGET'[[:space:]]*\][[:space:]]*=[[:space:]]*'11\.0'/d" ios/Podfile
                 
                 cat ios/Podfile
       - bundle::benchmark_start_measure:
@@ -2391,11 +2387,7 @@ workflows:
                  end
                 EOPATCH
                 
-                cat << EOPATCH | patch --forward flutter/ios/Podfile
-                *** Podfile
-                @@
-                -      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
-                EOPATCH
+                sed -i '' "/config\.build_settings\[[[:space:]]*'IPHONEOS_DEPLOYMENT_TARGET'[[:space:]]*\][[:space:]]*=[[:space:]]*'11\.0'/d" flutter/ios/Podfile
 
                 cat flutter/ios/Podfile
       - bundle::benchmark_start_measure:
