@@ -2297,6 +2297,7 @@ workflows:
 
                 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
                 export PATH="$HOME/.cargo/bin:$PATH"
+                envman add --key PATH --value "$PATH"
 
                 flutter upgrade
                 flutter pub get
@@ -2318,8 +2319,11 @@ workflows:
                 EOPATCH
                 rm -f apple_please_fix_your_coreutils
                 
-                # BSD sed example with flexible whitespace
-                sed -i '' "/config\.build_settings\[[[:space:]]*'IPHONEOS_DEPLOYMENT_TARGET'[[:space:]]*\][[:space:]]*=[[:space:]]*'11\.0'/d" flutter/ios/Podfile
+                cat << EOPATCH | patch --forward ios/Podfile
+                *** Podfile
+                @@
+                -      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
+                EOPATCH
                 
                 cat ios/Podfile
       - bundle::benchmark_start_measure:
@@ -2366,6 +2370,7 @@ workflows:
                 
                 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
                 export PATH="$HOME/.cargo/bin:$PATH"
+                envman add --key PATH --value "$PATH"
                 flutter upgrade
                 
                 cat << EOPATCH | patch --forward flutter/ios/Podfile
@@ -2384,8 +2389,11 @@ workflows:
                  end
                 EOPATCH
                 
-                # BSD sed example with flexible whitespace
-                sed -i '' "/config\.build_settings\[[[:space:]]*'IPHONEOS_DEPLOYMENT_TARGET'[[:space:]]*\][[:space:]]*=[[:space:]]*'11\.0'/d" flutter/ios/Podfile
+                cat << EOPATCH | patch --forward flutter/ios/Podfile
+                *** Podfile
+                @@
+                -      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
+                EOPATCH
 
                 cat flutter/ios/Podfile
       - bundle::benchmark_start_measure:
