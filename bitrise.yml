@@ -2331,7 +2331,8 @@ workflows:
           title: Build
           inputs:
             - content: |-
-                flutter build ipa -v --debug --no-codesign
+                flutter build ipa -v --debug --no-codesign &> $BITRISE_DEPLOY_DIR/build.log
+                tail -n 300 $BITRISE_DEPLOY_DIR/build.log
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -2399,7 +2400,8 @@ workflows:
           title: Build
           inputs:
             - content: |-
-                cargo build --features flutter,hwcodec --target aarch64-apple-ios --lib
+                cargo build --features flutter,hwcodec --target aarch64-apple-ios --lib &> $BITRISE_DEPLOY_DIR/rustdesk_build.log
+                tail -n 100 $BITRISE_DEPLOY_DIR/rustdesk_build.log
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
