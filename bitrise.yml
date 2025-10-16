@@ -2273,6 +2273,63 @@ workflows:
       bitrise.io:
         machine_type_id: g2.mac.large
         stack: osx-xcode-26.0.x-edge
+  benchmark_fluffychat_build_baseline:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "false"
+      - BENCHMARK_APP_NAME: FluffyChat
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/krille-chan/fluffychat.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+            - SILENT: "true"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                #!/bin/bash
+
+                flutter pub get
+                
+                cat << EOPATCH | patch --forward --reject-file=apple_please_fix_your_coreutils --silent ios/Podfile
+                diff --git a/ios/Podfile b/ios/Podfile
+                index 9411102b..0446120a 100644
+                --- a/ios/Podfile
+                +++ b/ios/Podfile
+                @@ -37,5 +37,8 @@ end
+                 post_install do |installer|
+                   installer.pods_project.targets.each do |target|
+                     flutter_additional_ios_build_settings(target)
+                +    target.build_configurations.each do |config|
+                +      config.build_settings.delete 'IPHONEOS_DEPLOYMENT_TARGET'
+                +    end
+                   end
+                 end
+                EOPATCH
+                rm -f apple_please_fix_your_coreutils
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Build
+          inputs:
+            - content: |-
+                flutter build ipa -v --debug --no-codesign
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.0.x-edge
   e2e-xcode-comp-cache:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
