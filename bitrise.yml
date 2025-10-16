@@ -2348,18 +2348,18 @@ workflows:
             - USE_COMP_CACHE: $USE_COMP_CACHE
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
             - SILENT: "true"
-      - change-workdir:
-          inputs:
-            - path: flutter
+#      - change-workdir:
+#          inputs:
+#            - path: flutter
       - script:
           title: Install dependencies
           inputs:
             - content: |-
                 #!/bin/bash
 
-                flutter pub get
+#                flutter pub get
 
-                cat << EOPATCH | patch --forward ios/Podfile
+                cat << EOPATCH | patch --forward flutter/ios/Podfile
                 diff --git a/ios/Podfile b/ios/Podfile
                 index 9411102b..0446120a 100644
                 --- a/ios/Podfile
@@ -2375,7 +2375,7 @@ workflows:
                  end
                 EOPATCH
 
-                cat ios/Podfile
+                cat flutter/ios/Podfile
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -2383,7 +2383,7 @@ workflows:
           title: Build
           inputs:
             - content: |-
-                flutter build ipa -v --debug --no-codesign
+                cargo build --features flutter,hwcodec --target aarch64-apple-ios --lib
       - bundle::benchmark_finish:
           inputs:
             - USE_DD_CACHE: $USE_DD_CACHE
@@ -3214,7 +3214,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            git clone --depth 30 $REPO_URL -b $BRANCH ./_benchmark/$BENCHMARK_APP_NAME
+            git clone --recurse-submodules --depth 30 $REPO_URL -b $BRANCH ./_benchmark/$BENCHMARK_APP_NAME
     - change-workdir:
         title: Switch working dir to _benchmark
         inputs:
