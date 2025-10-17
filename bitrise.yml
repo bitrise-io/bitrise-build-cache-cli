@@ -15,36 +15,12 @@ meta:
 pipelines:
   benchmark:
     workflows:
-      benchmark_calendar_build_baseline: {}
-      benchmark_calendar_build_baseline_16_4: {}
-      benchmark_calendar_build_cc: {}
-      benchmark_calendar_build_cc_spm: {}
-      benchmark_calendar_build_spm: {}
-      benchmark_calendar_build_spm_16_4: {}
-      benchmark_calendar_build_spm_explicit: {}
+      benchmark_doddle_build_baseline: {}
+      benchmark_doddle_build_cc: {}
       benchmark_results:
         depends_on:
-        - benchmark_wordpress_build_baseline
-        - benchmark_wordpress_build_spm
-        - benchmark_wordpress_build_spm_explicit
-        - benchmark_wordpress_build_cc
-        - benchmark_wordpress_build_cc_spm
-        - benchmark_calendar_build_baseline
-        - benchmark_calendar_build_baseline_16_4
-        - benchmark_calendar_build_spm
-        - benchmark_calendar_build_spm_16_4
-        - benchmark_calendar_build_spm_explicit
-        - benchmark_calendar_build_cc
-        - benchmark_calendar_build_cc_spm
-      benchmark_sample_build_baseline: {}
-      benchmark_sample_build_spm: {}
-      benchmark_sample_build_spm_explicit: {}
-      benchmark_wordpress_build_baseline: {}
-      benchmark_wordpress_build_cc: {}
-      benchmark_wordpress_build_cc_spm: {}
-      benchmark_wordpress_build_spm: {}
-      benchmark_wordpress_build_spm_explicit: {}
-      benchmark_wordpress_build_spm_invalidpackage: {}
+        - benchmark_doddle_build_baseline
+        - benchmark_doddle_build_cc
   features-e2e:
     triggers:
       push:
@@ -559,6 +535,7 @@ workflows:
         Calendar
         IceCubesApp
         VLC
+        Doddle
       opts:
         is_expand: false
     steps:
@@ -2222,7 +2199,7 @@ workflows:
       - USE_DD_CACHE: "false"
       - USE_SPM: "false"
       - USE_COMP_CACHE: "false"
-      - BENCHMARK_APP_NAME: WordPress
+      - BENCHMARK_APP_NAME: Doddle
     steps:
       - bundle::benchmark-setup:
           inputs:
@@ -2280,13 +2257,86 @@ workflows:
                   end
                 end
                 EOF
+      - bundle::benchmark_start_measure:
+          inputs:
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+      - script:
+          title: Build
+          inputs:
+            - content: |-
+                flutter build ios --debug --no-codesign
+      - bundle::benchmark_finish:
+          inputs:
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.0.x-edge
+  benchmark_doddle_build_cc:
+    envs:
+      - USE_DD_CACHE: "false"
+      - USE_SPM: "false"
+      - USE_COMP_CACHE: "true"
+      - BENCHMARK_APP_NAME: Doddle_CC
+    steps:
+      - bundle::benchmark-setup:
+          inputs:
+            - REPO_URL: https://github.com/NaserElziadna/doddle.git
+            - BRANCH: main
+            - USE_DD_CACHE: $USE_DD_CACHE
+            - USE_SPM: $USE_SPM
+            - USE_COMP_CACHE: $USE_COMP_CACHE
+            - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+            - SILENT: "true"
+      - script:
+          title: Install dependencies
+          inputs:
+            - content: |-
+                asdf install ruby 3.4.6
+                asdf global ruby 3.4.6
+                # flutter upgrade
+                gem install cocoapods
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+                flutter pub get
 
-#                pushd ios
-#                rm -rf Pods Podfile.lock .symlinks Podfile.xcworkspace
-#                pod cache clean --all
-#                pod deintegrate || true
-#                pod install --repo-update
-#                popd
+                cat <<EOF > ios/Podfile
+
+                platform :ios, '13.0'
+                # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+                ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+                project 'Runner', {
+                  'Debug' => :debug,
+                  'Profile' => :release,
+                  'Release' => :release,
+                }
+                def flutter_root
+                  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+                  unless File.exist?(generated_xcode_build_settings_path)
+                    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+                  end
+                  File.foreach(generated_xcode_build_settings_path) do |line|
+                    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+                    return matches[1].strip if matches
+                  end
+                  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+                end
+                require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+                flutter_ios_podfile_setup
+                target 'Runner' do
+                  use_frameworks!
+                  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+                end
+                post_install do |installer|
+                  installer.pods_project.targets.each do |target|
+                    flutter_additional_ios_build_settings(target)
+                    target.build_configurations.each do |config|
+                      config.build_settings.delete 'IPHONEOS_DEPLOYMENT_TARGET'
+                    end
+                  end
+                end
+                EOF
       - bundle::benchmark_start_measure:
           inputs:
             - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
