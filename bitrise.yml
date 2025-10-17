@@ -2279,7 +2279,7 @@ workflows:
                     end
                   end
                 end
-                
+                EOF
 
 #                pushd ios
 #                rm -rf Pods Podfile.lock .symlinks Podfile.xcworkspace
