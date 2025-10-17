@@ -2237,9 +2237,9 @@ workflows:
           title: Install dependencies
           inputs:
             - content: |-
-                # asdf install ruby 3.4.6
-                # asdf global ruby 3.4.6
-                # flutter upgrade
+                asdf install ruby 3.4.6
+                asdf global ruby 3.4.6
+                flutter upgrade
                 gem install cocoapods
                 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
                 flutter pub get
