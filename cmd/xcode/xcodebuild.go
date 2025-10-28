@@ -333,8 +333,13 @@ func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []str
 
 	if config.BuildCacheEnabled {
 		additional = maps.Clone(xcodeargs.CacheArgs)
+		diagnosticRemarks := "NO"
+		if config.DebugLogging {
+			diagnosticRemarks = "YES"
+		}
 		maps.Copy(additional, map[string]string{
-			"COMPILATION_CACHE_REMOTE_SERVICE_PATH": config.ProxySocketPath,
+			"COMPILATION_CACHE_REMOTE_SERVICE_PATH":       config.ProxySocketPath,
+			"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS": diagnosticRemarks,
 		})
 	}
 
