@@ -1,8 +1,8 @@
-{{- if eq .Cache.Usage "enabled" -}}
-import io.bitrise.gradle.analytics.AnalyticsPluginExtension
-import io.bitrise.gradle.cache.BitriseBuildCache
+{{- if eq .Analytics.Usage "enabled" -}}import io.bitrise.gradle.analytics.AnalyticsPluginExtension
+{{ end -}}
+{{- if eq .Cache.Usage "enabled" -}}import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
-{{ end }}
+{{ end -}}
 initscript {
     repositories {
         mavenLocal()

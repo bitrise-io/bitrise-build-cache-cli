@@ -138,12 +138,12 @@ const expectedDependencies = `    dependencies {
         classpath("io.bitrise.gradle:test-distribution:TestDistroVersionValue")
     }`
 
-const expectedNoPluginActivated = "\ninitscript {\n" + expectedRepositories + "\n}"
+const expectedNoPluginActivated = "initscript {\n" + expectedRepositories + "\n}"
 
-const expectedDepOnlyPlugins = "\ninitscript {\n" + expectedRepositories + "\n" + expectedDependencies + "\n}"
+const expectedDepOnlyPlugins = "initscript {\n" + expectedRepositories + "\n" + expectedDependencies + "\n}"
 
 const expectedAllPlugins = expectedImports +
-	"\n\ninitscript {\n" +
+	"\ninitscript {\n" +
 	expectedRepositories + "\n" +
 	expectedDependencies + "\n}" +
 	`
