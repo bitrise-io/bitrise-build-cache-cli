@@ -46,6 +46,7 @@ settingsEvaluated {
             isPush = {{ .Cache.IsPushEnabled }}
             debug = {{ .Common.Debug }}
             blobValidationLevel = "{{ .Cache.ValidationLevel }}"
+            cacheGradleVersion = gradle.gradleVersion
             {{- if eq .Analytics.Usage "dependency" "enabled" }}
             collectMetadata = false
             {{- end }}
