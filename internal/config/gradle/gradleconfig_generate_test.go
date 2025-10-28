@@ -113,7 +113,8 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
-const expectedImports = `import io.bitrise.gradle.cache.BitriseBuildCache
+const expectedImports = `import io.bitrise.gradle.analytics.AnalyticsPluginExtension
+import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`
 
 const expectedRepositories = `    repositories {
@@ -159,12 +160,13 @@ settingsEvaluated {
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
+            cacheGradleVersion = gradle.gradleVersion
             collectMetadata = false
         }
     }
     rootProject {
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
-        extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
+        extensions.create("analytics", AnalyticsPluginExtension::class.java)
+        extensions.configure(AnalyticsPluginExtension::class.java) {
             endpoint.set("AnalyticsEndpointURLValue:123")
             httpEndpoint.set("AnalyticsHttpEndpointValue")
             authToken.set("AuthTokenValue")
@@ -178,6 +180,7 @@ settingsEvaluated {
                 appSlug.set("AppSlugValue")
             }
         }
+        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
 }
 rootProject {
