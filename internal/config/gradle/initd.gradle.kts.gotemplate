@@ -55,8 +55,8 @@ settingsEvaluated {
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}
     rootProject {
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
-        extensions.configure<io.bitrise.gradle.analytics.AnalyticsPluginExtension>{
+        extensions.create("analytics", AnalyticsPluginExtension::class.java)
+        extensions.configure(AnalyticsPluginExtension::class.java) {
             endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
             httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
             authToken.set("{{ .Common.AuthToken }}")
@@ -72,6 +72,7 @@ settingsEvaluated {
                 {{- end }}
             }
         }
+        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
     {{- end }}
 }
