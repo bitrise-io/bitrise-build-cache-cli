@@ -113,7 +113,8 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
-const expectedImports = `import io.bitrise.gradle.cache.BitriseBuildCache
+const expectedImports = `import io.bitrise.gradle.analytics.AnalyticsPluginExtension
+import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`
 
 const expectedRepositories = `    repositories {

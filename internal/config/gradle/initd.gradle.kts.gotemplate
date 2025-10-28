@@ -1,4 +1,5 @@
 {{- if eq .Cache.Usage "enabled" -}}
+import io.bitrise.gradle.analytics.AnalyticsPluginExtension
 import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 {{ end }}
