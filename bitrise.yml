@@ -359,6 +359,66 @@ workflows:
               assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
     - deploy-to-bitrise-io@2: {}
 
+  feature-e2e-gradle-7:
+    envs:
+      - TEST_APP_URL: https://github.com/bitrise-io/Bitrise-Android-Sample
+      - BRANCH: main
+    steps:
+      - bundle::feature-e2e-setup: { }
+      - apt-get-install:
+          inputs:
+            - packages: 'bc'
+            - upgrade: "no"
+      - script:
+          title: Enable build cache
+          inputs:
+            - content: |-
+                set -exo pipefail
+                ../bitrise-build-cache-cli activate gradle -d --cache
+      - script:
+          title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+          inputs:
+            - content: |-
+                cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+      - script:
+          title: Build and capture logs
+          inputs:
+            - content: |-
+                set -exo pipefail
+                (./gradlew compileDebugKotlin --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+      - script:
+          title: Check for cache invocations
+          inputs:
+            - content: |-
+                set -exo pipefail
+                
+                ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+                  '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+                  '\[Bitrise Build Cache\].*Request metadata invocationId' \
+                  '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+                
+                source ../_e2e/scripts/extract_invocation_id.sh
+                
+                invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
+                if [[ -z "$invocation_id" ]]; then
+                  fatal "Invocation ID not found in logs"
+                fi
+                
+                echo "Found Invocation ID: $invocation_id"
+                envman add --key INVOCATION_ID --value "$invocation_id"
+      - script:
+          title: Assert invocation from API
+          inputs:
+            - content: |-
+                source ../_e2e/scripts/assert_invocations.sh
+                
+                assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+                assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+                assert_invocation_tasks_gradle "$INVOCATION_ID"
+                assert_build_performance "$INVOCATION_ID"
+                assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+      - deploy-to-bitrise-io@2: { }
+
   feature-e2e-gradle-bitwarden:
     envs:
     - TEST_APP_URL: git@github.com:bitwarden/android.git
@@ -1024,6 +1084,7 @@ pipelines:
       feature-e2e-bazel-bitrisedc-no-rbe: {}
       feature-e2e-bazel-public-no-rbe: {}
       feature-e2e-gradle-duckduck: {}
+      feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
