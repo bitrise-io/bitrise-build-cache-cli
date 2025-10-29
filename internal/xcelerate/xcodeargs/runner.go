@@ -210,7 +210,9 @@ func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadClo
 		fmt.Fprintf(writer, "%s\n", line)
 	}
 
-	if err := scanner.Err(); err != nil {
-		runner.logger.Errorf("Failed to scan stdout: %v", err)
-	}
+	// ignore error from scanner.Err()
+	// when upstream reader is closed, scanner will return an error
+	// which is not relevant in this context (command will close them on finish)
+	//
+	// if err := scanner.Err(); err != nil {}
 }
