@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/sha256"
 	"fmt"
+	"hash"
 	"maps"
 	"os"
 	"os/user"
@@ -116,6 +117,16 @@ func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Log
 	}
 }
 
+func hashKeyValue(hasher hash.Hash, key, value string) []byte {
+	hasher.Reset()
+	hasher.Write([]byte(RedactorSeed))
+	hasher.Write([]byte(key))
+	hasher.Write([]byte(value))
+	hasher.Write([]byte(RedactorSeed))
+
+	return hasher.Sum(nil)
+}
+
 func redactBitriseEnvs(envs map[string]string) {
 	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
 	secretKeyList := strings.Split(secretKeys, ",")
@@ -125,25 +136,13 @@ func redactBitriseEnvs(envs map[string]string) {
 			continue
 		}
 		if envValue, ok := envs[key]; ok {
-			hasher.Reset()
-			hasher.Write([]byte(RedactorSeed))
-			hasher.Write([]byte(key))
-			hasher.Write([]byte(envValue))
-			hasher.Write([]byte(RedactorSeed))
-			hash := hasher.Sum(nil)
-			envs[key] = fmt.Sprintf("<sha256@%x>", hash[:4])
+			envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, envValue)[:4])
 		}
 	}
 
 	key := "BITRISE_BUILD_CACHE_AUTH_TOKEN"
 	if envValue, ok := envs[key]; ok {
-		hasher.Reset()
-		hasher.Write([]byte(RedactorSeed))
-		hasher.Write([]byte(key))
-		hasher.Write([]byte(envValue))
-		hasher.Write([]byte(RedactorSeed))
-		hash := hasher.Sum(nil)
-		envs[key] = fmt.Sprintf("<sha256@%x>", hash[:4])
+		envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, envValue)[:4])
 	}
 }
 
