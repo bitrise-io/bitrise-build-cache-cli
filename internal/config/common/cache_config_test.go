@@ -62,6 +62,29 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 		},
 		{
+			name: "Envs",
+			envs: map[string]string{
+				"BITRISE_SECRET_ENV_KEY_LIST": "MY_SECRET,MY_SECRET2,MY_SECRET3",
+				"CIRCLECI":                    "true",
+				"MY_SECRET":                   "val1",
+				"MY_SECRET2":                  "val2",
+				"MY_SECRET3":                  "val2",
+			},
+			commandFunc: func(_ string, _ ...string) (string, error) {
+				return "", nil
+			},
+			want: CacheConfigMetadata{
+				CIProvider: CIProviderCircleCI,
+				RedactedEnvs: map[string]string{
+					"MY_SECRET":                   "<sha256@49bf1460>",
+					"MY_SECRET2":                  "<sha256@67171c3a>",
+					"MY_SECRET3":                  "<sha256@cdd23b1f>", // key is part of the hash
+					"BITRISE_SECRET_ENV_KEY_LIST": "MY_SECRET,MY_SECRET2,MY_SECRET3",
+					"CIRCLECI":                    "true",
+				},
+			},
+		},
+		{
 			name: "GitHub Actions",
 			envs: map[string]string{
 				"GITHUB_ACTIONS":    "true",
@@ -235,7 +258,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				tt.commandFunc,
 				log.NewLogger())
 
-			assert.Equal(t, tt.envs, got.RedactedEnvs)
+			if tt.want.RedactedEnvs != nil {
+				assert.Equal(t, tt.want.RedactedEnvs, got.RedactedEnvs)
+			}
 			got.RedactedEnvs = nil
 			tt.want.RedactedEnvs = nil
 

@@ -1,6 +1,8 @@
 package common
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"maps"
 	"os"
 	"os/user"
@@ -32,6 +34,8 @@ const (
 	CIProviderCircleCI = "circle-ci"
 	// CIProviderGitHubActions ...
 	CIProviderGitHubActions = "github-actions"
+
+	RedactorSeed = "BitriseBuildCacheRedactor"
 
 	// --- not used yet ---
 	// CIProviderJenkins ...
@@ -115,16 +119,31 @@ func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Log
 func redactBitriseEnvs(envs map[string]string) {
 	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
 	secretKeyList := strings.Split(secretKeys, ",")
+	hasher := sha256.New()
 	for _, key := range secretKeyList {
 		if key == "" {
 			continue
 		}
-		if _, ok := envs[key]; ok {
-			envs[key] = "[REDACTED]"
+		if envValue, ok := envs[key]; ok {
+			hasher.Reset()
+			hasher.Write([]byte(RedactorSeed))
+			hasher.Write([]byte(key))
+			hasher.Write([]byte(envValue))
+			hasher.Write([]byte(RedactorSeed))
+			hash := hasher.Sum(nil)
+			envs[key] = fmt.Sprintf("<sha256@%x>", hash[:4])
 		}
 	}
-	if _, ok := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]; ok {
-		envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"] = "[REDACTED]"
+
+	key := "BITRISE_BUILD_CACHE_AUTH_TOKEN"
+	if envValue, ok := envs[key]; ok {
+		hasher.Reset()
+		hasher.Write([]byte(RedactorSeed))
+		hasher.Write([]byte(key))
+		hasher.Write([]byte(envValue))
+		hasher.Write([]byte(RedactorSeed))
+		hash := hasher.Sum(nil)
+		envs[key] = fmt.Sprintf("<sha256@%x>", hash[:4])
 	}
 }
 
