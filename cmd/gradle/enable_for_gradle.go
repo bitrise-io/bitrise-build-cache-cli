@@ -120,7 +120,7 @@ func getPlugins(ctx context.Context, logger log.Logger, envProvider map[string]s
 	kvClient, err := common.CreateKVClient(ctx,
 		common.CreateKVClientParams{
 			CacheOperationID: uuid.NewString(),
-			ClientName:       common.ClientNameGradle,
+			ClientName:       "gradle-plugin-fetcher",
 			AuthConfig:       authConfig,
 			Envs:             envProvider,
 			CommandFunc: func(name string, v ...string) (string, error) {
