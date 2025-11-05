@@ -42,9 +42,6 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		allEnvs := utils.AllEnvs()
-		if err := getPlugins(cmd.Context(), logger, allEnvs); err != nil {
-			return fmt.Errorf("failed to fetch plugins: %w", err)
-		}
 
 		if err := ActivateGradleCmdFn(
 			logger,

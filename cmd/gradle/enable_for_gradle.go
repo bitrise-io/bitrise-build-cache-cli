@@ -1,19 +1,14 @@
 package gradle
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -57,9 +52,6 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		allEnvs := utils.AllEnvs()
-		if err := getPlugins(cmd.Context(), logger, allEnvs); err != nil {
-			logger.TWarnf("failed to prefetch plugins: %w", err)
-		}
 
 		//
 		if err := EnableForGradleCmdFn(logger, gradleHome, allEnvs); err != nil {
@@ -104,40 +96,6 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	if err := gradleconfig.DefaultGradlePropertiesUpdater().UpdateGradleProps(activateGradleParams, logger, gradleHomePath); err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
-	}
-
-	return nil
-}
-
-func getPlugins(ctx context.Context, logger log.Logger, envProvider map[string]string) error {
-	// Required configs
-	logger.Infof("(i) Check Auth Config")
-	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(envProvider)
-	if err != nil {
-		return fmt.Errorf("read auth config from environment variables: %w", err)
-	}
-
-	kvClient, err := common.CreateKVClient(ctx,
-		common.CreateKVClientParams{
-			CacheOperationID: uuid.NewString(),
-			ClientName:       "gradle-plugin-fetcher",
-			AuthConfig:       authConfig,
-			Envs:             envProvider,
-			CommandFunc: func(name string, v ...string) (string, error) {
-				output, err := exec.Command(name, v...).Output() //nolint:noctx
-
-				return string(output), err
-			},
-			Logger: logger,
-		})
-	if err != nil {
-		return fmt.Errorf("create kv client: %w", err)
-	}
-
-	pluginCacher := gradle.PluginCacher{}
-
-	if err = pluginCacher.CachePlugins(ctx, kvClient, logger, gradle.Plugins()); err != nil {
-		return fmt.Errorf("caching plugins: %w", err)
 	}
 
 	return nil
