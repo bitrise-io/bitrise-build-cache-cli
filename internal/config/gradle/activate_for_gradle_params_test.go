@@ -238,6 +238,7 @@ func Test_activateGradleParams(t *testing.T) {
 				TestDistro: TestDistroParams{
 					Enabled:        true,
 					JustDependency: true, // gets overridden by enable
+					ShardSize:      25,
 				},
 			},
 			envVars: map[string]string{
@@ -266,6 +267,7 @@ func Test_activateGradleParams(t *testing.T) {
 					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 					Port:       consts.GradleTestDistributionPort,
 					LogLevel:   "warning",
+					ShardSize:  25,
 				},
 			},
 		},

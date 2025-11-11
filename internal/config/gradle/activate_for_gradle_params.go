@@ -36,6 +36,7 @@ type AnalyticsParams struct {
 type TestDistroParams struct {
 	Enabled        bool
 	JustDependency bool
+	ShardSize      int
 }
 
 type ActivateGradleParams struct {
@@ -237,5 +238,6 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 		Port:       consts.GradleTestDistributionPort,
 		LogLevel:   logLevel,
+		ShardSize:  params.TestDistro.ShardSize,
 	}
 }
