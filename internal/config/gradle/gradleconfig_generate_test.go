@@ -94,6 +94,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					KvEndpoint: "TestDistroKvEndpointValue",
 					Port:       321,
 					LogLevel:   "TestDistroLogLevelValue",
+					ShardSize:  50,
 				},
 			},
 			want:    expectedAllPlugins,
@@ -189,6 +190,7 @@ rootProject {
         kvEndpoint.set("TestDistroKvEndpointValue:321")
         authToken.set("AuthTokenValue")
         logLevel.set("TestDistroLogLevelValue")
+        shardSize.set(50)
         bitrise {
             appSlug.set("AppSlugValue")
         }

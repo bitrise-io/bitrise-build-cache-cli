@@ -32,6 +32,7 @@ type TestDistroTemplateInventory struct {
 	KvEndpoint string
 	Port       int
 	LogLevel   string
+	ShardSize  int
 }
 
 type PluginCommonTemplateInventory struct {

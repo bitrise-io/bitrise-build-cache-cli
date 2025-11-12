@@ -85,6 +85,7 @@ rootProject {
         kvEndpoint.set("{{ .TestDistro.KvEndpoint }}:{{ .TestDistro.Port }}")
         authToken.set("{{ .Common.AuthToken }}")
         logLevel.set("{{ .TestDistro.LogLevel }}")
+        shardSize.set({{ .TestDistro.ShardSize }})
         bitrise {
             appSlug.set("{{ .Common.AppSlug }}")
         }
