@@ -3,27 +3,27 @@ module github.com/bitrise-io/bitrise-build-cache-cli
 go 1.23.8
 
 require (
-	cloud.google.com/go/longrunning v0.6.0
-	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
-	github.com/beevik/etree v1.4.1
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.38
-	github.com/bitrise-io/go-utils v1.0.13
+	cloud.google.com/go/longrunning v0.7.0
+	github.com/bazelbuild/remote-apis 3860ca2d3e55
+	github.com/beevik/etree v1.6.0
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.42
+	github.com/bitrise-io/go-utils v1.0.15
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.27
 	github.com/dustin/go-humanize v1.0.1
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/go-retryablehttp v0.7.7
-	github.com/pkg/xattr v0.4.10
-	github.com/shirou/gopsutil/v4 v4.25.7
-	github.com/spf13/cobra v1.8.1
-	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.10.0
+	github.com/hashicorp/go-retryablehttp v0.7.8
+	github.com/pkg/xattr v0.4.12
+	github.com/shirou/gopsutil/v4 v4.25.10
+	github.com/spf13/cobra v1.10.1
+	github.com/spf13/pflag v1.0.10
+	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/blake3 v0.2.4
-	google.golang.org/genproto/googleapis/api v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240822170219-fc7c04adadcd
-	google.golang.org/grpc v1.65.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/genproto/googleapis/api 95abcf5c77ba
+	google.golang.org/genproto/googleapis/bytestream 95abcf5c77ba
+	google.golang.org/genproto/googleapis/rpc 95abcf5c77ba
+	google.golang.org/grpc v1.76.0
+	google.golang.org/protobuf v1.36.10
 )
 
 require (
