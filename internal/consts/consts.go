@@ -18,8 +18,9 @@ const (
 	// Gradle Analytics related consts
 	GradleAnalyticsPluginDepVersion = "2.2.0"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
-	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsPort             = 443
+	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
+	GradleAnalyticsGRPCEndpoint     = "grpcs://gradle-analytics.services.bitrise.io:444"
 
 	// Gradle Common Plugin version
 	GradleCommonPluginDepVersion = "1.0.5"

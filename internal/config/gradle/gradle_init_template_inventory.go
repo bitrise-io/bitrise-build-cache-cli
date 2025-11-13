@@ -23,6 +23,7 @@ type AnalyticsTemplateInventory struct {
 	Endpoint     string
 	Port         int
 	HTTPEndpoint string
+	GRPCEndpoint string
 }
 
 type TestDistroTemplateInventory struct {

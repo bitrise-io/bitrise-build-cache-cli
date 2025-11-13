@@ -60,6 +60,7 @@ settingsEvaluated {
         extensions.configure(AnalyticsPluginExtension::class.java) {
             endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
             httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
+            grpcEndpoint.set("{{ .Analytics.GRPCEndpoint }}")
             authToken.set("{{ .Common.AuthToken }}")
             dumpEventsToFiles.set({{ .Common.Debug }})
             debug.set({{ .Common.Debug }})

@@ -200,6 +200,7 @@ func (params ActivateGradleParams) analyticsTemplateInventory(
 		Endpoint:     consts.GradleAnalyticsEndpoint,
 		Port:         consts.GradleAnalyticsPort,
 		HTTPEndpoint: consts.GradleAnalyticsHTTPEndpoint,
+		GRPCEndpoint: consts.GradleAnalyticsGRPCEndpoint,
 	}
 }
 

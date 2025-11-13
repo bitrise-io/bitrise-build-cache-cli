@@ -86,6 +86,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Endpoint:     "AnalyticsEndpointURLValue",
 					Port:         123,
 					HTTPEndpoint: "AnalyticsHttpEndpointValue",
+					GRPCEndpoint: "AnalyticsGRPCEndpointValue",
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage:      UsageLevelEnabled,
@@ -170,6 +171,7 @@ settingsEvaluated {
         extensions.configure(AnalyticsPluginExtension::class.java) {
             endpoint.set("AnalyticsEndpointURLValue:123")
             httpEndpoint.set("AnalyticsHttpEndpointValue")
+            grpcEndpoint.set("AnalyticsGRPCEndpointValue")
             authToken.set("AuthTokenValue")
             dumpEventsToFiles.set(true)
             debug.set(true)
