@@ -314,7 +314,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
@@ -374,7 +374,7 @@ workflows:
           inputs:
             - content: |-
                 set -exo pipefail
-                ../bitrise-build-cache-cli activate gradle -d --cache
+                ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
       - script:
           title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
           inputs:
@@ -434,7 +434,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
@@ -686,7 +686,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
@@ -750,7 +750,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:

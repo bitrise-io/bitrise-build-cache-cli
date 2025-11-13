@@ -220,6 +220,7 @@ func Test_activateGradleParams(t *testing.T) {
 					Endpoint:     consts.GradleAnalyticsEndpoint,
 					Port:         consts.GradleAnalyticsPort,
 					HTTPEndpoint: consts.GradleAnalyticsHTTPEndpoint,
+					GRPCEndpoint: consts.GradleAnalyticsGRPCEndpoint,
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage: UsageLevelNone,
