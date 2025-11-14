@@ -10,6 +10,7 @@ func GetCLIVersion(logger log.Logger) string {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		logger.Infof("Failed to read build info")
+
 		return "unknown"
 	}
 
