@@ -87,7 +87,9 @@ type GitMetadata struct {
 func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
 	hostMetadata := generateHostMetadata(envs, commandFunc, logger)
 	git := generateGitMetadata(logger, commandFunc, envs)
-	cliVersion := envs["BITRISE_BUILD_CACHE_CLI_VERSION"]
+
+	cliVersion := GetCLIVersion(logger)
+
 	provider := detectCIProvider(envs)
 
 	redactedEnvs := maps.Clone(envs)

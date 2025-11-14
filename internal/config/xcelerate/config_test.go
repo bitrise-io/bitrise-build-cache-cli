@@ -187,7 +187,6 @@ func TestConfig_NewConfig(t *testing.T) {
 		envs := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
-			"BITRISE_BUILD_CACHE_CLI_VERSION":     "cli-version-1.0.0",
 			"BITRISE_XCELERATE_PROXY_VERSION":     "proxy-version-1.0.0",
 			"BITRISE_XCELERATE_WRAPPER_VERSION":   "wrapper-version-1.0.0",
 			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
@@ -244,7 +243,6 @@ func TestConfig_NewConfig(t *testing.T) {
 		envs := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
-			"BITRISE_BUILD_CACHE_CLI_VERSION":     "cli-version-1.0.0",
 			"BITRISE_XCELERATE_PROXY_VERSION":     "proxy-version-1.0.0",
 			"BITRISE_XCELERATE_WRAPPER_VERSION":   "wrapper-version-1.0.0",
 			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",

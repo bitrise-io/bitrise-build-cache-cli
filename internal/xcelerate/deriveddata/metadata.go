@@ -11,6 +11,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
@@ -88,7 +89,7 @@ func CreateMetadata(params CreateMetadataParams, envs map[string]string, logger 
 		BuildID:              envs["BITRISE_BUILD_SLUG"],
 		GitCommit:            envs["BITRISE_GIT_COMMIT"],
 		GitBranch:            envs["BITRISE_GIT_BRANCH"],
-		BuildCacheCLIVersion: envs["BITRISE_BUILD_CACHE_CLI_VERSION"],
+		BuildCacheCLIVersion: common.GetCLIVersion(logger),
 		MetadataVersion:      metadataVersion,
 	}
 
