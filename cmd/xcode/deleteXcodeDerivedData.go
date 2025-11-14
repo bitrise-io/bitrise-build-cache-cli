@@ -118,7 +118,7 @@ func uploadEmptyMetadata(ctx context.Context, providedCacheKey, cacheKey string,
 		BuildID:              envProvider["BITRISE_BUILD_SLUG"],
 		GitCommit:            envProvider["BITRISE_GIT_COMMIT"],
 		GitBranch:            envProvider["BITRISE_GIT_BRANCH"],
-		BuildCacheCLIVersion: envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
+		BuildCacheCLIVersion: configcommon.GetCLIVersion(logger),
 		MetadataVersion:      1,
 	}, XCodeCacheMetadataPath, logger)
 	if err != nil {

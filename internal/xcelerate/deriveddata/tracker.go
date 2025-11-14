@@ -8,6 +8,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 //go:generate moq -out mocks/tracker_mock.go -pkg mocks . StepAnalyticsTracker
@@ -34,13 +35,13 @@ func NewDefaultStepTracker(stepID string, envProvider map[string]string, logger 
 		"build_slug":  envProvider["BITRISE_BUILD_SLUG"],
 		"app_slug":    envProvider["BITRISE_APP_SLUG"],
 		"workflow":    envProvider["BITRISE_TRIGGERED_WORKFLOW_ID"],
-		"cli_version": envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
+		"cli_version": common.GetCLIVersion(logger),
 	}
 
 	return &DefaultStepAnalyticsTracker{
 		tracker:    analytics.NewDefaultTracker(logger, env.NewRepository(), p),
 		logger:     logger,
-		cliVersion: envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
+		cliVersion: common.GetCLIVersion(logger),
 	}
 }
 

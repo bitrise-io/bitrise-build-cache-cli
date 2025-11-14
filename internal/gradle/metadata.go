@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
 )
 
@@ -48,7 +49,7 @@ func (g *Cache) CreateMetadata(cacheKey string, dir string) (*Metadata, error) {
 		BuildID:              g.envProvider["BITRISE_BUILD_SLUG"],
 		GitCommit:            g.envProvider["BITRISE_GIT_COMMIT"],
 		GitBranch:            g.envProvider["BITRISE_GIT_BRANCH"],
-		BuildCacheCLIVersion: g.envProvider["BITRISE_BUILD_CACHE_CLI_VERSION"],
+		BuildCacheCLIVersion: common.GetCLIVersion(g.logger),
 		MetadataVersion:      metadataVersion,
 	}
 

@@ -14,6 +14,7 @@ import (
 
 func TestNewCacheConfigMetadata(t *testing.T) {
 	t.Parallel()
+	logger := log.NewLogger()
 
 	tests := []struct {
 		name        string
@@ -38,6 +39,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider:          CIProviderBitrise,
+				CLIVersion:          GetCLIVersion(logger),
 				BitriseAppID:        "BitriseAppID1",
 				BitriseBuildID:      "BitriseBuildID1",
 				BitriseWorkflowName: "BitriseWorkflowName1",
@@ -59,6 +61,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderCircleCI,
+				CLIVersion: GetCLIVersion(logger),
 			},
 		},
 		{
@@ -75,6 +78,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderCircleCI,
+				CLIVersion: GetCLIVersion(logger),
 				RedactedEnvs: map[string]string{
 					"MY_SECRET":                   "<sha256@49bf1460>",
 					"MY_SECRET2":                  "<sha256@67171c3a>",
@@ -95,6 +99,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderGitHubActions,
+				CLIVersion: GetCLIVersion(logger),
 			},
 		},
 		{
@@ -111,6 +116,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderBitrise,
+				CLIVersion: GetCLIVersion(logger),
 				HostMetadata: HostMetadata{
 					OS: "Linux",
 				},
@@ -147,6 +153,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: "",
+				CLIVersion: GetCLIVersion(logger),
 				HostMetadata: HostMetadata{
 					OS:             "Linux",
 					Locale:         "en_US",
@@ -167,6 +174,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderBitrise,
+				CLIVersion: GetCLIVersion(logger),
 				HostMetadata: HostMetadata{
 					Locale:         "en_US",
 					DefaultCharset: "UTF-8",
@@ -188,6 +196,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderBitrise,
+				CLIVersion: GetCLIVersion(logger),
 				HostMetadata: HostMetadata{
 					CPUCores: 4,
 				},
@@ -215,6 +224,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			},
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderBitrise,
+				CLIVersion: GetCLIVersion(logger),
 				HostMetadata: HostMetadata{
 					MemSize: 1000,
 				},
@@ -240,6 +250,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
+				CLIVersion: GetCLIVersion(logger),
 				GitMetadata: GitMetadata{
 					RepoURL:     "https://github.com/repo/url",
 					CommitHash:  "abcdef12356",
