@@ -206,6 +206,7 @@ func TestConfig_NewConfig(t *testing.T) {
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
 			BuildCacheEnabled:           true,
+			BuildCacheSkipFlags:         true,
 			DebugLogging:                true,
 			XcodebuildTimestampsEnabled: true,
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
@@ -228,6 +229,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			OriginalXcrunPath:      "/usr/bin/xcodebuild2",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			BuildCacheEnabled:      true,
+			BuildCacheSkipFlags:    true,
 			DebugLogging:           true,
 			XcodebuildTimestamps:   true,
 			AuthConfig: common.CacheAuthConfig{

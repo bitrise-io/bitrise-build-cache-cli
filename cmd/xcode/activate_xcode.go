@@ -127,6 +127,11 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 		"timestamps",
 		activateXcodeParams.XcodebuildTimestampsEnabled,
 		"Enable xcodebuild timestamps. This will add timestamps to the xcodebuild output.")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheSkipFlags,
+		"cache-skip-flags",
+		activateXcodeParams.BuildCacheSkipFlags,
+		`Skip passing cache flags to xcodebuild except the COMPILATION_CACHE_REMOTE_SERVICE_PATH.
+Cache will have to be enabled manually in the Xcode project settings.`)
 }
 
 func ActivateXcodeCommandFn(
