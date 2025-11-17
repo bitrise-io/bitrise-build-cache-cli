@@ -26,7 +26,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   SED_IN_PLACE_COMMAND=(-i "")
 fi
 
-go get bitrise-io/bitrise-build-cache-cli@${BITRISE_GIT_TAG}
+go get github.com/bitrise-io/bitrise-build-cache-cli@${BITRISE_GIT_TAG}
 go mod tidy
 go mod vendor
 
