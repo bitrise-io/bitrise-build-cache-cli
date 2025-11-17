@@ -19,7 +19,7 @@ func GetCLIVersion(logger log.Logger) string {
 	// Find the bitrise-build-cache-cli module in the build info.
 	// If ran from source, it will be the main module.
 	// If ran from a step, it will be a dependency module.
-	var modules = []*debug.Module{&bi.Main}
+	modules := []*debug.Module{&bi.Main}
 	modules = append(modules, bi.Deps...)
 	idx := slices.IndexFunc(modules, func(c *debug.Module) bool { return strings.Contains(c.Path, "bitrise-build-cache-cli") })
 	if idx == -1 || idx >= len(modules) {
