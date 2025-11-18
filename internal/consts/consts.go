@@ -27,7 +27,7 @@ const (
 
 	// Gradle Test Distribution Plugin version
 	GradleTestDistributionPluginDepVersion = "2.1.28"
-	GradleTestDistributionEndpoint         = "grpcs://remote-execution-ord.services.bitrise.io"
+	GradleTestDistributionEndpoint         = "grpcs://bitrise-accelerate.services.bitrise.io"
 	GradleTestDistributionKvEndpoint       = "grpcs://build-cache-api-ord.services.bitrise.io"
 	GradleTestDistributionPort             = 443
 )
