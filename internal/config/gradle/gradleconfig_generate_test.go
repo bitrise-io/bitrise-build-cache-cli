@@ -188,7 +188,7 @@ settingsEvaluated {
 }
 rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
-        endpoint.set("TestDistroEndpointValue:321")
+        endpoint.set("TestDistroEndpointValue")
         kvEndpoint.set("TestDistroKvEndpointValue:321")
         authToken.set("AuthTokenValue")
         logLevel.set("TestDistroLogLevelValue")
