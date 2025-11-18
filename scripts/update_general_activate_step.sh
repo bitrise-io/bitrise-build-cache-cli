@@ -45,7 +45,7 @@ if [ -n "$(git status --porcelain)" ]; then
     "https://api.github.com/repos/$REPO_NAME/pulls")
 
     pr_url=$(echo "$pr_response" | jq -r .html_url)
-    envman add --key PR_URL --value "$pr_url"
+    envman add --key GENERAL_ACTIVATE_PR_URL --value "$pr_url"
 
     if [ "$pr_url" != "null" ]; then
       echo "Pull request created successfully: $pr_url"
