@@ -134,15 +134,26 @@ workflows:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
           - text: |-
-              Step update PRs are ready! :tada: :rocket: :bitrise:
+              Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
 
-              PR for bitrise-step-activate-gradle-remote-cache: $PR_URL
-              PR for bitrise-step-activate-gradle-features: $GENERAL_ACTIVATE_PR_URL
+              Check PR here: $PR_URL
           - emoji: ":gradle:"
           - color: "#08a045"
           - webhook_url: "$SLACK_WEBHOOK_ALERTS"
         title: Send slack if PR opened
         run_if: '{{ getenv "PR_URL" | ne "" }}'
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              Activate Gradle Features step update PR is ready! :tada: :rocket: :bitrise:
+
+              Check PR here: $GENERAL_ACTIVATE_PR_URL
+          - emoji: ":gradle:"
+          - color: "#08a045"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if PR opened
+        run_if: '{{ getenv "GENERAL_ACTIVATE_PR_URL" | ne "" }}'
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
