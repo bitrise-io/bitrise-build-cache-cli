@@ -27,6 +27,7 @@ const (
 type Params struct {
 	BuildCacheEnabled           bool
 	BuildCacheEndpoint          string
+	BuildCacheSkipFlags         bool
 	DebugLogging                bool
 	Silent                      bool
 	XcodePathOverride           string
@@ -44,6 +45,7 @@ type Config struct {
 	OriginalXcodebuildPath string                 `json:"originalXcodebuildPath"`
 	OriginalXcrunPath      string                 `json:"originalXcrunPath"`
 	BuildCacheEnabled      bool                   `json:"buildCacheEnabled"`
+	BuildCacheSkipFlags    bool                   `json:"buildCacheSkipFlags"`
 	BuildCacheEndpoint     string                 `json:"buildCacheEndpoint"`
 	PushEnabled            bool                   `json:"pushEnabled"`
 	DebugLogging           bool                   `json:"debugLogging,omitempty"`
@@ -73,6 +75,7 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 func DefaultParams() Params {
 	return Params{
 		BuildCacheEnabled:           true,
+		BuildCacheSkipFlags:         false,
 		BuildCacheEndpoint:          "",
 		Silent:                      false,
 		DebugLogging:                false,
@@ -156,6 +159,7 @@ func NewConfig(ctx context.Context,
 		OriginalXcodebuildPath: xcodePath,
 		OriginalXcrunPath:      xcrunPath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
+		BuildCacheSkipFlags:    params.BuildCacheSkipFlags,
 		BuildCacheEndpoint:     params.BuildCacheEndpoint,
 		PushEnabled:            params.PushEnabled,
 		DebugLogging:           params.DebugLogging,
