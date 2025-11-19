@@ -13,20 +13,20 @@ const (
 	AnalyticsServiceEndpoint = "https://xcode-analytics.services.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.24"
+	GradleRemoteBuildCachePluginDepVersion = "1.2.25"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "2.2.0"
+	GradleAnalyticsPluginDepVersion = "2.2.1"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsPort             = 443
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsGRPCEndpoint     = "grpcs://gradle-analytics.services.bitrise.io:444"
 
 	// Gradle Common Plugin version
-	GradleCommonPluginDepVersion = "1.0.5"
+	GradleCommonPluginDepVersion = "1.0.6"
 
 	// Gradle Test Distribution Plugin version
-	GradleTestDistributionPluginDepVersion = "2.1.28"
+	GradleTestDistributionPluginDepVersion = "2.2.0"
 	GradleTestDistributionEndpoint         = "grpcs://bitrise-accelerate.services.bitrise.io"
 	GradleTestDistributionKvEndpoint       = "grpcs://build-cache-api-ord.services.bitrise.io"
 	GradleTestDistributionPort             = 443
