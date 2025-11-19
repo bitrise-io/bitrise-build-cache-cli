@@ -28,13 +28,20 @@ const (
 
 	cliBasename                    = "bitrise-build-cache-cli"
 	xcodebuildWrapperScriptContent = `#!/bin/bash
-set -euxo pipefail
-%s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+set -e
+
+if [ "${1-}" = "-version" ]; then
+  %s "$@"
+else
+  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+fi
 `
 	xcrunWrapperScriptContent = `#!/bin/bash
-set -euxo pipefail
+set -e
 
-if [ "${1-}" = "xcodebuild" ]; then
+if [ "${1-}" = "xcodebuild" ] && [ "${2-}" = "-version" ]; then
+  %s "$@"
+elif [ "${1-}" = "xcodebuild" ]; then
   shift
   %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
 else
@@ -312,13 +319,20 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	// create a script that wraps the CLI to preserve any arguments and environment variables
 	scriptPath := filepath.Join(binPath, "xcodebuild")
 	logger.Debugf("Creating xcodebuild wrapper script: %s", scriptPath)
-	if err := osProxy.WriteFile(scriptPath, []byte(fmt.Sprintf(xcodebuildWrapperScriptContent, binPath)), 0o755); err != nil {
+	if err := osProxy.WriteFile(scriptPath,
+		[]byte(fmt.Sprintf(xcodebuildWrapperScriptContent,
+			config.OriginalXcodebuildPath,
+			binPath)), 0o755); err != nil {
 		return fmt.Errorf("failed to create xcodebuild wrapper script: %w", err)
 	}
 
 	scriptPath = filepath.Join(binPath, "xcrun")
 	logger.Debugf("Creating xcrun wrapper script: %s", scriptPath)
-	if err := osProxy.WriteFile(scriptPath, []byte(fmt.Sprintf(xcrunWrapperScriptContent, binPath, config.OriginalXcrunPath)), 0o755); err != nil {
+	if err := osProxy.WriteFile(scriptPath,
+		[]byte(fmt.Sprintf(xcrunWrapperScriptContent,
+			config.OriginalXcodebuildPath,
+			binPath,
+			config.OriginalXcrunPath)), 0o755); err != nil {
 		return fmt.Errorf("failed to create xcrun wrapper script: %w", err)
 	}
 
