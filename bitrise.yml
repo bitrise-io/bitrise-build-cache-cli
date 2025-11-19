@@ -114,46 +114,14 @@ workflows:
 
             echo "Uploaded artifacts to GAR."
     - deploy-to-bitrise-io@2: {}
-    - script:
-        title: Update bitrise-step-activate-gradle-remote-cache
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -ex
-
-            ./scripts/update_step.sh
-    - script:
-        title: Update bitrise-step-activate-gradle-features
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -ex
-
-            ./scripts/update_general_activate_step.sh
-    - slack@4:
-        inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
-
-              Check PR here: $PR_URL
-          - emoji: ":gradle:"
-          - color: "#08a045"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-        title: Send slack if PR opened
-        run_if: '{{ getenv "PR_URL" | ne "" }}'
-    - slack@4:
-        inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Activate Gradle Features step update PR is ready! :tada: :rocket: :bitrise:
-
-              Check PR here: $GENERAL_ACTIVATE_PR_URL
-          - emoji: ":gradle:"
-          - color: "#08a045"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-        title: Send slack if PR opened
-        run_if: '{{ getenv "GENERAL_ACTIVATE_PR_URL" | ne "" }}'
+    - bundle::update_step:
+      envs:
+      - STEP_NAME: bitrise-step-activate-gradle-remote-cache
+      - UPDATE_SCRIPT_PATH: ./scripts/update_activate_gradle_remote_cache.sh
+    - bundle::update_step:
+      envs:
+      - STEP_NAME: bitrise-step-activate-gradle-features
+      - UPDATE_SCRIPT_PATH: ./scripts/update_activate_gradle_features.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -1096,6 +1064,26 @@ step_bundles:
           title: Switch working dir to _tmp
           inputs:
             - path: "./_tmp"
+  update-step:
+    steps:
+      - script:
+          title: Create PR for step update
+          run_if: true
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -ex
+
+                ./scripts/update_step.sh
+      - slack@4:
+          title: Send slack notification about PR
+          run_if: true
+          inputs:
+            - channel: "#team-advanced-ci-alerts-website"
+            - text: "$SLACK_MESSAGE"
+            - emoji: "$SLACK_EMOJI"
+            - color: "$SLACK_COLOR"
+            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
 
 pipelines:
   features-e2e:
