@@ -200,6 +200,7 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 	}
 }
 
+// nolint:nestif
 func XcodebuildCmdFn(
 	ctx context.Context,
 	invocationID string,
@@ -459,6 +460,7 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 		select {
 		case <-ctx.Done():
 			logger.Debugf("Context done, exiting streamProxyLogs")
+
 			return nil
 		default:
 		}
