@@ -200,6 +200,7 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 	}
 }
 
+// nolint:nestif
 func XcodebuildCmdFn(
 	ctx context.Context,
 	invocationID string,
@@ -225,11 +226,14 @@ func XcodebuildCmdFn(
 		}
 
 		if !config.Silent {
+			logger.Debugf("Streaming proxy logs...")
 			proxyCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			go func() {
 				if err := streamProxyLogs(proxyCtx, invocationID, logger, utils.DefaultOsProxy{}); err != nil {
 					logger.Errorf("Failed to stream proxy logs: %v", err)
+				} else {
+					logger.Debugf("Proxy logs stream closed")
 				}
 			}()
 		}
@@ -434,6 +438,7 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 
 			return fmt.Errorf("failed to open proxy log file: %w", err), false
 		}
+		logger.TDebugf("Streaming proxy log file: %s", proxyLogFile)
 
 		return nil, true
 	})
@@ -441,17 +446,21 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 		return fmt.Errorf("failed to open proxy log file after retries: %w", err)
 	}
 
-	defer func(f *os.File) {
+	go func() {
+		<-ctx.Done()
+		logger.Debugf("Context done, closing log file")
 		err := f.Close()
 		if err != nil {
-			logger.Errorf("failed to close log file: %v", err)
+			logger.Errorf("Failed to close log file: %v", err)
 		}
-	}(f)
+	}()
 
 	r := bufio.NewReader(f)
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Debugf("Context done, exiting streamProxyLogs")
+
 			return nil
 		default:
 		}
