@@ -1077,7 +1077,7 @@ step_bundles:
                 ./scripts/update_step.sh
       - slack@4:
           title: Send slack notification about PR
-          run_if: true
+          run_if: '{{ getenv "SLACK_MESSAGE" | ne "" }}'
           inputs:
             - channel: "#team-advanced-ci-alerts-website"
             - text: "$SLACK_MESSAGE"

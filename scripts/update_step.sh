@@ -9,6 +9,10 @@ set -ex
 REPO_NAME="bitrise-steplib/$STEP_NAME"
 PR_TITLE="feat: Release new CLI $BITRISE_GIT_TAG"
 
+envman unset --key "SLACK_MESSAGE"
+envman unset --key "SLACK_EMOJI"
+envman unset --key "SLACK_COLOR"
+
 # Clone the repository
 git clone "https://$GITHUB_TOKEN@github.com/$REPO_NAME"
 cd $STEP_NAME
