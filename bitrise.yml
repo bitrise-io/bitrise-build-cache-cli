@@ -114,34 +114,14 @@ workflows:
 
             echo "Uploaded artifacts to GAR."
     - deploy-to-bitrise-io@2: {}
-    - script:
-        title: Update bitrise-step-activate-gradle-remote-cache
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -ex
-
-            ./scripts/update_step.sh
-    - script:
-        title: Update bitrise-step-activate-gradle-features
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -ex
-
-            ./scripts/update_general_activate_step.sh
-    - slack@4:
-        inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Build Cache for Gradle step update PR is ready! :tada: :rocket: :bitrise:
-
-              Check PR here: $PR_URL
-          - emoji: ":gradle:"
-          - color: "#08a045"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-        title: Send slack if PR opened
-        run_if: '{{ getenv "PR_URL" | ne "" }}'
+    - bundle::update-step:
+        envs:
+        - STEP_NAME: bitrise-step-activate-gradle-remote-cache
+        - UPDATE_SCRIPT_PATH: ./scripts/update_activate_gradle_remote_cache.sh
+    - bundle::update-step:
+        envs:
+        - STEP_NAME: bitrise-step-activate-gradle-features
+        - UPDATE_SCRIPT_PATH: ./scripts/update_activate_gradle_features.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -399,19 +379,19 @@ workflows:
           inputs:
             - content: |-
                 set -exo pipefail
-                
+
                 ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
                   '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
                   '\[Bitrise Build Cache\].*Request metadata invocationId' \
                   '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-                
+
                 source ../_e2e/scripts/extract_invocation_id.sh
-                
+
                 invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
                 if [[ -z "$invocation_id" ]]; then
                   fatal "Invocation ID not found in logs"
                 fi
-                
+
                 echo "Found Invocation ID: $invocation_id"
                 envman add --key INVOCATION_ID --value "$invocation_id"
       - script:
@@ -419,7 +399,7 @@ workflows:
           inputs:
             - content: |-
                 source ../_e2e/scripts/assert_invocations.sh
-                
+
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
                 assert_invocation_tasks_gradle "$INVOCATION_ID"
@@ -836,7 +816,7 @@ workflows:
           - content: |-
               echo "Xcodebuild command location after activation:"
               type xcodebuild || true
-              
+
               echo "Config file content:"
               cat "$HOME/.bitrise-xcelerate/config.json"
 
@@ -846,7 +826,7 @@ workflows:
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
                 -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
-             
+
     - script:
         title: gather info
         inputs:
@@ -857,14 +837,14 @@ workflows:
               cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               cp wrapper.log $BITRISE_DEPLOY_DIR
-              
+
               cat "$BITRISE_DEPLOY_DIR/wrapper.log"
               head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
               tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
-              
+
               source ../_e2e/scripts/error.sh
               source ../_e2e/scripts/extract_invocation_id.sh
-              
+
               invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
               if [[ -z "$invocation_id" ]]; then
                 fatal "Invocation ID not found in logs"
@@ -877,7 +857,7 @@ workflows:
         inputs:
            - content: |-
                source ../_e2e/scripts/assert_invocations.sh
-  
+
                assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
                assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
                assert_build_performance "$INVOCATION_ID"
@@ -1053,11 +1033,11 @@ step_bundles:
             - content: |-
                 #!/bin/bash
                 set -ex
-                
+
                 rm -rf ./_e2e
                 mkdir -p ./_e2e
                 git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
-                
+
                 ls -la ./_e2e
       - script:
           title: Delete _tmp dirs
@@ -1084,6 +1064,26 @@ step_bundles:
           title: Switch working dir to _tmp
           inputs:
             - path: "./_tmp"
+  update-step:
+    steps:
+      - script:
+          title: Create PR for step update
+          run_if: true
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -ex
+
+                ./scripts/update_step.sh
+      - slack@4:
+          title: Send slack notification about PR
+          run_if: '{{ getenv "SLACK_MESSAGE" | ne "" }}'
+          inputs:
+            - channel: "#team-advanced-ci-alerts-website"
+            - text: "$SLACK_MESSAGE"
+            - emoji: "$SLACK_EMOJI"
+            - color: "$SLACK_COLOR"
+            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
 
 pipelines:
   features-e2e:

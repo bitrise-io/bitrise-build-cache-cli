@@ -3,10 +3,15 @@
 set -ex
 
 # Configuration
-STEP_NAME="bitrise-step-activate-gradle-remote-cache"
+# STEP_NAME="bitrise-step-activate-gradle-remote-cache"
+# UPDATE_SCRIPT_PATH="./scripts/update_activate_gradle_remote_cache.sh"
+
 REPO_NAME="bitrise-steplib/$STEP_NAME"
 PR_TITLE="feat: Release new CLI $BITRISE_GIT_TAG"
-FILE_TO_UPDATE="step.sh"
+
+envman unset --key "SLACK_MESSAGE"
+envman unset --key "SLACK_EMOJI"
+envman unset --key "SLACK_COLOR"
 
 # Clone the repository
 git clone "https://$GITHUB_TOKEN@github.com/$REPO_NAME"
@@ -21,13 +26,7 @@ if [ -n "$existing_pr" ]; then
   exit 0
 fi
 
-# Update the version in the file
-SED_IN_PLACE_COMMAND=(-i)
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  SED_IN_PLACE_COMMAND=(-i "")
-fi
-
-sed -E "${SED_IN_PLACE_COMMAND[@]}" "s/export BITRISE_BUILD_CACHE_CLI_VERSION=\"v?[0-9]+\.[0-9]+\.[0-9]+\"/export BITRISE_BUILD_CACHE_CLI_VERSION=\"$BITRISE_GIT_TAG\"/" "$FILE_TO_UPDATE"
+"$UPDATE_SCRIPT_PATH"
 
 if [ -n "$(git status --porcelain)" ]; then
   git branch -D update-cli || true
@@ -37,20 +36,24 @@ if [ -n "$(git status --porcelain)" ]; then
   git commit -m "feat: update CLI to release"
   git push -f origin update-cli
 
-
  # Create a pull request using GitHub API
   pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
     -d "{\"title\":\"$PR_TITLE\",\"body\":\"This PR updates the Bitrise Build Cache CLI.\",\"head\":\"update-cli\",\"base\":\"main\"}" \
     "https://api.github.com/repos/$REPO_NAME/pulls")
 
     pr_url=$(echo "$pr_response" | jq -r .html_url)
-    envman add --key PR_URL --value "$pr_url"
 
     if [ "$pr_url" != "null" ]; then
+      envman add --key "SLACK_MESSAGE" --value "${STEP_NAME} update PR is ready! :tada: :rocket: :bitrise:\n\nCheck PR here: $pr_url"
+      envman add --key "SLACK_EMOJI" --value ":gradle:"
+      envman add --key "SLACK_COLOR" --value "#08a045"
       echo "Pull request created successfully: $pr_url"
     else
+      envman add --key "SLACK_MESSAGE" --value "${STEP_NAME} update PR creation failed! :gopher_lift: :rotating_light:\n\nCheck build here: $BITRISE_BUILD_URL"
+      envman add --key "SLACK_EMOJI" --value ":gradle:"
+      envman add --key "SLACK_COLOR" --value "#ee003b"
       echo "Failed to create pull request. Response: $pr_response"
-      exit 1
+      exit 0
     fi
 else
   echo "No changes detected, skipping commit."
