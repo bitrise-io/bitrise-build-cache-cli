@@ -117,11 +117,11 @@ workflows:
     - bundle::update-step:
         envs:
         - STEP_NAME: bitrise-step-activate-gradle-remote-cache
-        - UPDATE_SCRIPT_PATH: ./update_activate_gradle_remote_cache.sh
+        - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_remote_cache.sh
     - bundle::update-step:
         envs:
         - STEP_NAME: bitrise-step-activate-gradle-features
-        - UPDATE_SCRIPT_PATH: ./update_activate_gradle_features.sh
+        - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_features.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
