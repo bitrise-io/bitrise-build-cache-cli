@@ -89,13 +89,14 @@ func Test_GenerateInitGradle(t *testing.T) {
 					GRPCEndpoint: "AnalyticsGRPCEndpointValue",
 				},
 				TestDistro: TestDistroTemplateInventory{
-					Usage:      UsageLevelEnabled,
-					Version:    "TestDistroVersionValue",
-					Endpoint:   "TestDistroEndpointValue",
-					KvEndpoint: "TestDistroKvEndpointValue",
-					Port:       321,
-					LogLevel:   "TestDistroLogLevelValue",
-					ShardSize:  50,
+					Usage:           UsageLevelEnabled,
+					Version:         "TestDistroVersionValue",
+					Endpoint:        "TestDistroEndpointValue",
+					KvEndpoint:      "TestDistroKvEndpointValue",
+					Port:            321,
+					LogLevel:        "TestDistroLogLevelValue",
+					ShardSize:       50,
+					TestSearchDepth: 3,
 				},
 			},
 			want:    expectedAllPlugins,
@@ -193,6 +194,7 @@ rootProject {
         authToken.set("AuthTokenValue")
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
+        testSearchDepth.set(3)
         bitrise {
             appSlug.set("AppSlugValue")
         }

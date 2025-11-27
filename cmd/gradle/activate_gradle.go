@@ -87,6 +87,7 @@ func init() {
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.Enabled, "test-distribution", activateGradleParams.TestDistro.Enabled, "Activate test distribution plugin for the provided app slug. Will override test-distribution-dep.")
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.ShardSize, "test-distribution-shard-size", activateGradleParams.TestDistro.ShardSize, "Shard size for test distribution plugin.")
+	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.TestSearchDepth, "test-distribution-search-depth", activateGradleParams.TestDistro.TestSearchDepth, "Search depth for test distribution when trying to find test tasks not listed in the invocation.")
 }
 
 func ActivateGradleCmdFn(

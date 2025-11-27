@@ -87,6 +87,7 @@ rootProject {
         authToken.set("{{ .Common.AuthToken }}")
         logLevel.set("{{ .TestDistro.LogLevel }}")
         shardSize.set({{ .TestDistro.ShardSize }})
+        testSearchDepth.set({{ .TestDistro.TestSearchDepth }})
         bitrise {
             appSlug.set("{{ .Common.AppSlug }}")
         }
