@@ -34,9 +34,10 @@ type AnalyticsParams struct {
 }
 
 type TestDistroParams struct {
-	Enabled        bool
-	JustDependency bool
-	ShardSize      int
+	Enabled         bool
+	JustDependency  bool
+	ShardSize       int
+	TestSearchDepth int
 }
 
 type ActivateGradleParams struct {
@@ -58,8 +59,10 @@ func DefaultActivateGradleParams() ActivateGradleParams {
 			JustDependency: false,
 		},
 		TestDistro: TestDistroParams{
-			Enabled:        false,
-			JustDependency: false,
+			Enabled:         false,
+			JustDependency:  false,
+			ShardSize:       50,
+			TestSearchDepth: 3,
 		},
 	}
 }
@@ -233,12 +236,13 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 	}
 
 	return TestDistroTemplateInventory{
-		Usage:      UsageLevelEnabled,
-		Version:    consts.GradleTestDistributionPluginDepVersion,
-		Endpoint:   consts.GradleTestDistributionEndpoint,
-		KvEndpoint: consts.GradleTestDistributionKvEndpoint,
-		Port:       consts.GradleTestDistributionPort,
-		LogLevel:   logLevel,
-		ShardSize:  params.TestDistro.ShardSize,
+		Usage:           UsageLevelEnabled,
+		Version:         consts.GradleTestDistributionPluginDepVersion,
+		Endpoint:        consts.GradleTestDistributionEndpoint,
+		KvEndpoint:      consts.GradleTestDistributionKvEndpoint,
+		Port:            consts.GradleTestDistributionPort,
+		LogLevel:        logLevel,
+		ShardSize:       params.TestDistro.ShardSize,
+		TestSearchDepth: params.TestDistro.TestSearchDepth,
 	}
 }

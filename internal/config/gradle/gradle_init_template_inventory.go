@@ -27,13 +27,14 @@ type AnalyticsTemplateInventory struct {
 }
 
 type TestDistroTemplateInventory struct {
-	Usage      UsageLevel
-	Version    string
-	Endpoint   string
-	KvEndpoint string
-	Port       int
-	LogLevel   string
-	ShardSize  int
+	Usage           UsageLevel
+	Version         string
+	Endpoint        string
+	KvEndpoint      string
+	Port            int
+	LogLevel        string
+	ShardSize       int
+	TestSearchDepth int
 }
 
 type PluginCommonTemplateInventory struct {
