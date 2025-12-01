@@ -3,6 +3,7 @@ package slicebuf
 import (
 	"errors"
 	"io"
+	"slices"
 )
 
 type Buffer struct {
@@ -12,6 +13,10 @@ type Buffer struct {
 
 func NewBuffer() *Buffer {
 	return &Buffer{}
+}
+
+func NewBufferWithData(data []byte) *Buffer {
+	return &Buffer{data: slices.Clone(data)}
 }
 
 func (b *Buffer) Write(p []byte) (int, error) {
@@ -69,4 +74,8 @@ func (b *Buffer) Seek(offset int64, whence int) (int64, error) {
 	b.readOffset = abs
 
 	return abs, nil
+}
+
+func (b *Buffer) Len() int {
+	return len(b.data)
 }

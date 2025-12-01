@@ -19,9 +19,16 @@ import (
 )
 
 type PutParams struct {
-	Name      string
-	Sha256Sum string
-	FileSize  int64
+	Name            string
+	Sha256Sum       string
+	FileSize        int64
+	Offset          int64
+	DeleteOnRewrite bool
+}
+
+type WriteStatus struct {
+	Complete      bool
+	CommittedSize int64
 }
 
 type FileDigest struct {
@@ -73,6 +80,9 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
 	))
+	if params.DeleteOnRewrite {
+		md.Set("x-cache-delete-on-rewrite", "true")
+	}
 	// Timeout is the responsibility of the caller
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
@@ -91,7 +101,7 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	return &writer{
 		stream:       stream,
 		resourceName: resourceName,
-		offset:       0,
+		offset:       params.Offset,
 		fileSize:     params.FileSize,
 	}, nil
 }
@@ -310,4 +320,28 @@ func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
 	}
 
 	return md
+}
+
+func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus, error) {
+	resourceName := fmt.Sprintf("kv/%s", name)
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
+	resp, err := c.bitriseKVClient.WriteStatus(callCtx, &bytestream.QueryWriteStatusRequest{
+		ResourceName: resourceName,
+	})
+	if err != nil {
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.Unauthenticated {
+			return WriteStatus{}, ErrCacheUnauthenticated
+		}
+
+		return WriteStatus{}, fmt.Errorf("query write status: %w", err)
+	}
+
+	return WriteStatus{
+		Complete:      resp.GetComplete(),
+		CommittedSize: resp.GetCommittedSize(),
+	}, nil
 }
