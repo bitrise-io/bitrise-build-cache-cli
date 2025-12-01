@@ -3,6 +3,7 @@ package kv_test
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,7 +46,7 @@ func TestClient_UploadStreamToBuildCache_AllGood(t *testing.T) {
 func TestClient_UploadStreamToBuildCache_FirstAttemptFails(t *testing.T) {
 	streamClientMock := mocks.NewClientStreamClientMock[bytestream.WriteRequest, bytestream.WriteResponse](
 		&bytestream.WriteResponse{
-			CommittedSize: int64(len(uploadTestData)),
+			CommittedSize: int64(len(uploadTestData) - 5),
 		},
 		[]error{errors.New("some error"), nil},
 	)
@@ -69,15 +70,18 @@ func TestClient_UploadStreamToBuildCache_FirstAttemptFails(t *testing.T) {
 	require.NoError(t, err)
 
 	buffer := slicebuf.NewBuffer()
-	buffer.Write(uploadTestData)
+	_, err = buffer.Write(uploadTestData)
+	require.NoError(t, err)
+	_, err = buffer.Seek(0, io.SeekStart)
+	require.NoError(t, err)
 
 	err = client.UploadStreamToBuildCache(context.Background(), buffer, "test-key", int64(buffer.Len()))
 	require.NoError(t, err) // should succeed after retry
 
 	require.Len(t, streamClientMock.Requests(), 2)
-	require.Equal(t, int64(5), streamClientMock.Requests()[1].WriteOffset)
+	require.Equal(t, int64(5), streamClientMock.Requests()[1].GetWriteOffset())
 	require.Len(t, bitriseKVClient.WriteStatusCalls(), 1)
-	assert.Equal(t, "kv/test-key", bitriseKVClient.WriteStatusCalls()[0].In.ResourceName)
+	assert.Equal(t, "kv/test-key", bitriseKVClient.WriteStatusCalls()[0].In.GetResourceName())
 	assert.Equal(t, uploadTestData[5:], streamClientMock.Requests()[1].GetData()) // make sure the second attempt has offset data
 }
 

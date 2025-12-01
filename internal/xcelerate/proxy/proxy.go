@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/slicebuf"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/slicebuf"
 	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/cas"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
