@@ -95,9 +95,9 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 
 	downloadErr := retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt == 0 {
-			c.logger.Debugf("Downloading %s", key)
+			c.logger.TDebugf("Downloading %s", key)
 		} else {
-			c.logger.Infof("%d. attempt to download %s with offset %d", attempt+1, key, offset)
+			c.logger.TInfof("%d. attempt to download %s with offset %d", attempt+1, key, offset)
 		}
 
 		timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -127,7 +127,6 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 			return fmt.Errorf("download archive: %w", err), false
 		}
 
-		c.logger.Debugf("Response metadata: %+v", kvReader.Metadata())
 		expectedHash = kvReader.Metadata()["x-flare-blob-validation-sha256"]
 		expectedHash = strings.TrimPrefix(expectedHash, "blob/")
 
@@ -143,7 +142,7 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		if expectedHash != fileHash {
 			return fmt.Errorf("downloaded file hash mismatch: expected %s, got %s", expectedHash, fileHash)
 		} else {
-			c.logger.Debugf("Downloaded hash matches expected: %s", expectedHash)
+			c.logger.TDebugf("Downloaded %s hash matches expected: %s", key, expectedHash)
 		}
 	}
 

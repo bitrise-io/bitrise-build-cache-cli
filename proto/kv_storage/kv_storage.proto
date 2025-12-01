@@ -13,4 +13,5 @@ service KVStorage {
   rpc Get(google.bytestream.ReadRequest) returns (stream google.bytestream.ReadResponse);
   rpc Put(stream google.bytestream.WriteRequest) returns (google.bytestream.WriteResponse);
   rpc Delete(google.bytestream.ReadRequest) returns (DeleteResponse);
+  rpc WriteStatus(google.bytestream.QueryWriteStatusRequest) returns (google.bytestream.QueryWriteStatusResponse);
 }

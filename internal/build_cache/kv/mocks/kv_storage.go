@@ -30,6 +30,9 @@ var _ kv_storage.KVStorageClient = &KVStorageClientMock{}
 //			PutFunc: func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[bytestream.WriteRequest, bytestream.WriteResponse], error) {
 //				panic("mock out the Put method")
 //			},
+//			WriteStatusFunc: func(ctx context.Context, in *bytestream.QueryWriteStatusRequest, opts ...grpc.CallOption) (*bytestream.QueryWriteStatusResponse, error) {
+//				panic("mock out the WriteStatus method")
+//			},
 //		}
 //
 //		// use mockedKVStorageClient in code that requires kv_storage.KVStorageClient
@@ -45,6 +48,9 @@ type KVStorageClientMock struct {
 
 	// PutFunc mocks the Put method.
 	PutFunc func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[bytestream.WriteRequest, bytestream.WriteResponse], error)
+
+	// WriteStatusFunc mocks the WriteStatus method.
+	WriteStatusFunc func(ctx context.Context, in *bytestream.QueryWriteStatusRequest, opts ...grpc.CallOption) (*bytestream.QueryWriteStatusResponse, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -73,10 +79,20 @@ type KVStorageClientMock struct {
 			// Opts is the opts argument value.
 			Opts []grpc.CallOption
 		}
+		// WriteStatus holds details about calls to the WriteStatus method.
+		WriteStatus []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// In is the in argument value.
+			In *bytestream.QueryWriteStatusRequest
+			// Opts is the opts argument value.
+			Opts []grpc.CallOption
+		}
 	}
-	lockDelete sync.RWMutex
-	lockGet    sync.RWMutex
-	lockPut    sync.RWMutex
+	lockDelete      sync.RWMutex
+	lockGet         sync.RWMutex
+	lockPut         sync.RWMutex
+	lockWriteStatus sync.RWMutex
 }
 
 // Delete calls DeleteFunc.
@@ -204,5 +220,49 @@ func (mock *KVStorageClientMock) PutCalls() []struct {
 	mock.lockPut.RLock()
 	calls = mock.calls.Put
 	mock.lockPut.RUnlock()
+	return calls
+}
+
+// WriteStatus calls WriteStatusFunc.
+func (mock *KVStorageClientMock) WriteStatus(ctx context.Context, in *bytestream.QueryWriteStatusRequest, opts ...grpc.CallOption) (*bytestream.QueryWriteStatusResponse, error) {
+	callInfo := struct {
+		Ctx  context.Context
+		In   *bytestream.QueryWriteStatusRequest
+		Opts []grpc.CallOption
+	}{
+		Ctx:  ctx,
+		In:   in,
+		Opts: opts,
+	}
+	mock.lockWriteStatus.Lock()
+	mock.calls.WriteStatus = append(mock.calls.WriteStatus, callInfo)
+	mock.lockWriteStatus.Unlock()
+	if mock.WriteStatusFunc == nil {
+		var (
+			queryWriteStatusResponseOut *bytestream.QueryWriteStatusResponse
+			errOut                      error
+		)
+		return queryWriteStatusResponseOut, errOut
+	}
+	return mock.WriteStatusFunc(ctx, in, opts...)
+}
+
+// WriteStatusCalls gets all the calls that were made to WriteStatus.
+// Check the length with:
+//
+//	len(mockedKVStorageClient.WriteStatusCalls())
+func (mock *KVStorageClientMock) WriteStatusCalls() []struct {
+	Ctx  context.Context
+	In   *bytestream.QueryWriteStatusRequest
+	Opts []grpc.CallOption
+} {
+	var calls []struct {
+		Ctx  context.Context
+		In   *bytestream.QueryWriteStatusRequest
+		Opts []grpc.CallOption
+	}
+	mock.lockWriteStatus.RLock()
+	calls = mock.calls.WriteStatus
+	mock.lockWriteStatus.RUnlock()
 	return calls
 }
