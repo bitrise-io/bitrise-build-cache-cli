@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/slicebuf"
 )
 
 func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key string) error {
@@ -36,14 +35,18 @@ func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key strin
 }
 
 func (c *Client) UploadStreamToBuildCache(ctx context.Context, source io.ReadSeeker, key string, size int64) error {
-	// calculate hash from source stream first and clone it to be able to read it again for the upload
-	sourceBuf := slicebuf.NewBuffer()
-	teeSource := io.TeeReader(source, sourceBuf)
-	checksum, err := hash.Checksum(teeSource)
+	// Always seek to start before checksum
+	if _, err := source.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek to start: %w", err)
+	}
+	checksum, err := hash.Checksum(source)
 	if err != nil {
 		return fmt.Errorf("checksum: %w", err)
 	}
-
+	// Seek to start before upload
+	if _, err := source.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek to start: %w", err)
+	}
 	if err := c.uploadStream(ctx, source, key, checksum, size); err != nil {
 		return fmt.Errorf("upload stream: %w", err)
 	}

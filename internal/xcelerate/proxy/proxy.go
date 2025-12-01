@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/slicebuf"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -34,7 +35,7 @@ type Client interface {
 	ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string)
 	SetLogger(logger log.Logger)
 	DownloadStream(ctx context.Context, writer io.Writer, key string) error
-	UploadStreamToBuildCache(ctx context.Context, reader io.Reader, key string, size int64) error
+	UploadStreamToBuildCache(ctx context.Context, reader io.ReadSeeker, key string, size int64) error
 	GetCapabilitiesWithRetry(ctx context.Context) error
 }
 
@@ -262,7 +263,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	}
 
 	hasher := hash.NewBlobHasher(digestFunction)
-	buffer := bytes.NewBuffer(nil)
+	buffer := slicebuf.NewBuffer()
 
 	if err := gob.NewEncoder(io.MultiWriter(hasher, buffer)).Encode(rawData); err != nil {
 		return errorHandler(fmt.Errorf("failed to encode data: %w", err)), nil
@@ -405,7 +406,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		p.logWriteCallStats("Save", key, start)
 	}()
 
-	var reader io.Reader
+	var reader io.ReadSeeker
 	var size int64
 	if request.GetData().GetBlob().GetFilePath() != "" {
 		stat, err := os.Stat(request.GetData().GetBlob().GetFilePath())
@@ -426,7 +427,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 			}
 		}()
 	} else {
-		reader = bytes.NewBuffer(request.GetData().GetBlob().GetData())
+		reader = slicebuf.NewBufferWithData(request.GetData().GetBlob().GetData())
 		size = int64(len(request.GetData().GetBlob().GetData()))
 	}
 
@@ -469,7 +470,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 			return errorHandler(fmt.Errorf("failed to seek file %s: %w", request.GetData().GetBlob().GetFilePath(), err)), nil
 		}
 	} else {
-		reader = bytes.NewBuffer(request.GetData().GetBlob().GetData())
+		reader = slicebuf.NewBufferWithData(request.GetData().GetBlob().GetData())
 	}
 
 	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
@@ -579,7 +580,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 		return &llvmkv.PutValueResponse{}, nil
 	}
 
-	buffer := bytes.NewBuffer(nil)
+	buffer := slicebuf.NewBuffer()
 	if err := gob.NewEncoder(buffer).Encode(request.GetValue().GetEntries()); err != nil {
 		return errorHandler(fmt.Errorf("failed to encode value: %w", err)), nil
 	}

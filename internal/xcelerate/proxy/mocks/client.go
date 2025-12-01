@@ -33,7 +33,7 @@ var _ proxy.Client = &ClientMock{}
 //			SetLoggerFunc: func(logger log.Logger)  {
 //				panic("mock out the SetLogger method")
 //			},
-//			UploadStreamToBuildCacheFunc: func(ctx context.Context, reader io.Reader, key string, size int64) error {
+//			UploadStreamToBuildCacheFunc: func(ctx context.Context, reader io.ReadSeeker, key string, size int64) error {
 //				panic("mock out the UploadStreamToBuildCache method")
 //			},
 //		}
@@ -56,7 +56,7 @@ type ClientMock struct {
 	SetLoggerFunc func(logger log.Logger)
 
 	// UploadStreamToBuildCacheFunc mocks the UploadStreamToBuildCache method.
-	UploadStreamToBuildCacheFunc func(ctx context.Context, reader io.Reader, key string, size int64) error
+	UploadStreamToBuildCacheFunc func(ctx context.Context, reader io.ReadSeeker, key string, size int64) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -95,7 +95,7 @@ type ClientMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Reader is the reader argument value.
-			Reader io.Reader
+			Reader io.ReadSeeker
 			// Key is the key argument value.
 			Key string
 			// Size is the size argument value.
@@ -264,10 +264,10 @@ func (mock *ClientMock) SetLoggerCalls() []struct {
 }
 
 // UploadStreamToBuildCache calls UploadStreamToBuildCacheFunc.
-func (mock *ClientMock) UploadStreamToBuildCache(ctx context.Context, reader io.Reader, key string, size int64) error {
+func (mock *ClientMock) UploadStreamToBuildCache(ctx context.Context, reader io.ReadSeeker, key string, size int64) error {
 	callInfo := struct {
 		Ctx    context.Context
-		Reader io.Reader
+		Reader io.ReadSeeker
 		Key    string
 		Size   int64
 	}{
@@ -294,13 +294,13 @@ func (mock *ClientMock) UploadStreamToBuildCache(ctx context.Context, reader io.
 //	len(mockedClient.UploadStreamToBuildCacheCalls())
 func (mock *ClientMock) UploadStreamToBuildCacheCalls() []struct {
 	Ctx    context.Context
-	Reader io.Reader
+	Reader io.ReadSeeker
 	Key    string
 	Size   int64
 } {
 	var calls []struct {
 		Ctx    context.Context
-		Reader io.Reader
+		Reader io.ReadSeeker
 		Key    string
 		Size   int64
 	}
