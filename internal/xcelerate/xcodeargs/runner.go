@@ -228,5 +228,10 @@ func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadClo
 	// when upstream reader is closed, scanner will return an error
 	// which is not relevant in this context (command will close them on finish)
 	//
-	// if err := scanner.Err(); err != nil {}
+	if err := scanner.Err(); err != nil &&
+		!errors.Is(err, io.EOF) &&
+		!errors.Is(err, context.Canceled) &&
+		!errors.Is(err, os.ErrClosed) {
+		runner.logger.Errorf("Failed to read from output stream: %v", err)
+	}
 }
