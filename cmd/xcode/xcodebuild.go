@@ -85,8 +85,15 @@ TBD`,
 			config = xcelerate.DefaultConfig()
 		}
 
-		logOutput, cleanup := logFile(invocationID, utils.DefaultOsProxy{}, utils.AllEnvs(), config.Silent)
-		defer cleanup()
+		envs := utils.AllEnvs()
+		logFile, logPath, err := logFile(invocationID, osProxy, envs)
+		if err != nil && !config.Silent {
+			fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", err)
+		}
+		defer func() {
+			_ = logFile.Close()
+		}()
+		logOutput := wrapperLogWriter(logFile, logPath, config.Silent)
 		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
 
 		xcelerateParams.OrigArgs = os.Args[1:]
@@ -127,7 +134,7 @@ TBD`,
 			return string(o), err
 		}, logger)
 
-		xcodeRunner := xcodeargs.NewRunner(logger, config)
+		xcodeRunner := xcodeargs.NewRunner(logger, config, logFile)
 
 		if runStats := XcodebuildCmdFn(
 			cobraCmd.Context(),
@@ -150,7 +157,7 @@ func init() {
 	xcelerateCommand.AddCommand(xcodebuildCmd)
 }
 
-func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string, silent bool) (io.Writer, func()) {
+func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string) (io.WriteCloser, string, error) {
 	deployDir := envs["BITRISE_DEPLOY_DIR"]
 	var logDir string
 	if deployDir != "" {
@@ -159,45 +166,40 @@ func logFile(invocationID string, osProxy utils.OsProxy, envs map[string]string,
 		var err error
 		logDir, err = getLogDir(osProxy)
 		if err != nil {
-			if silent {
-				return io.Discard, func() {}
-			}
-			fmt.Fprintf(os.Stderr, "Failed to get log dir, using stderr only: %v\n", err)
-
-			return os.Stderr, func() {}
+			return nil, "", fmt.Errorf("failed to get log dir: %w", err)
 		}
 	}
 
 	logPath := fmt.Sprintf("%s/xcelerate-%s.log", logDir, invocationID)
 	f, err := osProxy.Create(logPath)
 	if err != nil {
-		if silent {
-			return io.Discard, func() {}
-		}
-		fmt.Fprintf(os.Stderr, "Failed to create log file at %s, using stderr only: %v\n", logPath, err)
-
-		return os.Stderr, func() {}
+		return nil, "", fmt.Errorf("failed to create log file: %w", err)
 	}
 
+	return f, logPath, nil
+}
+
+func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Writer {
+	if logFile == nil {
+		if silent {
+			return io.Discard
+		}
+		fmt.Fprintf(os.Stderr, "Using stderr only...\n")
+
+		return os.Stderr
+	}
 	// wrap stderr to also write to log file
 	var w io.Writer
 	if silent {
-		w = f
+		w = logFile
 	} else {
 		//nolint:errcheck
-		fmt.Fprintf(os.Stderr, "ℹ️ These logs are available at: %s\n", logPath)
+		fmt.Fprintf(os.Stderr, "ℹ️ These logs are available at: %s\n", logFilePath)
 
-		w = io.MultiWriter(os.Stderr, f)
+		w = io.MultiWriter(os.Stderr, logFile)
 	}
 
-	return w, func() {
-		if err := f.Close(); err != nil {
-			//nolint:errcheck
-			if !silent {
-				fmt.Fprintf(os.Stderr, "Failed to close log file: %v\n", err)
-			}
-		}
-	}
+	return w
 }
 
 // nolint:nestif

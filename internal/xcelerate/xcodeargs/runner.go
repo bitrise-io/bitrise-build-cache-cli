@@ -31,14 +31,16 @@ type RunStats struct {
 }
 
 type DefaultRunner struct {
-	logger log.Logger
-	config xcelerate.Config
+	logger  log.Logger
+	config  xcelerate.Config
+	logFile io.Writer
 }
 
-func NewRunner(logger log.Logger, config xcelerate.Config) *DefaultRunner {
+func NewRunner(logger log.Logger, config xcelerate.Config, logFile io.Writer) *DefaultRunner {
 	return &DefaultRunner{
-		config: config,
-		logger: logger,
+		config:  config,
+		logger:  logger,
+		logFile: logFile,
 	}
 }
 
@@ -100,7 +102,8 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 	} else {
 		wg.Add(1)
 		go func() {
-			runner.streamOutput(ctx, stdOutReader, os.Stdout)
+			out := io.MultiWriter(os.Stdout, runner.logFile)
+			runner.streamOutput(ctx, stdOutReader, out)
 			wg.Done()
 		}()
 	}
@@ -111,7 +114,8 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 	} else {
 		wg.Add(1)
 		go func() {
-			runner.streamOutput(ctx, stdErrReader, os.Stderr)
+			out := io.MultiWriter(os.Stderr, runner.logFile)
+			runner.streamOutput(ctx, stdErrReader, out)
 			wg.Done()
 		}()
 	}
