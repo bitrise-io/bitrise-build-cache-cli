@@ -31,14 +31,16 @@ type RunStats struct {
 }
 
 type DefaultRunner struct {
-	logger log.Logger
-	config xcelerate.Config
+	logger  log.Logger
+	config  xcelerate.Config
+	logFile io.Writer
 }
 
-func NewRunner(logger log.Logger, config xcelerate.Config) *DefaultRunner {
+func NewRunner(logger log.Logger, config xcelerate.Config, logFile io.Writer) *DefaultRunner {
 	return &DefaultRunner{
-		config: config,
-		logger: logger,
+		config:  config,
+		logger:  logger,
+		logFile: logFile,
 	}
 }
 
@@ -100,7 +102,13 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 	} else {
 		wg.Add(1)
 		go func() {
-			runner.streamOutput(ctx, stdOutReader, os.Stdout)
+			var out io.Writer
+			if runner.logFile != nil {
+				out = io.MultiWriter(os.Stdout, runner.logFile)
+			} else {
+				out = os.Stdout
+			}
+			runner.streamOutput(ctx, stdOutReader, out)
 			wg.Done()
 		}()
 	}
@@ -111,7 +119,13 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 	} else {
 		wg.Add(1)
 		go func() {
-			runner.streamOutput(ctx, stdErrReader, os.Stderr)
+			var out io.Writer
+			if runner.logFile != nil {
+				out = io.MultiWriter(os.Stderr, runner.logFile)
+			} else {
+				out = os.Stderr
+			}
+			runner.streamOutput(ctx, stdErrReader, out)
 			wg.Done()
 		}()
 	}
@@ -214,5 +228,10 @@ func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadClo
 	// when upstream reader is closed, scanner will return an error
 	// which is not relevant in this context (command will close them on finish)
 	//
-	// if err := scanner.Err(); err != nil {}
+	if err := scanner.Err(); err != nil &&
+		!errors.Is(err, io.EOF) &&
+		!errors.Is(err, context.Canceled) &&
+		!errors.Is(err, os.ErrClosed) {
+		runner.logger.Errorf("Failed to read from output stream: %v", err)
+	}
 }
