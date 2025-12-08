@@ -91,7 +91,9 @@ TBD`,
 			fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", err)
 		}
 		defer func() {
-			_ = logFile.Close()
+			if logFile != nil {
+				_ = logFile.Close()
+			}
 		}()
 		logOutput := wrapperLogWriter(logFile, logPath, config.Silent)
 		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
