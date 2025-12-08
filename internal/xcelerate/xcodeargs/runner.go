@@ -102,7 +102,12 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 	} else {
 		wg.Add(1)
 		go func() {
-			out := io.MultiWriter(os.Stdout, runner.logFile)
+			var out io.Writer
+			if runner.logFile != nil {
+				out = io.MultiWriter(os.Stdout, runner.logFile)
+			} else {
+				out = os.Stdout
+			}
 			runner.streamOutput(ctx, stdOutReader, out)
 			wg.Done()
 		}()
@@ -114,7 +119,12 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 	} else {
 		wg.Add(1)
 		go func() {
-			out := io.MultiWriter(os.Stderr, runner.logFile)
+			var out io.Writer
+			if runner.logFile != nil {
+				out = io.MultiWriter(os.Stderr, runner.logFile)
+			} else {
+				out = os.Stderr
+			}
 			runner.streamOutput(ctx, stdErrReader, out)
 			wg.Done()
 		}()
