@@ -80,19 +80,21 @@ settingsEvaluated {
 }
 {{- end -}}
 {{- if eq .TestDistro.Usage "enabled" }}
-rootProject {
-    extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
-        endpoint.set("{{ .TestDistro.Endpoint }}")
-        kvEndpoint.set("{{ .TestDistro.KvEndpoint }}")
-        authToken.set("{{ .Common.AuthToken }}")
-        logLevel.set("{{ .TestDistro.LogLevel }}")
-        shardSize.set({{ .TestDistro.ShardSize }})
-        testSearchDepth.set({{ .TestDistro.TestSearchDepth }})
-        bitrise {
-            appSlug.set("{{ .Common.AppSlug }}")
+projectsEvaluated {
+    rootProject {
+        extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
+            endpoint.set("{{ .TestDistro.Endpoint }}")
+            kvEndpoint.set("{{ .TestDistro.KvEndpoint }}")
+            authToken.set("{{ .Common.AuthToken }}")
+            logLevel.set("{{ .TestDistro.LogLevel }}")
+            shardSize.set({{ .TestDistro.ShardSize }})
+            testSearchDepth.set({{ .TestDistro.TestSearchDepth }})
+            bitrise {
+                appSlug.set("{{ .Common.AppSlug }}")
+            }
         }
-    }
 
-    apply<io.bitrise.gradle.rbe.RBEPlugin>()
+        apply<io.bitrise.gradle.rbe.RBEPlugin>()
+    }
 }
 {{- end -}}
