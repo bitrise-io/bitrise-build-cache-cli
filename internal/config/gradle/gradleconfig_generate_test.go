@@ -187,20 +187,18 @@ settingsEvaluated {
         apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
 }
-projectsEvaluated {
-    rootProject {
-        extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
-            endpoint.set("TestDistroEndpointValue")
-            kvEndpoint.set("TestDistroKvEndpointValue")
-            authToken.set("AuthTokenValue")
-            logLevel.set("TestDistroLogLevelValue")
-            shardSize.set(50)
-            testSearchDepth.set(3)
-            bitrise {
-                appSlug.set("AppSlugValue")
-            }
+rootProject {
+    extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
+        endpoint.set("TestDistroEndpointValue")
+        kvEndpoint.set("TestDistroKvEndpointValue")
+        authToken.set("AuthTokenValue")
+        logLevel.set("TestDistroLogLevelValue")
+        shardSize.set(50)
+        testSearchDepth.set(3)
+        bitrise {
+            appSlug.set("AppSlugValue")
         }
-
-        apply<io.bitrise.gradle.rbe.RBEPlugin>()
     }
+
+    apply<io.bitrise.gradle.rbe.RBEPlugin>()
 }`
