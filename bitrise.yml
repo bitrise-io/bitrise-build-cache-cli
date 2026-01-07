@@ -961,7 +961,15 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            mv ./android/app/src/main/res/values/config.example.xml ./android/app/src/main/res/values/config.xml
+            cat > ./android/app/src/main/res/values/config.xml <<'EOF'
+            <?xml version="1.0" encoding="utf-8"?>
+            <!-- copy this file to config.xml and uncomment / fill in the values specific to your project -->
+            <resources>
+                <!-- https://developers.google.com/maps/documentation/android/ -->
+                <string name="gmaps_api_key">xxx</string>
+            </resources>
+            EOF
+
             mv config.example.js config.js
         title: Create configs
     - script@1:
