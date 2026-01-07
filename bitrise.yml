@@ -871,6 +871,10 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
   react-native-caching:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
     steps:
     - activate-ssh-key@4: {}
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
