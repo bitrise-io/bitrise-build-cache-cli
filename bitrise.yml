@@ -870,6 +870,55 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
+  react-native-caching:
+    steps:
+    - activate-ssh-key@4: {}
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: git@github.com:inaturalist/SeekReactNative.git
+        - clone_into_dir: ./_tmp
+        - commit: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - change-workdir@1:
+        inputs:
+        - path: ./_tmp
+    - install-react-native@0: {}
+    - restore-cocoapods-cache@2: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -eo pipefail
+
+            cd ios
+            npx pod-install
+        title: npx pod-install
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            mv config.example.js config.js
+        title: Create config.js
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run add-example-model
+        title: Add example models
+    - activate-build-cache-for-xcode@0: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npx react-native build-ios
+        title: npx react-native build-ios
+    - save-cocoapods-cache@1: {}
 
 step_bundles:
   generate_gradle_verification_reference:
