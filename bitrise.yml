@@ -980,7 +980,7 @@ workflows:
             set -eo pipefail
 
             npx react-native build-android
-        title: npx react-native build-ios
+        title: npx react-native build-android
 
 step_bundles:
   generate_gradle_verification_reference:
