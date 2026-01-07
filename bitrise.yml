@@ -932,6 +932,10 @@ workflows:
         title: npx react-native build-ios
     - save-cocoapods-cache@1: {}
   react-native-caching-android:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
     steps:
     - activate-ssh-key@4: {}
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
