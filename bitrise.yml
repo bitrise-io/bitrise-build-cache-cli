@@ -881,7 +881,15 @@ workflows:
     - change-workdir@1:
         inputs:
         - path: ./_tmp
-    - install-react-native@0: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -eo pipefail
+
+            npm install
+        title: npm install
     - restore-cocoapods-cache@2: {}
     - script@1:
         inputs:
