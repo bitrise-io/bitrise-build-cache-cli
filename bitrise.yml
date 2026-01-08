@@ -989,7 +989,53 @@ workflows:
 
             npx react-native build-android
         title: npx react-native build-android
+  react-native-caching-notesnook-ios:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    steps:
+    - activate-ssh-key@4: {}
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: git@github.com:streetwriters/notesnook.git
+        - clone_into_dir: ./_tmp
+        - commit: e635ace33876f555ea5f1397a96073853e64a304
+    - change-workdir@1:
+        inputs:
+        - path: ./_tmp
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -eo pipefail
 
+            npm install
+        title: npm install
+    - restore-cocoapods-cache@2: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -eo pipefail
+
+            cd apps/mobile
+            npm run install-pods
+        title: npm run install-pods
+    - activate-build-cache-for-xcode@0: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -eo pipefail
+
+            cd apps/mobile
+            npm run build-ios
+        title: npx react-native build-ios
+    - save-cocoapods-cache@1: {}
 step_bundles:
   generate_gradle_verification_reference:
     steps:
