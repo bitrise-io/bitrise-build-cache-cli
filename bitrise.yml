@@ -994,6 +994,8 @@ workflows:
       bitrise.io:
         machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
+    tools:
+        ruby: 3.3:installed
     steps:
     - activate-ssh-key@4: {}
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
