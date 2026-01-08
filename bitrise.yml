@@ -1013,7 +1013,21 @@ workflows:
 
             npm install
         title: npm install
+    - script@1:
+        title: asdf install ruby 2.7.5
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            asdf install ruby 2.7.5
+    - change-workdir@1:
+        inputs:
+        - path: ./apps/mobile/ios
     - restore-cocoapods-cache@2: {}
+    - change-workdir@1:
+        inputs:
+        - path: ..
     - script@1:
         inputs:
         - content: |-
@@ -1021,7 +1035,6 @@ workflows:
             # fail if any commands fails
             set -eo pipefail
 
-            cd apps/mobile
             npm run install-pods
         title: npm run install-pods
     - activate-build-cache-for-xcode@0: {}
@@ -1032,9 +1045,11 @@ workflows:
             # fail if any commands fails
             set -eo pipefail
 
-            cd apps/mobile
             npm run build-ios
-        title: npx react-native build-ios
+        title: npm run build-ios
+    - change-workdir@1:
+        inputs:
+        - path: ./ios
     - save-cocoapods-cache@1: {}
 step_bundles:
   generate_gradle_verification_reference:
