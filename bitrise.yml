@@ -996,6 +996,7 @@ workflows:
         stack: osx-xcode-edge
     tools:
         ruby: 3.3:installed
+        nodejs: 24:installed
     steps:
     - activate-ssh-key@4: {}
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
