@@ -995,8 +995,8 @@ workflows:
         machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
     tools:
-        ruby: 3.3:installed
-        nodejs: 24:installed
+      ruby: 3.3:installed
+      nodejs: 24:installed
     steps:
     - activate-ssh-key@4: {}
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
@@ -1004,6 +1004,7 @@ workflows:
         - repository_url: git@github.com:streetwriters/notesnook.git
         - clone_into_dir: ./_tmp
         - commit: e635ace33876f555ea5f1397a96073853e64a304
+    - activate-build-cache-for-xcode@0: {}
     - change-workdir@1:
         inputs:
         - path: ./_tmp
@@ -1011,34 +1012,63 @@ workflows:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            # fail if any commands fails
             set -eo pipefail
 
-            npm install
+            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
+            npm ci --verbose --foreground-scripts
         title: npm install
-    - change-workdir@1:
-        inputs:
-        - path: ./apps/mobile/ios
-    - restore-cocoapods-cache@2: {}
-    - cocoapods-install@2: {}
-    - change-workdir@1:
-        inputs:
-        - path: ..
-    - activate-build-cache-for-xcode@0: {}
     - script@1:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            # fail if any commands fails
             set -eo pipefail
 
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./.detoxrc.js
-            npm run build-ios
-        title: npm run build-ios
+            cd apps/mobile && npm run install-pods
+        title: npm run install-pods
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run build:ios --verbose --foreground-scripts
+        title: npm run build:ios
+  react-native-caching-notesnook-android:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    tools:
+      ruby: 3.3:installed
+      nodejs: 24:installed
+    steps:
+    - activate-ssh-key@4: {}
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: git@github.com:streetwriters/notesnook.git
+        - clone_into_dir: ./_tmp
+        - commit: e635ace33876f555ea5f1397a96073853e64a304
+    - activate-build-cache-for-gradle@2: {}
     - change-workdir@1:
         inputs:
-        - path: ./ios
-    - save-cocoapods-cache@1: {}
+        - path: ./_tmp
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
+            npm ci
+        title: npm install
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run build:android
+        title: npm run build:android
 step_bundles:
   generate_gradle_verification_reference:
     steps:
