@@ -1053,6 +1053,7 @@ workflows:
         - clone_into_dir: ./_tmp
         - commit: e635ace33876f555ea5f1397a96073853e64a304
     - activate-build-cache-for-gradle@2: {}
+    - activate-build-cache-for-xcode@0: {}
     - change-workdir@1:
         inputs:
         - path: ./_tmp
