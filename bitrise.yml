@@ -1015,7 +1015,7 @@ workflows:
             set -eo pipefail
 
             sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm ci --verbose --foreground-scripts
+            npm install --verbose
         title: npm install
     - script@1:
         inputs:
@@ -1023,6 +1023,7 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
+            asdf install ruby 2.7.5
             cd apps/mobile && npm run install-pods
         title: npm run install-pods
     - script@1:
@@ -1031,7 +1032,7 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            npm run build:ios --verbose --foreground-scripts
+            npm run build:ios --verbose
         title: npm run build:ios
   react-native-caching-notesnook-android:
     meta:
