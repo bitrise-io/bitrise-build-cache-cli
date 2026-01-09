@@ -1080,7 +1080,7 @@ workflows:
         machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
     tools:
-      ruby: 2.7.5
+      ruby: 3.3:installed
       nodejs: 24:installed
     steps:
     - activate-ssh-key@4: {}
