@@ -1017,15 +1017,9 @@ workflows:
             sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
             npm install --verbose
         title: npm install
-    - script@1:
+    - cocoapods-install@2:
         inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            asdf install ruby 2.7.5
-            cd apps/mobile && npm run install-pods
-        title: npm run install-pods
+        - source_root_path: ./apps/mobile/ios
     - script@1:
         inputs:
         - content: |-
