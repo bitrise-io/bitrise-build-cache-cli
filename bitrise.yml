@@ -339,12 +339,17 @@ workflows:
         inputs:
           - content: |-
               source ../_e2e/scripts/assert_invocations.sh
+              source ../_e2e/scripts/assert_taskio.sh
 
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
               assert_invocation_tasks_gradle "$INVOCATION_ID"
               assert_build_performance "$INVOCATION_ID"
               assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+            
+              assert_invocation_taskio "$INVOCATION_ID" "gradle"
+              assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" ":autofill-impl:bundleLibCompileToJarDebug"
+
     - deploy-to-bitrise-io@2: {}
 
   feature-e2e-gradle-7:
