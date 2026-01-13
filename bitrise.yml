@@ -348,7 +348,7 @@ workflows:
               assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
             
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
-              assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" ":autofill-impl:bundleLibCompileToJarDebug"
+              assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "processDebug"
 
     - deploy-to-bitrise-io@2: {}
 
