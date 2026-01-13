@@ -16,7 +16,7 @@ const (
 	GradleRemoteBuildCachePluginDepVersion = "1.2.28"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "2.2.4"
+	GradleAnalyticsPluginDepVersion = "2.2.5"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsPort             = 443
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
