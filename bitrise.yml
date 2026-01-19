@@ -1213,6 +1213,14 @@ workflows:
 
             npx react-native build-android
         title: no cache
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npx react-native clean-project-auto
+        title: project clean
     - brew-install@1:
         inputs:
         - packages: ccache
@@ -1235,9 +1243,15 @@ workflows:
 
             ccache -s
             ccache -z
-            cd android/
-            ./gradlew clean
         title: ccache stats
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npx react-native clean-project-auto
+        title: project clean
     - script@1:
         inputs:
         - content: |-
@@ -1291,6 +1305,14 @@ workflows:
 
             npm run build:android
         title: build w/o cache
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run clean
+        title: clean project
     - brew-install@1:
         inputs:
         - packages: ccache
@@ -1312,9 +1334,15 @@ workflows:
 
             ccache -s
             ccache -z
-            cd apps/mobile/android
-            ./gradlew clean
         title: ccache stats
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run clean
+        title: clean project
     - script@1:
         inputs:
         - content: |-
