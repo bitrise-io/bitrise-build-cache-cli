@@ -1178,7 +1178,7 @@ workflows:
             # fail if any commands fails
             set -eo pipefail
 
-            npm install
+            npm ci
         title: npm install
     - script@1:
         inputs:
@@ -1219,7 +1219,8 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            npx react-native clean-project-auto
+            npm clean
+            npm ci
         title: project clean
     - brew-install@1:
         inputs:
@@ -1250,7 +1251,8 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            npx react-native clean-project-auto
+            npm clean
+            npm ci
         title: project clean
     - script@1:
         inputs:
@@ -1312,6 +1314,7 @@ workflows:
             set -eo pipefail
 
             npm run clean
+            npm ci
         title: clean project
     - brew-install@1:
         inputs:
@@ -1342,6 +1345,7 @@ workflows:
             set -eo pipefail
 
             npm run clean
+            npm ci
         title: clean project
     - script@1:
         inputs:
