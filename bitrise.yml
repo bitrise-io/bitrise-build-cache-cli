@@ -1235,6 +1235,8 @@ workflows:
 
             ccache -s
             ccache -z
+            cd android/
+            ./gradlew clean
         title: ccache stats
     - script@1:
         inputs:
@@ -1310,6 +1312,8 @@ workflows:
 
             ccache -s
             ccache -z
+            cd apps/mobile/android
+            ./gradlew clean
         title: ccache stats
     - script@1:
         inputs:
