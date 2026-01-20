@@ -1219,6 +1219,7 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
+            rm -rf android/app/.cxx
             npm run clean
             npm ci
         title: project clean
@@ -1251,6 +1252,7 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
+            rm -rf android/app/.cxx
             npm run clean
             npm ci
         title: project clean
