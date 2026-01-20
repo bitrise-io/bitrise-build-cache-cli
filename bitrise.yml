@@ -1219,7 +1219,7 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            npx react-native clean-project-auto
+            npm run clean
             npm ci
         title: project clean
     - brew-install@1:
@@ -1251,7 +1251,7 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            npx react-native clean-project-auto
+            npm run clean
             npm ci
         title: project clean
     - script@1:
