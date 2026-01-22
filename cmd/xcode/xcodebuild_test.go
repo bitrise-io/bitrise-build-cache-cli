@@ -62,6 +62,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			context.Background(),
 			uuid.NewString(),
 			mockLogger,
+			mockLogger,
 			xcodeRunner,
 			sessionClientMock,
 			xcelerate.Config{},
@@ -114,6 +115,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		actual := SUT(
 			context.Background(),
 			uuid.NewString(),
+			mockLogger,
 			mockLogger,
 			xcodeRunner,
 			sessionClientMock,
@@ -169,6 +171,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 				_ = SUT(
 					context.Background(),
 					uuid.NewString(),
+					mockLogger,
 					mockLogger,
 					xcodeRunner,
 					sessionClientMock,
@@ -228,6 +231,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 				_ = SUT(
 					context.Background(),
 					uuid.NewString(),
+					mockLogger,
 					mockLogger,
 					xcodeRunner,
 					sessionClientMock,

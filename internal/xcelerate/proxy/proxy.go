@@ -136,6 +136,7 @@ func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.G
 		DownloadedBytes: collectedStats.downloadBytes,
 		Hits:            collectedStats.hits,
 		Misses:          collectedStats.misses,
+		Uploads:         collectedStats.uploads,
 	}, nil
 }
 
@@ -304,6 +305,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	}
 
 	p.sessionState.addUploadBytes(size)
+	p.sessionState.incrementUploads()
 
 	return &llvmcas.CASPutResponse{
 		Contents: &llvmcas.CASPutResponse_CasId{
@@ -479,6 +481,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 	}
 
 	p.sessionState.addUploadBytes(size)
+	p.sessionState.incrementUploads()
 
 	return &llvmcas.CASSaveResponse{
 		Contents: &llvmcas.CASSaveResponse_CasId{
@@ -593,6 +596,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}
 
 	p.sessionState.addUploadBytes(size)
+	p.sessionState.incrementUploads()
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil

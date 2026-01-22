@@ -8,6 +8,7 @@ import (
 type sessionState struct {
 	downloadBytes atomic.Int64
 	uploadBytes   atomic.Int64
+	uploads       atomic.Int64
 	hits          atomic.Int64
 	misses        atomic.Int64
 	savedKeys     sync.Map
@@ -16,6 +17,7 @@ type sessionState struct {
 type stats struct {
 	downloadBytes int64
 	uploadBytes   int64
+	uploads       int64
 	misses        int64
 	hits          int64
 }
@@ -36,6 +38,7 @@ func (s *sessionState) getStats() stats {
 	return stats{
 		downloadBytes: s.downloadBytes.Load(),
 		uploadBytes:   s.uploadBytes.Load(),
+		uploads:       s.uploads.Load(),
 		hits:          s.hits.Load(),
 		misses:        s.misses.Load(),
 	}
@@ -47,6 +50,10 @@ func (s *sessionState) incrementMisses() {
 
 func (s *sessionState) incrementHits() {
 	s.hits.Add(1)
+}
+
+func (s *sessionState) incrementUploads() {
+	s.uploads.Add(1)
 }
 
 func (s *sessionState) saveKeyOnce(key string) bool {

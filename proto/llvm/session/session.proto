@@ -23,4 +23,5 @@ message GetSessionStatsResponse {
   int64 downloaded_bytes = 2;
   int64 hits = 3;
   int64 misses = 4;
+  int64 uploads = 5;
 }
