@@ -97,6 +97,7 @@ TBD`,
 		}()
 		logOutput := wrapperLogWriter(logFile, logPath, config.Silent)
 		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
+		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
 
 		xcelerateParams.OrigArgs = os.Args[1:]
 
@@ -142,6 +143,7 @@ TBD`,
 			cobraCmd.Context(),
 			invocationID,
 			logger,
+			cacheLogger,
 			xcodeRunner,
 			proxySessionClient,
 			config,
@@ -209,6 +211,7 @@ func XcodebuildCmdFn(
 	ctx context.Context,
 	invocationID string,
 	logger log.Logger,
+	cacheLogger log.Logger,
 	xcodeRunner XcodeRunner,
 	proxySessionClient session.SessionClient,
 	config xcelerate.Config,
@@ -234,7 +237,7 @@ func XcodebuildCmdFn(
 			proxyCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			go func() {
-				if err := streamProxyLogs(proxyCtx, invocationID, logger, utils.DefaultOsProxy{}); err != nil {
+				if err := streamProxyLogs(proxyCtx, invocationID, cacheLogger, utils.DefaultOsProxy{}); err != nil {
 					logger.Errorf("Failed to stream proxy logs: %v", err)
 				} else {
 					logger.Debugf("Proxy logs stream closed")
@@ -258,10 +261,11 @@ func XcodebuildCmdFn(
 			logger.TErrorf("Failed to get session stats: %v", err)
 		}
 		logger.Infof(
-			"Proxy stats: uploaded bytes: %s, downloaded bytes: %s, hits: %d, misses: %d",
-			humanize.Bytes(uint64(proxyStats.GetUploadedBytes())),   // nolint: gosec
-			humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())), // nolint: gosec
+			"Proxy stats: uploads: %d (%s), downloads: %d (%s), misses: %d",
+			proxyStats.GetUploads(),
+			humanize.Bytes(uint64(proxyStats.GetUploadedBytes())), // nolint: gosec
 			proxyStats.GetHits(),
+			humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())), // nolint: gosec
 			proxyStats.GetMisses(),
 		)
 
@@ -478,8 +482,7 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 
 			return fmt.Errorf("failed to read proxy log line: %w", err)
 		}
-		// To have a different prefix than the wrapper
-		// nolint: forbidigo
-		fmt.Fprintln(os.Stderr, "[Bitrise Build Cache] "+strings.TrimSpace(line))
+
+		logger.Printf(strings.TrimSpace(line))
 	}
 }
