@@ -5,23 +5,20 @@ meta:
   bitrise.io:
     stack: linux-docker-android-22.04
     machine_type_id: g2.linux.medium
-
 app:
   envs:
-  - PANDOC_VERSION: "3.6.2"
-  - MAVEN_VERSION: "3.9.9"
-    # These are needed for the E2E test assertion logic
+  - PANDOC_VERSION: 3.6.2
+  - MAVEN_VERSION: 3.9.9
   - WORKSPACE_SLUG: 322a005426441b60
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
-
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
     triggers:
       tag:
       - name:
-          regex: '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+          regex: ^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$
     envs:
     - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
@@ -46,8 +43,8 @@ workflows:
             set -ex
 
             GOBIN=/usr/local/bin/ go install github.com/goreleaser/goreleaser/v2@latest
-    - bundle::generate_gradle_verification_reference: { }
-    - bundle::check_gradle_verification_reference: { }
+    - bundle::generate_gradle_verification_reference: {}
+    - bundle::check_gradle_verification_reference: {}
     - script:
         title: Goreleaser (create binaries + publish to GH)
         deps:
@@ -62,12 +59,12 @@ workflows:
     - script:
         title: Authenticate to GCP
         inputs:
-          - content: |-
-              #!/bin/bash
-              set -euxo pipefail
-              KEY_FILE_PATH=$(mktemp -d)/keyfile.json
-              echo "${GAR_SERVICE_ACCOUNT_B64}" | base64 --decode > ${KEY_FILE_PATH}
-              gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+        - content: |-
+            #!/bin/bash
+            set -euxo pipefail
+            KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+            echo "${GAR_SERVICE_ACCOUNT_B64}" | base64 --decode > ${KEY_FILE_PATH}
+            gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
     - script:
         title: Upload release artifacts to GAR
         inputs:
@@ -124,16 +121,16 @@ workflows:
         - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_features.sh
     - slack@4:
         inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              CLI release failed! :gopher_lift: :rotating_light:
+        - channel: '#team-advanced-ci-alerts-website'
+        - text: |-
+            CLI release failed! :gopher_lift: :rotating_light:
 
-              Check build here: $BITRISE_BUILD_URL
-          - emoji: ":rotating_light:"
-          - color: "#ee003b"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+            Check build here: $BITRISE_BUILD_URL
+        - emoji: ':rotating_light:'
+        - color: '#ee003b'
+        - webhook_url: $SLACK_WEBHOOK_ALERTS
         title: Send slack if failed
-        run_if: ".IsBuildFailed"
+        run_if: .IsBuildFailed
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
@@ -152,141 +149,137 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
-    - bundle::generate_gradle_verification_reference: { }
-    - bundle::check_gradle_verification_reference: { }
+    - bundle::generate_gradle_verification_reference: {}
+    - bundle::check_gradle_verification_reference: {}
     - deploy-to-bitrise-io@2:
         inputs:
-          - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+        - deploy_path: $GRADLE_VERIFICATION_REF_TARGET_PATH
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
-
   generate_gradle_verification:
     steps:
-    - bundle::generate_gradle_verification_reference: { }
-
+    - bundle::generate_gradle_verification_reference: {}
   generate_and_commit_dependency_matrix:
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8:
         inputs:
-          - fetch_tags: "yes"
-          - shallow_clone: "false"
-          - clone_depth: "-1"
+        - fetch_tags: "yes"
+        - shallow_clone: "false"
+        - clone_depth: "-1"
     - bundle::generate_and_commit_dependency_matrix: {}
     - slack@4:
         inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Dependency matrix generation failed! :matrix-code: :rotating_light:
+        - channel: '#team-advanced-ci-alerts-website'
+        - text: |-
+            Dependency matrix generation failed! :matrix-code: :rotating_light:
 
-              Check build here: $BITRISE_BUILD_URL
-          - emoji: ":rotating_light:"
-          - color: "#ee003b"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+            Check build here: $BITRISE_BUILD_URL
+        - emoji: ':rotating_light:'
+        - color: '#ee003b'
+        - webhook_url: $SLACK_WEBHOOK_ALERTS
         title: Send slack if failed
-        run_if: ".IsBuildFailed"
-
+        run_if: .IsBuildFailed
   update_plugins:
     envs:
-      - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
+    - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
-      - activate-ssh-key@4:
-            run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-      - git-clone@8:
-          inputs:
-          - fetch_tags: "yes"
-          - shallow_clone: "false"
-          - clone_depth: "-1"
-      - apt-get-install:
-          inputs:
-            - packages: libxml2-utils
-      - script:
-          title: Ensure we're on main
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8:
+        inputs:
+        - fetch_tags: "yes"
+        - shallow_clone: "false"
+        - clone_depth: "-1"
+    - apt-get-install:
+        inputs:
+        - packages: libxml2-utils
+    - script:
+        title: Ensure we're on main
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
 
-                git fetch origin
-                if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
-                  git checkout main
-                  git pull origin main
-                fi
-      - script:
-          title: Update plugins with latest version
-          inputs:
-            - content: |
-                bash ./scripts/update_plugins.sh
-      - bundle::generate_gradle_verification_reference: {}
-      - script:
-          title: Commit updated plugins and open PR
-          inputs:
-            - content: |
-                set -ex
+            git fetch origin
+            if [[ "$BITRISE_GIT_BRANCH" != "main" ]]; then
+              git checkout main
+              git pull origin main
+            fi
+    - script:
+        title: Update plugins with latest version
+        inputs:
+        - content: |
+            bash ./scripts/update_plugins.sh
+    - bundle::generate_gradle_verification_reference: {}
+    - script:
+        title: Commit updated plugins and open PR
+        inputs:
+        - content: |
+            set -ex
 
-                # Check for existing PR with the same title
-                existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                  "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
+            # Check for existing PR with the same title
+            existing_pr=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls?state=open" | jq -r ".[] | select(.title == \"chore: Update Gradle plugins\") | .html_url")
 
-                if [ -n "$existing_pr" ]; then
-                  echo "A pull request with this title already exists: $existing_pr"
-                  exit 0
-                fi
+            if [ -n "$existing_pr" ]; then
+              echo "A pull request with this title already exists: $existing_pr"
+              exit 0
+            fi
 
-                if [ -n "$(git status --porcelain)" ]; then
-                  git branch -D update-plugins || true
-                  git checkout -b update-plugins
+            if [ -n "$(git status --porcelain)" ]; then
+              git branch -D update-plugins || true
+              git checkout -b update-plugins
 
-                  git add .
-                  git commit -m "feat: update plugins to release"
-                  git push -f origin update-plugins
+              git add .
+              git commit -m "feat: update plugins to release"
+              git push -f origin update-plugins
 
-                  # Create a pull request using GitHub API
-                  pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-                    -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
-                    "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
+              # Create a pull request using GitHub API
+              pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+                -d "{\"title\":\"chore: Update Gradle plugins\",\"body\":\"This PR updates the Gradle plugins.\",\"head\":\"update-plugins\",\"base\":\"main\"}" \
+                "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/pulls")
 
-                    pr_url=$(echo "$pr_response" | jq -r .html_url)
-                    envman add --key PR_URL --value "$pr_url"
+                pr_url=$(echo "$pr_response" | jq -r .html_url)
+                envman add --key PR_URL --value "$pr_url"
 
-                    if [ "$pr_url" != "null" ]; then
-                      echo "Pull request created successfully: $pr_url"
-                    else
-                      echo "Failed to create pull request. Response: $pr_response"
-                      exit 1
-                    fi
+                if [ "$pr_url" != "null" ]; then
+                  echo "Pull request created successfully: $pr_url"
                 else
-                  echo "No changes detected, skipping commit."
-                  exit 0
+                  echo "Failed to create pull request. Response: $pr_response"
+                  exit 1
                 fi
-      - slack@4:
-          inputs:
-            - channel: "#team-advanced-ci-alerts-website"
-            - text: |-
-                Gradle plugin update PR is ready! :tada: :rocket: :gradle:
+            else
+              echo "No changes detected, skipping commit."
+              exit 0
+            fi
+    - slack@4:
+        inputs:
+        - channel: '#team-advanced-ci-alerts-website'
+        - text: |-
+            Gradle plugin update PR is ready! :tada: :rocket: :gradle:
 
-                Check PR here: $PR_URL
-            - emoji: ":gradle:"
-            - color: "#08a045"
-            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-          title: Send slack if PR opened
-          run_if: '{{ getenv "PR_URL" | ne "" }}'
-      - slack@4:
-          inputs:
-            - channel: "#team-advanced-ci-alerts-website"
-            - text: |-
-                CLI plugin update failed! :gradle: :gopher_lift: :rotating_light:
+            Check PR here: $PR_URL
+        - emoji: ':gradle:'
+        - color: '#08a045'
+        - webhook_url: $SLACK_WEBHOOK_ALERTS
+        title: Send slack if PR opened
+        run_if: '{{ getenv "PR_URL" | ne "" }}'
+    - slack@4:
+        inputs:
+        - channel: '#team-advanced-ci-alerts-website'
+        - text: |-
+            CLI plugin update failed! :gradle: :gopher_lift: :rotating_light:
 
-                Check build here: $BITRISE_BUILD_URL
-            - emoji: ":rotating_light:"
-            - color: "#ee003b"
-            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-          title: Send slack if failed
-          run_if: ".IsBuildFailed"
-
+            Check build here: $BITRISE_BUILD_URL
+        - emoji: ':rotating_light:'
+        - color: '#ee003b'
+        - webhook_url: $SLACK_WEBHOOK_ALERTS
+        title: Send slack if failed
+        run_if: .IsBuildFailed
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -295,8 +288,8 @@ workflows:
     - bundle::feature-e2e-setup: {}
     - apt-get-install:
         inputs:
-          - packages: 'bc'
-          - upgrade: "no"
+        - packages: bc
+        - upgrade: "no"
     - script:
         title: Enable build cache
         inputs:
@@ -306,8 +299,7 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Build and capture logs
         inputs:
@@ -317,106 +309,29 @@ workflows:
     - script:
         title: Check for cache invocations
         inputs:
-        - content: |-
-            set -exo pipefail
-
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId' \
-              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-
-            source ../_e2e/scripts/extract_invocation_id.sh
-
-            invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
-            if [[ -z "$invocation_id" ]]; then
-              fatal "Invocation ID not found in logs"
-            fi
-
-            echo "Found Invocation ID: $invocation_id"
-            envman add --key INVOCATION_ID --value "$invocation_id"
+        - content: "set -exo pipefail\n\n../scripts/check_pattern.sh \"$BITRISE_DEPLOY_DIR/logs.txt\" \\\n  '\\[Bitrise Build Cache\\].*\U0001F916 Bitrise remote cache enabled' \\\n  '\\[Bitrise Build Cache\\].*Request metadata invocationId' \\\n  '\\[Bitrise Analytics\\].*\U0001F916 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'\n\nsource ../_e2e/scripts/extract_invocation_id.sh\n\ninvocation_id=$(extract_invocation_id_gradle \"$BITRISE_DEPLOY_DIR/logs.txt\")\nif [[ -z \"$invocation_id\" ]]; then\n  fatal \"Invocation ID not found in logs\"\nfi\n\necho \"Found Invocation ID: $invocation_id\"\nenvman add --key INVOCATION_ID --value \"$invocation_id\""
     - script:
         title: Assert invocation from API
         inputs:
-          - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
 
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
-              assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
     - deploy-to-bitrise-io@2: {}
-
   feature-e2e-gradle-7:
     envs:
-      - TEST_APP_URL: https://github.com/bitrise-io/Bitrise-Android-Sample
-      - BRANCH: main
-    steps:
-      - bundle::feature-e2e-setup: { }
-      - apt-get-install:
-          inputs:
-            - packages: 'bc'
-            - upgrade: "no"
-      - script:
-          title: Enable build cache
-          inputs:
-            - content: |-
-                set -exo pipefail
-                ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
-      - script:
-          title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
-          inputs:
-            - content: |-
-                cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
-      - script:
-          title: Build and capture logs
-          inputs:
-            - content: |-
-                set -exo pipefail
-                (./gradlew compileDebugKotlin --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
-      - script:
-          title: Check for cache invocations
-          inputs:
-            - content: |-
-                set -exo pipefail
-
-                ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-                  '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-                  '\[Bitrise Build Cache\].*Request metadata invocationId' \
-                  '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-
-                source ../_e2e/scripts/extract_invocation_id.sh
-
-                invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
-                if [[ -z "$invocation_id" ]]; then
-                  fatal "Invocation ID not found in logs"
-                fi
-
-                echo "Found Invocation ID: $invocation_id"
-                envman add --key INVOCATION_ID --value "$invocation_id"
-      - script:
-          title: Assert invocation from API
-          inputs:
-            - content: |-
-                source ../_e2e/scripts/assert_invocations.sh
-
-                assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
-                assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
-                assert_invocation_tasks_gradle "$INVOCATION_ID"
-                assert_build_performance "$INVOCATION_ID"
-                assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
-      - deploy-to-bitrise-io@2: { }
-
-  feature-e2e-gradle-bitwarden:
-    envs:
-    - TEST_APP_URL: git@github.com:bitwarden/android.git
-    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
+    - TEST_APP_URL: https://github.com/bitrise-io/Bitrise-Android-Sample
+    - BRANCH: main
     steps:
     - bundle::feature-e2e-setup: {}
     - apt-get-install:
         inputs:
-          - packages: 'bc'
-          - upgrade: "no"
+        - packages: bc
+        - upgrade: "no"
     - script:
         title: Enable build cache
         inputs:
@@ -426,8 +341,49 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+    - script:
+        title: Build and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (./gradlew compileDebugKotlin --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: "set -exo pipefail\n\n../scripts/check_pattern.sh \"$BITRISE_DEPLOY_DIR/logs.txt\" \\\n  '\\[Bitrise Build Cache\\].*\U0001F916 Bitrise remote cache enabled' \\\n  '\\[Bitrise Build Cache\\].*Request metadata invocationId' \\\n  '\\[Bitrise Analytics\\].*\U0001F916 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'\n\nsource ../_e2e/scripts/extract_invocation_id.sh\n\ninvocation_id=$(extract_invocation_id_gradle \"$BITRISE_DEPLOY_DIR/logs.txt\")\nif [[ -z \"$invocation_id\" ]]; then\n  fatal \"Invocation ID not found in logs\"\nfi\n\necho \"Found Invocation ID: $invocation_id\"\nenvman add --key INVOCATION_ID --value \"$invocation_id\""
+    - script:
+        title: Assert invocation from API
+        inputs:
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
+
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+    - deploy-to-bitrise-io@2: {}
+  feature-e2e-gradle-bitwarden:
+    envs:
+    - TEST_APP_URL: git@github.com:bitwarden/android.git
+    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+        - packages: bc
+        - upgrade: "no"
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+    - script:
+        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+        inputs:
+        - content: cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
@@ -464,35 +420,18 @@ workflows:
     - script:
         title: Check for cache invocations
         inputs:
-        - content: |-
-            set -exo pipefail
-
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              'Reusing configuration cache.' \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId' \
-              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-
-            source ../_e2e/scripts/extract_invocation_id.sh
-
-            invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
-            if [[ -z "$invocation_id" ]]; then
-              fatal "Invocation ID not found in logs"
-            fi
-
-            echo "Found Invocation ID: $invocation_id"
-            envman add --key INVOCATION_ID --value "$invocation_id"
+        - content: "set -exo pipefail\n\n../scripts/check_pattern.sh \"$BITRISE_DEPLOY_DIR/logs.txt\" \\\n  'Reusing configuration cache.' \\\n  '\\[Bitrise Build Cache\\].*\U0001F916 Bitrise remote cache enabled' \\\n  '\\[Bitrise Build Cache\\].*Request metadata invocationId' \\\n  '\\[Bitrise Analytics\\].*\U0001F916 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'\n\nsource ../_e2e/scripts/extract_invocation_id.sh\n\ninvocation_id=$(extract_invocation_id_gradle \"$BITRISE_DEPLOY_DIR/logs.txt\")\nif [[ -z \"$invocation_id\" ]]; then\n  fatal \"Invocation ID not found in logs\"\nfi\n\necho \"Found Invocation ID: $invocation_id\"\nenvman add --key INVOCATION_ID --value \"$invocation_id\""
     - script:
         title: Assert invocation from API
         inputs:
-          - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
 
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
-              assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
     - deploy-to-bitrise-io@2: {}
   feature-e2e-bazel-bitrisedc-no-rbe:
     meta:
@@ -506,8 +445,8 @@ workflows:
     - bundle::feature-e2e-setup: {}
     - apt-get-install:
         inputs:
-          - packages: 'bc'
-          - upgrade: "no"
+        - packages: bc
+        - upgrade: "no"
     - script@1:
         inputs:
         - content: |
@@ -557,108 +496,105 @@ workflows:
     - script:
         title: Assert invocation from API
         inputs:
-          - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
 
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
-              assert_invocation_targets_bazel "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+            assert_invocation_targets_bazel "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
     - deploy-to-bitrise-io@2: {}
-
   feature-e2e-bazel-public-no-rbe:
     meta:
       bitrise.io:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-      - BRANCH: master
+    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+    - BRANCH: master
     steps:
-      - bundle::feature-e2e-setup: { }
-      - apt-get-install:
-          inputs:
-            - packages: 'bc dnsutils iputils-ping'
-            - upgrade: "no"
-      - script:
-          title: Enable build cache
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -exo pipefail
+    - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+        - packages: bc dnsutils iputils-ping
+        - upgrade: "no"
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
 
-                echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
-                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
-      - script:
-          title: Build and capture logs using Docker
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -exo pipefail
+            echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
+            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+    - script:
+        title: Build and capture logs using Docker
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
 
-                mkdir -p ../_dockerroot
-                cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
+            mkdir -p ../_dockerroot
+            cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
 
-                echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
+            echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
 
-                sudo docker run --rm \
-                  -w "/workspace" \
-                  -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
-                  -e "BITRISE_BUILD_SLUG=$BITRISE_BUILD_SLUG" \
-                  -e "BITRISE_STEP_EXECUTION_ID=$BITRISE_STEP_EXECUTION_ID" \
-                  -e "BITRISE_TRIGGERED_WORKFLOW_TITLE=$BITRISE_TRIGGERED_WORKFLOW_TITLE" \
-                  -e "GIT_REPOSITORY_UR=$GIT_REPOSITORY_URL" \
-                  -e "BITRISE_GIT_COMMIT=$BITRISE_GIT_COMMIT" \
-                  --mount "type=bind,source=$PWD,target=/workspace" \
-                  --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
-                  --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
-                  ubuntu:22.04 \
-                  bash -c "set -o pipefail; apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
-                    curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
-                    chmod +x bazelisk && \
-                    ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
+            sudo docker run --rm \
+              -w "/workspace" \
+              -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
+              -e "BITRISE_BUILD_SLUG=$BITRISE_BUILD_SLUG" \
+              -e "BITRISE_STEP_EXECUTION_ID=$BITRISE_STEP_EXECUTION_ID" \
+              -e "BITRISE_TRIGGERED_WORKFLOW_TITLE=$BITRISE_TRIGGERED_WORKFLOW_TITLE" \
+              -e "GIT_REPOSITORY_UR=$GIT_REPOSITORY_URL" \
+              -e "BITRISE_GIT_COMMIT=$BITRISE_GIT_COMMIT" \
+              --mount "type=bind,source=$PWD,target=/workspace" \
+              --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
+              --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
+              ubuntu:22.04 \
+              bash -c "set -o pipefail; apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
+                curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
+                chmod +x bazelisk && \
+                ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
 
-      - script:
-          title: Check for cache invocations
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -exo pipefail
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+              '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
+              'Invocation ID: ' \
+              '--bes_header=x-os=Linux' \
+              '--bes_header=x-cpu-cores=[0-9]+' \
+              '--bes_header=x-mem-size=[0-9]+' \
+              '--bes_header=x-ci-provider=bitrise' \
+              "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
+              '--bes_header=x-locale=\w+' \
+              '--bes_header=x-default-charset=\w+'
 
-                ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-                  '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
-                  'Invocation ID: ' \
-                  '--bes_header=x-os=Linux' \
-                  '--bes_header=x-cpu-cores=[0-9]+' \
-                  '--bes_header=x-mem-size=[0-9]+' \
-                  '--bes_header=x-ci-provider=bitrise' \
-                  "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
-                  '--bes_header=x-locale=\w+' \
-                  '--bes_header=x-default-charset=\w+'
+              source ../_e2e/scripts/extract_invocation_id.sh
 
-                  source ../_e2e/scripts/extract_invocation_id.sh
+              invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
+              if [[ -z "$invocation_id" ]]; then
+                fatal "Invocation ID not found in logs"
+              fi
 
-                  invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
-                  if [[ -z "$invocation_id" ]]; then
-                    fatal "Invocation ID not found in logs"
-                  fi
+              echo "Found Invocation ID: $invocation_id"
+              envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
 
-                  echo "Found Invocation ID: $invocation_id"
-                  envman add --key INVOCATION_ID --value "$invocation_id"
-      - script:
-          title: Assert invocation from API
-          inputs:
-            - content: |-
-                source ../_e2e/scripts/assert_invocations.sh
-
-                assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
-                assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
-                assert_invocation_targets_bazel "$INVOCATION_ID"
-                assert_build_performance "$INVOCATION_ID"
-                assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
-      - deploy-to-bitrise-io@2: { }
-
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+            assert_invocation_targets_bazel "$INVOCATION_ID"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+    - deploy-to-bitrise-io@2: {}
   gradle-configuration-e2e-osx:
     meta:
       bitrise.io:
@@ -678,8 +614,7 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-        - content: |-
-            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
@@ -714,16 +649,8 @@ workflows:
     - script:
         title: Check for cache invocations
         inputs:
-        - content: |-
-            set -exo pipefail
-
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              'Reusing configuration cache.' \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId' \
-              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+        - content: "set -exo pipefail\n\n../scripts/check_pattern.sh \"$BITRISE_DEPLOY_DIR/logs.txt\" \\\n  'Reusing configuration cache.' \\\n  '\\[Bitrise Build Cache\\].*\U0001F916 Bitrise remote cache enabled' \\\n  '\\[Bitrise Build Cache\\].*Request metadata invocationId' \\\n  '\\[Bitrise Analytics\\].*\U0001F916 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'"
     - deploy-to-bitrise-io@2: {}
-
   gradle-configuration-e2e-linux:
     meta:
       bitrise.io:
@@ -742,8 +669,7 @@ workflows:
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        - content: cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
     - script:
         title: Create local configuration cache
         inputs:
@@ -778,14 +704,7 @@ workflows:
     - script:
         title: Check for cache invocations
         inputs:
-        - content: |-
-            set -exo pipefail
-
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              'Reusing configuration cache.' \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId' \
-              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+        - content: "set -exo pipefail\n\n../scripts/check_pattern.sh \"$BITRISE_DEPLOY_DIR/logs.txt\" \\\n  'Reusing configuration cache.' \\\n  '\\[Bitrise Build Cache\\].*\U0001F916 Bitrise remote cache enabled' \\\n  '\\[Bitrise Build Cache\\].*Request metadata invocationId' \\\n  '\\[Bitrise Analytics\\].*\U0001F916 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'"
     - deploy-to-bitrise-io@2: {}
   e2e-xcode-comp-cache:
     meta:
@@ -800,68 +719,67 @@ workflows:
     - script:
         title: activate xcode using CLI
         inputs:
-          - content: |-
-              #!/usr/bin/env bash
-              set -eo pipefail
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
 
-              echo "Original Xcodebuild command location:"
-              type xcodebuild || true
+            echo "Original Xcodebuild command location:"
+            type xcodebuild || true
 
-              # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
-              ../bitrise-build-cache-cli -d activate xcode \
-                --cache
+            # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
+            ../bitrise-build-cache-cli -d activate xcode \
+              --cache
     - script:
         title: build app
         inputs:
-          - content: |-
-              echo "Xcodebuild command location after activation:"
-              type xcodebuild || true
+        - content: |-
+            echo "Xcodebuild command location after activation:"
+            type xcodebuild || true
 
-              echo "Config file content:"
-              cat "$HOME/.bitrise-xcelerate/config.json"
+            echo "Config file content:"
+            cat "$HOME/.bitrise-xcelerate/config.json"
 
-              echo "Starting build..."
-              xcodebuild build \
-                -workspace ComposableArchitecture.xcworkspace \
-                -scheme ComposableArchitecture \
-                -destination "generic/platform=iOS" \
-                -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
-
+            echo "Starting build..."
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
     - script:
         title: gather info
         inputs:
-          - content: |-
-              set -exo pipefail
+        - content: |-
+            set -exo pipefail
 
-              cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
-              cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
-              cp xcodebuild.log $BITRISE_DEPLOY_DIR
-              cp wrapper.log $BITRISE_DEPLOY_DIR
+            cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
+            cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
+            cp xcodebuild.log $BITRISE_DEPLOY_DIR
+            cp wrapper.log $BITRISE_DEPLOY_DIR
 
-              cat "$BITRISE_DEPLOY_DIR/wrapper.log"
-              head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
-              tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
+            cat "$BITRISE_DEPLOY_DIR/wrapper.log"
+            head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
+            tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
 
-              source ../_e2e/scripts/error.sh
-              source ../_e2e/scripts/extract_invocation_id.sh
+            source ../_e2e/scripts/error.sh
+            source ../_e2e/scripts/extract_invocation_id.sh
 
-              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
-              if [[ -z "$invocation_id" ]]; then
-                fatal "Invocation ID not found in logs"
-              fi
+            invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
+            if [[ -z "$invocation_id" ]]; then
+              fatal "Invocation ID not found in logs"
+            fi
 
-              echo "Found Invocation ID: $invocation_id"
-              envman add --key INVOCATION_ID --value "$invocation_id"
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
     - script:
         title: Assert invocation from API
         inputs:
-           - content: |-
-               source ../_e2e/scripts/assert_invocations.sh
+        - content: |-
+            source ../_e2e/scripts/assert_invocations.sh
 
-               assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
-               assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
-               assert_build_performance "$INVOCATION_ID"
-               assert_invocation_in_build_performance "$INVOCATION_ID" "xcode"
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
+            assert_build_performance "$INVOCATION_ID"
+            assert_invocation_in_build_performance "$INVOCATION_ID" "xcode"
     - script:
         title: Check for cache usage
         inputs:
@@ -1366,6 +1284,137 @@ workflows:
             ccache -s
             ccache -z
         title: ccache stats
+  rn-cache-notesnook-android-metro:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    tools:
+      ruby: 3.3:installed
+      nodejs: 24:installed
+    steps:
+    - activate-ssh-key@4: {}
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: git@github.com:streetwriters/notesnook.git
+        - clone_into_dir: ./_tmp
+        - commit: e635ace33876f555ea5f1397a96073853e64a304
+    - change-workdir@1:
+        inputs:
+        - path: ./_tmp
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
+            npm ci
+        title: npm install
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run build:android
+        title: build w/o cache
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run clean
+            npm ci
+        title: clean project
+    - brew-install@1:
+        inputs:
+        - packages: ccache
+        title: Brew install ccache
+    - activate-build-cache-for-gradle@2: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run build:android
+        title: build with gradle build cache
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            ccache -s
+            ccache -z
+        title: ccache stats
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run clean
+            npm ci
+        title: clean project
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            npm run build:android
+        title: build with gradle build cache
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            ccache -s
+            ccache -z
+        title: ccache stats
+    - deploy-to-bitrise-io@2: {}
+  rn-baseline:
+    steps:
+    - activate-ssh-key@4: {}
+    - brew-install@1:
+        title: Brew install ccache
+        inputs:
+        - packages: ccache
+    - script@1:
+        title: Configure Metro cache
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            cat > metro.config.js <<'EOF'
+            const path = require('node:path');
+
+            module.exports = {
+              cacheStores: ({ FileStore }) => [
+                new FileStore({
+                  // directory next to this config file: ./metro-cache
+                  root: path.join(__dirname, 'metro-cache'),
+                }),
+              ],
+            };
+            EOF
+    envs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        is_expand: false
+    - XDG_CACHE_HOME: $WORK_DIR
+      opts:
+        is_expand: false
+  rn-seek-baseline:
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek: {}
+    - bundle::rn-deploy-caches: {}
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1402,184 +1451,317 @@ step_bundles:
             # Copy metadata to be included in the CLI binary
             mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
             envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-
   check_gradle_verification_reference:
     steps:
     - script@1:
         title: Check if local updates to verification-metadata.xml are not commited
         inputs:
-          - content: |-
-              set -x
+        - content: |-
+            set -x
 
-              git update-index --refresh | grep "cmd/gradle/asset/verification-metadata.xml"
-              if [[ $? == 0 ]]; then
-                echo "Please manually commit the changes to the repo:"
-                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 1
-              else
-                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
-                exit 0
-              fi
+            git update-index --refresh | grep "cmd/gradle/asset/verification-metadata.xml"
+            if [[ $? == 0 ]]; then
+              echo "Please manually commit the changes to the repo:"
+              echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+              exit 1
+            else
+              echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
+              exit 0
+            fi
   generate_and_commit_dependency_matrix:
     steps:
-      - script:
-          run_if: ".IsCI"
-          title: Install pandoc
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
+    - script:
+        run_if: .IsCI
+        title: Install pandoc
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
 
-                wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
-                tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
-                sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
+            wget https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+            tar xvzf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+            sudo mv pandoc-$PANDOC_VERSION/bin/pandoc /usr/local/bin/
 
-                rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
-                rm -rf pandoc-$PANDOC_VERSION
+            rm -rf pandoc-$PANDOC_VERSION-linux-amd64.tar.gz
+            rm -rf pandoc-$PANDOC_VERSION
 
-                pandoc --version
-      - script:
-          title: Install go versions
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
+            pandoc --version
+    - script:
+        title: Install go versions
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
 
-                asdf install golang 1.23.8
-                asdf install golang 1.21.5
-      - script:
-          title: Generate dependency matrix
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
+            asdf install golang 1.23.8
+            asdf install golang 1.21.5
+    - script:
+        title: Generate dependency matrix
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
 
-                bash ./scripts/generate-dependency-matrix.sh
-      - script:
-          title: Reformat dependency matrix
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
+            bash ./scripts/generate-dependency-matrix.sh
+    - script:
+        title: Reformat dependency matrix
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
 
-                pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
-                mv cleaned.md docs/dependency-matrix.md
-      - script:
-          title: Commit dependency matrix
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
+            pandoc --from=markdown --to=gfm --wrap=auto --output cleaned.md docs/dependency-matrix.md
+            mv cleaned.md docs/dependency-matrix.md
+    - script:
+        title: Commit dependency matrix
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -ex
 
-                git status
-                ls -l docs/dependency-matrix.md
-                git stash push -u -m "stash before switching to gh-pages"
+            git status
+            ls -l docs/dependency-matrix.md
+            git stash push -u -m "stash before switching to gh-pages"
 
-                git fetch --all
-                git checkout gh-pages
+            git fetch --all
+            git checkout gh-pages
 
-                rm -f docs/dependency-matrix.md
-                git stash apply
+            rm -f docs/dependency-matrix.md
+            git stash apply
 
-                if [ ! -f docs/dependency-matrix.md ]; then
-                  echo "No dependency matrix found, skipping commit."
-                  exit -1
-                fi
+            if [ ! -f docs/dependency-matrix.md ]; then
+              echo "No dependency matrix found, skipping commit."
+              exit -1
+            fi
 
-                if [ -n "$(git status --porcelain)" ]; then
-                  echo "Changes detected, committing and pushing to gh-pages branch."
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "Changes detected, committing and pushing to gh-pages branch."
 
-                  git add docs/dependency-matrix.md
-                  git diff --cached docs/dependency-matrix.md
+              git add docs/dependency-matrix.md
+              git diff --cached docs/dependency-matrix.md
 
-                  git commit -m "chore: update dependency matrix"
-                  git push origin gh-pages
-                else
-                  echo "No changes detected, skipping commit."
-                  exit 0
-                fi
-
+              git commit -m "chore: update dependency matrix"
+              git push origin gh-pages
+            else
+              echo "No changes detected, skipping commit."
+              exit 0
+            fi
   feature-e2e-setup:
     steps:
-      - activate-ssh-key:
-          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-      - script:
-          title: Clone e2e testing repo with deploy key
-          run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | ne ""}}'
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -ex
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - script:
+        title: Clone e2e testing repo with deploy key
+        run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | ne ""}}'
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
 
-                mkdir -p ~/.ssh
-                echo "$SSH_DEPLOY_KEY_E2E_TESTING" > ~/.ssh/github_deploy_build_cache_e2e_testing
-                chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
+            mkdir -p ~/.ssh
+            echo "$SSH_DEPLOY_KEY_E2E_TESTING" > ~/.ssh/github_deploy_build_cache_e2e_testing
+            chmod 600 ~/.ssh/github_deploy_build_cache_e2e_testing
 
-                ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
+            ssh-add ~/.ssh/github_deploy_build_cache_e2e_testing
 
-                mkdir -p ./_e2e
-                GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
+            mkdir -p ./_e2e
+            GIT_SSH_COMMAND='ssh -i ~/.ssh/github_deploy_build_cache_e2e_testing -o IdentitiesOnly=yes' git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
 
-                ls -la ./_e2e
-      - script:
-          title: Clone e2e repo with existing SSH key
-          run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | eq ""}}'
-          inputs:
-            - content: |-
-                #!/bin/bash
-                set -ex
+            ls -la ./_e2e
+    - script:
+        title: Clone e2e repo with existing SSH key
+        run_if: '{{getenv "SSH_DEPLOY_KEY_E2E_TESTING" | eq ""}}'
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
 
-                rm -rf ./_e2e
-                mkdir -p ./_e2e
-                git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
+            rm -rf ./_e2e
+            mkdir -p ./_e2e
+            git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
 
-                ls -la ./_e2e
-      - script:
-          title: Delete _tmp dirs
-          inputs:
-            - content: rm -rf _tmp
-      - script:
-          title: Delete DerivedData
-          inputs:
-            - content: rm -rf ~/Library/Developer/Xcode/DerivedData
-      - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-          inputs:
-            - repository_url: "$TEST_APP_URL"
-            - clone_into_dir: "./_tmp"
-            - branch: "$BRANCH"
-            - commit: "$COMMIT"
-      - git-clone: {}
-      - script:
-          title: build CLI
-          inputs:
-            - content: |-
-                set -exo pipefail
-                go build -o bitrise-build-cache-cli
-      - change-workdir:
-          title: Switch working dir to _tmp
-          inputs:
-            - path: "./_tmp"
+            ls -la ./_e2e
+    - script:
+        title: Delete _tmp dirs
+        inputs:
+        - content: rm -rf _tmp
+    - script:
+        title: Delete DerivedData
+        inputs:
+        - content: rm -rf ~/Library/Developer/Xcode/DerivedData
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: $TEST_APP_URL
+        - clone_into_dir: ./_tmp
+        - branch: $BRANCH
+        - commit: $COMMIT
+    - git-clone: {}
+    - script:
+        title: build CLI
+        inputs:
+        - content: |-
+            set -exo pipefail
+            go build -o bitrise-build-cache-cli
+    - change-workdir:
+        title: Switch working dir to _tmp
+        inputs:
+        - path: ./_tmp
   update-step:
     steps:
-      - script:
-          title: Create PR for step update
-          run_if: true
-          inputs:
-            - content: |
-                #!/usr/bin/env bash
-                set -ex
+    - script:
+        title: Create PR for step update
+        run_if: true
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -ex
 
-                ./scripts/update_step.sh
-      - slack@4:
-          title: Send slack notification about PR
-          run_if: '{{ getenv "SLACK_MESSAGE" | ne "" }}'
-          inputs:
-            - channel: "#team-advanced-ci-alerts-website"
-            - text: "$SLACK_MESSAGE"
-            - emoji: "$SLACK_EMOJI"
-            - color: "$SLACK_COLOR"
-            - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+            ./scripts/update_step.sh
+    - slack@4:
+        title: Send slack notification about PR
+        run_if: '{{ getenv "SLACK_MESSAGE" | ne "" }}'
+        inputs:
+        - channel: '#team-advanced-ci-alerts-website'
+        - text: $SLACK_MESSAGE
+        - emoji: $SLACK_EMOJI
+        - color: $SLACK_COLOR
+        - webhook_url: $SLACK_WEBHOOK_ALERTS
+  rn-prepare:
+    steps:
+    - activate-ssh-key@4: {}
+    - brew-install@1:
+        title: Brew install ccache
+        inputs:
+        - packages: ccache
+    - script@1:
+        title: Configure Metro cache
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
 
+            cat > metro.config.js <<'EOF'
+            const path = require('node:path');
+
+            module.exports = {
+              cacheStores: ({ FileStore }) => [
+                new FileStore({
+                  // directory next to this config file: ./metro-cache
+                  root: path.join(__dirname, 'metro-cache'),
+                }),
+              ],
+            };
+            EOF
+    inputs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: WORK_DIR
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: XDG_CACHE_HOME
+  rn-deploy-caches:
+    inputs:
+    - METRO_PATH: $BITRISE_SOURCE_DIR/_tmp/metro-cache
+      opts:
+        title: METRO_PATH
+    - CCACHE_PATH: $BITRISE_SOURCE_DIR/_tmp/ccache
+      opts:
+        title: CCACHE_PATH
+    - METRO_CONFIG_PATH: $BITRISE_SOURCE_DIR/_tmp/metro.config.js
+      opts:
+        title: METRO_CONFIG_PATH
+    steps:
+    - deploy-to-bitrise-io@2.22.0:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $CCACHE_PATH:CCACHE_PATH
+            $METRO_PATH:METRO_PATH
+  rn-notesnook:
+    steps:
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: git@github.com:streetwriters/notesnook.git
+        - clone_into_dir: $WORK_DIR
+        - commit: e635ace33876f555ea5f1397a96073853e64a304
+    - change-workdir@1:
+        inputs:
+        - path: $WORK_DIR
+    - script@1:
+        title: Configure
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
+    - script@1:
+        title: npm ci
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npm ci
+    - script@1:
+        title: npm build:android
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npm run build:android
+    inputs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: WORK_DIR
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: XDG_CACHE_HOME
+  rn-seek:
+    steps:
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: git@github.com:inaturalist/SeekReactNative.git
+        - clone_into_dir: $WORK_DIR
+        - commit: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - change-workdir@1:
+        inputs:
+        - path: $WORK_DIR
+    - script@1:
+        title: Configure
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            cat > ./android/app/src/main/res/values/config.xml <<'EOF'
+            <?xml version="1.0" encoding="utf-8"?>
+            <!-- copy this file to config.xml and uncomment / fill in the values specific to your project -->
+            <resources>
+                <!-- https://developers.google.com/maps/documentation/android/ -->
+                <string name="gmaps_api_key">xxx</string>
+            </resources>
+            EOF
+
+            mv config.example.js config.js
+    - script@1:
+        title: npm ci
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npm ci
+            npm run add-example-model
+    - script@1:
+        title: npx react-native build-android
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npx react-native build-android
+    inputs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: WORK_DIR
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: XDG_CACHE_HOME
 pipelines:
   features-e2e:
     workflows:
@@ -1594,6 +1776,6 @@ pipelines:
       e2e-xcode-comp-cache: {}
     triggers:
       pull_request:
-        - source_branch: "*"
+      - source_branch: '*'
       push:
-        - branch: main
+      - branch: main
