@@ -97,6 +97,9 @@ type GetSessionStatsResponse struct {
 	Hits            int64                  `protobuf:"varint,3,opt,name=hits,proto3" json:"hits,omitempty"`
 	Misses          int64                  `protobuf:"varint,4,opt,name=misses,proto3" json:"misses,omitempty"`
 	Uploads         int64                  `protobuf:"varint,5,opt,name=uploads,proto3" json:"uploads,omitempty"`
+	KvHits          int64                  `protobuf:"varint,6,opt,name=kv_hits,json=kvHits,proto3" json:"kv_hits,omitempty"`
+	KvMisses        int64                  `protobuf:"varint,7,opt,name=kv_misses,json=kvMisses,proto3" json:"kv_misses,omitempty"`
+	KvUploadedBytes int64                  `protobuf:"varint,8,opt,name=kv_uploaded_bytes,json=kvUploadedBytes,proto3" json:"kv_uploaded_bytes,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -166,6 +169,27 @@ func (x *GetSessionStatsResponse) GetUploads() int64 {
 	return 0
 }
 
+func (x *GetSessionStatsResponse) GetKvHits() int64 {
+	if x != nil {
+		return x.KvHits
+	}
+	return 0
+}
+
+func (x *GetSessionStatsResponse) GetKvMisses() int64 {
+	if x != nil {
+		return x.KvMisses
+	}
+	return 0
+}
+
+func (x *GetSessionStatsResponse) GetKvUploadedBytes() int64 {
+	if x != nil {
+		return x.KvUploadedBytes
+	}
+	return 0
+}
+
 var File_llvm_session_session_proto protoreflect.FileDescriptor
 
 const file_llvm_session_session_proto_rawDesc = "" +
@@ -176,13 +200,16 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"\bapp_slug\x18\x02 \x01(\tR\aappSlug\x12\x1d\n" +
 	"\n" +
 	"build_slug\x18\x03 \x01(\tR\tbuildSlug\x12\x1b\n" +
-	"\tstep_slug\x18\x04 \x01(\tR\bstepSlug\"\xb1\x01\n" +
+	"\tstep_slug\x18\x04 \x01(\tR\bstepSlug\"\x93\x02\n" +
 	"\x17GetSessionStatsResponse\x12%\n" +
 	"\x0euploaded_bytes\x18\x01 \x01(\x03R\ruploadedBytes\x12)\n" +
 	"\x10downloaded_bytes\x18\x02 \x01(\x03R\x0fdownloadedBytes\x12\x12\n" +
 	"\x04hits\x18\x03 \x01(\x03R\x04hits\x12\x16\n" +
 	"\x06misses\x18\x04 \x01(\x03R\x06misses\x12\x18\n" +
-	"\auploads\x18\x05 \x01(\x03R\auploads2\x9c\x01\n" +
+	"\auploads\x18\x05 \x01(\x03R\auploads\x12\x17\n" +
+	"\akv_hits\x18\x06 \x01(\x03R\x06kvHits\x12\x1b\n" +
+	"\tkv_misses\x18\a \x01(\x03R\bkvMisses\x12*\n" +
+	"\x11kv_uploaded_bytes\x18\b \x01(\x03R\x0fkvUploadedBytes2\x9c\x01\n" +
 	"\aSession\x12B\n" +
 	"\n" +
 	"SetSession\x12\x1a.session.SetSessionRequest\x1a\x16.google.protobuf.Empty\"\x00\x12M\n" +

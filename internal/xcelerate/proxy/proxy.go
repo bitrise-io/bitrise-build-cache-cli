@@ -137,6 +137,9 @@ func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.G
 		Hits:            collectedStats.hits,
 		Misses:          collectedStats.misses,
 		Uploads:         collectedStats.uploads,
+		KvHits:          collectedStats.kvHits,
+		KvMisses:        collectedStats.kvMisses,
+		KvUploadedBytes: collectedStats.kvUploadBytes,
 	}, nil
 }
 
@@ -508,6 +511,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
 			p.sessionState.incrementMisses()
+			p.sessionState.incrementKVMisses()
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -543,6 +547,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	hit = true
 	p.sessionState.addDownloadBytes(size)
 	p.sessionState.incrementHits()
+	p.sessionState.incrementKVHits()
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -596,6 +601,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}
 
 	p.sessionState.addUploadBytes(size)
+	p.sessionState.addKVUploadBytes(size)
 	p.sessionState.incrementUploads()
 
 	//nolint:exhaustruct
