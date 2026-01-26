@@ -41,7 +41,7 @@ func (s *sessionState) addUploadBytes(n int64) {
 }
 
 func (s *sessionState) addKVUploadBytes(n int64) {
-	s.uploadBytes.Add(n)
+	s.kvUploadBytes.Add(n)
 }
 
 func (s *sessionState) getStats() stats {
