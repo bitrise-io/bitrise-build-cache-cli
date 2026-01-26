@@ -1377,43 +1377,79 @@ workflows:
             ccache -z
         title: ccache stats
     - deploy-to-bitrise-io@2: {}
-  rn-baseline:
-    steps:
-    - activate-ssh-key@4: {}
-    - brew-install@1:
-        title: Brew install ccache
-        inputs:
-        - packages: ccache
-    - script@1:
-        title: Configure Metro cache
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-
-            cat > metro.config.js <<'EOF'
-            const path = require('node:path');
-
-            module.exports = {
-              cacheStores: ({ FileStore }) => [
-                new FileStore({
-                  // directory next to this config file: ./metro-cache
-                  root: path.join(__dirname, 'metro-cache'),
-                }),
-              ],
-            };
-            EOF
-    envs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-      opts:
-        is_expand: false
-    - XDG_CACHE_HOME: $WORK_DIR
-      opts:
-        is_expand: false
   rn-seek-baseline:
     steps:
-    - bundle::rn-prepare: {}
-    - bundle::rn-seek: {}
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - bundle::rn-seek-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-notesnook-baseline:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - bundle::rn-notesnook-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-seek-metro:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+        - USE_CCACHE: "false"
+        - BASE_WORKFLOW: rn-seek-baseline
+    - bundle::rn-seek-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-seek-ccache:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+        - USE_METRO: "false"
+        - BASE_WORKFLOW: rn-seek-baseline
+    - bundle::rn-seek-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-seek-all:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+        - BASE_WORKFLOW: rn-seek-baseline
+    - bundle::rn-seek-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-notesnook-metro:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+        - USE_CCACHE: "false"
+        - BASE_WORKFLOW: rn-notesnook-baseline
+    - bundle::rn-notesnook-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-notesnook-ccache:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+        - USE_METRO: "false"
+        - BASE_WORKFLOW: rn-notesnook-baseline
+    - bundle::rn-notesnook-android: {}
+    - bundle::rn-deploy-caches: {}
+  rn-notesnook-all:
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+        - BASE_WORKFLOW: rn-notesnook-baseline
+    - bundle::rn-notesnook-android: {}
     - bundle::rn-deploy-caches: {}
 step_bundles:
   generate_gradle_verification_reference:
@@ -1633,6 +1669,20 @@ step_bundles:
         title: Brew install ccache
         inputs:
         - packages: ccache
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - clone_into_dir: $WORK_DIR
+        - commit: $APP_COMMIT
+        - repository_url: $APP_REPO_URL
+        - branch: $APP_BRANCH
+    - change-workdir@1:
+        inputs:
+        - path: $WORK_DIR
+    - pull-intermediate-files@1.3.4:
+        run_if: '{{getenv "BASE_WORKFLOW" | ne ""}}'
+        inputs:
+        - artifact_sources: $BASE_WORKFLOW
     - script@1:
         title: Configure Metro cache
         inputs:
@@ -1652,6 +1702,7 @@ step_bundles:
               ],
             };
             EOF
+        run_if: '{{getenv "USE_METRO" | eq "true"}}'
     inputs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
       opts:
@@ -1659,33 +1710,28 @@ step_bundles:
     - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
       opts:
         title: XDG_CACHE_HOME
+    - APP_REPO_URL: ""
+    - APP_BRANCH: ""
+    - APP_COMMIT: ""
+    - USE_CCACHE: "true"
+    - USE_METRO: "true"
+    - BASE_WORKFLOW: ""
   rn-deploy-caches:
     inputs:
-    - METRO_PATH: $BITRISE_SOURCE_DIR/_tmp/metro-cache
+    - METRO_PATH: $BITRISE_SOURCE_DIR/metro-cache
       opts:
         title: METRO_PATH
-    - CCACHE_PATH: $BITRISE_SOURCE_DIR/_tmp/ccache
+    - CCACHE_PATH: $BITRISE_SOURCE_DIR/ccache
       opts:
         title: CCACHE_PATH
-    - METRO_CONFIG_PATH: $BITRISE_SOURCE_DIR/_tmp/metro.config.js
-      opts:
-        title: METRO_CONFIG_PATH
     steps:
     - deploy-to-bitrise-io@2.22.0:
         inputs:
         - pipeline_intermediate_files: |-
             $CCACHE_PATH:CCACHE_PATH
             $METRO_PATH:METRO_PATH
-  rn-notesnook:
+  rn-notesnook-android:
     steps:
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: $WORK_DIR
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - change-workdir@1:
-        inputs:
-        - path: $WORK_DIR
     - script@1:
         title: Configure
         inputs:
@@ -1708,22 +1754,14 @@ step_bundles:
             set -exo pipefail
             npm run build:android
     inputs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - WORK_DIR: $BITRISE_SOURCE_DIR
       opts:
         title: WORK_DIR
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
       opts:
         title: XDG_CACHE_HOME
-  rn-seek:
+  rn-seek-android:
     steps:
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:inaturalist/SeekReactNative.git
-        - clone_into_dir: $WORK_DIR
-        - commit: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - change-workdir@1:
-        inputs:
-        - path: $WORK_DIR
     - script@1:
         title: Configure
         inputs:
@@ -1756,10 +1794,10 @@ step_bundles:
             set -exo pipefail
             npx react-native build-android
     inputs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - WORK_DIR: $BITRISE_SOURCE_DIR
       opts:
         title: WORK_DIR
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
       opts:
         title: XDG_CACHE_HOME
 pipelines:
@@ -1779,3 +1817,25 @@ pipelines:
       - source_branch: '*'
       push:
       - branch: main
+  rn-poc:
+    workflows:
+      rn-seek-baseline: {}
+      rn-notesnook-baseline: {}
+      rn-seek-metro:
+        depends_on:
+        - rn-seek-baseline
+      rn-seek-ccache:
+        depends_on:
+        - rn-seek-baseline
+      rn-seek-all:
+        depends_on:
+        - rn-seek-baseline
+      rn-notesnook-metro:
+        depends_on:
+        - rn-notesnook-baseline
+      rn-notesnook-ccache:
+        depends_on:
+        - rn-notesnook-baseline
+      rn-notesnook-all:
+        depends_on:
+        - rn-notesnook-baseline
