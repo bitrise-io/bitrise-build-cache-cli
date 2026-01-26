@@ -24,4 +24,7 @@ message GetSessionStatsResponse {
   int64 hits = 3;
   int64 misses = 4;
   int64 uploads = 5;
+  int64 kv_hits = 6;
+  int64 kv_misses = 7;
+  int64 kv_uploaded_bytes = 8;
 }

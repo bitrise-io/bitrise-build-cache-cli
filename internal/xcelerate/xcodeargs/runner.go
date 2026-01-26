@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,6 +29,12 @@ type RunStats struct {
 	DurationMS       int64
 	XcodeVersion     string
 	XcodeBuildNumber string
+	CacheStats       CompCacheStats
+}
+
+type CompCacheStats struct {
+	Hits       int64
+	TotalTasks int64
 }
 
 type DefaultRunner struct {
@@ -35,6 +42,10 @@ type DefaultRunner struct {
 	config  xcelerate.Config
 	logFile io.Writer
 }
+
+var compCacheStatLineRegex = regexp.MustCompile(`^note:\s+(\d+)\s+hits\s*/\s*(\d+)\s+cacheable`)
+
+type loglineCapturer func(line string)
 
 func NewRunner(logger log.Logger, config xcelerate.Config, logFile io.Writer) *DefaultRunner {
 	return &DefaultRunner{
@@ -62,10 +73,12 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 
 	runner.logger.TInfof("Running xcodebuild command: %s", strings.Join(append([]string{xcodePath}, args...), " "))
 
+	capturer := runner.hitRateCapturer(&runStats)
+
 	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
 	innerCmd.Stdin = os.Stdin
 	var wg sync.WaitGroup
-	runner.setupOutputPipes(ctx, innerCmd, &wg)
+	runner.setupOutputPipes(ctx, innerCmd, &wg, capturer)
 
 	interruptCtx, cancel := context.WithCancel(ctx)
 	runner.handleInterrupt(interruptCtx, innerCmd)
@@ -94,7 +107,32 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 	return runStats
 }
 
-func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd, wg *sync.WaitGroup) {
+func (runner *DefaultRunner) hitRateCapturer(runStats *RunStats) loglineCapturer {
+	return func(line string) {
+		matches := compCacheStatLineRegex.FindStringSubmatch(line)
+		if len(matches) == 3 {
+			hit := matches[1]
+			if hitInt, err := strconv.ParseInt(hit, 10, 64); err == nil {
+				runStats.CacheStats.Hits = hitInt
+			} else {
+				runner.logger.Warnf("Failed to parse cache stats hit count: %s", hit)
+			}
+
+			total := matches[2]
+			if totalInt, err := strconv.ParseInt(total, 10, 64); err == nil {
+				runStats.CacheStats.TotalTasks = totalInt
+			} else {
+				runner.logger.Warnf("Failed to parse cache stats total tasks: %s", total)
+			}
+		}
+	}
+}
+
+func (runner *DefaultRunner) setupOutputPipes(ctx context.Context,
+	cmd *exec.Cmd,
+	wg *sync.WaitGroup,
+	capturer loglineCapturer,
+) {
 	stdOutReader, err := cmd.StdoutPipe()
 	if err != nil {
 		runner.logger.Errorf("Failed to get stdout pipe: %v", err)
@@ -108,7 +146,7 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 			} else {
 				out = os.Stdout
 			}
-			runner.streamOutput(ctx, stdOutReader, out)
+			runner.streamOutput(ctx, stdOutReader, out, capturer)
 			wg.Done()
 		}()
 	}
@@ -125,7 +163,7 @@ func (runner *DefaultRunner) setupOutputPipes(ctx context.Context, cmd *exec.Cmd
 			} else {
 				out = os.Stderr
 			}
-			runner.streamOutput(ctx, stdErrReader, out)
+			runner.streamOutput(ctx, stdErrReader, out, capturer)
 			wg.Done()
 		}()
 	}
@@ -201,7 +239,11 @@ func (runner *DefaultRunner) determineXcodeVersionAndBuildNumber(ctx context.Con
 	return nil
 }
 
-func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadCloser, writer io.Writer) {
+func (runner *DefaultRunner) streamOutput(ctx context.Context,
+	reader io.ReadCloser,
+	writer io.Writer,
+	capturer loglineCapturer,
+) {
 	scanner := bufio.NewScanner(reader)
 	const maxTokenSize = 10 * 1024 * 1024
 	buf := make([]byte, 0, 64*1024)
@@ -214,6 +256,8 @@ func (runner *DefaultRunner) streamOutput(ctx context.Context, reader io.ReadClo
 		}
 
 		line := scanner.Text()
+
+		capturer(line)
 
 		if runner.config.XcodebuildTimestamps && !runner.config.Silent {
 			timestamp := time.Now().Format("15:04:05")

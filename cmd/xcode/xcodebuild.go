@@ -254,26 +254,7 @@ func XcodebuildCmdFn(
 	}
 	logger.Debugf("Run stats: %+v", runStats)
 
-	var hitRate float32
-	if proxySessionClient != nil {
-		proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
-		if err != nil {
-			logger.TErrorf("Failed to get session stats: %v", err)
-		}
-		logger.Infof(
-			"Proxy stats: uploads: %d (%s), downloads: %d (%s), misses: %d",
-			proxyStats.GetUploads(),
-			humanize.Bytes(uint64(proxyStats.GetUploadedBytes())), // nolint: gosec
-			proxyStats.GetHits(),
-			humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())), // nolint: gosec
-			proxyStats.GetMisses(),
-		)
-
-		// hit rate is hits / (hits + misses)
-		if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
-			hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
-		}
-	}
+	hitRate := getHitRateFromSessionAndRunStats(ctx, proxySessionClient, runStats, logger)
 
 	if !shouldSaveInvocation(xcodeArgs) {
 		logger.TDebugf("Save invocation skipped")
@@ -308,6 +289,63 @@ func XcodebuildCmdFn(
 	}
 
 	return runStats
+}
+
+//nolint:nestif
+func getHitRateFromSessionAndRunStats(ctx context.Context,
+	proxySessionClient session.SessionClient,
+	runStats xcodeargs.RunStats,
+	logger log.Logger,
+) float32 {
+	var hitRate float32
+	// If build cache is not enabled, session client is nil
+	if proxySessionClient != nil {
+		proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
+
+		if err != nil || proxyStats == nil {
+			logger.Warnf("Failed to get proxy session stats: %v", err)
+		} else {
+			// Lowest prio: blob-based hit rate
+			if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
+				hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
+			}
+			logger.Infof(
+				"Proxy blob stats: hits: %d (%s) / total: %d (%.02f%%). Uploaded blobs: %d (%s)",
+				proxyStats.GetHits(),
+				humanize.Bytes(uint64(proxyStats.GetDownloadedBytes())), // nolint: gosec
+				proxyStats.GetHits()+proxyStats.GetMisses(),
+				hitRate*100,
+				proxyStats.GetUploads(),
+				humanize.Bytes(uint64(proxyStats.GetUploadedBytes())), // nolint: gosec
+			)
+
+			// If we have KV stats, use that instead of blob stats.
+			if proxyStats.GetKvHits()+proxyStats.GetKvMisses() > 0 {
+				hitRate = float32(proxyStats.GetKvHits()) / float32(proxyStats.GetKvHits()+proxyStats.GetKvMisses())
+				logger.Infof(
+					"Proxy KV stats: hits: %d / total: %d (%.02f%%). Uploaded KV blobs: %s",
+					proxyStats.GetKvHits(),
+					proxyStats.GetKvHits()+proxyStats.GetKvMisses(),
+					hitRate*100,
+					humanize.Bytes(uint64(proxyStats.GetKvUploadedBytes())), // nolint: gosec
+				)
+			}
+		}
+	}
+
+	// Calculate log-based task cache hit rate even if build cache is not enabled.
+	// It shall also take priority over the proxy stats.
+	if runStats.CacheStats.TotalTasks > 0 {
+		hitRate = float32(runStats.CacheStats.Hits) / float32(runStats.CacheStats.TotalTasks)
+		logger.Infof(
+			"Xcode task stats: hits: %d / total: %d (%.02f%%)",
+			runStats.CacheStats.Hits,
+			runStats.CacheStats.TotalTasks,
+			hitRate*100,
+		)
+	}
+
+	return hitRate
 }
 
 func shouldSaveInvocation(xcodeArgs xcodeargs.XcodeArgs) bool {
