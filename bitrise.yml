@@ -800,18 +800,6 @@ workflows:
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
     - bundle::rn-seek-android: {}
     - bundle::rn-deploy-caches: {}
-  rn-notesnook-baseline:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-    - bundle::rn-notesnook-android: {}
-    - bundle::rn-deploy-caches: {}
   rn-seek-metro:
     meta:
       bitrise.io:
@@ -822,10 +810,10 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - USE_CCACHE: "false"
         - BASE_WORKFLOW: rn-seek-baseline
+        - USE_CCACHE: "false"
+        - USE_BUILD_CACHE: "false"
     - bundle::rn-seek-android: {}
-    - bundle::rn-deploy-caches: {}
   rn-seek-ccache:
     meta:
       bitrise.io:
@@ -836,10 +824,23 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - USE_METRO: "false"
         - BASE_WORKFLOW: rn-seek-baseline
+        - USE_METRO: "false"
+        - USE_BUILD_CACHE: "false"
     - bundle::rn-seek-android: {}
-    - bundle::rn-deploy-caches: {}
+  rn-seek-build-cache:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+        - USE_CCACHE: "false"
+        - USE_METRO: "false"
+    - bundle::rn-seek-android: {}
   rn-seek-all:
     meta:
       bitrise.io:
@@ -852,6 +853,17 @@ workflows:
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
         - BASE_WORKFLOW: rn-seek-baseline
     - bundle::rn-seek-android: {}
+  rn-notesnook-baseline:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - bundle::rn-notesnook-android: {}
     - bundle::rn-deploy-caches: {}
   rn-notesnook-metro:
     meta:
@@ -863,10 +875,10 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - USE_CCACHE: "false"
         - BASE_WORKFLOW: rn-notesnook-baseline
+        - USE_CCACHE: "false"
+        - USE_BUILD_CACHE: "false"
     - bundle::rn-notesnook-android: {}
-    - bundle::rn-deploy-caches: {}
   rn-notesnook-ccache:
     meta:
       bitrise.io:
@@ -877,10 +889,24 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - USE_METRO: "false"
         - BASE_WORKFLOW: rn-notesnook-baseline
+        - USE_METRO: "false"
+        - USE_BUILD_CACHE: "false"
     - bundle::rn-notesnook-android: {}
-    - bundle::rn-deploy-caches: {}
+  rn-notesnook-build-cache:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+        - BASE_WORKFLOW: rn-notesnook-baseline
+        - USE_CCACHE: "false"
+        - USE_METRO: "false"
+    - bundle::rn-notesnook-android: {}
   rn-notesnook-all:
     meta:
       bitrise.io:
@@ -893,7 +919,6 @@ workflows:
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
         - BASE_WORKFLOW: rn-notesnook-baseline
     - bundle::rn-notesnook-android: {}
-    - bundle::rn-deploy-caches: {}
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1155,19 +1180,20 @@ step_bundles:
             module.exports = mergeConfig(getDefaultConfig(__dirname), config);
             EOF
         run_if: '{{getenv "USE_METRO" | eq "true"}}'
+    - activate-build-cache-for-gradle:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - activate-build-cache-for-xcode:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
     inputs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-      opts:
-        title: WORK_DIR
     - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
-      opts:
-        title: XDG_CACHE_HOME
     - APP_REPO_URL: ""
     - APP_BRANCH: ""
     - APP_COMMIT: ""
+    - BASE_WORKFLOW: ""
     - USE_CCACHE: "true"
     - USE_METRO: "true"
-    - BASE_WORKFLOW: ""
+    - USE_BUILD_CACHE: "true"
   rn-deploy-caches:
     inputs:
     - METRO_PATH: $BITRISE_SOURCE_DIR/metro-cache
@@ -1203,13 +1229,6 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm run build:android
-    inputs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR
-      opts:
-        title: WORK_DIR
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
-      opts:
-        title: XDG_CACHE_HOME
   rn-seek-android:
     steps:
     - script@1:
@@ -1243,13 +1262,6 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npx react-native build-android
-    inputs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR
-      opts:
-        title: WORK_DIR
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
-      opts:
-        title: XDG_CACHE_HOME
 pipelines:
   features-e2e:
     workflows:
@@ -1275,5 +1287,17 @@ pipelines:
         depends_on:
         - rn-seek-baseline
       rn-notesnook-ccache:
+        depends_on:
+        - rn-notesnook-baseline
+      rn-seek-build-cache:
+        depends_on:
+        - rn-seek-baseline
+      rn-seek-all:
+        depends_on:
+        - rn-seek-baseline
+      rn-notesnook-build-cache:
+        depends_on:
+        - rn-notesnook-baseline
+      rn-notesnook-all:
         depends_on:
         - rn-notesnook-baseline
