@@ -1234,6 +1234,9 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm run build:android
+    inputs:
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
+    - WORK_DIR: $BITRISE_SOURCE_DIR
   rn-seek-android:
     steps:
     - set-env-var@0.9.1:
@@ -1273,8 +1276,8 @@ step_bundles:
             set -exo pipefail
             npx react-native build-android
     inputs:
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
-    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
+    - WORK_DIR: $BITRISE_SOURCE_DIR
 pipelines:
   features-e2e:
     workflows:
