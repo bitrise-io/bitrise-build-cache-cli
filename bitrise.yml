@@ -1212,6 +1212,7 @@ step_bundles:
         inputs:
         - value: $CCACHE_PATH
         - destination_keys: XDG_CACHE_HOME
+        run_if: '{{getenv "CCACHE_PATH" | ne ""}}'
     - script@1:
         title: Configure
         inputs:
@@ -1239,7 +1240,7 @@ step_bundles:
         inputs:
         - value: $CCACHE_PATH
         - destination_keys: XDG_CACHE_HOME
-        run_if: '{{getenv "CCACHE_PATH" | neq ""}}'
+        run_if: '{{getenv "CCACHE_PATH" | ne ""}}'
     - script@1:
         title: Configure
         inputs:
