@@ -1203,7 +1203,6 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm run build:android
-    - react-native-bundle@1.2.0: {}
     inputs:
     - WORK_DIR: $BITRISE_SOURCE_DIR
       opts:
