@@ -1179,7 +1179,7 @@ step_bundles:
     steps:
     - deploy-to-bitrise-io@2.22.0:
         inputs:
-        - pipeline_intermediate_files: $CCACHE_PATH:CCACHE_PATH
+        - pipeline_intermediate_files: $CCACHE_PATH:XDG_CACHE_HOME
   rn-notesnook-android:
     steps:
     - script@1:
