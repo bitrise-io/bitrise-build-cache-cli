@@ -1134,9 +1134,16 @@ step_bundles:
             set -exo pipefail
 
             cat > metro.config.js <<'EOF'
+            const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
             const path = require('node:path');
 
-            module.exports = {
+            /**
+             * Metro configuration
+             * https://metrobundler.dev/docs/configuration
+             *
+             * @type {import('metro-config').MetroConfig}
+             */
+            const config = {
               cacheStores: ({ FileStore }) => [
                 new FileStore({
                   // directory next to this config file: ./metro-cache
@@ -1144,6 +1151,8 @@ step_bundles:
                 }),
               ],
             };
+
+            module.exports = mergeConfig(getDefaultConfig(__dirname), config);
             EOF
         run_if: '{{getenv "USE_METRO" | eq "true"}}'
     inputs:
@@ -1170,9 +1179,7 @@ step_bundles:
     steps:
     - deploy-to-bitrise-io@2.22.0:
         inputs:
-        - pipeline_intermediate_files: |-
-            $CCACHE_PATH:CCACHE_PATH
-            $METRO_PATH:METRO_PATH
+        - pipeline_intermediate_files: $CCACHE_PATH:CCACHE_PATH
   rn-notesnook-android:
     steps:
     - script@1:
@@ -1196,6 +1203,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm run build:android
+    - react-native-bundle@1.2.0: {}
     inputs:
     - WORK_DIR: $BITRISE_SOURCE_DIR
       opts:
@@ -1264,21 +1272,9 @@ pipelines:
     workflows:
       rn-seek-baseline: {}
       rn-notesnook-baseline: {}
-      rn-seek-metro:
-        depends_on:
-        - rn-seek-baseline
       rn-seek-ccache:
         depends_on:
         - rn-seek-baseline
-      rn-seek-all:
-        depends_on:
-        - rn-seek-baseline
-      rn-notesnook-metro:
-        depends_on:
-        - rn-notesnook-baseline
       rn-notesnook-ccache:
-        depends_on:
-        - rn-notesnook-baseline
-      rn-notesnook-all:
         depends_on:
         - rn-notesnook-baseline
