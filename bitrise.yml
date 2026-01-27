@@ -824,7 +824,7 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-baseline
+        - BASE_WORKFLOW: rn-seek-cache-android
         - USE_METRO: "false"
         - USE_BUILD_CACHE: "false"
     - bundle::rn-seek-android: {}
@@ -840,6 +840,7 @@ workflows:
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
         - USE_CCACHE: "false"
         - USE_METRO: "false"
+        - BASE_WORKFLOW: rn-seek-cache-android
     - bundle::rn-seek-android: {}
   rn-seek-all:
     meta:
@@ -851,7 +852,7 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-baseline
+        - BASE_WORKFLOW: rn-seek-cache-android
     - bundle::rn-seek-android: {}
   rn-notesnook-cache-android:
     meta:
@@ -889,7 +890,7 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-baseline
+        - BASE_WORKFLOW: rn-notesnook-cache-android
         - USE_METRO: "false"
         - USE_BUILD_CACHE: "false"
     - bundle::rn-notesnook-android: {}
@@ -903,7 +904,7 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-baseline
+        - BASE_WORKFLOW: rn-notesnook-cache-android
         - USE_CCACHE: "false"
         - USE_METRO: "false"
     - bundle::rn-notesnook-android: {}
@@ -917,7 +918,7 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-baseline
+        - BASE_WORKFLOW: rn-notesnook-cache-android
     - bundle::rn-notesnook-android: {}
   rn-seek-none:
     meta:
@@ -929,7 +930,6 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-baseline
         - USE_CCACHE: "false"
         - USE_METRO: "false"
         - USE_BUILD_CACHE: "false"
@@ -944,7 +944,6 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-baseline
         - USE_CCACHE: "false"
         - USE_METRO: "false"
         - USE_BUILD_CACHE: "false"
