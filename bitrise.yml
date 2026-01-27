@@ -1205,9 +1205,13 @@ step_bundles:
     steps:
     - deploy-to-bitrise-io@2.22.0:
         inputs:
-        - pipeline_intermediate_files: $CCACHE_PATH:XDG_CACHE_HOME
+        - pipeline_intermediate_files: $CCACHE_PATH:CCACHE_PATH
   rn-notesnook-android:
     steps:
+    - set-env-var@0.9.1:
+        inputs:
+        - value: $CCACHE_PATH
+        - destination_keys: XDG_CACHE_HOME
     - script@1:
         title: Configure
         inputs:
@@ -1231,6 +1235,11 @@ step_bundles:
             npm run build:android
   rn-seek-android:
     steps:
+    - set-env-var@0.9.1:
+        inputs:
+        - value: $CCACHE_PATH
+        - destination_keys: XDG_CACHE_HOME
+        run_if: '{{getenv "CCACHE_PATH" | neq ""}}'
     - script@1:
         title: Configure
         inputs:
@@ -1262,6 +1271,9 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npx react-native build-android
+    inputs:
+    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
 pipelines:
   features-e2e:
     workflows:
