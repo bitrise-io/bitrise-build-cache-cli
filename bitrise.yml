@@ -1480,6 +1480,7 @@ workflows:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
         - BASE_WORKFLOW: rn-seek-cache-android
+        - USE_METRO: "false"
     - bundle::rn-seek-android: {}
   rn-notesnook-cache-android:
     meta:
@@ -1834,7 +1835,7 @@ step_bundles:
             mkdir -p -- "$SELECTED"
 
             # print for logging
-            echo "Set $OUTPUT_VAR_NAME=$SELECTED (CHECK_VAR present: $([[ -n \"$CHECK_VAL\" ]] && echo yes || echo no)"
+            echo "Set $OUTPUT_VAR_NAME=$SELECTED (CHECK_VAR present: $([[ -n \"$CHECK_VAL\" ]] && echo yes || echo no))"
         title: Export ccache path
     - script@1:
         title: Configure Metro cache
@@ -1951,7 +1952,18 @@ step_bundles:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
+            printenv
             npx react-native build-android
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            ccache -s
+            ccache -z
+        title: ccache stats
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
