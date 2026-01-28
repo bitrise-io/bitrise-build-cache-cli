@@ -1816,7 +1816,7 @@ step_bundles:
             # check if we have pulled ccache folder
             CCACHE_VAR_NAME="CCACHE_PATH"
             # path to use if no cache present
-            LOCAL_CCACHE_PATH="$BITRISE_SOURCE_DIR"
+            LOCAL_CCACHE_PATH="$BITRISE_SOURCE_DIR/caches"
             # env var name where ccache is looking for caches
             OUTPUT_VAR_NAME="XDG_CACHE_HOME"
 
@@ -1886,7 +1886,7 @@ step_bundles:
             printenv
     - deploy-to-bitrise-io@2.22.0:
         inputs:
-        - pipeline_intermediate_files: $XDG_CACHE_HOME:CCACHE_PATH
+        - pipeline_intermediate_files: $XDG_CACHE_HOME/caches:CCACHE_PATH
   rn-notesnook-android:
     steps:
     - set-env-var@0.9.1:
