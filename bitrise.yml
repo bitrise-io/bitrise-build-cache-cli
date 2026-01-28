@@ -1831,6 +1831,7 @@ step_bundles:
 
             # export via envman so next steps get it
             envman add --key "$OUTPUT_VAR_NAME" --value "$SELECTED"
+            mkdir -p -- "$SELECTED"
 
             # print for logging
             echo "Set $OUTPUT_VAR_NAME=$SELECTED (CHECK_VAR present: $([[ -n \"$CHECK_VAL\" ]] && echo yes || echo no)"
