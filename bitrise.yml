@@ -1952,9 +1952,6 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npx react-native build-android
-    inputs:
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
-    - WORK_DIR: $BITRISE_SOURCE_DIR
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
