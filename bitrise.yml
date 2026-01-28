@@ -1816,7 +1816,7 @@ step_bundles:
             # check if we have pulled ccache folder
             CCACHE_VAR_NAME="CCACHE_PATH"
             # path to use if no cache present
-            LOCAL_CCACHE_PATH="$BITRISE_SOURCE_DIR/_tmp"
+            LOCAL_CCACHE_PATH="$BITRISE_SOURCE_DIR"
             # env var name where ccache is looking for caches
             OUTPUT_VAR_NAME="XDG_CACHE_HOME"
 
