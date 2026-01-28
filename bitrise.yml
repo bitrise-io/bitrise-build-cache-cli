@@ -1833,7 +1833,7 @@ step_bundles:
             envman add --key "$OUTPUT_VAR_NAME" --value "$SELECTED"
 
             # print for logging
-            echo "Set $OUTPUT_VAR_NAME=$SELECTED (CHECK_VAR present: $([[ -n \"$CHECK_VAL\" ]] && echo yes || echo no)
+            echo "Set $OUTPUT_VAR_NAME=$SELECTED (CHECK_VAR present: $([[ -n \"$CHECK_VAL\" ]] && echo yes || echo no)"
         title: Export ccache path
     - script@1:
         title: Configure Metro cache
