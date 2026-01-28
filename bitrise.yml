@@ -1886,7 +1886,7 @@ step_bundles:
             printenv
     - deploy-to-bitrise-io@2.22.0:
         inputs:
-        - pipeline_intermediate_files: $XDG_CACHE_HOME/caches:CCACHE_PATH
+        - pipeline_intermediate_files: $XDG_CACHE_HOME:CCACHE_PATH
   rn-notesnook-android:
     steps:
     - set-env-var@0.9.1:
