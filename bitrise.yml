@@ -1414,7 +1414,7 @@ workflows:
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek: {}
-    - bundle::rn-deploy-caches: {}
+    - bundle::rn-finish: {}
   rn-seek-cache-android:
     meta:
       bitrise.io:
@@ -1426,13 +1426,35 @@ workflows:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
     - bundle::rn-seek-android: {}
-    - bundle::rn-deploy-caches: {}
+    - bundle::rn-finish:
+        inputs:
+        - CCACHE_PATH: $CCACHE_PATH
+        - USE_CCACHE: $USE_CCACHE
+        - USE_METRO: $USE_METRO
     envs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BASE_WORKFLOW: ""
     - CCACHE_PATH: $WORK_DIR/.ccache
     - USE_CCACHE: true
     - USE_BUILD_CACHE: true
+    - USE_METRO: false
+  rn-seek-none:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    steps:
+    - bundle::rn-prepare:
+        inputs:
+        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - bundle::rn-seek-android: {}
+    envs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BASE_WORKFLOW: rn-seek-cache-android
+    - CCACHE_PATH: ""
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: false
     - USE_METRO: false
   rn-seek-metro:
     meta:
@@ -1480,7 +1502,14 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - bundle::rn-seek-android: {}
+        - BASE_WORKFLOW: $BASE_WORKLOW
+        - CCACHE_PATH: $CCACHE_PATH
+        - USE_CCACHE: $USE_CCACHE
+        - USE_BUILD_CACHE: $USE_BUILD_CACHE
+        - USE_METRO: $USE_METRO
+    - bundle::rn-seek-android:
+        inputs:
+        - USE_CCACHE: $USE_CCACHE
     envs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BASE_WORKFLOW: rn-seek-cache-android
@@ -1499,7 +1528,7 @@ workflows:
         - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
     - bundle::rn-notesnook-android: {}
-    - bundle::rn-deploy-caches: {}
+    - bundle::rn-finish: {}
   rn-notesnook-metro:
     meta:
       bitrise.io:
@@ -1548,17 +1577,6 @@ workflows:
         - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
         - BASE_WORKFLOW: rn-notesnook-cache-android
     - bundle::rn-notesnook-android: {}
-  rn-seek-none:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - bundle::rn-seek-android: {}
   rn-notesnook-none:
     meta:
       bitrise.io:
@@ -1793,32 +1811,10 @@ step_bundles:
     - change-workdir@1:
         inputs:
         - path: $WORK_DIR
-    - pull-intermediate-files@1.3.4:
-        run_if: '{{getenv "BASE_WORKFLOW" | ne ""}}'
-        inputs:
-        - artifact_sources: $BASE_WORKFLOW
-        - verbose: true
-    - script:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -euo pipefail
-            mkdir -p $CCACHE_PATH
-            mv $IMPORTED_CCACHE $CCACHE_PATH
-        title: Copy ccache to local
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - brew-install@1:
         title: Brew install ccache
         inputs:
         - packages: ccache
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
-    - script:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-            ccache --dir $CCACHE_PATH
-        title: Set ccache path
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - script@1:
         title: Configure Metro cache
@@ -1853,6 +1849,10 @@ step_bundles:
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
     - activate-build-cache-for-xcode:
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - restore-cache@2.6.0:
+        title: Restore ccache
+        inputs:
+        - key: ccache
     inputs:
     - APP_REPO_URL: ""
     - APP_BRANCH: ""
@@ -1862,13 +1862,13 @@ step_bundles:
     - USE_CCACHE: ""
     - USE_BUILD_CACHE: ""
     - USE_METRO: ""
-  rn-deploy-caches:
+  rn-finish:
     steps:
-    - deploy-to-bitrise-io@2.22.0:
+    - save-cache@1.5.1:
         inputs:
-        - pipeline_intermediate_files: $CCACHE_PATH:IMPORTED_CCACHE
-        title: Deploy ccache
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+        - key: ccache
+        - paths: $CCACHE_PATH
+        title: Save ccache
     inputs:
     - CCACHE_PATH: ""
     - USE_CCACHE: ""
@@ -2057,5 +2057,8 @@ pipelines:
     workflows:
       rn-seek-cache-android: {}
       rn-seek-all:
+        depends_on:
+        - rn-seek-cache-android
+      rn-seek-none:
         depends_on:
         - rn-seek-cache-android
