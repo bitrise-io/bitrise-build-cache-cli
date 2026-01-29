@@ -1426,11 +1426,7 @@ workflows:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
     - bundle::rn-seek-android: {}
-    - bundle::rn-finish:
-        inputs:
-        - CCACHE_PATH: $CCACHE_PATH
-        - USE_CCACHE: $USE_CCACHE
-        - USE_METRO: $USE_METRO
+    - bundle::rn-finish: {}
     envs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BASE_WORKFLOW: ""
@@ -1502,14 +1498,7 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: $BASE_WORKLOW
-        - CCACHE_PATH: $CCACHE_PATH
-        - USE_CCACHE: $USE_CCACHE
-        - USE_BUILD_CACHE: $USE_BUILD_CACHE
-        - USE_METRO: $USE_METRO
-    - bundle::rn-seek-android:
-        inputs:
-        - USE_CCACHE: $USE_CCACHE
+    - bundle::rn-seek-android: {}
     envs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BASE_WORKFLOW: rn-seek-cache-android
@@ -1857,11 +1846,11 @@ step_bundles:
     - APP_REPO_URL: ""
     - APP_BRANCH: ""
     - APP_COMMIT: ""
-    - BASE_WORKFLOW: ""
-    - CCACHE_PATH: ""
-    - USE_CCACHE: ""
-    - USE_BUILD_CACHE: ""
-    - USE_METRO: ""
+    - BASE_WORKFLOW: $BASE_WORKFLOW
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
+    - USE_BUILD_CACHE: $USE_BUILD_CACHE
+    - USE_METRO: $USE_METRO
   rn-finish:
     steps:
     - save-cache@1.5.1:
@@ -1870,9 +1859,9 @@ step_bundles:
         - paths: $CCACHE_PATH
         title: Save ccache
     inputs:
-    - CCACHE_PATH: ""
-    - USE_CCACHE: ""
-    - USE_METRO: ""
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
+    - USE_METRO: $USE_METRO
   rn-notesnook-android:
     steps:
     - set-env-var@0.9.1:
@@ -1902,8 +1891,9 @@ step_bundles:
             set -exo pipefail
             npm run build:android
     inputs:
-    - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR
-    - WORK_DIR: $BITRISE_SOURCE_DIR
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
+    - USE_METRO: $USE_METRO
   rn-seek-android:
     steps:
     - script@1:
@@ -1949,7 +1939,9 @@ step_bundles:
         title: ccache stats
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     inputs:
-    - USE_CCACHE: ""
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
+    - USE_METRO: $USE_METRO
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
