@@ -1428,6 +1428,9 @@ workflows:
     - bundle::rn-seek-android: {}
     - bundle::rn-deploy-caches: {}
     envs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BASE_WORKFLOW: ""
+    - CCACHE_PATH: $WORK_DIR/.ccache
     - USE_CCACHE: true
     - USE_BUILD_CACHE: true
     - USE_METRO: false
@@ -1477,9 +1480,11 @@ workflows:
         inputs:
         - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
         - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-cache-android
     - bundle::rn-seek-android: {}
     envs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BASE_WORKFLOW: rn-seek-cache-android
+    - CCACHE_PATH: $WORK_DIR/.ccache
     - USE_CCACHE: true
     - USE_BUILD_CACHE: true
     - USE_METRO: false
@@ -1781,17 +1786,27 @@ step_bundles:
     - activate-ssh-key@4: {}
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
         inputs:
-        - clone_into_dir: $BITRISE_SOURCE_DIR/_tmp
+        - clone_into_dir: $WORK_DIR
         - commit: $APP_COMMIT
         - repository_url: $APP_REPO_URL
         - branch: $APP_BRANCH
     - change-workdir@1:
         inputs:
-        - path: $BITRISE_SOURCE_DIR/_tmp
+        - path: $WORK_DIR
     - pull-intermediate-files@1.3.4:
         run_if: '{{getenv "BASE_WORKFLOW" | ne ""}}'
         inputs:
         - artifact_sources: $BASE_WORKFLOW
+        - verbose: true
+    - script:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            mkdir -p $CCACHE_PATH
+            mv $IMPORTED_CCACHE $CCACHE_PATH
+        title: Copy ccache to local
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - brew-install@1:
         title: Brew install ccache
         inputs:
@@ -1801,31 +1816,10 @@ step_bundles:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -euo pipefail
-
-            # check if we have pulled ccache folder
-            CCACHE_VAR_NAME="CCACHE_PATH"
-            # path to use if no cache present
-            LOCAL_CCACHE_PATH="$BITRISE_SOURCE_DIR/caches"
-            # env var name where ccache is looking for caches
-            OUTPUT_VAR_NAME="XDG_CACHE_HOME"
-
-            # read the value of the variable to check (empty if not set)
-            CHECK_VAL="${!CCACHE_VAR_NAME-}"
-
-            if [[ -n "$CHECK_VAL" ]]; then
-              SELECTED="$CHECK_VAL"
-            else
-              SELECTED="$LOCAL_CCACHE_PATH"
-            fi
-
-            # export via envman so next steps get it
-            envman add --key "$OUTPUT_VAR_NAME" --value "$SELECTED"
-            mkdir -p -- "$SELECTED"
-
-            # print for logging
-            echo "Set $OUTPUT_VAR_NAME=$SELECTED (CHECK_VAR present: $([[ -n \"$CHECK_VAL\" ]] && echo yes || echo no))"
-        title: Export ccache path
+            set -exo pipefail
+            ccache --dir $CCACHE_PATH
+        title: Set ccache path
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - script@1:
         title: Configure Metro cache
         inputs:
@@ -1864,17 +1858,21 @@ step_bundles:
     - APP_BRANCH: ""
     - APP_COMMIT: ""
     - BASE_WORKFLOW: ""
+    - CCACHE_PATH: ""
+    - USE_CCACHE: ""
+    - USE_BUILD_CACHE: ""
+    - USE_METRO: ""
   rn-deploy-caches:
     steps:
-    - script:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-
-            printenv
     - deploy-to-bitrise-io@2.22.0:
         inputs:
-        - pipeline_intermediate_files: $XDG_CACHE_HOME:CCACHE_PATH
+        - pipeline_intermediate_files: $CCACHE_PATH:IMPORTED_CCACHE
+        title: Deploy ccache
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+    inputs:
+    - CCACHE_PATH: ""
+    - USE_CCACHE: ""
+    - USE_METRO: ""
   rn-notesnook-android:
     steps:
     - set-env-var@0.9.1:
@@ -1950,6 +1948,8 @@ step_bundles:
             ccache -z
         title: ccache stats
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+    inputs:
+    - USE_CCACHE: ""
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
