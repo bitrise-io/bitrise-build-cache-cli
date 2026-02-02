@@ -1430,7 +1430,7 @@ workflows:
     envs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BASE_WORKFLOW: ""
-    - CCACHE_PATH: $WORK_DIR/.ccache
+    - CCACHE_PATH: $WORK_DIR/ccache
     - USE_CCACHE: true
     - USE_BUILD_CACHE: true
     - USE_METRO: false
@@ -1502,7 +1502,7 @@ workflows:
     envs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BASE_WORKFLOW: rn-seek-cache-android
-    - CCACHE_PATH: $WORK_DIR/.ccache
+    - CCACHE_PATH: $WORK_DIR/ccache
     - USE_CCACHE: true
     - USE_BUILD_CACHE: true
     - USE_METRO: false
@@ -1842,6 +1842,13 @@ step_bundles:
         title: Restore ccache
         inputs:
         - key: ccache
+    - script@1.2.1:
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            ls -lf $CCACHE_PATH
     inputs:
     - APP_REPO_URL: ""
     - APP_BRANCH: ""
@@ -1896,6 +1903,13 @@ step_bundles:
     - USE_METRO: $USE_METRO
   rn-seek-android:
     steps:
+    - script@1.2.1:
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            ls -lf $XDG_CACHE_HOME/ccache
     - script@1:
         title: Configure
         inputs:
@@ -1939,7 +1953,7 @@ step_bundles:
         title: ccache stats
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     inputs:
-    - XDG_CACHE_HOME: $CCACHE_PATH
+    - XDG_CACHE_HOME: $CCACHE_PATH/..
     - USE_CCACHE: $USE_CCACHE
     - USE_METRO: $USE_METRO
   rn-notesnook:
