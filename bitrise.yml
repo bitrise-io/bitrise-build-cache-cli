@@ -1912,7 +1912,7 @@ step_bundles:
             set -exo pipefail
 
             ls -lf $XDG_CACHE_HOME/ccache
-            ls -lf $CCACHE_PATH
+            ccache -k cache_dir
         is_skippable: true
     - script@1:
         title: Configure
