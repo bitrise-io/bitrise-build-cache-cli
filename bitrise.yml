@@ -1849,6 +1849,7 @@ step_bundles:
             set -exo pipefail
 
             ls -lf $CCACHE_PATH
+        is_skippable: true
     inputs:
     - APP_REPO_URL: ""
     - APP_BRANCH: ""
@@ -1910,6 +1911,7 @@ step_bundles:
             set -exo pipefail
 
             ls -lf $XDG_CACHE_HOME/ccache
+        is_skippable: true
     - script@1:
         title: Configure
         inputs:
