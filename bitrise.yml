@@ -1803,10 +1803,14 @@ step_bundles:
         inputs:
         - packages: ccache
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
-    - set-env-var@0.9.1:
+    - script@1:
         inputs:
-        - destination_keys: CCACHE_PATH
-        - value: $(ccache -k cache_dir)
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            envman add --key CCACHE_PATH --value $(ccache -k cache_dir)
+        title: Export CCACHE_PATH
     - script@1:
         title: Configure Metro cache
         inputs:
