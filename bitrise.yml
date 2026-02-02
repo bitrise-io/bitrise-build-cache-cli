@@ -1834,16 +1834,6 @@ step_bundles:
             module.exports = mergeConfig(getDefaultConfig(__dirname), config);
             EOF
         run_if: '{{getenv "USE_METRO" | eq "true"}}'
-    - script@1:
-        title: Configure ccache
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-
-            ccache -d $CCACHE_PATH
-            ccache -p
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - activate-build-cache-for-gradle:
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
     - activate-build-cache-for-xcode:
@@ -1949,7 +1939,7 @@ step_bundles:
         title: ccache stats
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     inputs:
-    - CCACHE_PATH: $CCACHE_PATH
+    - XDG_CACHE_HOME: $CCACHE_PATH
     - USE_CCACHE: $USE_CCACHE
     - USE_METRO: $USE_METRO
   rn-notesnook:
