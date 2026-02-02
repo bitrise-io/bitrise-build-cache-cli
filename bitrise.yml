@@ -1842,7 +1842,7 @@ step_bundles:
             set -exo pipefail
 
             ccache -d $CCACHE_PATH
-        run_if: '{{getenv "USE_METRO" | eq "true"}}'
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - activate-build-cache-for-gradle:
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
     - activate-build-cache-for-xcode:
