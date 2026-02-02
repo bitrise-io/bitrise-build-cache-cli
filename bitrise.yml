@@ -1834,6 +1834,15 @@ step_bundles:
             module.exports = mergeConfig(getDefaultConfig(__dirname), config);
             EOF
         run_if: '{{getenv "USE_METRO" | eq "true"}}'
+    - script@1:
+        title: Configure ccache
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            ccache -d $CCACHE_PATH
+        run_if: '{{getenv "USE_METRO" | eq "true"}}'
     - activate-build-cache-for-gradle:
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
     - activate-build-cache-for-xcode:
