@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -95,11 +96,16 @@ TBD`,
 				_ = logFile.Close()
 			}
 		}()
-		logOutput := wrapperLogWriter(logFile, logPath, config.Silent)
-		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
-		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
 
 		xcelerateParams.OrigArgs = os.Args[1:]
+
+		silentLogging := config.Silent
+		if slices.Contains(xcelerateParams.OrigArgs, "-json") {
+			silentLogging = true
+		}
+		logOutput := wrapperLogWriter(logFile, logPath, silentLogging)
+		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
+		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
 
 		xcodeArgs := xcodeargs.NewDefault(
 			cobraCmd,
