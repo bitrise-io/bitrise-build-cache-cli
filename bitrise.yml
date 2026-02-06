@@ -1232,9 +1232,11 @@ step_bundles:
     - bundle::rn-finish-gradle: {}
     - bundle::rn-finish-snashot-cache: {}
     inputs:
+    - APP_REPO_URL: $APP_REPO_URL
+    - APP_COMMIT: $APP_COMMIT
     - USE_CCACHE: $USE_CCACHE
-    - USE_KV_CACHE: $USE_KV_CACHE
     - USE_BUILD_CACHE: $USE_BUILD_CACHE
+    - USE_KV_CACHE: $USE_KV_CACHE
   rn-notesnook-android:
     steps:
     - set-env-var@0.9.1:
@@ -1440,19 +1442,14 @@ step_bundles:
         - key: ccache
         - paths: $WORK_DIR/ccache
         title: Save ccache
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
   rn-finish-gradle:
     steps:
-    - save-gradle-configuration-cache@1.0.10:
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
-    - save-gradle-cache@1.4.3:
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - save-gradle-configuration-cache@1.0.10: {}
+    - save-gradle-cache@1.4.3: {}
   rn-finish-xcode:
     steps:
-    - save-spm-cache@1.3.2:
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
-    - save-carthage-cache@1.1.1:
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - save-spm-cache@1.3.2: {}
+    - save-carthage-cache@1.1.1: {}
   rn-finish-snashot-cache:
     steps:
     - save-cache@1.5.1:
@@ -1461,7 +1458,6 @@ step_bundles:
         - paths: |-
             **/android/build/**/*.*
             **/ios/build/**/*.*
-        run_if: '{{getenv "USE_KV_CACHE" | eq "true"}}'
   rn-prepare-snapshot-cache:
     steps:
     - restore-cache@2.6.0:
