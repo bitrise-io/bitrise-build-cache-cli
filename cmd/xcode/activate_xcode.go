@@ -71,9 +71,9 @@ This command will:
 		logger := log.NewLogger()
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof(activateXcode)
-		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		activateXcodeParams.DebugLogging = common.IsDebugLogMode
+		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		return ActivateXcodeCommandFn(
 			cmd.Context(),
