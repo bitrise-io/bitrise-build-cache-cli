@@ -796,7 +796,7 @@ workflows:
     envs:
     - APPS: |-
         Seek
-        Notesnook
+        NotesNook
       opts:
         is_expand: false
     steps:
@@ -990,6 +990,70 @@ workflows:
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BENCHMARK_APP_NAME: Seek
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-prepare-caches-notesnook:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+    - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - USE_CCACHE: true
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-notesnook-android: {}
+    - bundle::rn-finish: {}
+  rn-notesnook-kv:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+    - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-notesnook-bc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+    - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-notesnook-bc-cc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+    - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -1239,11 +1303,6 @@ step_bundles:
     - USE_KV_CACHE: $USE_KV_CACHE
   rn-notesnook-android:
     steps:
-    - set-env-var@0.9.1:
-        inputs:
-        - value: $CCACHE_PATH
-        - destination_keys: XDG_CACHE_HOME
-        run_if: '{{getenv "CCACHE_PATH" | ne ""}}'
     - script@1:
         title: Configure
         inputs:
@@ -1258,6 +1317,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm ci
+    - bundle::rn-measure-start: {}
     - script@1:
         title: npm build:android
         inputs:
@@ -1265,6 +1325,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm run build:android
+    - bundle::rn-measure-end: {}
     inputs:
     - CCACHE_PATH: $CCACHE_PATH
     - USE_CCACHE: $USE_CCACHE
@@ -1406,6 +1467,12 @@ step_bundles:
         inputs:
         - packages: ccache
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+    - restore-cache@2.6.0:
+        title: Restore ccache
+        inputs:
+        - key: ccache
+        - verbose: true
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
     - script@1:
         inputs:
         - content: |-
@@ -1415,13 +1482,8 @@ step_bundles:
             ccache --set-config hash_dir=false
             ccache --set-config base_dir=$PWD
             ccache --set-config cache_dir=$PWD/ccache
+            ccache -z
         title: Configure ccache
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
-    - restore-cache@2.6.0:
-        title: Restore ccache
-        inputs:
-        - key: ccache
-        - verbose: true
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
   rn-prepare-gradle:
     steps:
@@ -1515,3 +1577,13 @@ pipelines:
       rn-seek-bc-cc:
         depends_on:
         - rn-prepare-caches-seek
+      rn-prepare-caches-notesnook: {}
+      rn-notesnook-kv:
+        depends_on:
+        - rn-prepare-caches-notesnook
+      rn-notesnook-bc:
+        depends_on:
+        - rn-prepare-caches-notesnook
+      rn-notesnook-bc-cc:
+        depends_on:
+        - rn-prepare-caches-notesnook
