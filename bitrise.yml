@@ -788,793 +788,208 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
-  react-native-caching:
+  benchmark_results:
     meta:
       bitrise.io:
-        machine_type_id: g2.mac.medium
+        machine_type_id: g2.mac.large
         stack: osx-xcode-edge
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:inaturalist/SeekReactNative.git
-        - clone_into_dir: ./_tmp
-        - commit: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -eo pipefail
-
-            npm install
-        title: npm install
-    - restore-cocoapods-cache@2: {}
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -eo pipefail
-
-            cd ios
-            npx pod-install
-        title: npx pod-install
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            mv config.example.js config.js
-        title: Create config.js
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run add-example-model
-        title: Add example models
-    - activate-build-cache-for-xcode@0: {}
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npx react-native build-ios
-        title: npx react-native build-ios
-    - save-cocoapods-cache@1: {}
-  react-native-caching-android:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:inaturalist/SeekReactNative.git
-        - clone_into_dir: ./_tmp
-        - commit: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -eo pipefail
-
-            npm install
-        title: npm install
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            cat > ./android/app/src/main/res/values/config.xml <<'EOF'
-            <?xml version="1.0" encoding="utf-8"?>
-            <!-- copy this file to config.xml and uncomment / fill in the values specific to your project -->
-            <resources>
-                <!-- https://developers.google.com/maps/documentation/android/ -->
-                <string name="gmaps_api_key">xxx</string>
-            </resources>
-            EOF
-
-            mv config.example.js config.js
-        title: Create configs
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run add-example-model
-        title: Add example models
-    - activate-build-cache-for-gradle@2: {}
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npx react-native build-android
-        title: npx react-native build-android
-  react-native-caching-notesnook-ios:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    tools:
-      ruby: 3.3:installed
-      nodejs: 24:installed
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: ./_tmp
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - activate-build-cache-for-xcode@0: {}
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-        title: cd tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm install --verbose
-        title: npm install
-    - change-workdir@1:
-        inputs:
-        - path: apps/mobile/ios
-        title: cd apps/mobile/ios
-    - restore-cocoapods-cache@2: {}
-    - cocoapods-install@2: {}
-    - save-cocoapods-cache@1: {}
-    - change-workdir@1:
-        inputs:
-        - path: ../../..
-        title: cd ../../..
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:ios --verbose
-        title: npm run build:ios
-  react-native-caching-notesnook-android:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    tools:
-      ruby: 3.3:installed
-      nodejs: 24:installed
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: ./_tmp
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - activate-build-cache-for-gradle@2: {}
-    - activate-build-cache-for-xcode@0: {}
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm ci
-        title: npm install
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: npm run build:android
-  react-native-caching-notesnook-ios-no-cache:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    tools:
-      ruby: 3.3:installed
-      nodejs: 24:installed
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: ./_tmp
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-        title: cd tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm install --verbose
-        title: npm install
-    - change-workdir@1:
-        inputs:
-        - path: apps/mobile/ios
-        title: cd apps/mobile/ios
-    - restore-cocoapods-cache@2: {}
-    - cocoapods-install@2: {}
-    - save-cocoapods-cache@1: {}
-    - change-workdir@1:
-        inputs:
-        - path: ../../..
-        title: cd ../../..
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:ios --verbose
-        title: npm run build:ios
-  react-native-caching-notesnook-android-no-cache:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    tools:
-      ruby: 3.3:installed
-      nodejs: 24:installed
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: ./_tmp
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm ci
-        title: npm install
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: npm run build:android
-  rn-cache-seek-android-ccache:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:inaturalist/SeekReactNative.git
-        - clone_into_dir: ./_tmp
-        - commit: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -eo pipefail
-
-            npm ci
-        title: npm ci
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            cat > ./android/app/src/main/res/values/config.xml <<'EOF'
-            <?xml version="1.0" encoding="utf-8"?>
-            <!-- copy this file to config.xml and uncomment / fill in the values specific to your project -->
-            <resources>
-                <!-- https://developers.google.com/maps/documentation/android/ -->
-                <string name="gmaps_api_key">xxx</string>
-            </resources>
-            EOF
-
-            mv config.example.js config.js
-        title: Create configs
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run add-example-model
-        title: Add example models
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npx react-native build-android
-        title: no cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            rm -rf android/app/.cxx
-            npm run clean
-            npm ci
-        title: project clean
-    - brew-install@1:
-        inputs:
-        - packages: ccache
-        title: Brew install ccache
-    - activate-build-cache-for-gradle@2: {}
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npx react-native build-android
-        title: gradle build cache only
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            rm -rf android/app/.cxx
-            npm run clean
-            npm ci
-        title: project clean
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npx react-native build-android
-        title: gradle build cache with ccache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            # fail if any commands fails
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-  rn-cache-notesnook-android-ccache:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    tools:
-      ruby: 3.3:installed
-      nodejs: 24:installed
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: ./_tmp
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm ci
-        title: npm install
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: build w/o cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run clean
-            npm ci
-        title: clean project
-    - brew-install@1:
-        inputs:
-        - packages: ccache
-        title: Brew install ccache
-    - activate-build-cache-for-gradle@2: {}
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: build with gradle build cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run clean
-            npm ci
-        title: clean project
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: build with gradle build cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-  rn-cache-notesnook-android-metro:
-    meta:
-      bitrise.io:
-        machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
-    tools:
-      ruby: 3.3:installed
-      nodejs: 24:installed
-    steps:
-    - activate-ssh-key@4: {}
-    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
-        inputs:
-        - repository_url: git@github.com:streetwriters/notesnook.git
-        - clone_into_dir: ./_tmp
-        - commit: e635ace33876f555ea5f1397a96073853e64a304
-    - change-workdir@1:
-        inputs:
-        - path: ./_tmp
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            sed -i.bak 's/YOUR_APP/Notesnook/g' ./apps/mobile/.detoxrc.js
-            npm ci
-        title: npm install
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: build w/o cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run clean
-            npm ci
-        title: clean project
-    - brew-install@1:
-        inputs:
-        - packages: ccache
-        title: Brew install ccache
-    - activate-build-cache-for-gradle@2: {}
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: build with gradle build cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run clean
-            npm ci
-        title: clean project
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            npm run build:android
-        title: build with gradle build cache
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-    - deploy-to-bitrise-io@2: {}
-  rn-baseline:
-    steps:
-    - activate-ssh-key@4: {}
-    - brew-install@1:
-        title: Brew install ccache
-        inputs:
-        - packages: ccache
-    - script@1:
-        title: Configure Metro cache
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-
-            cat > metro.config.js <<'EOF'
-            const path = require('node:path');
-
-            module.exports = {
-              cacheStores: ({ FileStore }) => [
-                new FileStore({
-                  // directory next to this config file: ./metro-cache
-                  root: path.join(__dirname, 'metro-cache'),
-                }),
-              ],
-            };
-            EOF
     envs:
+    - APPS: |-
+        Seek
+        Notesnook
+      opts:
+        is_expand: false
+    steps:
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            variants=(
+              ""
+              "_DC_BC"
+              "_DC_BC_CC"
+              "_KVC"
+            )
+
+            pretty_diff() {
+              local secs=$1
+              local sign=""
+              if (( secs < 0 )); then
+                sign="-"
+                secs=$(( -secs ))
+              fi
+              local minutes=$(( secs / 60 ))
+              local seconds=$(( secs % 60 ))
+              if (( minutes > 0 )); then
+                printf '%s%dm %ds\n' "$sign" "$minutes" "$seconds"
+              else
+                printf '%s%ds\n' "$sign" "$seconds"
+              fi
+            }
+
+            # read APPS into an array
+            apps=()
+            while IFS= read -r line || [[ -n $line ]]; do
+              apps+=("$line")
+            done <<< "$APPS"
+
+            # build all variants
+            app_variants=()
+            for base in "${apps[@]}"; do
+              app_variants+=("$base")
+              for v in "${variants[@]}"; do
+                [[ -z "$v" ]] && continue
+                app_variants+=("${base}${v}")
+              done
+            done
+
+            # duration in seconds from START/END var names
+            duration_seconds() {
+              local start_name=$1
+              local end_name=$2
+              echo $(( ${!end_name} - ${!start_name} ))
+            }
+
+            # percent change with one decimal using integer math:
+            # returns string like "+12.3%" or "-4.0%" or "0.0%"
+            percent_change_one_decimal() {
+              local base_secs=$1
+              local var_secs=$2
+
+              if (( base_secs == 0 )); then
+                printf 'N/A'
+                return
+              fi
+
+              local diff=$(( base_secs - var_secs ))       # positive = improvement
+              local scaled=$(( (diff * 1000) / base_secs )) # tenths of percent (integer)
+              local sign=""
+              if (( scaled > 0 )); then
+                sign="+"
+              elif (( scaled < 0 )); then
+                sign="-"
+                scaled=$(( -scaled ))
+              fi
+              local int_part=$(( scaled / 10 ))
+              local frac=$(( scaled % 10 ))
+              printf '%s%d.%d%%' "$sign" "$int_part" "$frac"
+            }
+
+            for app in "${app_variants[@]}"; do
+              start="${app}_START"
+              end="${app}_END"
+              # skip if missing
+              [[ -z "${!start-}" ]] && continue
+              [[ -z "${!end-}" ]] && continue
+
+              dur=$(duration_seconds "$start" "$end")
+              printf 'Duration for %s: ' "$app"
+              pretty_diff "$dur"
+
+              # determine base name (before first underscore)
+              base_name="$app"
+              if [[ "$app" == *"_"* ]]; then
+                base_name="${app%%_*}"
+              fi
+
+              # skip comparison when this is the base itself
+              if [[ "$app" == "$base_name" ]]; then
+                # nothing to compare to
+                continue
+              fi
+
+              base_start="${base_name}_START"
+              base_end="${base_name}_END"
+
+              if [[ -z "${!base_start-}" || -z "${!base_end-}" ]]; then
+                printf '  Base (%s) missing START/END — cannot compute percent change.\n' "$base_name"
+                continue
+              fi
+
+              base_dur=$(duration_seconds "$base_start" "$base_end")
+              pc=$(percent_change_one_decimal "$base_dur" "$dur")
+
+              if [[ "$pc" == "N/A" ]]; then
+                printf '  Percent change vs %s: N/A (base duration is zero)\n' "$base_name"
+                continue
+              fi
+
+              if [[ "$pc" == "+0.0%" || "$pc" == "0.0%" ]]; then
+                printf '  Percent change vs %s: 0.0%% (equal)\n' "$base_name"
+              else
+                if (( dur < base_dur )); then
+                  label="improved"
+                elif (( dur > base_dur )); then
+                  label="slower"
+                else
+                  label="equal"
+                fi
+                printf '  Percent change vs %s: %s (%s)\n' "$base_name" "$pc" "$label"
+              fi
+            done
+  rn-prepare-caches-seek:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - USE_CCACHE: true
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-      opts:
-        is_expand: false
-    - XDG_CACHE_HOME: $WORK_DIR
-      opts:
-        is_expand: false
-  rn-seek-baseline:
     steps:
     - bundle::rn-prepare: {}
-    - bundle::rn-seek: {}
-    - bundle::rn-finish: {}
-  rn-seek-cache-android:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
     - bundle::rn-seek-android: {}
     - bundle::rn-finish: {}
-    envs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BASE_WORKFLOW: ""
-    - USE_CCACHE: true
-    - USE_BUILD_CACHE: true
-    - USE_METRO: false
-  rn-seek-none:
+  rn-seek-kv:
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
         machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - bundle::rn-seek-android: {}
+        stack: osx-xcode-edge
     envs:
-    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BASE_WORKFLOW: rn-seek-cache-android
-    - CCACHE_PATH: ""
+    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
     - USE_CCACHE: false
     - USE_BUILD_CACHE: false
-    - USE_METRO: false
-  rn-seek-metro:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-baseline
-    - bundle::rn-seek-android: {}
-  rn-seek-ccache:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-cache-android
-    - bundle::rn-seek-android: {}
-  rn-seek-build-cache:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-        - BASE_WORKFLOW: rn-seek-cache-android
-    - bundle::rn-seek-android: {}
-  rn-seek-all:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-        - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - bundle::rn-seek-android: {}
-    envs:
+    - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BASE_WORKFLOW: rn-seek-cache-android
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-seek-bc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-seek-bc-cc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
     - USE_CCACHE: true
     - USE_BUILD_CACHE: true
-    - USE_METRO: false
-  rn-notesnook-cache-android:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-    - bundle::rn-notesnook-android: {}
-    - bundle::rn-finish: {}
-  rn-notesnook-metro:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-baseline
-    - bundle::rn-notesnook-android: {}
-  rn-notesnook-ccache:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-cache-android
-    - bundle::rn-notesnook-android: {}
-  rn-notesnook-build-cache:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-cache-android
-    - bundle::rn-notesnook-android: {}
-  rn-notesnook-all:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-        - BASE_WORKFLOW: rn-notesnook-cache-android
-    - bundle::rn-notesnook-android: {}
-  rn-notesnook-none:
-    meta:
-      bitrise.io:
-        stack: osx-xcode-26.0.x-edge
-        machine_type_id: g2.mac.large
-    steps:
-    - bundle::rn-prepare:
-        inputs:
-        - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
-        - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
-    - bundle::rn-notesnook-android: {}
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
 step_bundles:
   generate_gradle_verification_reference:
     steps:
@@ -1794,60 +1209,13 @@ step_bundles:
         - clone_into_dir: $WORK_DIR
         - commit: $APP_COMMIT
         - repository_url: $APP_REPO_URL
-        - branch: $APP_BRANCH
     - change-workdir@1:
         inputs:
         - path: $WORK_DIR
-    - brew-install@1:
-        title: Brew install ccache
-        inputs:
-        - packages: ccache
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
-    - script@1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-
-            envman add --key CCACHE_PATH --value $(ccache -k cache_dir)
-        title: Export CCACHE_PATH
-    - script@1:
-        title: Configure Metro cache
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-
-            cat > metro.config.js <<'EOF'
-            const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
-            const path = require('node:path');
-
-            /**
-             * Metro configuration
-             * https://metrobundler.dev/docs/configuration
-             *
-             * @type {import('metro-config').MetroConfig}
-             */
-            const config = {
-              cacheStores: ({ FileStore }) => [
-                new FileStore({
-                  // directory next to this config file: ./metro-cache
-                  root: path.join(__dirname, 'metro-cache'),
-                }),
-              ],
-            };
-
-            module.exports = mergeConfig(getDefaultConfig(__dirname), config);
-            EOF
-        run_if: '{{getenv "USE_METRO" | eq "true"}}'
-    - activate-build-cache-for-gradle:
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
-    - activate-build-cache-for-xcode:
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
-    - restore-cache@2.6.0:
-        title: Restore ccache
-        inputs:
-        - key: ccache
+    - bundle::rn-prepare-ccache: {}
+    - bundle::rn-prepare-gradle: {}
+    - bundle::rn-prepare-xcode: {}
+    - bundle::rn-prepare-snapshot-cache: {}
     inputs:
     - APP_REPO_URL: ""
     - APP_BRANCH: ""
@@ -1856,16 +1224,18 @@ step_bundles:
     - USE_CCACHE: $USE_CCACHE
     - USE_BUILD_CACHE: $USE_BUILD_CACHE
     - USE_METRO: $USE_METRO
+    - CACHE_KEY: ""
+    - USE_KV_CACHE: $USE_KV_CACHE
   rn-finish:
     steps:
-    - save-cache@1.5.1:
-        inputs:
-        - key: ccache
-        - paths: $CCACHE_PATH
-        title: Save ccache
+    - bundle::rn-finish-ccache: {}
+    - bundle::rn-finish-xcode: {}
+    - bundle::rn-finish-gradle: {}
+    - bundle::rn-finish-snashot-cache: {}
     inputs:
     - USE_CCACHE: $USE_CCACHE
-    - USE_METRO: $USE_METRO
+    - USE_KV_CACHE: $USE_KV_CACHE
+    - USE_BUILD_CACHE: $USE_BUILD_CACHE
   rn-notesnook-android:
     steps:
     - set-env-var@0.9.1:
@@ -1924,27 +1294,15 @@ step_bundles:
             set -exo pipefail
             npm ci
             npm run add-example-model
+    - bundle::rn-measure-start: {}
     - script@1:
         title: npx react-native build-android
         inputs:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            printenv
             npx react-native build-android
-    - script@1.2.1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -eo pipefail
-
-            ccache -s
-            ccache -z
-        title: ccache stats
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
-    inputs:
-    - USE_CCACHE: $USE_CCACHE
-    - USE_METRO: $USE_METRO
+    - bundle::rn-measure-end: {}
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
@@ -2031,6 +1389,102 @@ step_bundles:
     - XDG_CACHE_HOME: $BITRISE_SOURCE_DIR/_tmp
       opts:
         title: XDG_CACHE_HOME
+  rn-prepare-ccache:
+    steps:
+    - brew-install@1:
+        title: Brew install ccache
+        inputs:
+        - packages: ccache
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            ccache --set-config hash_dir=false
+            ccache --set-config base_dir=$PWD
+            ccache --set-config cache_dir=$PWD/ccache
+        title: Configure ccache
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+    - restore-cache@2.6.0:
+        title: Restore ccache
+        inputs:
+        - key: ccache
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+  rn-prepare-gradle:
+    steps:
+    - restore-gradle-configuration-cache@1.0.10:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - restore-gradle-cache@2.2.4:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - activate-build-cache-for-gradle:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+  rn-prepare-xcode:
+    steps:
+    - restore-cocoapods-cache@2.1.3:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - restore-spm-cache@2.1.3:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - activate-build-cache-for-xcode:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+  rn-finish-ccache:
+    steps:
+    - save-cache@1.5.1:
+        inputs:
+        - key: ccache
+        - paths: $CCACHE_PATH
+        title: Save ccache
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+  rn-finish-gradle:
+    steps:
+    - save-gradle-configuration-cache@1.0.10:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - save-gradle-cache@1.4.3:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+  rn-finish-xcode:
+    steps:
+    - save-spm-cache@1.3.2:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - save-carthage-cache@1.1.1:
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+  rn-finish-snashot-cache:
+    steps:
+    - save-cache@1.5.1:
+        inputs:
+        - key: rn-snapshot-cache
+        - paths: |-
+            **/android/build/**/*.*
+            **/ios/build/**/*.*
+        run_if: '{{getenv "USE_KV_CACHE" | eq "true"}}'
+  rn-prepare-snapshot-cache:
+    steps:
+    - restore-cache@2.6.0:
+        inputs:
+        - key: rn-snapshot-cache
+        run_if: '{{getenv "USE_KV_CACHE" | eq "true"}}'
+  rn-measure-end:
+    steps:
+    - script:
+        title: Store action end time
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            envman add --key "${BENCHMARK_APP_NAME}_END" --value "$(date +%s)"
+        run_if: '{{getenv "BENCHMARK_APP_NAME" | ne ""}}'
+  rn-measure-start:
+    steps:
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            envman add --key "${BENCHMARK_APP_NAME}_START" --value "$(date +%s)"
+        title: Store action start time
+        run_if: '{{getenv "BENCHMARK_APP_NAME" | ne ""}}'
 pipelines:
   features-e2e:
     workflows:
@@ -2048,12 +1502,15 @@ pipelines:
       - source_branch: '*'
       push:
       - branch: main
-  rn-poc:
+  rn-benchmark:
     workflows:
-      rn-seek-cache-android: {}
-      rn-seek-all:
+      rn-prepare-caches-seek: {}
+      rn-seek-kv:
         depends_on:
-        - rn-seek-cache-android
-      rn-seek-none:
+        - rn-prepare-caches-seek
+      rn-seek-bc:
         depends_on:
-        - rn-seek-cache-android
+        - rn-prepare-caches-seek
+      rn-seek-bc-cc:
+        depends_on:
+        - rn-prepare-caches-seek
