@@ -1217,14 +1217,10 @@ step_bundles:
     - bundle::rn-prepare-xcode: {}
     - bundle::rn-prepare-snapshot-cache: {}
     inputs:
-    - APP_REPO_URL: ""
-    - APP_BRANCH: ""
-    - APP_COMMIT: ""
-    - BASE_WORKFLOW: $BASE_WORKFLOW
+    - APP_REPO_URL: $APP_REPO_URL
+    - APP_COMMIT: $APP_COMMIT
     - USE_CCACHE: $USE_CCACHE
     - USE_BUILD_CACHE: $USE_BUILD_CACHE
-    - USE_METRO: $USE_METRO
-    - CACHE_KEY: ""
     - USE_KV_CACHE: $USE_KV_CACHE
   rn-finish:
     steps:
