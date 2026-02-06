@@ -957,6 +957,7 @@ workflows:
     - USE_BUILD_CACHE: false
     - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -972,6 +973,7 @@ workflows:
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -987,6 +989,7 @@ workflows:
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -1407,6 +1410,7 @@ step_bundles:
         title: Restore ccache
         inputs:
         - key: ccache
+        - verbose: true
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
   rn-prepare-gradle:
     steps:
@@ -1429,7 +1433,7 @@ step_bundles:
     - save-cache@1.5.1:
         inputs:
         - key: ccache
-        - paths: $CCACHE_PATH
+        - paths: $WORK_DIR/ccache
         title: Save ccache
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
   rn-finish-gradle:
