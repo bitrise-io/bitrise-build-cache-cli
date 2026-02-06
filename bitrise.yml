@@ -1501,7 +1501,7 @@ step_bundles:
     steps:
     - save-cache@1.5.1:
         inputs:
-        - key: ccache
+        - key: ccache-notesnook
         - paths: $WORK_DIR/ccache
         title: Save ccache
   rn-finish-gradle:
@@ -1565,7 +1565,7 @@ pipelines:
       - source_branch: '*'
       push:
       - branch: main
-  rn-benchmark:
+  rn-benchmark-seek:
     workflows:
       rn-prepare-caches-seek: {}
       rn-seek-kv:
@@ -1577,6 +1577,13 @@ pipelines:
       rn-seek-bc-cc:
         depends_on:
         - rn-prepare-caches-seek
+      benchmark_results:
+        depends_on:
+        - rn-seek-kv
+        - rn-seek-bc
+        - rn-seek-bc-cc
+  rn-benchmark-notesnook:
+    workflows:
       rn-prepare-caches-notesnook: {}
       rn-notesnook-kv:
         depends_on:
@@ -1587,3 +1594,8 @@ pipelines:
       rn-notesnook-bc-cc:
         depends_on:
         - rn-prepare-caches-notesnook
+      benchmark_results:
+        depends_on:
+        - rn-notesnook-kv
+        - rn-notesnook-bc
+        - rn-notesnook-bc-cc
