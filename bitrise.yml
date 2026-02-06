@@ -1302,6 +1302,15 @@ step_bundles:
             set -exo pipefail
             npx react-native build-android
     - bundle::rn-measure-end: {}
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            ccache -s
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+        title: ccache stats
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
