@@ -808,9 +808,9 @@ workflows:
 
             variants=(
               ""
-              "_DC_BC"
-              "_DC_BC_CC"
-              "_KVC"
+              "_BC"
+              "_BC_CC"
+              "_KV"
             )
 
             pretty_diff() {
@@ -957,7 +957,7 @@ workflows:
     - USE_BUILD_CACHE: false
     - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BENCHMARK_APP_NAME: Seek
+    - BENCHMARK_APP_NAME: Seek_KV
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -973,7 +973,7 @@ workflows:
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BENCHMARK_APP_NAME: Seek
+    - BENCHMARK_APP_NAME: Seek_BC
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -989,7 +989,7 @@ workflows:
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BENCHMARK_APP_NAME: Seek
+    - BENCHMARK_APP_NAME: Seek_BC_CC
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -1021,7 +1021,7 @@ workflows:
     - USE_BUILD_CACHE: false
     - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BENCHMARK_APP_NAME: NotesNook
+    - BENCHMARK_APP_NAME: NotesNook_KV
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -1037,7 +1037,7 @@ workflows:
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BENCHMARK_APP_NAME: NotesNook
+    - BENCHMARK_APP_NAME: NotesNook_BC
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
@@ -1051,6 +1051,38 @@ workflows:
     - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
     - USE_CCACHE: false
     - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook_BC_CC
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-seek-dc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
+    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek
+    steps:
+    - bundle::rn-prepare: {}
+    - bundle::rn-seek-android: {}
+  rn-notesnook-dc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: git@github.com:streetwriters/notesnook.git
+    - APP_COMMIT: e635ace33876f555ea5f1397a96073853e64a304
+    - USE_CCACHE: false
+    - USE_BUILD_CACHE: false
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BENCHMARK_APP_NAME: NotesNook
@@ -1537,6 +1569,8 @@ step_bundles:
 
             envman add --key "${BENCHMARK_APP_NAME}_END" --value "$(date +%s)"
         run_if: '{{getenv "BENCHMARK_APP_NAME" | ne ""}}'
+    inputs:
+    - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
   rn-measure-start:
     steps:
     - script@1.2.1:
@@ -1548,6 +1582,8 @@ step_bundles:
             envman add --key "${BENCHMARK_APP_NAME}_START" --value "$(date +%s)"
         title: Store action start time
         run_if: '{{getenv "BENCHMARK_APP_NAME" | ne ""}}'
+    inputs:
+    - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
 pipelines:
   features-e2e:
     workflows:
@@ -1582,6 +1618,10 @@ pipelines:
         - rn-seek-kv
         - rn-seek-bc
         - rn-seek-bc-cc
+        - rn-seek-dc
+      rn-seek-dc:
+        depends_on:
+        - rn-prepare-caches-seek
   rn-benchmark-notesnook:
     workflows:
       rn-prepare-caches-notesnook: {}
@@ -1599,3 +1639,7 @@ pipelines:
         - rn-notesnook-kv
         - rn-notesnook-bc
         - rn-notesnook-bc-cc
+        - rn-notesnook-dc
+      rn-notesnook-dc:
+        depends_on:
+        - rn-prepare-caches-notesnook
