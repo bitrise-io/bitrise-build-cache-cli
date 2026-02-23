@@ -50,6 +50,7 @@ func NewServer(
 		client:        client,
 		logger:        logger,
 		loggerFactory: loggerFactory,
+		sessionState:  newSessionState(),
 	}, nil
 }
 
@@ -109,7 +110,7 @@ func (s *IpcServer) handleConnection(conn net.Conn, conID string) {
 	processor := newRequestProcessor(conn, s.config, s.client, s.logger)
 	for {
 		result := processor.processRequest()
-		// s.updateSessionStateWithResult(conID, result)
+		s.updateSessionStateWithResult(conID, result)
 
 		// TODO session state modification
 		if result.Err != nil {
@@ -196,7 +197,7 @@ func (s *IpcServer) updateSessionStateWithResult(clientID string, result process
 	switch result.Outcome {
 	case PROCESS_REQUEST_OK:
 		if result.CallStats.method == "Get" {
-			// s.sessionState.incrementHits()
+			s.sessionState.incrementHits()
 			s.sessionState.saveKeyOnce(clientID, result.CallStats.key)
 		}
 

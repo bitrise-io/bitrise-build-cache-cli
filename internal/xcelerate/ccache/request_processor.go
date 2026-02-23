@@ -158,9 +158,6 @@ func (p *requestProcessor) keyToPath(key []byte) string {
 	keyHex := hex.EncodeToString(key)
 
 	switch p.config.CCacheConfig.Layout {
-	case "flat":
-		return keyHex
-
 	case "bazel":
 		// Bazel format: ac/ + 64 hex digits, so pad shorter keys by repeating the key prefix to reach the expected SHA256 size.
 		const sha256HexSize = 64
@@ -169,11 +166,14 @@ func (p *requestProcessor) keyToPath(key []byte) string {
 		}
 		return fmt.Sprintf("ac/%s%s", keyHex, keyHex[:sha256HexSize-len(keyHex)])
 
-	default: // subdirs
+	case "subdirs":
 		if len(keyHex) < 2 {
 			return keyHex
 		}
-		return fmt.Sprintf("test-%s/%s", keyHex[:2], keyHex[2:])
+		return fmt.Sprintf("ccache/1-%s/%s", keyHex[:2], keyHex[2:])
+
+	default:
+		return keyHex
 	}
 }
 
