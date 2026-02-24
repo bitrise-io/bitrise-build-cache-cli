@@ -11,21 +11,22 @@ import (
 )
 
 const (
-	ccachePath          = ".bitrise-ccache/"
-	ccacheConfigFile    = "config.json"
+	ccachePath       = ".bitrise/cache/ccache/"
+	ccacheConfigFile = "config.json"
 
 	ErrFmtOpenConfigFile   = "open ccache config file (%s): %w"
 	ErrFmtDecodeConfigFile = "decode ccache config file (%s): %w"
 )
 
 type Config struct {
-	LogFile            string               `json:"logFile,omitempty"`
-	ErrLogFile         string               `json:"errLogFile,omitempty"`
-	IPCEndpoint        string               `json:"ipcEndpoint,omitempty"`
-	IdleTimeout        time.Duration        `json:"idleTimeout,omitempty"`
-	Layout             string               `json:"layout,omitempty"`
-	PushEnabled        bool                 `json:"pushEnabled"`
-	BuildCacheEndpoint string               `json:"buildCacheEndpoint,omitempty"`
+	LogFile            string                 `json:"logFile,omitempty"`
+	ErrLogFile         string                 `json:"errLogFile,omitempty"`
+	IPCEndpoint        string                 `json:"ipcEndpoint,omitempty"`
+	IdleTimeout        time.Duration          `json:"idleTimeout,omitempty"`
+	Layout             string                 `json:"layout,omitempty"`
+	PushEnabled        bool                   `json:"pushEnabled"`
+	Enabled            bool                   `json:"enabled"`
+	BuildCacheEndpoint string                 `json:"buildCacheEndpoint,omitempty"`
 	AuthConfig         common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
 
