@@ -10,26 +10,24 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	cfg "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/ccache/protocol"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type requestProcessor struct {
 	ctx         context.Context
-	client      proxy.Client
+	client      Client
 	logger      log.Logger
 	reader      io.Reader
 	writer      io.Writer
 	ccSemaphore chan struct{}
-	config      cfg.Config
+	config      Config
 }
 
 func newRequestProcessor(
 	conn io.ReadWriter,
-	config cfg.Config,
-	client proxy.Client,
+	config Config,
+	client Client,
 	logger log.Logger,
 ) *requestProcessor {
 	// numChan := max(2, runtime.NumCPU()/6)
@@ -47,9 +45,18 @@ func newRequestProcessor(
 	}
 }
 
+type callMethod string
+
+const (
+	CALL_METHOD_GET    callMethod = "Get"
+	CALL_METHOD_PUT    callMethod = "Set"
+	CALL_METHOD_REMOVE callMethod = "Remove"
+	CALL_METHOD_STOP   callMethod = "Stop"
+)
+
 type callStats struct {
 	start         time.Time
-	method        string
+	method        callMethod
 	key           string
 	uploadBytes   int64
 	downloadBytes int64
@@ -59,13 +66,39 @@ type statBuilder struct {
 	stats callStats
 }
 
-func (b *statBuilder) with(f func(*callStats)) *statBuilder {
-	f(&b.stats)
+func newStatBuilder(method callMethod) *statBuilder {
+	return &statBuilder{
+		stats: callStats{
+			method: method,
+			start:  time.Now(),
+		},
+	}
+}
+
+func (b *statBuilder) withKey(key string) *statBuilder {
+	b.stats.key = key
+	return b
+}
+
+func (b *statBuilder) withUploadBytes(bytes int64) *statBuilder {
+	b.stats.uploadBytes = bytes
+	return b
+}
+
+func (b *statBuilder) withDownloadBytes(bytes int64) *statBuilder {
+	b.stats.downloadBytes = bytes
 	return b
 }
 
 func (b *statBuilder) build() callStats {
 	return b.stats
+}
+
+func (result statBuilder) Prefix() string {
+	if result.stats.key == "" {
+		return fmt.Sprintf("[%s]", result.stats.method)
+	}
+	return fmt.Sprintf("[%s - %s]", result.stats.method, result.stats.key)
 }
 
 type processResultOutcome int32
@@ -112,7 +145,7 @@ func (result processResult) Log() string {
 func (p *requestProcessor) notifyCcache(result processResult) processResult {
 	var err error
 
-	p.logger.TDebugf(result.Log())
+	p.logger.TDebugf("%s - sending to ccache", result.Log())
 
 	switch result.Outcome {
 	case PROCESS_REQUEST_ERROR:
@@ -157,7 +190,7 @@ func (p *requestProcessor) writeOK(result processResult) error {
 func (p *requestProcessor) keyToPath(key []byte) string {
 	keyHex := hex.EncodeToString(key)
 
-	switch p.config.CCacheConfig.Layout {
+	switch p.config.Layout {
 	case "bazel":
 		// Bazel format: ac/ + 64 hex digits, so pad shorter keys by repeating the key prefix to reach the expected SHA256 size.
 		const sha256HexSize = 64
@@ -178,16 +211,11 @@ func (p *requestProcessor) keyToPath(key []byte) string {
 }
 
 func (p *requestProcessor) logCallStats(result processResult) {
-	p.logger.TDebugf("%s took %s, result: %s", result.Log(), time.Since(result.CallStats.start), result.OutcomeString())
+	p.logger.TDebugf("%s took %s", result.Log(), time.Since(result.CallStats.start))
 }
 
 func (p *requestProcessor) handleGet() processResult {
-	statBuilder := &statBuilder{
-		stats: callStats{
-			method: "Get",
-			start:  time.Now(),
-		},
-	}
+	statBuilder := newStatBuilder(CALL_METHOD_GET)
 
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
@@ -199,8 +227,9 @@ func (p *requestProcessor) handleGet() processResult {
 	}
 
 	key := p.keyToPath(keyBytes)
-	statBuilder.with(func(s *callStats) { s.key = key })
-	p.logger.TDebugf("[%s - %s] Called", statBuilder.stats.method, key)
+	statBuilder.withKey(key)
+	p.logger.TDebugf("%s Called", statBuilder.Prefix())
+
 	buffer := bytes.NewBuffer(nil)
 	err = p.client.DownloadStream(p.ctx, buffer, key)
 
@@ -208,7 +237,6 @@ func (p *requestProcessor) handleGet() processResult {
 	case err == nil:
 		// success
 	case errors.Is(err, kv.ErrCacheNotFound):
-		p.logger.TDebugf("[%s - %s] Not found", statBuilder.stats.method, key)
 		return p.notifyCcache(processResult{
 			Outcome:   PROCESS_REQUEST_MISS,
 			CallStats: statBuilder.build(),
@@ -222,7 +250,7 @@ func (p *requestProcessor) handleGet() processResult {
 	}
 
 	size := int64(buffer.Len())
-	statBuilder.with(func(s *callStats) { s.downloadBytes = size })
+	statBuilder.withDownloadBytes(size)
 
 	data, err := io.ReadAll(buffer)
 	if err != nil {
@@ -241,12 +269,7 @@ func (p *requestProcessor) handleGet() processResult {
 }
 
 func (p *requestProcessor) handlePut() processResult {
-	statBuilder := &statBuilder{
-		stats: callStats{
-			method: "Put",
-			start:  time.Now(),
-		},
-	}
+	statBuilder := newStatBuilder(CALL_METHOD_PUT)
 
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
@@ -257,7 +280,7 @@ func (p *requestProcessor) handlePut() processResult {
 		}
 	}
 	key := p.keyToPath(keyBytes)
-	statBuilder.with(func(s *callStats) { s.key = key })
+	statBuilder.withKey(key)
 
 	_, err = protocol.ReadByte(p.reader)
 	if err != nil {
@@ -267,8 +290,6 @@ func (p *requestProcessor) handlePut() processResult {
 			CallStats: statBuilder.build(),
 		}
 	}
-	// overwrite := (flags & protocol.PutFlagOverwrite) != 0
-	// ignoring it at the moment
 
 	value, err := protocol.ReadValue(p.reader)
 	if err != nil {
@@ -280,8 +301,6 @@ func (p *requestProcessor) handlePut() processResult {
 	}
 
 	if !p.config.PushEnabled {
-		p.logger.TDebugf("Save: Push disabled")
-
 		return p.notifyCcache(processResult{
 			Outcome:   PROCESS_REQUEST_PUSH_DISABLED,
 			CallStats: statBuilder.build(),
@@ -289,8 +308,8 @@ func (p *requestProcessor) handlePut() processResult {
 	}
 
 	size := int64(len(value))
-	statBuilder.with(func(s *callStats) { s.uploadBytes = size })
-	p.logger.TDebugf("[%s - %s] Called (%d bytes)", statBuilder.stats.method, key, size)
+	statBuilder.withUploadBytes(size)
+	p.logger.TDebugf("%s Called (%d bytes)", statBuilder.Prefix(), size)
 
 	if err = p.client.UploadStreamToBuildCache(p.ctx, bytes.NewReader(value), key, size); err != nil {
 		return p.notifyCcache(processResult{
@@ -307,6 +326,7 @@ func (p *requestProcessor) handlePut() processResult {
 }
 
 func (p *requestProcessor) handleRemove() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_REMOVE)
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
 		return processResult{
@@ -316,19 +336,23 @@ func (p *requestProcessor) handleRemove() processResult {
 	}
 
 	key := p.keyToPath(keyBytes)
-	p.logger.TDebugf("[%s - Remove] Called", key)
+	statBuilder.withKey(key)
+	p.logger.TDebugf("%s Called", statBuilder.Prefix())
 
 	// We handle removal on the storage helper level by keeping track of keys.
 	// See ipc_server.go
 	return p.notifyCcache(processResult{
-		Outcome: PROCESS_REQUEST_OK,
+		Outcome:   PROCESS_REQUEST_OK,
+		CallStats: statBuilder.build(),
 	})
 }
 
 func (p *requestProcessor) handleStop() processResult {
-	p.logger.TDebugf("[Stop] Called")
+	statBuilder := newStatBuilder(CALL_METHOD_STOP)
+	p.logger.TDebugf("%s Called", statBuilder.Prefix())
 	return processResult{
-		Outcome: PROCESS_REQUEST_SHOULD_STOP,
+		Outcome:   PROCESS_REQUEST_SHOULD_STOP,
+		CallStats: statBuilder.build(),
 	}
 }
 

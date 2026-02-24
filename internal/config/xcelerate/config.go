@@ -9,7 +9,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -53,7 +52,6 @@ type Config struct {
 	Silent                 bool                   `json:"silent,omitempty"`
 	XcodebuildTimestamps   bool                   `json:"xcodebuildTimestamps,omitempty"`
 	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
-	CCacheConfig           ccache.Config          `json:"ccacheConfig,omitempty"`
 }
 
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {

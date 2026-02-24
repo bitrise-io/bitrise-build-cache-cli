@@ -8,14 +8,14 @@ import (
 )
 
 func (s *IpcServer) createListener() (net.Listener, error) {
-	if err := os.Remove(s.config.CCacheConfig.IPCEndpoint); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(s.config.IPCEndpoint); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to remove existing socket: %w", err)
 	}
 
 	oldMask := syscall.Umask(0077)
 	defer syscall.Umask(oldMask)
 
-	listener, err := net.Listen("unix", s.config.CCacheConfig.IPCEndpoint)
+	listener, err := net.Listen("unix", s.config.IPCEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on Unix socket: %w", err)
 	}

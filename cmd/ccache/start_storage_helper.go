@@ -13,10 +13,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
 )
 
@@ -24,16 +24,28 @@ var (
 	//nolint:gochecknoglobals
 	initialInvocationID string
 
+	ccacheCmd = &cobra.Command{
+		Use:          "ccache",
+		Short:        "Ccache related commands",
+		SilenceUsage: true,
+	}
+
+	storageHelperCmd = &cobra.Command{
+		Use:          "storage-helper",
+		Short:        "Ccache storage helper",
+		SilenceUsage: true,
+	}
+
 	//nolint:gochecknoglobals
-	ccacheStorageHelperCmd = &cobra.Command{
-		Use:          "start-ccache-storage-helper",
+	startStorageHelperCmd = &cobra.Command{
+		Use:          "start",
 		Short:        "Start Xcelerate's ccache storage helper",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			osProxy := utils.DefaultOsProxy{}
-			config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+			config, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
 			if err != nil {
-				return fmt.Errorf("read xcelerate config: %w", err)
+				return fmt.Errorf("read ccache config: %w", err)
 			}
 
 			kvClient, err := createKVClient(
@@ -73,18 +85,21 @@ var (
 )
 
 func init() {
-	ccacheStorageHelperCmd.Flags().StringVar(
+	startStorageHelperCmd.Flags().StringVar(
 		&initialInvocationID,
 		"invocation-id",
 		uuid.NewString(),
 		"Invocation ID to be used in the proxy",
 	)
-	common.RootCmd.AddCommand(ccacheStorageHelperCmd)
+
+	common.RootCmd.AddCommand(ccacheCmd)
+	ccacheCmd.AddCommand(storageHelperCmd)
+	storageHelperCmd.AddCommand(startStorageHelperCmd)
 }
 
 func createKVClient(
 	ctx context.Context,
-	config xcelerate.Config,
+	config ccacheconfig.Config,
 	envs map[string]string,
 	invocationID string,
 	commandFunc configcommon.CommandFunc,
@@ -105,7 +120,7 @@ func createKVClient(
 type ccacheStorageHelper struct {
 	ctx             context.Context
 	osProxy         utils.OsProxy
-	config          xcelerate.Config
+	config          ccacheconfig.Config
 	logger          log.Logger
 	bitriseKVClient proxy.Client
 	server          *ccache.IpcServer
@@ -116,7 +131,7 @@ type ccacheStorageHelper struct {
 
 func newCcacheStorageHelper(
 	ctx context.Context,
-	config xcelerate.Config,
+	config ccacheconfig.Config,
 	osProxy utils.OsProxy,
 	invocationID string,
 	kvClient proxy.Client,
@@ -137,17 +152,19 @@ func newCcacheStorageHelper(
 	kvClient.SetLogger(logger)
 	helper.bitriseKVClient = kvClient
 
-	logger.TInfof("Xcelerate ccache storage helper")
-
-	// Ensure any existing socket file is removed before starting the proxy
-	if err := osProxy.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to remove socket file, error: %w", err)
-	}
-	logger.TInfof("socketPath: %s", config.ProxySocketPath)
+	logger.TInfof("Ccache storage helper")
+	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
 	helper.server, err = ccache.NewServer(
 		ctx,
-		config,
+		ccache.Config{
+			LogFile:     config.LogFile,
+			ErrLogFile:  config.ErrLogFile,
+			IPCEndpoint: config.IPCEndpoint,
+			IdleTimeout: config.IdleTimeout,
+			Layout:      config.Layout,
+			PushEnabled: config.PushEnabled,
+		},
 		kvClient,
 		helper.logger,
 		func(invocationID string) (log.Logger, error) {
@@ -183,7 +200,7 @@ func (c *ccacheStorageHelper) getLogDir() (string, error) {
 		return "", fmt.Errorf("failed to get user home dir: %w", err)
 	}
 
-	logDir := fmt.Sprintf("%s/.local/state/xcelerate/logs", home)
+	logDir := fmt.Sprintf("%s/.local/state/ccache/logs", home)
 
 	if err := c.osProxy.MkdirAll(logDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create log dir: %w", err)
@@ -198,7 +215,7 @@ func (c *ccacheStorageHelper) getProxyErrorLogFile() (string, error) {
 		return "", fmt.Errorf("failed to get log dir: %w", err)
 	}
 
-	return filepath.Join(logDir, c.config.CCacheConfig.ErrLogFile), nil
+	return filepath.Join(logDir, c.config.ErrLogFile), nil
 }
 
 func (c *ccacheStorageHelper) getLogFile(invocationID string) (string, error) {
@@ -207,7 +224,7 @@ func (c *ccacheStorageHelper) getLogFile(invocationID string) (string, error) {
 		return "", fmt.Errorf("failed to get log dir: %w", err)
 	}
 
-	return filepath.Join(logDir, fmt.Sprintf(c.config.CCacheConfig.LogFile, invocationID)), nil
+	return filepath.Join(logDir, fmt.Sprintf(c.config.LogFile, invocationID)), nil
 }
 
 func defaultLoggerFactory(c *ccacheStorageHelper, invocationID string, verbose bool) (log.Logger, error) {
