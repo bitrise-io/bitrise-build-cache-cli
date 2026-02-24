@@ -26,6 +26,10 @@ type CacheConfigMetadata struct {
 	BitriseBuildID         string
 	BitriseStepExecutionID string
 	Datacenter             string
+	// External CI identifiers (non-Bitrise CI providers)
+	ExternalAppID        string
+	ExternalBuildID      string
+	ExternalWorkflowName string
 }
 
 const (
@@ -35,14 +39,10 @@ const (
 	CIProviderCircleCI = "circle-ci"
 	// CIProviderGitHubActions ...
 	CIProviderGitHubActions = "github-actions"
+	// CIProviderGitLabCI ...
+	CIProviderGitLabCI = "gitlab-ci"
 
 	RedactorSeed = "BitriseBuildCacheRedactor"
-
-	// --- not used yet ---
-	// CIProviderJenkins ...
-	// CIProviderJenkins = "jenkins"
-	// CIProviderUnknown ...
-	// CIProviderUnknown = "other"
 )
 
 type CommandFunc func(string, ...string) (string, error)
@@ -60,8 +60,25 @@ func detectCIProvider(envs map[string]string) string {
 		// https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables
 		return CIProviderGitHubActions
 	}
+	if envs["GITLAB_CI"] == "true" {
+		// https://docs.gitlab.com/ci/variables/predefined_variables/
+		return CIProviderGitLabCI
+	}
 
 	return ""
+}
+
+func detectExternalIDs(provider string, envs map[string]string) (string, string, string) {
+	switch provider {
+	case CIProviderCircleCI:
+		return envs["CIRCLE_PROJECT_REPONAME"], envs["CIRCLE_WORKFLOW_ID"], envs["CIRCLE_JOB"]
+	case CIProviderGitHubActions:
+		return envs["GITHUB_REPOSITORY"], envs["GITHUB_RUN_ID"], envs["GITHUB_JOB"]
+	case CIProviderGitLabCI:
+		return envs["CI_PROJECT_PATH"], envs["CI_PIPELINE_ID"], envs["CI_JOB_NAME"]
+	default:
+		return "", "", ""
+	}
 }
 
 // HostMetadata contains metadata about the local environment. Only used for Bazel to
@@ -110,12 +127,17 @@ func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Log
 		}
 	}
 
+	externalAppID, externalBuildID, externalWorkflowName := detectExternalIDs(provider, envs)
+
 	return CacheConfigMetadata{
-		RedactedEnvs: redactedEnvs,
-		CIProvider:   provider,
-		CLIVersion:   cliVersion,
-		GitMetadata:  git,
-		HostMetadata: hostMetadata,
+		RedactedEnvs:         redactedEnvs,
+		CIProvider:           provider,
+		CLIVersion:           cliVersion,
+		GitMetadata:          git,
+		HostMetadata:         hostMetadata,
+		ExternalAppID:        externalAppID,
+		ExternalBuildID:      externalBuildID,
+		ExternalWorkflowName: externalWorkflowName,
 	}
 }
 
