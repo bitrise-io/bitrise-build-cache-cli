@@ -895,7 +895,13 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
-  store-ccache-binary:
+  store-ccache-binary-mac:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    tools:
+      cmake: latest
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
         inputs:
@@ -922,7 +928,7 @@ workflows:
         - path: build
     - save-cache@1:
         inputs:
-        - key: ccache_executable
+        - key: ccache_executable_mac
         - paths: ./ccache
     - slack@4:
         title: Send slack notification about ccache binary update
