@@ -895,6 +895,43 @@ workflows:
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
+  store-ccache-binary:
+    steps:
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: https://github.com/ccache/ccache.git
+        - clone_into_dir: ./_tmp
+        - branch: master
+    - change-workdir@1:
+        inputs:
+        - path: _tmp
+    - script@1:
+        title: build ccache
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            mkdir build
+            cd build
+            cmake -D CMAKE_BUILD_TYPE=Release ..
+            make
+            make install
+    - change-workdir@1:
+        inputs:
+        - path: build
+    - save-cache@1:
+        inputs:
+        - key: ccache_executable
+        - paths: ./ccache
+    - slack@4:
+        title: Send slack notification about ccache binary update
+        inputs:
+        - channel: '#team-advanced-ci-alerts-website'
+        - text: |-
+            New ccache binary available under cache key `ccache_executable`! :rocket:
+        - emoji: ':cache:'
+        - webhook_url: $SLACK_WEBHOOK_ALERTS
 
   update-steps:
     envs:
