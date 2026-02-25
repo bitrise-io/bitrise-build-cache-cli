@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 )
 
@@ -25,6 +26,8 @@ func Test_activateGradleParams(t *testing.T) {
 		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Errorf", mock.Anything).Return()
 		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Warnf", mock.Anything).Return()
+		mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 
 		return mockLogger
 	}
@@ -45,7 +48,7 @@ func Test_activateGradleParams(t *testing.T) {
 				TestDistro: TestDistroParams{Enabled: false},
 			},
 			envVars: map[string]string{},
-			wantErr: fmt.Errorf(ErrFmtReadAutConfig, common.ErrAuthTokenNotProvided).Error(),
+			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, common.ErrAuthTokenNotProvided).Error(),
 		},
 		{
 			name: "no workspaceID",
@@ -57,7 +60,7 @@ func Test_activateGradleParams(t *testing.T) {
 			envVars: map[string]string{
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue",
 			},
-			wantErr: fmt.Errorf(ErrFmtReadAutConfig, common.ErrWorkspaceIDNotProvided).Error(),
+			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, common.ErrWorkspaceIDNotProvided).Error(),
 		},
 		{
 			name: "no plugins",
@@ -330,4 +333,117 @@ func Test_activateGradleParams(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_applyBenchmarkPhase(t *testing.T) {
+	prep := func() log.Logger {
+		mockLogger := &mocks.Logger{}
+		mockLogger.On("Infof", mock.Anything).Return()
+		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
+		mockLogger.On("Warnf", mock.Anything).Return()
+		mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+		return mockLogger
+	}
+
+	t.Run("baseline phase disables cache and enables analytics", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{
+			Cache: CacheParams{
+				Enabled:        true,
+				JustDependency: true,
+				PushEnabled:    true,
+			},
+			Analytics: AnalyticsParams{
+				Enabled: false,
+			},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+
+		assert.False(t, params.Cache.Enabled)
+		assert.False(t, params.Cache.JustDependency)
+		assert.True(t, params.Analytics.Enabled)
+		assert.Len(t, mockProvider.GetGradleBenchmarkPhaseCalls(), 1)
+	})
+
+	t.Run("warmup phase does not change params", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{
+			Cache: CacheParams{
+				Enabled:     true,
+				PushEnabled: true,
+			},
+			Analytics: AnalyticsParams{
+				Enabled: false,
+			},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseWarmup, nil
+			},
+		}
+
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+
+		assert.True(t, params.Cache.Enabled)
+		assert.True(t, params.Cache.PushEnabled)
+		assert.False(t, params.Analytics.Enabled)
+	})
+
+	t.Run("empty phase does not change params", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{
+			Cache: CacheParams{
+				Enabled: true,
+			},
+			Analytics: AnalyticsParams{
+				Enabled: false,
+			},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+				return "", nil
+			},
+		}
+
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+
+		assert.True(t, params.Cache.Enabled)
+		assert.False(t, params.Analytics.Enabled)
+	})
+
+	t.Run("error falls back to original params", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{
+			Cache: CacheParams{
+				Enabled: true,
+			},
+			Analytics: AnalyticsParams{
+				Enabled: false,
+			},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+				return "", fmt.Errorf("network error")
+			},
+		}
+
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+
+		assert.True(t, params.Cache.Enabled)
+		assert.False(t, params.Analytics.Enabled)
+	})
 }

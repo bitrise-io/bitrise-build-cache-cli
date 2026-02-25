@@ -23,7 +23,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		err := gradle.EnableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(gradle.FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAutConfig, common.ErrAuthTokenNotProvided)).Error())
+		require.EqualError(t, err, fmt.Errorf(gradle.FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, common.ErrAuthTokenNotProvided)).Error())
 	})
 
 	t.Run("RedactedEnvs specified", func(t *testing.T) {
