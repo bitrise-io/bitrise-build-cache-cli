@@ -129,13 +129,13 @@ func applyBenchmarkPhase(
 ) {
 	phase, err := benchmarkProvider.GetGradleBenchmarkPhase(metadata)
 	if err != nil {
-		logger.Warnf("Failed to fetch benchmark phase, using configured flags: %v", err)
+		logger.Debugf("Failed to fetch benchmark phase, using configured flags: %v", err)
 
 		return
 	}
 
 	if phase == "" {
-		logger.Warnf("No benchmark phase found, using configured flags")
+		logger.Debugf("No benchmark phase found, using configured flags")
 
 		return
 	}
