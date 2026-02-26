@@ -1616,6 +1616,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             ccache -p
+            env
             npx react-native build-android
     - bundle::rn-measure-end: {}
     - script@1.2.1:
@@ -1733,11 +1734,11 @@ step_bundles:
             envman add --key "CCACHE_REMOTE_ONLY" --value "true"
             envman add --key "CCACHE_REMOTE_STORAGE" --value "crsh:${PWD}/ccache-ipc.sock data-timeout=2s request-timeout=20s"
 
+            envman add --key "CMAKE_CXX_COMPILER_LAUNCHER" --value "ccache"
+            envman add --key "CMAKE_C_COMPILER_LAUNCHER" --value "ccache"
+
             # Clear ccache stats
             ccache -z
-
-            which ccache
-            ccache -p
 
             # Create CLI config
             mkdir -p ~/.bitrise/cache/ccache/
