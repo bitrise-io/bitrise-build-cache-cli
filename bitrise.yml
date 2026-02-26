@@ -993,7 +993,7 @@ workflows:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -euo pipefail
+            set -exuo pipefail
 
             variants=(
               ""
@@ -1626,6 +1626,11 @@ step_bundles:
             ccache -s
         run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
         title: ccache stats
+    inputs:
+    - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
+    - USE_METRO: $USE_METRO
   rn-notesnook:
     steps:
     - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
@@ -1809,7 +1814,11 @@ step_bundles:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            envman add --key "${BENCHMARK_APP_NAME}_END" --value "$(date +%s)"
+            timestamp="$(date +%s)"
+            envman add --key "${BENCHMARK_APP_NAME}_END" --value "$timestamp"
+            if [[ -n "${BITRISEIO_PIPELINE_SHARED_VARIABLE_STORE_PATH-}" ]]; then
+              envman add --path "$BITRISEIO_PIPELINE_SHARED_VARIABLE_STORE_PATH" --key "${BENCHMARK_APP_NAME}_END" --value "$timestamp"
+            fi
         run_if: '{{getenv "BENCHMARK_APP_NAME" | ne ""}}'
     inputs:
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
@@ -1821,7 +1830,11 @@ step_bundles:
             #!/usr/bin/env bash
             set -eo pipefail
 
-            envman add --key "${BENCHMARK_APP_NAME}_START" --value "$(date +%s)"
+            timestamp="$(date +%s)"
+            envman add --key "${BENCHMARK_APP_NAME}_START" --value "$timestamp"
+            if [[ -n "${BITRISEIO_PIPELINE_SHARED_VARIABLE_STORE_PATH-}" ]]; then
+              envman add --path "$BITRISEIO_PIPELINE_SHARED_VARIABLE_STORE_PATH" --key "${BENCHMARK_APP_NAME}_START" --value "$timestamp"
+            fi
         title: Store action start time
         run_if: '{{getenv "BENCHMARK_APP_NAME" | ne ""}}'
     inputs:
