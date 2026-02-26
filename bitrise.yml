@@ -1615,6 +1615,7 @@ step_bundles:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
+            ccache -p
             npx react-native build-android
     - bundle::rn-measure-end: {}
     - script@1.2.1:
@@ -1734,6 +1735,9 @@ step_bundles:
 
             # Clear ccache stats
             ccache -z
+
+            which ccache
+            ccache -p
 
             # Create CLI config
             mkdir -p ~/.bitrise/cache/ccache/
