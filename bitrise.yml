@@ -1615,8 +1615,6 @@ step_bundles:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            ccache -p
-            env
             npx react-native build-android
     - bundle::rn-measure-end: {}
     - script@1.2.1:
