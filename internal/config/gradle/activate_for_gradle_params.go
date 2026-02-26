@@ -134,6 +134,8 @@ func applyBenchmarkPhase(
 	}
 
 	if phase == "" {
+		logger.Warnf("No benchmark phase found, using configured flags")
+
 		return
 	}
 
