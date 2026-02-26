@@ -343,6 +343,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 		mockLogger.On("Debugf", mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 		mockLogger.On("Warnf", mock.Anything).Return()
 		mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 
@@ -368,7 +369,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
 
 		assert.False(t, params.Cache.Enabled)
 		assert.False(t, params.Cache.JustDependency)
@@ -394,7 +395,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
 
 		assert.True(t, params.Cache.Enabled)
 		assert.True(t, params.Cache.PushEnabled)
@@ -418,7 +419,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
@@ -441,7 +442,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)

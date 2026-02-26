@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/envexport"
 )
 
 const (
@@ -90,9 +91,11 @@ func (params ActivateGradleParams) TemplateInventory(
 		logger)
 	logger.Infof("(i) Cache Config: %+v", metadata)
 
-	// Check benchmark phase and override params if needed
-	benchmarkClient := common.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-	applyBenchmarkPhase(&params, logger, benchmarkClient, metadata)
+	// Check benchmark phase and override params if needed (only on CI)
+	if metadata.CIProvider != "" {
+		benchmarkClient := common.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+		applyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envs)
+	}
 
 	commonInventory := params.commonTemplateInventory(authConfig, metadata, isDebug)
 
@@ -118,6 +121,7 @@ func applyBenchmarkPhase(
 	logger log.Logger,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 	metadata common.CacheConfigMetadata,
+	envs map[string]string,
 ) {
 	phase, err := benchmarkProvider.GetGradleBenchmarkPhase(metadata)
 	if err != nil {
@@ -131,7 +135,9 @@ func applyBenchmarkPhase(
 	}
 
 	logger.Infof("(i) Benchmark phase: %s", phase)
-	exportBenchmarkPhaseEnv(logger, phase)
+	exporter := envexport.New(envs, logger)
+	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
+	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
 
 	switch phase {
 	case common.BenchmarkPhaseBaseline:
@@ -141,16 +147,6 @@ func applyBenchmarkPhase(
 		params.Analytics.Enabled = true
 	case common.BenchmarkPhaseWarmup:
 		logger.Infof("(i) Benchmark warmup phase: cache performance might not be ideal")
-	}
-}
-
-func exportBenchmarkPhaseEnv(logger log.Logger, phase string) {
-	output, err := exec.Command("envman", "add", //nolint:noctx
-		"--key", "BITRISE_BUILD_CACHE_BENCHMARK_PHASE",
-		"--value", phase,
-	).CombinedOutput()
-	if err != nil {
-		logger.Debugf("Failed to export benchmark phase via envman: %s (%v)", string(output), err)
 	}
 }
 
