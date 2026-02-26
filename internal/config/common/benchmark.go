@@ -81,7 +81,7 @@ func (c *BenchmarkPhaseClient) GetGradleBenchmarkPhase(metadata CacheConfigMetad
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authConfig.AuthToken))
+	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
