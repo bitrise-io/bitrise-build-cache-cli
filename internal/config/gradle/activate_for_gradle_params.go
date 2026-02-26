@@ -1,9 +1,12 @@
 package gradleconfig
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -138,6 +141,7 @@ func applyBenchmarkPhase(
 	exporter := envexport.New(envs, logger)
 	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
 	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
+	writeBenchmarkPhaseFile(phase, logger)
 
 	switch phase {
 	case common.BenchmarkPhaseBaseline:
@@ -148,6 +152,42 @@ func applyBenchmarkPhase(
 	case common.BenchmarkPhaseWarmup:
 		logger.Infof("(i) Benchmark warmup phase: cache performance might not be ideal")
 	}
+}
+
+type benchmarkPhaseFile struct {
+	Phase string `json:"phase"`
+}
+
+func writeBenchmarkPhaseFile(phase string, logger log.Logger) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.Debugf("Failed to get home directory for benchmark phase file: %v", err)
+
+		return
+	}
+
+	dir := filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		logger.Debugf("Failed to create benchmark phase dir: %v", err)
+
+		return
+	}
+
+	data, err := json.Marshal(benchmarkPhaseFile{Phase: phase})
+	if err != nil {
+		logger.Debugf("Failed to marshal benchmark phase file: %v", err)
+
+		return
+	}
+
+	filePath := filepath.Join(dir, "benchmark-phase.json")
+	if err := os.WriteFile(filePath, data, 0o644); err != nil { //nolint:mnd,gosec
+		logger.Debugf("Failed to write benchmark phase file: %v", err)
+
+		return
+	}
+
+	logger.Debugf("Benchmark phase written to %s", filePath)
 }
 
 func (params ActivateGradleParams) commonTemplateInventory(

@@ -2,8 +2,11 @@
 package gradleconfig
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -446,5 +449,50 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
+	})
+}
+
+func Test_writeBenchmarkPhaseFile(t *testing.T) {
+	prep := func() log.Logger {
+		mockLogger := &mocks.Logger{}
+		mockLogger.On("Debugf", mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+
+		return mockLogger
+	}
+
+	t.Run("creates benchmark phase file with correct content", func(t *testing.T) {
+		logger := prep()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		writeBenchmarkPhaseFile("established", logger)
+
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		assert.FileExists(t, filePath)
+
+		data, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+
+		var result benchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(data, &result))
+		assert.Equal(t, "established", result.Phase)
+	})
+
+	t.Run("overwrites existing benchmark phase file", func(t *testing.T) {
+		logger := prep()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		writeBenchmarkPhaseFile("baseline", logger)
+		writeBenchmarkPhaseFile("warmup", logger)
+
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		data, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+
+		var result benchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(data, &result))
+		assert.Equal(t, "warmup", result.Phase)
 	})
 }
