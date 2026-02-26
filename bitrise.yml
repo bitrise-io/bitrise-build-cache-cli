@@ -378,7 +378,7 @@ workflows:
           inputs:
             - content: |-
                 set -exo pipefail
-                (./gradlew compileDebugKotlin --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+                (./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
       - script:
           title: Check for cache invocations
           inputs:
