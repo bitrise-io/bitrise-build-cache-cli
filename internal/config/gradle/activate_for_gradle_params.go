@@ -96,6 +96,7 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	// Check benchmark phase and override params if needed (only on CI)
 	if metadata.CIProvider != "" {
+		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
 		benchmarkClient := common.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 		applyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envs)
 	}
