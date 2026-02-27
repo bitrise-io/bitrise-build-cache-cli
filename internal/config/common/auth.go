@@ -66,18 +66,31 @@ func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, er
 	return CacheAuthConfig{}, ErrWorkspaceIDNotProvided
 }
 
-// jwtDefaultClaims represents the "default" claim in the Bitrise JWT payload.
-type jwtDefaultClaims struct {
+// jwtPermissionClaims represents the claims within a UMA permission entry.
+type jwtPermissionClaims struct {
 	OrgID []string `json:"org_id"`
 }
 
-// jwtPayload represents the JWT payload structure with the "default" claim.
-type jwtPayload struct {
-	Default jwtDefaultClaims `json:"default"`
+// jwtPermission represents a single permission entry in the authorization block.
+type jwtPermission struct {
+	Rsname string              `json:"rsname"`
+	Claims jwtPermissionClaims `json:"claims"`
 }
 
-// extractWorkspaceIDFromJWT extracts the workspace ID (org_id) from a JWT token
+// jwtAuthorization represents the authorization block in the JWT payload.
+type jwtAuthorization struct {
+	Permissions []jwtPermission `json:"permissions"`
+}
+
+// jwtPayload represents the JWT payload structure with UMA authorization permissions.
+type jwtPayload struct {
+	Authorization jwtAuthorization `json:"authorization"`
+}
+
+// extractWorkspaceIDFromJWT extracts the workspace ID (org_id) from a Bitrise JWT token
 // without validating the token signature.
+// The JWT uses UMA-style authorization permissions where org_id is a claim
+// inside the "default" resource permission.
 func extractWorkspaceIDFromJWT(token string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 { //nolint:mnd
@@ -94,14 +107,22 @@ func extractWorkspaceIDFromJWT(token string) (string, error) {
 		return "", fmt.Errorf("parse JWT payload: %w", err)
 	}
 
-	if len(claims.Default.OrgID) == 0 {
-		return "", errors.New("org_id claim is missing from JWT")
+	for _, perm := range claims.Authorization.Permissions {
+		if perm.Rsname != "default" {
+			continue
+		}
+
+		if len(perm.Claims.OrgID) == 0 {
+			return "", errors.New("org_id claim is missing from JWT")
+		}
+
+		workspaceID := perm.Claims.OrgID[0]
+		if workspaceID == "" {
+			return "", errors.New("org_id claim is empty in JWT")
+		}
+
+		return workspaceID, nil
 	}
 
-	workspaceID := claims.Default.OrgID[0]
-	if workspaceID == "" {
-		return "", errors.New("org_id claim is empty in JWT")
-	}
-
-	return workspaceID, nil
+	return "", errors.New("'default' permission not found in JWT")
 }

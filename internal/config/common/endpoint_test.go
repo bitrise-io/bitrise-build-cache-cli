@@ -9,10 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeTestJWT(payload map[string]any) string {
+func makeTestUMAJWT(orgID string) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
 
-	payloadJSON, err := json.Marshal(payload) //nolint:errchkjson
+	payloadJSON, err := json.Marshal(map[string]any{ //nolint:errchkjson
+		"authorization": map[string]any{
+			"permissions": []map[string]any{
+				{
+					"rsname": "default",
+					"claims": map[string]any{
+						"org_id": []string{orgID},
+						"app_id": []string{"test-app"},
+					},
+				},
+			},
+		},
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -24,12 +36,7 @@ func makeTestJWT(payload map[string]any) string {
 }
 
 func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
-	serviceJWT := makeTestJWT(map[string]any{
-		"default": map[string]any{
-			"org_id": []string{"jwt-org-id"},
-			"app_id": []string{"jwt-app-id"},
-		},
-	})
+	serviceJWT := makeTestUMAJWT("jwt-org-id")
 
 	t.Run("No envs provided", func(t *testing.T) {
 		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{})

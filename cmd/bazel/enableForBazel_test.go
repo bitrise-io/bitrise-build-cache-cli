@@ -21,9 +21,16 @@ func makeFakeJWT(orgID string) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
 
 	payload, err := json.Marshal(map[string]any{ //nolint:errchkjson
-		"default": map[string]any{
-			"org_id": []string{orgID},
-			"app_id": []string{"test-app"},
+		"authorization": map[string]any{
+			"permissions": []map[string]any{
+				{
+					"rsname": "default",
+					"claims": map[string]any{
+						"org_id": []string{orgID},
+						"app_id": []string{"test-app"},
+					},
+				},
+			},
 		},
 	})
 	if err != nil {

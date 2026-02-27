@@ -23,13 +23,24 @@ func makeJWT(payload map[string]any) string {
 	return header + "." + body + "." + sig
 }
 
-func TestReadAuthConfigFromEnvironments(t *testing.T) {
-	validJWT := makeJWT(map[string]any{
-		"default": map[string]any{
-			"org_id": []string{"jwt-workspace-id"},
-			"app_id": []string{"jwt-app-id"},
+func makeUMAJWT(orgID string) string {
+	return makeJWT(map[string]any{
+		"authorization": map[string]any{
+			"permissions": []map[string]any{
+				{
+					"rsname": "default",
+					"claims": map[string]any{
+						"org_id": []string{orgID},
+						"app_id": []string{"test-app"},
+					},
+				},
+			},
 		},
 	})
+}
+
+func TestReadAuthConfigFromEnvironments(t *testing.T) {
+	validJWT := makeUMAJWT("jwt-workspace-id")
 
 	tests := []struct {
 		name           string
@@ -82,8 +93,15 @@ func TestReadAuthConfigFromEnvironments(t *testing.T) {
 			name: "JWT with missing org_id claim",
 			envVars: map[string]string{
 				"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeJWT(map[string]any{
-					"default": map[string]any{
-						"app_id": []string{"app-id"},
+					"authorization": map[string]any{
+						"permissions": []map[string]any{
+							{
+								"rsname": "default",
+								"claims": map[string]any{
+									"app_id": []string{"app-id"},
+								},
+							},
+						},
 					},
 				}),
 			},
@@ -93,12 +111,37 @@ func TestReadAuthConfigFromEnvironments(t *testing.T) {
 			name: "JWT with empty org_id claim",
 			envVars: map[string]string{
 				"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeJWT(map[string]any{
-					"default": map[string]any{
-						"org_id": []string{""},
+					"authorization": map[string]any{
+						"permissions": []map[string]any{
+							{
+								"rsname": "default",
+								"claims": map[string]any{
+									"org_id": []string{""},
+								},
+							},
+						},
 					},
 				}),
 			},
 			expectedError: "extract workspace ID from JWT: org_id claim is empty in JWT",
+		},
+		{
+			name: "JWT with no default permission",
+			envVars: map[string]string{
+				"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeJWT(map[string]any{
+					"authorization": map[string]any{
+						"permissions": []map[string]any{
+							{
+								"rsname": "other",
+								"claims": map[string]any{
+									"org_id": []string{"some-org"},
+								},
+							},
+						},
+					},
+				}),
+			},
+			expectedError: "extract workspace ID from JWT: 'default' permission not found in JWT",
 		},
 		{
 			name: "Invalid JWT format",
@@ -170,7 +213,7 @@ func TestExtractWorkspaceIDFromJWT(t *testing.T) {
 	}{
 		{
 			name:  "valid JWT with org_id",
-			token: makeJWT(map[string]any{"default": map[string]any{"org_id": []string{"my-org"}}}),
+			token: makeUMAJWT("my-org"),
 			want:  "my-org",
 		},
 		{
@@ -189,19 +232,47 @@ func TestExtractWorkspaceIDFromJWT(t *testing.T) {
 			wantErr: "parse JWT payload",
 		},
 		{
-			name:    "missing org_id claim",
-			token:   makeJWT(map[string]any{"default": map[string]any{}}),
+			name: "missing default permission",
+			token: makeJWT(map[string]any{
+				"authorization": map[string]any{
+					"permissions": []map[string]any{},
+				},
+			}),
+			wantErr: "'default' permission not found in JWT",
+		},
+		{
+			name: "missing org_id in default permission",
+			token: makeJWT(map[string]any{
+				"authorization": map[string]any{
+					"permissions": []map[string]any{
+						{"rsname": "default", "claims": map[string]any{}},
+					},
+				},
+			}),
 			wantErr: "org_id claim is missing from JWT",
 		},
 		{
-			name:    "empty org_id",
-			token:   makeJWT(map[string]any{"default": map[string]any{"org_id": []string{""}}}),
+			name: "empty org_id",
+			token: makeJWT(map[string]any{
+				"authorization": map[string]any{
+					"permissions": []map[string]any{
+						{"rsname": "default", "claims": map[string]any{"org_id": []string{""}}},
+					},
+				},
+			}),
 			wantErr: "org_id claim is empty in JWT",
 		},
 		{
-			name:  "multiple org_ids uses first",
-			token: makeJWT(map[string]any{"default": map[string]any{"org_id": []string{"first", "second"}}}),
-			want:  "first",
+			name: "picks default permission among multiple",
+			token: makeJWT(map[string]any{
+				"authorization": map[string]any{
+					"permissions": []map[string]any{
+						{"rsname": "other", "claims": map[string]any{"org_id": []string{"wrong"}}},
+						{"rsname": "default", "claims": map[string]any{"org_id": []string{"correct"}}},
+					},
+				},
+			}),
+			want: "correct",
 		},
 	}
 
