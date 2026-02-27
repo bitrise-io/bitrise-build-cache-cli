@@ -367,7 +367,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
 				return common.BenchmarkPhaseBaseline, nil
 			},
 		}
@@ -377,7 +377,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 		assert.False(t, params.Cache.Enabled)
 		assert.False(t, params.Cache.JustDependency)
 		assert.True(t, params.Analytics.Enabled)
-		assert.Len(t, mockProvider.GetGradleBenchmarkPhaseCalls(), 1)
+		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
 	})
 
 	t.Run("warmup phase does not change params", func(t *testing.T) {
@@ -393,7 +393,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
 				return common.BenchmarkPhaseWarmup, nil
 			},
 		}
@@ -417,7 +417,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
 				return "", nil
 			},
 		}
@@ -440,7 +440,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetGradleBenchmarkPhaseFunc: func(_ common.CacheConfigMetadata) (string, error) {
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
 				return "", fmt.Errorf("network error")
 			},
 		}

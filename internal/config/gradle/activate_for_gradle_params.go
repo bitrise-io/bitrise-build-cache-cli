@@ -127,7 +127,7 @@ func applyBenchmarkPhase(
 	metadata common.CacheConfigMetadata,
 	envs map[string]string,
 ) {
-	phase, err := benchmarkProvider.GetGradleBenchmarkPhase(metadata)
+	phase, err := benchmarkProvider.GetBenchmarkPhase(common.BuildToolGradle, metadata)
 	if err != nil {
 		logger.Debugf("Failed to fetch benchmark phase, using configured flags: %v", err)
 

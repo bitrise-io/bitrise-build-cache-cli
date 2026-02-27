@@ -17,6 +17,10 @@ const (
 
 	BenchmarkPhaseBaseline = "baseline"
 	BenchmarkPhaseWarmup   = "warmup"
+
+	BuildToolGradle = "gradle"
+	BuildToolXcode  = "xcode"
+	BuildToolBazel  = "bazel"
 )
 
 type benchmarkResponse struct {
@@ -27,7 +31,7 @@ type benchmarkResponse struct {
 
 // BenchmarkPhaseProvider fetches the benchmark phase for a build.
 type BenchmarkPhaseProvider interface {
-	GetGradleBenchmarkPhase(metadata CacheConfigMetadata) (string, error)
+	GetBenchmarkPhase(buildTool string, metadata CacheConfigMetadata) (string, error)
 }
 
 // BenchmarkPhaseClient fetches the benchmark phase for a Gradle build from the Bitrise API.
@@ -51,9 +55,10 @@ func NewBenchmarkPhaseClient(baseURL string, authConfig CacheAuthConfig, logger 
 	}
 }
 
-// GetGradleBenchmarkPhase fetches the benchmark phase for the current build.
+// GetBenchmarkPhase fetches the benchmark phase for the current build.
+// The buildTool parameter specifies the build tool (gradle, xcode, bazel).
 // Returns empty string if no benchmark phase is active or if the build can't be identified.
-func (c *BenchmarkPhaseClient) GetGradleBenchmarkPhase(metadata CacheConfigMetadata) (string, error) {
+func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata CacheConfigMetadata) (string, error) {
 	params := url.Values{}
 
 	if metadata.CIProvider == CIProviderBitrise {
@@ -74,8 +79,8 @@ func (c *BenchmarkPhaseClient) GetGradleBenchmarkPhase(metadata CacheConfigMetad
 		params.Set("external_workflow_name", metadata.ExternalWorkflowName)
 	}
 
-	requestURL := fmt.Sprintf("%s/build-cache/%s/invocations/gradle/command_benchmark_status?%s",
-		c.baseURL, c.authConfig.WorkspaceID, params.Encode())
+	requestURL := fmt.Sprintf("%s/build-cache/%s/invocations/%s/command_benchmark_status?%s",
+		c.baseURL, c.authConfig.WorkspaceID, buildTool, params.Encode())
 
 	req, err := retryablehttp.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {

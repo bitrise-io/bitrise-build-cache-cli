@@ -18,8 +18,8 @@ var _ common.BenchmarkPhaseProvider = &BenchmarkPhaseProviderMock{}
 //
 //		// make and configure a mocked common.BenchmarkPhaseProvider
 //		mockedBenchmarkPhaseProvider := &BenchmarkPhaseProviderMock{
-//			GetGradleBenchmarkPhaseFunc: func(metadata common.CacheConfigMetadata) (string, error) {
-//				panic("mock out the GetGradleBenchmarkPhase method")
+//			GetBenchmarkPhaseFunc: func(buildTool string, metadata common.CacheConfigMetadata) (string, error) {
+//				panic("mock out the GetBenchmarkPhase method")
 //			},
 //		}
 //
@@ -28,52 +28,58 @@ var _ common.BenchmarkPhaseProvider = &BenchmarkPhaseProviderMock{}
 //
 //	}
 type BenchmarkPhaseProviderMock struct {
-	// GetGradleBenchmarkPhaseFunc mocks the GetGradleBenchmarkPhase method.
-	GetGradleBenchmarkPhaseFunc func(metadata common.CacheConfigMetadata) (string, error)
+	// GetBenchmarkPhaseFunc mocks the GetBenchmarkPhase method.
+	GetBenchmarkPhaseFunc func(buildTool string, metadata common.CacheConfigMetadata) (string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// GetGradleBenchmarkPhase holds details about calls to the GetGradleBenchmarkPhase method.
-		GetGradleBenchmarkPhase []struct {
+		// GetBenchmarkPhase holds details about calls to the GetBenchmarkPhase method.
+		GetBenchmarkPhase []struct {
+			// BuildTool is the buildTool argument value.
+			BuildTool string
 			// Metadata is the metadata argument value.
 			Metadata common.CacheConfigMetadata
 		}
 	}
-	lockGetGradleBenchmarkPhase sync.RWMutex
+	lockGetBenchmarkPhase sync.RWMutex
 }
 
-// GetGradleBenchmarkPhase calls GetGradleBenchmarkPhaseFunc.
-func (mock *BenchmarkPhaseProviderMock) GetGradleBenchmarkPhase(metadata common.CacheConfigMetadata) (string, error) {
+// GetBenchmarkPhase calls GetBenchmarkPhaseFunc.
+func (mock *BenchmarkPhaseProviderMock) GetBenchmarkPhase(buildTool string, metadata common.CacheConfigMetadata) (string, error) {
 	callInfo := struct {
-		Metadata common.CacheConfigMetadata
+		BuildTool string
+		Metadata  common.CacheConfigMetadata
 	}{
-		Metadata: metadata,
+		BuildTool: buildTool,
+		Metadata:  metadata,
 	}
-	mock.lockGetGradleBenchmarkPhase.Lock()
-	mock.calls.GetGradleBenchmarkPhase = append(mock.calls.GetGradleBenchmarkPhase, callInfo)
-	mock.lockGetGradleBenchmarkPhase.Unlock()
-	if mock.GetGradleBenchmarkPhaseFunc == nil {
+	mock.lockGetBenchmarkPhase.Lock()
+	mock.calls.GetBenchmarkPhase = append(mock.calls.GetBenchmarkPhase, callInfo)
+	mock.lockGetBenchmarkPhase.Unlock()
+	if mock.GetBenchmarkPhaseFunc == nil {
 		var (
 			sOut   string
 			errOut error
 		)
 		return sOut, errOut
 	}
-	return mock.GetGradleBenchmarkPhaseFunc(metadata)
+	return mock.GetBenchmarkPhaseFunc(buildTool, metadata)
 }
 
-// GetGradleBenchmarkPhaseCalls gets all the calls that were made to GetGradleBenchmarkPhase.
+// GetBenchmarkPhaseCalls gets all the calls that were made to GetBenchmarkPhase.
 // Check the length with:
 //
-//	len(mockedBenchmarkPhaseProvider.GetGradleBenchmarkPhaseCalls())
-func (mock *BenchmarkPhaseProviderMock) GetGradleBenchmarkPhaseCalls() []struct {
-	Metadata common.CacheConfigMetadata
+//	len(mockedBenchmarkPhaseProvider.GetBenchmarkPhaseCalls())
+func (mock *BenchmarkPhaseProviderMock) GetBenchmarkPhaseCalls() []struct {
+	BuildTool string
+	Metadata  common.CacheConfigMetadata
 } {
 	var calls []struct {
-		Metadata common.CacheConfigMetadata
+		BuildTool string
+		Metadata  common.CacheConfigMetadata
 	}
-	mock.lockGetGradleBenchmarkPhase.RLock()
-	calls = mock.calls.GetGradleBenchmarkPhase
-	mock.lockGetGradleBenchmarkPhase.RUnlock()
+	mock.lockGetBenchmarkPhase.RLock()
+	calls = mock.calls.GetBenchmarkPhase
+	mock.lockGetBenchmarkPhase.RUnlock()
 	return calls
 }

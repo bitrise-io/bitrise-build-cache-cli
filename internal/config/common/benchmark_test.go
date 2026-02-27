@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetGradleBenchmarkPhase_BitriseProvider(t *testing.T) {
+func TestGetBenchmarkPhase_BitriseProvider(t *testing.T) {
 	t.Parallel()
 
 	var capturedURL string
@@ -30,7 +30,7 @@ func TestGetGradleBenchmarkPhase_BitriseProvider(t *testing.T) {
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
 		BitriseAppID:        "app-slug-1",
 		BitriseWorkflowName: "primary",
@@ -43,7 +43,7 @@ func TestGetGradleBenchmarkPhase_BitriseProvider(t *testing.T) {
 	assert.Contains(t, capturedURL, "workflow_name=primary")
 }
 
-func TestGetGradleBenchmarkPhase_ExternalProvider(t *testing.T) {
+func TestGetBenchmarkPhase_ExternalProvider(t *testing.T) {
 	t.Parallel()
 
 	var capturedURL string
@@ -59,7 +59,7 @@ func TestGetGradleBenchmarkPhase_ExternalProvider(t *testing.T) {
 		WorkspaceID: "ws-456",
 	}, log.NewLogger())
 
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:           CIProviderGitHubActions,
 		ExternalAppID:        "org/my-repo",
 		ExternalWorkflowName: "build",
@@ -71,7 +71,7 @@ func TestGetGradleBenchmarkPhase_ExternalProvider(t *testing.T) {
 	assert.Contains(t, capturedURL, "external_workflow_name=build")
 }
 
-func TestGetGradleBenchmarkPhase_EmptyIdentifiers(t *testing.T) {
+func TestGetBenchmarkPhase_EmptyIdentifiers(t *testing.T) {
 	t.Parallel()
 
 	client := NewBenchmarkPhaseClient("http://unused", CacheAuthConfig{
@@ -80,28 +80,28 @@ func TestGetGradleBenchmarkPhase_EmptyIdentifiers(t *testing.T) {
 	}, log.NewLogger())
 
 	// Bitrise with empty app ID
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider: CIProviderBitrise,
 	})
 	require.NoError(t, err)
 	assert.Empty(t, phase)
 
 	// Non-Bitrise with empty external IDs
-	phase, err = client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err = client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider: CIProviderCircleCI,
 	})
 	require.NoError(t, err)
 	assert.Empty(t, phase)
 }
 
-func TestGetGradleBenchmarkPhase_EmptyWorkspaceID(t *testing.T) {
+func TestGetBenchmarkPhase_EmptyWorkspaceID(t *testing.T) {
 	t.Parallel()
 
 	client := NewBenchmarkPhaseClient("http://unused", CacheAuthConfig{
 		AuthToken: "test-token",
 	}, log.NewLogger())
 
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:   CIProviderBitrise,
 		BitriseAppID: "app-1",
 	})
@@ -109,7 +109,7 @@ func TestGetGradleBenchmarkPhase_EmptyWorkspaceID(t *testing.T) {
 	assert.Empty(t, phase)
 }
 
-func TestGetGradleBenchmarkPhase_HTTPError(t *testing.T) {
+func TestGetBenchmarkPhase_HTTPError(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -124,7 +124,7 @@ func TestGetGradleBenchmarkPhase_HTTPError(t *testing.T) {
 	}, log.NewLogger())
 	client.httpClient.RetryMax = 0
 
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
 		BitriseAppID:        "app-1",
 		BitriseWorkflowName: "primary",
@@ -135,7 +135,7 @@ func TestGetGradleBenchmarkPhase_HTTPError(t *testing.T) {
 	assert.Empty(t, phase)
 }
 
-func TestGetGradleBenchmarkPhase_MalformedJSON(t *testing.T) {
+func TestGetBenchmarkPhase_MalformedJSON(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -149,7 +149,7 @@ func TestGetGradleBenchmarkPhase_MalformedJSON(t *testing.T) {
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
 		BitriseAppID:        "app-1",
 		BitriseWorkflowName: "primary",
@@ -160,7 +160,7 @@ func TestGetGradleBenchmarkPhase_MalformedJSON(t *testing.T) {
 	assert.Empty(t, phase)
 }
 
-func TestGetGradleBenchmarkPhase_EmptyPhase(t *testing.T) {
+func TestGetBenchmarkPhase_EmptyPhase(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -174,7 +174,7 @@ func TestGetGradleBenchmarkPhase_EmptyPhase(t *testing.T) {
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 
-	phase, err := client.GetGradleBenchmarkPhase(CacheConfigMetadata{
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
 		BitriseAppID:        "app-1",
 		BitriseWorkflowName: "primary",
