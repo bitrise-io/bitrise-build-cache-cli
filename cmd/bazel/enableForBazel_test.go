@@ -2,6 +2,8 @@
 package bazel_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -14,6 +16,25 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 )
+
+func makeFakeJWT(orgID string) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+
+	payload, err := json.Marshal(map[string]any{ //nolint:errchkjson
+		"default": map[string]any{
+			"org_id": []string{orgID},
+			"app_id": []string{"test-app"},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	body := base64.RawURLEncoding.EncodeToString(payload)
+	sig := base64.RawURLEncoding.EncodeToString([]byte("sig"))
+
+	return header + "." + body + "." + sig
+}
 
 func Test_enableForBazelCmdFn(t *testing.T) {
 	// when
@@ -43,7 +64,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			},
 		}
 		envVars := map[string]string{
-			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
+			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeFakeJWT("test-org"),
 		}
 		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 

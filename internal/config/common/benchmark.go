@@ -54,20 +54,20 @@ func NewBenchmarkPhaseClient(baseURL string, authConfig CacheAuthConfig, logger 
 // GetGradleBenchmarkPhase fetches the benchmark phase for the current build.
 // Returns empty string if no benchmark phase is active or if the build can't be identified.
 func (c *BenchmarkPhaseClient) GetGradleBenchmarkPhase(metadata CacheConfigMetadata) (string, error) {
-	if c.authConfig.WorkspaceID == "" {
-		return "", nil
-	}
-
 	params := url.Values{}
 
 	if metadata.CIProvider == CIProviderBitrise {
 		if metadata.BitriseAppID == "" || metadata.BitriseWorkflowName == "" {
+			c.logger.Debugf("no Bitrise metadata found, skipping benchmark phase check")
+
 			return "", nil
 		}
 		params.Set("app_slug", metadata.BitriseAppID)
 		params.Set("workflow_name", metadata.BitriseWorkflowName)
 	} else {
 		if metadata.ExternalAppID == "" || metadata.ExternalWorkflowName == "" {
+			c.logger.Debugf("no external IDs found, skipping benchmark phase check")
+
 			return "", nil
 		}
 		params.Set("external_app_id", metadata.ExternalAppID)
@@ -81,7 +81,7 @@ func (c *BenchmarkPhaseClient) GetGradleBenchmarkPhase(metadata CacheConfigMetad
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authConfig.AuthToken))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

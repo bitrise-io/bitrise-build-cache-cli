@@ -1,13 +1,36 @@
 package common
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func makeTestJWT(payload map[string]any) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+
+	payloadJSON, err := json.Marshal(payload) //nolint:errchkjson
+	if err != nil {
+		panic(err)
+	}
+
+	body := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	sig := base64.RawURLEncoding.EncodeToString([]byte("signature"))
+
+	return header + "." + body + "." + sig
+}
+
 func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
+	serviceJWT := makeTestJWT(map[string]any{
+		"default": map[string]any{
+			"org_id": []string{"jwt-org-id"},
+			"app_id": []string{"jwt-app-id"},
+		},
+	})
+
 	t.Run("No envs provided", func(t *testing.T) {
 		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{})
 		require.EqualError(t, err, "BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
@@ -16,10 +39,14 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", func(t *testing.T) {
 		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{
-			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
+			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": serviceJWT,
 		})
 		require.NoError(t, err)
-		assert.Equal(t, CacheAuthConfig{AuthToken: "ServiceAccessTokenValue"}, authToken)
+		assert.Equal(t, CacheAuthConfig{
+			AuthToken:   serviceJWT,
+			WorkspaceID: "jwt-org-id",
+			IsJWT:       true,
+		}, authToken)
 	})
 
 	t.Run("BITRISE_BUILD_CACHE_AUTH_TOKEN", func(t *testing.T) {
@@ -44,7 +71,7 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN & BITRISE_BUILD_CACHE_AUTH_TOKEN & BITRISE_BUILD_CACHE_WORKSPACE_ID", func(t *testing.T) {
 		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{
-			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "ServiceAccessTokenValue",
+			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": serviceJWT,
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":          "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID":        "WorkspaceIDValue",
 		})
@@ -55,38 +82,39 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 }
 
 func TestCacheAuthConfig_TokenInGradleFormat(t *testing.T) {
-	type fields struct {
-		AuthToken   string
-		WorkspaceID string
-	}
 	tests := []struct {
 		name   string
-		fields fields
+		config CacheAuthConfig
 		want   string
 	}{
 		{
 			name: "No WorkspaceID",
-			fields: fields{
+			config: CacheAuthConfig{
 				AuthToken: "AuthTokenValue",
 			},
 			want: "AuthTokenValue",
 		},
 		{
-			name: "With WorkspaceID",
-			fields: fields{
+			name: "With WorkspaceID (PAT)",
+			config: CacheAuthConfig{
 				AuthToken:   "AuthTokenValue",
 				WorkspaceID: "WorkspaceIDValue",
 			},
 			want: "WorkspaceIDValue:AuthTokenValue",
 		},
+		{
+			name: "JWT returns token as-is even with WorkspaceID",
+			config: CacheAuthConfig{
+				AuthToken:   "jwt-token",
+				WorkspaceID: "WorkspaceIDValue",
+				IsJWT:       true,
+			},
+			want: "jwt-token",
+		},
 	}
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
-			cac := CacheAuthConfig{
-				AuthToken:   tt.fields.AuthToken,
-				WorkspaceID: tt.fields.WorkspaceID,
-			}
-			if got := cac.TokenInGradleFormat(); got != tt.want {
+			if got := tt.config.TokenInGradleFormat(); got != tt.want {
 				t.Errorf("CacheAuthConfig.TokenInGradleFormat() = %v, want %v", got, tt.want)
 			}
 		})
