@@ -61,6 +61,10 @@ func NewBenchmarkPhaseClient(baseURL string, authConfig CacheAuthConfig, logger 
 func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata CacheConfigMetadata) (string, error) {
 	params := url.Values{}
 
+	if c.authConfig.WorkspaceID == "" {
+		return "", fmt.Errorf("workspace ID is required to fetch benchmark phase")
+	}
+
 	if metadata.CIProvider == CIProviderBitrise {
 		if metadata.BitriseAppID == "" || metadata.BitriseWorkflowName == "" {
 			c.logger.Debugf("no Bitrise metadata found, skipping benchmark phase check")
