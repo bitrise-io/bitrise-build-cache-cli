@@ -993,7 +993,7 @@ workflows:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -exuo pipefail
+            set -euo pipefail
 
             variants=(
               ""
