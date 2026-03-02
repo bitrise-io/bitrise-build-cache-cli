@@ -1,7 +1,6 @@
 package xcode
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -175,7 +175,7 @@ func ActivateXcodeCommandFn(
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
 
-	if err := addXcelerateCommandToPathWithScriptWrapper(ctx, config, osProxy, commandFunc, logger, envs); err != nil {
+	if err := addXcelerateCommandToPathWithScriptWrapper(config, osProxy, logger, envs); err != nil {
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
@@ -299,18 +299,11 @@ func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logg
 
 // addXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
 func addXcelerateCommandToPathWithScriptWrapper(
-	ctx context.Context,
 	config xcelerate.Config,
 	osProxy utils.OsProxy,
-	commandFunc utils.CommandFunc,
 	logger log.Logger,
 	envs map[string]string,
 ) error {
-	homeDir, err := osProxy.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf(xcelerate.ErrFmtDetermineHome, err)
-	}
-
 	binPath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
 	if err := osProxy.MkdirAll(binPath, 0o755); err != nil {
 		return fmt.Errorf("failed to create bin dir: %w", err)
@@ -336,86 +329,14 @@ func addXcelerateCommandToPathWithScriptWrapper(
 		return fmt.Errorf("failed to create xcrun wrapper script: %w", err)
 	}
 
-	pathContent := fmt.Sprintf("export PATH=%s:$PATH", binPath)
-
-	addPathToEnvman(ctx, commandFunc, binPath, envs, logger)
-	if err = addPathToGithubPathFile(osProxy, binPath, envs, logger); err != nil {
-		logger.Errorf("failed to add path to github path file: %s", err)
-	}
-
-	logger.Debugf("Adding xcelerate command to PATH in ~/.bashrc: %s", binPath)
-	err = utils.AddContentOrCreateFile(logger,
-		osProxy,
-		filepath.Join(homeDir, ".bashrc"),
-		"Bitrise Xcelerate",
-		pathContent)
-	if err != nil {
-		return fmt.Errorf("failed to add xcelerate command to PATH in bashrc: %w", err)
-	}
-
-	logger.Debugf("Adding xcelerate command to PATH in ~/.zshrc: %s", binPath)
-	err = utils.AddContentOrCreateFile(logger,
-		osProxy,
-		filepath.Join(homeDir, ".zshrc"),
-		"# Bitrise Xcelerate",
-		pathContent)
-	if err != nil {
-		return fmt.Errorf("failed to add xcelerate command to PATH in zshrc: %w", err)
-	}
-
-	return nil
-}
-
-func addPathToGithubPathFile(osProxy utils.OsProxy, binPath string, envs map[string]string, logger log.Logger) error {
-	filePath := envs["GITHUB_PATH"]
-	if filePath == "" {
-		return nil
-	}
-
-	logger.Infof("Adding path to %s", filePath)
-	f, err := osProxy.OpenFile(filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to open GITHUB_PATH file: %w", err)
-	}
-	defer f.Close()
-
-	writer := bufio.NewWriter(f)
-	if _, err := writer.WriteString(binPath); err != nil {
-		return fmt.Errorf("failed to write to GITHUB_PATH file: %w", err)
-	}
-	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush GITHUB_PATH file: %w", err)
-	}
-
-	return nil
-}
-
-func addPathToEnvman(
-	ctx context.Context,
-	commandFunc utils.CommandFunc,
-	binPath string,
-	envs map[string]string,
-	logger log.Logger,
-) {
-	// remove any existing entry
+	// Export PATH to CI environment (envman for Bitrise, GITHUB_ENV for GitHub Actions)
+	// Remove any existing entry and prepend our bin path
 	path := strings.ReplaceAll(envs["PATH"], binPath+":", "")
-	// prepend our bin path
 	path = strings.Join([]string{binPath, path}, ":")
 
-	command := commandFunc(
-		ctx,
-		"envman",
-		"add",
-		"--key",
-		"PATH",
-		"--value",
-		path,
-	)
-	if output, err := command.CombinedOutput(); err != nil {
-		logger.Debugf("Failed to start envman command: %s", string(output))
+	exporter := envexport.New(envs, logger)
+	exporter.Export("PATH", path)
+	exporter.ExportToShellRC("Bitrise Xcelerate", fmt.Sprintf("export PATH=%s:$PATH", binPath))
 
-		return
-	}
-
-	logger.TInfof("Added xcelerate command to envman PATH: %s", path)
+	return nil
 }

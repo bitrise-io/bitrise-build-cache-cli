@@ -1,20 +1,24 @@
 package gradleconfig
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/envexport"
 )
 
 const (
 	errFmtInvalidCacheLevel        = "invalid cache validation level, valid options: none, warning, error"
 	errFmtTestDistroAppSlug        = "test distribution plugin was enabled but no BITRISE_APP_SLUG was specified"
-	ErrFmtReadAutConfig            = "read auth config from environment variables: %w"
+	ErrFmtReadAuthConfig           = "read auth config from environment variables: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
 	errFmtInvalidValidationLevel   = "invalid validation level: '%s'"
@@ -74,10 +78,30 @@ func (params ActivateGradleParams) TemplateInventory(
 ) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
-	commonInventory, err := params.commonTemplateInventory(logger, envs, isDebug)
+	// Read auth config and metadata upfront
+	logger.Infof("(i) Check Auth Config")
+	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
 	if err != nil {
-		return TemplateInventory{}, err
+		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
+
+	metadata := common.NewMetadata(envs,
+		func(name string, v ...string) (string, error) {
+			output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+			return string(output), err
+		},
+		logger)
+	logger.Infof("(i) Cache Config: %+v", metadata)
+
+	// Check benchmark phase and override params if needed (only on CI)
+	if metadata.CIProvider != "" {
+		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
+		benchmarkClient := common.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+		applyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envs)
+	}
+
+	commonInventory := params.commonTemplateInventory(authConfig, metadata, isDebug)
 
 	cacheInventory, err := params.cacheTemplateInventory(logger, envs)
 	if err != nil {
@@ -96,38 +120,91 @@ func (params ActivateGradleParams) TemplateInventory(
 	}, nil
 }
 
-func (params ActivateGradleParams) commonTemplateInventory(
+func applyBenchmarkPhase(
+	params *ActivateGradleParams,
 	logger log.Logger,
+	benchmarkProvider common.BenchmarkPhaseProvider,
+	metadata common.CacheConfigMetadata,
 	envs map[string]string,
-	isDebug bool,
-) (PluginCommonTemplateInventory, error) {
-	logger.Infof("(i) Debug mode and verbose logs: %t", isDebug)
-
-	// Required configs
-	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+) {
+	phase, err := benchmarkProvider.GetBenchmarkPhase(common.BuildToolGradle, metadata)
 	if err != nil {
-		return PluginCommonTemplateInventory{},
-			fmt.Errorf(ErrFmtReadAutConfig, err)
+		logger.Debugf("Failed to fetch benchmark phase, using configured flags: %v", err)
+
+		return
 	}
-	authToken := authConfig.TokenInGradleFormat()
 
-	cacheConfig := common.NewMetadata(envs,
-		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output() //nolint:noctx
+	if phase == "" {
+		logger.Debugf("No benchmark phase found, using configured flags")
 
-			return string(output), err
-		},
-		logger)
-	logger.Infof("(i) Cache Config: %+v", cacheConfig)
+		return
+	}
 
+	logger.Infof("(i) Benchmark phase: %s", phase)
+	exporter := envexport.New(envs, logger)
+	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
+	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
+	writeBenchmarkPhaseFile(phase, logger)
+
+	switch phase {
+	case common.BenchmarkPhaseBaseline:
+		logger.Warnf("Benchmark baseline mode: disabling cache and enabling analytics only")
+		params.Cache.Enabled = false
+		params.Cache.JustDependency = false
+		params.Analytics.Enabled = true
+	case common.BenchmarkPhaseWarmup:
+		logger.Infof("(i) Benchmark warmup phase: cache performance might not be ideal")
+	}
+}
+
+type benchmarkPhaseFile struct {
+	Phase string `json:"phase"`
+}
+
+func writeBenchmarkPhaseFile(phase string, logger log.Logger) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.Debugf("Failed to get home directory for benchmark phase file: %v", err)
+
+		return
+	}
+
+	dir := filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		logger.Debugf("Failed to create benchmark phase dir: %v", err)
+
+		return
+	}
+
+	data, err := json.Marshal(benchmarkPhaseFile{Phase: phase})
+	if err != nil {
+		logger.Debugf("Failed to marshal benchmark phase file: %v", err)
+
+		return
+	}
+
+	filePath := filepath.Join(dir, "benchmark-phase.json")
+	if err := os.WriteFile(filePath, data, 0o644); err != nil { //nolint:mnd,gosec
+		logger.Debugf("Failed to write benchmark phase file: %v", err)
+
+		return
+	}
+
+	logger.Debugf("Benchmark phase written to %s", filePath)
+}
+
+func (params ActivateGradleParams) commonTemplateInventory(
+	authConfig common.CacheAuthConfig,
+	metadata common.CacheConfigMetadata,
+	isDebug bool,
+) PluginCommonTemplateInventory {
 	return PluginCommonTemplateInventory{
-		AuthToken:  authToken,
+		AuthToken:  authConfig.TokenInGradleFormat(),
 		Debug:      isDebug,
-		AppSlug:    cacheConfig.BitriseAppID,
-		CIProvider: cacheConfig.CIProvider,
+		AppSlug:    metadata.BitriseAppID,
+		CIProvider: metadata.CIProvider,
 		Version:    consts.GradleCommonPluginDepVersion,
-	}, nil
+	}
 }
 
 func (params ActivateGradleParams) cacheTemplateInventory(

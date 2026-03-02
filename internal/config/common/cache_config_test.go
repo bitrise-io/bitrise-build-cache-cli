@@ -54,14 +54,20 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "CircleCI",
 			envs: map[string]string{
-				"CIRCLECI": "true",
+				"CIRCLECI":                "true",
+				"CIRCLE_PROJECT_REPONAME": "my-repo",
+				"CIRCLE_WORKFLOW_ID":      "wf-123",
+				"CIRCLE_JOB":              "build",
 			},
 			commandFunc: func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
-				CIProvider: CIProviderCircleCI,
-				CLIVersion: GetCLIVersion(logger),
+				CIProvider:           CIProviderCircleCI,
+				CLIVersion:           GetCLIVersion(logger),
+				ExternalAppID:        "my-repo",
+				ExternalBuildID:      "wf-123",
+				ExternalWorkflowName: "build",
 			},
 		},
 		{
@@ -93,13 +99,38 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			envs: map[string]string{
 				"GITHUB_ACTIONS":    "true",
 				"GITHUB_SERVER_URL": "https://github.com",
+				"GITHUB_REPOSITORY": "org/my-repo",
+				"GITHUB_RUN_ID":     "run-456",
+				"GITHUB_JOB":        "test",
 			},
 			commandFunc: func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
-				CIProvider: CIProviderGitHubActions,
-				CLIVersion: GetCLIVersion(logger),
+				CIProvider:           CIProviderGitHubActions,
+				CLIVersion:           GetCLIVersion(logger),
+				ExternalAppID:        "org/my-repo",
+				ExternalBuildID:      "run-456",
+				ExternalWorkflowName: "test",
+			},
+		},
+		{
+			name: "GitLab CI",
+			envs: map[string]string{
+				"GITLAB_CI":       "true",
+				"CI_PROJECT_PATH": "group/my-project",
+				"CI_PIPELINE_ID":  "pipeline-789",
+				"CI_JOB_NAME":     "compile",
+			},
+			commandFunc: func(_ string, _ ...string) (string, error) {
+				return "", nil
+			},
+			want: CacheConfigMetadata{
+				CIProvider:           CIProviderGitLabCI,
+				CLIVersion:           GetCLIVersion(logger),
+				ExternalAppID:        "group/my-project",
+				ExternalBuildID:      "pipeline-789",
+				ExternalWorkflowName: "compile",
 			},
 		},
 		{

@@ -297,6 +297,9 @@ workflows:
         inputs:
           - packages: 'bc'
           - upgrade: "no"
+    - restore-gradle-cache:
+        inputs:
+          - verbose: 'true'
     - script:
         title: Enable build cache
         inputs:
@@ -349,7 +352,9 @@ workflows:
             
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
               assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
-
+    - save-gradle-cache:
+        inputs:
+          - verbose: 'true'
     - deploy-to-bitrise-io@2: {}
 
   feature-e2e-gradle-7:
@@ -362,6 +367,9 @@ workflows:
           inputs:
             - packages: 'bc'
             - upgrade: "no"
+      - restore-gradle-cache:
+          inputs:
+            - verbose: 'true'
       - script:
           title: Enable build cache
           inputs:
@@ -378,7 +386,7 @@ workflows:
           inputs:
             - content: |-
                 set -exo pipefail
-                (./gradlew compileDebugKotlin --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+                (./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
       - script:
           title: Check for cache invocations
           inputs:
@@ -410,6 +418,9 @@ workflows:
                 assert_invocation_tasks_gradle "$INVOCATION_ID"
                 assert_build_performance "$INVOCATION_ID"
                 assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+      - save-gradle-cache:
+          inputs:
+            - verbose: 'true'
       - deploy-to-bitrise-io@2: { }
 
   feature-e2e-gradle-bitwarden:
@@ -422,6 +433,9 @@ workflows:
         inputs:
           - packages: 'bc'
           - upgrade: "no"
+    - restore-gradle-cache:
+        inputs:
+          - verbose: 'true'
     - script:
         title: Enable build cache
         inputs:
@@ -498,6 +512,9 @@ workflows:
               assert_invocation_tasks_gradle "$INVOCATION_ID"
               assert_build_performance "$INVOCATION_ID"
               assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+    - save-gradle-cache:
+        inputs:
+          - verbose: 'true'
     - deploy-to-bitrise-io@2: {}
   feature-e2e-bazel-bitrisedc-no-rbe:
     meta:

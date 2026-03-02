@@ -21,9 +21,10 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 	home := t.TempDir()
 
 	envs := map[string]string{
+		"HOME":                             home,
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "token",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "abc123",
-		"GITHUB_PATH":                      filepath.Join(home, ".github_path"),
+		"GITHUB_ENV":                       filepath.Join(home, ".github_env"),
 	}
 
 	t.Run("success", func(t *testing.T) {
@@ -39,10 +40,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		}
 
 		err := xcode.ActivateXcodeCommandFn(
-			context.Background(), mockLogger, osProxy, func(ctx context.Context, command string, args ...string) utils.Command {
-				assert.Equal(t, "envman", command)
-				assert.Subset(t, args, []string{"add", "--key", "PATH", "--value"})
-
+			context.Background(), mockLogger, osProxy, func(_ context.Context, _ string, _ ...string) utils.Command {
 				return &utilsMocks.CommandMock{}
 			},
 			utils.DefaultEncoderFactory{},
@@ -63,7 +61,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		// make sure files were created
 		assert.FileExists(t, filepath.Join(home, ".bashrc"))
 		assert.FileExists(t, filepath.Join(home, ".zshrc"))
-		assert.FileExists(t, filepath.Join(home, ".github_path"))
+		assert.FileExists(t, filepath.Join(home, ".github_env"))
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "bitrise-build-cache-cli")))
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcodebuild")))
 

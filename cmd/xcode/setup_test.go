@@ -9,6 +9,7 @@ import (
 var mockLogger = &utilsMocks.Logger{}
 
 func init() {
+	mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
