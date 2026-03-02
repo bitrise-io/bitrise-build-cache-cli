@@ -893,6 +893,32 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
 
+  update-steps:
+    envs:
+        - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
+    steps:
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@8:
+          inputs:
+            - fetch_tags: "yes"
+      - script@1:
+          title: asdf use latest go
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                
+                asdf install golang 1.24.3
+                asdf global golang 1.24.3
+      - bundle::update-step:
+          envs:
+            - STEP_NAME: bitrise-step-activate-gradle-remote-cache
+            - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_remote_cache.sh
+      - bundle::update-step:
+          envs:
+            - STEP_NAME: bitrise-step-activate-gradle-features
+            - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_features.sh
+
 step_bundles:
   generate_gradle_verification_reference:
     steps:
