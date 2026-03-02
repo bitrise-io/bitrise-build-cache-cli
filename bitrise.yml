@@ -1150,6 +1150,11 @@ workflows:
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_KV_START=$Seek_KV_START
+            Seek_KV_END=$Seek_KV_END
   rn-seek-bc:
     meta:
       bitrise.io:
@@ -1166,6 +1171,11 @@ workflows:
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_BC_START=$Seek_BC_START
+            Seek_BC_END=$Seek_BC_END
   rn-seek-bc-cc:
     meta:
       bitrise.io:
@@ -1182,6 +1192,11 @@ workflows:
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_BC_CC_START=$Seek_BC_CC_START
+            Seek_BC_CC_END=$Seek_BC_CC_END
   rn-prepare-caches-notesnook:
     meta:
       bitrise.io:
@@ -1262,6 +1277,11 @@ workflows:
     steps:
     - bundle::rn-prepare: {}
     - bundle::rn-seek-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_START=$Seek_START
+            Seek_END=$Seek_END
   rn-notesnook-dc:
     meta:
       bitrise.io:
@@ -1795,15 +1815,14 @@ step_bundles:
     steps:
     - save-cache@1.5.1:
         inputs:
-        - key: rn-snapshot-cache
-        - paths: |-
-            **/android/build/**/*.*
-            **/ios/build/**/*.*
+        - key: rn-android-snapshot-cache
+        - paths: '**/android/build/**/*.*'
+        title: Save Android Build Folder
   rn-prepare-snapshot-cache:
     steps:
     - restore-cache@2.6.0:
         inputs:
-        - key: rn-snapshot-cache
+        - key: rn-android-snapshot-cache
         run_if: '{{getenv "USE_KV_CACHE" | eq "true"}}'
   rn-measure-end:
     steps:
