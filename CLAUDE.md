@@ -71,7 +71,7 @@ Check the latest existing release tag to determine the next version.
 The CLI release triggers an auto-update workflow in `https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache`. The unified Bitrise CI app for steps is `48fa8fbee698622c`. The PR title will be "feat: Release new CLI". Monitor CI, then approve with `gh pr review --approve` and enable auto-merge with `gh pr merge --merge --auto`.
 
 ### 4. Create step GitHub release
-Create a GitHub release for the step. This one **can** be marked as "latest". **Version numbering:** The step version can be a minor bump (e.g., 1.5.0 → 1.6.0) when the underlying plugin has new features. Check the latest existing release tag.
+Create a GitHub release for the step. This one **can** be marked as "latest". **Version numbering: the step version bump should match the CLI version bump.** If the CLI release was a patch bump, the step should also be a patch bump. If the CLI release was a minor bump, the step should be a minor bump. Check the latest existing release tag.
 
 ### 5. Merge steplib PR
 After the step release CI completes, a PR appears in `https://github.com/bitrise-io/bitrise-steplib`. It usually needs a rebase. Approve and enable auto-merge. Always wait for CI to pass.
