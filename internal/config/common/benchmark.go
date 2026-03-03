@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/retryhttp"
@@ -46,6 +47,7 @@ type BenchmarkPhaseClient struct {
 func NewBenchmarkPhaseClient(baseURL string, authConfig CacheAuthConfig, logger log.Logger) *BenchmarkPhaseClient {
 	httpClient := retryhttp.NewClient(logger)
 	httpClient.RetryMax = benchmarkMaxRetries
+	httpClient.HTTPClient.Timeout = 10 * time.Second
 
 	return &BenchmarkPhaseClient{
 		httpClient: httpClient,
