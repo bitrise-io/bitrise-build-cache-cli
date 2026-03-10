@@ -8,10 +8,11 @@ import (
 type callMethod string
 
 const (
-	CALL_METHOD_GET    callMethod = "Get"
-	CALL_METHOD_PUT    callMethod = "Set"
-	CALL_METHOD_REMOVE callMethod = "Remove"
-	CALL_METHOD_STOP   callMethod = "Stop"
+	CALL_METHOD_GET              callMethod = "Get"
+	CALL_METHOD_PUT              callMethod = "Set"
+	CALL_METHOD_REMOVE           callMethod = "Remove"
+	CALL_METHOD_STOP             callMethod = "Stop"
+	CALL_METHOD_SET_INVOCATION_ID callMethod = "SetInvocationID"
 )
 
 type callStats struct {

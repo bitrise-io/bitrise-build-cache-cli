@@ -15,13 +15,15 @@ import (
 )
 
 type requestProcessor struct {
-	ctx         context.Context
-	client      Client
-	logger      log.Logger
-	reader      io.Reader
-	writer      io.Writer
-	ccSemaphore chan struct{}
-	config      Config
+	ctx             context.Context
+	client          Client
+	logger          log.Logger
+	reader          io.Reader
+	writer          io.Writer
+	ccSemaphore     chan struct{}
+	config          Config
+	loggerFactory   LoggerFactory
+	getCapabilities func() error
 }
 
 func newRequestProcessor(
@@ -29,23 +31,27 @@ func newRequestProcessor(
 	config Config,
 	client Client,
 	logger log.Logger,
+	loggerFactory LoggerFactory,
+	getCapabilities func() error,
 ) *requestProcessor {
 	// numChan := max(2, runtime.NumCPU()/6)
 	// ccLimit := numChan * runtime.NumCPU()
 	// logger.Infof("Setting up proxy with concurrency limit: %d", ccLimit)
 
 	return &requestProcessor{
-		ctx:         context.Background(),
-		config:      config,
-		client:      client,
-		logger:      logger,
-		reader:      conn,
-		writer:      conn,
-		ccSemaphore: make(chan struct{}, 1),
+		ctx:             context.Background(),
+		config:          config,
+		client:          client,
+		logger:          logger,
+		reader:          conn,
+		writer:          conn,
+		ccSemaphore:     make(chan struct{}, 1),
+		loggerFactory:   loggerFactory,
+		getCapabilities: getCapabilities,
 	}
 }
 
-func (p *requestProcessor) notifyCcache(result processResult) processResult {
+func (p *requestProcessor) notifyClient(result processResult) processResult {
 	var err error
 
 	p.logger.TDebugf("%s - sending to ccache", result.Log())
@@ -120,6 +126,14 @@ func (p *requestProcessor) logCallStats(result processResult) {
 func (p *requestProcessor) handleGet() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_GET)
 
+	if err := p.getCapabilities(); err != nil {
+		return p.notifyClient(processResult{
+			Outcome:   PROCESS_REQUEST_ERROR,
+			Err:       fmt.Errorf("failed to get capabilities: %w", err),
+			CallStats: statBuilder.build(),
+		})
+	}
+
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
 		return processResult{
@@ -140,12 +154,12 @@ func (p *requestProcessor) handleGet() processResult {
 	case err == nil:
 		// success
 	case errors.Is(err, kv.ErrCacheNotFound):
-		return p.notifyCcache(processResult{
+		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_MISS,
 			CallStats: statBuilder.build(),
 		})
 	default:
-		return p.notifyCcache(processResult{
+		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to download data: %w", err),
 			CallStats: statBuilder.build(),
@@ -157,14 +171,14 @@ func (p *requestProcessor) handleGet() processResult {
 
 	data, err := io.ReadAll(buffer)
 	if err != nil {
-		return p.notifyCcache(processResult{
+		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to read data: %w", err),
 			CallStats: statBuilder.build(),
 		})
 	}
 
-	return p.notifyCcache(processResult{
+	return p.notifyClient(processResult{
 		Outcome:   PROCESS_REQUEST_OK,
 		CallStats: statBuilder.build(),
 		Data:      data,
@@ -173,6 +187,14 @@ func (p *requestProcessor) handleGet() processResult {
 
 func (p *requestProcessor) handlePut() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_PUT)
+
+	if err := p.getCapabilities(); err != nil {
+		return p.notifyClient(processResult{
+			Outcome:   PROCESS_REQUEST_ERROR,
+			Err:       fmt.Errorf("failed to get capabilities: %w", err),
+			CallStats: statBuilder.build(),
+		})
+	}
 
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
@@ -204,7 +226,7 @@ func (p *requestProcessor) handlePut() processResult {
 	}
 
 	if !p.config.PushEnabled {
-		return p.notifyCcache(processResult{
+		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_PUSH_DISABLED,
 			CallStats: statBuilder.build(),
 		})
@@ -215,14 +237,14 @@ func (p *requestProcessor) handlePut() processResult {
 	p.logger.TDebugf("%s Called (%d bytes)", statBuilder.Prefix(), size)
 
 	if err = p.client.UploadStreamToBuildCache(p.ctx, bytes.NewReader(value), key, size); err != nil {
-		return p.notifyCcache(processResult{
+		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to upload data: %w", err),
 			CallStats: statBuilder.build(),
 		})
 	}
 
-	return p.notifyCcache(processResult{
+	return p.notifyClient(processResult{
 		Outcome:   PROCESS_REQUEST_OK,
 		CallStats: statBuilder.build(),
 	})
@@ -244,7 +266,36 @@ func (p *requestProcessor) handleRemove() processResult {
 
 	// We handle removal on the storage helper level by keeping track of keys.
 	// See ipc_server.go
-	return p.notifyCcache(processResult{
+	return p.notifyClient(processResult{
+		Outcome:   PROCESS_REQUEST_OK,
+		CallStats: statBuilder.build(),
+	})
+}
+
+func (p *requestProcessor) handleSetInvocationID() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_SET_INVOCATION_ID)
+
+	id, err := protocol.ReadSetInvocationID(p.reader)
+	if err != nil {
+		return processResult{
+			Outcome:   PROCESS_REQUEST_ERROR,
+			Err:       fmt.Errorf("failed to read invocation ID: %w", err),
+			CallStats: statBuilder.build(),
+		}
+	}
+
+	p.logger.TDebugf("[SetInvocationID] %s", id)
+
+	if p.loggerFactory != nil {
+		newLogger, logErr := p.loggerFactory(id)
+		if logErr != nil {
+			p.logger.TErrorf("[SetInvocationID] Failed to create logger for invocation %s: %v", id, logErr)
+		} else {
+			p.logger = newLogger
+		}
+	}
+
+	return p.notifyClient(processResult{
 		Outcome:   PROCESS_REQUEST_OK,
 		CallStats: statBuilder.build(),
 	})
@@ -289,6 +340,10 @@ func (p *requestProcessor) processRequest() processResult {
 
 	case protocol.RequestStop:
 		result = p.handleStop()
+		return result
+
+	case protocol.RequestSetInvocationID:
+		result = p.handleSetInvocationID()
 		return result
 
 	default:

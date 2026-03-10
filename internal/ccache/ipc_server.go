@@ -14,19 +14,20 @@ import (
 )
 
 type IpcServer struct {
-	listener           net.Listener
-	client             Client
-	logger             log.Logger
-	ctx                context.Context
-	cancel             context.CancelFunc
-	loggerFactory      LoggerFactory
-	idleTimer          *time.Timer
-	sessionState       *sessionState
-	ccSemaphore        chan struct{}
-	config             Config
-	timerMutex         sync.Mutex
-	sessionMutex       sync.Mutex
-	capabilitiesCalled bool
+	listener          net.Listener
+	client            Client
+	logger            log.Logger
+	ctx               context.Context
+	cancel            context.CancelFunc
+	loggerFactory     LoggerFactory
+	idleTimer         *time.Timer
+	sessionState      *sessionState
+	ccSemaphore       chan struct{}
+	config            Config
+	timerMutex        sync.Mutex
+	sessionMutex      sync.Mutex
+	capabilitiesOnce  sync.Once
+	capabilitiesErr   error
 }
 
 func NewServer(
@@ -88,6 +89,13 @@ func (s *IpcServer) acceptLoop() {
 	}
 }
 
+func (s *IpcServer) getCapabilities() error {
+	s.capabilitiesOnce.Do(func() {
+		s.capabilitiesErr = s.client.GetCapabilitiesWithRetry(s.ctx)
+	})
+	return s.capabilitiesErr
+}
+
 func (s *IpcServer) handleConnection(conn net.Conn, conID string) {
 	defer conn.Close()
 
@@ -96,13 +104,7 @@ func (s *IpcServer) handleConnection(conn net.Conn, conID string) {
 		return
 	}
 
-	err := s.client.GetCapabilitiesWithRetry(s.ctx)
-	if err != nil {
-		s.logger.TErrorf("Failed to get capabilities: %v", err)
-		return
-	}
-
-	processor := newRequestProcessor(conn, s.config, s.client, s.logger)
+	processor := newRequestProcessor(conn, s.config, s.client, s.logger, s.loggerFactory, s.getCapabilities)
 	for {
 		result := processor.processRequest()
 		s.sessionState.updateWithResult(result)
