@@ -35,10 +35,12 @@ const (
 	pidFile      = "proxy.pid"
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
-	MsgArgsPassedToXcodebuild = "Arguments passed to xcodebuild: %v"
-	MsgInvocationSuccess      = "Invocation succeeded ✅ after %s"
-	MsgInvocationFailed       = "Invocation failed ❌ after %s: %s"
-	MsgInvocationSaved        = "Invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/xcode/%s"
+	NoBitriseBuildCacheFlag     = "--no-bitrise-build-cache"
+	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
+	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
+	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
+	MsgInvocationFailed         = "Invocation failed ❌ after %s: %s"
+	MsgInvocationSaved          = "Invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/xcode/%s"
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"
@@ -106,6 +108,17 @@ TBD`,
 		logOutput := wrapperLogWriter(logFile, logPath, silentLogging)
 		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
 		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
+
+		// Check for --no-bitrise-build-cache flag: override config and filter it out
+		if slices.Contains(xcelerateParams.OrigArgs, NoBitriseBuildCacheFlag) {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoBitriseBuildCacheFlag
+			})
+			config.BuildCacheEnabled = false
+			if !silentLogging {
+				logger.TInfof(MsgBuildCacheDisabledByFlag, NoBitriseBuildCacheFlag)
+			}
+		}
 
 		xcodeArgs := xcodeargs.NewDefault(
 			cobraCmd,
