@@ -36,6 +36,7 @@ const (
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
 	NoBitriseBuildCacheFlag     = "--no-bitrise-build-cache"
+	CreateXCFrameworkFlag       = "-create-xcframework"
 	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
@@ -117,6 +118,14 @@ TBD`,
 			config.BuildCacheEnabled = false
 			if !silentLogging {
 				logger.TInfof(MsgBuildCacheDisabledByFlag, NoBitriseBuildCacheFlag)
+			}
+		}
+
+		// Automatically disable cache for -create-xcframework as it's incompatible
+		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
+			config.BuildCacheEnabled = false
+			if !silentLogging {
+				logger.TInfof(MsgBuildCacheDisabledByFlag, CreateXCFrameworkFlag)
 			}
 		}
 

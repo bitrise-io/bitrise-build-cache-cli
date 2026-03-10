@@ -49,6 +49,7 @@ var actions = []string{
 	"-importLocalizations",
 	"-exportNotarizedApp",
 	"-resolvePackageDependencies",
+	"-create-xcframework",
 }
 
 type Default struct {
