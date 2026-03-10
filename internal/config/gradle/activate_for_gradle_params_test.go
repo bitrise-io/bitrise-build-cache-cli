@@ -338,6 +338,11 @@ func Test_activateGradleParams(t *testing.T) {
 	}
 }
 
+type noopExporter struct{}
+
+func (n *noopExporter) Export(_, _ string)          {}
+func (n *noopExporter) ExportToShellRC(_, _ string) {}
+
 func Test_applyBenchmarkPhase(t *testing.T) {
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
@@ -372,7 +377,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
 
 		assert.False(t, params.Cache.Enabled)
 		assert.False(t, params.Cache.JustDependency)
@@ -398,7 +403,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
 
 		assert.True(t, params.Cache.Enabled)
 		assert.True(t, params.Cache.PushEnabled)
@@ -422,7 +427,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
@@ -445,7 +450,7 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, map[string]string{})
+		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
