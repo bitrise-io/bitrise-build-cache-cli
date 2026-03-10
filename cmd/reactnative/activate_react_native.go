@@ -57,6 +57,13 @@ Note: This is a convenience activation method, if your activation requires fine-
 	},
 }
 
+func init() {
+	common.ActivateCmd.AddCommand(activateReactNativeCmd)
+	activateReactNativeCmd.Flags().BoolVar(&activateGradle, "gradle", true, "Activate Gradle build cache (Android).")
+	activateReactNativeCmd.Flags().BoolVar(&activateXcode, "xcode", true, "Activate Xcode build cache (iOS).")
+	activateReactNativeCmd.Flags().BoolVar(&activateCpp, "cpp", true, "Activate C++ build cache via ccache (native modules).")
+}
+
 func defaultGradleActivationFn(logger log.Logger) error {
 	gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")
 	if err != nil {
@@ -145,11 +152,4 @@ func ActivateReactNativeCmdFn(
 	logger.TInfof("✅ Bitrise Build Cache for React Native activated")
 
 	return nil
-}
-
-func init() {
-	common.ActivateCmd.AddCommand(activateReactNativeCmd)
-	activateReactNativeCmd.Flags().BoolVar(&activateGradle, "gradle", true, "Activate Gradle build cache (Android).")
-	activateReactNativeCmd.Flags().BoolVar(&activateXcode, "xcode", true, "Activate Xcode build cache (iOS).")
-	activateReactNativeCmd.Flags().BoolVar(&activateCpp, "cpp", true, "Activate C++ build cache via ccache (native modules).")
 }
