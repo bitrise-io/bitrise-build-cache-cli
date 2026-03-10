@@ -98,7 +98,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	if metadata.CIProvider != "" {
 		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
 		benchmarkClient := common.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-		applyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envs)
+		applyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envs, logger))
 	}
 
 	commonInventory := params.commonTemplateInventory(authConfig, metadata, isDebug)
@@ -120,12 +120,18 @@ func (params ActivateGradleParams) TemplateInventory(
 	}, nil
 }
 
+// envExporter abstracts environment variable export for testability.
+type envExporter interface {
+	Export(key, value string)
+	ExportToShellRC(blockName, content string)
+}
+
 func applyBenchmarkPhase(
 	params *ActivateGradleParams,
 	logger log.Logger,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 	metadata common.CacheConfigMetadata,
-	envs map[string]string,
+	exporter envExporter,
 ) {
 	phase, err := benchmarkProvider.GetBenchmarkPhase(common.BuildToolGradle, metadata)
 	if err != nil {
@@ -141,7 +147,6 @@ func applyBenchmarkPhase(
 	}
 
 	logger.Infof("(i) Benchmark phase: %s", phase)
-	exporter := envexport.New(envs, logger)
 	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
 	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
 	writeBenchmarkPhaseFile(phase, logger)

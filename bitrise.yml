@@ -948,7 +948,6 @@ step_bundles:
             cd "$SAMPLE_PATH"
             /tmp/bin/bitrise-build-cache-cli -d gradle-verification add-reference-deps
 
-            printenv
             # generate xml
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
