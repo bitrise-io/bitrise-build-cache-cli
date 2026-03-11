@@ -14,11 +14,11 @@ workflows:
   # -------------------------------------------------------------------------------
   # Main Seek workflows
   # -------------------------------------------------------------------------------
-  rn-cli-seek-preheat:
+  rn-cli-seek-android-preheat:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $SEEK_URL
     - APP_COMMIT: $SEEK_COMMIT
@@ -29,11 +29,11 @@ workflows:
     - bundle::rn-cli-benchmark-prepare: {}
     - bundle::rn-cli-seek-android: {}
     - bundle::rn-cli-benchmark-finish: {}
-  rn-cli-seek:
+  rn-cli-seek-android:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $SEEK_URL
     - APP_COMMIT: $SEEK_COMMIT
@@ -52,11 +52,11 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
-  rn-cli-seek-kv:
+  rn-cli-seek-android-kv:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $SEEK_URL
     - APP_COMMIT: $SEEK_COMMIT
@@ -75,11 +75,11 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
-  rn-cli-seek-bc:
+  rn-cli-seek-android-bc:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $SEEK_URL
     - APP_COMMIT: $SEEK_COMMIT
@@ -98,14 +98,98 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
-  # -------------------------------------------------------------------------------
-  # Main NotesNook workflows
-  # -------------------------------------------------------------------------------
-  rn-cli-notesnook-preheat:
+  rn-cli-seek-ios-preheat:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-seek-ios: {}
+    - bundle::rn-cli-benchmark-finish: {}
+  rn-cli-seek-ios:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-seek-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_START=$Seek_START
+            Seek_END=$Seek_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  rn-cli-seek-ios-kv:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek_KV
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-seek-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_KV_START=$Seek_KV_START
+            Seek_KV_END=$Seek_KV_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  rn-cli-seek-ios-bc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek_BC
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-seek-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_BC_START=$Seek_BC_START
+            Seek_BC_END=$Seek_BC_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  # -------------------------------------------------------------------------------
+  # Main NotesNook workflows
+  # -------------------------------------------------------------------------------
+  rn-cli-notesnook-android-preheat:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $NOTESNOOK_URL
     - APP_COMMIT: $NOTESNOOK_COMMIT
@@ -116,11 +200,11 @@ workflows:
     - bundle::rn-cli-benchmark-prepare: {}
     - bundle::rn-cli-notesnook-android: {}
     - bundle::rn-cli-benchmark-finish: {}
-  rn-cli-notesnook:
+  rn-cli-notesnook-android:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $NOTESNOOK_URL
     - APP_COMMIT: $NOTESNOOK_COMMIT
@@ -139,11 +223,11 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
-  rn-cli-notesnook-kv:
+  rn-cli-notesnook-android-kv:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $NOTESNOOK_URL
     - APP_COMMIT: $NOTESNOOK_COMMIT
@@ -162,11 +246,11 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
-  rn-cli-notesnook-bc:
+  rn-cli-notesnook-android-bc:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APP_REPO_URL: $NOTESNOOK_URL
     - APP_COMMIT: $NOTESNOOK_COMMIT
@@ -185,6 +269,90 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
+  rn-cli-notesnook-ios-preheat:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-ios: {}
+    - bundle::rn-cli-benchmark-finish: {}
+  rn-cli-notesnook-ios:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            NotesNook_START=$NotesNook_START
+            NotesNook_END=$NotesNook_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  rn-cli-notesnook-ios-kv:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook_KV
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            NotesNook_KV_START=$NotesNook_KV_START
+            NotesNook_KV_END=$NotesNook_KV_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  rn-cli-notesnook-ios-bc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook_BC
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            NotesNook_BC_START=$NotesNook_BC_START
+            NotesNook_BC_END=$NotesNook_BC_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
   # -------------------------------------------------------------------------------
   # Utility workflows
   # -------------------------------------------------------------------------------
@@ -192,7 +360,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     envs:
     - APPS: |-
         Seek
@@ -333,7 +501,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     tools:
       cmake: latest
     steps:
@@ -420,7 +588,7 @@ step_bundles:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     steps:
     - activate-ssh-key@4: {}
     - git-clone@8.4.2: {}
@@ -456,7 +624,7 @@ step_bundles:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     steps:
     - script@1:
         title: Configure
@@ -504,12 +672,57 @@ step_bundles:
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - CCACHE_PATH: $CCACHE_PATH
     - USE_CCACHE: $USE_CCACHE
-    - USE_METRO: $USE_METRO
+  rn-cli-seek-ios:
+    tools:
+      ruby: 3.4.5
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    steps:
+    - script@1:
+        title: Configure
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            cat > ./android/app/src/main/res/values/config.xml <<'EOF'
+            <?xml version="1.0" encoding="utf-8"?>
+            <!-- copy this file to config.xml and uncomment / fill in the values specific to your project -->
+            <resources>
+                <!-- https://developers.google.com/maps/documentation/android/ -->
+                <string name="gmaps_api_key">xxx</string>
+            </resources>
+            EOF
+
+            mv config.example.js config.js
+    - script@1:
+        title: npm ci
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npm ci
+            npm run add-example-model
+    - cocoapods-install@3:
+        inputs:
+        - source_root_path: ios
+    - script@1:
+        title: npx react-native build-ios
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ../bitrise-build-cache-cli react-native run npx react-native build-ios
+    inputs:
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+      opts:
+        title: WORK_DIR
   rn-cli-notesnook-android:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
-        stack: osx-xcode-edge
+        stack: osx-xcode-26.3.x
     steps:
     - script@1:
         title: npm install & run bootstrap
@@ -543,7 +756,51 @@ step_bundles:
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - CCACHE_PATH: $CCACHE_PATH
     - USE_CCACHE: $USE_CCACHE
-    - USE_METRO: $USE_METRO
+  rn-cli-notesnook-ios:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    steps:
+    - script@1:
+        title: npm install & run bootstrap
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npm install
+            pushd packages/common
+            npm install --legacy-peer-deps --ignore-scripts
+            popd
+            npm run bootstrap -- --scope=mobile
+            pushd apps/mobile
+            eval "$(bitrise tools setup --config .ruby-version)"
+            gem install cocoapods
+            pushd ios
+            pod install
+            popd
+            popd
+    - bundle::rn-cli-measure-start: {}
+    - script@1:
+        title: npm run build:ios
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ../bitrise-build-cache-cli react-native run npm run build:ios
+    - bundle::rn-cli-measure-end: {}
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ccache -s
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+        title: ccache stats
+    inputs:
+    - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
   # -------------------------------------------------------------------------------
   # Various cache save / restore bundles
   # -------------------------------------------------------------------------------
@@ -590,7 +847,7 @@ step_bundles:
   rn-cli-save-xcode:
     steps:
     - save-spm-cache@1.3.2: {}
-    - save-carthage-cache@1.1.1: {}
+    - save-cocoapods-cache: {}
   rn-cli-restore-snapshot-cache:
     steps:
     - restore-cache@2.6.0:
@@ -645,37 +902,71 @@ step_bundles:
 # Pipelines
 # -------------------------------------------------------------------------------
 pipelines:
-  rn-cli-benchmark-seek:
+  rn-cli-benchmark-seek-android:
     workflows:
-      rn-cli-seek-preheat: {}
-      rn-cli-seek:
+      rn-cli-seek-android-preheat: {}
+      rn-cli-seek-android:
         depends_on:
-        - rn-cli-seek-preheat
-      rn-cli-seek-kv:
+        - rn-cli-seek-android-preheat
+      rn-cli-seek-android-kv:
         depends_on:
-        - rn-cli-seek-preheat
-      rn-cli-seek-bc:
+        - rn-cli-seek-android-preheat
+      rn-cli-seek-android-bc:
         depends_on:
-        - rn-cli-seek-preheat
+        - rn-cli-seek-android-preheat
       rn-cli-benchmark_results:
         depends_on:
-        - rn-cli-seek
-        - rn-cli-seek-kv
-        - rn-cli-seek-bc
-  rn-cli-benchmark-notesnook:
+        - rn-cli-seek-android
+        - rn-cli-seek-android-kv
+        - rn-cli-seek-android-bc
+  rn-cli-benchmark-notesnook-android:
     workflows:
-      rn-cli-notesnook-preheat: {}
-      rn-cli-notesnook:
+      rn-cli-notesnook-android-preheat: {}
+      rn-cli-notesnook-android:
         depends_on:
-        - rn-cli-notesnook-preheat
-      rn-cli-notesnook-kv:
+        - rn-cli-notesnook-android-preheat
+      rn-cli-notesnook-android-kv:
         depends_on:
-        - rn-cli-notesnook-preheat
-      rn-cli-notesnook-bc:
+        - rn-cli-notesnook-android-preheat
+      rn-cli-notesnook-android-bc:
         depends_on:
-        - rn-cli-notesnook-preheat
+        - rn-cli-notesnook-android-preheat
       rn-cli-benchmark_results:
         depends_on:
-        - rn-cli-notesnook
-        - rn-cli-notesnook-kv
-        - rn-cli-notesnook-bc
+        - rn-cli-notesnook-android
+        - rn-cli-notesnook-android-kv
+        - rn-cli-notesnook-android-bc
+  rn-cli-benchmark-seek-ios:
+    workflows:
+      rn-cli-seek-ios-preheat: {}
+      rn-cli-seek-ios:
+        depends_on:
+        - rn-cli-seek-ios-preheat
+      rn-cli-seek-ios-kv:
+        depends_on:
+        - rn-cli-seek-ios-preheat
+      rn-cli-seek-ios-bc:
+        depends_on:
+        - rn-cli-seek-ios-preheat
+      rn-cli-benchmark_results:
+        depends_on:
+        - rn-cli-seek-ios
+        - rn-cli-seek-ios-kv
+        - rn-cli-seek-ios-bc
+  rn-cli-benchmark-notesnook-ios:
+    workflows:
+      rn-cli-notesnook-ios-preheat: {}
+      rn-cli-notesnook-ios:
+        depends_on:
+        - rn-cli-notesnook-ios-preheat
+      rn-cli-notesnook-ios-kv:
+        depends_on:
+        - rn-cli-notesnook-ios-preheat
+      rn-cli-notesnook-ios-bc:
+        depends_on:
+        - rn-cli-notesnook-ios-preheat
+      rn-cli-benchmark_results:
+        depends_on:
+        - rn-cli-notesnook-ios
+        - rn-cli-notesnook-ios-kv
+        - rn-cli-notesnook-ios-bc

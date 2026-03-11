@@ -48,7 +48,7 @@ type Config struct {
 	PushEnabled        bool                   `json:"pushEnabled"`
 	Enabled            bool                   `json:"enabled"`
 	BuildCacheEndpoint string                 `json:"buildCacheEndpoint,omitempty"`
-	AuthConfig         common.CacheAuthConfig `json:"authConfig,omitempty"`
+	AuthConfig common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
 
 func DirPath(osProxy utils.OsProxy) string {

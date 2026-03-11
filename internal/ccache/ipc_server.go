@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/gofrs/uuid/v5"
 )
@@ -23,7 +25,8 @@ type IpcServer struct {
 	idleTimer         *time.Timer
 	sessionState      *sessionState
 	ccSemaphore       chan struct{}
-	config            Config
+	config            ccacheconfig.Config
+	metadata          configcommon.CacheConfigMetadata
 	timerMutex        sync.Mutex
 	sessionMutex      sync.Mutex
 	capabilitiesOnce  sync.Once
@@ -32,7 +35,8 @@ type IpcServer struct {
 
 func NewServer(
 	ctx context.Context,
-	config Config,
+	config ccacheconfig.Config,
+	metadata configcommon.CacheConfigMetadata,
 	client Client,
 	logger log.Logger,
 	loggerFactory LoggerFactory,
@@ -43,6 +47,7 @@ func NewServer(
 		ctx:           cancellableCtx,
 		cancel:        cancel,
 		config:        config,
+		metadata:      metadata,
 		client:        client,
 		logger:        logger,
 		loggerFactory: loggerFactory,
@@ -104,7 +109,7 @@ func (s *IpcServer) handleConnection(conn net.Conn, conID string) {
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.client, s.logger, s.loggerFactory, s.getCapabilities)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
 	for {
 		result := processor.processRequest()
 		s.sessionState.updateWithResult(result)

@@ -14,7 +14,8 @@ app:
   - WORKSPACE_SLUG: 322a005426441b60
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
-
+include:
+- path: bitrise_rn_config/bitrise.yml
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release

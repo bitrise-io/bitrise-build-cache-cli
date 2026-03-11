@@ -48,10 +48,11 @@ var (
 				return fmt.Errorf("read ccache config: %w", err)
 			}
 
+			envs := utils.AllEnvs()
 			kvClient, err := createKVClient(
 				cmd.Context(),
 				config,
-				utils.AllEnvs(),
+				envs,
 				initialInvocationID,
 				func(name string, v ...string) (string, error) {
 					output, err := exec.Command(name, v...).Output()
@@ -65,6 +66,11 @@ var (
 			ccacheStorageHelper, err := newCcacheStorageHelper(
 				cmd.Context(),
 				config,
+				configcommon.CacheConfigMetadata{
+					BitriseAppID:           envs["BITRISE_APP_SLUG"],
+					BitriseBuildID:         envs["BITRISE_BUILD_SLUG"],
+					BitriseStepExecutionID: envs["BITRISE_STEP_EXECUTION_ID"],
+				},
 				osProxy,
 				initialInvocationID,
 				kvClient,
@@ -106,7 +112,7 @@ func createKVClient(
 ) (proxy.Client, error) {
 	return common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID: uuid.New().String(),
-		ClientName:       common.ClientNameXcode,
+		ClientName:       common.ClientNameCcache,
 		AuthConfig:       config.AuthConfig,
 		Envs:             envs,
 		CommandFunc:      commandFunc,
@@ -132,6 +138,7 @@ type ccacheStorageHelper struct {
 func newCcacheStorageHelper(
 	ctx context.Context,
 	config ccacheconfig.Config,
+	metadata configcommon.CacheConfigMetadata,
 	osProxy utils.OsProxy,
 	invocationID string,
 	kvClient proxy.Client,
@@ -157,14 +164,8 @@ func newCcacheStorageHelper(
 
 	helper.server, err = ccache.NewServer(
 		ctx,
-		ccache.Config{
-			LogFile:     config.LogFile,
-			ErrLogFile:  config.ErrLogFile,
-			IPCEndpoint: config.IPCEndpoint,
-			IdleTimeout: config.IdleTimeout,
-			Layout:      config.Layout,
-			PushEnabled: config.PushEnabled,
-		},
+		config,
+		metadata,
 		kvClient,
 		helper.logger,
 		func(invocationID string) (log.Logger, error) {

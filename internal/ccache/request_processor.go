@@ -11,6 +11,8 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
@@ -21,14 +23,16 @@ type requestProcessor struct {
 	reader          io.Reader
 	writer          io.Writer
 	ccSemaphore     chan struct{}
-	config          Config
+	config          ccacheconfig.Config
+	metadata        configcommon.CacheConfigMetadata
 	loggerFactory   LoggerFactory
 	getCapabilities func() error
 }
 
 func newRequestProcessor(
 	conn io.ReadWriter,
-	config Config,
+	config ccacheconfig.Config,
+	metadata configcommon.CacheConfigMetadata,
 	client Client,
 	logger log.Logger,
 	loggerFactory LoggerFactory,
@@ -41,6 +45,7 @@ func newRequestProcessor(
 	return &requestProcessor{
 		ctx:             context.Background(),
 		config:          config,
+		metadata:        metadata,
 		client:          client,
 		logger:          logger,
 		reader:          conn,
@@ -294,6 +299,8 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 			p.logger = newLogger
 		}
 	}
+
+	p.client.ChangeSession(id, p.metadata.BitriseAppID, p.metadata.BitriseBuildID, p.metadata.BitriseStepExecutionID)
 
 	return p.notifyClient(processResult{
 		Outcome:   PROCESS_REQUEST_OK,

@@ -19,6 +19,9 @@ var _ Client = &ClientMock{}
 //
 //		// make and configure a mocked Client
 //		mockedClient := &ClientMock{
+//			ChangeSessionFunc: func(invocationID string, appSlug string, buildSlug string, stepSlug string)  {
+//				panic("mock out the ChangeSession method")
+//			},
 //			DownloadStreamFunc: func(ctx context.Context, writer io.Writer, key string) error {
 //				panic("mock out the DownloadStream method")
 //			},
@@ -35,6 +38,9 @@ var _ Client = &ClientMock{}
 //
 //	}
 type ClientMock struct {
+	// ChangeSessionFunc mocks the ChangeSession method.
+	ChangeSessionFunc func(invocationID string, appSlug string, buildSlug string, stepSlug string)
+
 	// DownloadStreamFunc mocks the DownloadStream method.
 	DownloadStreamFunc func(ctx context.Context, writer io.Writer, key string) error
 
@@ -46,6 +52,17 @@ type ClientMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// ChangeSession holds details about calls to the ChangeSession method.
+		ChangeSession []struct {
+			// InvocationID is the invocationID argument value.
+			InvocationID string
+			// AppSlug is the appSlug argument value.
+			AppSlug string
+			// BuildSlug is the buildSlug argument value.
+			BuildSlug string
+			// StepSlug is the stepSlug argument value.
+			StepSlug string
+		}
 		// DownloadStream holds details about calls to the DownloadStream method.
 		DownloadStream []struct {
 			// Ctx is the ctx argument value.
@@ -72,9 +89,54 @@ type ClientMock struct {
 			Size int64
 		}
 	}
+	lockChangeSession            sync.RWMutex
 	lockDownloadStream           sync.RWMutex
 	lockGetCapabilitiesWithRetry sync.RWMutex
 	lockUploadStreamToBuildCache sync.RWMutex
+}
+
+// ChangeSession calls ChangeSessionFunc.
+func (mock *ClientMock) ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string) {
+	callInfo := struct {
+		InvocationID string
+		AppSlug      string
+		BuildSlug    string
+		StepSlug     string
+	}{
+		InvocationID: invocationID,
+		AppSlug:      appSlug,
+		BuildSlug:    buildSlug,
+		StepSlug:     stepSlug,
+	}
+	mock.lockChangeSession.Lock()
+	mock.calls.ChangeSession = append(mock.calls.ChangeSession, callInfo)
+	mock.lockChangeSession.Unlock()
+	if mock.ChangeSessionFunc == nil {
+		return
+	}
+	mock.ChangeSessionFunc(invocationID, appSlug, buildSlug, stepSlug)
+}
+
+// ChangeSessionCalls gets all the calls that were made to ChangeSession.
+// Check the length with:
+//
+//	len(mockedClient.ChangeSessionCalls())
+func (mock *ClientMock) ChangeSessionCalls() []struct {
+	InvocationID string
+	AppSlug      string
+	BuildSlug    string
+	StepSlug     string
+} {
+	var calls []struct {
+		InvocationID string
+		AppSlug      string
+		BuildSlug    string
+		StepSlug     string
+	}
+	mock.lockChangeSession.RLock()
+	calls = mock.calls.ChangeSession
+	mock.lockChangeSession.RUnlock()
+	return calls
 }
 
 // DownloadStream calls DownloadStreamFunc.

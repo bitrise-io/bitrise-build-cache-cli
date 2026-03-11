@@ -11,6 +11,7 @@ import (
 
 // Client is the interface for interacting with the remote build cache.
 type Client interface {
+	ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string)
 	DownloadStream(ctx context.Context, writer io.Writer, key string) error
 	UploadStreamToBuildCache(ctx context.Context, reader io.ReadSeeker, key string, size int64) error
 	GetCapabilitiesWithRetry(ctx context.Context) error

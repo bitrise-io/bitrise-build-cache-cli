@@ -9,6 +9,17 @@ import (
 )
 
 const defaultDialTimeout = 2 * time.Second
+const isListeningTimeout = 100 * time.Millisecond
+
+// IsListening returns true if a process is actively listening on the given Unix socket path.
+func IsListening(socketPath string) bool {
+	conn, err := net.DialTimeout("unix", socketPath, isListeningTimeout)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
 
 // SendInvocationID connects to the ccache storage helper Unix socket and notifies
 // it of the current invocation ID. The helper uses it for per-invocation logging.

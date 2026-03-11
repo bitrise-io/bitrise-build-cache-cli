@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -34,17 +35,82 @@ func RunCmdFn(args []string, environ []string, execFn ExecFunc, notifyFn func(st
 	return execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
 }
 
-// notifyCcacheHelper sends the invocation ID to the ccache storage helper socket.
-// Silently skips if ccache is not configured. Logs a warning if the send fails.
-func notifyCcacheHelper(invocationID string) {
-	config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	if err != nil {
-		return // ccache not configured, skip silently
-	}
-	if err := ccacheipc.SendInvocationID(config.IPCEndpoint, invocationID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: ccache helper notification failed: %v\n", err)
+// BuildNotifyCcacheHelperFn constructs a notifyCcacheHelper function with injectable dependencies.
+// socketPathFn returns the IPC socket path, or an error if ccache is not configured (silently skipped).
+// isListeningFn checks whether the socket has an active listener.
+// startHelperFn launches the storage helper as a background process.
+// awaitReadyFn polls until the socket is listening or a timeout elapses.
+// sendInvocationIDFn sends the invocation ID over the socket.
+func BuildNotifyCcacheHelperFn(
+	socketPathFn func() (string, error),
+	isListeningFn func(string) bool,
+	startHelperFn func() error,
+	awaitReadyFn func(string) bool,
+	sendInvocationIDFn func(string, string) error,
+) func(string) {
+	return func(invocationID string) {
+		socketPath, err := socketPathFn()
+		if err != nil {
+			return // ccache not configured, skip silently
+		}
+
+		if !isListeningFn(socketPath) {
+			if err := startHelperFn(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to start ccache storage helper: %v\n", err)
+				return
+			}
+			if !awaitReadyFn(socketPath) {
+				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper did not become ready\n")
+				return
+			}
+		}
+
+		if err := sendInvocationIDFn(socketPath, invocationID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: ccache helper notification failed: %v\n", err)
+		}
 	}
 }
+
+// startStorageHelper launches the storage helper as a detached background process.
+func startStorageHelper() error {
+	bin, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+	cmd := exec.Command(bin, "ccache", "storage-helper", "start") //nolint:gosec
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Start()
+}
+
+// awaitListening polls the socket until it is listening or a 5-second timeout elapses.
+func awaitListening(socketPath string) bool {
+	const timeout = 5 * time.Second
+	const interval = 100 * time.Millisecond
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if ccacheipc.IsListening(socketPath) {
+			return true
+		}
+		time.Sleep(interval)
+	}
+	return false
+}
+
+//nolint:gochecknoglobals
+var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
+	func() (string, error) {
+		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		if err != nil {
+			return "", err
+		}
+		return config.IPCEndpoint, nil
+	},
+	ccacheipc.IsListening,
+	startStorageHelper,
+	awaitListening,
+	ccacheipc.SendInvocationID,
+)
 
 //nolint:gochecknoglobals
 var runCmd = &cobra.Command{
