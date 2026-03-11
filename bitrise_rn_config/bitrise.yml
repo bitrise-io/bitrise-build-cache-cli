@@ -3,10 +3,16 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
 
 # Everything is prefixed with `rn-cli` to avoid an clashes with the main yml
+app:
+  envs:
+  - SEEK_URL: git@github.com:inaturalist/SeekReactNative.git
+  - SEEK_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+  - NOTESNOOK_URL: git@github.com:streetwriters/notesnook.git
+  - NOTESNOOK_COMMIT: 2b4ec5b03bf2f48a74c0eb45dcaa3f208025c919
 
 workflows:
   # -------------------------------------------------------------------------------
-  # Main workflows
+  # Main Seek workflows
   # -------------------------------------------------------------------------------
   rn-cli-seek-preheat:
     meta:
@@ -14,8 +20,8 @@ workflows:
         machine_type_id: g2.mac.large
         stack: osx-xcode-edge
     envs:
-    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
@@ -29,9 +35,9 @@ workflows:
         machine_type_id: g2.mac.large
         stack: osx-xcode-edge
     envs:
-    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
-    - USE_BUILD_CACHE: true
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
+    - USE_BUILD_CACHE: false
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BENCHMARK_APP_NAME: Seek
@@ -52,8 +58,8 @@ workflows:
         machine_type_id: g2.mac.large
         stack: osx-xcode-edge
     envs:
-    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
     - USE_BUILD_CACHE: false
     - USE_KV_CACHE: true
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
@@ -75,8 +81,8 @@ workflows:
         machine_type_id: g2.mac.large
         stack: osx-xcode-edge
     envs:
-    - APP_REPO_URL: git@github.com:inaturalist/SeekReactNative.git
-    - APP_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
@@ -89,6 +95,93 @@ workflows:
         - variables: |-
             Seek_BC_START=$Seek_BC_START
             Seek_BC_END=$Seek_BC_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  # -------------------------------------------------------------------------------
+  # Main NotesNook workflows
+  # -------------------------------------------------------------------------------
+  rn-cli-notesnook-preheat:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-android: {}
+    - bundle::rn-cli-benchmark-finish: {}
+  rn-cli-notesnook:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            NotesNook_START=$NotesNook_START
+            NotesNook_END=$NotesNook_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  rn-cli-notesnook-kv:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: true
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook_KV
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            NotesNook_KV_START=$NotesNook_KV_START
+            NotesNook_KV_END=$NotesNook_KV_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
+  rn-cli-notesnook-bc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    envs:
+    - APP_REPO_URL: $NOTESNOOK_URL
+    - APP_COMMIT: $NOTESNOOK_COMMIT
+    - USE_BUILD_CACHE: true
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: NotesNook_BC
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - bundle::rn-cli-notesnook-android: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            NotesNook_BC_START=$NotesNook_BC_START
+            NotesNook_BC_END=$NotesNook_BC_END
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
@@ -412,7 +505,41 @@ step_bundles:
     - CCACHE_PATH: $CCACHE_PATH
     - USE_CCACHE: $USE_CCACHE
     - USE_METRO: $USE_METRO
-
+  rn-cli-notesnook-android:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-edge
+    steps:
+    - script@1:
+        title: npm run bootstrap
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            npm run bootstrap
+    - bundle::rn-cli-measure-start: {}
+    - script@1:
+        title: npm run build:android
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ../bitrise-build-cache-cli react-native run npm run build:android
+    - bundle::rn-cli-measure-end: {}
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ccache -s
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+        title: ccache stats
+    inputs:
+    - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - CCACHE_PATH: $CCACHE_PATH
+    - USE_CCACHE: $USE_CCACHE
+    - USE_METRO: $USE_METRO
   # -------------------------------------------------------------------------------
   # Various cache save / restore bundles
   # -------------------------------------------------------------------------------
@@ -443,14 +570,6 @@ step_bundles:
             set -exo pipefail
             ./bitrise-build-cache-cli activate react-native
         title: Activate Build Cache
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
-    - script@1.2.1:
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-            ./bitrise-build-cache-cli ccache storage-helper start -d > ccache-helper-service.log 2>&1 &
-        title: Start ccache proxy
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
   rn-cli-restore-gradle:
     steps:
@@ -539,3 +658,20 @@ pipelines:
         - rn-cli-seek
         - rn-cli-seek-kv
         - rn-cli-seek-bc
+  rn-cli-benchmark-notesnook:
+    workflows:
+      rn-cli-notesnook-preheat: {}
+      rn-cli-notesnook:
+        depends_on:
+        - rn-cli-notesnook-preheat
+      rn-cli-notesnook-kv:
+        depends_on:
+        - rn-cli-notesnook-preheat
+      rn-cli-notesnook-bc:
+        depends_on:
+        - rn-cli-notesnook-preheat
+      rn-cli-benchmark_results:
+        depends_on:
+        - rn-cli-notesnook
+        - rn-cli-notesnook-kv
+        - rn-cli-notesnook-bc
