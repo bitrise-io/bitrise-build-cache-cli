@@ -512,11 +512,12 @@ step_bundles:
         stack: osx-xcode-edge
     steps:
     - script@1:
-        title: npm run bootstrap
+        title: npm install & run bootstrap
         inputs:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
+            npm install
             npm run bootstrap
     - bundle::rn-cli-measure-start: {}
     - script@1:
