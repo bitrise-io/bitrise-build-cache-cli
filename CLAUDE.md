@@ -46,6 +46,38 @@ This is a Go CLI tool (Cobra-based) that configures build cache for Gradle, Baze
 - Each command package has a `setup_test.go` that initializes mock loggers
 - Tests use dependency injection for mockable components
 
+### Mock generation with moq
+
+This project uses [moq](https://github.com/matryer/moq) for generating mocks. The binary is at `~/.asdf/installs/golang/1.25.4/bin/moq` (v0.6.0). Run `go generate ./...` to regenerate, or invoke moq directly.
+
+**Important:** Generate mocks as `_test.go` files in the same package to avoid import cycles:
+```
+//go:generate moq -stub -out client_mock_test.go -pkg ccache . Client
+```
+This keeps the mock test-only (not importable) while allowing internal (`package ccache`) test files to use it without a cycle. Do **not** put mocks in a `mocks/` subdirectory for interfaces that are tested from within the same package.
+
+The `-stub` flag makes uncalled methods return zero values instead of panicking.
+
+### cmd/reactnative builder pattern
+
+`cmd/reactnative/activate_react_native.go` uses exported builder functions for testability:
+- `BuildGradleActivationFn(activateFn)` — wraps gradle activation, expands `~/.gradle`, sets cache enabled/push enabled
+- `BuildXcodeActivationFn(activateFn)` — wraps Xcode activation, sets `DebugLogging`
+- `BuildCppActivationFn(activateFn)` — wraps ccache activation with `ccacheconfig.DefaultParams()`
+- `BuildStartStorageHelperFn(executableFn, startProcessFn)` — starts the storage helper as a detached process (survives activation)
+
+Production `var defaultXxxFn` wires each builder to the real implementation. Tests pass fakes to the builders.
+
+### internal/ccache package
+
+The ccache IPC proxy (`internal/ccache/`) implements a binary protocol between ccache and the Bitrise build cache:
+- `requestProcessor` handles one request per connection: GET (0x00), PUT (0x01), REMOVE (0x02), STOP (0x03), SetInvocationID (0xB1)
+- `IpcServer` uses `sync.Once` for lazy `getCapabilities` and a semaphore for concurrency control
+- `LoggerFactory func(invocationID string) (log.Logger, error)` creates per-invocation loggers
+- `processResultOutcome` constants: `PROCESS_REQUEST_OK`, `PROCESS_REQUEST_MISS`, `PROCESS_REQUEST_SHOULD_STOP`, `PROCESS_REQUEST_ERROR`, `PROCESS_REQUEST_PUSH_DISABLED`
+- `sessionState` uses `atomic.Int64` for hit/miss/byte counters
+- `keyToPath` supports layouts: `""` or `"flat"` (hex), `"subdirs"` (`ccache/1-xx/rest`), `"bazel"` (`ac/<64hex>`)
+
 ## Release Process
 
 A CLI release can be triggered by two scenarios:

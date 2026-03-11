@@ -518,7 +518,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm install
-            npm run bootstrap
+            npm run bootstrap -- --scope=mobile
     - bundle::rn-cli-measure-start: {}
     - script@1:
         title: npm run build:android
