@@ -518,6 +518,9 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             npm install
+            pushd packages/common
+            npm install --legacy-peer-deps --ignore-scripts
+            popd
             npm run bootstrap -- --scope=mobile
     - bundle::rn-cli-measure-start: {}
     - script@1:
