@@ -12,12 +12,14 @@ const defaultDialTimeout = 2 * time.Second
 const isListeningTimeout = 100 * time.Millisecond
 
 // IsListening returns true if a process is actively listening on the given Unix socket path.
+// It reads the server greeting before closing so the server sees a clean EOF rather than a broken pipe.
 func IsListening(socketPath string) bool {
 	conn, err := net.DialTimeout("unix", socketPath, isListeningTimeout)
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	defer conn.Close()
+	_ = protocol.ReadGreeting(conn)
 	return true
 }
 
