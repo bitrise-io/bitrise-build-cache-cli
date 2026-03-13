@@ -814,7 +814,7 @@ step_bundles:
             popd
             npm run bootstrap -- --scope=mobile
             pushd apps/mobile
-            eval "$(bitrise tools setup --config .ruby-version)"
+            eval "$(bitrise tools setup --config .ruby-version --format bash)"
             gem install cocoapods
             pushd ios
             pod install
