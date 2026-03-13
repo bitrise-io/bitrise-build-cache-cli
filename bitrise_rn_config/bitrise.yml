@@ -157,7 +157,6 @@ workflows:
             set -exo pipefail
             ./bitrise-build-cache-cli activate xcode
         title: Activate Build Cache
-        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
     - bundle::rn-cli-seek-ios: {}
     - share-pipeline-variable@1:
         inputs:
