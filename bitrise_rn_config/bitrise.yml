@@ -647,7 +647,6 @@ step_bundles:
     inputs:
     - APP_REPO_URL: $APP_REPO_URL
     - APP_COMMIT: $APP_COMMIT
-    - USE_CCACHE: $USE_CCACHE
     - USE_BUILD_CACHE: $USE_BUILD_CACHE
     - USE_KV_CACHE: $USE_KV_CACHE
   rn-cli-seek-android:
@@ -701,7 +700,6 @@ step_bundles:
     inputs:
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - CCACHE_PATH: $CCACHE_PATH
-    - USE_CCACHE: $USE_CCACHE
   rn-cli-seek-ios:
     tools:
       ruby: 3.4.5
@@ -751,7 +749,7 @@ step_bundles:
             set -exo pipefail
 
             ccache -s
-        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
         title: ccache stats
     inputs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
@@ -794,12 +792,13 @@ step_bundles:
     inputs:
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - CCACHE_PATH: $CCACHE_PATH
-    - USE_CCACHE: $USE_CCACHE
   rn-cli-notesnook-ios:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
         stack: osx-xcode-26.3.x
+    tools:
+      ruby: 3.4.5
     steps:
     - script@1:
         title: npm install & run bootstrap
@@ -840,7 +839,6 @@ step_bundles:
     inputs:
     - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
     - CCACHE_PATH: $CCACHE_PATH
-    - USE_CCACHE: $USE_CCACHE
   # -------------------------------------------------------------------------------
   # Various cache save / restore bundles
   # -------------------------------------------------------------------------------
