@@ -28,14 +28,14 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				return "", errors.New("some error") // So that we get the git params from env vars
 			},
 			envs: map[string]string{
-				"BITRISE_IO":                       "true",
-				"BITRISE_APP_SLUG":                 "BitriseAppID1",
-				"BITRISE_BUILD_SLUG":               "BitriseBuildID1",
-				"BITRISE_TRIGGERED_WORKFLOW_TITLE": "BitriseWorkflowName1",
-				"GIT_REPOSITORY_URL":               "https://github.com/repo/url",
-				"GIT_CLONE_COMMIT_HASH":            "abcdef1234567890",
-				"BITRISE_GIT_BRANCH":               "main",
-				"GIT_CLONE_COMMIT_AUTHOR_EMAIL":    "john.doe@bitrise.io",
+				"BITRISE_IO":                    "true",
+				"BITRISE_APP_SLUG":              "BitriseAppID1",
+				"BITRISE_BUILD_SLUG":            "BitriseBuildID1",
+				"BITRISE_TRIGGERED_WORKFLOW_ID": "BitriseWorkflowName1",
+				"GIT_REPOSITORY_URL":            "https://github.com/repo/url",
+				"GIT_CLONE_COMMIT_HASH":         "abcdef1234567890",
+				"BITRISE_GIT_BRANCH":            "main",
+				"GIT_CLONE_COMMIT_AUTHOR_EMAIL": "john.doe@bitrise.io",
 			},
 			want: CacheConfigMetadata{
 				CIProvider:          CIProviderBitrise,
