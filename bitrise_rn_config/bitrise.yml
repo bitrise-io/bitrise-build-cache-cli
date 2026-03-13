@@ -815,8 +815,8 @@ step_bundles:
             pushd apps/mobile
             eval "$(bitrise tools setup --config .ruby-version --format bash)"
             gem install cocoapods
-            pushd ios
             gem install ffi -v 1.17.3
+            pushd ios
             pod install
             popd
             popd
