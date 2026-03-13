@@ -136,6 +136,37 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
+  rn-cli-seek-ios-bc:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - APP_REPO_URL: $SEEK_URL
+    - APP_COMMIT: $SEEK_COMMIT
+    - USE_BUILD_CACHE: false
+    - USE_KV_CACHE: false
+    - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
+    - BENCHMARK_APP_NAME: Seek_BC
+    steps:
+    - bundle::rn-cli-benchmark-prepare: {}
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ./bitrise-build-cache-cli activate xcode
+        title: Activate Build Cache
+        run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
+    - bundle::rn-cli-seek-ios: {}
+    - share-pipeline-variable@1:
+        inputs:
+        - variables: |-
+            Seek_BC_START=$Seek_BC_START
+            Seek_BC_END=$Seek_BC_END
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - deploy_path: ccache-helper-service.log
   rn-cli-seek-ios-kv:
     meta:
       bitrise.io:
@@ -159,7 +190,7 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
-  rn-cli-seek-ios-bc:
+  rn-cli-seek-ios-bc-ccache:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
@@ -170,15 +201,15 @@ workflows:
     - USE_BUILD_CACHE: true
     - USE_KV_CACHE: false
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
-    - BENCHMARK_APP_NAME: Seek_BC
+    - BENCHMARK_APP_NAME: Seek_BC_CCACHE
     steps:
     - bundle::rn-cli-benchmark-prepare: {}
     - bundle::rn-cli-seek-ios: {}
     - share-pipeline-variable@1:
         inputs:
         - variables: |-
-            Seek_BC_START=$Seek_BC_START
-            Seek_BC_END=$Seek_BC_END
+            Seek_BC_CCACHE_START=$Seek_BC_CCACHE_START
+            Seek_BC_CCACHE_END=$Seek_BC_CCACHE_END
     - deploy-to-bitrise-io@2:
         inputs:
         - deploy_path: ccache-helper-service.log
@@ -714,6 +745,15 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             ../bitrise-build-cache-cli react-native run npx react-native build-ios
+    - script@1.2.1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            ccache -s
+        run_if: '{{getenv "USE_CCACHE" | eq "true"}}'
+        title: ccache stats
     inputs:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
       opts:
@@ -948,11 +988,15 @@ pipelines:
       rn-cli-seek-ios-bc:
         depends_on:
         - rn-cli-seek-ios-preheat
+      rn-cli-seek-ios-bc-ccache:
+        depends_on:
+        - rn-cli-seek-ios-preheat
       rn-cli-benchmark_results:
         depends_on:
         - rn-cli-seek-ios
         - rn-cli-seek-ios-kv
         - rn-cli-seek-ios-bc
+        - rn-cli-seek-ios-bc-ccache
   rn-cli-benchmark-notesnook-ios:
     workflows:
       rn-cli-notesnook-ios-preheat: {}
