@@ -814,6 +814,7 @@ step_bundles:
             popd
             npm run bootstrap -- --scope=mobile
             pushd apps/mobile
+            asdf install ruby 3.4.5
             gem install ffi -v 1.17.3
             gem install cocoapods
             pushd ios
