@@ -120,7 +120,7 @@ func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Log
 			GitMetadata:            git,
 			HostMetadata:           hostMetadata,
 			BitriseAppID:           envs["BITRISE_APP_SLUG"],
-			BitriseWorkflowName:    envs["BITRISE_TRIGGERED_WORKFLOW_TITLE"],
+			BitriseWorkflowName:    envs["BITRISE_TRIGGERED_WORKFLOW_ID"],
 			BitriseBuildID:         envs["BITRISE_BUILD_SLUG"],
 			BitriseStepExecutionID: envs["BITRISE_STEP_EXECUTION_ID"],
 			Datacenter:             envs[datacenterEnvKey],

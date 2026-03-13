@@ -37,7 +37,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 			"BITRISE_IO":                       "true",
 			"BITRISE_APP_SLUG":                 "AppSlugValue",
-			"BITRISE_TRIGGERED_WORKFLOW_TITLE": "WorkflowName1",
+			"BITRISE_TRIGGERED_WORKFLOW_ID":    "WorkflowName1",
 			"BITRISE_BUILD_SLUG":               "BuildID1",
 		}
 
