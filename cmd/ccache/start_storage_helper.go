@@ -54,7 +54,7 @@ var (
 				envs,
 				initialInvocationID,
 				func(name string, v ...string) (string, error) {
-					output, err := exec.Command(name, v...).Output()
+					output, err := exec.CommandContext(cmd.Context(), name, v...).Output() //nolint:gosec
 
 					return string(output), err
 				},

@@ -2,7 +2,6 @@ package ccache
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -143,7 +142,7 @@ func (config Config) Save(logger log.Logger, osProxy utils.OsProxy, encoderFacto
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
 	configFilePath := PathFor(osProxy, ccacheConfigFile)
 
-	f, err := os.OpenFile(configFilePath, 0, 0)
+	f, err := osProxy.OpenFile(configFilePath, 0, 0)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrFmtOpenConfigFile, configFilePath, err)
 	}
