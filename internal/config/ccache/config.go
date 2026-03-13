@@ -16,10 +16,10 @@ const (
 	ccachePath       = ".bitrise/cache/ccache/"
 	ccacheConfigFile = "config.json"
 
-	defaultLogFile        = "ccache-%s.log"
-	defaultErrLogFile     = "ccache-err.log"
-	defaultIdleTimeout    = 900
-	defaultLayout         = "flat"
+	defaultLogFile            = "ccache-%s.log"
+	defaultErrLogFile         = "ccache-err.log"
+	defaultIdleTimeout        = "15m"
+	defaultLayout             = "flat"
 	defaultCRSHDataTimeout    = "2s"
 	defaultCRSHRequestTimeout = "20s"
 
@@ -48,7 +48,7 @@ type Config struct {
 	PushEnabled        bool                   `json:"pushEnabled"`
 	Enabled            bool                   `json:"enabled"`
 	BuildCacheEndpoint string                 `json:"buildCacheEndpoint,omitempty"`
-	AuthConfig common.CacheAuthConfig `json:"authConfig,omitempty"`
+	AuthConfig         common.CacheAuthConfig `json:"authConfig,omitempty"`
 }
 
 func DirPath(osProxy utils.OsProxy) string {
@@ -95,13 +95,14 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 	}
 
 	buildCacheEndpoint := common.SelectCacheEndpointURL(params.BuildCacheEndpoint, envs)
+	idleTimeout, _ := time.ParseDuration(defaultIdleTimeout)
 
 	return Config{
 		AuthConfig:         authConfig,
 		IPCEndpoint:        ipcEndpoint,
 		LogFile:            defaultLogFile,
 		ErrLogFile:         defaultErrLogFile,
-		IdleTimeout:        defaultIdleTimeout,
+		IdleTimeout:        idleTimeout,
 		Layout:             defaultLayout,
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,

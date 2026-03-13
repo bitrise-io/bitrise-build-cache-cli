@@ -1,6 +1,7 @@
 package ccache
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
@@ -8,26 +9,31 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
 )
 
-const defaultDialTimeout = 2 * time.Second
-const isListeningTimeout = 100 * time.Millisecond
+const (
+	defaultDialTimeout = 2 * time.Second
+	isListeningTimeout = 100 * time.Millisecond
+)
 
 // IsListening returns true if a process is actively listening on the given Unix socket path.
 // It reads the server greeting before closing so the server sees a clean EOF rather than a broken pipe.
 func IsListening(socketPath string) bool {
-	conn, err := net.DialTimeout("unix", socketPath, isListeningTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), isListeningTimeout)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		return false
 	}
 	defer conn.Close()
 	_ = protocol.ReadGreeting(conn)
+
 	return true
 }
 
 // SendInvocationID connects to the ccache storage helper Unix socket and notifies
 // it of the current invocation ID. The helper uses it for per-invocation logging.
 // Returns an error if the connection or protocol exchange fails.
-func SendInvocationID(socketPath, invocationID string) error {
-	conn, err := net.DialTimeout("unix", socketPath, defaultDialTimeout)
+func SendInvocationID(ctx context.Context, socketPath, invocationID string) error {
+	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
 	}
@@ -51,6 +57,7 @@ func SendInvocationID(socketPath, invocationID string) error {
 		return nil
 	case protocol.ResponseErr:
 		msg, _ := protocol.ReadMsg(conn)
+
 		return fmt.Errorf("server error: %s", msg)
 	default:
 		return fmt.Errorf("unexpected response: 0x%02x", resp)

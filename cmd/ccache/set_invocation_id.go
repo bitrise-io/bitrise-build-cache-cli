@@ -10,7 +10,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
-var ( //nolint:gochecknoglobals
+//nolint:gochecknoglobals
+var (
 	setInvocationIDValue      string
 	setInvocationIDSocketPath string
 )
@@ -20,7 +21,7 @@ var setInvocationIDCmd = &cobra.Command{
 	Use:          "set-invocation-id",
 	Short:        "Send an invocation ID to the running storage helper",
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		socketPath := setInvocationIDSocketPath
 		if socketPath == "" {
 			config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
@@ -30,7 +31,7 @@ var setInvocationIDCmd = &cobra.Command{
 			socketPath = config.IPCEndpoint
 		}
 
-		if err := ccache.SendInvocationID(socketPath, setInvocationIDValue); err != nil {
+		if err := ccache.SendInvocationID(cmd.Context(), socketPath, setInvocationIDValue); err != nil {
 			return fmt.Errorf("send invocation ID: %w", err)
 		}
 

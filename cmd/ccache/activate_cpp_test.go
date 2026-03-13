@@ -20,7 +20,8 @@ import (
 
 func validEnvs() map[string]string {
 	return map[string]string{
-		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "test-token",
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "test-token",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "test-workspace",
 	}
 }
 
@@ -29,8 +30,8 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 	tmpDir := t.TempDir()
 	return &mocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return tmpDir, nil },
-		MkdirAllFunc:   func(_ string, _ os.FileMode) error { return nil },
-		GetwdFunc:      func() (string, error) { return "/work/dir", nil },
+		MkdirAllFunc:    func(_ string, _ os.FileMode) error { return nil },
+		GetwdFunc:       func() (string, error) { return "/work/dir", nil },
 		CreateFunc: func(_ string) (*os.File, error) {
 			return os.CreateTemp(tmpDir, "ccache-config-*.json")
 		},

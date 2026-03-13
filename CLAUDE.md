@@ -78,6 +78,14 @@ The ccache IPC proxy (`internal/ccache/`) implements a binary protocol between c
 - `sessionState` uses `atomic.Int64` for hit/miss/byte counters
 - `keyToPath` supports layouts: `""` or `"flat"` (hex), `"subdirs"` (`ccache/1-xx/rest`), `"bazel"` (`ac/<64hex>`)
 
+## Linting
+
+This project uses golangci-lint v2. Notable rules to follow when generating code:
+
+- **nlreturn**: blank line required before `return` statements (and other block-terminating statements) when preceded by other code. Always add an empty line before `return`, `continue`, `break` in non-trivial blocks.
+- **noctx**: use `DialContext` / `CommandContext` / etc. instead of context-free variants (`net.DialTimeout`, `exec.Command`). For intentionally detached processes (e.g. background helpers that must outlive the parent), suppress with `//nolint:noctx // intentionally detached: <reason>`.
+- **lostcancel**: always `defer cancel()` immediately after `context.WithCancel` / `WithTimeout` / `WithDeadline`.
+
 ## Release Process
 
 A CLI release can be triggered by two scenarios:

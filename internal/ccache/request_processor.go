@@ -9,15 +9,15 @@ import (
 	"io"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 type requestProcessor struct {
-	ctx             context.Context
 	client          Client
 	logger          log.Logger
 	reader          io.Reader
@@ -26,7 +26,7 @@ type requestProcessor struct {
 	config          ccacheconfig.Config
 	metadata        configcommon.CacheConfigMetadata
 	loggerFactory   LoggerFactory
-	getCapabilities func() error
+	getCapabilities func(context.Context) error
 }
 
 func newRequestProcessor(
@@ -36,14 +36,13 @@ func newRequestProcessor(
 	client Client,
 	logger log.Logger,
 	loggerFactory LoggerFactory,
-	getCapabilities func() error,
+	getCapabilities func(context.Context) error,
 ) *requestProcessor {
 	// numChan := max(2, runtime.NumCPU()/6)
 	// ccLimit := numChan * runtime.NumCPU()
 	// logger.Infof("Setting up proxy with concurrency limit: %d", ccLimit)
 
 	return &requestProcessor{
-		ctx:             context.Background(),
 		config:          config,
 		metadata:        metadata,
 		client:          client,
@@ -70,6 +69,8 @@ func (p *requestProcessor) notifyClient(result processResult) processResult {
 
 	case PROCESS_REQUEST_OK:
 		err = p.writeOK(result)
+
+	case PROCESS_REQUEST_SHOULD_STOP:
 	}
 
 	if err != nil {
@@ -89,6 +90,7 @@ func (p *requestProcessor) writeOK(result processResult) error {
 
 	if result.CallStats.method != "Get" {
 		p.logger.TDebugf("%s Successfully wrote OK response", result.Prefix())
+
 		return nil
 	}
 
@@ -111,12 +113,14 @@ func (p *requestProcessor) keyToPath(key []byte) string {
 		if len(keyHex) >= sha256HexSize {
 			return fmt.Sprintf("ac/%s", keyHex[:sha256HexSize])
 		}
+
 		return fmt.Sprintf("ac/%s%s", keyHex, keyHex[:sha256HexSize-len(keyHex)])
 
 	case "subdirs":
 		if len(keyHex) < 2 {
 			return keyHex
 		}
+
 		return fmt.Sprintf("ccache/1-%s/%s", keyHex[:2], keyHex[2:])
 
 	default:
@@ -128,10 +132,10 @@ func (p *requestProcessor) logCallStats(result processResult) {
 	p.logger.TDebugf("%s took %s", result.Log(), time.Since(result.CallStats.start))
 }
 
-func (p *requestProcessor) handleGet() processResult {
+func (p *requestProcessor) handleGet(ctx context.Context) processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_GET)
 
-	if err := p.getCapabilities(); err != nil {
+	if err := p.getCapabilities(ctx); err != nil {
 		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to get capabilities: %w", err),
@@ -153,7 +157,7 @@ func (p *requestProcessor) handleGet() processResult {
 	p.logger.TDebugf("%s Called", statBuilder.Prefix())
 
 	buffer := bytes.NewBuffer(nil)
-	err = p.client.DownloadStream(p.ctx, buffer, key)
+	err = p.client.DownloadStream(ctx, buffer, key)
 
 	switch {
 	case err == nil:
@@ -190,10 +194,10 @@ func (p *requestProcessor) handleGet() processResult {
 	})
 }
 
-func (p *requestProcessor) handlePut() processResult {
+func (p *requestProcessor) handlePut(ctx context.Context) processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_PUT)
 
-	if err := p.getCapabilities(); err != nil {
+	if err := p.getCapabilities(ctx); err != nil {
 		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to get capabilities: %w", err),
@@ -241,7 +245,7 @@ func (p *requestProcessor) handlePut() processResult {
 	statBuilder.withUploadBytes(size)
 	p.logger.TDebugf("%s Called (%d bytes)", statBuilder.Prefix(), size)
 
-	if err = p.client.UploadStreamToBuildCache(p.ctx, bytes.NewReader(value), key, size); err != nil {
+	if err = p.client.UploadStreamToBuildCache(ctx, bytes.NewReader(value), key, size); err != nil {
 		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to upload data: %w", err),
@@ -311,13 +315,14 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 func (p *requestProcessor) handleStop() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_STOP)
 	p.logger.TDebugf("%s Called", statBuilder.Prefix())
+
 	return processResult{
 		Outcome:   PROCESS_REQUEST_SHOULD_STOP,
 		CallStats: statBuilder.build(),
 	}
 }
 
-func (p *requestProcessor) processRequest() processResult {
+func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 	reqType, err := protocol.ReadRequest(p.reader)
 	if err != nil {
 		return processResult{
@@ -334,23 +339,28 @@ func (p *requestProcessor) processRequest() processResult {
 
 	switch reqType {
 	case protocol.RequestGet:
-		result = p.handleGet()
+		result = p.handleGet(ctx)
+
 		return result
 
 	case protocol.RequestPut:
-		result = p.handlePut()
+		result = p.handlePut(ctx)
+
 		return result
 
 	case protocol.RequestRemove:
 		result = p.handleRemove()
+
 		return result
 
 	case protocol.RequestStop:
 		result = p.handleStop()
+
 		return result
 
 	case protocol.RequestSetInvocationID:
 		result = p.handleSetInvocationID()
+
 		return result
 
 	default:
@@ -359,6 +369,7 @@ func (p *requestProcessor) processRequest() processResult {
 			Outcome: PROCESS_REQUEST_ERROR,
 			Err:     fmt.Errorf("unknown request type: 0x%02x", reqType),
 		}
+
 		return result
 	}
 }

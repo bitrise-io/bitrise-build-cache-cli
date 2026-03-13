@@ -1,6 +1,8 @@
 package reactnative
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,6 +34,7 @@ func RunCmdFn(args []string, environ []string, execFn ExecFunc, notifyFn func(st
 		return fmt.Errorf("missing arguments")
 	}
 	name, cmdArgs := args[0], args[1:]
+
 	return execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
 }
 
@@ -57,10 +60,12 @@ func BuildNotifyCcacheHelperFn(
 		if !isListeningFn(socketPath) {
 			if err := startHelperFn(); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to start ccache storage helper: %v\n", err)
+
 				return
 			}
 			if !awaitReadyFn(socketPath) {
 				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper did not become ready\n")
+
 				return
 			}
 		}
@@ -77,10 +82,15 @@ func startStorageHelper() error {
 	if err != nil {
 		return fmt.Errorf("get executable path: %w", err)
 	}
-	cmd := exec.Command(bin, "ccache", "storage-helper", "start") //nolint:gosec
+	cmd := exec.Command(bin, "ccache", "storage-helper", "start") //nolint:gosec,noctx // intentionally detached: the helper must outlive this command
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Start()
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start storage helper process: %w", err)
+	}
+
+	return nil
 }
 
 // awaitListening polls the socket until it is listening or a 5-second timeout elapses.
@@ -94,6 +104,7 @@ func awaitListening(socketPath string) bool {
 		}
 		time.Sleep(interval)
 	}
+
 	return false
 }
 
@@ -102,14 +113,17 @@ var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 	func() (string, error) {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("read ccache config: %w", err)
 		}
+
 		return config.IPCEndpoint, nil
 	},
 	ccacheipc.IsListening,
 	startStorageHelper,
 	awaitListening,
-	ccacheipc.SendInvocationID,
+	func(socketPath, invocationID string) error {
+		return ccacheipc.SendInvocationID(context.Background(), socketPath, invocationID)
+	},
 )
 
 //nolint:gochecknoglobals
@@ -127,11 +141,14 @@ var runCmd = &cobra.Command{
 			cmd.Stderr = os.Stderr
 			cmd.Env = environ
 			if err := cmd.Run(); err != nil {
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					os.Exit(exitErr.ExitCode())
+				var exitError *exec.ExitError
+				if errors.As(err, &exitError) {
+					os.Exit(exitError.ExitCode())
 				}
+
 				return fmt.Errorf("failed to run: %w", err)
 			}
+
 			return nil
 		}, notifyCcacheHelper)
 	},

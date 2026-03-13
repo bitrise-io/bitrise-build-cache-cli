@@ -64,7 +64,9 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 	params := url.Values{}
 
 	if c.authConfig.WorkspaceID == "" {
-		return "", fmt.Errorf("workspace ID is required to fetch benchmark phase")
+		c.logger.Debugf("no workspace ID found, skipping benchmark phase check")
+
+		return "", nil
 	}
 
 	if metadata.CIProvider == CIProviderBitrise {

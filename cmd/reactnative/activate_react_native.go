@@ -20,7 +20,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
-var ( //nolint:gochecknoglobals
+//nolint:gochecknoglobals
+var (
 	activateGradle bool
 	activateXcode  bool
 	activateCpp    bool
@@ -106,6 +107,7 @@ func BuildXcodeActivationFn(
 	return func(ctx context.Context, logger log.Logger) error {
 		xcodeParams := xcelerate.DefaultParams()
 		xcodeParams.DebugLogging = common.IsDebugLogMode
+
 		return activateFn(ctx, logger, utils.DefaultOsProxy{}, utils.DefaultCommandFunc(), utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{}, xcodeParams, utils.AllEnvs())
 	}
 }
@@ -136,13 +138,16 @@ func BuildStartStorageHelperFn(
 			return fmt.Errorf("start ccache storage helper: %w", err)
 		}
 		logger.TInfof("Ccache storage helper started (pid %d)", pid)
+
 		return nil
 	}
 }
 
-var defaultGradleActivationFn = BuildGradleActivationFn(gradle.ActivateGradleCmdFn) //nolint:gochecknoglobals
-var defaultXcodeActivationFn = BuildXcodeActivationFn(xcode.ActivateXcodeCommandFn) //nolint:gochecknoglobals
-var defaultCppActivationFn = BuildCppActivationFn(ccache.ActivateCppCommandFn)       //nolint:gochecknoglobals
+var (
+	defaultGradleActivationFn = BuildGradleActivationFn(gradle.ActivateGradleCmdFn)  //nolint:gochecknoglobals
+	defaultXcodeActivationFn  = BuildXcodeActivationFn(xcode.ActivateXcodeCommandFn) //nolint:gochecknoglobals
+	defaultCppActivationFn    = BuildCppActivationFn(ccache.ActivateCppCommandFn)    //nolint:gochecknoglobals
+)
 
 //nolint:gochecknoglobals
 var defaultStartStorageHelperFn = BuildStartStorageHelperFn(
@@ -152,8 +157,9 @@ var defaultStartStorageHelperFn = BuildStartStorageHelperFn(
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("start storage helper process: %w", err)
 		}
+
 		return cmd.Process.Pid, nil
 	},
 )

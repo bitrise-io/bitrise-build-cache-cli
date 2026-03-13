@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 

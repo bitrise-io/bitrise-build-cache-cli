@@ -3,14 +3,16 @@
 package ccache
 
 import (
+	"context"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
 )
 
 // shortTempSocket creates a Unix socket path short enough for macOS (< 104 chars).
@@ -70,7 +72,7 @@ func Test_SendInvocationID(t *testing.T) {
 			errCh <- nil
 		}()
 
-		err = SendInvocationID(socketPath, "my-inv-id")
+		err = SendInvocationID(context.Background(), socketPath, "my-inv-id")
 		assert.NoError(t, err)
 
 		serverErr := <-errCh
@@ -84,7 +86,7 @@ func Test_SendInvocationID(t *testing.T) {
 		socketPath := shortTempSocket(t, "nx.sock")
 		// Do not create a listener — the socket file does not exist.
 
-		err := SendInvocationID(socketPath, "inv-id")
+		err := SendInvocationID(context.Background(), socketPath, "inv-id")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to ccache socket")
 	})
@@ -129,7 +131,7 @@ func Test_SendInvocationID(t *testing.T) {
 			errCh <- nil
 		}()
 
-		err = SendInvocationID(socketPath, "inv-id")
+		err = SendInvocationID(context.Background(), socketPath, "inv-id")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "server error: boom")
 
@@ -178,7 +180,7 @@ func Test_SendInvocationID(t *testing.T) {
 			errCh <- nil
 		}()
 
-		err = SendInvocationID(socketPath, "inv-id")
+		err = SendInvocationID(context.Background(), socketPath, "inv-id")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unexpected response")
 

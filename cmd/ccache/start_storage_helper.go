@@ -20,8 +20,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
 )
 
+//nolint:gochecknoglobals
 var (
-	//nolint:gochecknoglobals
 	initialInvocationID string
 
 	ccacheCmd = &cobra.Command{
@@ -36,7 +36,6 @@ var (
 		SilenceUsage: true,
 	}
 
-	//nolint:gochecknoglobals
 	startStorageHelperCmd = &cobra.Command{
 		Use:          "start",
 		Short:        "Start Xcelerate's ccache storage helper",
@@ -56,6 +55,7 @@ var (
 				initialInvocationID,
 				func(name string, v ...string) (string, error) {
 					output, err := exec.Command(name, v...).Output()
+
 					return string(output), err
 				},
 			)
@@ -64,7 +64,6 @@ var (
 			}
 
 			ccacheStorageHelper, err := newCcacheStorageHelper(
-				cmd.Context(),
 				config,
 				configcommon.CacheConfigMetadata{
 					BitriseAppID:           envs["BITRISE_APP_SLUG"],
@@ -85,7 +84,7 @@ var (
 			}
 			cmd.SetErr(errWriter)
 
-			return ccacheStorageHelper.start()
+			return ccacheStorageHelper.start(cmd.Context())
 		},
 	}
 )
@@ -110,7 +109,7 @@ func createKVClient(
 	invocationID string,
 	commandFunc configcommon.CommandFunc,
 ) (proxy.Client, error) {
-	return common.CreateKVClient(ctx, common.CreateKVClientParams{
+	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID: uuid.New().String(),
 		ClientName:       common.ClientNameCcache,
 		AuthConfig:       config.AuthConfig,
@@ -121,10 +120,14 @@ func createKVClient(
 		InvocationID:     invocationID,
 		SkipCapabilities: false, // handled by the storage helper itself, no need for the client to fetch capabilities
 	})
+	if err != nil {
+		return nil, fmt.Errorf("create KV client: %w", err)
+	}
+
+	return client, nil
 }
 
 type ccacheStorageHelper struct {
-	ctx             context.Context
 	osProxy         utils.OsProxy
 	config          ccacheconfig.Config
 	logger          log.Logger
@@ -132,11 +135,10 @@ type ccacheStorageHelper struct {
 	server          *ccache.IpcServer
 
 	loggerFactory func(c *ccacheStorageHelper, invocationID string, verbose bool) (log.Logger, error)
-	start         func() error
+	start         func(ctx context.Context) error
 }
 
 func newCcacheStorageHelper(
-	ctx context.Context,
 	config ccacheconfig.Config,
 	metadata configcommon.CacheConfigMetadata,
 	osProxy utils.OsProxy,
@@ -144,7 +146,6 @@ func newCcacheStorageHelper(
 	kvClient proxy.Client,
 ) (*ccacheStorageHelper, error) {
 	helper := &ccacheStorageHelper{
-		ctx:           ctx,
 		config:        config,
 		osProxy:       osProxy,
 		loggerFactory: defaultLoggerFactory,
@@ -163,7 +164,6 @@ func newCcacheStorageHelper(
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
 	helper.server, err = ccache.NewServer(
-		ctx,
 		config,
 		metadata,
 		kvClient,
