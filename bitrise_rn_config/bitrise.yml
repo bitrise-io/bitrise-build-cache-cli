@@ -149,14 +149,14 @@ workflows:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
     - BENCHMARK_APP_NAME: Seek_BC
     steps:
-    - bundle::rn-cli-benchmark-prepare: {}
     - script@1.2.1:
         inputs:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
             ./bitrise-build-cache-cli activate xcode
-        title: Activate Build Cache
+        title: Activate XCode Build Cache
+    - bundle::rn-cli-benchmark-prepare: {}
     - bundle::rn-cli-seek-ios: {}
     - share-pipeline-variable@1:
         inputs:
