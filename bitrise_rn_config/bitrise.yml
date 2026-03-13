@@ -755,6 +755,8 @@ step_bundles:
     - WORK_DIR: $BITRISE_SOURCE_DIR/_tmp
       opts:
         title: WORK_DIR
+    - BENCHMARK_APP_NAME: $BENCHMARK_APP_NAME
+    - CCACHE_PATH: $CCACHE_PATH
   rn-cli-notesnook-android:
     meta:
       bitrise.io:
