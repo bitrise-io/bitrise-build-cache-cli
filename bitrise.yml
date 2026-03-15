@@ -15,6 +15,9 @@ app:
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
 
+include:
+- path: bitrise_rn_config/bitrise.yml
+
 workflows:
   release:
     description: Creates Linux and Darwin binaries, then publishes a GitHub release
@@ -352,7 +355,7 @@ workflows:
               assert_invocation_tasks_gradle "$INVOCATION_ID"
               assert_build_performance "$INVOCATION_ID"
               assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
-            
+
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
               assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
     - save-gradle-cache:
@@ -910,7 +913,7 @@ workflows:
           inputs:
             - content: |-
                 #!/usr/bin/env bash
-                
+
                 asdf install golang 1.24.3
                 asdf global golang 1.24.3
       - bundle::update-step:
