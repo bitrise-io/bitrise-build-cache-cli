@@ -21,8 +21,9 @@ type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
 // into environ and delegates execution to execFn. If notifyFn is non-nil, it is called
-// with the generated invocation ID before the command runs.
-func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string)) error {
+// with the generated invocation ID before the command runs. analyticsHooks, if non-nil,
+// resets ccache stats before execution and collects+sends them after.
+func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string), analyticsHooks *CcacheAnalyticsHooks) error {
 	invocationID := uuid.New().String()
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
 
@@ -33,9 +34,22 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, not
 	if len(args) == 0 {
 		return fmt.Errorf("missing arguments")
 	}
+
 	name, cmdArgs := args[0], args[1:]
 
-	return execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
+	if analyticsHooks != nil && analyticsHooks.PreRun != nil {
+		analyticsHooks.PreRun()
+	}
+
+	start := time.Now()
+	execErr := execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
+	duration := time.Since(start)
+
+	if analyticsHooks != nil && analyticsHooks.PostRun != nil {
+		analyticsHooks.PostRun(invocationID, args, duration, execErr)
+	}
+
+	return execErr
 }
 
 // BuildNotifyCcacheHelperFn constructs a notifyCcacheHelper function with injectable dependencies.
@@ -150,7 +164,7 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, notifyCcacheHelper)
+		}, notifyCcacheHelper, defaultCcacheAnalyticsHooks)
 	},
 }
 
