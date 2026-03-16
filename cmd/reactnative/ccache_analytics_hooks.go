@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
 
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
@@ -25,12 +26,13 @@ type CcacheAnalyticsHooks struct {
 }
 
 // BuildCcacheAnalyticsHooksFn constructs a CcacheAnalyticsHooks with injectable dependencies.
-// findCcacheFn locates the ccache binary; if it returns false, both hooks are no-ops.
+// findCcacheFn locates the ccache binary; if it returns false, ccache-specific hooks are skipped.
 // resetStatsFn resets ccache counters before the build (ccache -z).
 // collectStatsFn fetches JSON stats after the build (ccache --print-stats --format=json).
 // getMetadataFn returns system/CI metadata for the analytics payload.
 // getAuthConfigFn returns the auth config used to identify the workspace.
-// sendFn delivers the assembled Invocation to the backend.
+// sendFn delivers the run-level Invocation (always sent, even without ccache).
+// sendCcacheFn delivers the CcacheInvocation (only sent when ccache is present).
 func BuildCcacheAnalyticsHooksFn(
 	findCcacheFn func() (string, bool),
 	resetStatsFn func(ccachePath string) error,
@@ -38,6 +40,7 @@ func BuildCcacheAnalyticsHooksFn(
 	getMetadataFn func() common.CacheConfigMetadata,
 	getAuthConfigFn func() (common.CacheAuthConfig, error),
 	sendFn func(inv ccacheanalytics.Invocation) error,
+	sendCcacheFn func(inv ccacheanalytics.CcacheInvocation) error,
 ) *CcacheAnalyticsHooks {
 	var ccachePath string
 
@@ -56,24 +59,6 @@ func BuildCcacheAnalyticsHooksFn(
 		},
 
 		PostRun: func(invocationID string, args []string, duration time.Duration, execErr error) {
-			if ccachePath == "" {
-				return // ccache was not found during PreRun
-			}
-
-			statsData, err := collectStatsFn(ccachePath)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to collect ccache stats: %v\n", err)
-
-				return
-			}
-
-			ccacheStats, err := ccacheanalytics.ParseCcacheStats(statsData)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to parse ccache stats: %v\n", err)
-
-				return
-			}
-
 			authConfig, err := getAuthConfigFn()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to get auth config for ccache analytics: %v\n", err)
@@ -98,10 +83,38 @@ func BuildCcacheAnalyticsHooksFn(
 				FullCommand:    fullCommand,
 				Success:        execErr == nil,
 				Error:          execErr,
-				CcacheStats:    ccacheStats,
 			}, authConfig, metadata)
 
 			if err := sendFn(*inv); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", err)
+			}
+
+			if ccachePath == "" {
+				return // ccache was not found during PreRun
+			}
+
+			statsData, err := collectStatsFn(ccachePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to collect ccache stats: %v\n", err)
+
+				return
+			}
+
+			ccacheStats, err := ccacheanalytics.ParseCcacheStats(statsData)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to parse ccache stats: %v\n", err)
+
+				return
+			}
+
+			ccacheInv := ccacheanalytics.NewCcacheInvocation(
+				uuid.New().String(),
+				invocationID,
+				time.Now().Add(-duration),
+				ccacheStats,
+			)
+
+			if err := sendCcacheFn(*ccacheInv); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to send ccache analytics: %v\n", err)
 			}
 		},
@@ -153,5 +166,20 @@ var defaultCcacheAnalyticsHooks = BuildCcacheAnalyticsHooksFn(
 		}
 
 		return client.PutInvocation(inv)
+	},
+	func(inv ccacheanalytics.CcacheInvocation) error {
+		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		if err != nil {
+			return fmt.Errorf("read ccache config: %w", err)
+		}
+
+		logger := log.NewLogger()
+
+		client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+		if err != nil {
+			return fmt.Errorf("create analytics client: %w", err)
+		}
+
+		return client.PutCcacheInvocation(inv)
 	},
 )

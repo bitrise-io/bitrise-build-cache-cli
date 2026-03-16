@@ -158,9 +158,10 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 	noopExecFn := func(_ []string, _ string, _ ...string) error { return nil }
 
-	t.Run("skips both hooks when ccache is not found", func(t *testing.T) {
+	t.Run("skips ccache hooks when ccache is not found but still sends run invocation", func(t *testing.T) {
 		resetCalled := false
 		collectCalled := false
+		sendCalled := false
 
 		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
 			func() (string, bool) { return "", false },
@@ -168,19 +169,22 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func(_ string) ([]byte, error) { collectCalled = true; return nil, nil },
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(_ ccacheanalytics.Invocation) error { return nil },
+			func(_ ccacheanalytics.Invocation) error { sendCalled = true; return nil },
+			func(_ ccacheanalytics.CcacheInvocation) error { return nil },
 		)
 
 		_ = reactnative.RunCmdFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.False(t, resetCalled)
 		assert.False(t, collectCalled)
+		assert.True(t, sendCalled)
 	})
 
-	t.Run("resets stats before exec and collects+sends after", func(t *testing.T) {
+	t.Run("resets stats before exec and collects+sends both invocations after", func(t *testing.T) {
 		resetCalled := false
 		collectCalled := false
 		var sentInvocation ccacheanalytics.Invocation
+		var sentCcacheInvocation ccacheanalytics.CcacheInvocation
 
 		statsJSON := []byte(`{"stats":{"cache_hit_direct":3,"cache_hit_preprocessed":1,"cache_miss":6,"cache_hit_rate":0.4,"errors_compiling":0,"files_in_cache":10,"cache_size_kibibyte":512}}`)
 
@@ -198,22 +202,33 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 				sentInvocation = inv
 				return nil
 			},
+			func(inv ccacheanalytics.CcacheInvocation) error {
+				sentCcacheInvocation = inv
+				return nil
+			},
 		)
 
 		_ = reactnative.RunCmdFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.True(t, resetCalled)
 		assert.True(t, collectCalled)
+
+		// Run invocation uses BITRISE_INVOCATION_ID and carries all metadata
 		assert.NotEmpty(t, sentInvocation.InvocationID)
 		assert.Equal(t, "ws-1", sentInvocation.BitriseOrgSlug)
 		assert.Equal(t, "app-1", sentInvocation.BitriseAppSlug)
 		assert.Equal(t, "myapp", sentInvocation.Command)
 		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
 		assert.True(t, sentInvocation.Success)
-		assert.Equal(t, 3, sentInvocation.CcacheStats.CacheHitDirect)
-		assert.Equal(t, 1, sentInvocation.CcacheStats.CacheHitPreprocessed)
-		assert.Equal(t, 6, sentInvocation.CcacheStats.CacheMiss)
-		assert.InDelta(t, 0.4, sentInvocation.CcacheStats.CacheHitRate, 0.001)
+
+		// Ccache invocation has its own UUID, references the run invocation, and contains only ccache data
+		assert.NotEmpty(t, sentCcacheInvocation.InvocationID)
+		assert.NotEqual(t, sentInvocation.InvocationID, sentCcacheInvocation.InvocationID, "ccache invocation should have its own UUID")
+		assert.Equal(t, sentInvocation.InvocationID, sentCcacheInvocation.ParentInvocationID)
+		assert.Equal(t, 3, sentCcacheInvocation.CcacheStats.CacheHitDirect)
+		assert.Equal(t, 1, sentCcacheInvocation.CcacheStats.CacheHitPreprocessed)
+		assert.Equal(t, 6, sentCcacheInvocation.CcacheStats.CacheMiss)
+		assert.InDelta(t, 0.4, sentCcacheInvocation.CcacheStats.CacheHitRate, 0.001)
 	})
 
 	t.Run("reports success=false when exec fails", func(t *testing.T) {
@@ -228,6 +243,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
 			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			func(_ ccacheanalytics.CcacheInvocation) error { return nil },
 		)
 
 		_ = reactnative.RunCmdFn(
@@ -242,8 +258,9 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 		assert.Contains(t, sentInvocation.Error, "build failed")
 	})
 
-	t.Run("skips send when collect stats fails", func(t *testing.T) {
+	t.Run("skips ccache send when collect stats fails but still sends run invocation", func(t *testing.T) {
 		sendCalled := false
+		sendCcacheCalled := false
 
 		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
 			func() (string, bool) { return "/usr/bin/ccache", true },
@@ -252,16 +269,19 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
 			func(_ ccacheanalytics.Invocation) error { sendCalled = true; return nil },
+			func(_ ccacheanalytics.CcacheInvocation) error { sendCcacheCalled = true; return nil },
 		)
 
 		_ = reactnative.RunCmdFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
 
-		assert.False(t, sendCalled)
+		assert.True(t, sendCalled)
+		assert.False(t, sendCcacheCalled)
 	})
 
 	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
 		statsJSON := []byte(`{"stats":{}}`)
 		var sentInvocation ccacheanalytics.Invocation
+		var sentCcacheInvocation ccacheanalytics.CcacheInvocation
 		before := time.Now()
 
 		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
@@ -271,6 +291,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
 			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			func(inv ccacheanalytics.CcacheInvocation) error { sentCcacheInvocation = inv; return nil },
 		)
 
 		_ = reactnative.RunCmdFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
@@ -278,5 +299,8 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 		assert.True(t, sentInvocation.DurationMs >= 0)
 		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))
 		assert.True(t, !sentInvocation.InvocationDate.Before(before))
+
+		assert.True(t, sentCcacheInvocation.InvocationDate.Before(time.Now()))
+		assert.True(t, !sentCcacheInvocation.InvocationDate.Before(before))
 	})
 }

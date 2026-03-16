@@ -13,7 +13,7 @@ type CcacheStats struct {
 	CacheSizeKibibyte    int64   `json:"cacheSizeKibibyte"`
 }
 
-// Invocation is the analytics payload for a single ccache-wrapped command run.
+// Invocation is the analytics payload for the run command, sent for every execution regardless of ccache availability.
 type Invocation struct {
 	InvocationID         string            `json:"invocationId"`
 	InvocationDate       time.Time         `json:"invocationDate"`
@@ -45,5 +45,13 @@ type Invocation struct {
 	ExternalAppID        string            `json:"externalAppId,omitempty"`
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
-	CcacheStats          CcacheStats       `json:"ccacheStats"`
+}
+
+// CcacheInvocation is the analytics payload for ccache statistics captured during a run.
+// It references the parent Invocation and contains only ccache-specific data.
+type CcacheInvocation struct {
+	InvocationID        string      `json:"invocationId"`
+	ParentInvocationID  string      `json:"parentInvocationId"`
+	InvocationDate      time.Time   `json:"invocationDate"`
+	CcacheStats         CcacheStats `json:"ccacheStats"`
 }

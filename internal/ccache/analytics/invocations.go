@@ -42,7 +42,7 @@ func ParseCcacheStats(data []byte) (CcacheStats, error) {
 	}, nil
 }
 
-// InvocationRunStats holds the runtime data captured around a single ccache-wrapped command run.
+// InvocationRunStats holds the runtime data captured around a single run command execution.
 type InvocationRunStats struct {
 	InvocationDate time.Time
 	InvocationID   string
@@ -51,10 +51,10 @@ type InvocationRunStats struct {
 	FullCommand    string
 	Success        bool
 	Error          error
-	CcacheStats    CcacheStats
 }
 
 // NewInvocation assembles an Invocation from run stats, auth config, and system metadata.
+// It captures command-level details and is sent regardless of ccache availability.
 func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthConfig, commonMetadata common.CacheConfigMetadata) *Invocation {
 	errorStr := ""
 	if runStats.Error != nil {
@@ -92,18 +92,58 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		ExternalAppID:        commonMetadata.ExternalAppID,
 		ExternalBuildID:      commonMetadata.ExternalBuildID,
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
-		CcacheStats:          runStats.CcacheStats,
+	}
+}
+
+// NewCcacheInvocation assembles a CcacheInvocation from a ccache stats snapshot.
+// It references the parent Invocation via parentInvocationID and contains only ccache-specific data.
+func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate time.Time, stats CcacheStats) *CcacheInvocation {
+	return &CcacheInvocation{
+		InvocationID:       invocationID,
+		ParentInvocationID: parentInvocationID,
+		InvocationDate:     invocationDate,
+		CcacheStats:        stats,
 	}
 }
 
 // PutInvocation sends an Invocation to the analytics backend via HTTP PUT.
 func (c *Client) PutInvocation(inv Invocation) error {
 	requestURL := fmt.Sprintf("%s/invocations/%s", c.baseURL, inv.InvocationID)
-	c.logger.Debugf("Sending ccache invocation data to: %s", requestURL)
+	c.logger.Debugf("Sending run invocation data to: %s", requestURL)
 
 	payload, err := json.Marshal(inv)
 	if err != nil {
 		return fmt.Errorf("marshal invocation: %w", err)
+	}
+
+	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, payload)
+	if err != nil {
+		return fmt.Errorf("create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("perform HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return unwrapError(resp)
+	}
+
+	return nil
+}
+
+// PutCcacheInvocation sends a CcacheInvocation to the analytics backend via HTTP PUT.
+func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error {
+	requestURL := fmt.Sprintf("%s/ccache-invocations/%s", c.baseURL, inv.InvocationID)
+	c.logger.Debugf("Sending ccache invocation data to: %s", requestURL)
+
+	payload, err := json.Marshal(inv)
+	if err != nil {
+		return fmt.Errorf("marshal ccache invocation: %w", err)
 	}
 
 	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, payload)
