@@ -19,10 +19,10 @@ import (
 // ExecFunc runs a command with the given environment, executable name, and arguments.
 type ExecFunc func(environ []string, name string, args ...string) error
 
-// RunCmdFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
+// RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
 // into environ and delegates execution to execFn. If notifyFn is non-nil, it is called
 // with the generated invocation ID before the command runs.
-func RunCmdFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string)) error {
+func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string)) error {
 	invocationID := uuid.New().String()
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
 
@@ -134,7 +134,7 @@ var runCmd = &cobra.Command{
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
 	RunE: func(_ *cobra.Command, args []string) error {
-		return RunCmdFn(args, os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
+		return RunWithInvocationIDFn(args, os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
 			cmd := exec.Command(name, cmdArgs...) //nolint:gosec
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout

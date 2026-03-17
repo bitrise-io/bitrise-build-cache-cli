@@ -9,7 +9,7 @@ import (
 )
 
 func Test_sessionState_updateWithResult(t *testing.T) {
-	t.Run("GET OK increments hits and adds download bytes", func(t *testing.T) {
+	t.Run("GET OK adds download bytes", func(t *testing.T) {
 		s := newSessionState()
 		result := processResult{
 			Outcome: PROCESS_REQUEST_OK,
@@ -21,13 +21,11 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 
 		s.updateWithResult(result)
 
-		assert.Equal(t, int64(1), s.hits.Load())
-		assert.Equal(t, int64(0), s.misses.Load())
 		assert.Equal(t, int64(1024), s.downloadBytes.Load())
 		assert.Equal(t, int64(0), s.uploadBytes.Load())
 	})
 
-	t.Run("GET MISS increments misses only", func(t *testing.T) {
+	t.Run("GET MISS does not change any counters", func(t *testing.T) {
 		s := newSessionState()
 		result := processResult{
 			Outcome: PROCESS_REQUEST_MISS,
@@ -38,13 +36,11 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 
 		s.updateWithResult(result)
 
-		assert.Equal(t, int64(0), s.hits.Load())
-		assert.Equal(t, int64(1), s.misses.Load())
 		assert.Equal(t, int64(0), s.downloadBytes.Load())
 		assert.Equal(t, int64(0), s.uploadBytes.Load())
 	})
 
-	t.Run("PUT OK adds upload bytes only", func(t *testing.T) {
+	t.Run("PUT OK adds upload bytes", func(t *testing.T) {
 		s := newSessionState()
 		result := processResult{
 			Outcome: PROCESS_REQUEST_OK,
@@ -56,8 +52,6 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 
 		s.updateWithResult(result)
 
-		assert.Equal(t, int64(0), s.hits.Load())
-		assert.Equal(t, int64(0), s.misses.Load())
 		assert.Equal(t, int64(0), s.downloadBytes.Load())
 		assert.Equal(t, int64(2048), s.uploadBytes.Load())
 	})
@@ -73,8 +67,6 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 
 		s.updateWithResult(result)
 
-		assert.Equal(t, int64(0), s.hits.Load())
-		assert.Equal(t, int64(0), s.misses.Load())
 		assert.Equal(t, int64(0), s.downloadBytes.Load())
 		assert.Equal(t, int64(0), s.uploadBytes.Load())
 	})

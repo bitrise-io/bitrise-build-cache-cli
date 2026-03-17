@@ -108,6 +108,13 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 	}
 
 	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
+
+	if err := processor.initCapabilities(ctx); err != nil {
+		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)
+
+		return
+	}
+
 	for {
 		result := processor.processRequest(ctx)
 		s.sessionState.updateWithResult(result)

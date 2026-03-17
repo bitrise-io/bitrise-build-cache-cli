@@ -2,6 +2,7 @@ package ccache
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -62,4 +63,31 @@ func (b *statBuilder) Prefix() string {
 	}
 
 	return fmt.Sprintf("[%s - %s]", b.stats.method, b.stats.key)
+}
+
+// sessionState aggregates byte-transfer counters across all requests handled by a server instance.
+type sessionState struct {
+	downloadBytes atomic.Int64
+	uploadBytes   atomic.Int64
+}
+
+func newSessionState() *sessionState {
+	return &sessionState{}
+}
+
+func (s *sessionState) updateWithResult(result processResult) {
+	if result.Outcome != PROCESS_REQUEST_OK {
+		return
+	}
+
+	switch result.CallStats.method {
+	case CALL_METHOD_GET:
+		s.downloadBytes.Add(result.CallStats.downloadBytes)
+
+	case CALL_METHOD_PUT:
+		s.uploadBytes.Add(result.CallStats.uploadBytes)
+
+	case CALL_METHOD_REMOVE, CALL_METHOD_STOP, CALL_METHOD_SET_INVOCATION_ID:
+		// no byte tracking for these methods
+	}
 }

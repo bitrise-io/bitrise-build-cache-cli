@@ -168,25 +168,17 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		assert.Equal(t, byte(protocol.ResponseErr), resp[0])
 	})
 
-	t.Run("GET capabilities error", func(t *testing.T) {
-		key := []byte{0xAB, 0xCD}
-
+	t.Run("capabilities error reported by initCapabilities", func(t *testing.T) {
 		client := &ClientMock{}
-
-		conn := &connStub{
-			r: bytes.NewBuffer(buildGetRequest(key)),
-			w: &bytes.Buffer{},
-		}
+		conn := &connStub{r: &bytes.Buffer{}, w: &bytes.Buffer{}}
 
 		getCaps := func(context.Context) error { return errors.New("caps error") }
 
 		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, getCaps)
-		result := proc.processRequest(context.Background())
+		err := proc.initCapabilities(context.Background())
 
-		assert.Equal(t, PROCESS_REQUEST_ERROR, result.Outcome)
-		resp := conn.w.Bytes()
-		require.NotEmpty(t, resp)
-		assert.Equal(t, byte(protocol.ResponseErr), resp[0])
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "caps error")
 	})
 
 	t.Run("PUT push enabled, upload succeeds", func(t *testing.T) {
@@ -351,6 +343,25 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		assert.Equal(t, "my-app", changeSessionCalls[0].appSlug)
 		assert.Equal(t, "my-build", changeSessionCalls[0].buildSlug)
 		assert.Equal(t, "my-step", changeSessionCalls[0].stepID)
+	})
+
+	t.Run("context cancellation while waiting for semaphore", func(t *testing.T) {
+		client := &ClientMock{}
+		conn := &connStub{
+			r: bytes.NewBuffer(buildGetRequest([]byte{0x01})),
+			w: &bytes.Buffer{},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel before processRequest is called
+
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps)
+		<-proc.ccSemaphore // drain to simulate semaphore held by another goroutine
+
+		result := proc.processRequest(ctx)
+
+		assert.Equal(t, PROCESS_REQUEST_ERROR, result.Outcome)
+		assert.ErrorIs(t, result.Err, context.Canceled)
 	})
 }
 

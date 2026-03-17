@@ -13,14 +13,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
 )
 
-func Test_RunCmdFn(t *testing.T) {
+func Test_RunWithInvocationIDFn(t *testing.T) {
 	noNotify := func(string) {}
 
 	t.Run("args are passed through to the command", func(t *testing.T) {
 		var capturedName string
 		var capturedArgs []string
 
-		err := reactnative.RunCmdFn(
+		err := reactnative.RunWithInvocationIDFn(
 			[]string{"bash", "-c", "echo hello"},
 			[]string{},
 			func(_ []string, name string, args ...string) error {
@@ -39,7 +39,7 @@ func Test_RunCmdFn(t *testing.T) {
 	t.Run("BITRISE_INVOCATION_ID is injected into the environment", func(t *testing.T) {
 		var capturedEnviron []string
 
-		err := reactnative.RunCmdFn(
+		err := reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{"EXISTING=value"},
 			func(environ []string, _ string, _ ...string) error {
@@ -66,7 +66,7 @@ func Test_RunCmdFn(t *testing.T) {
 	t.Run("each call generates a distinct invocation ID", func(t *testing.T) {
 		extractID := func() string {
 			var id string
-			_ = reactnative.RunCmdFn([]string{"true"}, []string{}, func(environ []string, _ string, _ ...string) error {
+			_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, func(environ []string, _ string, _ ...string) error {
 				for _, e := range environ {
 					if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
 						id = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
@@ -88,7 +88,7 @@ func Test_RunCmdFn(t *testing.T) {
 		var notifiedID string
 		var envID string
 
-		err := reactnative.RunCmdFn(
+		err := reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(environ []string, _ string, _ ...string) error {
@@ -108,7 +108,7 @@ func Test_RunCmdFn(t *testing.T) {
 	})
 
 	t.Run("nil notifyFn is safe", func(t *testing.T) {
-		err := reactnative.RunCmdFn(
+		err := reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return nil },
@@ -120,7 +120,7 @@ func Test_RunCmdFn(t *testing.T) {
 	t.Run("error from execFn is propagated", func(t *testing.T) {
 		execErr := errors.New("exec failed")
 
-		err := reactnative.RunCmdFn(
+		err := reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error {
@@ -133,7 +133,7 @@ func Test_RunCmdFn(t *testing.T) {
 	})
 
 	t.Run("missing args returns error", func(t *testing.T) {
-		err := reactnative.RunCmdFn(
+		err := reactnative.RunWithInvocationIDFn(
 			[]string{},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error {

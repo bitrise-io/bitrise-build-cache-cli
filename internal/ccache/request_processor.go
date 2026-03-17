@@ -42,6 +42,9 @@ func newRequestProcessor(
 	// ccLimit := numChan * runtime.NumCPU()
 	// logger.Infof("Setting up proxy with concurrency limit: %d", ccLimit)
 
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
+
 	return &requestProcessor{
 		config:          config,
 		metadata:        metadata,
@@ -49,7 +52,7 @@ func newRequestProcessor(
 		logger:          logger,
 		reader:          conn,
 		writer:          conn,
-		ccSemaphore:     make(chan struct{}, 1),
+		ccSemaphore:     sem,
 		loggerFactory:   loggerFactory,
 		getCapabilities: getCapabilities,
 	}
@@ -132,16 +135,16 @@ func (p *requestProcessor) logCallStats(result processResult) {
 	p.logger.TDebugf("%s took %s", result.Log(), time.Since(result.CallStats.start))
 }
 
+func (p *requestProcessor) initCapabilities(ctx context.Context) error {
+	if err := p.getCapabilities(ctx); err != nil {
+		return fmt.Errorf("failed to get capabilities: %w", err)
+	}
+
+	return nil
+}
+
 func (p *requestProcessor) handleGet(ctx context.Context) processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_GET)
-
-	if err := p.getCapabilities(ctx); err != nil {
-		return p.notifyClient(processResult{
-			Outcome:   PROCESS_REQUEST_ERROR,
-			Err:       fmt.Errorf("failed to get capabilities: %w", err),
-			CallStats: statBuilder.build(),
-		})
-	}
 
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
@@ -196,14 +199,6 @@ func (p *requestProcessor) handleGet(ctx context.Context) processResult {
 
 func (p *requestProcessor) handlePut(ctx context.Context) processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_PUT)
-
-	if err := p.getCapabilities(ctx); err != nil {
-		return p.notifyClient(processResult{
-			Outcome:   PROCESS_REQUEST_ERROR,
-			Err:       fmt.Errorf("failed to get capabilities: %w", err),
-			CallStats: statBuilder.build(),
-		})
-	}
 
 	keyBytes, err := protocol.ReadKey(p.reader)
 	if err != nil {
@@ -331,8 +326,15 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 		}
 	}
 
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
+	select {
+	case <-ctx.Done():
+		return processResult{
+			Outcome: PROCESS_REQUEST_ERROR,
+			Err:     fmt.Errorf("context cancelled while waiting for semaphore: %w", ctx.Err()),
+		}
+	case <-p.ccSemaphore:
+	}
+	defer func() { p.ccSemaphore <- struct{}{} }()
 
 	var result processResult
 	defer func() { p.logCallStats(result) }()
