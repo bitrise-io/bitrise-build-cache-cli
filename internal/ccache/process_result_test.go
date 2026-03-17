@@ -27,11 +27,6 @@ func Test_processResult_OutcomeString(t *testing.T) {
 			expected: "MISS",
 		},
 		{
-			name:     "SHOULD_STOP outcome",
-			result:   processResult{Outcome: PROCESS_REQUEST_SHOULD_STOP},
-			expected: "SHOULD_STOP",
-		},
-		{
 			name:     "ERROR outcome",
 			result:   processResult{Outcome: PROCESS_REQUEST_ERROR, Err: errors.New("something broke")},
 			expected: "ERROR: something broke",

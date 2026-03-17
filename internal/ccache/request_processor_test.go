@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -87,7 +86,6 @@ var noOpCaps = func(context.Context) error { return nil }
 func defaultConfig() ccacheconfig.Config {
 	return ccacheconfig.Config{
 		PushEnabled: true,
-		Layout:      "",
 	}
 }
 
@@ -291,8 +289,9 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps)
 		result := proc.processRequest(context.Background())
 
-		assert.Equal(t, PROCESS_REQUEST_SHOULD_STOP, result.Outcome)
-		assert.Empty(t, conn.w.Bytes())
+		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
+		require.NotEmpty(t, conn.w.Bytes())
+		assert.Equal(t, byte(protocol.ResponseOK), conn.w.Bytes()[0])
 	})
 
 	t.Run("SET_INVOCATION_ID", func(t *testing.T) {
@@ -366,28 +365,9 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 }
 
 func Test_keyToPath(t *testing.T) {
-	t.Run("flat layout with empty string", func(t *testing.T) {
-		proc := &requestProcessor{config: ccacheconfig.Config{Layout: ""}}
+	t.Run("encodes key as hex", func(t *testing.T) {
+		proc := &requestProcessor{}
 		key := []byte{0xAB, 0xCD}
 		assert.Equal(t, "abcd", proc.keyToPath(key))
-	})
-
-	t.Run("flat layout explicit", func(t *testing.T) {
-		proc := &requestProcessor{config: ccacheconfig.Config{Layout: "flat"}}
-		key := []byte{0xAB, 0xCD}
-		assert.Equal(t, "abcd", proc.keyToPath(key))
-	})
-
-	t.Run("subdirs layout", func(t *testing.T) {
-		proc := &requestProcessor{config: ccacheconfig.Config{Layout: "subdirs"}}
-		key := []byte{0xAB, 0xCD, 0xEF}
-		assert.Equal(t, "ccache/1-ab/cdef", proc.keyToPath(key))
-	})
-
-	t.Run("bazel layout with 32-byte key", func(t *testing.T) {
-		proc := &requestProcessor{config: ccacheconfig.Config{Layout: "bazel"}}
-		key := make([]byte, 32)
-		expected := "ac/" + strings.Repeat("0", 64)
-		assert.Equal(t, expected, proc.keyToPath(key))
 	})
 }

@@ -129,13 +129,6 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 			return
 		}
 
-		if result.Outcome == PROCESS_REQUEST_SHOULD_STOP {
-			s.logger.TInfof("Stop requested, shutting down")
-			cancelFn()
-
-			return
-		}
-
 		s.resetIdleTimer(cancelFn)
 	}
 }

@@ -18,7 +18,6 @@ const (
 	defaultLogFile            = "ccache-%s.log"
 	defaultErrLogFile         = "ccache-err.log"
 	defaultIdleTimeout        = "15m"
-	defaultLayout             = "flat"
 	defaultCRSHDataTimeout    = "2s"
 	defaultCRSHRequestTimeout = "20s"
 
@@ -43,7 +42,6 @@ type Config struct {
 	ErrLogFile         string                 `json:"errLogFile,omitempty"`
 	IPCEndpoint        string                 `json:"ipcEndpoint,omitempty"`
 	IdleTimeout        time.Duration          `json:"idleTimeout,omitempty"`
-	Layout             string                 `json:"layout,omitempty"`
 	PushEnabled        bool                   `json:"pushEnabled"`
 	Enabled            bool                   `json:"enabled"`
 	BuildCacheEndpoint string                 `json:"buildCacheEndpoint,omitempty"`
@@ -102,7 +100,6 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 		LogFile:            defaultLogFile,
 		ErrLogFile:         defaultErrLogFile,
 		IdleTimeout:        idleTimeout,
-		Layout:             defaultLayout,
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,

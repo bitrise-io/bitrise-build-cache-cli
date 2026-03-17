@@ -153,7 +153,7 @@ var (
 var defaultStartStorageHelperFn = BuildStartStorageHelperFn(
 	os.Executable,
 	func(name string, args ...string) (int, error) {
-		cmd := exec.Command(name, args...) //nolint:gosec
+		cmd := exec.Command(name, args...) //nolint:gosec // intentionally detached: the helper must outlive this command
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {

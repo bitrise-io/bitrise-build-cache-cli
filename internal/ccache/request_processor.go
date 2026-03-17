@@ -72,8 +72,6 @@ func (p *requestProcessor) notifyClient(result processResult) processResult {
 
 	case PROCESS_REQUEST_OK:
 		err = p.writeOK(result)
-
-	case PROCESS_REQUEST_SHOULD_STOP:
 	}
 
 	if err != nil {
@@ -107,28 +105,7 @@ func (p *requestProcessor) writeOK(result processResult) error {
 }
 
 func (p *requestProcessor) keyToPath(key []byte) string {
-	keyHex := hex.EncodeToString(key)
-
-	switch p.config.Layout {
-	case "bazel":
-		// Bazel format: ac/ + 64 hex digits, so pad shorter keys by repeating the key prefix to reach the expected SHA256 size.
-		const sha256HexSize = 64
-		if len(keyHex) >= sha256HexSize {
-			return fmt.Sprintf("ac/%s", keyHex[:sha256HexSize])
-		}
-
-		return fmt.Sprintf("ac/%s%s", keyHex, keyHex[:sha256HexSize-len(keyHex)])
-
-	case "subdirs":
-		if len(keyHex) < 2 {
-			return keyHex
-		}
-
-		return fmt.Sprintf("ccache/1-%s/%s", keyHex[:2], keyHex[2:])
-
-	default:
-		return keyHex
-	}
+	return hex.EncodeToString(key)
 }
 
 func (p *requestProcessor) logCallStats(result processResult) {
@@ -309,12 +286,12 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 
 func (p *requestProcessor) handleStop() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_STOP)
-	p.logger.TDebugf("%s Called", statBuilder.Prefix())
+	p.logger.TDebugf("%s Ignored — storage helper lifecycle is managed externally", statBuilder.Prefix())
 
-	return processResult{
-		Outcome:   PROCESS_REQUEST_SHOULD_STOP,
+	return p.notifyClient(processResult{
+		Outcome:   PROCESS_REQUEST_OK,
 		CallStats: statBuilder.build(),
-	}
+	})
 }
 
 func (p *requestProcessor) processRequest(ctx context.Context) processResult {
