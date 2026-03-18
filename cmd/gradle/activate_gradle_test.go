@@ -54,6 +54,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			gradleconfig.GradlePropertiesUpdater{
 				OsProxy: mockOsProxy,
 			},
+			gradleconfig.ActivateGradleParams{},
 		)
 
 		// then
@@ -92,6 +93,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			gradleconfig.GradlePropertiesUpdater{
 				OsProxy: mockOsProxy,
 			},
+			gradleconfig.ActivateGradleParams{},
 		)
 
 		// then
@@ -127,6 +129,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			gradleconfig.GradlePropertiesUpdater{
 				OsProxy: mockOsProxy,
 			},
+			gradleconfig.ActivateGradleParams{},
 		)
 
 		// then
@@ -162,6 +165,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			gradleconfig.GradlePropertiesUpdater{
 				OsProxy: mockOsProxy,
 			},
+			gradleconfig.ActivateGradleParams{},
 		)
 
 		// then

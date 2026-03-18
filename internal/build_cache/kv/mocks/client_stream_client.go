@@ -44,31 +44,31 @@ func (c *ClientStreamClientMock[Req, Res]) CloseAndRecv() (*Res, error) {
 }
 
 func (c *ClientStreamClientMock[Req, Res]) Header() (metadata.MD, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c *ClientStreamClientMock[Req, Res]) Trailer() metadata.MD {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c *ClientStreamClientMock[Req, Res]) CloseSend() error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c *ClientStreamClientMock[Req, Res]) Context() context.Context {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c *ClientStreamClientMock[Req, Res]) SendMsg(m any) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (c *ClientStreamClientMock[Req, Res]) RecvMsg(m any) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }

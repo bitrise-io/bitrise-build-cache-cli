@@ -60,6 +60,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 				)
 			},
 			gradleconfig.DefaultGradlePropertiesUpdater(),
+			activateGradleParams,
 		); err != nil {
 			return fmt.Errorf("activate plugins for Gradle: %w", err)
 		}
@@ -97,6 +98,7 @@ func ActivateGradleCmdFn(
 	templateInventoryProvider func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
+	params gradleconfig.ActivateGradleParams,
 ) error {
 	templateInventory, err := templateInventoryProvider(logger, envProvider, common.IsDebugLogMode)
 	if err != nil {
@@ -110,7 +112,7 @@ func ActivateGradleCmdFn(
 		return err
 	}
 
-	if err := updater.UpdateGradleProps(activateGradleParams, logger, gradleHomePath); err != nil {
+	if err := updater.UpdateGradleProps(params, logger, gradleHomePath); err != nil {
 		return fmt.Errorf(ErrFmtFailedToUpdateProps, err)
 	}
 

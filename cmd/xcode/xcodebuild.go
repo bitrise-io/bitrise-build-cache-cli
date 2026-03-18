@@ -176,7 +176,8 @@ TBD`,
 			proxySessionClient,
 			config,
 			metadata,
-			xcodeArgs); runStats.Error != nil {
+			xcodeArgs,
+		); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
 			os.Exit(runStats.ExitCode)
 		}

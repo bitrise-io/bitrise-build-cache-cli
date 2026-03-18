@@ -45,21 +45,21 @@ func (s *ServerStreamingClientMock[Res]) Trailer() metadata.MD {
 }
 
 func (s *ServerStreamingClientMock[Res]) CloseSend() error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (s *ServerStreamingClientMock[Res]) Context() context.Context {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (s *ServerStreamingClientMock[Res]) SendMsg(m any) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (s *ServerStreamingClientMock[Res]) RecvMsg(m any) error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
