@@ -929,11 +929,9 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # Allow build failure — we only need to verify mirror URLs in the logs
-            (./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt" || true
+            (./gradlew debug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert downloads from MavenCentral mirror
-        is_always_run: true
         inputs:
         - content: |-
             set -exo pipefail
