@@ -186,7 +186,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 		var sentInvocation ccacheanalytics.Invocation
 		var sentCcacheInvocation ccacheanalytics.CcacheInvocation
 
-		statsJSON := []byte(`{"stats":{"cache_hit_direct":3,"cache_hit_preprocessed":1,"cache_miss":6,"cache_hit_rate":0.4,"errors_compiling":0,"files_in_cache":10,"cache_size_kibibyte":512}}`)
+		statsJSON := []byte(`{"direct_cache_hit":3,"preprocessed_cache_hit":1,"cache_miss":6,"compile_failed":0,"files_in_cache":10,"cache_size_kibibyte":512}`)
 
 		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
 			func() (string, bool) { return "/usr/bin/ccache", true },
@@ -225,14 +225,14 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 		assert.NotEmpty(t, sentCcacheInvocation.InvocationID)
 		assert.NotEqual(t, sentInvocation.InvocationID, sentCcacheInvocation.InvocationID, "ccache invocation should have its own UUID")
 		assert.Equal(t, sentInvocation.InvocationID, sentCcacheInvocation.ParentInvocationID)
-		assert.Equal(t, 3, sentCcacheInvocation.CcacheStats.CacheHitDirect)
-		assert.Equal(t, 1, sentCcacheInvocation.CcacheStats.CacheHitPreprocessed)
+		assert.Equal(t, 3, sentCcacheInvocation.CcacheStats.DirectCacheHit)
+		assert.Equal(t, 1, sentCcacheInvocation.CcacheStats.PreprocessedCacheHit)
 		assert.Equal(t, 6, sentCcacheInvocation.CcacheStats.CacheMiss)
 		assert.InDelta(t, 0.4, sentCcacheInvocation.CcacheStats.CacheHitRate, 0.001)
 	})
 
 	t.Run("reports success=false when exec fails", func(t *testing.T) {
-		statsJSON := []byte(`{"stats":{}}`)
+		statsJSON := []byte(`{}`)
 		var sentInvocation ccacheanalytics.Invocation
 		execErr := errors.New("build failed")
 
@@ -279,7 +279,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 	})
 
 	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
-		statsJSON := []byte(`{"stats":{}}`)
+		statsJSON := []byte(`{}`)
 		var sentInvocation ccacheanalytics.Invocation
 		var sentCcacheInvocation ccacheanalytics.CcacheInvocation
 		before := time.Now()
