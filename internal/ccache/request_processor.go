@@ -18,15 +18,16 @@ import (
 )
 
 type requestProcessor struct {
-	client          Client
-	logger          log.Logger
-	reader          io.Reader
-	writer          io.Writer
-	ccSemaphore     chan struct{}
-	config          ccacheconfig.Config
-	metadata        configcommon.CacheConfigMetadata
-	loggerFactory   LoggerFactory
-	getCapabilities func(context.Context) error
+	client            Client
+	logger            log.Logger
+	reader            io.Reader
+	writer            io.Writer
+	ccSemaphore       chan struct{}
+	config            ccacheconfig.Config
+	metadata          configcommon.CacheConfigMetadata
+	loggerFactory     LoggerFactory
+	getCapabilities   func(context.Context) error
+	onChildInvocation func(parentID, childID string)
 }
 
 func newRequestProcessor(
@@ -37,24 +38,22 @@ func newRequestProcessor(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	getCapabilities func(context.Context) error,
+	onChildInvocation func(parentID, childID string),
 ) *requestProcessor {
-	// numChan := max(2, runtime.NumCPU()/6)
-	// ccLimit := numChan * runtime.NumCPU()
-	// logger.Infof("Setting up proxy with concurrency limit: %d", ccLimit)
-
 	sem := make(chan struct{}, 1)
 	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
 
 	return &requestProcessor{
-		config:          config,
-		metadata:        metadata,
-		client:          client,
-		logger:          logger,
-		reader:          conn,
-		writer:          conn,
-		ccSemaphore:     sem,
-		loggerFactory:   loggerFactory,
-		getCapabilities: getCapabilities,
+		config:            config,
+		metadata:          metadata,
+		client:            client,
+		logger:            logger,
+		reader:            conn,
+		writer:            conn,
+		ccSemaphore:       sem,
+		loggerFactory:     loggerFactory,
+		getCapabilities:   getCapabilities,
+		onChildInvocation: onChildInvocation,
 	}
 }
 
@@ -256,7 +255,7 @@ func (p *requestProcessor) handleRemove() processResult {
 func (p *requestProcessor) handleSetInvocationID() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_SET_INVOCATION_ID)
 
-	id, err := protocol.ReadSetInvocationID(p.reader)
+	parentID, childID, err := protocol.ReadSetInvocationID(p.reader)
 	if err != nil {
 		return processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
@@ -265,18 +264,22 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 		}
 	}
 
-	p.logger.TDebugf("[SetInvocationID] %s", id)
+	p.logger.TDebugf("[SetInvocationID] parent=%s child=%s", parentID, childID)
+
+	if p.onChildInvocation != nil {
+		p.onChildInvocation(parentID, childID)
+	}
 
 	if p.loggerFactory != nil {
-		newLogger, logErr := p.loggerFactory(id)
+		newLogger, logErr := p.loggerFactory(childID)
 		if logErr != nil {
-			p.logger.TErrorf("[SetInvocationID] Failed to create logger for invocation %s: %v", id, logErr)
+			p.logger.TErrorf("[SetInvocationID] Failed to create logger for invocation %s: %v", childID, logErr)
 		} else {
 			p.logger = newLogger
 		}
 	}
 
-	p.client.ChangeSession(id, p.metadata.BitriseAppID, p.metadata.BitriseBuildID, p.metadata.BitriseStepExecutionID)
+	p.client.ChangeSession(childID, p.metadata.BitriseAppID, p.metadata.BitriseBuildID, p.metadata.BitriseStepExecutionID)
 
 	return p.notifyClient(processResult{
 		Outcome:   PROCESS_REQUEST_OK,

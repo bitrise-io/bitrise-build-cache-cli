@@ -6,11 +6,14 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
+	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func Test_RunWithInvocationIDFn(t *testing.T) {
@@ -26,9 +29,12 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, name string, args ...string) error {
 				capturedName = name
 				capturedArgs = args
+
 				return nil
 			},
 			noNotify,
+			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -44,9 +50,12 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			[]string{"EXISTING=value"},
 			func(environ []string, _ string, _ ...string) error {
 				capturedEnviron = environ
+
 				return nil
 			},
 			noNotify,
+			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -56,6 +65,7 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 		for _, e := range capturedEnviron {
 			if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
 				invocationIDEntry = e
+
 				break
 			}
 		}
@@ -72,8 +82,10 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 						id = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
+
 				return nil
-			}, noNotify)
+			}, noNotify, nil, nil)
+
 			return id
 		}
 
@@ -97,9 +109,12 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 						envID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
+
 				return nil
 			},
 			func(id string) { notifiedID = id },
+			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -113,8 +128,32 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return nil },
 			nil,
+			nil,
+			nil,
 		)
 		require.NoError(t, err)
+	})
+
+	t.Run("preRunFn is called before execution", func(t *testing.T) {
+		var preRunCalled bool
+		var execCalled bool
+
+		err := reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(_ []string, _ string, _ ...string) error {
+				execCalled = true
+
+				return nil
+			},
+			noNotify,
+			func() { preRunCalled = true },
+			nil,
+		)
+
+		require.NoError(t, err)
+		assert.True(t, preRunCalled)
+		assert.True(t, execCalled)
 	})
 
 	t.Run("error from execFn is propagated", func(t *testing.T) {
@@ -127,6 +166,8 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 				return execErr
 			},
 			noNotify,
+			nil,
+			nil,
 		)
 
 		assert.ErrorIs(t, err, execErr)
@@ -140,8 +181,77 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 				return nil
 			},
 			noNotify,
+			nil,
+			nil,
 		)
 
 		assert.Error(t, err)
+	})
+}
+
+func Test_BuildPostRunFn(t *testing.T) {
+	noopExecFn := func(_ []string, _ string, _ ...string) error { return nil }
+
+	t.Run("sends run invocation with metadata", func(t *testing.T) {
+		var sentInvocation ccacheanalytics.Invocation
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata {
+				return common.CacheConfigMetadata{BitriseAppID: "app-1"}
+			},
+			func() (common.CacheAuthConfig, error) {
+				return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil
+			},
+			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, nil, hooks)
+
+		assert.NotEmpty(t, sentInvocation.InvocationID)
+		assert.Equal(t, "ws-1", sentInvocation.BitriseOrgSlug)
+		assert.Equal(t, "app-1", sentInvocation.BitriseAppSlug)
+		assert.Equal(t, "myapp", sentInvocation.Command)
+		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
+		assert.True(t, sentInvocation.Success)
+	})
+
+	t.Run("reports success=false when exec fails", func(t *testing.T) {
+		var sentInvocation ccacheanalytics.Invocation
+		execErr := errors.New("build failed")
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(_ []string, _ string, _ ...string) error { return execErr },
+			nil,
+			nil,
+			hooks,
+		)
+
+		assert.False(t, sentInvocation.Success)
+		assert.Contains(t, sentInvocation.Error, "build failed")
+	})
+
+	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
+		var sentInvocation ccacheanalytics.Invocation
+		before := time.Now()
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, nil, hooks)
+
+		assert.True(t, sentInvocation.DurationMs >= 0)
+		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))
+		assert.True(t, !sentInvocation.InvocationDate.Before(before))
 	})
 }

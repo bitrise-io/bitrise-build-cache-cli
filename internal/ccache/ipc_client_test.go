@@ -21,6 +21,7 @@ func shortTempSocket(t *testing.T, name string) string {
 	dir, err := os.MkdirTemp("", "cc-test-*")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dir) })
+
 	return filepath.Join(dir, name)
 }
 
@@ -32,7 +33,8 @@ func Test_SendInvocationID(t *testing.T) {
 		defer listener.Close()
 
 		errCh := make(chan error, 1)
-		receivedIDCh := make(chan string, 1)
+		type receivedIDs struct{ parentID, childID string }
+		receivedIDCh := make(chan receivedIDs, 1)
 
 		go func() {
 			conn, accept := listener.Accept()
@@ -58,12 +60,12 @@ func Test_SendInvocationID(t *testing.T) {
 				return
 			}
 
-			id, readErr := protocol.ReadSetInvocationID(conn)
+			parentID, childID, readErr := protocol.ReadSetInvocationID(conn)
 			if readErr != nil {
 				errCh <- readErr
 				return
 			}
-			receivedIDCh <- id
+			receivedIDCh <- receivedIDs{parentID, childID}
 
 			if writeErr := protocol.WriteOK(conn); writeErr != nil {
 				errCh <- writeErr
@@ -72,21 +74,22 @@ func Test_SendInvocationID(t *testing.T) {
 			errCh <- nil
 		}()
 
-		err = SendInvocationID(context.Background(), socketPath, "my-inv-id")
+		err = SendInvocationID(context.Background(), socketPath, "my-parent-id", "my-child-id")
 		assert.NoError(t, err)
 
 		serverErr := <-errCh
 		assert.NoError(t, serverErr)
 
-		receivedID := <-receivedIDCh
-		assert.Equal(t, "my-inv-id", receivedID)
+		got := <-receivedIDCh
+		assert.Equal(t, "my-parent-id", got.parentID)
+		assert.Equal(t, "my-child-id", got.childID)
 	})
 
 	t.Run("connection failure: nonexistent socket returns error", func(t *testing.T) {
 		socketPath := shortTempSocket(t, "nx.sock")
 		// Do not create a listener — the socket file does not exist.
 
-		err := SendInvocationID(context.Background(), socketPath, "inv-id")
+		err := SendInvocationID(context.Background(), socketPath, "parent-id", "child-id")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to ccache socket")
 	})
@@ -118,8 +121,8 @@ func Test_SendInvocationID(t *testing.T) {
 				return
 			}
 
-			// Read the invocation ID message
-			if _, readErr := protocol.ReadSetInvocationID(conn); readErr != nil {
+			// Read the invocation ID messages
+			if _, _, readErr := protocol.ReadSetInvocationID(conn); readErr != nil {
 				errCh <- readErr
 				return
 			}
@@ -131,7 +134,7 @@ func Test_SendInvocationID(t *testing.T) {
 			errCh <- nil
 		}()
 
-		err = SendInvocationID(context.Background(), socketPath, "inv-id")
+		err = SendInvocationID(context.Background(), socketPath, "parent-id", "child-id")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "server error: boom")
 
@@ -166,8 +169,8 @@ func Test_SendInvocationID(t *testing.T) {
 				return
 			}
 
-			// Read the invocation ID message
-			if _, readErr := protocol.ReadSetInvocationID(conn); readErr != nil {
+			// Read the invocation ID messages
+			if _, _, readErr := protocol.ReadSetInvocationID(conn); readErr != nil {
 				errCh <- readErr
 				return
 			}
@@ -180,7 +183,7 @@ func Test_SendInvocationID(t *testing.T) {
 			errCh <- nil
 		}()
 
-		err = SendInvocationID(context.Background(), socketPath, "inv-id")
+		err = SendInvocationID(context.Background(), socketPath, "parent-id", "child-id")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unexpected response")
 

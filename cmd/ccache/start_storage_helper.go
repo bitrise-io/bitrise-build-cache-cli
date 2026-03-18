@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
@@ -14,8 +15,10 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
+	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
 )
@@ -63,6 +66,8 @@ var (
 				return fmt.Errorf("failed to create KV client: %w", err)
 			}
 
+			parentInvocationID := envs["BITRISE_INVOCATION_ID"]
+
 			ccacheStorageHelper, err := newCcacheStorageHelper(
 				config,
 				configcommon.CacheConfigMetadata{
@@ -72,6 +77,7 @@ var (
 				},
 				osProxy,
 				initialInvocationID,
+				parentInvocationID,
 				kvClient,
 			)
 			if err != nil {
@@ -88,6 +94,43 @@ var (
 		},
 	}
 )
+
+// registerInvocationRelation sends a parent→child invocation relation to the analytics backend.
+// Errors are logged but do not fail the caller — relation registration is best-effort.
+func registerInvocationRelation(config ccacheconfig.Config, parentID, childID string, logger log.Logger) {
+	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	if err != nil {
+		logger.TErrorf("Failed to create analytics client for invocation relation: %v", err)
+
+		return
+	}
+
+	rel := ccacheanalytics.InvocationRelation{
+		ParentInvocationID: parentID,
+		ChildInvocationID:  childID,
+		InvocationDate:     time.Now(),
+	}
+
+	if err := client.PutInvocationRelation(rel); err != nil {
+		logger.TErrorf("Failed to register invocation relation (parent=%s child=%s): %v", parentID, childID, err)
+	}
+}
+
+// sendCcacheInvocationBytes sends a CcacheInvocation with transfer byte counts to the analytics backend.
+// Errors are logged but do not fail the caller — this reporting is best-effort.
+func sendCcacheInvocationBytes(config ccacheconfig.Config, invocationID, parentID string, downloadedBytes, uploadedBytes int64, logger log.Logger) {
+	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	if err != nil {
+		logger.TErrorf("Failed to create analytics client for ccache invocation bytes: %v", err)
+
+		return
+	}
+
+	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), ccacheanalytics.CcacheStats{}, downloadedBytes, uploadedBytes)
+	if err := client.PutCcacheInvocation(*inv); err != nil {
+		logger.TErrorf("Failed to send ccache invocation bytes (invocationID=%s): %v", invocationID, err)
+	}
+}
 
 func init() {
 	startStorageHelperCmd.Flags().StringVar(
@@ -143,6 +186,7 @@ func newCcacheStorageHelper(
 	metadata configcommon.CacheConfigMetadata,
 	osProxy utils.OsProxy,
 	invocationID string,
+	parentInvocationID string,
 	kvClient proxy.Client,
 ) (*ccacheStorageHelper, error) {
 	helper := &ccacheStorageHelper{
@@ -163,6 +207,12 @@ func newCcacheStorageHelper(
 	logger.TInfof("Ccache storage helper")
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
+	// If a parent invocation ID is present (e.g. from BITRISE_INVOCATION_ID), register the
+	// initial storage-helper invocation as a child of that parent.
+	if parentInvocationID != "" {
+		registerInvocationRelation(config, parentInvocationID, invocationID, logger)
+	}
+
 	helper.server, err = ccache.NewServer(
 		config,
 		metadata,
@@ -170,6 +220,11 @@ func newCcacheStorageHelper(
 		helper.logger,
 		func(invocationID string) (log.Logger, error) {
 			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
+		},
+		func(parentID, childID string) {
+			registerInvocationRelation(config, parentID, childID, logger)
+			dl, ul := helper.server.SessionBytes()
+			sendCcacheInvocationBytes(config, childID, parentID, dl, ul, logger)
 		},
 	)
 	if err != nil {

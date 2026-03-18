@@ -21,8 +21,10 @@ type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
 // into environ and delegates execution to execFn. If notifyFn is non-nil, it is called
-// with the generated invocation ID before the command runs.
-func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string)) error {
+// with the generated invocation ID before the command runs. If preRunFn is non-nil, it is
+// called immediately before execution (e.g. to zero ccache stats). If postRunFn is non-nil, it is
+// called after the command completes with the invocation ID, args, duration, and any exec error.
+func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string), preRunFn func(), postRunFn PostRunFn) error {
 	invocationID := uuid.New().String()
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
 
@@ -33,9 +35,22 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, not
 	if len(args) == 0 {
 		return fmt.Errorf("missing arguments")
 	}
+
 	name, cmdArgs := args[0], args[1:]
 
-	return execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
+	if preRunFn != nil {
+		preRunFn()
+	}
+
+	start := time.Now()
+	execErr := execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
+	duration := time.Since(start)
+
+	if postRunFn != nil {
+		postRunFn(invocationID, args, duration, execErr)
+	}
+
+	return execErr
 }
 
 // BuildNotifyCcacheHelperFn constructs a notifyCcacheHelper function with injectable dependencies.
@@ -43,15 +58,15 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, not
 // isListeningFn checks whether the socket has an active listener.
 // startHelperFn launches the storage helper as a background process.
 // awaitReadyFn polls until the socket is listening or a timeout elapses.
-// sendInvocationIDFn sends the invocation ID over the socket.
+// sendInvocationIDFn sends the parent→child invocation ID pair over the socket.
 func BuildNotifyCcacheHelperFn(
 	socketPathFn func() (string, error),
 	isListeningFn func(string) bool,
 	startHelperFn func() error,
 	awaitReadyFn func(string) bool,
-	sendInvocationIDFn func(string, string) error,
+	sendInvocationIDFn func(socketPath, parentID, childID string) error,
 ) func(string) {
-	return func(invocationID string) {
+	return func(parentID string) {
 		socketPath, err := socketPathFn()
 		if err != nil {
 			return // ccache not configured, skip silently
@@ -70,7 +85,8 @@ func BuildNotifyCcacheHelperFn(
 			}
 		}
 
-		if err := sendInvocationIDFn(socketPath, invocationID); err != nil {
+		childID := uuid.New().String()
+		if err := sendInvocationIDFn(socketPath, parentID, childID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: ccache helper notification failed: %v\n", err)
 		}
 	}
@@ -108,6 +124,19 @@ func awaitListening(socketPath string) bool {
 	return false
 }
 
+// zeroCcacheStats resets ccache's internal counters so each invocation starts from a clean slate.
+// If ccache is not on PATH, this is a no-op.
+func zeroCcacheStats() {
+	path, err := exec.LookPath("ccache")
+	if err != nil {
+		return // ccache not available, skip silently
+	}
+
+	if err := exec.CommandContext(context.Background(), path, "-z").Run(); err != nil { //nolint:gosec
+		fmt.Fprintf(os.Stderr, "Warning: failed to reset ccache stats: %v\n", err)
+	}
+}
+
 //nolint:gochecknoglobals
 var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 	func() (string, error) {
@@ -121,8 +150,8 @@ var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 	ccacheipc.IsListening,
 	startStorageHelper,
 	awaitListening,
-	func(socketPath, invocationID string) error {
-		return ccacheipc.SendInvocationID(context.Background(), socketPath, invocationID)
+	func(socketPath, parentID, childID string) error {
+		return ccacheipc.SendInvocationID(context.Background(), socketPath, parentID, childID)
 	},
 )
 
@@ -150,7 +179,7 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, notifyCcacheHelper)
+		}, notifyCcacheHelper, zeroCcacheStats, defaultPostRunFn)
 	},
 }
 
