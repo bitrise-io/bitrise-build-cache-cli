@@ -1058,6 +1058,60 @@ step_bundles:
                   exit 0
                 fi
 
+  e2e-mavencentral-mirror-duckduck:
+    envs:
+    - TEST_APP_URL: git@github.com:duckduckgo/Android.git
+    - BRANCH: develop
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+          - packages: 'bc'
+          - upgrade: "no"
+    - restore-gradle-cache:
+        inputs:
+          - verbose: 'true'
+    - script:
+        title: Activate MavenCentral mirror
+        inputs:
+        - content: |-
+            set -exo pipefail
+            export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
+            ../bitrise-build-cache-cli activate mavencentral-mirror -d
+    - script:
+        title: Print MavenCentral mirror init script
+        inputs:
+          - content: |-
+              cat ~/.gradle/init.d/bitrise-mavencentral-mirror.init.gradle.kts
+    - script:
+        title: Build with --info and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Assert downloads from MavenCentral mirror
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            MIRROR_URL="repository-manager.services.bitrise.dev/maven/central"
+            MATCH_COUNT=$(grep -c "$MIRROR_URL" "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+
+            echo "Found $MATCH_COUNT log lines referencing the MavenCentral mirror"
+
+            if [[ "$MATCH_COUNT" -eq 0 ]]; then
+              echo "ERROR: No downloads from the MavenCentral mirror were found in the build logs."
+              echo "Expected to find references to $MIRROR_URL"
+              exit 1
+            fi
+
+            echo "SUCCESS: Verified $MATCH_COUNT downloads from the MavenCentral mirror."
+    - save-gradle-cache:
+        inputs:
+          - verbose: 'true'
+    - deploy-to-bitrise-io@2: {}
+
   feature-e2e-setup:
     steps:
       - activate-ssh-key:
@@ -1147,6 +1201,7 @@ pipelines:
       feature-e2e-bazel-public-no-rbe: {}
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
+      e2e-mavencentral-mirror-duckduck: {}
       feature-e2e-gradle-bitwarden: {}
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
