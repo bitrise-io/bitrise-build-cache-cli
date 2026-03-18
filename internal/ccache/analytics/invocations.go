@@ -11,35 +11,20 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
-// rawCcacheStats mirrors the JSON structure emitted by `ccache --print-stats --format=json`.
-type rawCcacheStats struct {
-	Stats struct {
-		CacheHitDirect       int     `json:"cache_hit_direct"`
-		CacheHitPreprocessed int     `json:"cache_hit_preprocessed"`
-		CacheMiss            int     `json:"cache_miss"`
-		CacheHitRate         float64 `json:"cache_hit_rate"`
-		ErrorsCompiling      int     `json:"errors_compiling"`
-		FilesInCache         int     `json:"files_in_cache"`
-		CacheSizeKibibyte    int64   `json:"cache_size_kibibyte"`
-	} `json:"stats"`
-}
-
 // ParseCcacheStats parses the JSON output of `ccache --print-stats --format=json`.
+// CacheHitRate is computed from direct and preprocessed hits over total attempts.
 func ParseCcacheStats(data []byte) (CcacheStats, error) {
-	var raw rawCcacheStats
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var stats CcacheStats
+	if err := json.Unmarshal(data, &stats); err != nil {
 		return CcacheStats{}, fmt.Errorf("parse ccache stats JSON: %w", err)
 	}
 
-	return CcacheStats{
-		CacheHitDirect:       raw.Stats.CacheHitDirect,
-		CacheHitPreprocessed: raw.Stats.CacheHitPreprocessed,
-		CacheMiss:            raw.Stats.CacheMiss,
-		CacheHitRate:         raw.Stats.CacheHitRate,
-		ErrorsCompiling:      raw.Stats.ErrorsCompiling,
-		FilesInCache:         raw.Stats.FilesInCache,
-		CacheSizeKibibyte:    raw.Stats.CacheSizeKibibyte,
-	}, nil
+	total := stats.DirectCacheHit + stats.PreprocessedCacheHit + stats.CacheMiss
+	if total > 0 {
+		stats.CacheHitRate = float64(stats.DirectCacheHit+stats.PreprocessedCacheHit) / float64(total)
+	}
+
+	return stats, nil
 }
 
 // InvocationRunStats holds the runtime data captured around a single run command execution.
