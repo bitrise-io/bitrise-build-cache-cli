@@ -29,9 +29,11 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, name string, args ...string) error {
 				capturedName = name
 				capturedArgs = args
+
 				return nil
 			},
 			noNotify,
+			nil,
 			nil,
 		)
 
@@ -48,9 +50,11 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			[]string{"EXISTING=value"},
 			func(environ []string, _ string, _ ...string) error {
 				capturedEnviron = environ
+
 				return nil
 			},
 			noNotify,
+			nil,
 			nil,
 		)
 
@@ -61,6 +65,7 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 		for _, e := range capturedEnviron {
 			if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
 				invocationIDEntry = e
+
 				break
 			}
 		}
@@ -77,8 +82,10 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 						id = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
+
 				return nil
-			}, noNotify, nil)
+			}, noNotify, nil, nil)
+
 			return id
 		}
 
@@ -102,9 +109,11 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 						envID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
+
 				return nil
 			},
 			func(id string) { notifiedID = id },
+			nil,
 			nil,
 		)
 
@@ -120,8 +129,31 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, _ string, _ ...string) error { return nil },
 			nil,
 			nil,
+			nil,
 		)
 		require.NoError(t, err)
+	})
+
+	t.Run("preRunFn is called before execution", func(t *testing.T) {
+		var preRunCalled bool
+		var execCalled bool
+
+		err := reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(_ []string, _ string, _ ...string) error {
+				execCalled = true
+
+				return nil
+			},
+			noNotify,
+			func() { preRunCalled = true },
+			nil,
+		)
+
+		require.NoError(t, err)
+		assert.True(t, preRunCalled)
+		assert.True(t, execCalled)
 	})
 
 	t.Run("error from execFn is propagated", func(t *testing.T) {
@@ -134,6 +166,7 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 				return execErr
 			},
 			noNotify,
+			nil,
 			nil,
 		)
 
@@ -149,107 +182,54 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			},
 			noNotify,
 			nil,
+			nil,
 		)
 
 		assert.Error(t, err)
 	})
 }
 
-func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
+func Test_BuildPostRunFn(t *testing.T) {
 	noopExecFn := func(_ []string, _ string, _ ...string) error { return nil }
 
-	t.Run("skips ccache hooks when ccache is not found but still sends run invocation", func(t *testing.T) {
-		resetCalled := false
-		collectCalled := false
-		sendCalled := false
-
-		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
-			func() (string, bool) { return "", false },
-			func(_ string) error { resetCalled = true; return nil },
-			func(_ string) ([]byte, error) { collectCalled = true; return nil, nil },
-			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
-			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(_ ccacheanalytics.Invocation) error { sendCalled = true; return nil },
-			func(_ ccacheanalytics.CcacheInvocation) error { return nil },
-		)
-
-		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
-
-		assert.False(t, resetCalled)
-		assert.False(t, collectCalled)
-		assert.True(t, sendCalled)
-	})
-
-	t.Run("resets stats before exec and collects+sends both invocations after", func(t *testing.T) {
-		resetCalled := false
-		collectCalled := false
+	t.Run("sends run invocation with metadata", func(t *testing.T) {
 		var sentInvocation ccacheanalytics.Invocation
-		var sentCcacheInvocation ccacheanalytics.CcacheInvocation
 
-		statsJSON := []byte(`{"direct_cache_hit":3,"preprocessed_cache_hit":1,"cache_miss":6,"compile_failed":0,"files_in_cache":10,"cache_size_kibibyte":512}`)
-
-		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
-			func() (string, bool) { return "/usr/bin/ccache", true },
-			func(_ string) error { resetCalled = true; return nil },
-			func(_ string) ([]byte, error) { collectCalled = true; return statsJSON, nil },
+		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata {
 				return common.CacheConfigMetadata{BitriseAppID: "app-1"}
 			},
 			func() (common.CacheAuthConfig, error) {
 				return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil
 			},
-			func(inv ccacheanalytics.Invocation) error {
-				sentInvocation = inv
-				return nil
-			},
-			func(inv ccacheanalytics.CcacheInvocation) error {
-				sentCcacheInvocation = inv
-				return nil
-			},
+			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
 		)
 
-		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, nil, hooks)
 
-		assert.True(t, resetCalled)
-		assert.True(t, collectCalled)
-
-		// Run invocation uses BITRISE_INVOCATION_ID and carries all metadata
 		assert.NotEmpty(t, sentInvocation.InvocationID)
 		assert.Equal(t, "ws-1", sentInvocation.BitriseOrgSlug)
 		assert.Equal(t, "app-1", sentInvocation.BitriseAppSlug)
 		assert.Equal(t, "myapp", sentInvocation.Command)
 		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
 		assert.True(t, sentInvocation.Success)
-
-		// Ccache invocation has its own UUID, references the run invocation, and contains only ccache data
-		assert.NotEmpty(t, sentCcacheInvocation.InvocationID)
-		assert.NotEqual(t, sentInvocation.InvocationID, sentCcacheInvocation.InvocationID, "ccache invocation should have its own UUID")
-		assert.Equal(t, sentInvocation.InvocationID, sentCcacheInvocation.ParentInvocationID)
-		assert.Equal(t, 3, sentCcacheInvocation.CcacheStats.DirectCacheHit)
-		assert.Equal(t, 1, sentCcacheInvocation.CcacheStats.PreprocessedCacheHit)
-		assert.Equal(t, 6, sentCcacheInvocation.CcacheStats.CacheMiss)
-		assert.InDelta(t, 0.4, sentCcacheInvocation.CcacheStats.CacheHitRate, 0.001)
 	})
 
 	t.Run("reports success=false when exec fails", func(t *testing.T) {
-		statsJSON := []byte(`{}`)
 		var sentInvocation ccacheanalytics.Invocation
 		execErr := errors.New("build failed")
 
-		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
-			func() (string, bool) { return "/usr/bin/ccache", true },
-			func(_ string) error { return nil },
-			func(_ string) ([]byte, error) { return statsJSON, nil },
+		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
 			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
-			func(_ ccacheanalytics.CcacheInvocation) error { return nil },
 		)
 
 		_ = reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return execErr },
+			nil,
 			nil,
 			hooks,
 		)
@@ -258,49 +238,20 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 		assert.Contains(t, sentInvocation.Error, "build failed")
 	})
 
-	t.Run("skips ccache send when collect stats fails but still sends run invocation", func(t *testing.T) {
-		sendCalled := false
-		sendCcacheCalled := false
-
-		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
-			func() (string, bool) { return "/usr/bin/ccache", true },
-			func(_ string) error { return nil },
-			func(_ string) ([]byte, error) { return nil, errors.New("ccache unavailable") },
-			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
-			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(_ ccacheanalytics.Invocation) error { sendCalled = true; return nil },
-			func(_ ccacheanalytics.CcacheInvocation) error { sendCcacheCalled = true; return nil },
-		)
-
-		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
-
-		assert.True(t, sendCalled)
-		assert.False(t, sendCcacheCalled)
-	})
-
 	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
-		statsJSON := []byte(`{}`)
 		var sentInvocation ccacheanalytics.Invocation
-		var sentCcacheInvocation ccacheanalytics.CcacheInvocation
 		before := time.Now()
 
-		hooks := reactnative.BuildCcacheAnalyticsHooksFn(
-			func() (string, bool) { return "/usr/bin/ccache", true },
-			func(_ string) error { return nil },
-			func(_ string) ([]byte, error) { return statsJSON, nil },
+		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
 			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
-			func(inv ccacheanalytics.CcacheInvocation) error { sentCcacheInvocation = inv; return nil },
 		)
 
-		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, nil, hooks)
 
 		assert.True(t, sentInvocation.DurationMs >= 0)
 		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))
 		assert.True(t, !sentInvocation.InvocationDate.Before(before))
-
-		assert.True(t, sentCcacheInvocation.InvocationDate.Before(time.Now()))
-		assert.True(t, !sentCcacheInvocation.InvocationDate.Before(before))
 	})
 }

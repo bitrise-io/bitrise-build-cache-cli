@@ -122,6 +122,10 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		result := processor.processRequest(ctx)
 		s.sessionState.updateWithResult(result)
 
+		if result.CallStats.method == CALL_METHOD_SET_INVOCATION_ID && result.Outcome == PROCESS_REQUEST_OK {
+			s.sessionState.reset()
+		}
+
 		if result.Err != nil {
 			if errors.Is(result.Err, io.EOF) {
 				s.logger.TDebugf("[%s] Client disconnected", conID)
@@ -134,6 +138,11 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 
 		s.resetIdleTimer(cancelFn)
 	}
+}
+
+// SessionBytes returns the total bytes downloaded and uploaded across all sessions since the server started.
+func (s *IpcServer) SessionBytes() (int64, int64) {
+	return s.sessionState.downloadBytes.Load(), s.sessionState.uploadBytes.Load()
 }
 
 func (s *IpcServer) resetIdleTimer(cancelFn context.CancelFunc) {

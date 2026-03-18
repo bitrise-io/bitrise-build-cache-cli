@@ -21,9 +21,10 @@ type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
 // into environ and delegates execution to execFn. If notifyFn is non-nil, it is called
-// with the generated invocation ID before the command runs. analyticsHooks, if non-nil,
-// resets ccache stats before execution and collects+sends them after.
-func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string), analyticsHooks *CcacheAnalyticsHooks) error {
+// with the generated invocation ID before the command runs. If preRunFn is non-nil, it is
+// called immediately before execution (e.g. to zero ccache stats). If postRunFn is non-nil, it is
+// called after the command completes with the invocation ID, args, duration, and any exec error.
+func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string), preRunFn func(), postRunFn PostRunFn) error {
 	invocationID := uuid.New().String()
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
 
@@ -37,16 +38,16 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, not
 
 	name, cmdArgs := args[0], args[1:]
 
-	if analyticsHooks != nil && analyticsHooks.PreRun != nil {
-		analyticsHooks.PreRun()
+	if preRunFn != nil {
+		preRunFn()
 	}
 
 	start := time.Now()
 	execErr := execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
 	duration := time.Since(start)
 
-	if analyticsHooks != nil && analyticsHooks.PostRun != nil {
-		analyticsHooks.PostRun(invocationID, args, duration, execErr)
+	if postRunFn != nil {
+		postRunFn(invocationID, args, duration, execErr)
 	}
 
 	return execErr
@@ -123,6 +124,19 @@ func awaitListening(socketPath string) bool {
 	return false
 }
 
+// zeroCcacheStats resets ccache's internal counters so each invocation starts from a clean slate.
+// If ccache is not on PATH, this is a no-op.
+func zeroCcacheStats() {
+	path, err := exec.LookPath("ccache")
+	if err != nil {
+		return // ccache not available, skip silently
+	}
+
+	if err := exec.CommandContext(context.Background(), path, "-z").Run(); err != nil { //nolint:gosec
+		fmt.Fprintf(os.Stderr, "Warning: failed to reset ccache stats: %v\n", err)
+	}
+}
+
 //nolint:gochecknoglobals
 var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 	func() (string, error) {
@@ -165,7 +179,7 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, notifyCcacheHelper, defaultCcacheAnalyticsHooks)
+		}, notifyCcacheHelper, zeroCcacheStats, defaultPostRunFn)
 	},
 }
 

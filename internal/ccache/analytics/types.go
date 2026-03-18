@@ -124,4 +124,6 @@ type CcacheInvocation struct {
 	ParentInvocationID string      `json:"parentInvocationId"`
 	InvocationDate     time.Time   `json:"invocationDate"`
 	CcacheStats        CcacheStats `json:"ccacheStats"`
+	DownloadedBytes    int64       `json:"downloadedBytes"`
+	UploadedBytes      int64       `json:"uploadedBytes"`
 }
