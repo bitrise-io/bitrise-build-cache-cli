@@ -80,14 +80,16 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 	}
 }
 
-// NewCcacheInvocation assembles a CcacheInvocation from a ccache stats snapshot.
+// NewCcacheInvocation assembles a CcacheInvocation from a ccache stats snapshot and transfer byte counts.
 // It references the parent Invocation via parentInvocationID and contains only ccache-specific data.
-func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate time.Time, stats CcacheStats) *CcacheInvocation {
+func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate time.Time, stats CcacheStats, downloadedBytes, uploadedBytes int64) *CcacheInvocation {
 	return &CcacheInvocation{
 		InvocationID:       invocationID,
 		ParentInvocationID: parentInvocationID,
 		InvocationDate:     invocationDate,
 		CcacheStats:        stats,
+		DownloadedBytes:    downloadedBytes,
+		UploadedBytes:      uploadedBytes,
 	}
 }
 

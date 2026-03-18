@@ -75,6 +75,11 @@ func newSessionState() *sessionState {
 	return &sessionState{}
 }
 
+func (s *sessionState) reset() {
+	s.downloadBytes.Store(0)
+	s.uploadBytes.Store(0)
+}
+
 func (s *sessionState) updateWithResult(result processResult) {
 	if result.Outcome != PROCESS_REQUEST_OK {
 		return

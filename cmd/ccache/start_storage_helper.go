@@ -116,6 +116,22 @@ func registerInvocationRelation(config ccacheconfig.Config, parentID, childID st
 	}
 }
 
+// sendCcacheInvocationBytes sends a CcacheInvocation with transfer byte counts to the analytics backend.
+// Errors are logged but do not fail the caller — this reporting is best-effort.
+func sendCcacheInvocationBytes(config ccacheconfig.Config, invocationID, parentID string, downloadedBytes, uploadedBytes int64, logger log.Logger) {
+	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	if err != nil {
+		logger.TErrorf("Failed to create analytics client for ccache invocation bytes: %v", err)
+
+		return
+	}
+
+	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), ccacheanalytics.CcacheStats{}, downloadedBytes, uploadedBytes)
+	if err := client.PutCcacheInvocation(*inv); err != nil {
+		logger.TErrorf("Failed to send ccache invocation bytes (invocationID=%s): %v", invocationID, err)
+	}
+}
+
 func init() {
 	startStorageHelperCmd.Flags().StringVar(
 		&initialInvocationID,
@@ -207,6 +223,8 @@ func newCcacheStorageHelper(
 		},
 		func(parentID, childID string) {
 			registerInvocationRelation(config, parentID, childID, logger)
+			dl, ul := helper.server.SessionBytes()
+			sendCcacheInvocationBytes(config, childID, parentID, dl, ul, logger)
 		},
 	)
 	if err != nil {
