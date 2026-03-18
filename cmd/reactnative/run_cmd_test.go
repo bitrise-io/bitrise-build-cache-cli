@@ -173,7 +173,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func(_ ccacheanalytics.CcacheInvocation) error { return nil },
 		)
 
-		_ = reactnative.RunCmdFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.False(t, resetCalled)
 		assert.False(t, collectCalled)
@@ -208,7 +208,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			},
 		)
 
-		_ = reactnative.RunCmdFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.True(t, resetCalled)
 		assert.True(t, collectCalled)
@@ -246,7 +246,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func(_ ccacheanalytics.CcacheInvocation) error { return nil },
 		)
 
-		_ = reactnative.RunCmdFn(
+		_ = reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return execErr },
@@ -272,7 +272,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func(_ ccacheanalytics.CcacheInvocation) error { sendCcacheCalled = true; return nil },
 		)
 
-		_ = reactnative.RunCmdFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.True(t, sendCalled)
 		assert.False(t, sendCcacheCalled)
@@ -294,7 +294,7 @@ func Test_BuildCcacheAnalyticsHooksFn(t *testing.T) {
 			func(inv ccacheanalytics.CcacheInvocation) error { sentCcacheInvocation = inv; return nil },
 		)
 
-		_ = reactnative.RunCmdFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.True(t, sentInvocation.DurationMs >= 0)
 		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))

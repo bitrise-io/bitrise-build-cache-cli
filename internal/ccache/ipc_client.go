@@ -30,9 +30,10 @@ func IsListening(socketPath string) bool {
 }
 
 // SendInvocationID connects to the ccache storage helper Unix socket and notifies
-// it of the current invocation ID. The helper uses it for per-invocation logging.
+// it of a parent→child invocation pair. The helper uses childID for per-invocation
+// logging and session tracking, and registers the parent→child relationship.
 // Returns an error if the connection or protocol exchange fails.
-func SendInvocationID(ctx context.Context, socketPath, invocationID string) error {
+func SendInvocationID(ctx context.Context, socketPath, parentID, childID string) error {
 	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
@@ -43,7 +44,7 @@ func SendInvocationID(ctx context.Context, socketPath, invocationID string) erro
 		return fmt.Errorf("read greeting: %w", err)
 	}
 
-	if err := protocol.WriteSetInvocationID(conn, invocationID); err != nil {
+	if err := protocol.WriteSetInvocationID(conn, parentID, childID); err != nil {
 		return fmt.Errorf("send invocation ID: %w", err)
 	}
 

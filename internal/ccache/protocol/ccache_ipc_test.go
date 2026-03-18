@@ -87,11 +87,12 @@ func Test_WriteReadMsg(t *testing.T) {
 }
 
 func Test_WriteSetInvocationID(t *testing.T) {
-	t.Run("writes request type byte 0xB1 then msg, ReadSetInvocationID reads back ID", func(t *testing.T) {
-		id := "my-invocation-id"
+	t.Run("writes request type byte 0xB1 then parent and child IDs, ReadSetInvocationID reads them back", func(t *testing.T) {
+		parentID := "my-parent-id"
+		childID := "my-child-id"
 		var buf bytes.Buffer
 
-		err := protocol.WriteSetInvocationID(&buf, id)
+		err := protocol.WriteSetInvocationID(&buf, parentID, childID)
 		require.NoError(t, err)
 
 		// First byte should be RequestSetInvocationID (0xB1)
@@ -99,10 +100,11 @@ func Test_WriteSetInvocationID(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, byte(protocol.RequestSetInvocationID), firstByte)
 
-		// Remainder should decode to the invocation ID
-		got, err := protocol.ReadSetInvocationID(&buf)
+		// Remainder should decode to parent and child IDs
+		gotParent, gotChild, err := protocol.ReadSetInvocationID(&buf)
 		require.NoError(t, err)
-		assert.Equal(t, id, got)
+		assert.Equal(t, parentID, gotParent)
+		assert.Equal(t, childID, gotChild)
 	})
 }
 

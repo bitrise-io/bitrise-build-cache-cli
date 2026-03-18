@@ -47,11 +47,19 @@ type Invocation struct {
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
 }
 
+// InvocationRelation records a parent→child relationship between two invocations.
+// It is sent at the start of a child invocation before any stats are available.
+type InvocationRelation struct {
+	ParentInvocationID string    `json:"parentInvocationId"`
+	ChildInvocationID  string    `json:"childInvocationId"`
+	InvocationDate     time.Time `json:"invocationDate"`
+}
+
 // CcacheInvocation is the analytics payload for ccache statistics captured during a run.
 // It references the parent Invocation and contains only ccache-specific data.
 type CcacheInvocation struct {
-	InvocationID        string      `json:"invocationId"`
-	ParentInvocationID  string      `json:"parentInvocationId"`
-	InvocationDate      time.Time   `json:"invocationDate"`
-	CcacheStats         CcacheStats `json:"ccacheStats"`
+	InvocationID       string      `json:"invocationId"`
+	ParentInvocationID string      `json:"parentInvocationId"`
+	InvocationDate     time.Time   `json:"invocationDate"`
+	CcacheStats        CcacheStats `json:"ccacheStats"`
 }

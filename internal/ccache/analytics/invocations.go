@@ -106,7 +106,40 @@ func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate
 	}
 }
 
+// PutInvocationRelation registers a parent→child invocation relationship with the analytics backend.
+// It is intended to be called at the start of a child invocation, before stats are available.
+// NOTE: This is a placeholder — the backend endpoint is still under development.
+func (c *Client) PutInvocationRelation(rel InvocationRelation) error {
+	requestURL := fmt.Sprintf("%s/invocation-relations/%s", c.baseURL, rel.ChildInvocationID)
+	c.logger.Debugf("Registering invocation relation: parent=%s child=%s", rel.ParentInvocationID, rel.ChildInvocationID)
+
+	payload, err := json.Marshal(rel)
+	if err != nil {
+		return fmt.Errorf("marshal invocation relation: %w", err)
+	}
+
+	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, payload)
+	if err != nil {
+		return fmt.Errorf("create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("perform HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return unwrapError(resp)
+	}
+
+	return nil
+}
+
 // PutInvocation sends an Invocation to the analytics backend via HTTP PUT.
+// NOTE: This is a placeholder — the backend endpoint is still under development.
 func (c *Client) PutInvocation(inv Invocation) error {
 	requestURL := fmt.Sprintf("%s/invocations/%s", c.baseURL, inv.InvocationID)
 	c.logger.Debugf("Sending run invocation data to: %s", requestURL)
@@ -137,6 +170,7 @@ func (c *Client) PutInvocation(inv Invocation) error {
 }
 
 // PutCcacheInvocation sends a CcacheInvocation to the analytics backend via HTTP PUT.
+// NOTE: This is a placeholder — the backend endpoint is still under development.
 func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error {
 	requestURL := fmt.Sprintf("%s/ccache-invocations/%s", c.baseURL, inv.InvocationID)
 	c.logger.Debugf("Sending ccache invocation data to: %s", requestURL)
