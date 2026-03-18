@@ -1202,6 +1202,7 @@ pipelines:
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
+      e2e-mavencentral-mirror-duckduck: {}
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
       e2e-xcode-comp-cache: {}
