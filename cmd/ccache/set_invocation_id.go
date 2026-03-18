@@ -12,14 +12,15 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	setInvocationIDValue      string
+	setInvocationIDParentID   string
+	setInvocationIDChildID    string
 	setInvocationIDSocketPath string
 )
 
 //nolint:gochecknoglobals
 var setInvocationIDCmd = &cobra.Command{
 	Use:          "set-invocation-id",
-	Short:        "Send an invocation ID to the running storage helper",
+	Short:        "Send a parent→child invocation ID pair to the running storage helper",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		socketPath := setInvocationIDSocketPath
@@ -31,7 +32,7 @@ var setInvocationIDCmd = &cobra.Command{
 			socketPath = config.IPCEndpoint
 		}
 
-		if err := ccache.SendInvocationID(cmd.Context(), socketPath, setInvocationIDValue); err != nil {
+		if err := ccache.SendInvocationID(cmd.Context(), socketPath, setInvocationIDParentID, setInvocationIDChildID); err != nil {
 			return fmt.Errorf("send invocation ID: %w", err)
 		}
 
@@ -40,8 +41,10 @@ var setInvocationIDCmd = &cobra.Command{
 }
 
 func init() {
-	setInvocationIDCmd.Flags().StringVar(&setInvocationIDValue, "id", "", "Invocation ID to send (required)")
-	_ = setInvocationIDCmd.MarkFlagRequired("id")
+	setInvocationIDCmd.Flags().StringVar(&setInvocationIDParentID, "parent-id", "", "Parent invocation ID (required)")
+	_ = setInvocationIDCmd.MarkFlagRequired("parent-id")
+	setInvocationIDCmd.Flags().StringVar(&setInvocationIDChildID, "child-id", "", "Child invocation ID (required)")
+	_ = setInvocationIDCmd.MarkFlagRequired("child-id")
 	setInvocationIDCmd.Flags().StringVar(&setInvocationIDSocketPath, "socket", "", "Path to the ccache IPC socket (defaults to value from config)")
 
 	storageHelperCmd.AddCommand(setInvocationIDCmd)

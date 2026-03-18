@@ -160,13 +160,27 @@ func ReadMsg(r io.Reader) (string, error) {
 	return string(msg), nil
 }
 
-func WriteSetInvocationID(w io.Writer, invocationID string) error {
+func WriteSetInvocationID(w io.Writer, parentID, childID string) error {
 	if err := WriteByte(w, RequestSetInvocationID); err != nil {
 		return err
 	}
-	return WriteMsg(w, invocationID)
+	if err := WriteMsg(w, parentID); err != nil {
+		return err
+	}
+
+	return WriteMsg(w, childID)
 }
 
-func ReadSetInvocationID(r io.Reader) (string, error) {
-	return ReadMsg(r)
+func ReadSetInvocationID(r io.Reader) (parentID, childID string, err error) {
+	parentID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", err
+	}
+
+	childID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", err
+	}
+
+	return parentID, childID, nil
 }

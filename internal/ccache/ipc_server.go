@@ -18,17 +18,18 @@ import (
 )
 
 type IpcServer struct {
-	listener         net.Listener
-	client           Client
-	logger           log.Logger
-	loggerFactory    LoggerFactory
-	idleTimer        *time.Timer
-	sessionState     *sessionState
-	config           ccacheconfig.Config
-	metadata         configcommon.CacheConfigMetadata
-	timerMutex       sync.Mutex
-	capabilitiesOnce sync.Once
-	capabilitiesErr  error
+	listener          net.Listener
+	client            Client
+	logger            log.Logger
+	loggerFactory     LoggerFactory
+	onChildInvocation func(parentID, childID string)
+	idleTimer         *time.Timer
+	sessionState      *sessionState
+	config            ccacheconfig.Config
+	metadata          configcommon.CacheConfigMetadata
+	timerMutex        sync.Mutex
+	capabilitiesOnce  sync.Once
+	capabilitiesErr   error
 }
 
 func NewServer(
@@ -37,14 +38,16 @@ func NewServer(
 	client Client,
 	logger log.Logger,
 	loggerFactory LoggerFactory,
+	onChildInvocation func(parentID, childID string),
 ) (*IpcServer, error) {
 	return &IpcServer{
-		config:        config,
-		metadata:      metadata,
-		client:        client,
-		logger:        logger,
-		loggerFactory: loggerFactory,
-		sessionState:  newSessionState(),
+		config:            config,
+		metadata:          metadata,
+		client:            client,
+		logger:            logger,
+		loggerFactory:     loggerFactory,
+		onChildInvocation: onChildInvocation,
+		sessionState:      newSessionState(),
 	}, nil
 }
 
@@ -107,7 +110,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.onChildInvocation)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)
