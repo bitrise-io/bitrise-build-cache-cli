@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
 const (
@@ -51,7 +52,9 @@ The mirror URL is determined by the BITRISE_DEN_VM_DATACENTER environment variab
 			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
 		}
 
-		return ActivateMavenCentralMirrorFn(logger, gradleHome, os.Getenv)
+		allEnvs := utils.AllEnvs()
+
+		return ActivateMavenCentralMirrorFn(logger, gradleHome, allEnvs)
 	},
 }
 
@@ -71,18 +74,18 @@ func datacenterToMirrorRegion(dc string) string {
 func ActivateMavenCentralMirrorFn(
 	logger log.Logger,
 	gradleHomePath string,
-	getenv func(string) string,
+	envProvider map[string]string,
 ) error {
 	logger.TInfof("Activate Bitrise MavenCentral mirror")
 
-	enabled := getenv(mavenCentralMirrorEnvKey)
+	enabled := envProvider[mavenCentralMirrorEnvKey]
 	if enabled != "true" {
 		logger.Infof("(i) %s is not set to \"true\", skipping MavenCentral mirror activation", mavenCentralMirrorEnvKey)
 
 		return nil
 	}
 
-	dc := getenv(datacenterEnvKey)
+	dc := envProvider[datacenterEnvKey]
 	if dc == "" {
 		logger.Infof("(i) %s is not set, skipping MavenCentral mirror activation (e.g. local dev environment)", datacenterEnvKey)
 
