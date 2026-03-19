@@ -1,11 +1,13 @@
 package gradle
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"unicode"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -20,11 +22,14 @@ const (
 	datacenterEnvKey         = "BITRISE_DEN_VM_DATACENTER"
 	mavenCentralInitFileName = "bitrise-mavencentral-mirror.init.gradle.kts"
 	mirrorURLTemplate        = "https://repository-manager-%s.services.bitrise.io:8090/maven/central"
-	mirrorURLPlaceholder     = "{{MIRROR_URL}}"
 )
 
-//go:embed asset/mavencentral-mirror.init.gradle.kts
-var mavenCentralInitScript string
+//go:embed asset/mavencentral-mirror.init.gradle.kts.gotemplate
+var mavenCentralInitTemplate string
+
+type mavenCentralMirrorTemplateData struct {
+	MirrorURL string
+}
 
 var activateMavenCentralMirrorCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "mavencentral-mirror",
@@ -88,17 +93,25 @@ func ActivateMavenCentralMirrorFn(
 	mirrorURL := fmt.Sprintf(mirrorURLTemplate, region)
 	logger.Infof("(i) Datacenter: %s, mirror region: %s, mirror URL: %s", dc, region, mirrorURL)
 
+	tmpl, err := template.New("mavencentral-mirror").Parse(mavenCentralInitTemplate)
+	if err != nil {
+		return fmt.Errorf("parse mavencentral-mirror init template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, mavenCentralMirrorTemplateData{MirrorURL: mirrorURL}); err != nil {
+		return fmt.Errorf("execute mavencentral-mirror init template: %w", err)
+	}
+
 	initDPath := filepath.Join(gradleHomePath, "init.d")
 	if err := os.MkdirAll(initDPath, 0o755); err != nil { //nolint:mnd
 		return fmt.Errorf("ensure ~/.gradle/init.d exists: %w", err)
 	}
 
-	scriptContent := strings.ReplaceAll(mavenCentralInitScript, mirrorURLPlaceholder, mirrorURL)
-
 	initFilePath := filepath.Join(initDPath, mavenCentralInitFileName)
 	logger.Infof("(i) Writing MavenCentral mirror init script to %s", initFilePath)
 
-	if err := os.WriteFile(initFilePath, []byte(scriptContent), 0o644); err != nil { //nolint:gosec,mnd
+	if err := os.WriteFile(initFilePath, buf.Bytes(), 0o644); err != nil { //nolint:gosec,mnd
 		return fmt.Errorf("write %s: %w", initFilePath, err)
 	}
 
