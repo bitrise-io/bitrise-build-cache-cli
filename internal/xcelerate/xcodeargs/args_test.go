@@ -174,6 +174,16 @@ func Test_ShortCommand(t *testing.T) {
 			expected: "-exportArchive",
 		},
 		{
+			name:     "clean followed by archive returns archive",
+			args:     "xcodebuild clean archive -workspace /Users/vagrant/git/GuestSelfService.xcworkspace -scheme HyattApp -configuration Release -xcconfig /var/folders/f6/wf2hj3cj75qdwmt5rn814r_00000gn/T/2300449354/temp.xcconfig -archivePath /var/folders/f6/wf2hj3cj75qdwmt5rn814r_00000gn/T/xcodeArchive2352012375/HyattApp.xcarchive -destination generic/platform=iOS -skipPackagePluginValidation -disableAutomaticPackageResolution PROVISIONING_PROFILE= PROVISIONING_PROFILE_SPECIFIER=HyattApp_InHouse_Kermit",
+			expected: "archive",
+		},
+		{
+			name:     "clean alone returns clean",
+			args:     "xcodebuild clean",
+			expected: "clean",
+		},
+		{
 			name:     "with no action",
 			args:     "-destination mars 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
 			expected: "-destination mars 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
