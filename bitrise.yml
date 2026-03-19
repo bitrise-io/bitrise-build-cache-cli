@@ -941,8 +941,8 @@ workflows:
         - content: |-
             set -exo pipefail
 
-            MIRROR_URL="repository-manager.services.bitrise.dev/maven/central"
-            MATCH_COUNT=$(grep -c "$MIRROR_URL" "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+            MIRROR_URL="repository-manager-[a-z]*\.services\.bitrise\.io:8090/maven/central"
+            MATCH_COUNT=$(grep -cE "$MIRROR_URL" "$BITRISE_DEPLOY_DIR/logs.txt" || true)
 
             echo "Found $MATCH_COUNT log lines referencing the MavenCentral mirror"
 

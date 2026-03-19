@@ -7,7 +7,7 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             Spec { r -> r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME) }
 
         val useMirror: Action<MavenArtifactRepository> = Action {
-            val mirrorUrl: String = "https://repository-manager.services.bitrise.dev/maven/central"
+            val mirrorUrl: String = "{{MIRROR_URL}}"
             setUrl(mirrorUrl)
         }
         val configureMirror: Action<RepositoryHandler> = Action {
