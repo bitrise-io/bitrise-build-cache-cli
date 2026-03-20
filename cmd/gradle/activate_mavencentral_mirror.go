@@ -78,14 +78,14 @@ func ActivateMavenCentralMirrorFn(
 ) error {
 	enabled := envProvider[mavenCentralMirrorEnvKey]
 	if enabled != "true" {
-		fmt.Printf("%s is not set to \"true\", skipping MavenCentral mirror activation\n", mavenCentralMirrorEnvKey)
+		fmt.Fprintf(os.Stdout, "%s is not set to \"true\", skipping MavenCentral mirror activation\n", mavenCentralMirrorEnvKey)
 
 		return nil
 	}
 
 	dc := envProvider[datacenterEnvKey]
 	if dc == "" {
-		fmt.Printf("%s is not set, skipping MavenCentral mirror activation (e.g. local dev environment)\n", datacenterEnvKey)
+		fmt.Fprintf(os.Stdout, "%s is not set, skipping MavenCentral mirror activation (e.g. local dev environment)\n", datacenterEnvKey)
 
 		return nil
 	}
@@ -116,7 +116,7 @@ func ActivateMavenCentralMirrorFn(
 		return fmt.Errorf("write %s: %w", initFilePath, err)
 	}
 
-	fmt.Println("MavenCentral mirror activated")
+	fmt.Fprintln(os.Stdout, "MavenCentral mirror activated")
 
 	return nil
 }
