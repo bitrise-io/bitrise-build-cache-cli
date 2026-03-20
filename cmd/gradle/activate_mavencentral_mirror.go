@@ -94,7 +94,7 @@ func ActivateMavenCentralMirrorFn(
 
 	region := datacenterToMirrorRegion(dc)
 	mirrorURL := fmt.Sprintf(mirrorURLTemplate, region)
-	logger.Infof("(i) Datacenter: %s, mirror region: %s, mirror URL: %s", dc, region, mirrorURL)
+	logger.Debugf("Datacenter: %s, mirror region: %s, mirror URL: %s", dc, region, mirrorURL)
 
 	tmpl, err := template.New("mavencentral-mirror").Parse(mavenCentralInitTemplate)
 	if err != nil {
@@ -112,7 +112,7 @@ func ActivateMavenCentralMirrorFn(
 	}
 
 	initFilePath := filepath.Join(initDPath, mavenCentralInitFileName)
-	logger.Infof("(i) Writing MavenCentral mirror init script to %s", initFilePath)
+	logger.Debugf("Writing MavenCentral mirror init script to %s", initFilePath)
 
 	if err := os.WriteFile(initFilePath, buf.Bytes(), 0o644); err != nil { //nolint:gosec,mnd
 		return fmt.Errorf("write %s: %w", initFilePath, err)
