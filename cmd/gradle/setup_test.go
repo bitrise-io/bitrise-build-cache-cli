@@ -11,5 +11,8 @@ var mockLogger = &utilsMocks.Logger{}
 func init() {
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("TInfof", mock.Anything).Return()
 }

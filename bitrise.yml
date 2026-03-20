@@ -899,6 +899,100 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
 
+  e2e-mavencentral-mirror-duckduck:
+    envs:
+    - TEST_APP_URL: git@github.com:duckduckgo/Android.git
+    - BRANCH: develop
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - apt-get-install:
+        inputs:
+          - packages: 'bc'
+          - upgrade: "no"
+    - restore-gradle-cache:
+        inputs:
+          - verbose: 'true'
+    - script:
+        title: Enable build cache and MavenCentral mirror
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+            export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
+            ../bitrise-build-cache-cli activate mavencentral-mirror -d
+    - script:
+        title: Print init scripts
+        inputs:
+          - content: |-
+              echo "=== bitrise-build-cache.init.gradle.kts ==="
+              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+              echo ""
+              echo "=== bitrise-mavencentral-mirror.init.gradle.kts ==="
+              cat ~/.gradle/init.d/bitrise-mavencentral-mirror.init.gradle.kts
+    - script:
+        title: Build and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (./gradlew debug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Assert downloads from MavenCentral mirror
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            MIRROR_URL="repository-manager-[a-z]*\.services\.bitrise\.io:8090/maven/central"
+            MATCH_COUNT=$(grep -cE "$MIRROR_URL" "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+
+            echo "Found $MATCH_COUNT log lines referencing the MavenCentral mirror"
+
+            if [[ "$MATCH_COUNT" -eq 0 ]]; then
+              echo "ERROR: No downloads from the MavenCentral mirror were found in the build logs."
+              echo "Expected to find references to $MIRROR_URL"
+              exit 1
+            fi
+
+            echo "SUCCESS: Verified $MATCH_COUNT downloads from the MavenCentral mirror."
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
+              '\[Bitrise Build Cache\].*Request metadata invocationId' \
+              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+            source ../_e2e/scripts/extract_invocation_id.sh
+
+            invocation_id=$(extract_invocation_id_gradle "$BITRISE_DEPLOY_DIR/logs.txt")
+            if [[ -z "$invocation_id" ]]; then
+              fatal "Invocation ID not found in logs"
+            fi
+
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+          - content: |-
+              source ../_e2e/scripts/assert_invocations.sh
+              source ../_e2e/scripts/assert_taskio.sh
+
+              assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+              assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+              assert_invocation_tasks_gradle "$INVOCATION_ID"
+              assert_build_performance "$INVOCATION_ID"
+              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+
+              assert_invocation_taskio "$INVOCATION_ID" "gradle"
+              assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
+    - save-gradle-cache:
+        inputs:
+          - verbose: 'true'
+    - deploy-to-bitrise-io@2: {}
+
   update-steps:
     envs:
         - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
@@ -1148,6 +1242,7 @@ pipelines:
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
+      e2e-mavencentral-mirror-duckduck: {}
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
       e2e-xcode-comp-cache: {}
