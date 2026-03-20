@@ -76,18 +76,16 @@ func ActivateMavenCentralMirrorFn(
 	gradleHomePath string,
 	envProvider map[string]string,
 ) error {
-	logger.TInfof("Activate Bitrise MavenCentral mirror")
-
 	enabled := envProvider[mavenCentralMirrorEnvKey]
 	if enabled != "true" {
-		logger.Infof("(i) %s is not set to \"true\", skipping MavenCentral mirror activation", mavenCentralMirrorEnvKey)
+		fmt.Printf("%s is not set to \"true\", skipping MavenCentral mirror activation\n", mavenCentralMirrorEnvKey)
 
 		return nil
 	}
 
 	dc := envProvider[datacenterEnvKey]
 	if dc == "" {
-		logger.Infof("(i) %s is not set, skipping MavenCentral mirror activation (e.g. local dev environment)", datacenterEnvKey)
+		fmt.Printf("%s is not set, skipping MavenCentral mirror activation (e.g. local dev environment)\n", datacenterEnvKey)
 
 		return nil
 	}
@@ -118,7 +116,7 @@ func ActivateMavenCentralMirrorFn(
 		return fmt.Errorf("write %s: %w", initFilePath, err)
 	}
 
-	logger.TInfof("✅ MavenCentral mirror activated")
+	fmt.Println("MavenCentral mirror activated")
 
 	return nil
 }
