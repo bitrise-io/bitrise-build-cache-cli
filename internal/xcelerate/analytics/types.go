@@ -70,4 +70,5 @@ type Invocation struct {
 	ExternalAppID        string            `json:"externalAppId,omitempty"`
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
+	BenchmarkPhase       string            `json:"benchmarkPhase,omitempty"`
 }

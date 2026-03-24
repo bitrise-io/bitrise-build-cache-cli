@@ -291,6 +291,8 @@ func XcodebuildCmdFn(
 		return runStats
 	}
 
+	metadata.BenchmarkPhase = resolveBenchmarkPhase(logger)
+
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   runStats.StartTime,
 		InvocationID:     invocationID,
@@ -375,6 +377,25 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 	}
 
 	return hitRate
+}
+
+// resolveBenchmarkPhase reads the benchmark phase from:
+// 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var (set during activation)
+// 2. ~/.local/state/xcelerate/benchmark/benchmark-phase.json (file fallback)
+func resolveBenchmarkPhase(logger log.Logger) string {
+	if phase := os.Getenv("BITRISE_BUILD_CACHE_BENCHMARK_PHASE"); phase != "" {
+		logger.Debugf("Benchmark phase from env: %s", phase)
+
+		return phase
+	}
+
+	if phase := common.ReadBenchmarkPhaseFile(logger); phase != "" {
+		logger.Debugf("Benchmark phase from file: %s", phase)
+
+		return phase
+	}
+
+	return ""
 }
 
 func shouldSaveInvocation(xcodeArgs xcodeargs.XcodeArgs) bool {

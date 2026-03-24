@@ -14,7 +14,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -154,6 +156,9 @@ func ActivateXcodeCommandFn(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
+	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envs)
+	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+
 	config, err := xcelerate.NewConfig(
 		ctx,
 		logger,
@@ -161,6 +166,8 @@ func ActivateXcodeCommandFn(
 		envs,
 		osProxy,
 		commandFunc,
+		envexport.New(envs, logger),
+		benchmarkClient,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create xcelerate config: %w", err)

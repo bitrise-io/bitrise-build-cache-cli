@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -37,6 +38,10 @@ type Params struct {
 	XcodebuildTimestampsEnabled bool
 }
 
+// Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
+// Note: the benchmark phase is NOT stored here — matching gradle, it is exported as
+// the BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var and written to
+// ~/.local/state/xcelerate/benchmark/benchmark-phase.json during activation.
 type Config struct {
 	ProxyVersion           string                 `json:"proxyVersion"`
 	ProxySocketPath        string                 `json:"proxySocketPath"`
@@ -52,6 +57,9 @@ type Config struct {
 	Silent                 bool                   `json:"silent,omitempty"`
 	XcodebuildTimestamps   bool                   `json:"xcodebuildTimestamps,omitempty"`
 	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
+	ExternalAppID          string                 `json:"externalAppId,omitempty"`
+	ExternalBuildID        string                 `json:"externalBuildId,omitempty"`
+	ExternalWorkflowName   string                 `json:"externalWorkflowName,omitempty"`
 }
 
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
@@ -96,10 +104,28 @@ func NewConfig(ctx context.Context,
 	envs map[string]string,
 	osProxy utils.OsProxy,
 	cmdFunc utils.CommandFunc,
+	exporter EnvExporter,
+	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (Config, error) {
 	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
+	}
+
+	metadata := common.NewMetadata(envs,
+		func(name string, v ...string) (string, error) {
+			output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+			return string(output), err
+		},
+		logger)
+
+	// Check benchmark phase and override params if needed (only on CI).
+	// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
+	// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json
+	if metadata.CIProvider != "" && benchmarkProvider != nil {
+		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
+		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, exporter)
 	}
 
 	xcodePath := params.XcodePathOverride
@@ -166,6 +192,9 @@ func NewConfig(ctx context.Context,
 		Silent:                 params.Silent,
 		XcodebuildTimestamps:   params.XcodebuildTimestampsEnabled,
 		AuthConfig:             authConfig,
+		ExternalAppID:          metadata.ExternalAppID,
+		ExternalBuildID:        metadata.ExternalBuildID,
+		ExternalWorkflowName:   metadata.ExternalWorkflowName,
 	}, nil
 }
 

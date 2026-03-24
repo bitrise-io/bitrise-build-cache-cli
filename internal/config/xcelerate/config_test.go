@@ -1,3 +1,5 @@
+//go:build unit
+
 // nolint: goconst, cyclop, maintidx
 package xcelerate_test
 
@@ -13,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
@@ -179,7 +182,7 @@ func TestConfig_NewConfig(t *testing.T) {
 	t.Run("When auth env vars are not set, returns error", func(t *testing.T) {
 		osProxyMock := &utilsMocks.OsProxyMock{}
 
-		_, err := xcelerate.NewConfig(context.Background(), nil, xcelerate.Params{}, map[string]string{}, osProxyMock, nil)
+		_, err := xcelerate.NewConfig(context.Background(), nil, xcelerate.Params{}, map[string]string{}, osProxyMock, nil, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fmt.Errorf(xcelerate.ErrNoAuthConfig, errors.New("")).Error())
 	})
@@ -217,7 +220,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			}
 
 			return cmdMock
-		})
+		}, nil, nil)
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
@@ -269,7 +272,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			XcodebuildTimestampsEnabled: true,
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			return cmdMock
-		})
+		}, nil, nil)
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
@@ -320,7 +323,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxySocketPathOverride: "/tmp/xcelerate-proxy.sock",
 		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
-		})
+		}, nil, nil)
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
@@ -365,7 +368,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			DebugLogging:      true,
 		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
-		})
+		}, nil, nil)
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
@@ -411,7 +414,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEndpoint: "grpc://localhost:6666",
 		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
-		})
+		}, nil, nil)
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
@@ -458,7 +461,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheEndpoint: "",
 		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
 			return cmdMock
-		})
+		}, nil, nil)
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
@@ -478,5 +481,112 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("benchmark provider is called on CI and baseline disables cache", func(t *testing.T) {
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
+			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
+			"BITRISE_IO":                          "true",
+			"BITRISE_APP_SLUG":                    "app-slug",
+			"BITRISE_TRIGGERED_WORKFLOW_ID":        "primary",
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte(""), errors.New("not found")
+			},
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(buildTool string, _ common.CacheConfigMetadata) (string, error) {
+				assert.Equal(t, common.BuildToolXcode, buildTool)
+
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
+		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled: true,
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		}, &noopExporter{}, mockProvider)
+		require.NoError(t, err)
+
+		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
+		assert.False(t, actual.BuildCacheEnabled)
+	})
+
+	t.Run("benchmark provider is not called when CI provider is empty", func(t *testing.T) {
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
+			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte(""), errors.New("not found")
+			},
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
+		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled: true,
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		}, &noopExporter{}, mockProvider)
+		require.NoError(t, err)
+
+		assert.Empty(t, mockProvider.GetBenchmarkPhaseCalls())
+		assert.True(t, actual.BuildCacheEnabled)
+	})
+
+	t.Run("nil benchmark provider skips benchmark phase check", func(t *testing.T) {
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
+			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
+			"BITRISE_IO":                          "true",
+		}
+
+		cmdMock := &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte(""), errors.New("not found")
+			},
+		}
+
+		osProxyMock := &utilsMocks.OsProxyMock{
+			TempDirFunc: func() string {
+				return t.TempDir()
+			},
+		}
+
+		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+			BuildCacheEnabled: true,
+		}, envs, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+			return cmdMock
+		}, &noopExporter{}, nil)
+		require.NoError(t, err)
+
+		assert.True(t, actual.BuildCacheEnabled)
 	})
 }

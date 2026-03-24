@@ -2,11 +2,8 @@
 package gradleconfig
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -327,7 +324,7 @@ func Test_activateGradleParams(t *testing.T) {
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := prep()
-			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug)
+			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug, nil)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
@@ -338,37 +335,60 @@ func Test_activateGradleParams(t *testing.T) {
 	}
 }
 
-type noopExporter struct{}
-
-func (n *noopExporter) Export(_, _ string)          {}
-func (n *noopExporter) ExportToShellRC(_, _ string) {}
-
-func Test_applyBenchmarkPhase(t *testing.T) {
+func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
 		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
 		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
 		mockLogger.On("Warnf", mock.Anything).Return()
 		mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 
 		return mockLogger
 	}
 
-	t.Run("baseline phase disables cache and enables analytics", func(t *testing.T) {
+	t.Run("benchmark provider is called on CI and baseline disables cache", func(t *testing.T) {
 		logger := prep()
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
+			"BITRISE_IO":                       "true",
+			"BITRISE_APP_SLUG":                 "app-slug",
+			"BITRISE_TRIGGERED_WORKFLOW_ID":    "primary",
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(buildTool string, _ common.CacheConfigMetadata) (string, error) {
+				assert.Equal(t, common.BuildToolGradle, buildTool)
+
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
 		params := ActivateGradleParams{
-			Cache: CacheParams{
-				Enabled:        true,
-				JustDependency: true,
-				PushEnabled:    true,
-			},
-			Analytics: AnalyticsParams{
-				Enabled: false,
-			},
+			Cache:     CacheParams{Enabled: true, PushEnabled: true},
+			Analytics: AnalyticsParams{Enabled: false},
+		}
+
+		inv, err := params.TemplateInventory(logger, envs, false, mockProvider)
+		require.NoError(t, err)
+
+		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
+		// Baseline disables cache
+		assert.Equal(t, UsageLevelNone, inv.Cache.Usage)
+	})
+
+	t.Run("benchmark provider is not called when CI provider is empty", func(t *testing.T) {
+		logger := prep()
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
@@ -377,127 +397,11 @@ func Test_applyBenchmarkPhase(t *testing.T) {
 			},
 		}
 
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
+		params := DefaultActivateGradleParams()
 
-		assert.False(t, params.Cache.Enabled)
-		assert.False(t, params.Cache.JustDependency)
-		assert.True(t, params.Analytics.Enabled)
-		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
-	})
-
-	t.Run("warmup phase does not change params", func(t *testing.T) {
-		logger := prep()
-		params := ActivateGradleParams{
-			Cache: CacheParams{
-				Enabled:     true,
-				PushEnabled: true,
-			},
-			Analytics: AnalyticsParams{
-				Enabled: false,
-			},
-		}
-
-		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
-				return common.BenchmarkPhaseWarmup, nil
-			},
-		}
-
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
-
-		assert.True(t, params.Cache.Enabled)
-		assert.True(t, params.Cache.PushEnabled)
-		assert.False(t, params.Analytics.Enabled)
-	})
-
-	t.Run("empty phase does not change params", func(t *testing.T) {
-		logger := prep()
-		params := ActivateGradleParams{
-			Cache: CacheParams{
-				Enabled: true,
-			},
-			Analytics: AnalyticsParams{
-				Enabled: false,
-			},
-		}
-
-		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
-				return "", nil
-			},
-		}
-
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
-
-		assert.True(t, params.Cache.Enabled)
-		assert.False(t, params.Analytics.Enabled)
-	})
-
-	t.Run("error falls back to original params", func(t *testing.T) {
-		logger := prep()
-		params := ActivateGradleParams{
-			Cache: CacheParams{
-				Enabled: true,
-			},
-			Analytics: AnalyticsParams{
-				Enabled: false,
-			},
-		}
-
-		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
-			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
-				return "", fmt.Errorf("network error")
-			},
-		}
-
-		applyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
-
-		assert.True(t, params.Cache.Enabled)
-		assert.False(t, params.Analytics.Enabled)
-	})
-}
-
-func Test_writeBenchmarkPhaseFile(t *testing.T) {
-	prep := func() log.Logger {
-		mockLogger := &mocks.Logger{}
-		mockLogger.On("Debugf", mock.Anything).Return()
-		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
-
-		return mockLogger
-	}
-
-	t.Run("creates benchmark phase file with correct content", func(t *testing.T) {
-		logger := prep()
-		home := t.TempDir()
-		t.Setenv("HOME", home)
-
-		writeBenchmarkPhaseFile("established", logger)
-
-		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
-		assert.FileExists(t, filePath)
-
-		data, err := os.ReadFile(filePath)
+		_, err := params.TemplateInventory(logger, envs, false, mockProvider)
 		require.NoError(t, err)
 
-		var result benchmarkPhaseFile
-		require.NoError(t, json.Unmarshal(data, &result))
-		assert.Equal(t, "established", result.Phase)
-	})
-
-	t.Run("overwrites existing benchmark phase file", func(t *testing.T) {
-		logger := prep()
-		home := t.TempDir()
-		t.Setenv("HOME", home)
-
-		writeBenchmarkPhaseFile("baseline", logger)
-		writeBenchmarkPhaseFile("warmup", logger)
-
-		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
-		data, err := os.ReadFile(filePath)
-		require.NoError(t, err)
-
-		var result benchmarkPhaseFile
-		require.NoError(t, json.Unmarshal(data, &result))
-		assert.Equal(t, "warmup", result.Phase)
+		assert.Empty(t, mockProvider.GetBenchmarkPhaseCalls())
 	})
 }

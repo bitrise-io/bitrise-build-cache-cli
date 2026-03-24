@@ -15,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -70,7 +71,7 @@ func init() {
 
 // BuildGradleActivationFn constructs the Gradle activation function with an injectable underlying call.
 func BuildGradleActivationFn(
-	activateFn func(log.Logger, string, map[string]string, func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error), func(gradleconfig.TemplateInventory, string) error, gradleconfig.GradlePropertiesUpdater, gradleconfig.ActivateGradleParams) error,
+	activateFn func(log.Logger, string, map[string]string, func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error), func(gradleconfig.TemplateInventory, string) error, gradleconfig.GradlePropertiesUpdater, gradleconfig.ActivateGradleParams) error,
 ) func(log.Logger) error {
 	return func(logger log.Logger) error {
 		gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")

@@ -78,6 +78,30 @@ The ccache IPC proxy (`internal/ccache/`) implements a binary protocol between c
 - `sessionState` uses `atomic.Int64` for hit/miss/byte counters
 - `keyToPath` supports layouts: `""` or `"flat"` (hex), `"subdirs"` (`ccache/1-xx/rest`), `"bazel"` (`ac/<64hex>`)
 
+## Benchmark Phasing
+
+Benchmark phasing allows measuring build performance with and without cache. The phase is queried from the Bitrise API during activation and affects both Gradle and Xcode builds.
+
+**API:** `GET /build-cache/{workspaceID}/invocations/{buildTool}/command_benchmark_status` (in `internal/config/common/benchmark.go`). The `buildTool` is `gradle` or `xcode`. Query params identify the build: `app_slug` + `workflow_name` (Bitrise CI) or `external_app_id` + `external_workflow_name` (external CI).
+
+**Phases:**
+- **baseline** — cache is disabled, analytics-only mode. Measures build time without cache.
+- **warmup** — cache is enabled but may not be fully populated yet. Logs a warning about potentially suboptimal performance.
+
+**Storage:** The phase is persisted in two ways during activation:
+1. `BITRISE_BUILD_CACHE_BENCHMARK_PHASE` env var (exported via envman / GITHUB_ENV / shell RC files)
+2. `~/.local/state/xcelerate/benchmark/benchmark-phase.json` (file fallback)
+
+The file I/O is in `internal/config/common/benchmark.go` (`WriteBenchmarkPhaseFile` / `ReadBenchmarkPhaseFile`), shared by both Gradle and Xcode.
+
+**Architecture:** `BenchmarkPhaseProvider` (interface in `internal/config/common/benchmark.go`) is injected into both `TemplateInventory()` (gradle) and `NewConfig()` (xcode). The client is created at the command layer and passed in. The provider is only called when `metadata.CIProvider != ""` (i.e., on CI). Passing `nil` skips the check entirely.
+
+**Gradle flow:** `ApplyBenchmarkPhase()` in `internal/config/gradle/benchmark.go` processes the phase result, exports the env var, writes the file, and overrides `ActivateGradleParams` (disables cache on baseline). Called from `TemplateInventory()` in `activate_for_gradle_params.go`.
+
+**Xcode flow:** `ApplyBenchmarkPhase()` in `internal/config/xcelerate/benchmark.go` processes the phase result, exports the env var, writes the file, and disables `BuildCacheEnabled` on baseline. Called from `NewConfig()` in `config.go`. The xcodebuild wrapper (`cmd/xcode/xcodebuild.go`) reads the phase from the env var (with file fallback) and includes it in the analytics invocation via `CacheConfigMetadata.BenchmarkPhase`.
+
+**Note:** The benchmark phase is intentionally NOT stored in the xcelerate config file (`~/.bitrise-xcelerate/config.json`) — only in the env var and the benchmark phase file, matching the Gradle approach.
+
 ## Linting
 
 This project uses golangci-lint v2. Notable rules to follow when generating code:

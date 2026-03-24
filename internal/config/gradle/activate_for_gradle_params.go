@@ -1,12 +1,9 @@
 package gradleconfig
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -75,6 +72,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
 	envs map[string]string,
 	isDebug bool,
+	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
@@ -95,10 +93,9 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger.Infof("(i) Cache Config: %+v", metadata)
 
 	// Check benchmark phase and override params if needed (only on CI)
-	if metadata.CIProvider != "" {
+	if metadata.CIProvider != "" && benchmarkProvider != nil {
 		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
-		benchmarkClient := common.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-		applyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envs, logger))
+		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, envexport.New(envs, logger))
 	}
 
 	commonInventory := params.commonTemplateInventory(authConfig, metadata, isDebug)
@@ -118,84 +115,6 @@ func (params ActivateGradleParams) TemplateInventory(
 		Analytics:  analyticsInventory,
 		TestDistro: testDistroInventory,
 	}, nil
-}
-
-// envExporter abstracts environment variable export for testability.
-type envExporter interface {
-	Export(key, value string)
-	ExportToShellRC(blockName, content string)
-}
-
-func applyBenchmarkPhase(
-	params *ActivateGradleParams,
-	logger log.Logger,
-	benchmarkProvider common.BenchmarkPhaseProvider,
-	metadata common.CacheConfigMetadata,
-	exporter envExporter,
-) {
-	phase, err := benchmarkProvider.GetBenchmarkPhase(common.BuildToolGradle, metadata)
-	if err != nil {
-		logger.Debugf("Failed to fetch benchmark phase, using configured flags: %v", err)
-
-		return
-	}
-
-	if phase == "" {
-		logger.Debugf("No benchmark phase found, using configured flags")
-
-		return
-	}
-
-	logger.Infof("(i) Benchmark phase: %s", phase)
-	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
-	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
-	writeBenchmarkPhaseFile(phase, logger)
-
-	switch phase {
-	case common.BenchmarkPhaseBaseline:
-		logger.Warnf("Benchmark baseline mode: disabling cache and enabling analytics only")
-		params.Cache.Enabled = false
-		params.Cache.JustDependency = false
-		params.Analytics.Enabled = true
-	case common.BenchmarkPhaseWarmup:
-		logger.Infof("(i) Benchmark warmup phase: cache performance might not be ideal")
-	}
-}
-
-type benchmarkPhaseFile struct {
-	Phase string `json:"phase"`
-}
-
-func writeBenchmarkPhaseFile(phase string, logger log.Logger) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		logger.Debugf("Failed to get home directory for benchmark phase file: %v", err)
-
-		return
-	}
-
-	dir := filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		logger.Debugf("Failed to create benchmark phase dir: %v", err)
-
-		return
-	}
-
-	data, err := json.Marshal(benchmarkPhaseFile{Phase: phase})
-	if err != nil {
-		logger.Debugf("Failed to marshal benchmark phase file: %v", err)
-
-		return
-	}
-
-	filePath := filepath.Join(dir, "benchmark-phase.json")
-	if err := os.WriteFile(filePath, data, 0o644); err != nil { //nolint:mnd,gosec
-		logger.Debugf("Failed to write benchmark phase file: %v", err)
-
-		return
-	}
-
-	logger.Debugf("Benchmark phase written to %s", filePath)
 }
 
 func (params ActivateGradleParams) commonTemplateInventory(
