@@ -17,6 +17,35 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
+// knownPackageManagers lists runners whose subcommand is meaningful enough to include
+// in the Command field. For these, Command captures "runner subcommand" (two tokens)
+// rather than just "runner".
+//
+//nolint:gochecknoglobals
+var knownPackageManagers = map[string]bool{
+	"yarn":     true,
+	"npm":      true,
+	"npx":      true,
+	"expo":     true,
+	"pnpm":     true,
+	"fastlane": true,
+}
+
+// parseCommand derives the Command value from the raw argument list.
+// For known package managers it returns "runner subcommand" (e.g. "yarn build:ios");
+// for everything else it returns just the first argument.
+func parseCommand(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+
+	if len(args) > 1 && knownPackageManagers[args[0]] {
+		return args[0] + " " + args[1]
+	}
+
+	return args[0]
+}
+
 // PostRunFn is called after the wrapped command completes with the invocation ID,
 // original args, elapsed duration, and any execution error.
 type PostRunFn func(invocationID string, args []string, duration time.Duration, execErr error)
@@ -40,10 +69,9 @@ func BuildPostRunFn(
 
 		metadata := getMetadataFn()
 
-		command := ""
+		command := parseCommand(args)
 		fullCommand := ""
 		if len(args) > 0 {
-			command = args[0]
 			fullCommand = strings.Join(args, " ")
 		}
 

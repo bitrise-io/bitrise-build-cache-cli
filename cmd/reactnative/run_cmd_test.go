@@ -238,6 +238,72 @@ func Test_BuildPostRunFn(t *testing.T) {
 		assert.Contains(t, sentInvocation.Error, "build failed")
 	})
 
+	t.Run("command is runner+subcommand for known package managers", func(t *testing.T) {
+		cases := []struct {
+			args            []string
+			expectedCommand string
+		}{
+			{[]string{"yarn", "build:ios", "-v", "--stuff=true"}, "yarn build:ios"},
+			{[]string{"npm", "run", "start"}, "npm run"},
+			{[]string{"npx", "react-native", "run-ios"}, "npx react-native"},
+			{[]string{"expo", "build:ios"}, "expo build:ios"},
+			{[]string{"pnpm", "install"}, "pnpm install"},
+			{[]string{"fastlane", "beta"}, "fastlane beta"},
+		}
+
+		for _, tc := range cases {
+			var sentInvocation ccacheanalytics.Invocation
+
+			hooks := reactnative.BuildPostRunFn(
+				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+				func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			)
+
+			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
+
+			assert.Equal(t, tc.expectedCommand, sentInvocation.Command, "args: %v", tc.args)
+		}
+	})
+
+	t.Run("command is first arg for unknown runners", func(t *testing.T) {
+		cases := []struct {
+			args []string
+		}{
+			{[]string{"myapp", "--flag"}},
+			{[]string{"./gradlew", "assembleRelease"}},
+			{[]string{"make", "build"}},
+		}
+
+		for _, tc := range cases {
+			var sentInvocation ccacheanalytics.Invocation
+
+			hooks := reactnative.BuildPostRunFn(
+				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+				func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			)
+
+			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
+
+			assert.Equal(t, tc.args[0], sentInvocation.Command, "args: %v", tc.args)
+		}
+	})
+
+	t.Run("command is first arg when package manager has no subcommand", func(t *testing.T) {
+		var sentInvocation ccacheanalytics.Invocation
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, []string{}, noopExecFn, nil, nil, hooks)
+
+		assert.Equal(t, "yarn", sentInvocation.Command)
+	})
+
 	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
 		var sentInvocation ccacheanalytics.Invocation
 		before := time.Now()
