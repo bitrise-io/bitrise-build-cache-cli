@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
-	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
@@ -193,7 +193,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 	noopExecFn := func(_ []string, _ string, _ ...string) error { return nil }
 
 	t.Run("sends run invocation with metadata", func(t *testing.T) {
-		var sentInvocation ccacheanalytics.Invocation
+		var sentInvocation multiplatform.Invocation
 
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata {
@@ -202,7 +202,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func() (common.CacheAuthConfig, error) {
 				return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil
 			},
-			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, nil, hooks)
@@ -216,13 +216,13 @@ func Test_BuildPostRunFn(t *testing.T) {
 	})
 
 	t.Run("reports success=false when exec fails", func(t *testing.T) {
-		var sentInvocation ccacheanalytics.Invocation
+		var sentInvocation multiplatform.Invocation
 		execErr := errors.New("build failed")
 
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
 		)
 
 		_ = reactnative.RunWithInvocationIDFn(
@@ -256,12 +256,12 @@ func Test_BuildPostRunFn(t *testing.T) {
 		}
 
 		for _, tc := range cases {
-			var sentInvocation ccacheanalytics.Invocation
+			var sentInvocation multiplatform.Invocation
 
 			hooks := reactnative.BuildPostRunFn(
 				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
 			)
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
@@ -280,12 +280,12 @@ func Test_BuildPostRunFn(t *testing.T) {
 		}
 
 		for _, tc := range cases {
-			var sentInvocation ccacheanalytics.Invocation
+			var sentInvocation multiplatform.Invocation
 
 			hooks := reactnative.BuildPostRunFn(
 				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
 			)
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
@@ -295,12 +295,12 @@ func Test_BuildPostRunFn(t *testing.T) {
 	})
 
 	t.Run("command is first arg when package manager has no subcommand", func(t *testing.T) {
-		var sentInvocation ccacheanalytics.Invocation
+		var sentInvocation multiplatform.Invocation
 
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, []string{}, noopExecFn, nil, nil, hooks)
@@ -309,13 +309,13 @@ func Test_BuildPostRunFn(t *testing.T) {
 	})
 
 	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
-		var sentInvocation ccacheanalytics.Invocation
+		var sentInvocation multiplatform.Invocation
 		before := time.Now()
 
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv ccacheanalytics.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, nil, hooks)

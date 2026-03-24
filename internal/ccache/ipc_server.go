@@ -18,22 +18,22 @@ import (
 )
 
 type IpcServer struct {
-	listener             net.Listener
-	client               Client
-	logger               log.Logger
-	loggerFactory        LoggerFactory
-	onChildInvocation    func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
-	onShutdown           func(invocationID string, downloadBytes, uploadBytes int64)
-	idleTimer            *time.Timer
-	sessionState         *sessionState
-	config               ccacheconfig.Config
-	metadata             configcommon.CacheConfigMetadata
-	timerMutex           sync.Mutex
-	capabilitiesOnce     sync.Once
-	capabilitiesErr      error
-	reportOnce           sync.Once
-	activeInvocationID   string
-	activeInvocationMu   sync.Mutex
+	listener           net.Listener
+	client             Client
+	logger             log.Logger
+	loggerFactory      LoggerFactory
+	onChildInvocation  func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
+	onShutdown         func(invocationID string, downloadBytes, uploadBytes int64)
+	idleTimer          *time.Timer
+	sessionState       *sessionState
+	config             ccacheconfig.Config
+	metadata           configcommon.CacheConfigMetadata
+	timerMutex         sync.Mutex
+	capabilitiesOnce   sync.Once
+	capabilitiesErr    error
+	reportOnce         sync.Once
+	activeInvocationID string
+	activeInvocationMu sync.Mutex
 }
 
 func NewServer(
@@ -77,8 +77,10 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	s.listener.Close()
 
 	// If shutdown was triggered by idle timeout (not by a STOP request), fire the final report now.
-	dl, ul := s.sessionState.resetAndGet()
+	// resetAndGet must be called inside the mutex so that bytes and activeInvocationID are captured
+	// atomically — a concurrent SetInvocationID goroutine must not be able to interleave between them.
 	s.activeInvocationMu.Lock()
+	dl, ul := s.sessionState.resetAndGet()
 	activeID := s.activeInvocationID
 	s.activeInvocationMu.Unlock()
 	s.reportOnce.Do(func() {
@@ -142,8 +144,8 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		s.sessionState.updateWithResult(result)
 
 		if result.CallStats.method == CALL_METHOD_SET_INVOCATION_ID && result.Outcome == PROCESS_REQUEST_OK {
-			dl, ul := s.sessionState.resetAndGet()
 			s.activeInvocationMu.Lock()
+			dl, ul := s.sessionState.resetAndGet()
 			prevID := s.activeInvocationID
 			s.activeInvocationID = result.InvocationChildID
 			s.activeInvocationMu.Unlock()
@@ -153,8 +155,8 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		}
 
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
-			dl, ul := s.sessionState.resetAndGet()
 			s.activeInvocationMu.Lock()
+			dl, ul := s.sessionState.resetAndGet()
 			activeID := s.activeInvocationID
 			s.activeInvocationMu.Unlock()
 			s.reportOnce.Do(func() {
@@ -184,7 +186,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 	}
 }
 
-// SessionBytes returns the total bytes downloaded and uploaded for the session tied to the current invocationID
+// SessionBytes returns the accumulated bytes downloaded and uploaded since the last SetInvocationID reset.
 func (s *IpcServer) SessionBytes() (int64, int64) {
 	return s.sessionState.downloadBytes.Load(), s.sessionState.uploadBytes.Load()
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
@@ -37,7 +38,7 @@ var registerChildInvocationCmd = &cobra.Command{
 			return fmt.Errorf("create analytics client: %w", err)
 		}
 
-		rel := ccacheanalytics.InvocationRelation{
+		rel := multiplatform.InvocationRelation{
 			ParentInvocationID: registerChildParentID,
 			ChildInvocationID:  registerChildChildID,
 			InvocationDate:     time.Now(),

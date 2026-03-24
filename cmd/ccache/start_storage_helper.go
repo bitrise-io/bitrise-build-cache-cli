@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
@@ -105,7 +106,7 @@ func registerInvocationRelation(config ccacheconfig.Config, parentID, childID st
 		return
 	}
 
-	rel := ccacheanalytics.InvocationRelation{
+	rel := multiplatform.InvocationRelation{
 		ParentInvocationID: parentID,
 		ChildInvocationID:  childID,
 		InvocationDate:     time.Now(),
@@ -197,6 +198,17 @@ func newCcacheStorageHelper(
 		registerInvocationRelation(config, parentInvocationID, invocationID, logger)
 	}
 
+	onChildFn, onShutdownFn := buildStorageHelperCallbacks(
+		parentInvocationID,
+		func(parentID, childID string) {
+			registerInvocationRelation(config, parentID, childID, logger)
+		},
+		func(invocationID, parentID string, dl, ul int64) {
+			collectAndSendCcacheStats(context.Background(), config, invocationID, parentID, dl, ul, logger)
+		},
+		func() { zeroCcacheStats(logger) },
+	)
+
 	helper.server, err = ccache.NewServer(
 		config,
 		metadata,
@@ -206,14 +218,8 @@ func newCcacheStorageHelper(
 			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
 		},
 		invocationID,
-		func(prevID, parentID, childID string, dl, ul int64) {
-			registerInvocationRelation(config, parentID, childID, logger)
-			collectAndSendCcacheStats(context.Background(), config, prevID, parentID, dl, ul, logger)
-			zeroCcacheStats(logger)
-		},
-		func(activeID string, dl, ul int64) {
-			collectAndSendCcacheStats(context.Background(), config, activeID, parentInvocationID, dl, ul, logger)
-		},
+		onChildFn,
+		onShutdownFn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create IPC server: %w", err)

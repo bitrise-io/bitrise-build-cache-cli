@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -36,7 +37,7 @@ var knownPackageManagers = map[string]bool{
 //
 //nolint:gochecknoglobals
 var knownThreeTokenPrefixes = map[[2]string]bool{
-	{"npm", "run"}:           true,
+	{"npm", "run"}:          true,
 	{"npx", "react-native"}: true,
 }
 
@@ -71,7 +72,7 @@ type PostRunFn func(invocationID string, args []string, duration time.Duration, 
 func BuildPostRunFn(
 	getMetadataFn func() common.CacheConfigMetadata,
 	getAuthConfigFn func() (common.CacheAuthConfig, error),
-	sendFn func(inv ccacheanalytics.Invocation) error,
+	sendFn func(inv multiplatform.Invocation) error,
 ) PostRunFn {
 	return func(invocationID string, args []string, duration time.Duration, execErr error) {
 		authConfig, err := getAuthConfigFn()
@@ -89,7 +90,7 @@ func BuildPostRunFn(
 			fullCommand = strings.Join(args, " ")
 		}
 
-		inv := ccacheanalytics.NewInvocation(ccacheanalytics.InvocationRunStats{
+		inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 			InvocationDate: time.Now().Add(-duration),
 			InvocationID:   invocationID,
 			Duration:       duration,
@@ -125,7 +126,7 @@ var defaultPostRunFn = BuildPostRunFn(
 
 		return config.AuthConfig, nil
 	},
-	func(inv ccacheanalytics.Invocation) error {
+	func(inv multiplatform.Invocation) error {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			return fmt.Errorf("read ccache config: %w", err)

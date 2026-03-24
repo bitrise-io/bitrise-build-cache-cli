@@ -2,42 +2,24 @@ package analytics
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/retryhttp"
-	"github.com/hashicorp/go-retryablehttp"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 )
 
-const maxHTTPClientRetries = 3
-
 // Client sends ccache analytics to the Bitrise backend.
+// It embeds multiplatform.Client for shared PutInvocation and PutInvocationRelation methods.
 type Client struct {
-	httpClient  *retryablehttp.Client
-	baseURL     string
-	accessToken string
-	logger      log.Logger
+	*multiplatform.Client
 }
 
 // NewClient creates an analytics Client.
 func NewClient(baseURL, accessToken string, logger log.Logger) (*Client, error) {
-	httpClient := retryhttp.NewClient(logger)
-	httpClient.RetryMax = maxHTTPClientRetries
-
-	return &Client{
-		httpClient:  httpClient,
-		baseURL:     baseURL,
-		accessToken: accessToken,
-		logger:      logger,
-	}, nil
-}
-
-func unwrapError(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
+	mp, err := multiplatform.NewClient(baseURL, accessToken, logger)
 	if err != nil {
-		return fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		return nil, fmt.Errorf("create multiplatform client: %w", err)
 	}
 
-	return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
+	return &Client{Client: mp}, nil
 }
