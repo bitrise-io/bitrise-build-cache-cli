@@ -11,7 +11,7 @@ const (
 	BitriseAccelerate = "grpcs://bitrise-accelerate.services.bitrise.io"
 
 	AnalyticsServiceEndpoint       = "https://xcode-analytics.services.bitrise.io"
-	CcacheAnalyticsServiceEndpoint = "multiplatform-analytics.services.bitrise.io"
+	CcacheAnalyticsServiceEndpoint = "https://multiplatform-analytics.services.bitrise.io"
 
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
 
