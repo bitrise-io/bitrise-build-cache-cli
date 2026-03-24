@@ -18,18 +18,22 @@ import (
 )
 
 type IpcServer struct {
-	listener          net.Listener
-	client            Client
-	logger            log.Logger
-	loggerFactory     LoggerFactory
-	onChildInvocation func(parentID, childID string)
-	idleTimer         *time.Timer
-	sessionState      *sessionState
-	config            ccacheconfig.Config
-	metadata          configcommon.CacheConfigMetadata
-	timerMutex        sync.Mutex
-	capabilitiesOnce  sync.Once
-	capabilitiesErr   error
+	listener             net.Listener
+	client               Client
+	logger               log.Logger
+	loggerFactory        LoggerFactory
+	onChildInvocation    func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
+	onShutdown           func(invocationID string, downloadBytes, uploadBytes int64)
+	idleTimer            *time.Timer
+	sessionState         *sessionState
+	config               ccacheconfig.Config
+	metadata             configcommon.CacheConfigMetadata
+	timerMutex           sync.Mutex
+	capabilitiesOnce     sync.Once
+	capabilitiesErr      error
+	reportOnce           sync.Once
+	activeInvocationID   string
+	activeInvocationMu   sync.Mutex
 }
 
 func NewServer(
@@ -38,16 +42,20 @@ func NewServer(
 	client Client,
 	logger log.Logger,
 	loggerFactory LoggerFactory,
-	onChildInvocation func(parentID, childID string),
+	initialInvocationID string,
+	onChildInvocation func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64),
+	onShutdown func(invocationID string, downloadBytes, uploadBytes int64),
 ) (*IpcServer, error) {
 	return &IpcServer{
-		config:            config,
-		metadata:          metadata,
-		client:            client,
-		logger:            logger,
-		loggerFactory:     loggerFactory,
-		onChildInvocation: onChildInvocation,
-		sessionState:      newSessionState(),
+		config:             config,
+		metadata:           metadata,
+		client:             client,
+		logger:             logger,
+		loggerFactory:      loggerFactory,
+		onChildInvocation:  onChildInvocation,
+		onShutdown:         onShutdown,
+		sessionState:       newSessionState(),
+		activeInvocationID: initialInvocationID,
 	}, nil
 }
 
@@ -67,6 +75,17 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	<-cancellableCtx.Done() // wait for context cancellation
 	s.logger.TInfof("Server shutting down")
 	s.listener.Close()
+
+	// If shutdown was triggered by idle timeout (not by a STOP request), fire the final report now.
+	dl, ul := s.sessionState.resetAndGet()
+	s.activeInvocationMu.Lock()
+	activeID := s.activeInvocationID
+	s.activeInvocationMu.Unlock()
+	s.reportOnce.Do(func() {
+		if s.onShutdown != nil {
+			s.onShutdown(activeID, dl, ul)
+		}
+	})
 
 	return nil
 }
@@ -110,7 +129,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.onChildInvocation)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)
@@ -123,7 +142,32 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		s.sessionState.updateWithResult(result)
 
 		if result.CallStats.method == CALL_METHOD_SET_INVOCATION_ID && result.Outcome == PROCESS_REQUEST_OK {
-			s.sessionState.reset()
+			dl, ul := s.sessionState.resetAndGet()
+			s.activeInvocationMu.Lock()
+			prevID := s.activeInvocationID
+			s.activeInvocationID = result.InvocationChildID
+			s.activeInvocationMu.Unlock()
+			if s.onChildInvocation != nil {
+				s.onChildInvocation(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
+			}
+		}
+
+		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
+			dl, ul := s.sessionState.resetAndGet()
+			s.activeInvocationMu.Lock()
+			activeID := s.activeInvocationID
+			s.activeInvocationMu.Unlock()
+			s.reportOnce.Do(func() {
+				if s.onShutdown != nil {
+					s.onShutdown(activeID, dl, ul)
+				}
+			})
+			if err := protocol.WriteOK(conn); err != nil {
+				s.logger.TErrorf("[%s] Failed to write STOP response: %v", conID, err)
+			}
+			cancelFn()
+
+			return
 		}
 
 		if result.Err != nil {
@@ -140,7 +184,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 	}
 }
 
-// SessionBytes returns the total bytes downloaded and uploaded across all sessions since the server started.
+// SessionBytes returns the total bytes downloaded and uploaded for the session tied to the current invocationID
 func (s *IpcServer) SessionBytes() (int64, int64) {
 	return s.sessionState.downloadBytes.Load(), s.sessionState.uploadBytes.Load()
 }

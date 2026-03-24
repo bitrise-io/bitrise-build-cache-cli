@@ -75,9 +75,8 @@ func newSessionState() *sessionState {
 	return &sessionState{}
 }
 
-func (s *sessionState) reset() {
-	s.downloadBytes.Store(0)
-	s.uploadBytes.Store(0)
+func (s *sessionState) resetAndGet() (int64, int64) {
+	return s.downloadBytes.Swap(0), s.uploadBytes.Swap(0)
 }
 
 func (s *sessionState) updateWithResult(result processResult) {

@@ -24,7 +24,7 @@ type PostRunFn func(invocationID string, args []string, duration time.Duration, 
 // BuildPostRunFn constructs a PostRunFn with injectable dependencies.
 // getMetadataFn returns system/CI metadata for the analytics payload.
 // getAuthConfigFn returns the auth config used to identify the workspace.
-// sendFn delivers the run-level Invocation to the analytics backend.
+// sendFn delivers the run-level (react-native) Invocation to the analytics backend.
 func BuildPostRunFn(
 	getMetadataFn func() common.CacheConfigMetadata,
 	getAuthConfigFn func() (common.CacheAuthConfig, error),
@@ -96,6 +96,7 @@ var defaultPostRunFn = BuildPostRunFn(
 			return fmt.Errorf("create analytics client: %w", err)
 		}
 
+		// run-level (react-native) invocation data
 		return client.PutInvocation(inv)
 	},
 )

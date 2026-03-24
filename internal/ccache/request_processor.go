@@ -18,16 +18,15 @@ import (
 )
 
 type requestProcessor struct {
-	client            Client
-	logger            log.Logger
-	reader            io.Reader
-	writer            io.Writer
-	ccSemaphore       chan struct{}
-	config            ccacheconfig.Config
-	metadata          configcommon.CacheConfigMetadata
-	loggerFactory     LoggerFactory
-	getCapabilities   func(context.Context) error
-	onChildInvocation func(parentID, childID string)
+	client          Client
+	logger          log.Logger
+	reader          io.Reader
+	writer          io.Writer
+	ccSemaphore     chan struct{}
+	config          ccacheconfig.Config
+	metadata        configcommon.CacheConfigMetadata
+	loggerFactory   LoggerFactory
+	getCapabilities func(context.Context) error
 }
 
 func newRequestProcessor(
@@ -38,22 +37,20 @@ func newRequestProcessor(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	getCapabilities func(context.Context) error,
-	onChildInvocation func(parentID, childID string),
 ) *requestProcessor {
 	sem := make(chan struct{}, 1)
 	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
 
 	return &requestProcessor{
-		config:            config,
-		metadata:          metadata,
-		client:            client,
-		logger:            logger,
-		reader:            conn,
-		writer:            conn,
-		ccSemaphore:       sem,
-		loggerFactory:     loggerFactory,
-		getCapabilities:   getCapabilities,
-		onChildInvocation: onChildInvocation,
+		config:          config,
+		metadata:        metadata,
+		client:          client,
+		logger:          logger,
+		reader:          conn,
+		writer:          conn,
+		ccSemaphore:     sem,
+		loggerFactory:   loggerFactory,
+		getCapabilities: getCapabilities,
 	}
 }
 
@@ -266,10 +263,6 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 
 	p.logger.TDebugf("[SetInvocationID] parent=%s child=%s", parentID, childID)
 
-	if p.onChildInvocation != nil {
-		p.onChildInvocation(parentID, childID)
-	}
-
 	if p.loggerFactory != nil {
 		newLogger, logErr := p.loggerFactory(childID)
 		if logErr != nil {
@@ -282,19 +275,22 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 	p.client.ChangeSession(childID, p.metadata.BitriseAppID, p.metadata.BitriseBuildID, p.metadata.BitriseStepExecutionID)
 
 	return p.notifyClient(processResult{
-		Outcome:   PROCESS_REQUEST_OK,
-		CallStats: statBuilder.build(),
+		Outcome:            PROCESS_REQUEST_OK,
+		CallStats:          statBuilder.build(),
+		InvocationParentID: parentID,
+		InvocationChildID:  childID,
 	})
 }
 
 func (p *requestProcessor) handleStop() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_STOP)
-	p.logger.TDebugf("%s Ignored — storage helper lifecycle is managed externally", statBuilder.Prefix())
+	p.logger.TDebugf("%s received, requesting shutdown", statBuilder.Prefix())
 
-	return p.notifyClient(processResult{
+	// Response is written by handleConnection after the shutdown callback completes.
+	return processResult{
 		Outcome:   PROCESS_REQUEST_OK,
 		CallStats: statBuilder.build(),
-	})
+	}
 }
 
 func (p *requestProcessor) processRequest(ctx context.Context) processResult {

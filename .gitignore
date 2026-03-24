@@ -10,3 +10,4 @@ _tmp/
 !.idea/codeStyles/Project.xml
 gradle_verification_sample/gradle/verification-metadata.xml
 xcelerate/xcelerate
+vendor/*
