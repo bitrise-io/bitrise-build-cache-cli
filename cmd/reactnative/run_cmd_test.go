@@ -244,8 +244,12 @@ func Test_BuildPostRunFn(t *testing.T) {
 			expectedCommand string
 		}{
 			{[]string{"yarn", "build:ios", "-v", "--stuff=true"}, "yarn build:ios"},
-			{[]string{"npm", "run", "start"}, "npm run"},
-			{[]string{"npx", "react-native", "run-ios"}, "npx react-native"},
+			{[]string{"npm", "run", "start"}, "npm run start"},
+			{[]string{"npm", "run", "build:ios", "--", "--verbose"}, "npm run build:ios"},
+			{[]string{"npm", "install"}, "npm install"},
+			{[]string{"npx", "react-native", "run-ios"}, "npx react-native run-ios"},
+			{[]string{"npx", "react-native", "run-android", "--variant=release"}, "npx react-native run-android"},
+			{[]string{"npx", "create-expo-app", "my-app"}, "npx create-expo-app"},
 			{[]string{"expo", "build:ios"}, "expo build:ios"},
 			{[]string{"pnpm", "install"}, "pnpm install"},
 			{[]string{"fastlane", "beta"}, "fastlane beta"},

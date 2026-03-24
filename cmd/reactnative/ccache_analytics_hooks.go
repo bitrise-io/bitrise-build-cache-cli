@@ -31,12 +31,26 @@ var knownPackageManagers = map[string]bool{
 	"fastlane": true,
 }
 
+// knownThreeTokenPrefixes lists (runner, subcommand) pairs where the third argument
+// is also meaningful (e.g. "npm run <script>", "npx react-native <command>").
+//
+//nolint:gochecknoglobals
+var knownThreeTokenPrefixes = map[[2]string]bool{
+	{"npm", "run"}:           true,
+	{"npx", "react-native"}: true,
+}
+
 // parseCommand derives the Command value from the raw argument list.
-// For known package managers it returns "runner subcommand" (e.g. "yarn build:ios");
-// for everything else it returns just the first argument.
+// For "npm run" and "npx react-native" it returns three tokens (e.g. "npm run build:ios").
+// For other known package managers it returns two tokens (e.g. "yarn build:ios").
+// For everything else it returns just the first argument.
 func parseCommand(args []string) string {
 	if len(args) == 0 {
 		return ""
+	}
+
+	if len(args) > 2 && knownThreeTokenPrefixes[[2]string{args[0], args[1]}] {
+		return args[0] + " " + args[1] + " " + args[2]
 	}
 
 	if len(args) > 1 && knownPackageManagers[args[0]] {
