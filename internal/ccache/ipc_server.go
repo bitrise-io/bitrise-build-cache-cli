@@ -18,22 +18,22 @@ import (
 )
 
 type IpcServer struct {
-	listener           net.Listener
-	client             Client
-	logger             log.Logger
-	loggerFactory      LoggerFactory
-	onNewInvocationPair  func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
-	onShutdown         func(invocationID string, downloadBytes, uploadBytes int64)
-	idleTimer          *time.Timer
-	sessionState       *sessionState
-	config             ccacheconfig.Config
-	metadata           configcommon.CacheConfigMetadata
-	timerMutex         sync.Mutex
-	capabilitiesOnce   sync.Once
-	capabilitiesErr    error
-	reportOnce         sync.Once
-	activeInvocationID string
-	activeInvocationMu sync.Mutex
+	listener            net.Listener
+	client              Client
+	logger              log.Logger
+	loggerFactory       LoggerFactory
+	onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
+	onShutdown          func(invocationID string, downloadBytes, uploadBytes int64)
+	idleTimer           *time.Timer
+	sessionState        *sessionState
+	config              ccacheconfig.Config
+	metadata            configcommon.CacheConfigMetadata
+	timerMutex          sync.Mutex
+	capabilitiesOnce    sync.Once
+	capabilitiesErr     error
+	reportOnce          sync.Once
+	activeInvocationID  string
+	activeInvocationMu  sync.Mutex
 }
 
 func NewServer(
@@ -47,15 +47,15 @@ func NewServer(
 	onShutdown func(invocationID string, downloadBytes, uploadBytes int64),
 ) (*IpcServer, error) {
 	return &IpcServer{
-		config:             config,
-		metadata:           metadata,
-		client:             client,
-		logger:             logger,
-		loggerFactory:      loggerFactory,
-		onNewInvocationPair:  onNewInvocationPair,
-		onShutdown:         onShutdown,
-		sessionState:       newSessionState(),
-		activeInvocationID: initialInvocationID,
+		config:              config,
+		metadata:            metadata,
+		client:              client,
+		logger:              logger,
+		loggerFactory:       loggerFactory,
+		onNewInvocationPair: onNewInvocationPair,
+		onShutdown:          onShutdown,
+		sessionState:        newSessionState(),
+		activeInvocationID:  initialInvocationID,
 	}, nil
 }
 
