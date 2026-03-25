@@ -11,3 +11,6 @@ _tmp/
 gradle_verification_sample/gradle/verification-metadata.xml
 xcelerate/xcelerate
 vendor/*
+.claude/
+.vscode/
+package-lock.json

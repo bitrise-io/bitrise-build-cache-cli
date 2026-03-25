@@ -1,5 +1,0 @@
-{
-    "go.buildTags": "unit",
-    "go.useLanguageServer": true,
-    "go.buildOnSave": "off",
-}
