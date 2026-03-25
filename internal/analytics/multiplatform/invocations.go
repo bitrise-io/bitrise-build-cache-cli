@@ -39,6 +39,7 @@ type Invocation struct {
 	ExternalAppID        string            `json:"externalAppId,omitempty"`
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
+	Wrapper              string            `json:"wrapper,omitempty"`
 }
 
 // InvocationRelation records a parent→child relationship between two invocations.
@@ -57,6 +58,7 @@ type InvocationRunStats struct {
 	FullCommand    string
 	Success        bool
 	Error          error
+	Wrapper        string
 }
 
 // NewInvocation assembles an Invocation from run stats, auth config, and system metadata.
@@ -97,6 +99,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		ExternalAppID:        commonMetadata.ExternalAppID,
 		ExternalBuildID:      commonMetadata.ExternalBuildID,
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
+		Wrapper:              runStats.Wrapper,
 	}
 }
 

@@ -98,6 +98,7 @@ func BuildPostRunFn(
 			FullCommand:    fullCommand,
 			Success:        execErr == nil,
 			Error:          execErr,
+			Wrapper:        "react-native",
 		}, authConfig, metadata)
 
 		if err := sendFn(*inv); err != nil {

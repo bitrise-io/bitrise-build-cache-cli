@@ -213,6 +213,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		assert.Equal(t, "myapp", sentInvocation.Command)
 		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
 		assert.True(t, sentInvocation.Success)
+		assert.Equal(t, "react-native", sentInvocation.Wrapper)
 	})
 
 	t.Run("reports success=false when exec fails", func(t *testing.T) {
