@@ -25,7 +25,14 @@ func CollectAndZero(ctx context.Context, client *Client, invocationID, parentID 
 func collectAndSend(ctx context.Context, client *Client, invocationID, parentID string, dl, ul int64) error {
 	ccachePath, lookErr := exec.LookPath("ccache")
 	if lookErr != nil {
-		return nil //nolint:nilerr // missing ccache binary is not an error; stats collection is best-effort
+		// ccache binary not available — still report transfer bytes if we have them
+		if dl == 0 && ul == 0 {
+			return nil
+		}
+
+		inv := NewCcacheInvocation(invocationID, parentID, time.Now(), CcacheStats{}, dl, ul)
+
+		return client.PutCcacheInvocation(*inv)
 	}
 
 	statsData, err := exec.CommandContext(ctx, ccachePath, "--print-stats", "--format=json").Output() //nolint:gosec
