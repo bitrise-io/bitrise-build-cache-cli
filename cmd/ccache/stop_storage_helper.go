@@ -50,53 +50,62 @@ var stopStorageHelperCmd = &cobra.Command{
 
 // zeroCcacheStats resets ccache's internal counters so each invocation starts from a clean slate.
 // If ccache is not on PATH, this is a no-op.
-func zeroCcacheStats(logger log.Logger) {
+func zeroCcacheStats(ctx context.Context, logger log.Logger) {
 	ccachePath, err := exec.LookPath("ccache")
 	if err != nil {
 		return
 	}
 
-	if err := exec.CommandContext(context.Background(), ccachePath, "-z").Run(); err != nil { //nolint:gosec
+	if err := exec.CommandContext(ctx, ccachePath, "-z").Run(); err != nil { //nolint:gosec
 		logger.TErrorf("Failed to reset ccache stats: %v", err)
 	}
 }
 
-// collectAndSendCcacheStats runs ccache --print-stats, parses the output, and sends a CcacheInvocation
+// collectCcacheStats runs ccache --print-stats, parses the output, and sends a CcacheInvocation
 // combining the stats with accumulated byte counts to the analytics backend.
-// Errors are logged but do not fail the caller — stats reporting is best-effort.
-func collectAndSendCcacheStats(ctx context.Context, config ccacheconfig.Config, invocationID, parentID string, downloadedBytes, uploadedBytes int64, logger log.Logger) {
-	ccachePath, err := exec.LookPath("ccache")
-	if err != nil {
+// Returns an error if any step fails; the caller decides whether to zero stats.
+func collectCcacheStats(ctx context.Context, config ccacheconfig.Config, invocationID, parentID string, downloadedBytes, uploadedBytes int64, logger log.Logger) error {
+	ccachePath, lookErr := exec.LookPath("ccache")
+	if lookErr != nil {
 		logger.TInfof("ccache not found on PATH, skipping stats collection")
 
-		return
+		return nil //nolint:nilerr // missing ccache binary is not an error; stats collection is best-effort
 	}
 
 	statsData, err := exec.CommandContext(ctx, ccachePath, "--print-stats", "--format=json").Output() //nolint:gosec
 	if err != nil {
-		logger.TErrorf("Failed to collect ccache stats: %v", err)
-
-		return
+		return fmt.Errorf("collect ccache stats: %w", err)
 	}
 
 	stats, err := ccacheanalytics.ParseCcacheStats(statsData)
 	if err != nil {
-		logger.TErrorf("Failed to parse ccache stats: %v", err)
-
-		return
+		return fmt.Errorf("parse ccache stats: %w", err)
 	}
 
 	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
 	if err != nil {
-		logger.TErrorf("Failed to create analytics client for ccache stats: %v", err)
-
-		return
+		return fmt.Errorf("create analytics client: %w", err)
 	}
 
 	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, downloadedBytes, uploadedBytes)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
-		logger.TErrorf("Failed to send ccache stats (invocationID=%s): %v", invocationID, err)
+		return fmt.Errorf("send ccache stats (invocationID=%s): %w", invocationID, err)
 	}
+
+	return nil
+}
+
+// collectAndZeroCcacheStats collects and reports ccache stats, then zeros the counters.
+// Zeroing only happens after a successful collection and send — stats are never lost silently.
+// Errors are logged but do not fail the caller.
+func collectAndZeroCcacheStats(ctx context.Context, config ccacheconfig.Config, invocationID, parentID string, downloadedBytes, uploadedBytes int64, logger log.Logger) {
+	if err := collectCcacheStats(ctx, config, invocationID, parentID, downloadedBytes, uploadedBytes, logger); err != nil {
+		logger.TErrorf("Skipping ccache stats reset because collection/send failed: %v", err)
+
+		return
+	}
+
+	zeroCcacheStats(ctx, logger)
 }
 
 func init() {

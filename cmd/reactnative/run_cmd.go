@@ -124,19 +124,6 @@ func awaitListening(socketPath string) bool {
 	return false
 }
 
-// zeroCcacheStats resets ccache's internal counters so each invocation starts from a clean slate.
-// If ccache is not on PATH, this is a no-op.
-func zeroCcacheStats() {
-	path, err := exec.LookPath("ccache")
-	if err != nil {
-		return // ccache not available, skip silently
-	}
-
-	if err := exec.CommandContext(context.Background(), path, "-z").Run(); err != nil { //nolint:gosec
-		fmt.Fprintf(os.Stderr, "Warning: failed to reset ccache stats: %v\n", err)
-	}
-}
-
 //nolint:gochecknoglobals
 var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 	func() (string, error) {
@@ -179,7 +166,7 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, notifyCcacheHelper, zeroCcacheStats, defaultPostRunFn)
+		}, notifyCcacheHelper, nil, defaultPostRunFn)
 	},
 }
 

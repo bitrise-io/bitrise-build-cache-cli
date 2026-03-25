@@ -86,34 +86,27 @@ func cbIntegWaitForSocket(t *testing.T, socketPath string) {
 	t.Fatalf("timed out waiting for socket %s", socketPath)
 }
 
-// Test_StorageHelperCallbacks_Integration_parent_chain verifies that:
-//   - The first onChildInvocation receives parentInvocationID as prevParentID
-//   - The second onChildInvocation receives the first call's parentID as prevParentID
-//   - onShutdown receives the last call's parentID as activeParentID
-func Test_StorageHelperCallbacks_Integration_parent_chain(t *testing.T) {
+// Test_StorageHelperCallbacks_Integration_register verifies that registerFn is called
+// with the correct parentID and childID for each SetInvocationID message.
+func Test_StorageHelperCallbacks_Integration_register(t *testing.T) {
 	socketPath := cbIntegTempSocket(t)
 
-	type collectArgs struct {
-		invocationID string
-		parentID     string
+	type registerArgs struct {
+		parentID string
+		childID  string
 	}
 
 	var mu sync.Mutex
-	var collectCalls []collectArgs
-	collected := make(chan struct{}, 3)
+	var registerCalls []registerArgs
+	registered := make(chan struct{}, 2)
 
-	collectFn := func(invocationID, parentID string, _, _ int64) {
-		mu.Lock()
-		collectCalls = append(collectCalls, collectArgs{invocationID, parentID})
-		mu.Unlock()
-		collected <- struct{}{}
-	}
-
-	onChild, onShutdown := buildStorageHelperCallbacks(
-		"env-parent",
-		func(_, _ string) {},
-		collectFn,
-		func() {},
+	onChild := buildStorageHelperCallbacks(
+		func(parentID, childID string) {
+			mu.Lock()
+			registerCalls = append(registerCalls, registerArgs{parentID, childID})
+			mu.Unlock()
+			registered <- struct{}{}
+		},
 	)
 
 	cfg := ccacheconfig.Config{IPCEndpoint: socketPath, PushEnabled: true}
@@ -125,7 +118,7 @@ func Test_StorageHelperCallbacks_Integration_parent_chain(t *testing.T) {
 		nil,
 		"initial-id",
 		onChild,
-		onShutdown,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -134,30 +127,22 @@ func Test_StorageHelperCallbacks_Integration_parent_chain(t *testing.T) {
 
 	cbIntegWaitForSocket(t, socketPath)
 
-	// First SetInvocationID: prevID=initial-id, its parent should be env-parent
 	cbIntegSendSetInvocationID(t, socketPath, "rn-run-1", "ccache-1")
 	select {
-	case <-collected:
+	case <-registered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("first collectFn not called")
+		t.Fatal("first registerFn not called")
 	}
 
-	// Second SetInvocationID: prevID=ccache-1, its parent should be rn-run-1
 	cbIntegSendSetInvocationID(t, socketPath, "rn-run-2", "ccache-2")
 	select {
-	case <-collected:
+	case <-registered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("second collectFn not called")
+		t.Fatal("second registerFn not called")
 	}
 
-	// STOP: activeID=ccache-2, its parent should be rn-run-2
 	err = ccache.SendStop(t.Context(), socketPath)
 	require.NoError(t, err)
-	select {
-	case <-collected:
-	case <-time.After(2 * time.Second):
-		t.Fatal("shutdown collectFn not called")
-	}
 
 	select {
 	case <-serverDone:
@@ -167,14 +152,8 @@ func Test_StorageHelperCallbacks_Integration_parent_chain(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Len(t, collectCalls, 3)
+	require.Len(t, registerCalls, 2)
 
-	assert.Equal(t, "initial-id", collectCalls[0].invocationID)
-	assert.Equal(t, "env-parent", collectCalls[0].parentID, "first child: prevID parent should be env-parent")
-
-	assert.Equal(t, "ccache-1", collectCalls[1].invocationID)
-	assert.Equal(t, "rn-run-1", collectCalls[1].parentID, "second child: prevID parent should be rn-run-1")
-
-	assert.Equal(t, "ccache-2", collectCalls[2].invocationID)
-	assert.Equal(t, "rn-run-2", collectCalls[2].parentID, "shutdown: activeID parent should be rn-run-2")
+	assert.Equal(t, registerArgs{"rn-run-1", "ccache-1"}, registerCalls[0])
+	assert.Equal(t, registerArgs{"rn-run-2", "ccache-2"}, registerCalls[1])
 }

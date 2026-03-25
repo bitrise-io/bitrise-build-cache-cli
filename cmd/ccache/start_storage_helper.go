@@ -198,15 +198,10 @@ func newCcacheStorageHelper(
 		registerInvocationRelation(config, parentInvocationID, invocationID, logger)
 	}
 
-	onChildFn, onShutdownFn := buildStorageHelperCallbacks(
-		parentInvocationID,
+	onChildFn := buildStorageHelperCallbacks(
 		func(parentID, childID string) {
 			registerInvocationRelation(config, parentID, childID, logger)
 		},
-		func(invocationID, parentID string, dl, ul int64) {
-			collectAndSendCcacheStats(context.Background(), config, invocationID, parentID, dl, ul, logger)
-		},
-		func() { zeroCcacheStats(logger) },
 	)
 
 	helper.server, err = ccache.NewServer(
@@ -219,7 +214,7 @@ func newCcacheStorageHelper(
 		},
 		invocationID,
 		onChildFn,
-		onShutdownFn,
+		nil, // stats collected separately via collect-stats command
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create IPC server: %w", err)
