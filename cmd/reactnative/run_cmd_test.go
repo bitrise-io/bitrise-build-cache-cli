@@ -3,6 +3,7 @@
 package reactnative_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -202,7 +203,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func() (common.CacheAuthConfig, error) {
 				return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil
 			},
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, nil, hooks)
@@ -223,7 +224,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn(
@@ -262,7 +263,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			hooks := reactnative.BuildPostRunFn(
 				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 			)
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
@@ -286,7 +287,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			hooks := reactnative.BuildPostRunFn(
 				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 			)
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
@@ -301,7 +302,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, []string{}, noopExecFn, nil, nil, hooks)
@@ -316,7 +317,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, nil, hooks)
@@ -324,5 +325,35 @@ func Test_BuildPostRunFn(t *testing.T) {
 		assert.True(t, sentInvocation.DurationMs >= 0)
 		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))
 		assert.True(t, !sentInvocation.InvocationDate.Before(before))
+	})
+
+	t.Run("collectStatsFn is called with the run's invocation ID as parent", func(t *testing.T) {
+		var collectedParentID string
+		var envInvocationID string
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { return nil },
+			func(_ context.Context, parentID string) { collectedParentID = parentID },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(environ []string, _ string, _ ...string) error {
+				for _, e := range environ {
+					if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
+						envInvocationID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
+					}
+				}
+
+				return nil
+			},
+			nil, nil, hooks,
+		)
+
+		assert.NotEmpty(t, collectedParentID)
+		assert.Equal(t, envInvocationID, collectedParentID, "collectStatsFn should receive the run's invocation ID as parentID")
 	})
 }

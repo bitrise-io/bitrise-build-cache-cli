@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
@@ -69,10 +71,13 @@ type PostRunFn func(invocationID string, args []string, duration time.Duration, 
 // getMetadataFn returns system/CI metadata for the analytics payload.
 // getAuthConfigFn returns the auth config used to identify the workspace.
 // sendFn delivers the run-level (react-native) Invocation to the analytics backend.
+// collectStatsFn, if non-nil, collects and zeros ccache stats after the run; it receives
+// the run's invocationID as the parent ID for the ccache invocation.
 func BuildPostRunFn(
 	getMetadataFn func() common.CacheConfigMetadata,
 	getAuthConfigFn func() (common.CacheAuthConfig, error),
 	sendFn func(inv multiplatform.Invocation) error,
+	collectStatsFn func(ctx context.Context, parentID string),
 ) PostRunFn {
 	return func(invocationID string, args []string, duration time.Duration, execErr error) {
 		authConfig, err := getAuthConfigFn()
@@ -103,6 +108,10 @@ func BuildPostRunFn(
 
 		if err := sendFn(*inv); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", err)
+		}
+
+		if collectStatsFn != nil {
+			collectStatsFn(context.Background(), invocationID)
 		}
 	}
 }
@@ -142,5 +151,32 @@ var defaultPostRunFn = BuildPostRunFn(
 
 		// run-level (react-native) invocation data
 		return client.PutInvocation(inv)
+	},
+	func(ctx context.Context, parentID string) {
+		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to read ccache config for stats collection: %v\n", err)
+
+			return
+		}
+
+		logger := log.NewLogger()
+
+		var dl, ul int64
+		if ccacheipc.IsListening(config.IPCEndpoint) {
+			dl, ul, err = ccacheipc.SendGetSessionStats(ctx, config.IPCEndpoint)
+			if err != nil {
+				logger.TWarnf("Failed to get session stats from storage helper: %v", err)
+			}
+		}
+
+		client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+		if err != nil {
+			logger.TErrorf("Failed to create analytics client for ccache stats: %v", err)
+
+			return
+		}
+
+		ccacheanalytics.CollectAndZero(ctx, client, uuid.New().String(), parentID, dl, ul, logger)
 	},
 )
