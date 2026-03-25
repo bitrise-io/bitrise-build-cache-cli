@@ -1,0 +1,96 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go run:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(grep -r \"mockery\\\\|go:generate mockery\" /Users/balazshajagos/dev/bitrise-build-cache-cli --include=\"*.go\" -l 2>/dev/null | head -10; grep \"mockery\" /Users/balazshajagos/dev/bitrise-build-cache-cli/go.mod 2>/dev/null || echo \"not in go.mod\")",
+      "Bash(which mockery:*)",
+      "Bash(mockery --version 2>&1)",
+      "Bash(mockery version:*)",
+      "Bash(mockery showconfig:*)",
+      "Bash(mockery init:*)",
+      "Bash(which moq:*)",
+      "Bash(go generate:*)",
+      "Bash(moq -stub -out internal/ccache/mocks/client_mock.go -pkg mocks ./internal/ccache/ Client 2>&1)",
+      "Bash(go version:*)",
+      "Bash(head -5 /Users/balazshajagos/dev/bitrise-build-cache-cli/internal/ccache/call_stats.go && grep \"^//go:build\\\\|^// +build\" /Users/balazshajagos/dev/bitrise-build-cache-cli/internal/ccache/*.go)",
+      "Read(//private/tmp/**)",
+      "Bash(go install:*)",
+      "Bash(make lint:*)",
+      "Bash(make lint-fix:*)",
+      "Bash(gh pr:*)",
+      "Bash(chmod +x /Users/balazshajagos/dev/bitrise-build-cache-cli/scripts/rn_benchmark_results.sh /Users/balazshajagos/dev/bitrise-build-cache-cli/scripts/build_ccache.sh)",
+      "Bash(git fetch:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(make test-unit:*)",
+      "Bash(git push:*)",
+      "Bash(grep -n \"func RunCmdFn\" /Users/balazshajagos/dev/bitrise-build-cache-cli/cmd/reactnative/*.go)",
+      "Bash(python3 -c \"\ncontent = open\\('/Users/balazshajagos/dev/bitrise-build-cache-cli/cmd/ccache/start_storage_helper.go'\\).read\\(\\)\nidx = content.find\\('newCcacheStorageHelper\\('\\)\nprint\\(repr\\(content[idx-3:idx+200]\\)\\)\n\")",
+      "Bash(git diff:*)",
+      "Bash(grep -r \"registerInvocationRelation\\\\|sendCcacheInvocationBytes\\\\|newCcacheStorageHelper\\\\|ccacheStorageHelper\" /Users/balazshajagos/dev/bitrise-build-cache-cli --include=\"*test.go\" 2>/dev/null | head -20)",
+      "mcp__atlassian__getJiraIssue",
+      "mcp__atlassian__getConfluencePage",
+      "mcp__atlassian__getAccessibleAtlassianResources",
+      "mcp__atlassian__lookupJiraAccountId",
+      "mcp__atlassian__getJiraProjectIssueTypesMetadata",
+      "mcp__atlassian__searchJiraIssuesUsingJql",
+      "mcp__plugin_slack_slack__slack_send_message_draft",
+      "mcp__plugin_slack_slack__slack_search_channels",
+      "mcp__plugin_slack_slack__slack_read_thread",
+      "mcp__plugin_slack_slack__slack_search_public_and_private",
+      "mcp__plugin_slack_slack__slack_search_public",
+      "mcp__plugin_slack_slack__slack_read_channel",
+      "WebFetch(domain:bitrise.io)",
+      "WebFetch(domain:discuss.bitrise.io)",
+      "WebFetch(domain:docs.bitrise.io)",
+      "Bash(git rebase:*)",
+      "Bash(git stash:*)",
+      "Bash(grep -h ^//go:build /Users/balazshajagos/dev/bitrise-build-cache-cli/**/*_test.go)",
+      "Bash(grep:*)",
+      "Bash(git commit:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(make check:*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST \"http://localhost:${MCP_VOICE_HOOKS_PORT:-5111}/api/hooks/stop\" || echo '{}'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "_voice-hooks__speak$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST \"http://localhost:${MCP_VOICE_HOOKS_PORT:-5111}/api/hooks/pre-speak\" || echo '{}'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(?!.*_voice-hooks__)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST \"http://localhost:${MCP_VOICE_HOOKS_PORT:-5111}/api/hooks/post-tool\" || echo '{}'"
+          }
+        ]
+      }
+    ]
+  }
+}

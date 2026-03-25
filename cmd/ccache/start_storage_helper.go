@@ -198,11 +198,9 @@ func newCcacheStorageHelper(
 		registerInvocationRelation(config, parentInvocationID, invocationID, logger)
 	}
 
-	onChildFn := buildStorageHelperCallbacks(
-		func(parentID, childID string) {
-			registerInvocationRelation(config, parentID, childID, logger)
-		},
-	)
+	onChildFn := func(_, parentID, childID string, _, _ int64) {
+		registerInvocationRelation(config, parentID, childID, logger)
+	}
 
 	helper.server, err = ccache.NewServer(
 		config,
