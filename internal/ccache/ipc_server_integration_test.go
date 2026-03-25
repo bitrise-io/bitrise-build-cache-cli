@@ -78,7 +78,7 @@ func startTestServer(
 	socketPath string,
 	client Client,
 	loggerFactory LoggerFactory,
-	onChildInvocation func(prevInvocationID, parentID, childID string, dl, ul int64),
+	onNewInvocationPair func(prevInvocationID, parentID, childID string, dl, ul int64),
 	onShutdown func(invocationID string, dl, ul int64),
 ) (*IpcServer, context.CancelFunc, <-chan error) {
 	t.Helper()
@@ -90,7 +90,7 @@ func startTestServer(
 		noOpLogger(),
 		loggerFactory,
 		"initial-id",
-		onChildInvocation,
+		onNewInvocationPair,
 		onShutdown,
 	)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func sendGetAndReadValue(t *testing.T, socketPath string, key []byte) (byte, []b
 	return resp, data
 }
 
-func Test_IpcServer_Integration_SetInvocationID_fires_onChildInvocation(t *testing.T) {
+func Test_IpcServer_Integration_SetInvocationID_fires_onNewInvocationPair(t *testing.T) {
 	socketPath := integrationTempSocket(t, "s.sock")
 
 	type invocationCall struct {
@@ -216,7 +216,7 @@ func Test_IpcServer_Integration_SetInvocationID_fires_onChildInvocation(t *testi
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("onChildInvocation was not called within timeout")
+		t.Fatal("onNewInvocationPair was not called within timeout")
 	}
 
 	mu.Lock()
@@ -275,7 +275,7 @@ func Test_IpcServer_Integration_SetInvocationID_reports_accumulated_bytes(t *tes
 	select {
 	case <-childCalled:
 	case <-time.After(2 * time.Second):
-		t.Fatal("onChildInvocation was not called within timeout")
+		t.Fatal("onNewInvocationPair was not called within timeout")
 	}
 
 	mu.Lock()
@@ -495,7 +495,7 @@ func Test_IpcServer_Integration_sequential_SetInvocationID_prevID_chain(t *testi
 	select {
 	case first = <-calls:
 	case <-time.After(2 * time.Second):
-		t.Fatal("first onChildInvocation not called")
+		t.Fatal("first onNewInvocationPair not called")
 	}
 
 	// Second SetInvocationID — waiting for the first callback ensures activeInvocationID
@@ -507,7 +507,7 @@ func Test_IpcServer_Integration_sequential_SetInvocationID_prevID_chain(t *testi
 	select {
 	case second = <-calls:
 	case <-time.After(2 * time.Second):
-		t.Fatal("second onChildInvocation not called")
+		t.Fatal("second onNewInvocationPair not called")
 	}
 
 	assert.Equal(t, "initial-id", first.prevID)
@@ -545,7 +545,7 @@ func Test_IpcServer_Integration_onShutdown_receives_last_active_id(t *testing.T)
 	select {
 	case <-childCalled:
 	case <-time.After(2 * time.Second):
-		t.Fatal("onChildInvocation not called")
+		t.Fatal("onNewInvocationPair not called")
 	}
 
 	err := SendStop(context.Background(), socketPath)
@@ -612,7 +612,7 @@ func Test_IpcServer_Integration_GetSessionStats_zero_when_no_activity(t *testing
 	<-serverDone
 }
 
-func Test_IpcServer_Integration_activeID_updated_when_onChildInvocation_nil(t *testing.T) {
+func Test_IpcServer_Integration_activeID_updated_when_onNewInvocationPair_nil(t *testing.T) {
 	socketPath := integrationTempSocket(t, "s.sock")
 
 	var capturedID string
@@ -622,7 +622,7 @@ func Test_IpcServer_Integration_activeID_updated_when_onChildInvocation_nil(t *t
 		close(shutdownDone)
 	}
 
-	// onChildInvocation is nil — activeInvocationID must still be updated on SetInvocationID
+	// onNewInvocationPair is nil — activeInvocationID must still be updated on SetInvocationID
 	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, nil, onShutdown)
 	defer cancel()
 

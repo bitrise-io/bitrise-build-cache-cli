@@ -22,7 +22,7 @@ type IpcServer struct {
 	client             Client
 	logger             log.Logger
 	loggerFactory      LoggerFactory
-	onChildInvocation  func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
+	onNewInvocationPair  func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
 	onShutdown         func(invocationID string, downloadBytes, uploadBytes int64)
 	idleTimer          *time.Timer
 	sessionState       *sessionState
@@ -43,7 +43,7 @@ func NewServer(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	initialInvocationID string,
-	onChildInvocation func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64),
+	onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64),
 	onShutdown func(invocationID string, downloadBytes, uploadBytes int64),
 ) (*IpcServer, error) {
 	return &IpcServer{
@@ -52,7 +52,7 @@ func NewServer(
 		client:             client,
 		logger:             logger,
 		loggerFactory:      loggerFactory,
-		onChildInvocation:  onChildInvocation,
+		onNewInvocationPair:  onNewInvocationPair,
 		onShutdown:         onShutdown,
 		sessionState:       newSessionState(),
 		activeInvocationID: initialInvocationID,
@@ -149,8 +149,8 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 			prevID := s.activeInvocationID
 			s.activeInvocationID = result.InvocationChildID
 			s.activeInvocationMu.Unlock()
-			if s.onChildInvocation != nil {
-				s.onChildInvocation(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
+			if s.onNewInvocationPair != nil {
+				s.onNewInvocationPair(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
 			}
 		}
 

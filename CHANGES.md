@@ -40,11 +40,11 @@ The `SetInvocationID` IPC message (opcode `0xB1`) previously sent a single invoc
 - **`internal/ccache/ipc_client.go`**: `SendInvocationID(ctx, socketPath, parentID, childID string)` — signature updated to pass both IDs; `SendStop(ctx, socketPath)` added to send a STOP request and block until the server ACKs
 - **`cmd/reactnative/run_cmd.go`**: child UUID is generated in `BuildNotifyCcacheHelperFn` before calling `sendInvocationIDFn`, so both IDs are fully controlled by the caller
 
-## 2. `onChildInvocation` callback in the IPC server
+## 2. `onNewInvocationPair` callback in the IPC server
 
 One callback decouples the server core from analytics:
 
-- **`onChildInvocation func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)`** — fired by `handleConnection` after each successful `SetInvocationID`. Receives the invocation ID that was *active before* the new child started (`prevInvocationID`), along with the parent→child IDs from the message and the bytes accumulated during the previous invocation.
+- **`onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)`** — fired by `handleConnection` after each successful `SetInvocationID`. Receives the invocation ID that was *active before* the new child started (`prevInvocationID`), along with the parent→child IDs from the message and the bytes accumulated during the previous invocation.
 - **`onShutdown`** is accepted by `NewServer` for callers that need it (e.g. tests), but the storage helper passes `nil` — stats are collected explicitly via `collect-stats`, not tied to server lifecycle.
 
 `handleSetInvocationID` in `requestProcessor` only populates `processResult.InvocationParentID/ChildID`; callback dispatch and byte reset happen in `handleConnection` after `processRequest` returns, keeping the processor stateless with respect to callbacks.
@@ -81,7 +81,7 @@ ccache-specific analytics types and collection logic:
 The IPC server tracks which invocation ID is currently active so bytes are always reported under the invocation that generated them.
 
 - **`internal/ccache/ipc_server.go`**: `IpcServer` gains `activeInvocationID string` (protected by `activeInvocationMu sync.Mutex`) initialised from the `initialInvocationID` passed to `NewServer`.
-- On each `SetInvocationID`: the previous active ID and current byte counts are captured atomically under the mutex, `activeInvocationID` is updated to the new child ID, then `onChildInvocation` is called. This ensures bytes for invocation N are reported under N, not N+1.
+- On each `SetInvocationID`: the previous active ID and current byte counts are captured atomically under the mutex, `activeInvocationID` is updated to the new child ID, then `onNewInvocationPair` is called. This ensures bytes for invocation N are reported under N, not N+1.
 - Both shutdown paths (STOP in `handleConnection`, idle timeout in `Run`) read `activeInvocationID` under the mutex before calling `onShutdown`.
 
 ## 6. Storage helper: invocation registration only (`cmd/ccache/start_storage_helper.go`)
@@ -89,7 +89,7 @@ The IPC server tracks which invocation ID is currently active so bytes are alway
 The storage helper's role is limited to proxying remote storage and registering invocation relations. Stats collection is handled separately.
 
 - On startup, reads `BITRISE_INVOCATION_ID`; if set, calls `registerInvocationRelation(BITRISE_INVOCATION_ID → storageHelperID)`.
-- `onChildInvocation` is an inline closure that calls `registerInvocationRelation(parentID, childID)` for each new `SetInvocationID` received. No stats collection or zeroing.
+- `onNewInvocationPair` is an inline closure that calls `registerInvocationRelation(parentID, childID)` for each new `SetInvocationID` received. No stats collection or zeroing.
 - `onShutdown` is `nil` — the server shuts down without sending any stats report.
 
 ## 7. Explicit ccache stat collection (`cmd/ccache/`)
@@ -144,10 +144,10 @@ Connects to the IPC socket and sends a STOP request; gracefully no-ops if not ru
 - **`internal/ccache/call_stats_test.go`**: `resetAndGet` returns previous values and zeroes counters; safe on already-zero state
 - **`internal/ccache/ipc_server_test.go`**: `NewServer` initialises `activeInvocationID`; `SessionBytes()` reflects accumulated and reset values
 - **`internal/ccache/ipc_server_integration_test.go`**: end-to-end tests against a real Unix socket:
-  - `SetInvocationID` fires `onChildInvocation` with correct IDs and bytes
+  - `SetInvocationID` fires `onNewInvocationPair` with correct IDs and bytes
   - Sequential `SetInvocationID` calls chain `prevID` correctly
   - `SendStop` fires `onShutdown` synchronously; idle timeout also fires `onShutdown`
   - `sync.Once` prevents double-reporting on STOP + idle timeout race
-  - `activeInvocationID` updated even when `onChildInvocation` is nil
+  - `activeInvocationID` updated even when `onNewInvocationPair` is nil
   - `GetSessionStats` returns accumulated bytes without resetting; returns zero when idle; idempotent across multiple calls
 - **`cmd/reactnative/run_cmd_test.go`**: `collectStatsFn` called with run's invocation ID as parent; `Wrapper` field is `"react-native"`
