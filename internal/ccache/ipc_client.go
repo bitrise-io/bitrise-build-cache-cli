@@ -64,6 +64,46 @@ func SendStop(ctx context.Context, socketPath string) error {
 	}
 }
 
+// SendGetSessionStats connects to the ccache storage helper and requests the current
+// accumulated downloaded and uploaded byte counts for the active session.
+// Returns (0, 0, nil) if the helper is not running.
+func SendGetSessionStats(ctx context.Context, socketPath string) (int64, int64, error) {
+	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+	}
+	defer conn.Close()
+
+	if err := protocol.ReadGreeting(conn); err != nil {
+		return 0, 0, fmt.Errorf("read greeting: %w", err)
+	}
+
+	if err := protocol.WriteByte(conn, protocol.RequestGetSessionStats); err != nil {
+		return 0, 0, fmt.Errorf("send get-session-stats request: %w", err)
+	}
+
+	resp, err := protocol.ReadByte(conn)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read response: %w", err)
+	}
+
+	switch resp {
+	case protocol.ResponseOK:
+		dl, ul, err := protocol.ReadSessionStats(conn)
+		if err != nil {
+			return 0, 0, fmt.Errorf("read session stats: %w", err)
+		}
+
+		return dl, ul, nil
+	case protocol.ResponseErr:
+		msg, _ := protocol.ReadMsg(conn)
+
+		return 0, 0, fmt.Errorf("server error: %s", msg)
+	default:
+		return 0, 0, fmt.Errorf("unexpected response: 0x%02x", resp)
+	}
+}
+
 // SendInvocationID connects to the ccache storage helper Unix socket and notifies
 // it of a parent→child invocation pair. The helper uses childID for per-invocation
 // logging and session tracking, and registers the parent→child relationship.

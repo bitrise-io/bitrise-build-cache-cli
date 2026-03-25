@@ -154,6 +154,10 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 			}
 		}
 
+		if result.CallStats.method == CALL_METHOD_GET_SESSION_STATS && result.Outcome == PROCESS_REQUEST_OK {
+			s.handleGetSessionStatsResult(conn, conID)
+		}
+
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
 			s.activeInvocationMu.Lock()
 			dl, ul := s.sessionState.resetAndGet()
@@ -183,6 +187,17 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		}
 
 		s.resetIdleTimer(cancelFn)
+	}
+}
+
+func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
+	s.activeInvocationMu.Lock()
+	dl := s.sessionState.downloadBytes.Load()
+	ul := s.sessionState.uploadBytes.Load()
+	s.activeInvocationMu.Unlock()
+
+	if err := protocol.WriteSessionStats(conn, dl, ul); err != nil {
+		s.logger.TErrorf("[%s] Failed to write session stats response: %v", conID, err)
 	}
 }
 

@@ -293,6 +293,17 @@ func (p *requestProcessor) handleStop() processResult {
 	}
 }
 
+func (p *requestProcessor) handleGetSessionStats() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_GET_SESSION_STATS)
+	p.logger.TDebugf("%s received", statBuilder.Prefix())
+
+	// Response (OK + bytes) is written by handleConnection which has access to sessionState.
+	return processResult{
+		Outcome:   PROCESS_REQUEST_OK,
+		CallStats: statBuilder.build(),
+	}
+}
+
 func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 	reqType, err := protocol.ReadRequest(p.reader)
 	if err != nil {
@@ -338,6 +349,11 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 
 	case protocol.RequestSetInvocationID:
 		result = p.handleSetInvocationID()
+
+		return result
+
+	case protocol.RequestGetSessionStats:
+		result = p.handleGetSessionStats()
 
 		return result
 
