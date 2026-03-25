@@ -109,6 +109,19 @@ func startStorageHelper() error {
 	return nil
 }
 
+// zeroCcacheStats resets ccache's internal counters so each run starts from a clean slate.
+// If ccache is not on PATH, this is a no-op.
+func zeroCcacheStats() {
+	path, err := exec.LookPath("ccache")
+	if err != nil {
+		return // ccache not available, skip silently
+	}
+
+	if err := exec.CommandContext(context.Background(), path, "-z").Run(); err != nil { //nolint:gosec
+		fmt.Fprintf(os.Stderr, "Warning: failed to reset ccache stats: %v\n", err)
+	}
+}
+
 // awaitListening polls the socket until it is listening or a 5-second timeout elapses.
 func awaitListening(socketPath string) bool {
 	const timeout = 5 * time.Second
@@ -166,7 +179,7 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, notifyCcacheHelper, nil, defaultPostRunFn)
+		}, notifyCcacheHelper, zeroCcacheStats, defaultPostRunFn)
 	},
 }
 
