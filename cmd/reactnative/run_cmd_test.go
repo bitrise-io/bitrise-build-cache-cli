@@ -18,8 +18,6 @@ import (
 )
 
 func Test_RunWithInvocationIDFn(t *testing.T) {
-	noNotify := func(string) {}
-
 	t.Run("args are passed through to the command", func(t *testing.T) {
 		var capturedName string
 		var capturedArgs []string
@@ -33,7 +31,6 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 
 				return nil
 			},
-			noNotify,
 			nil,
 			nil,
 		)
@@ -54,7 +51,6 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 
 				return nil
 			},
-			noNotify,
 			nil,
 			nil,
 		)
@@ -85,7 +81,7 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 				}
 
 				return nil
-			}, noNotify, nil, nil)
+			}, nil, nil)
 
 			return id
 		}
@@ -97,8 +93,8 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 		assert.NotEqual(t, id1, id2)
 	})
 
-	t.Run("notifyFn is called with the invocation ID", func(t *testing.T) {
-		var notifiedID string
+	t.Run("preRunFn is called with the invocation ID", func(t *testing.T) {
+		var preRunID string
 		var envID string
 
 		err := reactnative.RunWithInvocationIDFn(
@@ -113,22 +109,20 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 
 				return nil
 			},
-			func(id string) { notifiedID = id },
-			nil,
+			func(id string) { preRunID = id },
 			nil,
 		)
 
 		require.NoError(t, err)
-		assert.NotEmpty(t, notifiedID)
-		assert.Equal(t, envID, notifiedID, "notifyFn should receive the same ID injected into the environment")
+		assert.NotEmpty(t, preRunID)
+		assert.Equal(t, envID, preRunID, "preRunFn should receive the same ID injected into the environment")
 	})
 
-	t.Run("nil notifyFn is safe", func(t *testing.T) {
+	t.Run("nil preRunFn is safe", func(t *testing.T) {
 		err := reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return nil },
-			nil,
 			nil,
 			nil,
 		)
@@ -147,8 +141,7 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 
 				return nil
 			},
-			noNotify,
-			func() { preRunCalled = true },
+			func(_ string) { preRunCalled = true },
 			nil,
 		)
 
@@ -166,7 +159,6 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, _ string, _ ...string) error {
 				return execErr
 			},
-			noNotify,
 			nil,
 			nil,
 		)
@@ -181,7 +173,6 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, _ string, _ ...string) error {
 				return nil
 			},
-			noNotify,
 			nil,
 			nil,
 		)
@@ -206,7 +197,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
-		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.NotEmpty(t, sentInvocation.InvocationID)
 		assert.Equal(t, "ws-1", sentInvocation.BitriseOrgSlug)
@@ -231,7 +222,6 @@ func Test_BuildPostRunFn(t *testing.T) {
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return execErr },
-			nil,
 			nil,
 			hooks,
 		)
@@ -266,7 +256,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 			)
 
-			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
+			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, hooks)
 
 			assert.Equal(t, tc.expectedCommand, sentInvocation.Command, "args: %v", tc.args)
 		}
@@ -290,7 +280,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 			)
 
-			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, nil, hooks)
+			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, hooks)
 
 			assert.Equal(t, tc.args[0], sentInvocation.Command, "args: %v", tc.args)
 		}
@@ -305,7 +295,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
-		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, []string{}, noopExecFn, nil, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.Equal(t, "yarn", sentInvocation.Command)
 	})
@@ -320,7 +310,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
 		)
 
-		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, nil, hooks)
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.True(t, sentInvocation.DurationMs >= 0)
 		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))
@@ -350,7 +340,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 
 				return nil
 			},
-			nil, nil, hooks,
+			nil, hooks,
 		)
 
 		assert.NotEmpty(t, collectedParentID)

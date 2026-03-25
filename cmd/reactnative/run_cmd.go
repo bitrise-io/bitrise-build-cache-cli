@@ -20,17 +20,13 @@ import (
 type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
-// into environ and delegates execution to execFn. If notifyFn is non-nil, it is called
-// with the generated invocation ID before the command runs. If preRunFn is non-nil, it is
-// called immediately before execution (e.g. to zero ccache stats). If postRunFn is non-nil, it is
-// called after the command completes with the invocation ID, args, duration, and any exec error.
-func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, notifyFn func(string), preRunFn func(), postRunFn PostRunFn) error {
+// into environ and delegates execution to execFn. If preRunFn is non-nil, it is called with the
+// generated invocation ID immediately before execution (e.g. to notify the storage helper and zero
+// ccache stats). If postRunFn is non-nil, it is called after the command completes with the
+// invocation ID, args, duration, and any exec error.
+func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, preRunFn func(string), postRunFn PostRunFn) error {
 	invocationID := uuid.New().String()
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
-
-	if notifyFn != nil {
-		notifyFn(invocationID)
-	}
 
 	if len(args) == 0 {
 		return fmt.Errorf("missing arguments")
@@ -39,7 +35,7 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, not
 	name, cmdArgs := args[0], args[1:]
 
 	if preRunFn != nil {
-		preRunFn()
+		preRunFn(invocationID)
 	}
 
 	start := time.Now()
@@ -179,7 +175,10 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, notifyCcacheHelper, zeroCcacheStats, defaultPostRunFn)
+		}, func(id string) {
+			notifyCcacheHelper(id)
+			zeroCcacheStats()
+		}, defaultPostRunFn)
 	},
 }
 
