@@ -909,9 +909,6 @@ workflows:
         inputs:
           - packages: 'bc'
           - upgrade: "no"
-    - restore-gradle-cache:
-        inputs:
-          - verbose: 'true'
     - script:
         title: Enable build cache and MavenCentral mirror
         inputs:
@@ -988,9 +985,6 @@ workflows:
 
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
               assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
-    - save-gradle-cache:
-        inputs:
-          - verbose: 'true'
     - deploy-to-bitrise-io@2: {}
 
   update-steps:
