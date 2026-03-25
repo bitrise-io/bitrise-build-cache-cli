@@ -562,6 +562,56 @@ func Test_IpcServer_Integration_onShutdown_receives_last_active_id(t *testing.T)
 	<-serverDone
 }
 
+func Test_IpcServer_Integration_GetSessionStats_returns_accumulated_bytes(t *testing.T) {
+	socketPath := integrationTempSocket(t, "s.sock")
+
+	const downloadData = "hello ccache"
+	client := noOpClient()
+	client.DownloadStreamFunc = func(_ context.Context, w io.Writer, _ string) error {
+		_, err := w.Write([]byte(downloadData))
+
+		return err
+	}
+
+	_, cancel, serverDone := startTestServer(t, socketPath, client, nil, nil, nil)
+	defer cancel()
+
+	// Accumulate download bytes via a GET
+	resp, data := sendGetAndReadValue(t, socketPath, []byte{0x01})
+	require.Equal(t, byte(protocol.ResponseOK), resp)
+	require.Equal(t, []byte(downloadData), data)
+
+	// GetSessionStats should return the accumulated bytes without resetting them
+	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(downloadData)), dl)
+	assert.Equal(t, int64(0), ul)
+
+	// A second call should return the same bytes (not reset by the query)
+	dl2, ul2, err := SendGetSessionStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Equal(t, dl, dl2)
+	assert.Equal(t, ul, ul2)
+
+	cancel()
+	<-serverDone
+}
+
+func Test_IpcServer_Integration_GetSessionStats_zero_when_no_activity(t *testing.T) {
+	socketPath := integrationTempSocket(t, "s.sock")
+
+	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, nil, nil)
+	defer cancel()
+
+	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), dl)
+	assert.Equal(t, int64(0), ul)
+
+	cancel()
+	<-serverDone
+}
+
 func Test_IpcServer_Integration_activeID_updated_when_onChildInvocation_nil(t *testing.T) {
 	socketPath := integrationTempSocket(t, "s.sock")
 
