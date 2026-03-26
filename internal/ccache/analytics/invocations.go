@@ -32,12 +32,13 @@ func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate
 		CcacheStats:        stats,
 		DownloadedBytes:    downloadedBytes,
 		UploadedBytes:      uploadedBytes,
+		BuildTool:          "ccache",
 	}
 }
 
 // PutCcacheInvocation sends a CcacheInvocation to the analytics backend via HTTP PUT.
 func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error {
-	if err := c.Put(fmt.Sprintf("/ccache-invocations/%s", inv.InvocationID), inv); err != nil {
+	if err := c.Put(fmt.Sprintf("/v1/invocations/%s", inv.InvocationID), inv); err != nil {
 		return fmt.Errorf("put ccache invocation: %w", err)
 	}
 

@@ -39,7 +39,7 @@ type Invocation struct {
 	ExternalAppID        string            `json:"externalAppId,omitempty"`
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
-	Wrapper              string            `json:"wrapper,omitempty"`
+	BuildTool            string            `json:"build_tool,omitempty"`
 }
 
 // InvocationRelation records a parent→child relationship between two invocations.
@@ -47,6 +47,7 @@ type InvocationRelation struct {
 	ParentInvocationID string    `json:"parentInvocationId"`
 	ChildInvocationID  string    `json:"childInvocationId"`
 	InvocationDate     time.Time `json:"invocationDate"`
+	BuildTool          string    `json:"build_tool,omitempty"`
 }
 
 // InvocationRunStats holds the runtime data captured around a single run command execution.
@@ -58,7 +59,7 @@ type InvocationRunStats struct {
 	FullCommand    string
 	Success        bool
 	Error          error
-	Wrapper        string
+	BuildTool      string
 }
 
 // NewInvocation assembles an Invocation from run stats, auth config, and system metadata.
@@ -99,16 +100,16 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		ExternalAppID:        commonMetadata.ExternalAppID,
 		ExternalBuildID:      commonMetadata.ExternalBuildID,
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
-		Wrapper:              runStats.Wrapper,
+		BuildTool:            runStats.BuildTool,
 	}
 }
 
 // PutInvocation sends an Invocation to the analytics backend via HTTP PUT.
 func (c *Client) PutInvocation(inv Invocation) error {
-	return c.Put(fmt.Sprintf("/invocations/%s", inv.InvocationID), inv)
+	return c.Put(fmt.Sprintf("/v1/invocations/%s", inv.InvocationID), inv)
 }
 
 // PutInvocationRelation registers a parent→child invocation relationship with the analytics backend.
 func (c *Client) PutInvocationRelation(rel InvocationRelation) error {
-	return c.Put(fmt.Sprintf("/invocation-relations/%s", rel.ChildInvocationID), rel)
+	return c.Put(fmt.Sprintf("/invocations/%s/children/%s", rel.ParentInvocationID, rel.ChildInvocationID), rel)
 }

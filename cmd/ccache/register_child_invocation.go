@@ -42,6 +42,7 @@ var registerChildInvocationCmd = &cobra.Command{
 			ParentInvocationID: registerChildParentID,
 			ChildInvocationID:  registerChildChildID,
 			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
 		}
 
 		if err := client.PutInvocationRelation(rel); err != nil {

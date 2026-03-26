@@ -110,6 +110,7 @@ func registerInvocationRelation(config ccacheconfig.Config, parentID, childID st
 		ParentInvocationID: parentID,
 		ChildInvocationID:  childID,
 		InvocationDate:     time.Now(),
+		BuildTool:          "ccache",
 	}
 
 	if err := client.PutInvocationRelation(rel); err != nil {
