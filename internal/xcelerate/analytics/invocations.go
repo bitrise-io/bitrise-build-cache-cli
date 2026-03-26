@@ -64,6 +64,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		ExternalAppID:        commonMetadata.ExternalAppID,
 		ExternalBuildID:      commonMetadata.ExternalBuildID,
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
+		BenchmarkPhase:       commonMetadata.BenchmarkPhase,
 	}
 }
 

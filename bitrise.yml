@@ -862,7 +862,7 @@ workflows:
               set -exo pipefail
 
               cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
-              cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR
+              cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR 2>/dev/null || true
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               cp wrapper.log $BITRISE_DEPLOY_DIR
 
@@ -909,9 +909,6 @@ workflows:
         inputs:
           - packages: 'bc'
           - upgrade: "no"
-    - restore-gradle-cache:
-        inputs:
-          - verbose: 'true'
     - script:
         title: Enable build cache and MavenCentral mirror
         inputs:
@@ -988,9 +985,6 @@ workflows:
 
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
               assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
-    - save-gradle-cache:
-        inputs:
-          - verbose: 'true'
     - deploy-to-bitrise-io@2: {}
 
   update-steps:

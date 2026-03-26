@@ -57,7 +57,7 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider ma
 	activateGradleParams.TestDistro.Enabled = false
 	activateGradleParams.TestDistro.JustDependency = true
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode)
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, nil)
 	if err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

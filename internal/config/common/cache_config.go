@@ -30,6 +30,8 @@ type CacheConfigMetadata struct {
 	ExternalAppID        string
 	ExternalBuildID      string
 	ExternalWorkflowName string
+	// BenchmarkPhase is the benchmark phase (baseline, warmup, etc.)
+	BenchmarkPhase string
 }
 
 const (

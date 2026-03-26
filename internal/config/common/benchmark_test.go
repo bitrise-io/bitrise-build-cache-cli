@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -182,4 +184,75 @@ func TestGetBenchmarkPhase_EmptyPhase(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, phase)
+}
+
+func TestWriteBenchmarkPhaseFile(t *testing.T) {
+	logger := log.NewLogger()
+
+	t.Run("creates file with correct content", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteBenchmarkPhaseFile("baseline", logger)
+
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		assert.FileExists(t, filePath)
+
+		data, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+
+		var result BenchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(data, &result))
+		assert.Equal(t, "baseline", result.Phase)
+	})
+
+	t.Run("overwrites existing file", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteBenchmarkPhaseFile("baseline", logger)
+		WriteBenchmarkPhaseFile("warmup", logger)
+
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		data, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+
+		var result BenchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(data, &result))
+		assert.Equal(t, "warmup", result.Phase)
+	})
+}
+
+func TestReadBenchmarkPhaseFile(t *testing.T) {
+	logger := log.NewLogger()
+
+	t.Run("reads written phase", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteBenchmarkPhaseFile("established", logger)
+
+		phase := ReadBenchmarkPhaseFile(logger)
+		assert.Equal(t, "established", phase)
+	})
+
+	t.Run("returns empty when file does not exist", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		phase := ReadBenchmarkPhaseFile(logger)
+		assert.Empty(t, phase)
+	})
+
+	t.Run("returns empty for malformed JSON", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		dir := filepath.Join(home, ".local", "state", "xcelerate", "benchmark")
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "benchmark-phase.json"), []byte("not json"), 0o644)) //nolint:mnd,gosec
+
+		phase := ReadBenchmarkPhaseFile(logger)
+		assert.Empty(t, phase)
+	})
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
@@ -29,7 +30,7 @@ func Test_BuildGradleActivationFn(t *testing.T) {
 			_ log.Logger,
 			gradleHome string,
 			_ map[string]string,
-			_ func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error),
+			_ func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error),
 			_ func(gradleconfig.TemplateInventory, string) error,
 			_ gradleconfig.GradlePropertiesUpdater,
 			params gradleconfig.ActivateGradleParams,
@@ -53,7 +54,7 @@ func Test_BuildGradleActivationFn(t *testing.T) {
 
 		fn := reactnative.BuildGradleActivationFn(func(
 			_ log.Logger, _ string, _ map[string]string,
-			_ func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error),
+			_ func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error),
 			_ func(gradleconfig.TemplateInventory, string) error,
 			_ gradleconfig.GradlePropertiesUpdater,
 			_ gradleconfig.ActivateGradleParams,

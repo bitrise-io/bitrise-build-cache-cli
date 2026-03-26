@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -114,4 +116,78 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 	}
 
 	return result.Phase, nil
+}
+
+// BenchmarkPhaseFile is the JSON structure for the benchmark phase file.
+type BenchmarkPhaseFile struct {
+	Phase string `json:"phase"`
+}
+
+// BenchmarkPhaseFilePath returns the path to the benchmark phase file.
+func BenchmarkPhaseFilePath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
+
+	return filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json"), nil
+}
+
+// WriteBenchmarkPhaseFile writes the benchmark phase to a JSON file.
+func WriteBenchmarkPhaseFile(phase string, logger log.Logger) {
+	filePath, err := BenchmarkPhaseFilePath()
+	if err != nil {
+		logger.Debugf("Failed to get benchmark phase file path: %v", err)
+
+		return
+	}
+
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		logger.Debugf("Failed to create benchmark phase dir: %v", err)
+
+		return
+	}
+
+	data, err := json.Marshal(BenchmarkPhaseFile{Phase: phase})
+	if err != nil {
+		logger.Debugf("Failed to marshal benchmark phase file: %v", err)
+
+		return
+	}
+
+	if err := os.WriteFile(filePath, data, 0o644); err != nil { //nolint:mnd,gosec
+		logger.Debugf("Failed to write benchmark phase file: %v", err)
+
+		return
+	}
+
+	logger.Debugf("Benchmark phase written to %s", filePath)
+}
+
+// ReadBenchmarkPhaseFile reads the benchmark phase from the JSON file.
+// Returns empty string if the file doesn't exist or can't be read.
+func ReadBenchmarkPhaseFile(logger log.Logger) string {
+	filePath, err := BenchmarkPhaseFilePath()
+	if err != nil {
+		logger.Debugf("Failed to get benchmark phase file path: %v", err)
+
+		return ""
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		logger.Debugf("Failed to read benchmark phase file: %v", err)
+
+		return ""
+	}
+
+	var result BenchmarkPhaseFile
+	if err := json.Unmarshal(data, &result); err != nil {
+		logger.Debugf("Failed to unmarshal benchmark phase file: %v", err)
+
+		return ""
+	}
+
+	return result.Phase
 }

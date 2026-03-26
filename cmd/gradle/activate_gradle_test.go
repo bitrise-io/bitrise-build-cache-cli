@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
 )
@@ -40,7 +41,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			map[string]string{},
-			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -81,7 +82,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			map[string]string{},
-			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -117,7 +118,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			map[string]string{},
-			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -153,7 +154,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			map[string]string{},
-			func(log.Logger, map[string]string, bool) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
