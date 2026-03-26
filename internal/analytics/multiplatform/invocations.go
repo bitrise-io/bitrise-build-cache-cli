@@ -39,7 +39,7 @@ type Invocation struct {
 	ExternalAppID        string            `json:"externalAppId,omitempty"`
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
-	BuildTool            string            `json:"build_tool,omitempty"`
+	BuildTool            string            `json:"buildTool,omitempty"`
 	Wrapper              string            `json:"wrapper,omitempty"`
 }
 
@@ -48,7 +48,7 @@ type InvocationRelation struct {
 	ParentInvocationID string    `json:"parentInvocationId"`
 	ChildInvocationID  string    `json:"childInvocationId"`
 	InvocationDate     time.Time `json:"invocationDate"`
-	BuildTool          string    `json:"build_tool,omitempty"`
+	BuildTool          string    `json:"buildTool,omitempty"`
 }
 
 // InvocationRunStats holds the runtime data captured around a single run command execution.

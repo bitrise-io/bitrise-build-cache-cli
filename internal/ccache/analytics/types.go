@@ -84,5 +84,5 @@ type CcacheInvocation struct {
 	CcacheStats        CcacheStats `json:"ccacheStats"`
 	DownloadedBytes    int64       `json:"downloadedBytes"`
 	UploadedBytes      int64       `json:"uploadedBytes"`
-	BuildTool          string      `json:"build_tool"`
+	BuildTool          string      `json:"buildTool"`
 }
