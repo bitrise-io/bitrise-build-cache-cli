@@ -11,7 +11,7 @@ import (
 type Invocation struct {
 	InvocationID         string            `json:"invocationId"`
 	InvocationDate       time.Time         `json:"invocationDate"`
-	BitriseOrgSlug       string            `json:"bitriseOrgSlug"`
+	BitriseWorkspaceSlug       string            `json:"bitriseWorkspaceSlug"`
 	BitriseAppSlug       string            `json:"bitriseAppSlug"`
 	BitriseBuildSlug     string            `json:"bitriseBuildSlug"`
 	BitriseStepID        string            `json:"bitriseStepId"`
@@ -74,7 +74,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 	return &Invocation{
 		InvocationID:         runStats.InvocationID,
 		InvocationDate:       runStats.InvocationDate,
-		BitriseOrgSlug:       authMetadata.WorkspaceID,
+		BitriseWorkspaceSlug:       authMetadata.WorkspaceID,
 		BitriseAppSlug:       commonMetadata.BitriseAppID,
 		BitriseBuildSlug:     commonMetadata.BitriseBuildID,
 		BitriseStepID:        commonMetadata.BitriseStepExecutionID,

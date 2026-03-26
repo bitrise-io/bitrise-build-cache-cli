@@ -39,7 +39,7 @@ type CacheOperation struct {
 type Invocation struct {
 	InvocationID         string            `json:"invocationId"`
 	InvocationDate       time.Time         `json:"invocationDate"`
-	BitriseOrgSlug       string            `json:"bitriseOrgSlug"`
+	BitriseWorkspaceSlug       string            `json:"bitriseWorkspaceSlug"`
 	BitriseAppSlug       string            `json:"bitriseAppSlug"`
 	BitriseBuildSlug     string            `json:"bitriseBuildSlug"`
 	BitriseStepID        string            `json:"bitriseStepId"`

@@ -200,7 +200,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
 
 		assert.NotEmpty(t, sentInvocation.InvocationID)
-		assert.Equal(t, "ws-1", sentInvocation.BitriseOrgSlug)
+		assert.Equal(t, "ws-1", sentInvocation.BitriseWorkspaceSlug)
 		assert.Equal(t, "app-1", sentInvocation.BitriseAppSlug)
 		assert.Equal(t, "myapp", sentInvocation.Command)
 		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
