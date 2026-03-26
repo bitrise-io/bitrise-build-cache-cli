@@ -104,6 +104,7 @@ func BuildPostRunFn(
 			Success:        execErr == nil,
 			Error:          execErr,
 			BuildTool:      "react-native",
+			Wrapper:        "bitrise-build-cache-cli react-native",
 		}, authConfig, metadata)
 
 		if err := sendFn(*inv); err != nil {
