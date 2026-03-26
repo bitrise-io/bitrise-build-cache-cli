@@ -33,7 +33,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 	return &Invocation{
 		InvocationID:         runStats.InvocationID,
 		InvocationDate:       runStats.InvocationDate,
-		BitriseWorkspaceSlug:       authMetadata.WorkspaceID,
+		BitriseWorkspaceSlug: authMetadata.WorkspaceID,
 		BitriseAppSlug:       commonMetadata.BitriseAppID,
 		BitriseBuildSlug:     commonMetadata.BitriseBuildID,
 		BitriseStepID:        commonMetadata.BitriseStepExecutionID,
