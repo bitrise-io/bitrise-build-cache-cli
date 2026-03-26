@@ -81,7 +81,7 @@ type CcacheInvocation struct {
 	InvocationID       string      `json:"invocationId"`
 	ParentInvocationID string      `json:"parentInvocationId"`
 	InvocationDate     time.Time   `json:"invocationDate"`
-	CcacheStats        CcacheStats `json:"ccacheStats"`
+	BuildToolStats     CcacheStats `json:"buildToolStats"`
 	DownloadedBytes    int64       `json:"downloadedBytes"`
 	UploadedBytes      int64       `json:"uploadedBytes"`
 	BuildTool          string      `json:"buildTool"`

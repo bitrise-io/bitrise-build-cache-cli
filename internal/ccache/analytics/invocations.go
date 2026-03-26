@@ -29,7 +29,7 @@ func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate
 		InvocationID:       invocationID,
 		ParentInvocationID: parentInvocationID,
 		InvocationDate:     invocationDate,
-		CcacheStats:        stats,
+		BuildToolStats:     stats,
 		DownloadedBytes:    downloadedBytes,
 		UploadedBytes:      uploadedBytes,
 		BuildTool:          "ccache",
