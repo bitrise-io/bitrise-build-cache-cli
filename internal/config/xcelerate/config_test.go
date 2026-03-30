@@ -489,8 +489,9 @@ func TestConfig_NewConfig(t *testing.T) {
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "workspace-id",
 			"BITRISE_XCELERATE_PROXY_SOCKET_PATH": "/tmp/xcelerate-proxy.sock",
 			"BITRISE_IO":                          "true",
+			"BITRISE_BUILD_SLUG":                  "build-slug",
 			"BITRISE_APP_SLUG":                    "app-slug",
-			"BITRISE_TRIGGERED_WORKFLOW_ID":        "primary",
+			"BITRISE_TRIGGERED_WORKFLOW_ID":       "primary",
 		}
 
 		cmdMock := &utilsMocks.CommandMock{

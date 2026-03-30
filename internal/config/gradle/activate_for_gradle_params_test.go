@@ -249,6 +249,7 @@ func Test_activateGradleParams(t *testing.T) {
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
 				"BITRISE_APP_SLUG":                 "AppSlugValue",
 			},
 			want: TemplateInventory{
@@ -294,6 +295,7 @@ func Test_activateGradleParams(t *testing.T) {
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
 				"BITRISE_APP_SLUG":                 "AppSlugValue",
 			},
 			want: TemplateInventory{
@@ -359,6 +361,7 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
 			"BITRISE_IO":                       "true",
+			"BITRISE_BUILD_SLUG":               "build-slug",
 			"BITRISE_APP_SLUG":                 "app-slug",
 			"BITRISE_TRIGGERED_WORKFLOW_ID":    "primary",
 		}

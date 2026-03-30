@@ -50,10 +50,8 @@ const (
 type CommandFunc func(string, ...string) (string, error)
 
 func detectCIProvider(envs map[string]string) string {
-	if envs["BITRISE_IO"] != "" {
-		// https://devcenter.bitrise.io/en/references/available-environment-variables.html
-		return CIProviderBitrise
-	}
+	// Check other CI providers first, so that Build Hub builds
+	// (which also set BITRISE_IO) detect the original CI provider.
 	if envs["CIRCLECI"] != "" {
 		// https://circleci.com/docs/variables/#built-in-environment-variables
 		return CIProviderCircleCI
@@ -65,6 +63,11 @@ func detectCIProvider(envs map[string]string) string {
 	if envs["GITLAB_CI"] == "true" {
 		// https://docs.gitlab.com/ci/variables/predefined_variables/
 		return CIProviderGitLabCI
+	}
+	if envs["BITRISE_IO"] != "" && envs["BITRISE_BUILD_SLUG"] != "" {
+		// https://devcenter.bitrise.io/en/references/available-environment-variables.html
+		// Build Hub sets BITRISE_IO but not BITRISE_BUILD_SLUG
+		return CIProviderBitrise
 	}
 
 	return ""

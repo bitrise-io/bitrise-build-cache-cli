@@ -136,7 +136,8 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "OS",
 			envs: map[string]string{
-				"BITRISE_IO": "true",
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "build1",
 			},
 			commandFunc: func(c string, _ ...string) (string, error) {
 				if strings.Contains(c, "uname") {
@@ -146,8 +147,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
-				CIProvider: CIProviderBitrise,
-				CLIVersion: GetCLIVersion(logger),
+				CIProvider:     CIProviderBitrise,
+				CLIVersion:     GetCLIVersion(logger),
+				BitriseBuildID: "build1",
 				HostMetadata: HostMetadata{
 					OS: "Linux",
 				},
@@ -197,15 +199,17 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "Locale",
 			envs: map[string]string{
-				"BITRISE_IO": "true",
-				"LANG":       "en_US.UTF-8",
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "build1",
+				"LANG":               "en_US.UTF-8",
 			},
 			commandFunc: func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
-				CIProvider: CIProviderBitrise,
-				CLIVersion: GetCLIVersion(logger),
+				CIProvider:     CIProviderBitrise,
+				CLIVersion:     GetCLIVersion(logger),
+				BitriseBuildID: "build1",
 				HostMetadata: HostMetadata{
 					Locale:         "en_US",
 					DefaultCharset: "UTF-8",
@@ -215,7 +219,8 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "CPU",
 			envs: map[string]string{
-				"BITRISE_IO": "true",
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "build1",
 			},
 			commandFunc: func(c string, a ...string) (string, error) {
 				if strings.Contains(c, "nproc") ||
@@ -226,8 +231,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
-				CIProvider: CIProviderBitrise,
-				CLIVersion: GetCLIVersion(logger),
+				CIProvider:     CIProviderBitrise,
+				CLIVersion:     GetCLIVersion(logger),
+				BitriseBuildID: "build1",
 				HostMetadata: HostMetadata{
 					CPUCores: 4,
 				},
@@ -236,7 +242,8 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		{
 			name: "Memory",
 			envs: map[string]string{
-				"BITRISE_IO": "true",
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "build1",
 			},
 			commandFunc: func(c string, a ...string) (string, error) {
 				hasMemTotal := slices.ContainsFunc(a, func(s string) bool {
@@ -254,8 +261,9 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 				return "", nil
 			},
 			want: CacheConfigMetadata{
-				CIProvider: CIProviderBitrise,
-				CLIVersion: GetCLIVersion(logger),
+				CIProvider:     CIProviderBitrise,
+				CLIVersion:     GetCLIVersion(logger),
+				BitriseBuildID: "build1",
 				HostMetadata: HostMetadata{
 					MemSize: 1000,
 				},
