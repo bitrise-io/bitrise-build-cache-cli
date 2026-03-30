@@ -145,11 +145,15 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 
 		if result.CallStats.method == CALL_METHOD_SET_INVOCATION_ID && result.Outcome == PROCESS_REQUEST_OK {
 			s.activeInvocationMu.Lock()
-			dl, ul := s.sessionState.resetAndGet()
 			prevID := s.activeInvocationID
-			s.activeInvocationID = result.InvocationChildID
+			isDuplicate := result.InvocationChildID == prevID
+			var dl, ul int64
+			if !isDuplicate {
+				dl, ul = s.sessionState.resetAndGet()
+				s.activeInvocationID = result.InvocationChildID
+			}
 			s.activeInvocationMu.Unlock()
-			if s.onNewInvocationPair != nil {
+			if !isDuplicate && s.onNewInvocationPair != nil {
 				s.onNewInvocationPair(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
 			}
 		}
