@@ -54,7 +54,7 @@ settingsEvaluated {
         }
     }
     rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+        apply<io.bitrise.gradle.cache.BitriseCachePlugin>()
     }
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}
