@@ -3,19 +3,21 @@
 package reactnative_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func Test_RunWithInvocationIDFn(t *testing.T) {
-	noNotify := func(string) {}
-
 	t.Run("args are passed through to the command", func(t *testing.T) {
 		var capturedName string
 		var capturedArgs []string
@@ -26,9 +28,11 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, name string, args ...string) error {
 				capturedName = name
 				capturedArgs = args
+
 				return nil
 			},
-			noNotify,
+			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -44,9 +48,11 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			[]string{"EXISTING=value"},
 			func(environ []string, _ string, _ ...string) error {
 				capturedEnviron = environ
+
 				return nil
 			},
-			noNotify,
+			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -56,6 +62,7 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 		for _, e := range capturedEnviron {
 			if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
 				invocationIDEntry = e
+
 				break
 			}
 		}
@@ -72,8 +79,10 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 						id = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
+
 				return nil
-			}, noNotify)
+			}, nil, nil)
+
 			return id
 		}
 
@@ -84,8 +93,8 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 		assert.NotEqual(t, id1, id2)
 	})
 
-	t.Run("notifyFn is called with the invocation ID", func(t *testing.T) {
-		var notifiedID string
+	t.Run("preRunFn is called with the invocation ID", func(t *testing.T) {
+		var preRunID string
 		var envID string
 
 		err := reactnative.RunWithInvocationIDFn(
@@ -97,24 +106,48 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 						envID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
+
 				return nil
 			},
-			func(id string) { notifiedID = id },
+			func(id string) { preRunID = id },
+			nil,
 		)
 
 		require.NoError(t, err)
-		assert.NotEmpty(t, notifiedID)
-		assert.Equal(t, envID, notifiedID, "notifyFn should receive the same ID injected into the environment")
+		assert.NotEmpty(t, preRunID)
+		assert.Equal(t, envID, preRunID, "preRunFn should receive the same ID injected into the environment")
 	})
 
-	t.Run("nil notifyFn is safe", func(t *testing.T) {
+	t.Run("nil preRunFn is safe", func(t *testing.T) {
 		err := reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
 			[]string{},
 			func(_ []string, _ string, _ ...string) error { return nil },
 			nil,
+			nil,
 		)
 		require.NoError(t, err)
+	})
+
+	t.Run("preRunFn is called before execution", func(t *testing.T) {
+		var preRunCalled bool
+		var execCalled bool
+
+		err := reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(_ []string, _ string, _ ...string) error {
+				execCalled = true
+
+				return nil
+			},
+			func(_ string) { preRunCalled = true },
+			nil,
+		)
+
+		require.NoError(t, err)
+		assert.True(t, preRunCalled)
+		assert.True(t, execCalled)
 	})
 
 	t.Run("error from execFn is propagated", func(t *testing.T) {
@@ -126,7 +159,8 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, _ string, _ ...string) error {
 				return execErr
 			},
-			noNotify,
+			nil,
+			nil,
 		)
 
 		assert.ErrorIs(t, err, execErr)
@@ -139,9 +173,177 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 			func(_ []string, _ string, _ ...string) error {
 				return nil
 			},
-			noNotify,
+			nil,
+			nil,
 		)
 
 		assert.Error(t, err)
+	})
+}
+
+func Test_BuildPostRunFn(t *testing.T) {
+	noopExecFn := func(_ []string, _ string, _ ...string) error { return nil }
+
+	t.Run("sends run invocation with metadata", func(t *testing.T) {
+		var sentInvocation multiplatform.Invocation
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata {
+				return common.CacheConfigMetadata{BitriseAppID: "app-1"}
+			},
+			func() (common.CacheAuthConfig, error) {
+				return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil
+			},
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, []string{}, noopExecFn, nil, hooks)
+
+		assert.NotEmpty(t, sentInvocation.InvocationID)
+		assert.Equal(t, "ws-1", sentInvocation.BitriseWorkspaceSlug)
+		assert.Equal(t, "app-1", sentInvocation.BitriseAppSlug)
+		assert.Equal(t, "myapp", sentInvocation.Command)
+		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
+		assert.True(t, sentInvocation.Success)
+		assert.Equal(t, "react-native", sentInvocation.BuildTool)
+	})
+
+	t.Run("reports success=false when exec fails", func(t *testing.T) {
+		var sentInvocation multiplatform.Invocation
+		execErr := errors.New("build failed")
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+		)
+
+		_ = reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(_ []string, _ string, _ ...string) error { return execErr },
+			nil,
+			hooks,
+		)
+
+		assert.False(t, sentInvocation.Success)
+		assert.Contains(t, sentInvocation.Error, "build failed")
+	})
+
+	t.Run("command is runner+subcommand for known package managers", func(t *testing.T) {
+		cases := []struct {
+			args            []string
+			expectedCommand string
+		}{
+			{[]string{"yarn", "build:ios", "-v", "--stuff=true"}, "yarn build:ios"},
+			{[]string{"npm", "run", "start"}, "npm run start"},
+			{[]string{"npm", "run", "build:ios", "--", "--verbose"}, "npm run build:ios"},
+			{[]string{"npm", "install"}, "npm install"},
+			{[]string{"npx", "react-native", "run-ios"}, "npx react-native run-ios"},
+			{[]string{"npx", "react-native", "run-android", "--variant=release"}, "npx react-native run-android"},
+			{[]string{"npx", "create-expo-app", "my-app"}, "npx create-expo-app"},
+			{[]string{"expo", "build:ios"}, "expo build:ios"},
+			{[]string{"pnpm", "install"}, "pnpm install"},
+			{[]string{"fastlane", "beta"}, "fastlane beta"},
+		}
+
+		for _, tc := range cases {
+			var sentInvocation multiplatform.Invocation
+
+			hooks := reactnative.BuildPostRunFn(
+				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+			)
+
+			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, hooks)
+
+			assert.Equal(t, tc.expectedCommand, sentInvocation.Command, "args: %v", tc.args)
+		}
+	})
+
+	t.Run("command is first arg for unknown runners", func(t *testing.T) {
+		cases := []struct {
+			args []string
+		}{
+			{[]string{"myapp", "--flag"}},
+			{[]string{"./gradlew", "assembleRelease"}},
+			{[]string{"make", "build"}},
+		}
+
+		for _, tc := range cases {
+			var sentInvocation multiplatform.Invocation
+
+			hooks := reactnative.BuildPostRunFn(
+				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+			)
+
+			_ = reactnative.RunWithInvocationIDFn(tc.args, []string{}, noopExecFn, nil, hooks)
+
+			assert.Equal(t, tc.args[0], sentInvocation.Command, "args: %v", tc.args)
+		}
+	})
+
+	t.Run("command is first arg when package manager has no subcommand", func(t *testing.T) {
+		var sentInvocation multiplatform.Invocation
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, []string{}, noopExecFn, nil, hooks)
+
+		assert.Equal(t, "yarn", sentInvocation.Command)
+	})
+
+	t.Run("duration is positive and invocation date precedes now", func(t *testing.T) {
+		var sentInvocation multiplatform.Invocation
+		before := time.Now()
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, []string{}, noopExecFn, nil, hooks)
+
+		assert.True(t, sentInvocation.DurationMs >= 0)
+		assert.True(t, sentInvocation.InvocationDate.Before(time.Now()))
+		assert.True(t, !sentInvocation.InvocationDate.Before(before))
+	})
+
+	t.Run("collectStatsFn is called with the run's invocation ID as parent", func(t *testing.T) {
+		var collectedParentID string
+		var envInvocationID string
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { return nil },
+			func(_ context.Context, parentID string) { collectedParentID = parentID },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			[]string{},
+			func(environ []string, _ string, _ ...string) error {
+				for _, e := range environ {
+					if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
+						envInvocationID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
+					}
+				}
+
+				return nil
+			},
+			nil, hooks,
+		)
+
+		assert.NotEmpty(t, collectedParentID)
+		assert.Equal(t, envInvocationID, collectedParentID, "collectStatsFn should receive the run's invocation ID as parentID")
 	})
 }

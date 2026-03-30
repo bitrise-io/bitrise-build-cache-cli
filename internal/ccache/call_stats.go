@@ -14,6 +14,7 @@ const (
 	CALL_METHOD_REMOVE            callMethod = "Remove"
 	CALL_METHOD_STOP              callMethod = "Stop"
 	CALL_METHOD_SET_INVOCATION_ID callMethod = "SetInvocationID"
+	CALL_METHOD_GET_SESSION_STATS callMethod = "GetSessionStats"
 )
 
 type callStats struct {
@@ -75,6 +76,10 @@ func newSessionState() *sessionState {
 	return &sessionState{}
 }
 
+func (s *sessionState) resetAndGet() (int64, int64) {
+	return s.downloadBytes.Swap(0), s.uploadBytes.Swap(0)
+}
+
 func (s *sessionState) updateWithResult(result processResult) {
 	if result.Outcome != PROCESS_REQUEST_OK {
 		return
@@ -87,7 +92,7 @@ func (s *sessionState) updateWithResult(result processResult) {
 	case CALL_METHOD_PUT:
 		s.uploadBytes.Add(result.CallStats.uploadBytes)
 
-	case CALL_METHOD_REMOVE, CALL_METHOD_STOP, CALL_METHOD_SET_INVOCATION_ID:
+	case CALL_METHOD_REMOVE, CALL_METHOD_STOP, CALL_METHOD_SET_INVOCATION_ID, CALL_METHOD_GET_SESSION_STATS:
 		// no byte tracking for these methods
 	}
 }

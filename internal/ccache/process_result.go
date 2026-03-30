@@ -12,10 +12,12 @@ const (
 )
 
 type processResult struct {
-	Err       error
-	Data      []byte
-	CallStats callStats
-	Outcome   processResultOutcome
+	Err                error
+	Data               []byte
+	CallStats          callStats
+	Outcome            processResultOutcome
+	InvocationParentID string
+	InvocationChildID  string
 }
 
 func (result processResult) OutcomeString() string {

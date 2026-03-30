@@ -8,6 +8,30 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func Test_sessionState_resetAndGet(t *testing.T) {
+	t.Run("returns accumulated bytes and zeroes counters", func(t *testing.T) {
+		s := newSessionState()
+		s.downloadBytes.Store(1024)
+		s.uploadBytes.Store(2048)
+
+		dl, ul := s.resetAndGet()
+
+		assert.Equal(t, int64(1024), dl)
+		assert.Equal(t, int64(2048), ul)
+		assert.Equal(t, int64(0), s.downloadBytes.Load())
+		assert.Equal(t, int64(0), s.uploadBytes.Load())
+	})
+
+	t.Run("resetAndGet on already-zero state is safe", func(t *testing.T) {
+		s := newSessionState()
+
+		dl, ul := s.resetAndGet()
+
+		assert.Equal(t, int64(0), dl)
+		assert.Equal(t, int64(0), ul)
+	})
+}
+
 func Test_sessionState_updateWithResult(t *testing.T) {
 	t.Run("GET OK adds download bytes", func(t *testing.T) {
 		s := newSessionState()

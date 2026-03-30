@@ -10,11 +10,12 @@ const (
 	ProtocolVersion = 0x01
 	Cap0            = 0x00 // get/put/remove/stop operations
 
-	RequestGet             = 0x00
-	RequestPut             = 0x01
-	RequestRemove          = 0x02
-	RequestStop            = 0x03
-	RequestSetInvocationID = 0xB1
+	RequestGet              = 0x00
+	RequestPut              = 0x01
+	RequestRemove           = 0x02
+	RequestStop             = 0x03
+	RequestSetInvocationID  = 0xB1
+	RequestGetSessionStats  = 0xB2
 
 	ResponseOK   = 0x00
 	ResponseNoop = 0x01
@@ -160,13 +161,49 @@ func ReadMsg(r io.Reader) (string, error) {
 	return string(msg), nil
 }
 
-func WriteSetInvocationID(w io.Writer, invocationID string) error {
+func WriteSetInvocationID(w io.Writer, parentID, childID string) error {
 	if err := WriteByte(w, RequestSetInvocationID); err != nil {
 		return err
 	}
-	return WriteMsg(w, invocationID)
+	if err := WriteMsg(w, parentID); err != nil {
+		return err
+	}
+
+	return WriteMsg(w, childID)
 }
 
-func ReadSetInvocationID(r io.Reader) (string, error) {
-	return ReadMsg(r)
+func WriteSessionStats(w io.Writer, downloadBytes, uploadBytes int64) error {
+	if err := WriteByte(w, ResponseOK); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.NativeEndian, downloadBytes); err != nil {
+		return err
+	}
+
+	return binary.Write(w, binary.NativeEndian, uploadBytes)
+}
+
+func ReadSessionStats(r io.Reader) (downloadBytes, uploadBytes int64, err error) {
+	if err := binary.Read(r, binary.NativeEndian, &downloadBytes); err != nil {
+		return 0, 0, fmt.Errorf("read download bytes: %w", err)
+	}
+	if err := binary.Read(r, binary.NativeEndian, &uploadBytes); err != nil {
+		return 0, 0, fmt.Errorf("read upload bytes: %w", err)
+	}
+
+	return downloadBytes, uploadBytes, nil
+}
+
+func ReadSetInvocationID(r io.Reader) (parentID, childID string, err error) {
+	parentID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", err
+	}
+
+	childID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", err
+	}
+
+	return parentID, childID, nil
 }

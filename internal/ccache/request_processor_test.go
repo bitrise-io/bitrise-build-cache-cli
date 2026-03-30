@@ -72,12 +72,14 @@ func buildStopRequest() []byte {
 	return []byte{protocol.RequestStop}
 }
 
-// buildSetInvocationIDRequest builds a SetInvocationID request: [0xB1][len][id...]
-func buildSetInvocationIDRequest(id string) []byte {
+// buildSetInvocationIDRequest builds a SetInvocationID request: [0xB1][parentLen][parent...][childLen][child...]
+func buildSetInvocationIDRequest(parentID, childID string) []byte {
 	var buf bytes.Buffer
 	buf.WriteByte(protocol.RequestSetInvocationID)
-	buf.WriteByte(byte(len(id)))
-	buf.WriteString(id)
+	buf.WriteByte(byte(len(parentID)))
+	buf.WriteString(parentID)
+	buf.WriteByte(byte(len(childID)))
+	buf.WriteString(childID)
 	return buf.Bytes()
 }
 
@@ -290,12 +292,13 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
-		require.NotEmpty(t, conn.w.Bytes())
-		assert.Equal(t, byte(protocol.ResponseOK), conn.w.Bytes()[0])
+		// Response is written by handleConnection, not by the processor itself.
+		assert.Empty(t, conn.w.Bytes())
 	})
 
 	t.Run("SET_INVOCATION_ID", func(t *testing.T) {
-		invocationID := "test-invocation-123"
+		parentID := "test-parent-123"
+		childID := "test-child-456"
 		var capturedLoggerID string
 
 		factoryLogger := &utilsMocks.Logger{}
@@ -318,7 +321,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		}
 
 		conn := &connStub{
-			r: bytes.NewBuffer(buildSetInvocationIDRequest(invocationID)),
+			r: bytes.NewBuffer(buildSetInvocationIDRequest(parentID, childID)),
 			w: &bytes.Buffer{},
 		}
 
@@ -332,13 +335,17 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
-		assert.Equal(t, invocationID, capturedLoggerID)
 		resp := conn.w.Bytes()
 		require.NotEmpty(t, resp)
 		assert.Equal(t, byte(protocol.ResponseOK), resp[0])
 
+		assert.Equal(t, parentID, result.InvocationParentID)
+		assert.Equal(t, childID, result.InvocationChildID)
+
+		// Logger and ChangeSession receive the child ID.
+		assert.Equal(t, childID, capturedLoggerID)
 		require.Len(t, changeSessionCalls, 1)
-		assert.Equal(t, invocationID, changeSessionCalls[0].invocationID)
+		assert.Equal(t, childID, changeSessionCalls[0].invocationID)
 		assert.Equal(t, "my-app", changeSessionCalls[0].appSlug)
 		assert.Equal(t, "my-build", changeSessionCalls[0].buildSlug)
 		assert.Equal(t, "my-step", changeSessionCalls[0].stepID)
