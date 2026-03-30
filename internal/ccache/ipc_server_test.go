@@ -21,7 +21,6 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 		nil,
 		"my-initial-id",
 		nil,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -53,12 +52,12 @@ func Test_IpcServer_SessionBytes(t *testing.T) {
 		assert.Equal(t, int64(0), ul)
 	})
 
-	t.Run("reflects reset after SetInvocationID", func(t *testing.T) {
+	t.Run("reflects reset after resetAndGet as called during shutdown", func(t *testing.T) {
 		s := &IpcServer{sessionState: newSessionState()}
 		s.sessionState.downloadBytes.Store(512)
 		s.sessionState.uploadBytes.Store(1024)
 
-		// This is what handleConnection does when SetInvocationID succeeds
+		// This is what handleConnection does when STOP is processed (shutdown)
 		s.sessionState.resetAndGet()
 
 		dl, ul := s.SessionBytes()

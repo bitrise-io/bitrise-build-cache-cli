@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 )
 
 // CollectAndZero runs ccache --print-stats, sends a CcacheInvocation to the analytics
@@ -23,6 +25,18 @@ func CollectAndZero(ctx context.Context, client *Client, invocationID, parentID 
 }
 
 func collectAndSend(ctx context.Context, client *Client, invocationID, parentID string, dl, ul int64) error {
+	if parentID != "" {
+		rel := multiplatform.InvocationRelation{
+			ParentInvocationID: parentID,
+			ChildInvocationID:  invocationID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
+		}
+		if err := client.PutInvocationRelation(rel); err != nil {
+			return fmt.Errorf("register invocation relation: %w", err)
+		}
+	}
+
 	ccachePath, lookErr := exec.LookPath("ccache")
 	if lookErr != nil {
 		// ccache binary not available — still report transfer bytes if we have them
