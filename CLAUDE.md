@@ -112,39 +112,4 @@ This project uses golangci-lint v2. Notable rules to follow when generating code
 
 ## Release Process
 
-A CLI release can be triggered by two scenarios:
-1. **Dependency update:** An `update_plugins` workflow creates a PR with updated Gradle plugin versions (triggered automatically from the gradle-plugins publish pipeline, or manually).
-2. **Code changes:** Direct code changes to the CLI itself, merged via a normal PR.
-
-**IMPORTANT: When the user asks to do a release, drive the ENTIRE process end-to-end in a single conversation.** Use the Bitrise MCP server to monitor build statuses (poll every 30s), abort irrelevant workflows, and guide the user through each step. Do not stop and wait for the user between steps — proactively monitor, report status, and move to the next step as soon as the previous one completes.
-
-### 1. Merge the PR
-For dependency updates: the `update_plugins` workflow creates a PR in this repo. For code changes: merge the feature/fix PR normally. In both cases, monitor the CI pipeline. If there are flaky cache hit rate failures, rebuild them. Once all checks pass, approve with `gh pr review --approve` and enable auto-merge with `gh pr merge --merge --auto`. **NEVER use `--admin` to bypass checks — always wait for CI to go green.**
-
-### 2. Create CLI GitHub release
-Create a GitHub release. **Do NOT mark it as "latest"** — another CI job handles that. Follow the format of existing releases for release notes.
-
-**Version numbering — always ask the user** which semver bump to apply (patch, minor, or major). Use these guidelines as defaults:
-- **Patch** bump: dependency-only updates (e.g., plugin version bumps) or bug fixes
-- **Minor** bump: new features or non-breaking behavioral changes in the CLI
-- **Major** bump: breaking changes
-
-Check the latest existing release tag to determine the next version.
-
-### 3. Wait for step auto-update PR
-The CLI release triggers an auto-update workflow in `https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache`. The unified Bitrise CI app for steps is `48fa8fbee698622c`. The PR title will be "feat: Release new CLI". Monitor CI, then approve with `gh pr review --approve` and enable auto-merge with `gh pr merge --merge --auto`.
-
-### 4. Create step GitHub release
-Create a GitHub release for the step. This one **can** be marked as "latest". **Version numbering: the step version bump should match the CLI version bump.** If the CLI release was a patch bump, the step should also be a patch bump. If the CLI release was a minor bump, the step should be a minor bump. Check the latest existing release tag.
-
-### 5. Merge steplib PR
-After the step release CI completes, a PR appears in `https://github.com/bitrise-io/bitrise-steplib`. It usually needs a rebase. Approve and enable auto-merge. Always wait for CI to pass.
-
-### Flaky E2E tests — cache hit rate
-The `features-e2e` pipeline includes cache hit rate assertions. If a test (e.g., `feature-e2e-gradle-7`) fails with `cacheHitRate: want != 0, got 0`, it's likely because cache items were evicted or because of co-located caches across data centers (builds may land on a different DC than the one with the warm cache). **Keep rebuilding the failed workflows** — it may take 2-3 attempts. This is not a real failure.
-
-### Key Bitrise App IDs
-| App | Bitrise App ID |
-|-----|---------------|
-| bitrise-build-cache-cli | `1a2ddc0a-bab0-4db1-9b78-4c13aae180ba` |
-| Step unified CI | `48fa8fbee698622c` |
+See the `/release` skill (`.claude/skills/release/SKILL.md`) for the full end-to-end release process. It covers both gradle-plugin-triggered releases and CLI-only releases.
