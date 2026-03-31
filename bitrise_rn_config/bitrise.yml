@@ -490,62 +490,13 @@ workflows:
             # exports CCACHE_REMOTE_STORAGE / CCACHE_REMOTE_ONLY via envman for the next step.
             ./bitrise-build-cache-cli activate c++
     - script:
+        title: Install ccache and gcc
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_install.sh
+    - script:
         title: Assert remote cache hit via ccache storage helper
         inputs:
-        - content: |-
-            #!/bin/bash
-            set -euxo pipefail
-
-            apt-get install -y -q gcc
-            CCACHE_VERSION="4.13.2"
-            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-glibc.tar.gz" \
-              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-linux-x86_64-glibc/ccache"
-            ccache --version
-
-            TEST_INVOCATION_ID=$(cat /proc/sys/kernel/random/uuid)
-            STORAGE_LOG="$HOME/.local/state/ccache/logs/ccache-${TEST_INVOCATION_ID}.log"
-
-            # Start the storage helper in the background.
-            # --debug ensures GET operation lines appear in the per-invocation log file.
-            # Socket path and auth are read from the config written by activate-cpp above.
-            ./bitrise-build-cache-cli --debug ccache storage-helper start --invocation-id="$TEST_INVOCATION_ID" &
-            HELPER_PID=$!
-
-            # Poll until the helper is accepting connections
-            for i in $(seq 1 20); do
-              if ./bitrise-build-cache-cli ccache storage-helper set-invocation-id \
-                  --parent-id="$TEST_INVOCATION_ID" --child-id="$TEST_INVOCATION_ID" 2>/dev/null; then
-                echo "Storage helper ready after $i attempt(s)"
-                break
-              fi
-              if [ "$i" -eq 20 ]; then
-                echo "Storage helper failed to become ready ❌"
-                kill "$HELPER_PID" 2>/dev/null || true
-                exit 1
-              fi
-              sleep 0.5
-            done
-
-            TEST_DIR=$(mktemp -d)
-            printf 'int add(int a, int b) { return a + b; }\n' > "$TEST_DIR/test.c"
-
-            # Build 1: may be a miss (first ever run) or a hit (subsequent runs) — no assertion.
-            ccache gcc -c "$TEST_DIR/test.c" -o "$TEST_DIR/test1.o"
-            echo "Build 1 done"
-
-            # Build 2: same source — always a GET hit (either from build 1's PUT or from a
-            # previous CI run that already stored this key in the remote cache).
-            ccache gcc -c "$TEST_DIR/test.c" -o "$TEST_DIR/test2.o"
-            echo "Build 2 done — expected GET hit"
-
-            # Stop the helper gracefully and wait for it to flush and exit
-            ./bitrise-build-cache-cli ccache storage-helper stop
-            wait "$HELPER_PID" || true
-
-            # Build 2 must have been a remote GET hit.
-            # Log format (Debug): "[Get - <hex-hash>] OK took Xms"  (CI: asserted here)
-            grep -P '\[Get - [0-9a-f]+\] OK took' "$STORAGE_LOG"
-            echo "Remote GET (cache hit) confirmed ✅"
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_test.sh
 
 step_bundles:
   # -------------------------------------------------------------------------------
