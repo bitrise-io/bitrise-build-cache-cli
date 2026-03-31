@@ -78,6 +78,19 @@ The ccache IPC proxy (`internal/ccache/`) implements a binary protocol between c
 - `sessionState` uses `atomic.Int64` for hit/miss/byte counters
 - `keyToPath` supports layouts: `""` or `"flat"` (hex), `"subdirs"` (`ccache/1-xx/rest`), `"bazel"` (`ac/<64hex>`)
 
+#### Important log lines asserted by CI
+
+The `cache-ccache-test` workflow in `gradle-plugins/bitrise.yml` asserts on the following log lines written to `~/.local/state/ccache/logs/ccache-<id>.log`. **Do not change their text without updating the assertions.**
+
+| Log line (exact pattern) | Level | File | What it means |
+|---|---|---|---|
+| `Server listening on` | Info | `ipc_server.go:Run` | Storage helper started and is accepting connections |
+| `[SetInvocationID] parent=` | Debug | `request_processor.go:handleSetInvocationID` | Invocation ID handshake succeeded (requires `--debug` flag) |
+| `Server shutting down` | Info | `ipc_server.go:Run` | Storage helper stopped cleanly |
+| `[Get - <hex>] OK took` | Debug | `request_processor.go:logCallStats` | A ccache GET hit (remote cache hit) |
+
+These are annotated with `// CI: asserted by cache-ccache-test workflow` in the source.
+
 ## Benchmark Phasing
 
 Benchmark phasing allows measuring build performance with and without cache. The phase is queried from the Bitrise API during activation and affects both Gradle and Xcode builds.

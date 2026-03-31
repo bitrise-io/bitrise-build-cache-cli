@@ -69,11 +69,11 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	s.listener = listener
 	defer s.listener.Close()
 
-	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint)
+	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint) // CI: asserted by cache-ccache-test workflow
 	s.resetIdleTimer(cancelFn)
 	go s.acceptLoop(cancellableCtx, cancelFn)
 	<-cancellableCtx.Done() // wait for context cancellation
-	s.logger.TInfof("Server shutting down")
+	s.logger.TInfof("Server shutting down") // CI: asserted by cache-ccache-test workflow
 	s.listener.Close()
 
 	// If shutdown was triggered by idle timeout (not by a STOP request), fire the final report now.
