@@ -168,6 +168,13 @@ settingsEvaluated {
         }
     }
     rootProject {
+        // Applied reflectively so older remote-cache versions (without BitriseCachePlugin) are still compatible
+        try {
+            @Suppress("UNCHECKED_CAST")
+            pluginManager.apply(Class.forName("io.bitrise.gradle.cache.BitriseCachePlugin") as Class<out Plugin<*>>)
+        } catch (e: ClassNotFoundException) {}
+    }
+    rootProject {
         extensions.create("analytics", AnalyticsPluginExtension::class.java)
         extensions.configure(AnalyticsPluginExtension::class.java) {
             endpoint.set("AnalyticsEndpointURLValue:123")
