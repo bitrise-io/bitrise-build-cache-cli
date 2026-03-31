@@ -54,11 +54,7 @@ settingsEvaluated {
         }
     }
     rootProject {
-        // Applied reflectively so older remote-cache versions (without BitriseCCachePlugin) are still compatible
-        try {
-            @Suppress("UNCHECKED_CAST")
-            pluginManager.apply(Class.forName("io.bitrise.gradle.cache.BitriseCCachePlugin") as Class<out Plugin<*>>)
-        } catch (e: ClassNotFoundException) {}
+        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
     }
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}
