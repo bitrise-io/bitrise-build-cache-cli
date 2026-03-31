@@ -72,7 +72,7 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint) // CI: asserted by cache-ccache-test workflow
 	s.resetIdleTimer(cancelFn)
 	go s.acceptLoop(cancellableCtx, cancelFn)
-	<-cancellableCtx.Done() // wait for context cancellation
+	<-cancellableCtx.Done()                 // wait for context cancellation
 	s.logger.TInfof("Server shutting down") // CI: asserted by cache-ccache-test workflow
 	s.listener.Close()
 
@@ -144,18 +144,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		s.sessionState.updateWithResult(result)
 
 		if result.CallStats.method == CALL_METHOD_SET_INVOCATION_ID && result.Outcome == PROCESS_REQUEST_OK {
-			s.activeInvocationMu.Lock()
-			prevID := s.activeInvocationID
-			isDuplicate := result.InvocationChildID == prevID
-			var dl, ul int64
-			if !isDuplicate {
-				dl, ul = s.sessionState.resetAndGet()
-				s.activeInvocationID = result.InvocationChildID
-			}
-			s.activeInvocationMu.Unlock()
-			if !isDuplicate && s.onNewInvocationPair != nil {
-				s.onNewInvocationPair(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
-			}
+			s.handleSetInvocationIDResult(result)
 		}
 
 		if result.CallStats.method == CALL_METHOD_GET_SESSION_STATS && result.Outcome == PROCESS_REQUEST_OK {
@@ -163,19 +152,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		}
 
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
-			s.activeInvocationMu.Lock()
-			dl, ul := s.sessionState.resetAndGet()
-			activeID := s.activeInvocationID
-			s.activeInvocationMu.Unlock()
-			s.reportOnce.Do(func() {
-				if s.onShutdown != nil {
-					s.onShutdown(activeID, dl, ul)
-				}
-			})
-			if err := protocol.WriteOK(conn); err != nil {
-				s.logger.TErrorf("[%s] Failed to write STOP response: %v", conID, err)
-			}
-			cancelFn()
+			s.handleStopResult(conn, conID, cancelFn)
 
 			return
 		}
@@ -192,6 +169,41 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 
 		s.resetIdleTimer(cancelFn)
 	}
+}
+
+func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
+	s.activeInvocationMu.Lock()
+	prevID := s.activeInvocationID
+	isDuplicate := result.InvocationChildID == prevID
+	var dl, ul int64
+	if !isDuplicate {
+		dl, ul = s.sessionState.resetAndGet()
+		s.activeInvocationID = result.InvocationChildID
+	}
+	s.activeInvocationMu.Unlock()
+
+	if !isDuplicate && s.onNewInvocationPair != nil {
+		s.onNewInvocationPair(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
+	}
+}
+
+func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn context.CancelFunc) {
+	s.activeInvocationMu.Lock()
+	dl, ul := s.sessionState.resetAndGet()
+	activeID := s.activeInvocationID
+	s.activeInvocationMu.Unlock()
+
+	s.reportOnce.Do(func() {
+		if s.onShutdown != nil {
+			s.onShutdown(activeID, dl, ul)
+		}
+	})
+
+	if err := protocol.WriteOK(conn); err != nil {
+		s.logger.TErrorf("[%s] Failed to write STOP response: %v", conID, err)
+	}
+
+	cancelFn()
 }
 
 func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
