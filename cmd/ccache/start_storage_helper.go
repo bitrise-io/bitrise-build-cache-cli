@@ -193,9 +193,29 @@ func newCcacheStorageHelper(
 	logger.TInfof("Ccache storage helper")
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
+	// Collect invocation relations to register at shutdown, after all invocations exist in the backend.
+	var pendingRelations []multiplatform.InvocationRelation
+	if parentInvocationID != "" {
+		pendingRelations = append(pendingRelations, multiplatform.InvocationRelation{
+			ParentInvocationID: parentInvocationID,
+			ChildInvocationID:  invocationID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
+		})
+	}
+
+	onChildFn := func(_, parentID, childID string, _, _ int64) {
+		pendingRelations = append(pendingRelations, multiplatform.InvocationRelation{
+			ParentInvocationID: parentID,
+			ChildInvocationID:  childID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
+		})
+	}
+
 	onShutdownFn := func(_ string, _, _ int64) {
-		if parentInvocationID != "" {
-			registerInvocationRelation(config, parentInvocationID, invocationID, logger)
+		for _, rel := range pendingRelations {
+			registerInvocationRelation(config, rel.ParentInvocationID, rel.ChildInvocationID, logger)
 		}
 	}
 
@@ -208,7 +228,7 @@ func newCcacheStorageHelper(
 			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
 		},
 		invocationID,
-		nil,
+		onChildFn,
 		onShutdownFn,
 	)
 	if err != nil {
