@@ -193,14 +193,30 @@ func newCcacheStorageHelper(
 	logger.TInfof("Ccache storage helper")
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
-	// If a parent invocation ID is present (e.g. from BITRISE_INVOCATION_ID), register the
-	// initial storage-helper invocation as a child of that parent.
+	// Collect invocation relations to register at shutdown, after all invocations exist in the backend.
+	var pendingRelations []multiplatform.InvocationRelation
 	if parentInvocationID != "" {
-		registerInvocationRelation(config, parentInvocationID, invocationID, logger)
+		pendingRelations = append(pendingRelations, multiplatform.InvocationRelation{
+			ParentInvocationID: parentInvocationID,
+			ChildInvocationID:  invocationID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
+		})
 	}
 
 	onChildFn := func(_, parentID, childID string, _, _ int64) {
-		registerInvocationRelation(config, parentID, childID, logger)
+		pendingRelations = append(pendingRelations, multiplatform.InvocationRelation{
+			ParentInvocationID: parentID,
+			ChildInvocationID:  childID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
+		})
+	}
+
+	onShutdownFn := func(_ string, _, _ int64) {
+		for _, rel := range pendingRelations {
+			registerInvocationRelation(config, rel.ParentInvocationID, rel.ChildInvocationID, logger)
+		}
 	}
 
 	helper.server, err = ccache.NewServer(
@@ -213,7 +229,7 @@ func newCcacheStorageHelper(
 		},
 		invocationID,
 		onChildFn,
-		nil, // stats collected separately via collect-stats command
+		onShutdownFn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create IPC server: %w", err)
