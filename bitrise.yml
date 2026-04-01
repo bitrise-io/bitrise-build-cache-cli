@@ -357,8 +357,8 @@ workflows:
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
               assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+              assert_build_performance "$BITRISE_APP_SLUG"
+              assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "gradle"
 
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
               assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
@@ -426,8 +426,8 @@ workflows:
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
                 assert_invocation_tasks_gradle "$INVOCATION_ID"
-                assert_build_performance "$INVOCATION_ID"
-                assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+                assert_build_performance "$BITRISE_APP_SLUG"
+                assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "gradle"
       - save-gradle-cache:
           inputs:
             - verbose: 'true'
@@ -520,8 +520,8 @@ workflows:
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
               assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+              assert_build_performance "$BITRISE_APP_SLUG"
+              assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "gradle"
     - save-gradle-cache:
         inputs:
           - verbose: 'true'
@@ -595,8 +595,8 @@ workflows:
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
               assert_invocation_targets_bazel "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+              assert_build_performance "$BITRISE_APP_SLUG"
+              assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
     - deploy-to-bitrise-io@2: {}
 
   feature-e2e-bazel-public-no-rbe:
@@ -687,8 +687,8 @@ workflows:
                 assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
                 assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
                 assert_invocation_targets_bazel "$INVOCATION_ID"
-                assert_build_performance "$INVOCATION_ID"
-                assert_invocation_in_build_performance "$INVOCATION_ID" "bazel"
+                assert_build_performance "$BITRISE_APP_SLUG"
+                assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
       - deploy-to-bitrise-io@2: { }
 
   gradle-configuration-e2e-osx:
@@ -892,8 +892,8 @@ workflows:
 
                assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
                assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
-               assert_build_performance "$INVOCATION_ID"
-               assert_invocation_in_build_performance "$INVOCATION_ID" "xcode"
+               assert_build_performance "$BITRISE_APP_SLUG"
+               assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "xcode"
     - script:
         title: Check for cache usage
         inputs:
@@ -984,8 +984,8 @@ workflows:
               assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
               assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
               assert_invocation_tasks_gradle "$INVOCATION_ID"
-              assert_build_performance "$INVOCATION_ID"
-              assert_invocation_in_build_performance "$INVOCATION_ID" "gradle"
+              assert_build_performance "$BITRISE_APP_SLUG"
+              assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "gradle"
 
               assert_invocation_taskio "$INVOCATION_ID" "gradle"
               assert_invocation_taskio_inputfiles "$INVOCATION_ID" "gradle" "bundle"
