@@ -110,6 +110,8 @@ func BuildPostRunFn(
 
 		if err := sendFn(*inv); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Run invocation sent (id=%s)\n", invocationID)
 		}
 
 		if collectStatsFn != nil {

@@ -1250,6 +1250,7 @@ pipelines:
       e2e-xcode-comp-cache: {}
       rn-cli-seek-android-bc: {}
       ccache-storage-helper-test: {}
+      ccache-seek-android-e2e: {}
     triggers:
       pull_request:
         - source_branch: "*"
