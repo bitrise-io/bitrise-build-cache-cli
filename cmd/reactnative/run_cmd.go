@@ -20,12 +20,14 @@ import (
 type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
-// into environ and delegates execution to execFn. If preRunFn is non-nil, it is called with the
-// generated invocation ID immediately before execution (e.g. to notify the storage helper and zero
-// ccache stats). If postRunFn is non-nil, it is called after the command completes with the
-// invocation ID, args, duration, and any exec error.
-func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, preRunFn func(string), postRunFn PostRunFn) error {
-	invocationID := uuid.New().String()
+// into environ and delegates execution to execFn. If invocationID is empty, a random UUID is used.
+// If preRunFn is non-nil, it is called with the invocation ID immediately before execution (e.g. to
+// ensure the storage helper is running and zero ccache stats). If postRunFn is non-nil, it is called
+// after the command completes with the invocation ID, args, duration, and any exec error.
+func RunWithInvocationIDFn(args []string, invocationID string, environ []string, execFn ExecFunc, preRunFn func(string), postRunFn PostRunFn) error {
+	if invocationID == "" {
+		invocationID = uuid.New().String()
+	}
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
 
 	if len(args) == 0 {
@@ -49,20 +51,18 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, pre
 	return execErr
 }
 
-// BuildNotifyCcacheHelperFn constructs a notifyCcacheHelper function with injectable dependencies.
+// BuildEnsureCcacheHelperFn constructs a function that ensures the ccache storage helper is running.
 // socketPathFn returns the IPC socket path, or an error if ccache is not configured (silently skipped).
 // isListeningFn checks whether the socket has an active listener.
 // startHelperFn launches the storage helper as a background process.
 // awaitReadyFn polls until the socket is listening or a timeout elapses.
-// sendInvocationIDFn sends the parent→child invocation ID pair over the socket.
-func BuildNotifyCcacheHelperFn(
+func BuildEnsureCcacheHelperFn(
 	socketPathFn func() (string, error),
 	isListeningFn func(string) bool,
 	startHelperFn func() error,
 	awaitReadyFn func(string) bool,
-	sendInvocationIDFn func(socketPath, parentID, childID string) error,
-) func(string) {
-	return func(parentID string) {
+) func() {
+	return func() {
 		socketPath, err := socketPathFn()
 		if err != nil {
 			return // ccache not configured, skip silently
@@ -76,14 +76,7 @@ func BuildNotifyCcacheHelperFn(
 			}
 			if !awaitReadyFn(socketPath) {
 				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper did not become ready\n")
-
-				return
 			}
-		}
-
-		childID := uuid.New().String()
-		if err := sendInvocationIDFn(socketPath, parentID, childID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: ccache helper notification failed: %v\n", err)
 		}
 	}
 }
@@ -134,7 +127,7 @@ func awaitListening(socketPath string) bool {
 }
 
 //nolint:gochecknoglobals
-var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
+var ensureCcacheHelper = BuildEnsureCcacheHelperFn(
 	func() (string, error) {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
@@ -146,20 +139,19 @@ var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 	ccacheipc.IsListening,
 	startStorageHelper,
 	awaitListening,
-	func(socketPath, parentID, childID string) error {
-		return ccacheipc.SendInvocationID(context.Background(), socketPath, parentID, childID)
-	},
 )
 
 //nolint:gochecknoglobals
+var runInvocationID string
+
+//nolint:gochecknoglobals
 var runCmd = &cobra.Command{
-	Use:                "run",
-	Short:              "Run a process with the provided arguments",
-	Long:               `Run a process, forwarding all provided arguments directly.`,
-	SilenceUsage:       true,
-	DisableFlagParsing: true,
+	Use:          "run",
+	Short:        "Run a process with the provided arguments",
+	Long:         `Run a process, forwarding all provided arguments directly. Use -- to separate flags for the subprocess.`,
+	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, args []string) error {
-		return RunWithInvocationIDFn(args, os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
+		return RunWithInvocationIDFn(args, runInvocationID, os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
 			cmd := exec.Command(name, cmdArgs...) //nolint:gosec
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
@@ -175,13 +167,14 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, func(id string) {
-			notifyCcacheHelper(id)
+		}, func(_ string) {
+			ensureCcacheHelper()
 			zeroCcacheStats()
 		}, defaultPostRunFn)
 	},
 }
 
 func init() {
+	runCmd.Flags().StringVar(&runInvocationID, "invocation-id", "", "Invocation ID to inject into BITRISE_INVOCATION_ID (default: random UUID)")
 	reactNativeCmd.AddCommand(runCmd)
 }

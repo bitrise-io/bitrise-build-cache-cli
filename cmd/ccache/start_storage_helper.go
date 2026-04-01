@@ -193,19 +193,9 @@ func newCcacheStorageHelper(
 	logger.TInfof("Ccache storage helper")
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
-	var childRelParent, childRelChild string
-
-	onChildFn := func(_, parentID, childID string, _, _ int64) {
-		childRelParent = parentID
-		childRelChild = childID
-	}
-
 	onShutdownFn := func(_ string, _, _ int64) {
 		if parentInvocationID != "" {
 			registerInvocationRelation(config, parentInvocationID, invocationID, logger)
-		}
-		if childRelParent != "" {
-			registerInvocationRelation(config, childRelParent, childRelChild, logger)
 		}
 	}
 
@@ -218,7 +208,7 @@ func newCcacheStorageHelper(
 			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
 		},
 		invocationID,
-		onChildFn,
+		nil,
 		onShutdownFn,
 	)
 	if err != nil {
