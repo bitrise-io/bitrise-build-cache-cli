@@ -16,7 +16,7 @@ const (
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.28"
+	GradleRemoteBuildCachePluginDepVersion = "1.3.0"
 
 	// Gradle Analytics related consts
 	GradleAnalyticsPluginDepVersion = "2.6.0"
