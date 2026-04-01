@@ -7,6 +7,7 @@ app:
   envs:
   - SEEK_URL: git@github.com:inaturalist/SeekReactNative.git
   - SEEK_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+  - SEEK_TAG: v2.17.9-412
   - NOTESNOOK_URL: git@github.com:streetwriters/notesnook.git
   - NOTESNOOK_COMMIT: 2b4ec5b03bf2f48a74c0eb45dcaa3f208025c919
 
@@ -567,12 +568,7 @@ workflows:
     - script:
         title: Activate ccache remote storage
         inputs:
-        - content: |-
-            #!/bin/bash
-            set -euxo pipefail
-            # Writes ~/.bitrise/cache/ccache/config.json (socket path, auth, endpoint) and
-            # exports CCACHE_REMOTE_STORAGE / CCACHE_REMOTE_ONLY via envman for the next step.
-            ./bitrise-build-cache-cli activate c++
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_activate.sh
     - script:
         title: Install ccache and gcc
         inputs:
