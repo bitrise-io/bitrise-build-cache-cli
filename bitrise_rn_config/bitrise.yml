@@ -525,7 +525,7 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Activate react-native (writes multiplatform analytics config)
+        title: Activate react-native (Xcode)
         inputs:
         - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
     - script:
