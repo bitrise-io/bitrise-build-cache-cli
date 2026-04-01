@@ -17,6 +17,7 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -200,6 +201,15 @@ func ActivateReactNativeCmdFn(
 		if err := startStorageHelperFn(ctx, logger); err != nil {
 			return fmt.Errorf("start ccache storage helper: %w", err)
 		}
+	}
+
+	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(utils.AllEnvs())
+	if err != nil {
+		return fmt.Errorf("read auth config for multiplatform analytics: %w", err)
+	}
+	cfg := multiplatformconfig.Config{AuthConfig: authConfig}
+	if err := cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
+		return fmt.Errorf("save multiplatform analytics config: %w", err)
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache for React Native activated")

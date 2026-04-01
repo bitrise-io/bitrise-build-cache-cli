@@ -16,6 +16,7 @@ import (
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -130,17 +131,17 @@ var defaultPostRunFn = BuildPostRunFn(
 		}, logger)
 	},
 	func() (common.CacheAuthConfig, error) {
-		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
-			return common.CacheAuthConfig{}, fmt.Errorf("read ccache config: %w", err)
+			return common.CacheAuthConfig{}, fmt.Errorf("read multiplatform analytics config: %w", err)
 		}
 
 		return config.AuthConfig, nil
 	},
 	func(inv multiplatform.Invocation) error {
-		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
-			return fmt.Errorf("read ccache config: %w", err)
+			return fmt.Errorf("read multiplatform analytics config: %w", err)
 		}
 
 		logger := log.NewLogger()

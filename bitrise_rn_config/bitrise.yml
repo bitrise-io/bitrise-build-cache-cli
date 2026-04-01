@@ -468,6 +468,89 @@ workflows:
         - webhook_url: $SLACK_WEBHOOK_ALERTS
         is_always_run: false
 
+  ccache-seek-android-e2e:
+    title: Seek Android - assert ccache remote cache hit
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    steps:
+    - activate-ssh-key@4: {}
+    - git-clone@8: {}
+    - script:
+        title: Build CLI
+        inputs:
+        - content: go build
+    - script:
+        title: Activate ccache remote storage
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_activate.sh
+    - script:
+        title: Install ccache 4.13.2
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_install_macos.sh
+    - script:
+        title: Clone Seek app
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_clone_seek.sh
+    - script:
+        title: Configure and install dependencies
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_setup_seek_android.sh
+    - script:
+        title: Build 1 - warm remote cache
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_android.sh
+    - script:
+        title: Build 2 - assert remote cache hit
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_android.sh
+    - script:
+        title: Assert remote cache hit in ccache stats
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_assert_cache_hit.sh
+
+  ccache-seek-ios-e2e:
+    title: Seek iOS - assert react-native CLI invocation analytics
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    steps:
+    - activate-ssh-key@4: {}
+    - git-clone@8: {}
+    - script:
+        title: Build CLI
+        inputs:
+        - content: go build
+    - script:
+        title: Activate react-native (writes multiplatform analytics config)
+        inputs:
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=false --cpp=false
+    - script:
+        title: Clone Seek app
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_clone_seek.sh
+    - script:
+        title: Configure and install dependencies
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_setup_seek_ios.sh
+    - cocoapods-install@3:
+        inputs:
+        - source_root_path: _seek/ios
+    - script:
+        title: Build 1
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_ios.sh
+    - script:
+        title: Build 2
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_ios.sh
+    - script:
+        title: Assert CLI invocation analytics were sent
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_assert_ios_cache_hit.sh
+
   ccache-storage-helper-test:
     meta:
       bitrise.io:
