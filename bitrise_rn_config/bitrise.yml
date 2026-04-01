@@ -483,9 +483,9 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Activate ccache remote storage
+        title: Activate react-native (Gradle + C++)
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_activate.sh
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=true --xcode=false --cpp=true
     - script:
         title: Install ccache 4.13.2
         inputs:
@@ -525,9 +525,9 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Activate react-native (writes multiplatform analytics config)
+        title: Activate react-native (Xcode)
         inputs:
-        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=false --cpp=false
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
     - script:
         title: Clone Seek app
         inputs:
