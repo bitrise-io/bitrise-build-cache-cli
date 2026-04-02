@@ -16,8 +16,8 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	registerChildParentID string
-	registerChildChildID  string
+	registerChildParentID  string
+	registerChildChildID   string
 	registerChildBuildTool string
 )
 

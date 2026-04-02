@@ -18,21 +18,21 @@ import (
 )
 
 type IpcServer struct {
-	listener            net.Listener
-	client              Client
-	logger              log.Logger
-	loggerFactory       LoggerFactory
-	onShutdown func(invocationID string, downloadBytes, uploadBytes int64)
-	idleTimer           *time.Timer
-	sessionState        *sessionState
-	config              ccacheconfig.Config
-	metadata            configcommon.CacheConfigMetadata
-	timerMutex          sync.Mutex
-	capabilitiesOnce    sync.Once
-	capabilitiesErr     error
-	reportOnce          sync.Once
-	activeInvocationID  string
-	activeInvocationMu  sync.Mutex
+	listener           net.Listener
+	client             Client
+	logger             log.Logger
+	loggerFactory      LoggerFactory
+	onShutdown         func(invocationID string, downloadBytes, uploadBytes int64)
+	idleTimer          *time.Timer
+	sessionState       *sessionState
+	config             ccacheconfig.Config
+	metadata           configcommon.CacheConfigMetadata
+	timerMutex         sync.Mutex
+	capabilitiesOnce   sync.Once
+	capabilitiesErr    error
+	reportOnce         sync.Once
+	activeInvocationID string
+	activeInvocationMu sync.Mutex
 }
 
 func NewServer(
