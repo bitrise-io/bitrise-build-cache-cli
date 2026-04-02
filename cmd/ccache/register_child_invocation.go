@@ -18,6 +18,7 @@ import (
 var (
 	registerChildParentID string
 	registerChildChildID  string
+	registerChildBuildTool string
 )
 
 //nolint:gochecknoglobals
@@ -42,7 +43,7 @@ var registerChildInvocationCmd = &cobra.Command{
 			ParentInvocationID: registerChildParentID,
 			ChildInvocationID:  registerChildChildID,
 			InvocationDate:     time.Now(),
-			BuildTool:          "ccache",
+			BuildTool:          registerChildBuildTool,
 		}
 
 		if err := client.PutInvocationRelation(rel); err != nil {
@@ -58,6 +59,7 @@ func init() {
 	_ = registerChildInvocationCmd.MarkFlagRequired("parent-id")
 	registerChildInvocationCmd.Flags().StringVar(&registerChildChildID, "child-id", "", "Child invocation ID (required)")
 	_ = registerChildInvocationCmd.MarkFlagRequired("child-id")
+	registerChildInvocationCmd.Flags().StringVar(&registerChildBuildTool, "build-tool", "ccache", "Build tool label for the child invocation (e.g. ccache, gradle)")
 
 	ccacheCmd.AddCommand(registerChildInvocationCmd)
 }
