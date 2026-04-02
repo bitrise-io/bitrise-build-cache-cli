@@ -485,7 +485,7 @@ workflows:
     - script:
         title: Clone Seek app
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_clone_seek.sh
+        - content: git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
     - script:
         title: Configure and install dependencies
         inputs:
@@ -493,7 +493,11 @@ workflows:
     - script:
         title: Install ccache 4.13.2
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_install_macos.sh
+        - content: |-
+            CCACHE_VERSION="4.13.2"
+            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-darwin.tar.gz" \
+              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-darwin/ccache"
+            ccache --version
     - script:
         title: Activate react-native (Gradle + C++)
         inputs:
@@ -501,7 +505,11 @@ workflows:
     - script:
         title: Build
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_build_seek_android.sh
+        - content: |-
+            export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
+            envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
+            cd _seek
+            ../bitrise-build-cache-cli react-native run npx react-native build-android 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
         title: Assert analytics were sent
         inputs:
@@ -527,7 +535,7 @@ workflows:
     - script:
         title: Clone Seek app
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_clone_seek.sh
+        - content: git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
     - script:
         title: Configure and install dependencies
         inputs:
@@ -542,11 +550,15 @@ workflows:
     - script:
         title: Build
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_build_seek_ios.sh
+        - content: |-
+            export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
+            envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
+            cd _seek
+            ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
         title: Assert CLI invocation analytics were sent
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_ios_analytics.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
 
 
   ccache-storage-helper-test:
@@ -564,11 +576,16 @@ workflows:
     - script:
         title: Activate ccache remote storage
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_activate.sh
+        - content: ./bitrise-build-cache-cli activate c++
     - script:
         title: Install ccache and gcc
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_install.sh
+        - content: |-
+            apt-get install -y -q gcc
+            CCACHE_VERSION="4.13.2"
+            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-glibc.tar.gz" \
+              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-linux-x86_64-glibc/ccache"
+            ccache --version
     - script:
         title: Assert remote cache hit via ccache storage helper
         inputs:

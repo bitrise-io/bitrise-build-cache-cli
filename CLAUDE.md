@@ -119,6 +119,10 @@ The file I/O is in `internal/config/common/benchmark.go` (`WriteBenchmarkPhaseFi
 
 Keep the `go` directive in `go.mod` at **1.24**. Do not bump it to 1.25 or later. This is a hard requirement imposed by the step libraries that depend on this CLI — they need Go 1.24 compatibility. When running `go mod tidy` or updating dependencies, pin any transitive packages that would require Go 1.25+ (typically `golang.org/x/{net,sys,text,tools}` and `google.golang.org/genproto`) to versions that are compatible with Go 1.24.
 
+## Bitrise Workflow Scripts
+
+Inline script steps directly in the `bitrise.yml` / `bitrise_rn_config/bitrise.yml` files when the content is short. Extract to a file under `scripts/` only when the script body exceeds ~10 lines.
+
 ## Linting
 
 This project uses golangci-lint v2. Notable rules to follow when generating code:
