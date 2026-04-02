@@ -51,30 +51,33 @@ func RunWithInvocationIDFn(args []string, invocationID string, environ []string,
 	return execErr
 }
 
-// BuildEnsureCcacheHelperFn constructs a function that ensures the ccache storage helper is running.
-// socketPathFn returns the IPC socket path, or an error if ccache is not configured (silently skipped).
-// isListeningFn checks whether the socket has an active listener.
-// startHelperFn launches the storage helper as a background process.
-// awaitReadyFn polls until the socket is listening or a timeout elapses.
-func BuildEnsureCcacheHelperFn(
-	socketPathFn func() (string, error),
-	isListeningFn func(string) bool,
-	startHelperFn func() error,
-	awaitReadyFn func(string) bool,
-) func() {
+// EnsureCcacheHelperDeps holds the injectable dependencies for building an ensure-ccache-helper function.
+type EnsureCcacheHelperDeps struct {
+	// SocketPath returns the IPC socket path, or an error if ccache is not configured (silently skipped).
+	SocketPath func() (string, error)
+	// IsListening checks whether the socket has an active listener.
+	IsListening func(string) bool
+	// StartHelper launches the storage helper as a background process.
+	StartHelper func() error
+	// AwaitReady polls until the socket is listening or a timeout elapses.
+	AwaitReady func(string) bool
+}
+
+// Build returns a function that ensures the ccache storage helper is running.
+func (d EnsureCcacheHelperDeps) Build() func() {
 	return func() {
-		socketPath, err := socketPathFn()
+		socketPath, err := d.SocketPath()
 		if err != nil {
 			return // ccache not configured, skip silently
 		}
 
-		if !isListeningFn(socketPath) {
-			if err := startHelperFn(); err != nil {
+		if !d.IsListening(socketPath) {
+			if err := d.StartHelper(); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to start ccache storage helper: %v\n", err)
 
 				return
 			}
-			if !awaitReadyFn(socketPath) {
+			if !d.AwaitReady(socketPath) {
 				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper did not become ready\n")
 			}
 		}
@@ -127,8 +130,8 @@ func awaitListening(socketPath string) bool {
 }
 
 //nolint:gochecknoglobals
-var ensureCcacheHelper = BuildEnsureCcacheHelperFn(
-	func() (string, error) {
+var ensureCcacheHelper = EnsureCcacheHelperDeps{
+	SocketPath: func() (string, error) {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			return "", fmt.Errorf("read ccache config: %w", err)
@@ -136,10 +139,10 @@ var ensureCcacheHelper = BuildEnsureCcacheHelperFn(
 
 		return config.IPCEndpoint, nil
 	},
-	ccacheipc.IsListening,
-	startStorageHelper,
-	awaitListening,
-)
+	IsListening: ccacheipc.IsListening,
+	StartHelper: startStorageHelper,
+	AwaitReady:  awaitListening,
+}.Build()
 
 //nolint:gochecknoglobals
 var runCmd = &cobra.Command{

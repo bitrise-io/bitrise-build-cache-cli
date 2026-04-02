@@ -68,32 +68,35 @@ func parseCommand(args []string) string {
 // original args, elapsed duration, and any execution error.
 type PostRunFn func(invocationID string, args []string, duration time.Duration, execErr error)
 
-// BuildPostRunFn constructs a PostRunFn with injectable dependencies.
-// getMetadataFn returns system/CI metadata for the analytics payload.
-// getAuthConfigFn returns the auth config used to identify the workspace.
-// sendFn delivers the run-level (react-native) Invocation to the analytics backend.
-// sendRelationFn, if non-nil, is called after sendFn succeeds to register the parent→child
-// relationship between the run invocation and the ccache invocation. The parent ID is taken
-// from the BITRISE_INVOCATION_ID environment variable if set (outer context), otherwise the
-// run's own invocation ID is used. The child ID is the pre-generated ccache invocation ID.
-// collectStatsFn, if non-nil, collects and zeros ccache stats after the run; it receives
-// the pre-generated ccache invocation ID and the run's invocation ID as the parent.
-func BuildPostRunFn(
-	getMetadataFn func() common.CacheConfigMetadata,
-	getAuthConfigFn func() (common.CacheAuthConfig, error),
-	sendFn func(inv multiplatform.Invocation) error,
-	collectStatsFn func(ctx context.Context, ccacheInvocationID, parentID string),
-	sendRelationFn func(ctx context.Context, parentID, childID string),
-) PostRunFn {
+// PostRunDeps holds the injectable dependencies for building a PostRunFn.
+type PostRunDeps struct {
+	// GetMetadata returns system/CI metadata for the analytics payload.
+	GetMetadata func() common.CacheConfigMetadata
+	// GetAuthConfig returns the auth config used to identify the workspace.
+	GetAuthConfig func() (common.CacheAuthConfig, error)
+	// Send delivers the run-level (react-native) Invocation to the analytics backend.
+	Send func(inv multiplatform.Invocation) error
+	// CollectStats, if non-nil, collects and zeros ccache stats after the run; it receives
+	// the pre-generated ccache invocation ID and the run's invocation ID as the parent.
+	CollectStats func(ctx context.Context, ccacheInvocationID, parentID string)
+	// SendRelation, if non-nil, is called after Send succeeds to register the parent→child
+	// relationship between the run invocation and the ccache invocation. The parent ID is taken
+	// from the BITRISE_INVOCATION_ID environment variable if set (outer context), otherwise the
+	// run's own invocation ID is used. The child ID is the pre-generated ccache invocation ID.
+	SendRelation func(ctx context.Context, parentID, childID string)
+}
+
+// Build constructs a PostRunFn from the deps.
+func (d PostRunDeps) Build() PostRunFn {
 	return func(invocationID string, args []string, duration time.Duration, execErr error) {
-		authConfig, err := getAuthConfigFn()
+		authConfig, err := d.GetAuthConfig()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to get auth config for ccache analytics: %v\n", err)
 
 			return
 		}
 
-		metadata := getMetadataFn()
+		metadata := d.GetMetadata()
 
 		command := parseCommand(args)
 		fullCommand := ""
@@ -115,29 +118,29 @@ func BuildPostRunFn(
 
 		ccacheInvocationID := uuid.New().String()
 
-		rnSendErr := sendFn(*inv)
+		rnSendErr := d.Send(*inv)
 		if rnSendErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", rnSendErr)
 		}
 
-		if collectStatsFn != nil {
-			collectStatsFn(context.Background(), ccacheInvocationID, invocationID)
+		if d.CollectStats != nil {
+			d.CollectStats(context.Background(), ccacheInvocationID, invocationID)
 		}
 
-		if rnSendErr == nil && sendRelationFn != nil {
+		if rnSendErr == nil && d.SendRelation != nil {
 			relParentID := os.Getenv("BITRISE_INVOCATION_ID")
 			if relParentID == "" {
 				relParentID = invocationID
 			}
 
-			sendRelationFn(context.Background(), relParentID, ccacheInvocationID)
+			d.SendRelation(context.Background(), relParentID, ccacheInvocationID)
 		}
 	}
 }
 
 //nolint:gochecknoglobals
-var defaultPostRunFn = BuildPostRunFn(
-	func() common.CacheConfigMetadata {
+var defaultPostRunFn = PostRunDeps{
+	GetMetadata: func() common.CacheConfigMetadata {
 		envs := utils.AllEnvs()
 		logger := log.NewLogger()
 
@@ -147,7 +150,7 @@ var defaultPostRunFn = BuildPostRunFn(
 			return string(out), err
 		}, logger)
 	},
-	func() (common.CacheAuthConfig, error) {
+	GetAuthConfig: func() (common.CacheAuthConfig, error) {
 		config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			return common.CacheAuthConfig{}, fmt.Errorf("read multiplatform analytics config: %w", err)
@@ -155,7 +158,7 @@ var defaultPostRunFn = BuildPostRunFn(
 
 		return config.AuthConfig, nil
 	},
-	func(inv multiplatform.Invocation) error {
+	Send: func(inv multiplatform.Invocation) error {
 		config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			return fmt.Errorf("read multiplatform analytics config: %w", err)
@@ -171,7 +174,7 @@ var defaultPostRunFn = BuildPostRunFn(
 		// run-level (react-native) invocation data
 		return client.PutInvocation(inv)
 	},
-	func(ctx context.Context, ccacheInvocationID, parentID string) {
+	CollectStats: func(ctx context.Context, ccacheInvocationID, parentID string) {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to read ccache config for stats collection: %v\n", err)
@@ -198,7 +201,7 @@ var defaultPostRunFn = BuildPostRunFn(
 
 		ccacheanalytics.CollectAndZero(ctx, client, ccacheInvocationID, parentID, dl, ul, logger)
 	},
-	func(ctx context.Context, parentID, childID string) {
+	SendRelation: func(ctx context.Context, parentID, childID string) {
 		config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to read config for invocation relation: %v\n", err)
@@ -226,4 +229,4 @@ var defaultPostRunFn = BuildPostRunFn(
 			fmt.Fprintf(os.Stderr, "Warning: failed to register invocation relation: %v\n", err)
 		}
 	},
-)
+}.Build()
