@@ -76,6 +76,18 @@ func TestEnsureCcacheHelperDeps(t *testing.T) {
 		assert.False(t, awaitCalled)
 	})
 
+	t.Run("continues without error when AwaitReady returns false", func(t *testing.T) {
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return socketPath, nil },
+			IsListening: func(string) bool { return false },
+			StartHelper: func() error { return nil },
+			AwaitReady:  func(string) bool { return false },
+		}.Build()
+
+		// should not panic or return error — just logs a warning and continues
+		fn()
+	})
+
 	t.Run("passes correct socket path to AwaitReady", func(t *testing.T) {
 		var awaitedPath string
 

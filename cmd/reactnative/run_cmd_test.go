@@ -186,6 +186,33 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 
 		assert.Error(t, err)
 	})
+
+	t.Run("provided invocation ID is used as-is without generating a new UUID", func(t *testing.T) {
+		const fixedID = "fixed-invocation-id"
+		var capturedEnvID string
+		var preRunID string
+
+		err := reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			fixedID,
+			[]string{},
+			func(environ []string, _ string, _ ...string) error {
+				for _, e := range environ {
+					if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
+						capturedEnvID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
+					}
+				}
+
+				return nil
+			},
+			func(id string) { preRunID = id },
+			nil,
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, fixedID, capturedEnvID)
+		assert.Equal(t, fixedID, preRunID)
+	})
 }
 
 func Test_PostRunDeps(t *testing.T) {
@@ -380,6 +407,36 @@ func Test_PostRunDeps(t *testing.T) {
 		assert.NotEmpty(t, relChildID)
 		assert.Equal(t, envInvocationID, relParentID, "relation parent should be the run's invocation ID when no env var is set")
 		assert.Equal(t, collectedCcacheID, relChildID, "relation child ID should match the ccache invocation ID passed to CollectStats")
+	})
+
+	t.Run("nil GetMetadata uses zero-valued metadata and still calls Send", func(t *testing.T) {
+		var sentInvocation multiplatform.Invocation
+
+		hooks := reactnative.PostRunDeps{
+			GetMetadata:   nil,
+			GetAuthConfig: func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			Send:          func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+		}.Build()
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, "", []string{}, noopExecFn, nil, hooks)
+
+		assert.NotEmpty(t, sentInvocation.InvocationID)
+		assert.Empty(t, sentInvocation.BitriseAppSlug)
+	})
+
+	t.Run("nil GetAuthConfig uses zero-valued auth config and still calls Send", func(t *testing.T) {
+		var sentInvocation multiplatform.Invocation
+
+		hooks := reactnative.PostRunDeps{
+			GetMetadata:   func() common.CacheConfigMetadata { return common.CacheConfigMetadata{BitriseAppID: "app-1"} },
+			GetAuthConfig: nil,
+			Send:          func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
+		}.Build()
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, "", []string{}, noopExecFn, nil, hooks)
+
+		assert.NotEmpty(t, sentInvocation.InvocationID)
+		assert.Empty(t, sentInvocation.BitriseWorkspaceSlug)
 	})
 
 	t.Run("SendRelation is not called when Send fails", func(t *testing.T) {
