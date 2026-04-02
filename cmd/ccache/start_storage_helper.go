@@ -182,7 +182,7 @@ func newCcacheStorageHelper(
 	}
 
 	// Set up logger early so that any errors can be logged to file instead of just stderr
-	logger, err := helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
+	logger, err := helper.loggerFactory(helper, invocationID, config.DebugLogging)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial logger: %w", err)
 	}
@@ -205,7 +205,7 @@ func newCcacheStorageHelper(
 		kvClient,
 		helper.logger,
 		func(invocationID string) (log.Logger, error) {
-			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
+			return helper.loggerFactory(helper, invocationID, config.DebugLogging)
 		},
 		invocationID,
 		onShutdownFn,

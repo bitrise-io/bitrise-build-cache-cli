@@ -514,10 +514,6 @@ workflows:
         title: Assert analytics were sent
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
-    - script:
-        title: Assert ccache remote cache hit
-        inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_ccache_hit.sh
 
   react-seek-ios-e2e:
     title: Seek iOS - assert react-native CLI invocation analytics

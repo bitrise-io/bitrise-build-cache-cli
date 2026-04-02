@@ -91,6 +91,8 @@ func ActivateCppCommandFn(
 		return fmt.Errorf("failed to create ccache config: %w", err)
 	}
 
+	config.DebugLogging = common.IsDebugLogMode
+
 	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
