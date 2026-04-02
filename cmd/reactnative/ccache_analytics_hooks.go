@@ -72,13 +72,18 @@ type PostRunFn func(invocationID string, args []string, duration time.Duration, 
 // getMetadataFn returns system/CI metadata for the analytics payload.
 // getAuthConfigFn returns the auth config used to identify the workspace.
 // sendFn delivers the run-level (react-native) Invocation to the analytics backend.
+// sendRelationFn, if non-nil, is called after sendFn succeeds to register the parent→child
+// relationship between the run invocation and the ccache invocation. The parent ID is taken
+// from the BITRISE_INVOCATION_ID environment variable if set (outer context), otherwise the
+// run's own invocation ID is used. The child ID is the pre-generated ccache invocation ID.
 // collectStatsFn, if non-nil, collects and zeros ccache stats after the run; it receives
-// the run's invocationID as the parent ID for the ccache invocation.
+// the pre-generated ccache invocation ID and the run's invocation ID as the parent.
 func BuildPostRunFn(
 	getMetadataFn func() common.CacheConfigMetadata,
 	getAuthConfigFn func() (common.CacheAuthConfig, error),
 	sendFn func(inv multiplatform.Invocation) error,
-	collectStatsFn func(ctx context.Context, parentID string),
+	collectStatsFn func(ctx context.Context, ccacheInvocationID, parentID string),
+	sendRelationFn func(ctx context.Context, parentID, childID string),
 ) PostRunFn {
 	return func(invocationID string, args []string, duration time.Duration, execErr error) {
 		authConfig, err := getAuthConfigFn()
@@ -108,14 +113,24 @@ func BuildPostRunFn(
 			Wrapper:        "bitrise-build-cache-cli react-native",
 		}, authConfig, metadata)
 
-		if err := sendFn(*inv); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "Run invocation sent (id=%s)\n", invocationID)
+		ccacheInvocationID := uuid.New().String()
+
+		rnSendErr := sendFn(*inv)
+		if rnSendErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", rnSendErr)
 		}
 
 		if collectStatsFn != nil {
-			collectStatsFn(context.Background(), invocationID)
+			collectStatsFn(context.Background(), ccacheInvocationID, invocationID)
+		}
+
+		if rnSendErr == nil && sendRelationFn != nil {
+			relParentID := os.Getenv("BITRISE_INVOCATION_ID")
+			if relParentID == "" {
+				relParentID = invocationID
+			}
+
+			sendRelationFn(context.Background(), relParentID, ccacheInvocationID)
 		}
 	}
 }
@@ -156,7 +171,7 @@ var defaultPostRunFn = BuildPostRunFn(
 		// run-level (react-native) invocation data
 		return client.PutInvocation(inv)
 	},
-	func(ctx context.Context, parentID string) {
+	func(ctx context.Context, ccacheInvocationID, parentID string) {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to read ccache config for stats collection: %v\n", err)
@@ -181,6 +196,34 @@ var defaultPostRunFn = BuildPostRunFn(
 			return
 		}
 
-		ccacheanalytics.CollectAndZero(ctx, client, uuid.New().String(), parentID, dl, ul, logger)
+		ccacheanalytics.CollectAndZero(ctx, client, ccacheInvocationID, parentID, dl, ul, logger)
+	},
+	func(ctx context.Context, parentID, childID string) {
+		config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to read config for invocation relation: %v\n", err)
+
+			return
+		}
+
+		logger := log.NewLogger()
+
+		client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create analytics client for invocation relation: %v\n", err)
+
+			return
+		}
+
+		rel := multiplatform.InvocationRelation{
+			ParentInvocationID: parentID,
+			ChildInvocationID:  childID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "ccache",
+		}
+
+		if err := client.PutInvocationRelation(rel); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to register invocation relation: %v\n", err)
+		}
 	},
 )

@@ -201,7 +201,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func() (common.CacheAuthConfig, error) {
 				return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil
 			},
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"myapp", "--flag"}, "", []string{}, noopExecFn, nil, hooks)
@@ -222,7 +222,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn(
@@ -261,7 +261,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			hooks := reactnative.BuildPostRunFn(
 				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil, nil,
 			)
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, "", []string{}, noopExecFn, nil, hooks)
@@ -285,7 +285,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 			hooks := reactnative.BuildPostRunFn(
 				func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 				func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+				func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil, nil,
 			)
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, "", []string{}, noopExecFn, nil, hooks)
@@ -300,7 +300,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, "", []string{}, noopExecFn, nil, hooks)
@@ -315,7 +315,7 @@ func Test_BuildPostRunFn(t *testing.T) {
 		hooks := reactnative.BuildPostRunFn(
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil,
+			func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }, nil, nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, "", []string{}, noopExecFn, nil, hooks)
@@ -333,7 +333,8 @@ func Test_BuildPostRunFn(t *testing.T) {
 			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
 			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
 			func(inv multiplatform.Invocation) error { return nil },
-			func(_ context.Context, parentID string) { collectedParentID = parentID },
+			func(_ context.Context, _, parentID string) { collectedParentID = parentID },
+			nil,
 		)
 
 		_ = reactnative.RunWithInvocationIDFn(
@@ -354,5 +355,72 @@ func Test_BuildPostRunFn(t *testing.T) {
 
 		assert.NotEmpty(t, collectedParentID)
 		assert.Equal(t, envInvocationID, collectedParentID, "collectStatsFn should receive the run's invocation ID as parentID")
+	})
+
+	t.Run("collectStatsFn receives consistent ccache invocation ID", func(t *testing.T) {
+		var collectedCcacheID string
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { return nil },
+			func(_ context.Context, ccacheID, _ string) { collectedCcacheID = ccacheID },
+			nil,
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, "", []string{}, noopExecFn, nil, hooks)
+
+		assert.NotEmpty(t, collectedCcacheID)
+	})
+
+	t.Run("sendRelationFn is called after sendFn succeeds with run invocation ID as parent", func(t *testing.T) {
+		var relParentID, relChildID string
+		var collectedCcacheID string
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { return nil },
+			func(_ context.Context, ccacheID, _ string) { collectedCcacheID = ccacheID },
+			func(_ context.Context, parentID, childID string) { relParentID = parentID; relChildID = childID },
+		)
+
+		var envInvocationID string
+		_ = reactnative.RunWithInvocationIDFn(
+			[]string{"true"},
+			"",
+			[]string{},
+			func(environ []string, _ string, _ ...string) error {
+				for _, e := range environ {
+					if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
+						envInvocationID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
+					}
+				}
+
+				return nil
+			},
+			nil, hooks,
+		)
+
+		assert.NotEmpty(t, relParentID)
+		assert.NotEmpty(t, relChildID)
+		assert.Equal(t, envInvocationID, relParentID, "relation parent should be the run's invocation ID when no env var is set")
+		assert.Equal(t, collectedCcacheID, relChildID, "relation child ID should match the ccache invocation ID passed to collectStatsFn")
+	})
+
+	t.Run("sendRelationFn is not called when sendFn fails", func(t *testing.T) {
+		relationCalled := false
+
+		hooks := reactnative.BuildPostRunFn(
+			func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
+			func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
+			func(inv multiplatform.Invocation) error { return errors.New("analytics down") },
+			nil,
+			func(_ context.Context, _, _ string) { relationCalled = true },
+		)
+
+		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, "", []string{}, noopExecFn, nil, hooks)
+
+		assert.False(t, relationCalled, "sendRelationFn must not fire when sendFn fails")
 	})
 }
