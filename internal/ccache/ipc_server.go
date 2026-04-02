@@ -22,8 +22,7 @@ type IpcServer struct {
 	client              Client
 	logger              log.Logger
 	loggerFactory       LoggerFactory
-	onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
-	onShutdown          func(invocationID string, downloadBytes, uploadBytes int64)
+	onShutdown func(invocationID string, downloadBytes, uploadBytes int64)
 	idleTimer           *time.Timer
 	sessionState        *sessionState
 	config              ccacheconfig.Config
@@ -43,19 +42,17 @@ func NewServer(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	initialInvocationID string,
-	onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64),
 	onShutdown func(invocationID string, downloadBytes, uploadBytes int64),
 ) (*IpcServer, error) {
 	return &IpcServer{
-		config:              config,
-		metadata:            metadata,
-		client:              client,
-		logger:              logger,
-		loggerFactory:       loggerFactory,
-		onNewInvocationPair: onNewInvocationPair,
-		onShutdown:          onShutdown,
-		sessionState:        newSessionState(),
-		activeInvocationID:  initialInvocationID,
+		config:             config,
+		metadata:           metadata,
+		client:             client,
+		logger:             logger,
+		loggerFactory:      loggerFactory,
+		onShutdown:         onShutdown,
+		sessionState:       newSessionState(),
+		activeInvocationID: initialInvocationID,
 	}, nil
 }
 
@@ -173,18 +170,12 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 
 func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
 	s.activeInvocationMu.Lock()
-	prevID := s.activeInvocationID
-	isDuplicate := result.InvocationChildID == prevID
-	var dl, ul int64
+	isDuplicate := result.InvocationChildID == s.activeInvocationID
 	if !isDuplicate {
-		dl, ul = s.sessionState.resetAndGet()
+		s.sessionState.resetAndGet()
 		s.activeInvocationID = result.InvocationChildID
 	}
 	s.activeInvocationMu.Unlock()
-
-	if !isDuplicate && s.onNewInvocationPair != nil {
-		s.onNewInvocationPair(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
-	}
 }
 
 func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn context.CancelFunc) {

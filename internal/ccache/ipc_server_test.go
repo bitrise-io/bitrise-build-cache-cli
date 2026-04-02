@@ -21,7 +21,6 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 		nil,
 		"my-initial-id",
 		nil,
-		nil,
 	)
 	require.NoError(t, err)
 

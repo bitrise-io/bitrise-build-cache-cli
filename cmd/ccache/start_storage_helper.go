@@ -208,7 +208,6 @@ func newCcacheStorageHelper(
 			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
 		},
 		invocationID,
-		nil,
 		onShutdownFn,
 	)
 	if err != nil {
