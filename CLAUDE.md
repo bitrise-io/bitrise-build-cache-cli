@@ -115,6 +115,10 @@ The file I/O is in `internal/config/common/benchmark.go` (`WriteBenchmarkPhaseFi
 
 **Note:** The benchmark phase is intentionally NOT stored in the xcelerate config file (`~/.bitrise-xcelerate/config.json`) — only in the env var and the benchmark phase file, matching the Gradle approach.
 
+## Go Version
+
+Keep the `go` directive in `go.mod` at **1.24**. Do not bump it to 1.25 or later. This is a hard requirement imposed by the step libraries that depend on this CLI — they need Go 1.24 compatibility. When running `go mod tidy` or updating dependencies, pin any transitive packages that would require Go 1.25+ (typically `golang.org/x/{net,sys,text,tools}` and `google.golang.org/genproto`) to versions that are compatible with Go 1.24.
+
 ## Linting
 
 This project uses golangci-lint v2. Notable rules to follow when generating code:

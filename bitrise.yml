@@ -1248,7 +1248,6 @@ pipelines:
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
       e2e-xcode-comp-cache: {}
-      rn-cli-seek-android-bc: {}
       ccache-storage-helper-test: {}
     triggers:
       pull_request:
