@@ -51,6 +51,8 @@ var (
 				return fmt.Errorf("read ccache config: %w", err)
 			}
 
+			config.DebugLogging = config.DebugLogging || common.IsDebugLogMode
+
 			envs := utils.AllEnvs()
 			kvClient, err := createKVClient(
 				cmd.Context(),
