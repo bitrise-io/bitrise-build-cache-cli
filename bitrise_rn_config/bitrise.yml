@@ -483,14 +483,6 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Activate react-native (Gradle + C++)
-        inputs:
-        - content: ./bitrise-build-cache-cli activate react-native --gradle=true --xcode=false --cpp=true
-    - script:
-        title: Install ccache 4.13.2
-        inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_install_macos.sh
-    - script:
         title: Clone Seek app
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_clone_seek.sh
@@ -498,6 +490,14 @@ workflows:
         title: Configure and install dependencies
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_android.sh
+    - script:
+        title: Install ccache 4.13.2
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_install_macos.sh
+    - script:
+        title: Activate react-native (Gradle + C++)
+        inputs:
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=true --xcode=false --cpp=true
     - script:
         title: Build
         inputs:
@@ -525,10 +525,6 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Activate react-native (Xcode)
-        inputs:
-        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
-    - script:
         title: Clone Seek app
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_clone_seek.sh
@@ -539,6 +535,10 @@ workflows:
     - cocoapods-install@3:
         inputs:
         - source_root_path: _seek/ios
+    - script:
+        title: Activate react-native (Xcode)
+        inputs:
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
     - script:
         title: Build
         inputs:
