@@ -317,6 +317,18 @@ func XcodebuildCmdFn(
 		logger.Errorf("Failed to send invocation analytics: %v", err)
 	} else {
 		logger.TInfof(MsgInvocationSaved, invocationID)
+
+		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
+			rel := analytics.InvocationRelation{
+				ParentInvocationID: parentID,
+				ChildInvocationID:  invocationID,
+				InvocationDate:     time.Now(),
+				BuildTool:          "xcode",
+			}
+			if err := client.PutInvocationRelation(rel); err != nil {
+				logger.Errorf("Failed to send invocation relation analytics: %v", err)
+			}
+		}
 	}
 
 	return runStats

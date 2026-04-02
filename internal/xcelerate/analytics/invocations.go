@@ -68,6 +68,34 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 	}
 }
 
+func (c *Client) PutInvocationRelation(rel InvocationRelation) error {
+	requestURL := fmt.Sprintf("%s/invocations/%s/children/%s", c.baseURL, rel.ParentInvocationID, rel.ChildInvocationID)
+	c.logger.Debugf("Sending invocation relation to: %s", requestURL)
+
+	payload, err := json.Marshal(rel)
+	if err != nil {
+		return fmt.Errorf("failed to marshal invocation relation: %w", err)
+	}
+
+	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, payload)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to perform HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return unwrapError(resp)
+	}
+
+	return nil
+}
+
 func (c *Client) PutInvocation(inv Invocation) error {
 	requestURL := fmt.Sprintf("%s/invocations/%s", c.baseURL, inv.InvocationID)
 	c.logger.Debugf("Sending invocation data to: %s", requestURL)
