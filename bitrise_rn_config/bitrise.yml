@@ -469,8 +469,8 @@ workflows:
         - webhook_url: $SLACK_WEBHOOK_ALERTS
         is_always_run: false
 
-  ccache-seek-android-e2e:
-    title: Seek Android - assert ccache remote cache hit and analytics
+  react-seek-android-e2e:
+    title: Seek Android - assert analytics and ccache remote cache hit
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
@@ -489,25 +489,29 @@ workflows:
     - script:
         title: Install ccache 4.13.2
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_install_macos.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_install_macos.sh
     - script:
         title: Clone Seek app
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_clone_seek.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_clone_seek.sh
     - script:
         title: Configure and install dependencies
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_setup_seek_android.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_android.sh
     - script:
         title: Build
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_android.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_build_seek_android.sh
     - script:
         title: Assert analytics were sent
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_assert_analytics.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+    - script:
+        title: Assert ccache remote cache hit
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_ccache_hit.sh
 
-  ccache-seek-ios-e2e:
+  react-seek-ios-e2e:
     title: Seek iOS - assert react-native CLI invocation analytics
     meta:
       bitrise.io:
@@ -527,22 +531,22 @@ workflows:
     - script:
         title: Clone Seek app
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_clone_seek.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_clone_seek.sh
     - script:
         title: Configure and install dependencies
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_setup_seek_ios.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
     - cocoapods-install@3:
         inputs:
         - source_root_path: _seek/ios
     - script:
         title: Build
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_ios.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_build_seek_ios.sh
     - script:
         title: Assert CLI invocation analytics were sent
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_assert_ios_cache_hit.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_ios_analytics.sh
 
   ccache-storage-helper-test:
     meta:
