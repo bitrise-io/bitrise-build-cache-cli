@@ -188,14 +188,6 @@ func Test_RunWithInvocationIDFn(t *testing.T) {
 	})
 }
 
-func minimalPostRunDeps(send func(multiplatform.Invocation) error) reactnative.PostRunDeps {
-	return reactnative.PostRunDeps{
-		GetMetadata:   func() common.CacheConfigMetadata { return common.CacheConfigMetadata{} },
-		GetAuthConfig: func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-		Send:          send,
-	}
-}
-
 func Test_PostRunDeps(t *testing.T) {
 	noopExecFn := func(_ []string, _ string, _ ...string) error { return nil }
 
@@ -223,7 +215,7 @@ func Test_PostRunDeps(t *testing.T) {
 		var sentInvocation multiplatform.Invocation
 		execErr := errors.New("build failed")
 
-		hooks := minimalPostRunDeps(func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }).Build()
+		hooks := reactnative.PostRunDeps{Send: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }}.Build()
 
 		_ = reactnative.RunWithInvocationIDFn(
 			[]string{"true"},
@@ -258,7 +250,7 @@ func Test_PostRunDeps(t *testing.T) {
 		for _, tc := range cases {
 			var sentInvocation multiplatform.Invocation
 
-			hooks := minimalPostRunDeps(func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }).Build()
+			hooks := reactnative.PostRunDeps{Send: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }}.Build()
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, "", []string{}, noopExecFn, nil, hooks)
 
@@ -278,7 +270,7 @@ func Test_PostRunDeps(t *testing.T) {
 		for _, tc := range cases {
 			var sentInvocation multiplatform.Invocation
 
-			hooks := minimalPostRunDeps(func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }).Build()
+			hooks := reactnative.PostRunDeps{Send: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }}.Build()
 
 			_ = reactnative.RunWithInvocationIDFn(tc.args, "", []string{}, noopExecFn, nil, hooks)
 
@@ -289,7 +281,7 @@ func Test_PostRunDeps(t *testing.T) {
 	t.Run("command is first arg when package manager has no subcommand", func(t *testing.T) {
 		var sentInvocation multiplatform.Invocation
 
-		hooks := minimalPostRunDeps(func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }).Build()
+		hooks := reactnative.PostRunDeps{Send: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }}.Build()
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"yarn"}, "", []string{}, noopExecFn, nil, hooks)
 
@@ -300,7 +292,7 @@ func Test_PostRunDeps(t *testing.T) {
 		var sentInvocation multiplatform.Invocation
 		before := time.Now()
 
-		hooks := minimalPostRunDeps(func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }).Build()
+		hooks := reactnative.PostRunDeps{Send: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil }}.Build()
 
 		_ = reactnative.RunWithInvocationIDFn([]string{"true"}, "", []string{}, noopExecFn, nil, hooks)
 

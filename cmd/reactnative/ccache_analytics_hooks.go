@@ -89,14 +89,21 @@ type PostRunDeps struct {
 // Build constructs a PostRunFn from the deps.
 func (d PostRunDeps) Build() PostRunFn {
 	return func(invocationID string, args []string, duration time.Duration, execErr error) {
-		authConfig, err := d.GetAuthConfig()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to get auth config for ccache analytics: %v\n", err)
+		var authConfig common.CacheAuthConfig
+		if d.GetAuthConfig != nil {
+			var err error
+			authConfig, err = d.GetAuthConfig()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to get auth config for ccache analytics: %v\n", err)
 
-			return
+				return
+			}
 		}
 
-		metadata := d.GetMetadata()
+		var metadata common.CacheConfigMetadata
+		if d.GetMetadata != nil {
+			metadata = d.GetMetadata()
+		}
 
 		command := parseCommand(args)
 		fullCommand := ""
