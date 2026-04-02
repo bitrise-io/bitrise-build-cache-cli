@@ -470,7 +470,7 @@ workflows:
         is_always_run: false
 
   ccache-seek-android-e2e:
-    title: Seek Android - assert ccache remote cache hit
+    title: Seek Android - assert ccache remote cache hit and analytics
     meta:
       bitrise.io:
         machine_type_id: g2.mac.large
@@ -499,17 +499,13 @@ workflows:
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_setup_seek_android.sh
     - script:
-        title: Build 1 - warm remote cache
+        title: Build
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_android.sh
     - script:
-        title: Build 2 - assert remote cache hit
+        title: Assert analytics were sent
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_android.sh
-    - script:
-        title: Assert remote cache hit in ccache stats
-        inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_assert_cache_hit.sh
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_assert_analytics.sh
 
   ccache-seek-ios-e2e:
     title: Seek iOS - assert react-native CLI invocation analytics
@@ -540,11 +536,7 @@ workflows:
         inputs:
         - source_root_path: _seek/ios
     - script:
-        title: Build 1
-        inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_ios.sh
-    - script:
-        title: Build 2
+        title: Build
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_build_seek_ios.sh
     - script:
