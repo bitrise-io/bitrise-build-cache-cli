@@ -501,7 +501,7 @@ workflows:
     - script:
         title: Activate react-native (Gradle + C++)
         inputs:
-        - content: ./bitrise-build-cache-cli activate react-native --gradle=true --xcode=false --cpp=true
+        - content: ./bitrise-build-cache-cli --debug activate react-native --gradle=true --xcode=false --cpp=true
     - script:
         title: Build
         inputs:
@@ -510,6 +510,19 @@ workflows:
             envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
             cd _seek
             ../bitrise-build-cache-cli react-native run npx react-native build-android 2>&1 | tee -a "$RN_CLI_LOG"
+    - script:
+        title: Assert ccache remote cache hit via storage helper logs
+        inputs:
+        - content: |-
+            # Stop the storage helper so logs are fully flushed before asserting
+            ./bitrise-build-cache-cli ccache storage-helper stop || true
+            LOG_DIR="$HOME/.local/state/ccache/logs"
+            if ! grep -rl '\[Get - [0-9a-f]\+\] OK took' "$LOG_DIR" 2>/dev/null | grep -q .; then
+              echo "No remote GET cache hit found in storage helper logs ❌"
+              ls -la "$LOG_DIR" 2>/dev/null || echo "Log dir not found"
+              exit 1
+            fi
+            echo "Remote GET cache hit confirmed in storage helper logs ✅"
     - script:
         title: Assert analytics were sent
         inputs:
