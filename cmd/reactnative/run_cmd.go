@@ -142,16 +142,14 @@ var ensureCcacheHelper = BuildEnsureCcacheHelperFn(
 )
 
 //nolint:gochecknoglobals
-var runInvocationID string
-
-//nolint:gochecknoglobals
 var runCmd = &cobra.Command{
-	Use:          "run",
-	Short:        "Run a process with the provided arguments",
-	Long:         `Run a process, forwarding all provided arguments directly. Use -- to separate flags for the subprocess.`,
-	SilenceUsage: true,
+	Use:                "run",
+	Short:              "Run a process with the provided arguments",
+	Long:               `Run a process, forwarding all provided arguments directly.`,
+	SilenceUsage:       true,
+	DisableFlagParsing: true,
 	RunE: func(_ *cobra.Command, args []string) error {
-		return RunWithInvocationIDFn(args, runInvocationID, os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
+		return RunWithInvocationIDFn(args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
 			cmd := exec.Command(name, cmdArgs...) //nolint:gosec
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
@@ -175,6 +173,5 @@ var runCmd = &cobra.Command{
 }
 
 func init() {
-	runCmd.Flags().StringVar(&runInvocationID, "invocation-id", "", "Invocation ID to inject into BITRISE_INVOCATION_ID (default: random UUID)")
 	reactNativeCmd.AddCommand(runCmd)
 }
