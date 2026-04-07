@@ -84,6 +84,9 @@ type PostRunDeps struct {
 	// from the BITRISE_INVOCATION_ID environment variable if set (outer context), otherwise the
 	// run's own invocation ID is used. The child ID is the pre-generated ccache invocation ID.
 	SendRelation func(ctx context.Context, parentID, childID string)
+	// CcacheInvocationID is the ccache invocation ID shared with the pre-run hook so the server's
+	// session stats and the analytics payload reference the same ID. If empty, a new UUID is generated.
+	CcacheInvocationID string
 }
 
 // Build constructs a PostRunFn from the deps.
@@ -123,9 +126,17 @@ func (d PostRunDeps) Build() PostRunFn {
 			Wrapper:        "bitrise-build-cache-cli react-native",
 		}, authConfig, metadata)
 
-		ccacheInvocationID := uuid.New().String()
+		ccacheInvocationID := d.CcacheInvocationID
+		if ccacheInvocationID == "" {
+			ccacheInvocationID = uuid.New().String()
+		}
 
-		rnSendErr := d.Send(*inv)
+		var rnSendErr error
+		if d.Send == nil {
+			rnSendErr = fmt.Errorf("analytics sender is nil")
+		} else {
+			rnSendErr = d.Send(*inv)
+		}
 		if rnSendErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", rnSendErr)
 		}
@@ -146,7 +157,7 @@ func (d PostRunDeps) Build() PostRunFn {
 }
 
 //nolint:gochecknoglobals
-var defaultPostRunFn = PostRunDeps{
+var defaultPostRunDeps = PostRunDeps{
 	GetMetadata: func() common.CacheConfigMetadata {
 		envs := utils.AllEnvs()
 		logger := log.NewLogger()
@@ -236,4 +247,4 @@ var defaultPostRunFn = PostRunDeps{
 			fmt.Fprintf(os.Stderr, "Warning: failed to register invocation relation: %v\n", err)
 		}
 	},
-}.Build()
+}

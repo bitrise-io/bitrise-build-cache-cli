@@ -549,9 +549,6 @@ workflows:
         title: Configure and install dependencies
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
-    - cocoapods-install@3:
-        inputs:
-        - source_root_path: _seek/ios
     - script:
         title: Activate react-native (Xcode)
         inputs:
@@ -590,6 +587,7 @@ workflows:
         title: Install ccache and gcc
         inputs:
         - content: |-
+            apt-get update -qq
             apt-get install -y -q gcc
             CCACHE_VERSION="4.13.2"
             curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-glibc.tar.gz" \

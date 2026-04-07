@@ -305,6 +305,16 @@ func (p *requestProcessor) handleGetSessionStats() processResult {
 	}
 }
 
+func (p *requestProcessor) handleHealthCheck() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_HEALTH_CHECK)
+	p.logger.TDebugf("%s received", statBuilder.Prefix())
+
+	return p.notifyClient(processResult{
+		Outcome:   PROCESS_REQUEST_OK,
+		CallStats: statBuilder.build(),
+	})
+}
+
 func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 	reqType, err := protocol.ReadRequest(p.reader)
 	if err != nil {
@@ -355,6 +365,11 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 
 	case protocol.RequestGetSessionStats:
 		result = p.handleGetSessionStats()
+
+		return result
+
+	case protocol.RequestHealthCheck:
+		result = p.handleHealthCheck()
 
 		return result
 

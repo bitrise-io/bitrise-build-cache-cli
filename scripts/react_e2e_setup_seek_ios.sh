@@ -13,3 +13,7 @@ EOF
 mv config.example.js config.js
 npm ci
 npm run add-example-model
+
+cd ios
+pod install
+cd ..

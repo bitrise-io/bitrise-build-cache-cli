@@ -69,8 +69,6 @@ var (
 				return fmt.Errorf("failed to create KV client: %w", err)
 			}
 
-			parentInvocationID := envs["BITRISE_INVOCATION_ID"]
-
 			ccacheStorageHelper, err := newCcacheStorageHelper(
 				config,
 				configcommon.CacheConfigMetadata{
@@ -80,7 +78,6 @@ var (
 				},
 				osProxy,
 				initialInvocationID,
-				parentInvocationID,
 				kvClient,
 			)
 			if err != nil {
@@ -174,7 +171,6 @@ func newCcacheStorageHelper(
 	metadata configcommon.CacheConfigMetadata,
 	osProxy utils.OsProxy,
 	invocationID string,
-	parentInvocationID string,
 	kvClient proxy.Client,
 ) (*ccacheStorageHelper, error) {
 	helper := &ccacheStorageHelper{
@@ -195,12 +191,6 @@ func newCcacheStorageHelper(
 	logger.TInfof("Ccache storage helper")
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
-	onShutdownFn := func(_ string, _, _ int64) {
-		if parentInvocationID != "" {
-			registerInvocationRelation(config, parentInvocationID, invocationID, logger)
-		}
-	}
-
 	helper.server, err = ccache.NewServer(
 		config,
 		metadata,
@@ -210,7 +200,6 @@ func newCcacheStorageHelper(
 			return helper.loggerFactory(helper, invocationID, config.DebugLogging)
 		},
 		invocationID,
-		onShutdownFn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create IPC server: %w", err)

@@ -20,7 +20,6 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 		mockLogger,
 		nil,
 		"my-initial-id",
-		nil,
 	)
 	require.NoError(t, err)
 

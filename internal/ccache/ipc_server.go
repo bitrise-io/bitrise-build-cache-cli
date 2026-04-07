@@ -22,7 +22,6 @@ type IpcServer struct {
 	client             Client
 	logger             log.Logger
 	loggerFactory      LoggerFactory
-	onShutdown         func(invocationID string, downloadBytes, uploadBytes int64)
 	idleTimer          *time.Timer
 	sessionState       *sessionState
 	config             ccacheconfig.Config
@@ -30,7 +29,6 @@ type IpcServer struct {
 	timerMutex         sync.Mutex
 	capabilitiesOnce   sync.Once
 	capabilitiesErr    error
-	reportOnce         sync.Once
 	activeInvocationID string
 	activeInvocationMu sync.Mutex
 }
@@ -42,7 +40,6 @@ func NewServer(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	initialInvocationID string,
-	onShutdown func(invocationID string, downloadBytes, uploadBytes int64),
 ) (*IpcServer, error) {
 	return &IpcServer{
 		config:             config,
@@ -50,7 +47,6 @@ func NewServer(
 		client:             client,
 		logger:             logger,
 		loggerFactory:      loggerFactory,
-		onShutdown:         onShutdown,
 		sessionState:       newSessionState(),
 		activeInvocationID: initialInvocationID,
 	}, nil
@@ -72,19 +68,6 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	<-cancellableCtx.Done()                 // wait for context cancellation
 	s.logger.TInfof("Server shutting down") // CI: asserted by cache-ccache-test workflow
 	s.listener.Close()
-
-	// If shutdown was triggered by idle timeout (not by a STOP request), fire the final report now.
-	// resetAndGet must be called inside the mutex so that bytes and activeInvocationID are captured
-	// atomically — a concurrent SetInvocationID goroutine must not be able to interleave between them.
-	s.activeInvocationMu.Lock()
-	dl, ul := s.sessionState.resetAndGet()
-	activeID := s.activeInvocationID
-	s.activeInvocationMu.Unlock()
-	s.reportOnce.Do(func() {
-		if s.onShutdown != nil {
-			s.onShutdown(activeID, dl, ul)
-		}
-	})
 
 	return nil
 }
@@ -179,17 +162,6 @@ func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
 }
 
 func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn context.CancelFunc) {
-	s.activeInvocationMu.Lock()
-	dl, ul := s.sessionState.resetAndGet()
-	activeID := s.activeInvocationID
-	s.activeInvocationMu.Unlock()
-
-	s.reportOnce.Do(func() {
-		if s.onShutdown != nil {
-			s.onShutdown(activeID, dl, ul)
-		}
-	})
-
 	if err := protocol.WriteOK(conn); err != nil {
 		s.logger.TErrorf("[%s] Failed to write STOP response: %v", conID, err)
 	}

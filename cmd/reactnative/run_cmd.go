@@ -61,11 +61,19 @@ type EnsureCcacheHelperDeps struct {
 	StartHelper func() error
 	// AwaitReady polls until the socket is listening or a timeout elapses.
 	AwaitReady func(string) bool
+	// HealthCheck, if non-nil, sends a health-check request to confirm the server's request loop is ready.
+	HealthCheck func(ctx context.Context, socketPath string) error
+	// SendInvocationID, if non-nil, notifies the server of the new invocation ID so it can reset
+	// session stats and set up per-invocation logging.
+	SendInvocationID func(ctx context.Context, socketPath, parentID, childID string) error
 }
 
-// Build returns a function that ensures the ccache storage helper is running.
-func (d EnsureCcacheHelperDeps) Build() func() {
-	return func() {
+// Build returns a function that ensures the ccache storage helper is running, then sends a
+// health check and SetInvocationID to the server so each run starts with a clean session.
+// The returned function takes the react-native invocation ID and a pre-generated ccache
+// invocation ID; both are passed to the storage helper.
+func (d EnsureCcacheHelperDeps) Build() func(rnInvocationID, ccacheInvocationID string) {
+	return func(rnInvocationID, ccacheInvocationID string) {
 		socketPath, err := d.SocketPath()
 		if err != nil {
 			return // ccache not configured, skip silently
@@ -79,6 +87,18 @@ func (d EnsureCcacheHelperDeps) Build() func() {
 			}
 			if !d.AwaitReady(socketPath) {
 				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper did not become ready\n")
+			}
+		}
+
+		if d.HealthCheck != nil {
+			if err := d.HealthCheck(context.Background(), socketPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper health check failed: %v\n", err)
+			}
+		}
+
+		if d.SendInvocationID != nil {
+			if err := d.SendInvocationID(context.Background(), socketPath, rnInvocationID, ccacheInvocationID); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to send invocation ID to storage helper: %v\n", err)
 			}
 		}
 	}
@@ -139,9 +159,11 @@ var ensureCcacheHelper = EnsureCcacheHelperDeps{
 
 		return config.IPCEndpoint, nil
 	},
-	IsListening: ccacheipc.IsListening,
-	StartHelper: startStorageHelper,
-	AwaitReady:  awaitListening,
+	IsListening:      ccacheipc.IsListening,
+	StartHelper:      startStorageHelper,
+	AwaitReady:       awaitListening,
+	HealthCheck:      ccacheipc.SendHealthCheck,
+	SendInvocationID: ccacheipc.SendInvocationID,
 }.Build()
 
 //nolint:gochecknoglobals
@@ -152,6 +174,10 @@ var runCmd = &cobra.Command{
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
 	RunE: func(_ *cobra.Command, args []string) error {
+		ccacheInvocationID := uuid.New().String()
+		deps := defaultPostRunDeps
+		deps.CcacheInvocationID = ccacheInvocationID
+
 		return RunWithInvocationIDFn(args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
 			cmd := exec.Command(name, cmdArgs...) //nolint:gosec
 			cmd.Stdin = os.Stdin
@@ -168,10 +194,10 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, func(_ string) {
-			ensureCcacheHelper()
+		}, func(rnInvocationID string) {
+			ensureCcacheHelper(rnInvocationID, ccacheInvocationID)
 			zeroCcacheStats()
-		}, defaultPostRunFn)
+		}, deps.Build())
 	},
 }
 
