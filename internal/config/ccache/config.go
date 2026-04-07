@@ -44,6 +44,7 @@ type Config struct {
 	IdleTimeout        time.Duration          `json:"idleTimeout,omitempty"`
 	PushEnabled        bool                   `json:"pushEnabled"`
 	Enabled            bool                   `json:"enabled"`
+	DebugLogging       bool                   `json:"debugLogging,omitempty"`
 	BuildCacheEndpoint string                 `json:"buildCacheEndpoint,omitempty"`
 	AuthConfig         common.CacheAuthConfig `json:"authConfig,omitempty"`
 }

@@ -7,6 +7,7 @@ app:
   envs:
   - SEEK_URL: git@github.com:inaturalist/SeekReactNative.git
   - SEEK_COMMIT: 036d8a6c3eb6ea15482e5afe6b7212028088cd21
+  - SEEK_TAG: v2.17.9-412
   - NOTESNOOK_URL: git@github.com:streetwriters/notesnook.git
   - NOTESNOOK_COMMIT: 2b4ec5b03bf2f48a74c0eb45dcaa3f208025c919
 
@@ -467,6 +468,135 @@ workflows:
         - emoji: ':cache:'
         - webhook_url: $SLACK_WEBHOOK_ALERTS
         is_always_run: false
+
+  react-seek-android-e2e:
+    title: Seek Android - assert analytics and ccache remote cache hit
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    steps:
+    - activate-ssh-key@4: {}
+    - git-clone@8: {}
+    - script:
+        title: Build CLI
+        inputs:
+        - content: go build
+    - script:
+        title: Clone Seek app
+        inputs:
+        - content: git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
+    - script:
+        title: Configure and install dependencies
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_android.sh
+    - script:
+        title: Install ccache 4.13.2
+        inputs:
+        - content: |-
+            CCACHE_VERSION="4.13.2"
+            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-darwin.tar.gz" \
+              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-darwin/ccache"
+            ccache --version
+    - script:
+        title: Activate react-native (Gradle + C++)
+        inputs:
+        - content: ./bitrise-build-cache-cli --debug activate react-native --gradle=true --xcode=false --cpp=true
+    - script:
+        title: Build
+        inputs:
+        - content: |-
+            export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
+            envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
+            cd _seek
+            ../bitrise-build-cache-cli react-native run npx react-native build-android 2>&1 | tee -a "$RN_CLI_LOG"
+    - script:
+        title: Assert ccache GET calls via storage helper logs
+        inputs:
+        - content: |-
+            # Stop the storage helper so logs are fully flushed before asserting
+            ./bitrise-build-cache-cli ccache storage-helper stop || true
+            LOG_DIR="$HOME/.local/state/ccache/logs"
+            if ! grep -rl '\[Get - [0-9a-f]\+\]' "$LOG_DIR" 2>/dev/null | grep -q .; then
+              echo "No remote GET calls found in storage helper logs ❌"
+              ls -la "$LOG_DIR" 2>/dev/null || echo "Log dir not found"
+              exit 1
+            fi
+            echo "Remote GET calls confirmed in storage helper logs ✅"
+    - script:
+        title: Assert analytics were sent
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+
+  react-seek-ios-e2e:
+    title: Seek iOS - assert react-native CLI invocation analytics
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    steps:
+    - activate-ssh-key@4: {}
+    - git-clone@8: {}
+    - script:
+        title: Build CLI
+        inputs:
+        - content: go build
+    - script:
+        title: Clone Seek app
+        inputs:
+        - content: git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
+    - script:
+        title: Configure and install dependencies
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
+    - script:
+        title: Activate react-native (Xcode)
+        inputs:
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
+    - script:
+        title: Build
+        inputs:
+        - content: |-
+            export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
+            envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
+            cd _seek
+            ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
+    - script:
+        title: Assert CLI invocation analytics were sent
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+
+
+  ccache-storage-helper-test:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+    - activate-ssh-key@4: {}
+    - git-clone@8: {}
+    - script:
+        title: Build CLI
+        inputs:
+        - content: go build
+    - script:
+        title: Activate ccache remote storage
+        inputs:
+        - content: ./bitrise-build-cache-cli activate c++
+    - script:
+        title: Install ccache and gcc
+        inputs:
+        - content: |-
+            apt-get update -qq
+            apt-get install -y -q gcc
+            CCACHE_VERSION="4.13.2"
+            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-glibc.tar.gz" \
+              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-linux-x86_64-glibc/ccache"
+            ccache --version
+    - script:
+        title: Assert remote cache hit via ccache storage helper
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_test.sh
 
 step_bundles:
   # -------------------------------------------------------------------------------

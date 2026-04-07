@@ -17,6 +17,7 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
@@ -122,19 +123,24 @@ func BuildCppActivationFn(
 	}
 }
 
-// BuildStartStorageHelperFn constructs the storage helper start function with injectable executable lookup and process start.
-func BuildStartStorageHelperFn(
-	executableFn func() (string, error),
-	startProcessFn func(name string, args ...string) (int, error),
-) func(context.Context, log.Logger) error {
+// StartStorageHelperDeps holds the injectable dependencies for building a start-storage-helper function.
+type StartStorageHelperDeps struct {
+	// Executable returns the path to the current binary.
+	Executable func() (string, error)
+	// StartProcess launches a detached process and returns its PID.
+	StartProcess func(name string, args ...string) (int, error)
+}
+
+// Build returns a function that starts the ccache storage helper.
+func (d StartStorageHelperDeps) Build() func(context.Context, log.Logger) error {
 	return func(_ context.Context, logger log.Logger) error {
-		binary, err := executableFn()
+		binary, err := d.Executable()
 		if err != nil {
 			return fmt.Errorf("get executable path: %w", err)
 		}
 		// Use a non-context-aware start so the helper is not killed
 		// when the activation command's context is cancelled.
-		pid, err := startProcessFn(binary, "ccache", "storage-helper", "start")
+		pid, err := d.StartProcess(binary, "ccache", "storage-helper", "start")
 		if err != nil {
 			return fmt.Errorf("start ccache storage helper: %w", err)
 		}
@@ -151,9 +157,9 @@ var (
 )
 
 //nolint:gochecknoglobals
-var defaultStartStorageHelperFn = BuildStartStorageHelperFn(
-	os.Executable,
-	func(name string, args ...string) (int, error) {
+var defaultStartStorageHelperFn = StartStorageHelperDeps{
+	Executable: os.Executable,
+	StartProcess: func(name string, args ...string) (int, error) {
 		cmd := exec.Command(name, args...) //nolint:gosec // intentionally detached: the helper must outlive this command
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -163,7 +169,7 @@ var defaultStartStorageHelperFn = BuildStartStorageHelperFn(
 
 		return cmd.Process.Pid, nil
 	},
-)
+}.Build()
 
 // ActivateReactNativeCmdFn activates build cache for the requested sub-systems.
 // Each sub-system activation is provided as an injectable function to allow testing.
@@ -200,6 +206,15 @@ func ActivateReactNativeCmdFn(
 		if err := startStorageHelperFn(ctx, logger); err != nil {
 			return fmt.Errorf("start ccache storage helper: %w", err)
 		}
+	}
+
+	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(utils.AllEnvs())
+	if err != nil {
+		return fmt.Errorf("read auth config for multiplatform analytics: %w", err)
+	}
+	cfg := multiplatformconfig.Config{AuthConfig: authConfig}
+	if err := cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
+		return fmt.Errorf("save multiplatform analytics config: %w", err)
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache for React Native activated")

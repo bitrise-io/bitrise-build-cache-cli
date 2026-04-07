@@ -51,6 +51,8 @@ var (
 				return fmt.Errorf("read ccache config: %w", err)
 			}
 
+			config.DebugLogging = config.DebugLogging || common.IsDebugLogMode
+
 			envs := utils.AllEnvs()
 			kvClient, err := createKVClient(
 				cmd.Context(),
@@ -67,8 +69,6 @@ var (
 				return fmt.Errorf("failed to create KV client: %w", err)
 			}
 
-			parentInvocationID := envs["BITRISE_INVOCATION_ID"]
-
 			ccacheStorageHelper, err := newCcacheStorageHelper(
 				config,
 				configcommon.CacheConfigMetadata{
@@ -78,7 +78,6 @@ var (
 				},
 				osProxy,
 				initialInvocationID,
-				parentInvocationID,
 				kvClient,
 			)
 			if err != nil {
@@ -172,7 +171,6 @@ func newCcacheStorageHelper(
 	metadata configcommon.CacheConfigMetadata,
 	osProxy utils.OsProxy,
 	invocationID string,
-	parentInvocationID string,
 	kvClient proxy.Client,
 ) (*ccacheStorageHelper, error) {
 	helper := &ccacheStorageHelper{
@@ -182,7 +180,7 @@ func newCcacheStorageHelper(
 	}
 
 	// Set up logger early so that any errors can be logged to file instead of just stderr
-	logger, err := helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
+	logger, err := helper.loggerFactory(helper, invocationID, config.DebugLogging)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial logger: %w", err)
 	}
@@ -193,27 +191,15 @@ func newCcacheStorageHelper(
 	logger.TInfof("Ccache storage helper")
 	logger.TInfof("socketPath: %s", config.IPCEndpoint)
 
-	// If a parent invocation ID is present (e.g. from BITRISE_INVOCATION_ID), register the
-	// initial storage-helper invocation as a child of that parent.
-	if parentInvocationID != "" {
-		registerInvocationRelation(config, parentInvocationID, invocationID, logger)
-	}
-
-	onChildFn := func(_, parentID, childID string, _, _ int64) {
-		registerInvocationRelation(config, parentID, childID, logger)
-	}
-
 	helper.server, err = ccache.NewServer(
 		config,
 		metadata,
 		kvClient,
 		helper.logger,
 		func(invocationID string) (log.Logger, error) {
-			return helper.loggerFactory(helper, invocationID, common.IsDebugLogMode)
+			return helper.loggerFactory(helper, invocationID, config.DebugLogging)
 		},
 		invocationID,
-		onChildFn,
-		nil, // stats collected separately via collect-stats command
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create IPC server: %w", err)

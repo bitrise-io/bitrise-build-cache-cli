@@ -10,8 +10,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,8 +76,6 @@ func startTestServer(
 	socketPath string,
 	client Client,
 	loggerFactory LoggerFactory,
-	onNewInvocationPair func(prevInvocationID, parentID, childID string, dl, ul int64),
-	onShutdown func(invocationID string, dl, ul int64),
 ) (*IpcServer, context.CancelFunc, <-chan error) {
 	t.Helper()
 	cfg := integrationConfig(socketPath)
@@ -90,8 +86,6 @@ func startTestServer(
 		noOpLogger(),
 		loggerFactory,
 		"initial-id",
-		onNewInvocationPair,
-		onShutdown,
 	)
 	require.NoError(t, err)
 
@@ -185,260 +179,6 @@ func sendGetAndReadValue(t *testing.T, socketPath string, key []byte) (byte, []b
 	return resp, data
 }
 
-func Test_IpcServer_Integration_SetInvocationID_fires_onNewInvocationPair(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	type invocationCall struct {
-		prevID   string
-		parentID string
-		childID  string
-		dl       int64
-		ul       int64
-	}
-
-	var mu sync.Mutex
-	var calls []invocationCall
-	done := make(chan struct{})
-
-	onChild := func(prevID, parentID, childID string, dl, ul int64) {
-		mu.Lock()
-		calls = append(calls, invocationCall{prevID, parentID, childID, dl, ul})
-		mu.Unlock()
-		close(done)
-	}
-
-	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, onChild, nil)
-	defer cancel()
-
-	resp := sendRequest(t, socketPath, buildIntegrationSetInvocationIDRequest("parent-1", "child-1"))
-	assert.Equal(t, byte(protocol.ResponseOK), resp)
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("onNewInvocationPair was not called within timeout")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	require.Len(t, calls, 1)
-	// prevID is the initial invocation ID active before the first SetInvocationID
-	assert.Equal(t, "initial-id", calls[0].prevID)
-	assert.Equal(t, "parent-1", calls[0].parentID)
-	assert.Equal(t, "child-1", calls[0].childID)
-	assert.Equal(t, int64(0), calls[0].dl)
-	assert.Equal(t, int64(0), calls[0].ul)
-
-	cancel()
-	<-serverDone
-}
-
-func Test_IpcServer_Integration_SetInvocationID_reports_accumulated_bytes(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	const downloadData = "hello ccache"
-	client := noOpClient()
-	client.DownloadStreamFunc = func(_ context.Context, w io.Writer, _ string) error {
-		_, err := w.Write([]byte(downloadData))
-
-		return err
-	}
-
-	type invocationCall struct {
-		dl int64
-		ul int64
-	}
-
-	var mu sync.Mutex
-	var calls []invocationCall
-	childCalled := make(chan struct{})
-
-	onChild := func(_, _, _ string, dl, ul int64) {
-		mu.Lock()
-		calls = append(calls, invocationCall{dl, ul})
-		mu.Unlock()
-		close(childCalled)
-	}
-
-	_, cancel, serverDone := startTestServer(t, socketPath, client, nil, onChild, nil)
-	defer cancel()
-
-	// Perform a GET to accumulate download bytes
-	resp, data := sendGetAndReadValue(t, socketPath, []byte{0x01})
-	assert.Equal(t, byte(protocol.ResponseOK), resp)
-	assert.Equal(t, []byte(downloadData), data)
-
-	// Now send SetInvocationID — should trigger callback with accumulated bytes
-	resp = sendRequest(t, socketPath, buildIntegrationSetInvocationIDRequest("parent-1", "child-1"))
-	assert.Equal(t, byte(protocol.ResponseOK), resp)
-
-	select {
-	case <-childCalled:
-	case <-time.After(2 * time.Second):
-		t.Fatal("onNewInvocationPair was not called within timeout")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	require.Len(t, calls, 1)
-	assert.Equal(t, int64(len(downloadData)), calls[0].dl)
-	assert.Equal(t, int64(0), calls[0].ul)
-
-	cancel()
-	<-serverDone
-}
-
-func Test_IpcServer_Integration_SendStop_fires_onShutdown_synchronously(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	var shutdownCalled atomic.Bool
-	var capturedID string
-	shutdownDone := make(chan struct{})
-
-	onShutdown := func(invocationID string, _, _ int64) {
-		capturedID = invocationID
-		shutdownCalled.Store(true)
-		close(shutdownDone)
-	}
-
-	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, nil, onShutdown)
-	defer cancel()
-
-	err := SendStop(context.Background(), socketPath)
-	require.NoError(t, err)
-
-	// SendStop blocks until server ACKs, and ACK is sent after onShutdown completes.
-	// So by the time SendStop returns, shutdownCalled must already be true.
-	assert.True(t, shutdownCalled.Load(), "onShutdown should have been called before SendStop returns")
-
-	select {
-	case <-shutdownDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("onShutdown was not called")
-	}
-
-	// No SetInvocationID was sent, so the initial ID should be reported.
-	assert.Equal(t, "initial-id", capturedID)
-
-	// Server should shut down cleanly
-	select {
-	case err := <-serverDone:
-		assert.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("server did not shut down after STOP")
-	}
-}
-
-func Test_IpcServer_Integration_IdleTimeout_fires_onShutdown(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	var capturedID string
-	shutdownCalled := make(chan struct{})
-
-	onShutdown := func(invocationID string, _, _ int64) {
-		capturedID = invocationID
-		close(shutdownCalled)
-	}
-
-	cfg := ccacheconfig.Config{
-		IPCEndpoint: socketPath,
-		PushEnabled: true,
-		IdleTimeout: 100 * time.Millisecond,
-	}
-
-	server, err := NewServer(
-		cfg,
-		configcommon.CacheConfigMetadata{},
-		noOpClient(),
-		noOpLogger(),
-		nil,
-		"initial-id",
-		nil,
-		onShutdown,
-	)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	serverDone := make(chan error, 1)
-
-	go func() {
-		serverDone <- server.Run(ctx)
-	}()
-
-	waitForSocket(t, socketPath, 2*time.Second)
-
-	// Don't send any requests — let idle timeout fire
-	select {
-	case <-shutdownCalled:
-	case <-time.After(2 * time.Second):
-		t.Fatal("onShutdown was not called by idle timeout")
-	}
-
-	// No SetInvocationID was sent, so the initial ID should be reported.
-	assert.Equal(t, "initial-id", capturedID)
-
-	select {
-	case err := <-serverDone:
-		assert.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("server did not shut down after idle timeout")
-	}
-}
-
-func Test_IpcServer_Integration_STOP_then_idle_timeout_onShutdown_called_once(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	var shutdownCount atomic.Int32
-
-	onShutdown := func(_ string, _, _ int64) {
-		shutdownCount.Add(1)
-	}
-
-	cfg := ccacheconfig.Config{
-		IPCEndpoint: socketPath,
-		PushEnabled: true,
-		IdleTimeout: 100 * time.Millisecond,
-	}
-
-	server, err := NewServer(
-		cfg,
-		configcommon.CacheConfigMetadata{},
-		noOpClient(),
-		noOpLogger(),
-		nil,
-		"initial-id",
-		nil,
-		onShutdown,
-	)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	serverDone := make(chan error, 1)
-
-	go func() {
-		serverDone <- server.Run(ctx)
-	}()
-
-	waitForSocket(t, socketPath, 2*time.Second)
-
-	// Send STOP — fires onShutdown
-	err = SendStop(context.Background(), socketPath)
-	require.NoError(t, err)
-
-	// Wait for server to shut down, then wait past the idle timeout window
-	select {
-	case <-serverDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("server did not shut down after STOP")
-	}
-
-	time.Sleep(200 * time.Millisecond) // let idle timeout window pass
-
-	assert.Equal(t, int32(1), shutdownCount.Load(), "onShutdown should be called exactly once")
-}
-
 // buildIntegrationStopRequest builds a STOP protocol message.
 func buildIntegrationStopRequest() []byte {
 	return []byte{protocol.RequestStop}
@@ -470,98 +210,6 @@ func sendRequestsOnConn(t *testing.T, socketPath string, requests ...[]byte) []b
 	return responses
 }
 
-func Test_IpcServer_Integration_sequential_SetInvocationID_prevID_chain(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	type call struct {
-		prevID  string
-		childID string
-	}
-
-	calls := make(chan call, 2)
-
-	onChild := func(prevID, _, childID string, _, _ int64) {
-		calls <- call{prevID, childID}
-	}
-
-	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, onChild, nil)
-	defer cancel()
-
-	// First SetInvocationID
-	resp := sendRequest(t, socketPath, buildIntegrationSetInvocationIDRequest("parent", "child-1"))
-	assert.Equal(t, byte(protocol.ResponseOK), resp)
-
-	var first call
-	select {
-	case first = <-calls:
-	case <-time.After(2 * time.Second):
-		t.Fatal("first onNewInvocationPair not called")
-	}
-
-	// Second SetInvocationID — waiting for the first callback ensures activeInvocationID
-	// has been updated to "child-1" before we send the second request.
-	resp = sendRequest(t, socketPath, buildIntegrationSetInvocationIDRequest("parent", "child-2"))
-	assert.Equal(t, byte(protocol.ResponseOK), resp)
-
-	var second call
-	select {
-	case second = <-calls:
-	case <-time.After(2 * time.Second):
-		t.Fatal("second onNewInvocationPair not called")
-	}
-
-	assert.Equal(t, "initial-id", first.prevID)
-	assert.Equal(t, "child-1", first.childID)
-	assert.Equal(t, "child-1", second.prevID)
-	assert.Equal(t, "child-2", second.childID)
-
-	cancel()
-	<-serverDone
-}
-
-func Test_IpcServer_Integration_onShutdown_receives_last_active_id(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
-
-	childCalled := make(chan struct{})
-	onChild := func(_, _, _ string, _, _ int64) {
-		close(childCalled)
-	}
-
-	var capturedID string
-	shutdownDone := make(chan struct{})
-	onShutdown := func(invocationID string, _, _ int64) {
-		capturedID = invocationID
-		close(shutdownDone)
-	}
-
-	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, onChild, onShutdown)
-	defer cancel()
-
-	resp := sendRequest(t, socketPath, buildIntegrationSetInvocationIDRequest("parent", "child-1"))
-	assert.Equal(t, byte(protocol.ResponseOK), resp)
-
-	// Wait for the callback — this guarantees activeInvocationID is now "child-1"
-	// before we send STOP on a new connection.
-	select {
-	case <-childCalled:
-	case <-time.After(2 * time.Second):
-		t.Fatal("onNewInvocationPair not called")
-	}
-
-	err := SendStop(context.Background(), socketPath)
-	require.NoError(t, err)
-
-	select {
-	case <-shutdownDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("onShutdown not called")
-	}
-
-	assert.Equal(t, "child-1", capturedID)
-
-	<-serverDone
-}
-
 func Test_IpcServer_Integration_GetSessionStats_returns_accumulated_bytes(t *testing.T) {
 	socketPath := integrationTempSocket(t, "s.sock")
 
@@ -573,7 +221,7 @@ func Test_IpcServer_Integration_GetSessionStats_returns_accumulated_bytes(t *tes
 		return err
 	}
 
-	_, cancel, serverDone := startTestServer(t, socketPath, client, nil, nil, nil)
+	_, cancel, serverDone := startTestServer(t, socketPath, client, nil)
 	defer cancel()
 
 	// Accumulate download bytes via a GET
@@ -600,7 +248,7 @@ func Test_IpcServer_Integration_GetSessionStats_returns_accumulated_bytes(t *tes
 func Test_IpcServer_Integration_GetSessionStats_zero_when_no_activity(t *testing.T) {
 	socketPath := integrationTempSocket(t, "s.sock")
 
-	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, nil, nil)
+	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil)
 	defer cancel()
 
 	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
@@ -612,38 +260,40 @@ func Test_IpcServer_Integration_GetSessionStats_zero_when_no_activity(t *testing
 	<-serverDone
 }
 
-func Test_IpcServer_Integration_activeID_updated_when_onNewInvocationPair_nil(t *testing.T) {
-	socketPath := integrationTempSocket(t, "s.sock")
+func Test_IpcServer_Integration_HealthCheck_returns_OK(t *testing.T) {
+	socketPath := integrationTempSocket(t, "hc.sock")
 
-	var capturedID string
-	shutdownDone := make(chan struct{})
-	onShutdown := func(invocationID string, _, _ int64) {
-		capturedID = invocationID
-		close(shutdownDone)
-	}
-
-	// onNewInvocationPair is nil — activeInvocationID must still be updated on SetInvocationID
-	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil, nil, onShutdown)
+	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil)
 	defer cancel()
 
-	// Send both requests on the same connection so they are processed sequentially
-	// by the same goroutine. This guarantees the activeInvocationID update from
-	// SetInvocationID happens before the STOP handler reads it, without relying on
-	// a callback or a sleep for synchronization.
-	resps := sendRequestsOnConn(t, socketPath,
-		buildIntegrationSetInvocationIDRequest("parent", "child-1"),
-		buildIntegrationStopRequest(),
-	)
-	assert.Equal(t, byte(protocol.ResponseOK), resps[0])
-	assert.Equal(t, byte(protocol.ResponseOK), resps[1])
+	err := SendHealthCheck(context.Background(), socketPath)
+	require.NoError(t, err)
 
+	cancel()
+	<-serverDone
+}
+
+func Test_IpcServer_Integration_Stop_shuts_down_server(t *testing.T) {
+	socketPath := integrationTempSocket(t, "stop.sock")
+
+	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil)
+	defer cancel()
+
+	// Mirrors what stopStorageHelperCmd does: get stats then stop.
+	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), dl)
+	assert.Equal(t, int64(0), ul)
+
+	require.NoError(t, SendStop(context.Background(), socketPath))
+
+	// Server should have shut down.
 	select {
-	case <-shutdownDone:
+	case serverErr := <-serverDone:
+		assert.NoError(t, serverErr)
 	case <-time.After(2 * time.Second):
-		t.Fatal("onShutdown not called")
+		t.Fatal("server did not shut down after SendStop")
 	}
 
-	assert.Equal(t, "child-1", capturedID)
-
-	<-serverDone
+	assert.False(t, IsListening(socketPath), "socket should no longer be listening after stop")
 }

@@ -105,6 +105,7 @@ func (p *requestProcessor) keyToPath(key []byte) string {
 }
 
 func (p *requestProcessor) logCallStats(result processResult) {
+	// CI: "[Get - <hash>] OK took Xms" asserted by cache-ccache-test workflow (requires --debug)
 	p.logger.TDebugf("%s took %s", result.Log(), time.Since(result.CallStats.start))
 }
 
@@ -261,7 +262,7 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 		}
 	}
 
-	p.logger.TDebugf("[SetInvocationID] parent=%s child=%s", parentID, childID)
+	p.logger.TDebugf("[SetInvocationID] parent=%s child=%s", parentID, childID) // CI: asserted by cache-ccache-test workflow (requires --debug)
 
 	if p.loggerFactory != nil {
 		newLogger, logErr := p.loggerFactory(childID)
@@ -302,6 +303,16 @@ func (p *requestProcessor) handleGetSessionStats() processResult {
 		Outcome:   PROCESS_REQUEST_OK,
 		CallStats: statBuilder.build(),
 	}
+}
+
+func (p *requestProcessor) handleHealthCheck() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_HEALTH_CHECK)
+	p.logger.TDebugf("%s received", statBuilder.Prefix())
+
+	return p.notifyClient(processResult{
+		Outcome:   PROCESS_REQUEST_OK,
+		CallStats: statBuilder.build(),
+	})
 }
 
 func (p *requestProcessor) processRequest(ctx context.Context) processResult {
@@ -354,6 +365,11 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 
 	case protocol.RequestGetSessionStats:
 		result = p.handleGetSessionStats()
+
+		return result
+
+	case protocol.RequestHealthCheck:
+		result = p.handleHealthCheck()
 
 		return result
 

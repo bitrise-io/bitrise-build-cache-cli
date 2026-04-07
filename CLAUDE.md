@@ -78,6 +78,19 @@ The ccache IPC proxy (`internal/ccache/`) implements a binary protocol between c
 - `sessionState` uses `atomic.Int64` for hit/miss/byte counters
 - `keyToPath` supports layouts: `""` or `"flat"` (hex), `"subdirs"` (`ccache/1-xx/rest`), `"bazel"` (`ac/<64hex>`)
 
+#### Important log lines asserted by CI
+
+The `cache-ccache-test` workflow in `gradle-plugins/bitrise.yml` asserts on the following log lines written to `~/.local/state/ccache/logs/ccache-<id>.log`. **Do not change their text without updating the assertions.**
+
+| Log line (exact pattern) | Level | File | What it means |
+|---|---|---|---|
+| `Server listening on` | Info | `ipc_server.go:Run` | Storage helper started and is accepting connections |
+| `[SetInvocationID] parent=` | Debug | `request_processor.go:handleSetInvocationID` | Invocation ID handshake succeeded (requires `--debug` flag) |
+| `Server shutting down` | Info | `ipc_server.go:Run` | Storage helper stopped cleanly |
+| `[Get - <hex>] OK took` | Debug | `request_processor.go:logCallStats` | A ccache GET hit (remote cache hit) |
+
+These are annotated with `// CI: asserted by cache-ccache-test workflow` in the source.
+
 ## Benchmark Phasing
 
 Benchmark phasing allows measuring build performance with and without cache. The phase is queried from the Bitrise API during activation and affects both Gradle and Xcode builds.
@@ -101,6 +114,14 @@ The file I/O is in `internal/config/common/benchmark.go` (`WriteBenchmarkPhaseFi
 **Xcode flow:** `ApplyBenchmarkPhase()` in `internal/config/xcelerate/benchmark.go` processes the phase result, exports the env var, writes the file, and disables `BuildCacheEnabled` on baseline. Called from `NewConfig()` in `config.go`. The xcodebuild wrapper (`cmd/xcode/xcodebuild.go`) reads the phase from the env var (with file fallback) and includes it in the analytics invocation via `CacheConfigMetadata.BenchmarkPhase`.
 
 **Note:** The benchmark phase is intentionally NOT stored in the xcelerate config file (`~/.bitrise-xcelerate/config.json`) — only in the env var and the benchmark phase file, matching the Gradle approach.
+
+## Go Version
+
+Keep the `go` directive in `go.mod` at **1.24**. Do not bump it to 1.25 or later. This is a hard requirement imposed by the step libraries that depend on this CLI — they need Go 1.24 compatibility. When running `go mod tidy` or updating dependencies, pin any transitive packages that would require Go 1.25+ (typically `golang.org/x/{net,sys,text,tools}` and `google.golang.org/genproto`) to versions that are compatible with Go 1.24.
+
+## Bitrise Workflow Scripts
+
+Inline script steps directly in the `bitrise.yml` / `bitrise_rn_config/bitrise.yml` files when the content is short. Extract to a file under `scripts/` only when the script body exceeds ~10 lines.
 
 ## Linting
 

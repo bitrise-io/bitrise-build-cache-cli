@@ -20,12 +20,14 @@ import (
 type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunWithInvocationIDFn is the testable core of the run command. It injects a BITRISE_INVOCATION_ID
-// into environ and delegates execution to execFn. If preRunFn is non-nil, it is called with the
-// generated invocation ID immediately before execution (e.g. to notify the storage helper and zero
-// ccache stats). If postRunFn is non-nil, it is called after the command completes with the
-// invocation ID, args, duration, and any exec error.
-func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, preRunFn func(string), postRunFn PostRunFn) error {
-	invocationID := uuid.New().String()
+// into environ and delegates execution to execFn. If invocationID is empty, a random UUID is used.
+// If preRunFn is non-nil, it is called with the invocation ID immediately before execution (e.g. to
+// ensure the storage helper is running and zero ccache stats). If postRunFn is non-nil, it is called
+// after the command completes with the invocation ID, args, duration, and any exec error.
+func RunWithInvocationIDFn(args []string, invocationID string, environ []string, execFn ExecFunc, preRunFn func(string), postRunFn PostRunFn) error {
+	if invocationID == "" {
+		invocationID = uuid.New().String()
+	}
 	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
 
 	if len(args) == 0 {
@@ -49,41 +51,55 @@ func RunWithInvocationIDFn(args []string, environ []string, execFn ExecFunc, pre
 	return execErr
 }
 
-// BuildNotifyCcacheHelperFn constructs a notifyCcacheHelper function with injectable dependencies.
-// socketPathFn returns the IPC socket path, or an error if ccache is not configured (silently skipped).
-// isListeningFn checks whether the socket has an active listener.
-// startHelperFn launches the storage helper as a background process.
-// awaitReadyFn polls until the socket is listening or a timeout elapses.
-// sendInvocationIDFn sends the parent→child invocation ID pair over the socket.
-func BuildNotifyCcacheHelperFn(
-	socketPathFn func() (string, error),
-	isListeningFn func(string) bool,
-	startHelperFn func() error,
-	awaitReadyFn func(string) bool,
-	sendInvocationIDFn func(socketPath, parentID, childID string) error,
-) func(string) {
-	return func(parentID string) {
-		socketPath, err := socketPathFn()
+// EnsureCcacheHelperDeps holds the injectable dependencies for building an ensure-ccache-helper function.
+type EnsureCcacheHelperDeps struct {
+	// SocketPath returns the IPC socket path, or an error if ccache is not configured (silently skipped).
+	SocketPath func() (string, error)
+	// IsListening checks whether the socket has an active listener.
+	IsListening func(string) bool
+	// StartHelper launches the storage helper as a background process.
+	StartHelper func() error
+	// AwaitReady polls until the socket is listening or a timeout elapses.
+	AwaitReady func(string) bool
+	// HealthCheck, if non-nil, sends a health-check request to confirm the server's request loop is ready.
+	HealthCheck func(ctx context.Context, socketPath string) error
+	// SendInvocationID, if non-nil, notifies the server of the new invocation ID so it can reset
+	// session stats and set up per-invocation logging.
+	SendInvocationID func(ctx context.Context, socketPath, parentID, childID string) error
+}
+
+// Build returns a function that ensures the ccache storage helper is running, then sends a
+// health check and SetInvocationID to the server so each run starts with a clean session.
+// The returned function takes the react-native invocation ID and a pre-generated ccache
+// invocation ID; both are passed to the storage helper.
+func (d EnsureCcacheHelperDeps) Build() func(rnInvocationID, ccacheInvocationID string) {
+	return func(rnInvocationID, ccacheInvocationID string) {
+		socketPath, err := d.SocketPath()
 		if err != nil {
 			return // ccache not configured, skip silently
 		}
 
-		if !isListeningFn(socketPath) {
-			if err := startHelperFn(); err != nil {
+		if !d.IsListening(socketPath) {
+			if err := d.StartHelper(); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to start ccache storage helper: %v\n", err)
 
 				return
 			}
-			if !awaitReadyFn(socketPath) {
+			if !d.AwaitReady(socketPath) {
 				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper did not become ready\n")
-
-				return
 			}
 		}
 
-		childID := uuid.New().String()
-		if err := sendInvocationIDFn(socketPath, parentID, childID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: ccache helper notification failed: %v\n", err)
+		if d.HealthCheck != nil {
+			if err := d.HealthCheck(context.Background(), socketPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: ccache storage helper health check failed: %v\n", err)
+			}
+		}
+
+		if d.SendInvocationID != nil {
+			if err := d.SendInvocationID(context.Background(), socketPath, rnInvocationID, ccacheInvocationID); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to send invocation ID to storage helper: %v\n", err)
+			}
 		}
 	}
 }
@@ -134,8 +150,8 @@ func awaitListening(socketPath string) bool {
 }
 
 //nolint:gochecknoglobals
-var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
-	func() (string, error) {
+var ensureCcacheHelper = EnsureCcacheHelperDeps{
+	SocketPath: func() (string, error) {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			return "", fmt.Errorf("read ccache config: %w", err)
@@ -143,13 +159,12 @@ var notifyCcacheHelper = BuildNotifyCcacheHelperFn(
 
 		return config.IPCEndpoint, nil
 	},
-	ccacheipc.IsListening,
-	startStorageHelper,
-	awaitListening,
-	func(socketPath, parentID, childID string) error {
-		return ccacheipc.SendInvocationID(context.Background(), socketPath, parentID, childID)
-	},
-)
+	IsListening:      ccacheipc.IsListening,
+	StartHelper:      startStorageHelper,
+	AwaitReady:       awaitListening,
+	HealthCheck:      ccacheipc.SendHealthCheck,
+	SendInvocationID: ccacheipc.SendInvocationID,
+}.Build()
 
 //nolint:gochecknoglobals
 var runCmd = &cobra.Command{
@@ -159,7 +174,11 @@ var runCmd = &cobra.Command{
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
 	RunE: func(_ *cobra.Command, args []string) error {
-		return RunWithInvocationIDFn(args, os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
+		ccacheInvocationID := uuid.New().String()
+		deps := defaultPostRunDeps
+		deps.CcacheInvocationID = ccacheInvocationID
+
+		return RunWithInvocationIDFn(args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ(), func(environ []string, name string, cmdArgs ...string) error {
 			cmd := exec.Command(name, cmdArgs...) //nolint:gosec
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
@@ -175,10 +194,10 @@ var runCmd = &cobra.Command{
 			}
 
 			return nil
-		}, func(id string) {
-			notifyCcacheHelper(id)
+		}, func(rnInvocationID string) {
+			ensureCcacheHelper(rnInvocationID, ccacheInvocationID)
 			zeroCcacheStats()
-		}, defaultPostRunFn)
+		}, deps.Build())
 	},
 }
 

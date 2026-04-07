@@ -3,6 +3,7 @@
 package reactnative_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -11,113 +12,174 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/reactnative"
 )
 
-func TestBuildNotifyCcacheHelperFn(t *testing.T) {
-	const socketPath = "/tmp/test.sock"
-	const invocationID = "test-invocation-id"
+const (
+	testSocketPath        = "/tmp/test.sock"
+	testRNInvocationID    = "rn-invocation-id"
+	testCcacheInvocationID = "ccache-invocation-id"
+)
 
+func TestEnsureCcacheHelperDeps(t *testing.T) {
 	t.Run("silently skips when ccache is not configured", func(t *testing.T) {
 		startCalled := false
-		sendCalled := false
 
-		fn := reactnative.BuildNotifyCcacheHelperFn(
-			func() (string, error) { return "", errors.New("not configured") },
-			func(string) bool { return false },
-			func() error { startCalled = true; return nil },
-			func(string) bool { return true },
-			func(string, string, string) error { sendCalled = true; return nil },
-		)
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return "", errors.New("not configured") },
+			IsListening: func(string) bool { return false },
+			StartHelper: func() error { startCalled = true; return nil },
+			AwaitReady:  func(string) bool { return true },
+		}.Build()
 
-		fn(invocationID)
+		fn(testRNInvocationID, testCcacheInvocationID)
 
 		assert.False(t, startCalled, "start should not be called when ccache is not configured")
-		assert.False(t, sendCalled, "send should not be called when ccache is not configured")
 	})
 
-	t.Run("sends invocation ID when socket is already listening", func(t *testing.T) {
+	t.Run("does not start helper when socket is already listening", func(t *testing.T) {
 		startCalled := false
-		var sentSocket, sentParentID string
 
-		fn := reactnative.BuildNotifyCcacheHelperFn(
-			func() (string, error) { return socketPath, nil },
-			func(string) bool { return true }, // already listening
-			func() error { startCalled = true; return nil },
-			func(string) bool { return true },
-			func(sock, parentID, _ string) error { sentSocket = sock; sentParentID = parentID; return nil },
-		)
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return testSocketPath, nil },
+			IsListening: func(string) bool { return true }, // already listening
+			StartHelper: func() error { startCalled = true; return nil },
+			AwaitReady:  func(string) bool { return true },
+		}.Build()
 
-		fn(invocationID)
+		fn(testRNInvocationID, testCcacheInvocationID)
 
 		assert.False(t, startCalled, "start should not be called when socket is already listening")
-		assert.Equal(t, socketPath, sentSocket)
-		assert.Equal(t, invocationID, sentParentID)
 	})
 
-	t.Run("starts helper and waits before sending when socket is not listening", func(t *testing.T) {
+	t.Run("starts helper and waits when socket is not listening", func(t *testing.T) {
 		startCalled := false
 		awaitCalled := false
-		var sentParentID string
 
-		fn := reactnative.BuildNotifyCcacheHelperFn(
-			func() (string, error) { return socketPath, nil },
-			func(string) bool { return false }, // not listening
-			func() error { startCalled = true; return nil },
-			func(string) bool { awaitCalled = true; return true },
-			func(_, parentID, _ string) error { sentParentID = parentID; return nil },
-		)
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return testSocketPath, nil },
+			IsListening: func(string) bool { return false }, // not listening
+			StartHelper: func() error { startCalled = true; return nil },
+			AwaitReady:  func(string) bool { awaitCalled = true; return true },
+		}.Build()
 
-		fn(invocationID)
+		fn(testRNInvocationID, testCcacheInvocationID)
 
 		assert.True(t, startCalled)
 		assert.True(t, awaitCalled)
-		assert.Equal(t, invocationID, sentParentID)
 	})
 
-	t.Run("does not send when start helper fails", func(t *testing.T) {
-		sendCalled := false
+	t.Run("does not await when start helper fails", func(t *testing.T) {
+		awaitCalled := false
 
-		fn := reactnative.BuildNotifyCcacheHelperFn(
-			func() (string, error) { return socketPath, nil },
-			func(string) bool { return false },
-			func() error { return errors.New("start failed") },
-			func(string) bool { return true },
-			func(string, string, string) error { sendCalled = true; return nil },
-		)
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return testSocketPath, nil },
+			IsListening: func(string) bool { return false },
+			StartHelper: func() error { return errors.New("start failed") },
+			AwaitReady:  func(string) bool { awaitCalled = true; return true },
+		}.Build()
 
-		fn(invocationID)
+		fn(testRNInvocationID, testCcacheInvocationID)
 
-		assert.False(t, sendCalled)
+		assert.False(t, awaitCalled)
 	})
 
-	t.Run("does not send when helper does not become ready", func(t *testing.T) {
-		sendCalled := false
+	t.Run("continues without error when AwaitReady returns false", func(t *testing.T) {
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return testSocketPath, nil },
+			IsListening: func(string) bool { return false },
+			StartHelper: func() error { return nil },
+			AwaitReady:  func(string) bool { return false },
+		}.Build()
 
-		fn := reactnative.BuildNotifyCcacheHelperFn(
-			func() (string, error) { return socketPath, nil },
-			func(string) bool { return false },
-			func() error { return nil },
-			func(string) bool { return false }, // never becomes ready
-			func(string, string, string) error { sendCalled = true; return nil },
-		)
-
-		fn(invocationID)
-
-		assert.False(t, sendCalled)
+		// should not panic or return error — just logs a warning and continues
+		fn(testRNInvocationID, testCcacheInvocationID)
 	})
 
-	t.Run("passes correct socket path to awaitReadyFn and sendInvocationIDFn", func(t *testing.T) {
-		var awaitedPath, sentPath string
+	t.Run("passes correct socket path to AwaitReady", func(t *testing.T) {
+		var awaitedPath string
 
-		fn := reactnative.BuildNotifyCcacheHelperFn(
-			func() (string, error) { return socketPath, nil },
-			func(string) bool { return false },
-			func() error { return nil },
-			func(p string) bool { awaitedPath = p; return true },
-			func(p, _, _ string) error { sentPath = p; return nil },
-		)
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return testSocketPath, nil },
+			IsListening: func(string) bool { return false },
+			StartHelper: func() error { return nil },
+			AwaitReady:  func(p string) bool { awaitedPath = p; return true },
+		}.Build()
 
-		fn(invocationID)
+		fn(testRNInvocationID, testCcacheInvocationID)
 
-		assert.Equal(t, socketPath, awaitedPath)
-		assert.Equal(t, socketPath, sentPath)
+		assert.Equal(t, testSocketPath, awaitedPath)
+	})
+
+	t.Run("calls HealthCheck with the socket path when helper is ready", func(t *testing.T) {
+		var healthCheckedPath string
+
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:   func() (string, error) { return testSocketPath, nil },
+			IsListening:  func(string) bool { return true },
+			StartHelper:  func() error { return nil },
+			AwaitReady:   func(string) bool { return true },
+			HealthCheck:  func(_ context.Context, p string) error { healthCheckedPath = p; return nil },
+		}.Build()
+
+		fn(testRNInvocationID, testCcacheInvocationID)
+
+		assert.Equal(t, testSocketPath, healthCheckedPath)
+	})
+
+	t.Run("continues when HealthCheck fails", func(t *testing.T) {
+		sendInvocationCalled := false
+
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:       func() (string, error) { return testSocketPath, nil },
+			IsListening:      func(string) bool { return true },
+			StartHelper:      func() error { return nil },
+			AwaitReady:       func(string) bool { return true },
+			HealthCheck:      func(_ context.Context, _ string) error { return errors.New("unhealthy") },
+			SendInvocationID: func(_ context.Context, _, _, _ string) error { sendInvocationCalled = true; return nil },
+		}.Build()
+
+		fn(testRNInvocationID, testCcacheInvocationID)
+
+		assert.True(t, sendInvocationCalled, "SendInvocationID should still be called after a failed health check")
+	})
+
+	t.Run("calls SendInvocationID with correct IDs", func(t *testing.T) {
+		var gotSocketPath, gotParentID, gotChildID string
+
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:  func() (string, error) { return testSocketPath, nil },
+			IsListening: func(string) bool { return true },
+			StartHelper: func() error { return nil },
+			AwaitReady:  func(string) bool { return true },
+			SendInvocationID: func(_ context.Context, socketPath, parentID, childID string) error {
+				gotSocketPath = socketPath
+				gotParentID = parentID
+				gotChildID = childID
+				return nil
+			},
+		}.Build()
+
+		fn(testRNInvocationID, testCcacheInvocationID)
+
+		assert.Equal(t, testSocketPath, gotSocketPath)
+		assert.Equal(t, testRNInvocationID, gotParentID)
+		assert.Equal(t, testCcacheInvocationID, gotChildID)
+	})
+
+	t.Run("does not call HealthCheck or SendInvocationID when start helper fails", func(t *testing.T) {
+		healthCheckCalled := false
+		sendInvocationCalled := false
+
+		fn := reactnative.EnsureCcacheHelperDeps{
+			SocketPath:       func() (string, error) { return testSocketPath, nil },
+			IsListening:      func(string) bool { return false },
+			StartHelper:      func() error { return errors.New("start failed") },
+			AwaitReady:       func(string) bool { return true },
+			HealthCheck:      func(_ context.Context, _ string) error { healthCheckCalled = true; return nil },
+			SendInvocationID: func(_ context.Context, _, _, _ string) error { sendInvocationCalled = true; return nil },
+		}.Build()
+
+		fn(testRNInvocationID, testCcacheInvocationID)
+
+		assert.False(t, healthCheckCalled)
+		assert.False(t, sendInvocationCalled)
 	})
 }

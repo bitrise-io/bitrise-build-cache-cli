@@ -142,19 +142,19 @@ func Test_BuildCppActivationFn(t *testing.T) {
 	})
 }
 
-func Test_BuildStartStorageHelperFn(t *testing.T) {
+func Test_StartStorageHelperDeps(t *testing.T) {
 	t.Run("passes binary path and storage-helper start args", func(t *testing.T) {
 		var capturedName string
 		var capturedArgs []string
 
-		fn := reactnative.BuildStartStorageHelperFn(
-			func() (string, error) { return "/path/to/binary", nil },
-			func(name string, args ...string) (int, error) {
+		fn := reactnative.StartStorageHelperDeps{
+			Executable: func() (string, error) { return "/path/to/binary", nil },
+			StartProcess: func(name string, args ...string) (int, error) {
 				capturedName = name
 				capturedArgs = args
 				return 42, nil
 			},
-		)
+		}.Build()
 
 		err := fn(context.Background(), mockLogger)
 
@@ -166,10 +166,10 @@ func Test_BuildStartStorageHelperFn(t *testing.T) {
 	t.Run("propagates executable lookup error", func(t *testing.T) {
 		execErr := errors.New("executable lookup failed")
 
-		fn := reactnative.BuildStartStorageHelperFn(
-			func() (string, error) { return "", execErr },
-			func(_ string, _ ...string) (int, error) { return 0, nil },
-		)
+		fn := reactnative.StartStorageHelperDeps{
+			Executable:   func() (string, error) { return "", execErr },
+			StartProcess: func(_ string, _ ...string) (int, error) { return 0, nil },
+		}.Build()
 
 		err := fn(context.Background(), mockLogger)
 		assert.ErrorContains(t, err, "executable lookup failed")
@@ -178,10 +178,10 @@ func Test_BuildStartStorageHelperFn(t *testing.T) {
 	t.Run("propagates process start error", func(t *testing.T) {
 		startErr := errors.New("process start failed")
 
-		fn := reactnative.BuildStartStorageHelperFn(
-			func() (string, error) { return "/path/to/binary", nil },
-			func(_ string, _ ...string) (int, error) { return 0, startErr },
-		)
+		fn := reactnative.StartStorageHelperDeps{
+			Executable:   func() (string, error) { return "/path/to/binary", nil },
+			StartProcess: func(_ string, _ ...string) (int, error) { return 0, startErr },
+		}.Build()
 
 		err := fn(context.Background(), mockLogger)
 		assert.ErrorContains(t, err, "process start failed")

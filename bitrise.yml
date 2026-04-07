@@ -903,6 +903,9 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
 
+  # NOTE: e2e-mavencentral-mirror-duckduck is excluded from the features-e2e pipeline because
+  # it is extremely flaky — the MavenCentral mirror proxy (repository-manager-ams.services.bitrise.io)
+  # frequently times out mid-build, causing spurious failures unrelated to code changes.
   e2e-mavencentral-mirror-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -1244,11 +1247,13 @@ pipelines:
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
-      e2e-mavencentral-mirror-duckduck: {}
+
       gradle-configuration-e2e-osx: {}
       gradle-configuration-e2e-linux: {}
       e2e-xcode-comp-cache: {}
-      rn-cli-seek-android-bc: {}
+      ccache-storage-helper-test: {}
+      react-seek-android-e2e: {}
+      react-seek-ios-e2e: {}
     triggers:
       pull_request:
         - source_branch: "*"

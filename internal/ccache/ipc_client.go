@@ -104,6 +104,40 @@ func SendGetSessionStats(ctx context.Context, socketPath string) (int64, int64, 
 	}
 }
 
+// SendHealthCheck connects to the ccache storage helper and sends a health-check request.
+// Returns nil if the server is up and responding, or an error if unreachable or unhealthy.
+func SendHealthCheck(ctx context.Context, socketPath string) error {
+	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+	}
+	defer conn.Close()
+
+	if err := protocol.ReadGreeting(conn); err != nil {
+		return fmt.Errorf("read greeting: %w", err)
+	}
+
+	if err := protocol.WriteByte(conn, protocol.RequestHealthCheck); err != nil {
+		return fmt.Errorf("send health-check request: %w", err)
+	}
+
+	resp, err := protocol.ReadByte(conn)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	switch resp {
+	case protocol.ResponseOK:
+		return nil
+	case protocol.ResponseErr:
+		msg, _ := protocol.ReadMsg(conn)
+
+		return fmt.Errorf("server error: %s", msg)
+	default:
+		return fmt.Errorf("unexpected response: 0x%02x", resp)
+	}
+}
+
 // SendInvocationID connects to the ccache storage helper Unix socket and notifies
 // it of a parent→child invocation pair. The helper uses childID for per-invocation
 // logging and session tracking, and registers the parent→child relationship.

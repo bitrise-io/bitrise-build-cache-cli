@@ -351,6 +351,23 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		assert.Equal(t, "my-step", changeSessionCalls[0].stepID)
 	})
 
+	t.Run("HEALTH_CHECK returns OK", func(t *testing.T) {
+		client := &ClientMock{}
+
+		conn := &connStub{
+			r: bytes.NewBuffer([]byte{protocol.RequestHealthCheck}),
+			w: &bytes.Buffer{},
+		}
+
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps)
+		result := proc.processRequest(context.Background())
+
+		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
+		resp := conn.w.Bytes()
+		require.NotEmpty(t, resp)
+		assert.Equal(t, byte(protocol.ResponseOK), resp[0])
+	})
+
 	t.Run("context cancellation while waiting for semaphore", func(t *testing.T) {
 		client := &ClientMock{}
 		conn := &connStub{

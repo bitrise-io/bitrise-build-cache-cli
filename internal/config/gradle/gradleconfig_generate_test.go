@@ -168,6 +168,9 @@ settingsEvaluated {
         }
     }
     rootProject {
+        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    }
+    rootProject {
         extensions.create("analytics", AnalyticsPluginExtension::class.java)
         extensions.configure(AnalyticsPluginExtension::class.java) {
             endpoint.set("AnalyticsEndpointURLValue:123")

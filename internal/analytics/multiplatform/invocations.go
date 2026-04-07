@@ -114,5 +114,5 @@ func (c *Client) PutInvocation(inv Invocation) error {
 
 // PutInvocationRelation registers a parent→child invocation relationship with the analytics backend.
 func (c *Client) PutInvocationRelation(rel InvocationRelation) error {
-	return c.Put(fmt.Sprintf("/invocations/%s/children/%s", rel.ParentInvocationID, rel.ChildInvocationID), rel)
+	return c.Put(fmt.Sprintf("/v1/invocations/%s/children/%s", rel.ParentInvocationID, rel.ChildInvocationID), rel)
 }
