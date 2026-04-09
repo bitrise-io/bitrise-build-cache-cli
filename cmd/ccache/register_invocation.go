@@ -1,7 +1,6 @@
 package ccache
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 	"time"
@@ -27,7 +26,7 @@ var registerInvocationCmd = &cobra.Command{
 	Use:          "register-invocation",
 	Short:        "Register an invocation with the analytics backend",
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 		if err != nil {
 			return fmt.Errorf("read ccache config: %w", err)
@@ -42,7 +41,7 @@ var registerInvocationCmd = &cobra.Command{
 		}
 
 		metadata := common.NewMetadata(envs, func(name string, args ...string) (string, error) {
-			out, err := exec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
+			out, err := exec.CommandContext(cmd.Context(), name, args...).Output() //nolint:gosec
 
 			return string(out), err
 		}, logger)
