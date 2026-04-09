@@ -132,6 +132,10 @@ func (config Config) Save(logger log.Logger, osProxy utils.OsProxy, encoderFacto
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}
 
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync ccache config file: %w", err)
+	}
+
 	logger.TInfof("Config saved to: %s", configFilePath)
 
 	return nil

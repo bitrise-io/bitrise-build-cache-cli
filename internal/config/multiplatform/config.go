@@ -63,6 +63,10 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}
 
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync multiplatform config file: %w", err)
+	}
+
 	return nil
 }
 
