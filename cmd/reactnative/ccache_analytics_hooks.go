@@ -141,6 +141,15 @@ func (d PostRunDeps) Build() PostRunFn {
 			fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", rnSendErr)
 		}
 
+		// Ccache stats collection and relation registration only apply when C++ cache was activated.
+		osProxy := utils.DefaultOsProxy{}
+		ccacheConfigPath := ccacheconfig.PathFor(osProxy, "config.json")
+		if _, statErr := osProxy.Stat(ccacheConfigPath); statErr != nil {
+			return
+		}
+
+		fmt.Fprintf(os.Stderr, "Ccache invocation ID: %s\n", ccacheInvocationID)
+
 		if d.CollectStats != nil {
 			d.CollectStats(context.Background(), ccacheInvocationID, invocationID)
 		}
@@ -150,6 +159,7 @@ func (d PostRunDeps) Build() PostRunFn {
 			if relParentID == "" {
 				relParentID = invocationID
 			}
+			fmt.Fprintf(os.Stderr, "Parent invocation ID: %s\n", relParentID)
 
 			d.SendRelation(context.Background(), relParentID, ccacheInvocationID)
 		}
@@ -193,7 +203,14 @@ var defaultPostRunDeps = PostRunDeps{
 		return client.PutInvocation(inv)
 	},
 	CollectStats: func(ctx context.Context, ccacheInvocationID, parentID string) {
-		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		osProxy := utils.DefaultOsProxy{}
+		configPath := ccacheconfig.PathFor(osProxy, "config.json")
+		if _, err := osProxy.Stat(configPath); err != nil {
+			// No ccache config — C++ cache was not activated (e.g. Xcode-only build).
+			return
+		}
+
+		config, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to read ccache config for stats collection: %v\n", err)
 

@@ -509,7 +509,7 @@ workflows:
             export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
             envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
             cd _seek
-            ../bitrise-build-cache-cli react-native run npx react-native build-android 2>&1 | tee -a "$RN_CLI_LOG"
+            ../bitrise-build-cache-cli --debug react-native run npx react-native build-android 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
         title: Assert ccache GET calls via storage helper logs
         inputs:
@@ -560,7 +560,7 @@ workflows:
             export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
             envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
             cd _seek
-            ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
+            ../bitrise-build-cache-cli --debug react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
         title: Assert CLI invocation analytics were sent
         inputs:

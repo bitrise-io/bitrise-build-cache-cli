@@ -28,7 +28,7 @@ func RunWithInvocationIDFn(args []string, invocationID string, environ []string,
 	if invocationID == "" {
 		invocationID = uuid.New().String()
 	}
-	fmt.Fprintf(os.Stderr, "Invocation ID: %s\n", invocationID)
+	fmt.Fprintf(os.Stderr, "React Native invocation ID: %s\n", invocationID)
 
 	if len(args) == 0 {
 		return fmt.Errorf("missing arguments")
