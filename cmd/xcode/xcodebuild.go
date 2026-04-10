@@ -80,6 +80,12 @@ TBD`,
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
 		invocationID := uuid.New().String()
 
+		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
+			fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (parent: %s)\n", invocationID, parentID)
+		} else {
+			fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (no parent)\n", invocationID)
+		}
+
 		decoder := utils.DefaultDecoderFactory{}
 		osProxy := utils.DefaultOsProxy{}
 		config, err := xcelerate.ReadConfig(osProxy, decoder)
