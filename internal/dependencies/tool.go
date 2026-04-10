@@ -1,6 +1,7 @@
 package dependencies
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 
@@ -11,7 +12,7 @@ import (
 type Tool struct {
 	Name    string
 	Version string
-	Install func(logger log.Logger) error
+	Install func(ctx context.Context, logger log.Logger) error
 }
 
 // IsInstalled returns true if the tool binary is found on PATH.
@@ -21,7 +22,7 @@ func (t Tool) IsInstalled() bool {
 }
 
 // EnsureAll checks each tool and installs it if missing.
-func EnsureAll(tools []Tool, logger log.Logger) error {
+func EnsureAll(ctx context.Context, tools []Tool, logger log.Logger) error {
 	for _, t := range tools {
 		if t.IsInstalled() {
 			logger.Infof("✓ %s already installed", t.Name)
@@ -29,7 +30,7 @@ func EnsureAll(tools []Tool, logger log.Logger) error {
 		}
 
 		logger.Infof("Installing %s v%s...", t.Name, t.Version)
-		if err := t.Install(logger); err != nil {
+		if err := t.Install(ctx, logger); err != nil {
 			return fmt.Errorf("install %s: %w", t.Name, err)
 		}
 		logger.Infof("✓ %s v%s installed", t.Name, t.Version)

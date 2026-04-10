@@ -3,6 +3,7 @@ package dependencies
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -31,9 +32,9 @@ func CLITool() (Tool, error) {
 	return Tool{
 		Name:    cliBinaryName,
 		Version: version,
-		Install: func(logger log.Logger) error {
+		Install: func(ctx context.Context, logger log.Logger) error {
 			return installFromGitHubRelease(
-				logger,
+				ctx, logger,
 				downloadURL(version, runtime.GOOS, runtime.GOARCH),
 				cliBinaryName,
 			)
@@ -47,13 +48,19 @@ func cliVersion() (string, error) {
 		return "", fmt.Errorf("failed to read build info")
 	}
 
+	// When the CLI is the main module (built directly), use Main.Version.
+	if info.Main.Path == cliModulePath && info.Main.Version != "(devel)" && info.Main.Version != "" {
+		return strings.TrimPrefix(info.Main.Version, "v"), nil
+	}
+
+	// When embedded as a dependency (e.g. in a step binary), find it in Deps.
 	for _, dep := range info.Deps {
 		if dep.Path == cliModulePath {
 			return strings.TrimPrefix(dep.Version, "v"), nil
 		}
 	}
 
-	return "", fmt.Errorf("module %s not found in build info", cliModulePath)
+	return "", fmt.Errorf("module %s not found in build info (main=%s, version=%s)", cliModulePath, info.Main.Path, info.Main.Version)
 }
 
 func downloadURL(version, goos, goarch string) string {
@@ -63,10 +70,10 @@ func downloadURL(version, goos, goarch string) string {
 	)
 }
 
-func installFromGitHubRelease(logger log.Logger, url, binaryName string) error {
+func installFromGitHubRelease(ctx context.Context, logger log.Logger, url, binaryName string) error {
 	logger.Debugf("Downloading from %s", url)
 
-	resp, err := downloadFile(url)
+	resp, err := downloadFile(ctx, url)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}

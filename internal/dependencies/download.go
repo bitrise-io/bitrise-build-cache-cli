@@ -1,13 +1,19 @@
 package dependencies
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-func downloadFile(url string) (io.ReadCloser, error) {
-	resp, err := http.Get(url) //nolint:gosec,noctx
+func downloadFile(ctx context.Context, url string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET: %w", err)
 	}

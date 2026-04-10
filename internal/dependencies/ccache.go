@@ -1,6 +1,7 @@
 package dependencies
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 
@@ -17,13 +18,13 @@ func CcacheTool() Tool {
 	return Tool{
 		Name:    ccacheBinaryName,
 		Version: ccacheVersion,
-		Install: func(logger log.Logger) error {
+		Install: func(ctx context.Context, logger log.Logger) error {
 			url, err := ccacheDownloadURL(ccacheVersion, runtime.GOOS, runtime.GOARCH)
 			if err != nil {
 				return err
 			}
 
-			return installFromGitHubRelease(logger, url, ccacheBinaryName)
+			return installFromGitHubRelease(ctx, logger, url, ccacheBinaryName)
 		},
 	}
 }

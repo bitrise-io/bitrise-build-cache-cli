@@ -183,7 +183,7 @@ func ActivateReactNativeCmdFn(
 	cppFn func(context.Context, log.Logger) error,
 	startStorageHelperFn func(context.Context, log.Logger) error,
 ) error {
-	if err := installDependencies(logger, doCpp); err != nil {
+	if err := installDependencies(ctx, logger, doCpp); err != nil {
 		return fmt.Errorf("install dependencies: %w", err)
 	}
 
@@ -227,18 +227,19 @@ func ActivateReactNativeCmdFn(
 	return nil
 }
 
-func installDependencies(logger log.Logger, doCpp bool) error {
+func installDependencies(ctx context.Context, logger log.Logger, doCpp bool) error {
 	var tools []dependencies.Tool
 
 	cliTool, err := dependencies.CLITool()
 	if err != nil {
-		return err
+		logger.Debugf("Skipping CLI binary install: %v", err)
+	} else {
+		tools = append(tools, cliTool)
 	}
-	tools = append(tools, cliTool)
 
 	if doCpp {
 		tools = append(tools, dependencies.CcacheTool())
 	}
 
-	return dependencies.EnsureAll(tools, logger)
+	return dependencies.EnsureAll(ctx, tools, logger)
 }
