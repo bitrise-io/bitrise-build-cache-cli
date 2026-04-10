@@ -12,7 +12,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/dependencies"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
@@ -20,6 +19,7 @@ import (
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/dependencies"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 )
 
@@ -241,5 +241,9 @@ func installDependencies(ctx context.Context, logger log.Logger, doCpp bool) err
 		tools = append(tools, dependencies.CcacheTool())
 	}
 
-	return dependencies.EnsureAll(ctx, tools, logger)
+	if err := dependencies.EnsureAll(ctx, tools, logger); err != nil {
+		return fmt.Errorf("ensure dependencies: %w", err)
+	}
+
+	return nil
 }
