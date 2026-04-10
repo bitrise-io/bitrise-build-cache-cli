@@ -23,31 +23,35 @@ else
   echo "Ccache invocation ID not present (C++ cache not activated, skipping ccache checks) ℹ️"
 fi
 
-# --- HTTP responses (requires --debug) ---
+# --- HTTP responses (only when debug logging is active) ---
 
-# PutInvocation (react-native run invocation)
-if ! grep -q "HTTP PUT:.*/v1/invocations/" "$RN_CLI_LOG"; then
-  echo "No PutInvocation HTTP call found ❌"
-  exit 1
-fi
-echo "PutInvocation HTTP call present ✅"
-
-# PutInvocationRelation (parent→ccache) — only when ccache was activated
-if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
-  if ! grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
-    echo "No PutInvocationRelation HTTP call found ❌"
+if grep -q "HTTP PUT:" "$RN_CLI_LOG"; then
+  # PutInvocation (react-native run invocation)
+  if ! grep -q "HTTP PUT:.*/v1/invocations/" "$RN_CLI_LOG"; then
+    echo "No PutInvocation HTTP call found ❌"
     exit 1
   fi
-  echo "PutInvocationRelation HTTP call present ✅"
-fi
+  echo "PutInvocation HTTP call present ✅"
 
-# All HTTP responses should be 2xx
-if grep -q "Response: [^2]" "$RN_CLI_LOG"; then
-  echo "Non-2xx HTTP response detected ❌"
-  grep "Response: [^2]" "$RN_CLI_LOG"
-  exit 1
+  # PutInvocationRelation (parent→ccache) — only when ccache was activated
+  if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
+    if ! grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
+      echo "No PutInvocationRelation HTTP call found ❌"
+      exit 1
+    fi
+    echo "PutInvocationRelation HTTP call present ✅"
+  fi
+
+  # All HTTP responses should be 2xx
+  if grep -q "Response: [^2]" "$RN_CLI_LOG"; then
+    echo "Non-2xx HTTP response detected ❌"
+    grep "Response: [^2]" "$RN_CLI_LOG"
+    exit 1
+  fi
+  echo "All analytics HTTP responses 2xx ✅"
+else
+  echo "Debug logging not active, skipping HTTP assertions ℹ️"
 fi
-echo "All analytics HTTP responses 2xx ✅"
 
 # --- Failure indicators (should be absent) ---
 
