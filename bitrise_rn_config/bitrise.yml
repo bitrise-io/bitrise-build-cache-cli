@@ -552,7 +552,7 @@ workflows:
     - script:
         title: Activate react-native (Xcode)
         inputs:
-        - content: ./bitrise-build-cache-cli --debug activate react-native --gradle=false --xcode=true --cpp=false
+        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
     - script:
         title: Build
         inputs:
