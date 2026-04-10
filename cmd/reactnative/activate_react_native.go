@@ -12,6 +12,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/dependencies"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
@@ -182,6 +183,10 @@ func ActivateReactNativeCmdFn(
 	cppFn func(context.Context, log.Logger) error,
 	startStorageHelperFn func(context.Context, log.Logger) error,
 ) error {
+	if err := installDependencies(logger, doCpp); err != nil {
+		return fmt.Errorf("install dependencies: %w", err)
+	}
+
 	if doGradle {
 		logger.TInfof("Activating Gradle build cache...")
 		if err := gradleFn(logger); err != nil {
@@ -220,4 +225,20 @@ func ActivateReactNativeCmdFn(
 	logger.TInfof("✅ Bitrise Build Cache for React Native activated")
 
 	return nil
+}
+
+func installDependencies(logger log.Logger, doCpp bool) error {
+	var tools []dependencies.Tool
+
+	cliTool, err := dependencies.CLITool()
+	if err != nil {
+		return err
+	}
+	tools = append(tools, cliTool)
+
+	if doCpp {
+		tools = append(tools, dependencies.CcacheTool())
+	}
+
+	return dependencies.EnsureAll(tools, logger)
 }
