@@ -232,7 +232,7 @@ func installDependencies(ctx context.Context, logger log.Logger, doCpp bool) err
 
 	cliTool, err := dependencies.CLITool()
 	if err != nil {
-		logger.Debugf("Skipping CLI binary install: %v", err)
+		logger.Errorf("Skipping CLI binary install: %v", err)
 	} else {
 		tools = append(tools, cliTool)
 	}

@@ -20,6 +20,7 @@ func downloadFile(ctx context.Context, url string) (io.ReadCloser, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
+
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
 	}
 

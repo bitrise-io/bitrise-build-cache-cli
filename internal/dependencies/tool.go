@@ -18,6 +18,7 @@ type Tool struct {
 // IsInstalled returns true if the tool binary is found on PATH.
 func (t Tool) IsInstalled() bool {
 	_, err := exec.LookPath(t.Name)
+
 	return err == nil
 }
 
@@ -26,6 +27,7 @@ func EnsureAll(ctx context.Context, tools []Tool, logger log.Logger) error {
 	for _, t := range tools {
 		if t.IsInstalled() {
 			logger.Infof("✓ %s already installed", t.Name)
+
 			continue
 		}
 
