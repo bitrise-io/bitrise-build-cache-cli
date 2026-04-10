@@ -23,7 +23,8 @@ const (
 // send invocation analytics. It is written by `activate react-native` and read
 // by the `react-native run` command, independently of any ccache activation.
 type Config struct {
-	AuthConfig common.CacheAuthConfig `json:"authConfig"`
+	AuthConfig   common.CacheAuthConfig `json:"authConfig"`
+	DebugLogging bool                   `json:"debugLogging,omitempty"`
 }
 
 func dirPath(osProxy utils.OsProxy) string {

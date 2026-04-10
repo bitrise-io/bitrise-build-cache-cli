@@ -192,7 +192,7 @@ var defaultPostRunDeps = PostRunDeps{
 			return fmt.Errorf("read multiplatform analytics config: %w", err)
 		}
 
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 
 		client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
 		if err != nil {
@@ -217,7 +217,7 @@ var defaultPostRunDeps = PostRunDeps{
 			return
 		}
 
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 
 		var dl, ul int64
 		if ccacheipc.IsListening(config.IPCEndpoint) {
@@ -244,7 +244,7 @@ var defaultPostRunDeps = PostRunDeps{
 			return
 		}
 
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 
 		client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
 		if err != nil {

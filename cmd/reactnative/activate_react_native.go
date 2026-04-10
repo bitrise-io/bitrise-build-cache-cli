@@ -212,7 +212,7 @@ func ActivateReactNativeCmdFn(
 	if err != nil {
 		return fmt.Errorf("read auth config for multiplatform analytics: %w", err)
 	}
-	cfg := multiplatformconfig.Config{AuthConfig: authConfig}
+	cfg := multiplatformconfig.Config{AuthConfig: authConfig, DebugLogging: common.IsDebugLogMode}
 	if err := cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
 		return fmt.Errorf("save multiplatform analytics config: %w", err)
 	}
