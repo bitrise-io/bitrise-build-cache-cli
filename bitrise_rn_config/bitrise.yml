@@ -479,9 +479,11 @@ workflows:
     - activate-ssh-key@4: {}
     - git-clone@8: {}
     - script:
-        title: Build CLI
+        title: Build and install CLI
         inputs:
-        - content: go build
+        - content: |-
+            go build
+            cp bitrise-build-cache-cli /usr/local/bin/bitrise-build-cache
     - script:
         title: Clone Seek app
         inputs:
@@ -538,9 +540,11 @@ workflows:
     - activate-ssh-key@4: {}
     - git-clone@8: {}
     - script:
-        title: Build CLI
+        title: Build and install CLI
         inputs:
-        - content: go build
+        - content: |-
+            go build
+            cp bitrise-build-cache-cli /usr/local/bin/bitrise-build-cache
     - script:
         title: Clone Seek app
         inputs:

@@ -23,7 +23,8 @@ const (
 // send invocation analytics. It is written by `activate react-native` and read
 // by the `react-native run` command, independently of any ccache activation.
 type Config struct {
-	AuthConfig common.CacheAuthConfig `json:"authConfig"`
+	AuthConfig   common.CacheAuthConfig `json:"authConfig"`
+	DebugLogging bool                   `json:"debugLogging,omitempty"`
 }
 
 func dirPath(osProxy utils.OsProxy) string {
@@ -61,6 +62,10 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(c); err != nil {
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
+	}
+
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync multiplatform config file: %w", err)
 	}
 
 	return nil

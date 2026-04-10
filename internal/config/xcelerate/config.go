@@ -253,6 +253,10 @@ func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory ut
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}
 
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync xcelerate config file: %w", err)
+	}
+
 	logger.TInfof("Config saved to: %s", configFilePath)
 
 	return nil
