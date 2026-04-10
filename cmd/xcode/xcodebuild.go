@@ -319,6 +319,7 @@ func XcodebuildCmdFn(
 		logger.TInfof(MsgInvocationSaved, invocationID)
 
 		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
+			logger.TInfof("Registering invocation relation: parent=%s → child=%s (build-tool=xcode)", parentID, invocationID)
 			rel := analytics.InvocationRelation{
 				ParentInvocationID: parentID,
 				ChildInvocationID:  invocationID,
