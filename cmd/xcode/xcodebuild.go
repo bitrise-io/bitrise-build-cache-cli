@@ -184,6 +184,7 @@ TBD`,
 			config,
 			metadata,
 			xcodeArgs,
+			DefaultSendRelationFn(config),
 		); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
 			os.Exit(runStats.ExitCode)
@@ -242,6 +243,30 @@ func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Wri
 	return w
 }
 
+// SendRelationFn registers a parent→child invocation relation. It is called when
+// BITRISE_INVOCATION_ID is set and the xcode invocation was saved successfully.
+type SendRelationFn func(ctx context.Context, logger log.Logger, parentID, childID string) error
+
+// DefaultSendRelationFn returns a SendRelationFn that sends invocation relations
+// via the multiplatform analytics service.
+func DefaultSendRelationFn(config xcelerate.Config) SendRelationFn {
+	return func(ctx context.Context, logger log.Logger, parentID, childID string) error {
+		mpClient, err := multiplatform.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+		if err != nil {
+			return fmt.Errorf("create multiplatform analytics client: %w", err)
+		}
+
+		rel := multiplatform.InvocationRelation{
+			ParentInvocationID: parentID,
+			ChildInvocationID:  childID,
+			InvocationDate:     time.Now(),
+			BuildTool:          "xcode",
+		}
+
+		return mpClient.PutInvocationRelation(rel)
+	}
+}
+
 // nolint:nestif
 func XcodebuildCmdFn(
 	ctx context.Context,
@@ -253,6 +278,7 @@ func XcodebuildCmdFn(
 	config xcelerate.Config,
 	metadata common.CacheConfigMetadata,
 	xcodeArgs xcodeargs.XcodeArgs,
+	sendRelationFn SendRelationFn,
 ) xcodeargs.RunStats {
 	toPass := getArgsToPass(config, xcodeArgs)
 	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
@@ -320,29 +346,42 @@ func XcodebuildCmdFn(
 		return runStats
 	}
 
-	if err = client.PutInvocation(*inv); err != nil {
-		logger.Errorf("Failed to send invocation analytics: %v", err)
-	} else {
-		logger.TInfof(MsgInvocationSaved, invocationID)
-
-		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
-			logger.TInfof("Registering invocation relation: parent=%s → child=%s (build-tool=xcode)", parentID, invocationID)
-			rel := multiplatform.InvocationRelation{
-				ParentInvocationID: parentID,
-				ChildInvocationID:  invocationID,
-				InvocationDate:     time.Now(),
-				BuildTool:          "xcode",
-			}
-			mpClient, mpErr := multiplatform.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-			if mpErr != nil {
-				logger.Errorf("Failed to create multiplatform analytics client: %v", mpErr)
-			} else if err := mpClient.PutInvocationRelation(rel); err != nil {
-				logger.Errorf("Failed to send invocation relation analytics: %v", err)
-			}
-		}
-	}
+	SaveInvocationAndRelation(ctx, logger, client, *inv, invocationID, sendRelationFn)
 
 	return runStats
+}
+
+// InvocationSaver can persist an xcelerate analytics invocation.
+//
+//go:generate moq -stub -out mocks/invocation_saver_mock.go -pkg mocks . InvocationSaver
+type InvocationSaver interface {
+	PutInvocation(inv analytics.Invocation) error
+}
+
+// SaveInvocationAndRelation saves the xcode invocation analytics and, if successful and
+// BITRISE_INVOCATION_ID is set, registers the parent→child invocation relation.
+func SaveInvocationAndRelation(
+	ctx context.Context,
+	logger log.Logger,
+	saver InvocationSaver,
+	inv analytics.Invocation,
+	invocationID string,
+	sendRelationFn SendRelationFn,
+) {
+	if err := saver.PutInvocation(inv); err != nil {
+		logger.Errorf("Failed to send invocation analytics: %v", err)
+
+		return
+	}
+
+	logger.TInfof(MsgInvocationSaved, invocationID)
+
+	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" && sendRelationFn != nil {
+		logger.TInfof("Registering invocation relation: parent=%s → child=%s (build-tool=xcode)", parentID, invocationID)
+		if err := sendRelationFn(ctx, logger, parentID, invocationID); err != nil {
+			logger.Errorf("Failed to send invocation relation analytics: %v", err)
+		}
+	}
 }
 
 //nolint:nestif

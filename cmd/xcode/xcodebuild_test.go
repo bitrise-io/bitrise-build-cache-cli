@@ -68,6 +68,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			xcelerate.Config{},
 			common.CacheConfigMetadata{},
 			&xcodeArgProvider,
+			nil,
 		)
 
 		// Then
@@ -122,6 +123,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			xcelerate.Config{},
 			common.CacheConfigMetadata{},
 			&xcodeArgProvider,
+			nil,
 		)
 
 		// Then
@@ -178,6 +180,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 					config,
 					common.CacheConfigMetadata{},
 					&xcodeArgProvider,
+					nil,
 				)
 
 				for k, v := range xcodeargs.CacheArgs {
@@ -238,6 +241,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 					config,
 					common.CacheConfigMetadata{},
 					&xcodeArgProvider,
+					nil,
 				)
 				assert.Equal(t, tc.expected, receivedAdditional["COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS"], "Diagnostic remarks should be %s if debug is %v", tc.expected, tc.debugLogging)
 			})
