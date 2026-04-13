@@ -11,6 +11,32 @@ if ! grep -q "React Native invocation ID:" "$RN_CLI_LOG"; then
 fi
 echo "React Native invocation ID present ✅"
 
+# --- Xcode parent-child invocation relation (checked via xcelerate log files) ---
+# The xcodebuild wrapper's output is captured by react-native build-ios and doesn't
+# reach $RN_CLI_LOG. Instead, TInfof messages are written to xcelerate log files
+# at $BITRISE_DEPLOY_DIR/xcelerate-*.log.
+
+XCELERATE_LOGS=$(find "${BITRISE_DEPLOY_DIR:-.}" -name 'xcelerate-*.log' 2>/dev/null || true)
+if [ -n "$XCELERATE_LOGS" ]; then
+  echo "Found xcelerate log(s): $XCELERATE_LOGS"
+
+  if ! grep -q "Registering invocation relation:.*build-tool=xcode" $XCELERATE_LOGS; then
+    echo "Xcode invocation relation not registered ❌"
+    exit 1
+  fi
+  echo "Xcode invocation relation registered ✅"
+
+  if grep -q "Failed to send invocation relation analytics" $XCELERATE_LOGS; then
+    echo "Xcode invocation relation send failed ❌"
+    exit 1
+  fi
+  echo "Xcode invocation relation send succeeded ✅"
+else
+  echo "No xcelerate log files found (xcode not activated, skipping xcode relation checks) ℹ️"
+fi
+
+# --- Ccache invocation relation ---
+
 if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
   echo "Ccache invocation ID present ✅"
 
