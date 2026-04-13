@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
@@ -326,13 +327,16 @@ func XcodebuildCmdFn(
 
 		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
 			logger.TInfof("Registering invocation relation: parent=%s → child=%s (build-tool=xcode)", parentID, invocationID)
-			rel := analytics.InvocationRelation{
+			rel := multiplatform.InvocationRelation{
 				ParentInvocationID: parentID,
 				ChildInvocationID:  invocationID,
 				InvocationDate:     time.Now(),
 				BuildTool:          "xcode",
 			}
-			if err := client.PutInvocationRelation(rel); err != nil {
+			mpClient, mpErr := multiplatform.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+			if mpErr != nil {
+				logger.Errorf("Failed to create multiplatform analytics client: %v", mpErr)
+			} else if err := mpClient.PutInvocationRelation(rel); err != nil {
 				logger.Errorf("Failed to send invocation relation analytics: %v", err)
 			}
 		}
