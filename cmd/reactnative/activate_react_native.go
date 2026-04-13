@@ -56,6 +56,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 			activateGradle,
 			activateXcode,
 			activateCpp,
+			installDependencies,
 			defaultGradleActivationFn,
 			defaultXcodeActivationFn,
 			defaultCppActivationFn,
@@ -178,12 +179,13 @@ func ActivateReactNativeCmdFn(
 	ctx context.Context,
 	logger log.Logger,
 	doGradle, doXcode, doCpp bool,
+	installDepsFn func(context.Context, log.Logger, bool) error,
 	gradleFn func(log.Logger) error,
 	xcodeFn func(context.Context, log.Logger) error,
 	cppFn func(context.Context, log.Logger) error,
 	startStorageHelperFn func(context.Context, log.Logger) error,
 ) error {
-	if err := installDependencies(ctx, logger, doCpp); err != nil {
+	if err := installDepsFn(ctx, logger, doCpp); err != nil {
 		return fmt.Errorf("install dependencies: %w", err)
 	}
 
@@ -232,10 +234,9 @@ func installDependencies(ctx context.Context, logger log.Logger, doCpp bool) err
 
 	cliTool, err := dependencies.CLITool()
 	if err != nil {
-		logger.Errorf("Skipping CLI binary install: %v", err)
-	} else {
-		tools = append(tools, cliTool)
+		return fmt.Errorf("determine CLI tool: %w", err)
 	}
+	tools = append(tools, cliTool)
 
 	if doCpp {
 		tools = append(tools, dependencies.CcacheTool())

@@ -17,6 +17,7 @@ import (
 func Test_ActivateReactNativeCmdFn(t *testing.T) {
 	ctx := context.Background()
 	noOp := func(_ context.Context, _ log.Logger) error { return nil }
+	noOpInstall := func(_ context.Context, _ log.Logger, _ bool) error { return nil }
 
 	t.Run("all sub-systems are activated when all flags are true", func(t *testing.T) {
 		gradleCalled, xcodeCalled, cppCalled, helperCalled := false, false, false, false
@@ -25,6 +26,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			true, true, true,
+			noOpInstall,
 			func(_ log.Logger) error { gradleCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { xcodeCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -45,6 +47,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			false, false, false,
+			noOpInstall,
 			func(_ log.Logger) error { gradleCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { xcodeCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -65,6 +68,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			true, false, false,
+			noOpInstall,
 			func(_ log.Logger) error { gradleCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { xcodeCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -85,6 +89,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			false, true, false,
+			noOpInstall,
 			func(_ log.Logger) error { gradleCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { xcodeCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -105,6 +110,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			false, false, true,
+			noOpInstall,
 			func(_ log.Logger) error { gradleCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { xcodeCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -125,6 +131,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			false, false, true,
+			noOpInstall,
 			func(_ log.Logger) error { return nil },
 			noOp,
 			func(_ context.Context, _ log.Logger) error { callOrder = append(callOrder, "cpp"); return nil },
@@ -143,6 +150,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			true, true, true,
+			noOpInstall,
 			func(_ log.Logger) error { return gradleErr },
 			func(_ context.Context, _ log.Logger) error { xcodeCalled = true; return nil },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -163,6 +171,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			true, true, true,
+			noOpInstall,
 			func(_ log.Logger) error { return nil },
 			func(_ context.Context, _ log.Logger) error { return xcodeErr },
 			func(_ context.Context, _ log.Logger) error { cppCalled = true; return nil },
@@ -182,6 +191,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			true, true, true,
+			noOpInstall,
 			func(_ log.Logger) error { return nil },
 			noOp,
 			func(_ context.Context, _ log.Logger) error { return cppErr },
@@ -199,6 +209,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			false, false, true,
+			noOpInstall,
 			func(_ log.Logger) error { return nil },
 			noOp,
 			func(_ context.Context, _ log.Logger) error { return nil },
@@ -206,6 +217,25 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 		)
 
 		assert.ErrorContains(t, err, "helper failed")
+	})
+
+	t.Run("install dependencies error is propagated and halts activation", func(t *testing.T) {
+		installErr := errors.New("install failed")
+		gradleCalled := false
+
+		err := reactnative.ActivateReactNativeCmdFn(
+			ctx,
+			mockLogger,
+			true, true, true,
+			func(_ context.Context, _ log.Logger, _ bool) error { return installErr },
+			func(_ log.Logger) error { gradleCalled = true; return nil },
+			noOp,
+			noOp,
+			noOp,
+		)
+
+		assert.ErrorContains(t, err, "install failed")
+		assert.False(t, gradleCalled)
 	})
 
 	t.Run("logger and context are forwarded to sub-system functions", func(t *testing.T) {
@@ -216,6 +246,7 @@ func Test_ActivateReactNativeCmdFn(t *testing.T) {
 			ctx,
 			mockLogger,
 			false, true, false,
+			noOpInstall,
 			func(_ log.Logger) error { return nil },
 			func(c context.Context, l log.Logger) error {
 				capturedCtx = c
