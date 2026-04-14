@@ -55,6 +55,11 @@ func (r *Runner) Run(args []string, invocationID string, environ []string) error
 
 	fmt.Fprintf(os.Stderr, "React Native invocation ID: %s\n", invocationID)
 
+	// Strip leading "--" separator (cobra passes it through with DisableFlagParsing)
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+
 	if len(args) == 0 {
 		return fmt.Errorf("missing arguments")
 	}
