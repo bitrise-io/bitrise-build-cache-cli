@@ -66,7 +66,7 @@ func cliVersion() (string, error) {
 
 func downloadURL(version, goos, goarch string) string {
 	return fmt.Sprintf(
-		"https://github.com/bitrise-io/bitrise-build-cache-cli/v2/releases/download/v%s/%s_%s_%s_%s.tar.gz",
+		"https://github.com/bitrise-io/bitrise-build-cache-cli/releases/download/v%s/%s_%s_%s_%s.tar.gz",
 		version, cliBinaryName, version, goos, goarch,
 	)
 }
