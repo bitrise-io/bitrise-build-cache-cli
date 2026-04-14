@@ -380,7 +380,7 @@ func createKVClient(
 		return nil, fmt.Errorf("parse endpoint URL %q: %w", endpointURL, err)
 	}
 
-	logger := log.NewLogger()
+	logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 	commandFunc := newCommandFunc(ctx)
 
 	client, err := kv.NewClient(kv.NewClientParams{
