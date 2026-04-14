@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/pkg/ccache"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 //nolint:gochecknoglobals

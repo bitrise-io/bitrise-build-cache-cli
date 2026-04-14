@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/kv_storage"
 )
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../../proto/kv_storage KVStorageClient

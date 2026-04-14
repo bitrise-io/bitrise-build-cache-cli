@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/pkg/reactnative"
+	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/reactnative"
 )
 
 //nolint:gochecknoglobals

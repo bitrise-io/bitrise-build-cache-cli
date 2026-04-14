@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode"
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode/mocks"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
-	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs/mocks"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
+	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/session"
 )
 
 func Test_xcodebuildCmdFn(t *testing.T) {

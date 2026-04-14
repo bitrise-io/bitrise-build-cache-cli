@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
 )
 
 const (

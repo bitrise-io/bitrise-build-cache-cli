@@ -5,7 +5,7 @@ package mocks
 
 import (
 	context "context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/session"
 	grpc "google.golang.org/grpc"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	sync "sync"

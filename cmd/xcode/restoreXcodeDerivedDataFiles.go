@@ -11,13 +11,13 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	xa "github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/deriveddata"
 )
 
 // nolint: gochecknoglobals

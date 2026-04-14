@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/gradle"
 )
 
 func TestActivateMavenCentralMirrorFn(t *testing.T) {
