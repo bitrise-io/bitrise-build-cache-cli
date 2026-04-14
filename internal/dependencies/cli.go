@@ -49,8 +49,10 @@ func cliVersion() (string, error) {
 		return "", fmt.Errorf("failed to read build info")
 	}
 
-	// When the CLI is the main module (built directly), use Main.Version.
-	if info.Main.Path == cliModulePath && info.Main.Version != "(devel)" && info.Main.Version != "" {
+	if info.Main.Path == cliModulePath {
+		// We ARE the CLI binary. Use the embedded version if available,
+		// otherwise return "" — the caller will see IsInstalled() == true
+		// and skip installation.
 		return strings.TrimPrefix(info.Main.Version, "v"), nil
 	}
 
