@@ -3,7 +3,6 @@ package reactnative
 import (
 	"fmt"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
@@ -12,9 +11,9 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	activateGradle bool
-	activateXcode  bool
-	activateCpp    bool
+	gradleEnabled bool
+	xcodeEnabled  bool
+	cppEnabled    bool
 )
 
 //nolint:gochecknoglobals
@@ -33,18 +32,12 @@ Note: This is a convenience activation method, if your activation requires fine-
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
-		logger.EnableDebugLog(common.IsDebugLogMode)
-
-		a := &rnpkg.Activator{
-			Params: rnpkg.ActivatorParams{
-				Gradle:       activateGradle,
-				Xcode:        activateXcode,
-				Cpp:          activateCpp,
-				DebugLogging: common.IsDebugLogMode,
-			},
-			Logger: logger,
-		}
+		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
+			GradleEnabled: gradleEnabled,
+			XcodeEnabled:  xcodeEnabled,
+			CppEnabled:    cppEnabled,
+			DebugLogging:  common.IsDebugLogMode,
+		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
 			return fmt.Errorf("activate react-native: %w", err)
@@ -56,7 +49,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 
 func init() {
 	common.ActivateCmd.AddCommand(activateReactNativeCmd)
-	activateReactNativeCmd.Flags().BoolVar(&activateGradle, "gradle", true, "Activate Gradle build cache (Android).")
-	activateReactNativeCmd.Flags().BoolVar(&activateXcode, "xcode", true, "Activate Xcode build cache (iOS).")
-	activateReactNativeCmd.Flags().BoolVar(&activateCpp, "cpp", true, "Activate C++ build cache via ccache (native modules).")
+	activateReactNativeCmd.Flags().BoolVar(&gradleEnabled, "gradle", true, "Activate Gradle build cache (Android).")
+	activateReactNativeCmd.Flags().BoolVar(&xcodeEnabled, "xcode", true, "Activate Xcode build cache (iOS).")
+	activateReactNativeCmd.Flags().BoolVar(&cppEnabled, "cpp", true, "Activate C++ build cache via ccache (native modules).")
 }

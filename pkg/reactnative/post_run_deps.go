@@ -22,134 +22,47 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Private — post-run analytics hook
+// Private — post-run analytics
 // ---------------------------------------------------------------------------
 
-//go:generate moq -stub -out post_run_hook_mock_test.go -pkg reactnative . postRunHook
-
-type postRunHook interface {
-	getMetadata() common.CacheConfigMetadata
-	getAuthConfig() (common.CacheAuthConfig, error)
-	sendInvocation(inv multiplatform.Invocation) error
-	collectStats(ctx context.Context, ccacheInvocationID, parentID string)
-	sendRelation(ctx context.Context, parentID, childID string)
+// postRunDeps handles post-run analytics: invocation reporting, ccache stats
+// collection, and invocation relation registration.
+type postRunDeps struct {
+	logger         log.Logger
+	osProxy        utils.OsProxy
+	decoderFactory utils.DecoderFactory
+	authConfig     common.CacheAuthConfig
+	client         *ccacheanalytics.Client
 }
 
-// postRunDeps implements postRunHook with production analytics backends.
-type postRunDeps struct{}
-
-func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
-	envs := utils.AllEnvs()
-	logger := log.NewLogger()
-
-	return common.NewMetadata(envs, func(name string, args ...string) (string, error) {
-		out, err := exec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
-
-		return string(out), err
-	}, logger)
-}
-
-func (d *postRunDeps) getAuthConfig() (common.CacheAuthConfig, error) {
-	config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) *postRunDeps {
+	config, err := multiplatformconfig.ReadConfig(osProxy, decoderFactory)
 	if err != nil {
-		return common.CacheAuthConfig{}, fmt.Errorf("read multiplatform analytics config: %w", err)
-	}
+		logger.TWarnf("Failed to read multiplatform analytics config for post-run hook: %v", err)
 
-	return config.AuthConfig, nil
-}
-
-func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
-	config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	if err != nil {
-		return fmt.Errorf("read multiplatform analytics config: %w", err)
-	}
-
-	logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
-
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-	if err != nil {
-		return fmt.Errorf("create analytics client: %w", err)
-	}
-
-	if err := client.PutInvocation(inv); err != nil {
-		return fmt.Errorf("send invocation: %w", err)
-	}
-
-	return nil
-}
-
-func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
-	osProxy := utils.DefaultOsProxy{}
-	configPath := ccacheconfig.PathFor(osProxy, "config.json")
-	if _, err := osProxy.Stat(configPath); err != nil {
-		return
-	}
-
-	config, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to read ccache config for stats collection: %v\n", err)
-
-		return
-	}
-
-	logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
-
-	var dl, ul int64
-	if ccacheipc.IsListening(config.IPCEndpoint) { //nolint:contextcheck // IsListening uses its own short-lived context
-		dl, ul, err = ccacheipc.SendGetSessionStats(ctx, config.IPCEndpoint)
-		if err != nil {
-			logger.TWarnf("Failed to get session stats from storage helper: %v", err)
-		}
+		return nil
 	}
 
 	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
 	if err != nil {
-		logger.TErrorf("Failed to create analytics client for ccache stats: %v", err)
+		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
-		return
+		return nil
 	}
 
-	ccacheanalytics.CollectAndZero(ctx, client, ccacheInvocationID, parentID, dl, ul, logger)
-}
-
-func (d *postRunDeps) sendRelation(ctx context.Context, parentID, childID string) {
-	config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to read config for invocation relation: %v\n", err)
-
-		return
-	}
-
-	logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
-
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to create analytics client for invocation relation: %v\n", err)
-
-		return
-	}
-
-	rel := multiplatform.InvocationRelation{
-		ParentInvocationID: parentID,
-		ChildInvocationID:  childID,
-		InvocationDate:     time.Now(),
-		BuildTool:          "ccache",
-	}
-
-	if err := client.PutInvocationRelation(rel); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to register invocation relation: %v\n", err)
+	return &postRunDeps{
+		logger:         logger,
+		osProxy:        osProxy,
+		decoderFactory: decoderFactory,
+		authConfig:     config.AuthConfig,
+		client:         client,
 	}
 }
 
-func runPostHook(hook postRunHook, invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string) {
-	authConfig, err := hook.getAuthConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to get auth config for ccache analytics: %v\n", err)
-
-		return
-	}
-
-	metadata := hook.getMetadata()
+// run sends invocation analytics, collects ccache stats, and registers
+// the invocation relation.
+func (d *postRunDeps) run(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string) {
+	metadata := d.getMetadata()
 
 	command := parseCommand(args)
 	fullCommand := ""
@@ -167,25 +80,19 @@ func runPostHook(hook postRunHook, invocationID string, args []string, duration 
 		Error:          execErr,
 		BuildTool:      "react-native",
 		Wrapper:        "bitrise-build-cache-cli react-native",
-	}, authConfig, metadata)
+	}, d.authConfig, metadata)
 
 	if ccacheInvocationID == "" {
 		ccacheInvocationID = uuid.New().String()
 	}
 
-	rnSendErr := hook.sendInvocation(*inv)
+	rnSendErr := d.sendInvocation(*inv)
 	if rnSendErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to send run invocation analytics: %v\n", rnSendErr)
+		d.logger.TWarnf("Failed to send run invocation analytics: %v", rnSendErr)
 	}
 
-	osProxy := utils.DefaultOsProxy{}
-	ccacheConfigPath := ccacheconfig.PathFor(osProxy, "config.json")
-	if _, statErr := osProxy.Stat(ccacheConfigPath); statErr != nil {
-		return
-	}
-
-	fmt.Fprintf(os.Stderr, "Ccache invocation ID: %s\n", ccacheInvocationID)
-	hook.collectStats(context.Background(), ccacheInvocationID, invocationID)
+	d.logger.TInfof("Ccache invocation ID: %s", ccacheInvocationID)
+	d.collectStats(context.Background(), ccacheInvocationID, invocationID)
 
 	if rnSendErr == nil {
 		relParentID := os.Getenv("BITRISE_INVOCATION_ID")
@@ -193,8 +100,65 @@ func runPostHook(hook postRunHook, invocationID string, args []string, duration 
 			relParentID = invocationID
 		}
 
-		fmt.Fprintf(os.Stderr, "Parent invocation ID: %s\n", relParentID)
-		hook.sendRelation(context.Background(), relParentID, ccacheInvocationID)
+		d.logger.TInfof("Parent invocation ID: %s", relParentID)
+		d.sendRelation(relParentID, ccacheInvocationID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Private — postRunDeps methods
+// ---------------------------------------------------------------------------
+
+func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
+	envs := utils.AllEnvs()
+
+	return common.NewMetadata(envs, func(name string, args ...string) (string, error) {
+		out, err := exec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
+
+		return string(out), err
+	}, d.logger)
+}
+
+func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
+	if err := d.client.PutInvocation(inv); err != nil {
+		return fmt.Errorf("send invocation: %w", err)
+	}
+
+	return nil
+}
+
+func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
+	configPath := ccacheconfig.PathFor(d.osProxy, "config.json")
+	if _, err := d.osProxy.Stat(configPath); err != nil {
+		return
+	}
+
+	config, err := ccacheconfig.ReadConfig(d.osProxy, d.decoderFactory)
+	if err != nil {
+		return
+	}
+
+	var dl, ul int64
+	if ccacheipc.IsListening(config.IPCEndpoint) { //nolint:contextcheck // IsListening uses its own short-lived context
+		dl, ul, err = ccacheipc.SendGetSessionStats(ctx, config.IPCEndpoint)
+		if err != nil {
+			d.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
+		}
+	}
+
+	ccacheanalytics.CollectAndZero(ctx, d.client, ccacheInvocationID, parentID, dl, ul, d.logger)
+}
+
+func (d *postRunDeps) sendRelation(parentID, childID string) {
+	rel := multiplatform.InvocationRelation{
+		ParentInvocationID: parentID,
+		ChildInvocationID:  childID,
+		InvocationDate:     time.Now(),
+		BuildTool:          "ccache",
+	}
+
+	if err := d.client.PutInvocationRelation(rel); err != nil {
+		d.logger.TWarnf("Failed to register invocation relation: %v", err)
 	}
 }
 

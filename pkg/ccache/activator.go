@@ -22,57 +22,100 @@ type ActivatorParams struct {
 	BaseDirOverride       string
 	DebugLogging          bool
 	Envs                  map[string]string
+
+	// Logger overrides the default logger. If nil, a default logger is created.
+	Logger log.Logger
+	// OsProxy overrides the default OS proxy. If nil, utils.DefaultOsProxy{} is used.
+	OsProxy utils.OsProxy
+	// CommandFunc overrides the default command function. If nil, utils.DefaultCommandFunc() is used.
+	CommandFunc utils.CommandFunc
+	// EncoderFactory overrides the default encoder factory. If nil, utils.DefaultEncoderFactory{} is used.
+	EncoderFactory utils.EncoderFactory
 }
 
 // Activator activates Bitrise Build Cache for C++ via ccache.
-// Exported fields are optional dependencies — when nil/zero, production
-// defaults are used. Set them in tests to inject mocks.
 type Activator struct {
-	Params         ActivatorParams
-	Logger         log.Logger
-	OsProxy        utils.OsProxy
-	CommandFunc    utils.CommandFunc
-	EncoderFactory utils.EncoderFactory
+	logger         log.Logger
+	osProxy        utils.OsProxy
+	commandFunc    utils.CommandFunc
+	encoderFactory utils.EncoderFactory
+
+	buildCacheEndpoint    string
+	pushEnabled           bool
+	ipcSocketPathOverride string
+	baseDirOverride       string
+	debugLogging          bool
+	envs                  map[string]string
 }
 
 // NewActivator creates an Activator with production defaults.
 func NewActivator(params ActivatorParams) *Activator {
-	return &Activator{Params: params}
+	envs := params.Envs
+	if envs == nil {
+		envs = utils.AllEnvs()
+	}
+
+	logger := params.Logger
+	if logger == nil {
+		logger = log.NewLogger(log.WithDebugLog(params.DebugLogging))
+	}
+
+	osProxy := params.OsProxy
+	if osProxy == nil {
+		osProxy = utils.DefaultOsProxy{}
+	}
+
+	commandFunc := params.CommandFunc
+	if commandFunc == nil {
+		commandFunc = utils.DefaultCommandFunc()
+	}
+
+	encoderFactory := params.EncoderFactory
+	if encoderFactory == nil {
+		encoderFactory = utils.DefaultEncoderFactory{}
+	}
+
+	return &Activator{
+		logger:         logger,
+		osProxy:        osProxy,
+		commandFunc:    commandFunc,
+		encoderFactory: encoderFactory,
+
+		buildCacheEndpoint:    params.BuildCacheEndpoint,
+		pushEnabled:           params.PushEnabled,
+		ipcSocketPathOverride: params.IPCSocketPathOverride,
+		baseDirOverride:       params.BaseDirOverride,
+		debugLogging:          params.DebugLogging,
+		envs:                  envs,
+	}
 }
 
 // Activate creates the ccache config and exports the required environment
 // variables via envman.
 func (a *Activator) Activate(ctx context.Context) error {
-	logger, osProxy, commandFunc, encoderFactory := a.resolvedDeps()
-	logger.EnableDebugLog(a.Params.DebugLogging)
-	logger.TInfof("Activate Bitrise Build Cache for C++")
+	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
-	envs := a.Params.Envs
-	if envs == nil {
-		envs = utils.AllEnvs()
-	}
-
-	config, err := ccacheconfig.NewConfig(envs, osProxy, ccacheconfig.Params{
-		BuildCacheEndpoint:    a.Params.BuildCacheEndpoint,
-		PushEnabled:           a.Params.PushEnabled,
-		IPCSocketPathOverride: a.Params.IPCSocketPathOverride,
-		BaseDirOverride:       a.Params.BaseDirOverride,
+	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
+		BuildCacheEndpoint:    a.buildCacheEndpoint,
+		PushEnabled:           a.pushEnabled,
+		IPCSocketPathOverride: a.ipcSocketPathOverride,
+		BaseDirOverride:       a.baseDirOverride,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ccache config: %w", err)
 	}
 
-	config.DebugLogging = a.Params.DebugLogging
+	config.DebugLogging = a.debugLogging
 
-	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
+	if err := config.Save(a.logger, a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
 
-	baseDir := a.Params.BaseDirOverride
+	baseDir := a.baseDirOverride
 	if baseDir == "" {
-		wd, err := osProxy.Getwd()
+		wd, err := a.osProxy.Getwd()
 		if err != nil {
-			logger.Warnf("Failed to get working directory for CCACHE_BASEDIR: %s", err)
+			a.logger.Warnf("Failed to get working directory for CCACHE_BASEDIR: %s", err)
 		} else {
 			baseDir = wd
 		}
@@ -88,44 +131,16 @@ func (a *Activator) Activate(ctx context.Context) error {
 	}
 
 	for key, value := range envVars {
-		addEnvVarToEnvman(ctx, commandFunc, key, value, logger)
+		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
-	logger.TInfof(ActivateCppSuccessful)
+	a.logger.TInfof(ActivateCppSuccessful)
 
 	return nil
 }
 
 // ActivateCppSuccessful is the success message printed after activation.
 const ActivateCppSuccessful = "✅ Bitrise Build Cache for C++ activated"
-
-// ---------------------------------------------------------------------------
-// Private — Activator methods
-// ---------------------------------------------------------------------------
-
-func (a *Activator) resolvedDeps() (log.Logger, utils.OsProxy, utils.CommandFunc, utils.EncoderFactory) {
-	logger := a.Logger
-	if logger == nil {
-		logger = log.NewLogger(log.WithDebugLog(a.Params.DebugLogging))
-	}
-
-	osProxy := a.OsProxy
-	if osProxy == nil {
-		osProxy = utils.DefaultOsProxy{}
-	}
-
-	commandFunc := a.CommandFunc
-	if commandFunc == nil {
-		commandFunc = utils.DefaultCommandFunc()
-	}
-
-	encoderFactory := a.EncoderFactory
-	if encoderFactory == nil {
-		encoderFactory = utils.DefaultEncoderFactory{}
-	}
-
-	return logger, osProxy, commandFunc, encoderFactory
-}
 
 // ---------------------------------------------------------------------------
 // Private — package-level helpers

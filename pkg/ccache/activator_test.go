@@ -88,13 +88,18 @@ func newTestActivator(t *testing.T, params ccachepkg.ActivatorParams) (*ccachepk
 	t.Helper()
 	cmdFunc, envVars := trackingCommandFunc()
 
-	a := ccachepkg.NewActivator(params)
-	a.Logger = mockLogger
-	a.OsProxy = newOsProxyMock(t)
-	a.CommandFunc = cmdFunc
-	a.EncoderFactory = noOpEncoderFactory()
+	if params.Logger == nil {
+		params.Logger = mockLogger
+	}
 
-	return a, envVars
+	if params.OsProxy == nil {
+		params.OsProxy = newOsProxyMock(t)
+	}
+
+	params.CommandFunc = cmdFunc
+	params.EncoderFactory = noOpEncoderFactory()
+
+	return ccachepkg.NewActivator(params), envVars
 }
 
 func TestActivator_Activate(t *testing.T) {
@@ -129,13 +134,14 @@ func TestActivator_Activate(t *testing.T) {
 	})
 
 	t.Run("uses Getwd for CCACHE_BASEDIR when no BaseDirOverride", func(t *testing.T) {
+		osProxy := newOsProxyMock(t)
+		osProxy.GetwdFunc = func() (string, error) { return "/from/getwd", nil }
+
 		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
 			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
 			Envs:        validEnvs(),
+			OsProxy:     osProxy,
 		})
-		osProxy := newOsProxyMock(t)
-		osProxy.GetwdFunc = func() (string, error) { return "/from/getwd", nil }
-		a.OsProxy = osProxy
 
 		err := a.Activate(context.Background())
 
@@ -157,13 +163,14 @@ func TestActivator_Activate(t *testing.T) {
 	})
 
 	t.Run("CCACHE_BASEDIR is empty when Getwd fails and no override", func(t *testing.T) {
+		osProxy := newOsProxyMock(t)
+		osProxy.GetwdFunc = func() (string, error) { return "", errors.New("getwd failed") }
+
 		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
 			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
 			Envs:        validEnvs(),
+			OsProxy:     osProxy,
 		})
-		osProxy := newOsProxyMock(t)
-		osProxy.GetwdFunc = func() (string, error) { return "", errors.New("getwd failed") }
-		a.OsProxy = osProxy
 
 		err := a.Activate(context.Background())
 
@@ -182,15 +189,16 @@ func TestActivator_Activate(t *testing.T) {
 	})
 
 	t.Run("returns error when config save fails", func(t *testing.T) {
-		a, _ := newTestActivator(t, ccachepkg.ActivatorParams{
-			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
-			Envs:        validEnvs(),
-		})
 		osProxy := newOsProxyMock(t)
 		osProxy.CreateFunc = func(_ string) (*os.File, error) {
 			return nil, os.ErrPermission
 		}
-		a.OsProxy = osProxy
+
+		a, _ := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+			OsProxy:     osProxy,
+		})
 
 		err := a.Activate(context.Background())
 		assert.ErrorContains(t, err, "failed to save ccache config")

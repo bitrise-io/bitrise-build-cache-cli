@@ -3,17 +3,12 @@
 package reactnative
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
 )
 
 func newTestRunner(params RunnerParams) *Runner {
@@ -138,96 +133,107 @@ func TestRunner_Run(t *testing.T) {
 	})
 }
 
-func Test_runPostHook(t *testing.T) {
-	t.Run("sends run invocation with metadata", func(t *testing.T) {
-		var sentInvocation multiplatform.Invocation
+func TestRunner_PostRunHook(t *testing.T) {
+	noOpExec := func(_ []string, _ string, _ ...string) error { return nil }
 
-		hook := &postRunHookMock{
-			getMetadataFunc:   func() common.CacheConfigMetadata { return common.CacheConfigMetadata{BitriseAppID: "app-1"} },
-			getAuthConfigFunc: func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{WorkspaceID: "ws-1"}, nil },
-			sendInvocationFunc: func(inv multiplatform.Invocation) error {
-				sentInvocation = inv
+	t.Run("calls postRun with invocation ID and args", func(t *testing.T) {
+		mock := &postRunRunnerMock{}
+		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
+		r.postRun = mock
 
-				return nil
-			},
-		}
+		err := r.Run([]string{"yarn", "build"}, "inv-123", []string{})
 
-		runPostHook(hook, "inv-1", []string{"myapp", "--flag"}, time.Second, nil, "")
+		require.NoError(t, err)
+		require.Len(t, mock.runCalls(), 1)
 
-		assert.Equal(t, "inv-1", sentInvocation.InvocationID)
-		assert.Equal(t, "ws-1", sentInvocation.BitriseWorkspaceSlug)
-		assert.Equal(t, "app-1", sentInvocation.BitriseAppSlug)
-		assert.Equal(t, "myapp", sentInvocation.Command)
-		assert.Equal(t, "myapp --flag", sentInvocation.FullCommand)
-		assert.True(t, sentInvocation.Success)
-		assert.Equal(t, "react-native", sentInvocation.BuildTool)
+		call := mock.runCalls()[0]
+		assert.Equal(t, "inv-123", call.InvocationID)
+		assert.Equal(t, []string{"yarn", "build"}, call.Args)
+		assert.Nil(t, call.ExecErr)
 	})
 
-	t.Run("reports success=false when exec fails", func(t *testing.T) {
-		var sentInvocation multiplatform.Invocation
+	t.Run("passes exec error to postRun", func(t *testing.T) {
 		execErr := errors.New("build failed")
+		mock := &postRunRunnerMock{}
+		r := newTestRunner(RunnerParams{
+			ExecFn: func(_ []string, _ string, _ ...string) error { return execErr },
+		})
+		r.postRun = mock
 
-		hook := &postRunHookMock{
-			getAuthConfigFunc:  func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			sendInvocationFunc: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
-		}
+		_ = r.Run([]string{"yarn", "build"}, "inv-456", []string{})
 
-		runPostHook(hook, "inv-2", []string{"true"}, time.Second, execErr, "")
-
-		assert.False(t, sentInvocation.Success)
-		assert.Contains(t, sentInvocation.Error, "build failed")
+		require.Len(t, mock.runCalls(), 1)
+		assert.ErrorIs(t, mock.runCalls()[0].ExecErr, execErr)
 	})
 
-	t.Run("command is runner+subcommand for known package managers", func(t *testing.T) {
-		cases := []struct {
-			args            []string
-			expectedCommand string
-		}{
-			{[]string{"yarn", "build:ios", "-v"}, "yarn build:ios"},
-			{[]string{"npm", "run", "start"}, "npm run start"},
-			{[]string{"npm", "run", "build:ios", "--", "--verbose"}, "npm run build:ios"},
-			{[]string{"npx", "react-native", "run-ios"}, "npx react-native run-ios"},
-			{[]string{"npx", "create-expo-app", "my-app"}, "npx create-expo-app"},
-			{[]string{"expo", "build:ios"}, "expo build:ios"},
-			{[]string{"pnpm", "install"}, "pnpm install"},
-			{[]string{"fastlane", "beta"}, "fastlane beta"},
-		}
+	t.Run("passes ccacheInvocationID to postRun", func(t *testing.T) {
+		mock := &postRunRunnerMock{}
+		r := newTestRunner(RunnerParams{
+			ExecFn:             noOpExec,
+			CcacheInvocationID: "ccache-789",
+		})
+		r.postRun = mock
 
-		for _, tc := range cases {
-			var sentInvocation multiplatform.Invocation
+		err := r.Run([]string{"true"}, "inv", []string{})
 
-			hook := &postRunHookMock{
-				getAuthConfigFunc:  func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-				sendInvocationFunc: func(inv multiplatform.Invocation) error { sentInvocation = inv; return nil },
-			}
-
-			runPostHook(hook, "inv", tc.args, 0, nil, "")
-			assert.Equal(t, tc.expectedCommand, sentInvocation.Command, "args: %v", tc.args)
-		}
+		require.NoError(t, err)
+		require.Len(t, mock.runCalls(), 1)
+		assert.Equal(t, "ccache-789", mock.runCalls()[0].CcacheInvocationID)
 	})
 
-	t.Run("getAuthConfig error aborts the hook", func(t *testing.T) {
-		sendCalled := false
+	t.Run("generates invocation ID when empty and passes it to postRun", func(t *testing.T) {
+		mock := &postRunRunnerMock{}
+		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
+		r.postRun = mock
 
-		hook := &postRunHookMock{
-			getAuthConfigFunc:  func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, errors.New("no auth") },
-			sendInvocationFunc: func(_ multiplatform.Invocation) error { sendCalled = true; return nil },
-		}
+		err := r.Run([]string{"true"}, "", []string{})
 
-		runPostHook(hook, "inv", []string{"true"}, 0, nil, "")
-		assert.False(t, sendCalled)
+		require.NoError(t, err)
+		require.Len(t, mock.runCalls(), 1)
+		assert.NotEmpty(t, mock.runCalls()[0].InvocationID)
 	})
 
-	t.Run("sendRelation is not called when sendInvocation fails", func(t *testing.T) {
-		relationCalled := false
+	t.Run("postRun is not called when postRun is nil", func(t *testing.T) {
+		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
+		// postRun is already nil from newTestRunner
 
-		hook := &postRunHookMock{
-			getAuthConfigFunc:  func() (common.CacheAuthConfig, error) { return common.CacheAuthConfig{}, nil },
-			sendInvocationFunc: func(_ multiplatform.Invocation) error { return errors.New("analytics down") },
-			sendRelationFunc:   func(_ context.Context, _, _ string) { relationCalled = true },
-		}
+		err := r.Run([]string{"true"}, "inv", []string{})
 
-		runPostHook(hook, "inv", []string{"true"}, 0, nil, "ccache-id")
-		assert.False(t, relationCalled)
+		require.NoError(t, err)
+		// no panic — nil postRun is handled gracefully
 	})
+
+	t.Run("postRun is called even when exec fails", func(t *testing.T) {
+		mock := &postRunRunnerMock{}
+		r := newTestRunner(RunnerParams{
+			ExecFn: func(_ []string, _ string, _ ...string) error { return errors.New("failed") },
+		})
+		r.postRun = mock
+
+		_ = r.Run([]string{"true"}, "inv", []string{})
+
+		require.Len(t, mock.runCalls(), 1)
+	})
+}
+
+func Test_parseCommand(t *testing.T) {
+	cases := []struct {
+		args            []string
+		expectedCommand string
+	}{
+		{[]string{"yarn", "build:ios", "-v"}, "yarn build:ios"},
+		{[]string{"npm", "run", "start"}, "npm run start"},
+		{[]string{"npm", "run", "build:ios", "--", "--verbose"}, "npm run build:ios"},
+		{[]string{"npx", "react-native", "run-ios"}, "npx react-native run-ios"},
+		{[]string{"npx", "create-expo-app", "my-app"}, "npx create-expo-app"},
+		{[]string{"expo", "build:ios"}, "expo build:ios"},
+		{[]string{"pnpm", "install"}, "pnpm install"},
+		{[]string{"fastlane", "beta"}, "fastlane beta"},
+		{[]string{}, ""},
+		{[]string{"unknown-binary"}, "unknown-binary"},
+	}
+
+	for _, tc := range cases {
+		assert.Equal(t, tc.expectedCommand, parseCommand(tc.args), "args: %v", tc.args)
+	}
 }
