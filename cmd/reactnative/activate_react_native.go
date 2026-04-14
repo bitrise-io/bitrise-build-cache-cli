@@ -33,10 +33,10 @@ Note: This is a convenience activation method, if your activation requires fine-
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
-			Gradle:       gradleEnabled,
-			Xcode:        xcodeEnabled,
-			Cpp:          cppEnabled,
-			DebugLogging: common.IsDebugLogMode,
+			GradleEnabled: gradleEnabled,
+			XcodeEnabled:  xcodeEnabled,
+			CppEnabled:    cppEnabled,
+			DebugLogging:  common.IsDebugLogMode,
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {

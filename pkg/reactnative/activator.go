@@ -29,10 +29,10 @@ import (
 
 // ActivatorParams holds the activation flags.
 type ActivatorParams struct {
-	Gradle       bool
-	Xcode        bool
-	Cpp          bool
-	DebugLogging bool
+	GradleEnabled bool
+	XcodeEnabled  bool
+	CppEnabled    bool
+	DebugLogging  bool
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -60,15 +60,15 @@ func NewActivator(params ActivatorParams) *Activator {
 		logger:       logger,
 	}
 
-	if params.Gradle {
+	if params.GradleEnabled {
 		a.gradle = &gradleActivator{logger: logger, debugLogging: params.DebugLogging}
 	}
 
-	if params.Xcode {
+	if params.XcodeEnabled {
 		a.xcode = &xcodeActivator{logger: logger, debugLogging: params.DebugLogging}
 	}
 
-	if params.Cpp {
+	if params.CppEnabled {
 		a.cpp = ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			PushEnabled:  ccacheconfig.DefaultParams().PushEnabled,
 			DebugLogging: params.DebugLogging,
