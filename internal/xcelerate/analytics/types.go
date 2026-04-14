@@ -36,13 +36,6 @@ type CacheOperation struct {
 	FileStats            FileStats `json:"fileStats"`
 }
 
-type InvocationRelation struct {
-	ParentInvocationID string    `json:"parentInvocationId"`
-	ChildInvocationID  string    `json:"childInvocationId"`
-	InvocationDate     time.Time `json:"invocationDate"`
-	BuildTool          string    `json:"buildTool"`
-}
-
 type Invocation struct {
 	InvocationID         string            `json:"invocationId"`
 	InvocationDate       time.Time         `json:"invocationDate"`

@@ -97,6 +97,74 @@ When `activate gradle` or `activate bazel` is called:
   If there's no marked block in the bazelrc file yet then the CLI will append it to the file
   with the necessary content in the block.
 
+## Package architecture
+
+The codebase follows a three-layer architecture with strict dependency direction:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  cmd/                                               │
+│  Thin cobra wrappers — map flags to params,         │
+│  call pkg/ structs. No business logic.              │
+│                                                     │
+│  cmd/ccache/     cmd/reactnative/   cmd/gradle/ ... │
+└──────────────┬──────────────────────────────────────┘
+               │ imports
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  pkg/                                               │
+│  Public API for external Go packages (e.g. steps).  │
+│  Exported structs with public methods.              │
+│  No cobra dependency.                               │
+│                                                     │
+│  pkg/ccache/          pkg/reactnative/              │
+│  ├── StorageHelper    ├── Activator                 │
+│  ├── Activator        ├── Runner                    │
+│  └── InvocationReg.   └── (postRunDeps internal)    │
+└──────────────┬──────────────────────────────────────┘
+               │ imports
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  internal/                                          │
+│  Core business logic, config, protocols, analytics. │
+│  Not importable outside this module.                │
+│                                                     │
+│  internal/config/     internal/ccache/              │
+│  internal/xcelerate/  internal/build_cache/kv/      │
+└─────────────────────────────────────────────────────┘
+```
+
+**Dependency rules:**
+- `cmd/` imports `pkg/` and `internal/` (for flag types and wiring)
+- `pkg/` imports `internal/` only — never `cmd/`
+- `internal/` never imports `cmd/` or `pkg/`
+
+**Using `pkg/` from external Go code (e.g. Bitrise steps):**
+
+Instead of shelling out to the CLI binary, Go packages can import the `pkg/` structs directly:
+
+```go
+import ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/pkg/ccache"
+
+// Start the ccache storage helper
+helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+    InvocationID: myID,
+    DebugLogging: true,
+})
+if err != nil { ... }
+err = helper.Start(ctx)
+```
+
+```go
+import rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/pkg/reactnative"
+
+// Activate React Native build cache
+a := &rnpkg.Activator{
+    Params: rnpkg.ActivatorParams{Gradle: true, Xcode: true, Cpp: true},
+}
+err := a.Activate(ctx)
+```
+
 ## Release process
 
 Refer to the [confluence page](https://bitrise.atlassian.net/wiki/spaces/RD/pages/3620110397/Build+cache+plugin+CLI+release+flow)

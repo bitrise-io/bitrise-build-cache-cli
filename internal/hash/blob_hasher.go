@@ -6,7 +6,7 @@ import (
 
 	"github.com/zeebo/blake3"
 
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
 )
 
 func NewBlobHasher(hash remoteexecution.DigestFunction_Value) hash.Hash {

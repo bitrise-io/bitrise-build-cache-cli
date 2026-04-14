@@ -7,15 +7,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-)
-
-const (
-	ErrFmtFailedToUpdateProps = `failed to update gradle.properties: %w"`
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 // ActivateGradleCmd represents the `gradle` subcommand under `activate`
@@ -45,10 +40,11 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		allEnvs := utils.AllEnvs()
 
-		if err := ActivateGradleCmdFn(
+		if err := gradleconfig.Activate(
 			logger,
 			gradleHome,
 			allEnvs,
+			common.IsDebugLogMode,
 			activateGradleParams.TemplateInventory,
 			func(
 				inventory gradleconfig.TemplateInventory,
@@ -93,6 +89,11 @@ func init() {
 	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.TestSearchDepth, "test-distribution-search-depth", activateGradleParams.TestDistro.TestSearchDepth, "Search depth for test distribution when trying to find test tasks not listed in the invocation.")
 }
 
+// ErrFmtFailedToUpdateProps is re-exported for backward compatibility with existing tests.
+var ErrFmtFailedToUpdateProps = gradleconfig.ErrFmtFailedToUpdateProps //nolint:gochecknoglobals
+
+// ActivateGradleCmdFn is a backward-compatible wrapper around gradleconfig.Activate
+// that reads IsDebugLogMode from the global flag. Prefer gradleconfig.Activate directly.
 func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
@@ -102,24 +103,5 @@ func ActivateGradleCmdFn(
 	updater gradleconfig.GradlePropertiesUpdater,
 	params gradleconfig.ActivateGradleParams,
 ) error {
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envProvider)
-	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-
-	templateInventory, err := templateInventoryProvider(logger, envProvider, common.IsDebugLogMode, benchmarkClient)
-	if err != nil {
-		return err
-	}
-
-	if err := templateWriter(
-		templateInventory,
-		gradleHomePath,
-	); err != nil {
-		return err
-	}
-
-	if err := updater.UpdateGradleProps(params, logger, gradleHomePath); err != nil {
-		return fmt.Errorf(ErrFmtFailedToUpdateProps, err)
-	}
-
-	return nil
+	return gradleconfig.Activate(logger, gradleHomePath, envProvider, common.IsDebugLogMode, templateInventoryProvider, templateWriter, updater, params) //nolint:wrapcheck // thin wrapper, error context added by caller
 }

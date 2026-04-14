@@ -6,9 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -24,32 +22,21 @@ var healthCheckStorageHelperCmd = &cobra.Command{
 	Short:        "Poll the storage helper until it is ready or the timeout expires",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		socketPath := healthCheckSocketPath
-		if socketPath == "" {
-			config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-			if err != nil {
-				return fmt.Errorf("read ccache config (use --socket to override): %w", err)
-			}
-
-			socketPath = config.IPCEndpoint
+		helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+			SocketPath: healthCheckSocketPath,
+		})
+		if err != nil {
+			return fmt.Errorf("create storage helper: %w", err)
 		}
 
-		deadline := time.Now().Add(healthCheckTimeout)
-		for {
-			if err := ccache.SendHealthCheck(cmd.Context(), socketPath); err == nil {
-				return nil
-			}
-
-			if time.Now().After(deadline) {
-				return fmt.Errorf("storage helper did not become ready within %s", healthCheckTimeout)
-			}
-
-			select {
-			case <-cmd.Context().Done():
-				return cmd.Context().Err()
-			case <-time.After(healthCheckPollInterval):
-			}
+		if err := helper.HealthCheck(cmd.Context(), ccachepkg.HealthCheckParams{
+			Timeout:      healthCheckTimeout,
+			PollInterval: healthCheckPollInterval,
+		}); err != nil {
+			return fmt.Errorf("health check: %w", err)
 		}
+
+		return nil
 	},
 }
 

@@ -5,7 +5,7 @@ package mocks
 
 import (
 	"context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/proxy"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"io"
 	"sync"

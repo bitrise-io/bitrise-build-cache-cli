@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-retryablehttp"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 func NewCacheOperation(startT time.Time, operationType string, metadata *common.CacheConfigMetadata) *CacheOperation {

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 func Test_NewServer_initializes_activeInvocationID(t *testing.T) {

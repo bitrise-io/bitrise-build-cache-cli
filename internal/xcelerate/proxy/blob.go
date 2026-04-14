@@ -3,8 +3,8 @@ package proxy
 import (
 	"encoding/hex"
 
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
-	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/cas"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
+	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/cas"
 )
 
 const digestFunction = remoteexecution.DigestFunction_BLAKE3

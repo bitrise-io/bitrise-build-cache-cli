@@ -2,16 +2,10 @@ package ccache
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
-	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/analytics"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -26,28 +20,18 @@ var registerChildInvocationCmd = &cobra.Command{
 	Use:          "register-child-invocation",
 	Short:        "Register a parent→child relationship between two invocation IDs",
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
-		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		inv, err := ccachepkg.NewInvocationRegistry(ccachepkg.InvocationRegistryParams{})
 		if err != nil {
-			return fmt.Errorf("read ccache config: %w", err)
+			return fmt.Errorf("create invocation registry: %w", err)
 		}
 
-		logger := log.NewLogger()
-
-		client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-		if err != nil {
-			return fmt.Errorf("create analytics client: %w", err)
-		}
-
-		rel := multiplatform.InvocationRelation{
-			ParentInvocationID: registerChildParentID,
-			ChildInvocationID:  registerChildChildID,
-			InvocationDate:     time.Now(),
-			BuildTool:          registerChildBuildTool,
-		}
-
-		if err := client.PutInvocationRelation(rel); err != nil {
-			return fmt.Errorf("register child invocation: %w", err)
+		if err := inv.RegisterRelation(cmd.Context(), ccachepkg.RegisterRelationParams{
+			ParentID:  registerChildParentID,
+			ChildID:   registerChildChildID,
+			BuildTool: registerChildBuildTool,
+		}); err != nil {
+			return fmt.Errorf("register invocation relation: %w", err)
 		}
 
 		return nil

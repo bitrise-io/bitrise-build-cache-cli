@@ -9,14 +9,32 @@ import (
 	"os"
 	"testing"
 
+	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	cmdccache "github.com/bitrise-io/bitrise-build-cache-cli/cmd/ccache"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
+
+var mockLogger = newMockLogger() //nolint:gochecknoglobals
+
+func newMockLogger() *utilsMocks.Logger {
+	l := &utilsMocks.Logger{}
+	l.On("Debugf", mock.Anything, mock.Anything).Return()
+	l.On("EnableDebugLog", mock.Anything).Return()
+	l.On("Infof", mock.Anything, mock.Anything).Return()
+	l.On("Infof", mock.Anything).Return()
+	l.On("TInfof", mock.Anything, mock.Anything).Return()
+	l.On("TInfof", mock.Anything, mock.Anything, mock.Anything).Return()
+	l.On("TInfof", mock.Anything).Return()
+	l.On("Warnf", mock.Anything, mock.Anything).Return()
+
+	return l
+}
 
 func validEnvs() map[string]string {
 	return map[string]string{
@@ -28,6 +46,7 @@ func validEnvs() map[string]string {
 func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 	t.Helper()
 	tmpDir := t.TempDir()
+
 	return &mocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return tmpDir, nil },
 		MkdirAllFunc:    func(_ string, _ os.FileMode) error { return nil },
@@ -50,34 +69,47 @@ func noOpEncoderFactory() *mocks.EncoderFactoryMock {
 	}
 }
 
-// trackingCommandFunc returns a CommandFunc that records envman key/value pairs set via it.
 func trackingCommandFunc() (utils.CommandFunc, map[string]string) {
 	envVars := map[string]string{}
 	cmdFunc := func(_ context.Context, name string, args ...string) utils.Command {
-		// envman add --key <key> --value <value>
 		if name == "envman" && len(args) == 5 && args[0] == "add" && args[1] == "--key" && args[3] == "--value" {
 			envVars[args[2]] = args[4]
 		}
+
 		return &mocks.CommandMock{
 			CombinedOutputFunc: func() ([]byte, error) { return nil, nil },
 		}
 	}
+
 	return cmdFunc, envVars
 }
 
-func Test_ActivateCppCommandFn(t *testing.T) {
-	t.Run("sets all required environment variables via envman", func(t *testing.T) {
-		cmdFunc, envVars := trackingCommandFunc()
+func newTestActivator(t *testing.T, params ccachepkg.ActivatorParams) (*ccachepkg.Activator, map[string]string) {
+	t.Helper()
+	cmdFunc, envVars := trackingCommandFunc()
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			newOsProxyMock(t),
-			cmdFunc,
-			noOpEncoderFactory(),
-			ccacheconfig.DefaultParams(),
-			validEnvs(),
-		)
+	if params.Logger == nil {
+		params.Logger = mockLogger
+	}
+
+	if params.OsProxy == nil {
+		params.OsProxy = newOsProxyMock(t)
+	}
+
+	params.CommandFunc = cmdFunc
+	params.EncoderFactory = noOpEncoderFactory()
+
+	return ccachepkg.NewActivator(params), envVars
+}
+
+func TestActivator_Activate(t *testing.T) {
+	t.Run("sets all required environment variables via envman", func(t *testing.T) {
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+		})
+
+		err := a.Activate(context.Background())
 
 		require.NoError(t, err)
 		assert.Equal(t, "/work/dir", envVars["CCACHE_BASEDIR"])
@@ -89,96 +121,70 @@ func Test_ActivateCppCommandFn(t *testing.T) {
 	})
 
 	t.Run("uses BaseDirOverride when provided", func(t *testing.T) {
-		cmdFunc, envVars := trackingCommandFunc()
-		params := ccacheconfig.DefaultParams()
-		params.BaseDirOverride = "/custom/basedir"
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled:     ccacheconfig.DefaultParams().PushEnabled,
+			BaseDirOverride: "/custom/basedir",
+			Envs:            validEnvs(),
+		})
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			newOsProxyMock(t),
-			cmdFunc,
-			noOpEncoderFactory(),
-			params,
-			validEnvs(),
-		)
+		err := a.Activate(context.Background())
 
 		require.NoError(t, err)
 		assert.Equal(t, "/custom/basedir", envVars["CCACHE_BASEDIR"])
 	})
 
 	t.Run("uses Getwd for CCACHE_BASEDIR when no BaseDirOverride", func(t *testing.T) {
-		cmdFunc, envVars := trackingCommandFunc()
 		osProxy := newOsProxyMock(t)
 		osProxy.GetwdFunc = func() (string, error) { return "/from/getwd", nil }
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			osProxy,
-			cmdFunc,
-			noOpEncoderFactory(),
-			ccacheconfig.DefaultParams(),
-			validEnvs(),
-		)
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+			OsProxy:     osProxy,
+		})
+
+		err := a.Activate(context.Background())
 
 		require.NoError(t, err)
 		assert.Equal(t, "/from/getwd", envVars["CCACHE_BASEDIR"])
 	})
 
 	t.Run("CCACHE_REMOTE_STORAGE contains IPC socket path override", func(t *testing.T) {
-		cmdFunc, envVars := trackingCommandFunc()
-		params := ccacheconfig.DefaultParams()
-		params.IPCSocketPathOverride = "/custom/ccache.sock"
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled:           ccacheconfig.DefaultParams().PushEnabled,
+			IPCSocketPathOverride: "/custom/ccache.sock",
+			Envs:                  validEnvs(),
+		})
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			newOsProxyMock(t),
-			cmdFunc,
-			noOpEncoderFactory(),
-			params,
-			validEnvs(),
-		)
+		err := a.Activate(context.Background())
 
 		require.NoError(t, err)
 		assert.Contains(t, envVars["CCACHE_REMOTE_STORAGE"], "/custom/ccache.sock")
 	})
 
 	t.Run("CCACHE_BASEDIR is empty when Getwd fails and no override", func(t *testing.T) {
-		cmdFunc, envVars := trackingCommandFunc()
 		osProxy := newOsProxyMock(t)
 		osProxy.GetwdFunc = func() (string, error) { return "", errors.New("getwd failed") }
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			osProxy,
-			cmdFunc,
-			noOpEncoderFactory(),
-			ccacheconfig.DefaultParams(),
-			validEnvs(),
-		)
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+			OsProxy:     osProxy,
+		})
+
+		err := a.Activate(context.Background())
 
 		require.NoError(t, err)
 		assert.Equal(t, "", envVars["CCACHE_BASEDIR"])
 	})
 
 	t.Run("returns error when auth config is missing", func(t *testing.T) {
-		noOpCmd := func(_ context.Context, _ string, _ ...string) utils.Command {
-			return &mocks.CommandMock{CombinedOutputFunc: func() ([]byte, error) { return nil, nil }}
-		}
+		a, _ := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        map[string]string{},
+		})
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			newOsProxyMock(t),
-			noOpCmd,
-			noOpEncoderFactory(),
-			ccacheconfig.DefaultParams(),
-			map[string]string{},
-		)
-
+		err := a.Activate(context.Background())
 		assert.ErrorContains(t, err, "failed to create ccache config")
 	})
 
@@ -187,20 +193,14 @@ func Test_ActivateCppCommandFn(t *testing.T) {
 		osProxy.CreateFunc = func(_ string) (*os.File, error) {
 			return nil, os.ErrPermission
 		}
-		noOpCmd := func(_ context.Context, _ string, _ ...string) utils.Command {
-			return &mocks.CommandMock{CombinedOutputFunc: func() ([]byte, error) { return nil, nil }}
-		}
 
-		err := cmdccache.ActivateCppCommandFn(
-			context.Background(),
-			mockLogger,
-			osProxy,
-			noOpCmd,
-			noOpEncoderFactory(),
-			ccacheconfig.DefaultParams(),
-			validEnvs(),
-		)
+		a, _ := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+			OsProxy:     osProxy,
+		})
 
+		err := a.Activate(context.Background())
 		assert.ErrorContains(t, err, "failed to save ccache config")
 	})
 }

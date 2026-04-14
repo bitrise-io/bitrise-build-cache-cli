@@ -1,55 +1,25 @@
 package xcode
 
 import (
-	"cmp"
 	"context"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/shirou/gopsutil/v4/process"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/envexport"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 const (
-	activateXcode           = "Activate Bitrise Build Cache for Xcode"
-	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
-	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
+	activateXcode = "Activate Bitrise Build Cache for Xcode"
+)
 
-	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
-
-	cliBasename                    = "bitrise-build-cache-cli"
-	xcodebuildWrapperScriptContent = `#!/bin/bash
-set -e
-
-if [ "${1-}" = "-version" ]; then
-  %s "$@"
-else
-  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
-fi
-`
-	xcrunWrapperScriptContent = `#!/bin/bash
-set -e
-
-if [ "${1-}" = "xcodebuild" ] && [ "${2-}" = "-version" ]; then
-  %s "$@"
-elif [ "${1-}" = "xcodebuild" ]; then
-  shift
-  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
-else
-  %s "$@"
-fi
-`
+// Re-exported constants for backward compatibility with existing tests.
+var ( //nolint:gochecknoglobals // re-exports from internal
+	ActivateXcodeSuccessful = xcelerate.ActivateXcodeSuccessful //nolint:gochecknoglobals
+	AddXcelerateToPath      = xcelerate.AddXcelerateToPath      //nolint:gochecknoglobals
+	ErrFmtCreateXcodeConfig = xcelerate.ErrFmtCreateXcodeConfig //nolint:gochecknoglobals
 )
 
 //go:generate moq -stub -out mocks/config_mock.go -pkg mocks . XcelerateConfig
@@ -77,7 +47,7 @@ This command will:
 		activateXcodeParams.DebugLogging = common.IsDebugLogMode
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		return ActivateXcodeCommandFn(
+		return xcelerate.Activate(
 			cmd.Context(),
 			logger,
 			utils.DefaultOsProxy{},
@@ -143,6 +113,8 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 Cache will have to be enabled manually in the Xcode project settings.`)
 }
 
+// ActivateXcodeCommandFn is a backward-compatible wrapper around xcelerate.Activate.
+// Prefer xcelerate.Activate directly.
 func ActivateXcodeCommandFn(
 	ctx context.Context,
 	logger log.Logger,
@@ -150,200 +122,8 @@ func ActivateXcodeCommandFn(
 	commandFunc utils.CommandFunc,
 	encoderFactory utils.EncoderFactory,
 	decoderFactory utils.DecoderFactory,
-	activateXcodeParams xcelerate.Params,
+	activateParams xcelerate.Params,
 	envs map[string]string,
 ) error {
-	overrideActivateXcodeParamsFromExistingConfig(
-		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
-
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envs)
-	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-
-	config, err := xcelerate.NewConfig(
-		ctx,
-		logger,
-		activateXcodeParams,
-		envs,
-		osProxy,
-		commandFunc,
-		envexport.New(envs, logger),
-		benchmarkClient,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create xcelerate config: %w", err)
-	}
-
-	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
-		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
-	}
-
-	// copy cli to ~/.bitrise-xcelerate/bin/bitrise-build-cache-cli
-	if err := copyCLIToXcelerateBinDir(ctx, osProxy, logger); err != nil {
-		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
-	}
-
-	if err := addXcelerateCommandToPathWithScriptWrapper(config, osProxy, logger, envs); err != nil {
-		return fmt.Errorf("failed to add xcelerate command: %w", err)
-	}
-
-	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
-	logger.TInfof(ActivateXcodeSuccessful)
-	logger.TInfof(AddXcelerateToPath)
-
-	return nil
-}
-
-func overrideActivateXcodeParamsFromExistingConfig(
-	logger log.Logger,
-	osProxy utils.OsProxy,
-	activateXcodeParams *xcelerate.Params,
-	decoderFactory utils.DecoderFactory,
-	envs map[string]string,
-) {
-	// if there was an existing config, use it for some values
-	if existingConfig, err := xcelerate.ReadConfig(osProxy, decoderFactory); err == nil {
-		if strings.Contains(existingConfig.OriginalXcodebuildPath, xcelerate.PathFor(osProxy, xcelerate.BinDir)) {
-			logger.Warnf("Removing xcelerate wrapper as original xcodebuild path...")
-			existingConfig.OriginalXcodebuildPath = ""
-		}
-		activateXcodeParams.XcodePathOverride = cmp.Or(
-			activateXcodeParams.XcodePathOverride,
-			existingConfig.OriginalXcodebuildPath,
-		)
-		if strings.Contains(existingConfig.OriginalXcrunPath, xcelerate.PathFor(osProxy, xcelerate.BinDir)) {
-			logger.Warnf("Removing xcelerate wrapper as original xcrun path...")
-			existingConfig.OriginalXcrunPath = ""
-		}
-		activateXcodeParams.XcrunPathOverride = cmp.Or(
-			activateXcodeParams.XcrunPathOverride,
-			existingConfig.OriginalXcrunPath,
-		)
-	} else if isXcelerateInPath(osProxy, envs) {
-		logger.Warnf("It seems that the xcelerate config file is missing, but xcelerate is already in the PATH. \n" +
-			"This will lead to unexpected behavior when determining the xcodebuild path. \n" +
-			"Defaulting to /usr/bin/xcodebuild...")
-		activateXcodeParams.XcodePathOverride = "/usr/bin/xcodebuild"
-	}
-}
-
-func isXcelerateInPath(osProxy utils.OsProxy, envs map[string]string) bool {
-	path := envs["PATH"]
-	for _, p := range strings.Split(path, ":") {
-		if strings.Contains(p, xcelerate.PathFor(osProxy, xcelerate.BinDir)) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func copyCLIToXcelerateBinDir(context context.Context, osProxy utils.OsProxy, logger log.Logger) error {
-	src, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to determine executable path: %w", err)
-	}
-
-	reader, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source executable: %w", err)
-	}
-	defer reader.Close()
-
-	binPath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
-	if err := osProxy.MkdirAll(binPath, 0o755); err != nil {
-		return fmt.Errorf("failed to create bin dir: %w", err)
-	}
-
-	target := filepath.Join(binPath, cliBasename)
-
-	if err := makeSureCLIIsNotRunning(context, target, logger); err != nil {
-		return fmt.Errorf("failed to ensure cli is not running: %w", err)
-	}
-
-	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create destination executable: %w", err)
-	}
-	defer writer.Close()
-
-	if _, err = io.Copy(writer, reader); err != nil {
-		return fmt.Errorf("failed to copy executable: %w", err)
-	}
-
-	logger.TInfof("Copied CLI to %s", target)
-
-	return nil
-}
-
-// makeSureCLIIsNotRunning checks if there is any running CLI and tries to terminate/kill it.
-func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logger) error {
-	processes, err := process.ProcessesWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list processes: %w", err)
-	}
-
-	for _, p := range processes {
-		exe, err := p.ExeWithContext(ctx)
-		if err != nil {
-			continue
-		}
-		if exe != target {
-			continue
-		}
-
-		logger.TWarnf("Terminating already running CLI (pid: %d)", p.Pid)
-		if err := p.TerminateWithContext(ctx); err != nil {
-			logger.TWarnf("Failed to terminate already running CLI, attempting to kill it")
-
-			if err := p.KillWithContext(ctx); err != nil {
-				return fmt.Errorf("failed to kill already running CLI (pid: %d): %w", p.Pid, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// addXcelerateCommandToPathWithScriptWrapper creates a script that wraps the CLI and adds it to the PATH
-func addXcelerateCommandToPathWithScriptWrapper(
-	config xcelerate.Config,
-	osProxy utils.OsProxy,
-	logger log.Logger,
-	envs map[string]string,
-) error {
-	binPath := xcelerate.PathFor(osProxy, xcelerate.BinDir)
-	if err := osProxy.MkdirAll(binPath, 0o755); err != nil {
-		return fmt.Errorf("failed to create bin dir: %w", err)
-	}
-
-	// create a script that wraps the CLI to preserve any arguments and environment variables
-	scriptPath := filepath.Join(binPath, "xcodebuild")
-	logger.Debugf("Creating xcodebuild wrapper script: %s", scriptPath)
-	if err := osProxy.WriteFile(scriptPath,
-		[]byte(fmt.Sprintf(xcodebuildWrapperScriptContent,
-			config.OriginalXcodebuildPath,
-			binPath)), 0o755); err != nil {
-		return fmt.Errorf("failed to create xcodebuild wrapper script: %w", err)
-	}
-
-	scriptPath = filepath.Join(binPath, "xcrun")
-	logger.Debugf("Creating xcrun wrapper script: %s", scriptPath)
-	if err := osProxy.WriteFile(scriptPath,
-		[]byte(fmt.Sprintf(xcrunWrapperScriptContent,
-			config.OriginalXcodebuildPath,
-			binPath,
-			config.OriginalXcrunPath)), 0o755); err != nil {
-		return fmt.Errorf("failed to create xcrun wrapper script: %w", err)
-	}
-
-	// Export PATH to CI environment (envman for Bitrise, GITHUB_ENV for GitHub Actions)
-	// Remove any existing entry and prepend our bin path
-	path := strings.ReplaceAll(envs["PATH"], binPath+":", "")
-	path = strings.Join([]string{binPath, path}, ":")
-
-	exporter := envexport.New(envs, logger)
-	exporter.Export("PATH", path)
-	exporter.ExportToShellRC("Bitrise Xcelerate", fmt.Sprintf("export PATH=%s:$PATH", binPath))
-
-	return nil
+	return xcelerate.Activate(ctx, logger, osProxy, commandFunc, encoderFactory, decoderFactory, activateParams, envs) //nolint:wrapcheck // thin wrapper, error context added by caller
 }

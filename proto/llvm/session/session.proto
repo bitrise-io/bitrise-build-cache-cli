@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/bitrise-io/bitrise-build-cache-cli/llvm/session;session";
+option go_package = "github.com/bitrise-io/bitrise-build-cache-cli/v2/llvm/session;session";
 
 package session;
 

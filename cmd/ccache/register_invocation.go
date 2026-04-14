@@ -2,17 +2,10 @@ package ccache
 
 import (
 	"fmt"
-	"os/exec"
-	"time"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -27,32 +20,15 @@ var registerInvocationCmd = &cobra.Command{
 	Short:        "Register an invocation with the analytics backend",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		inv, err := ccachepkg.NewInvocationRegistry(ccachepkg.InvocationRegistryParams{})
 		if err != nil {
-			return fmt.Errorf("read ccache config: %w", err)
+			return fmt.Errorf("create invocation registry: %w", err)
 		}
 
-		logger := log.NewLogger()
-		envs := utils.AllEnvs()
-
-		client, err := multiplatform.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-		if err != nil {
-			return fmt.Errorf("create analytics client: %w", err)
-		}
-
-		metadata := common.NewMetadata(envs, func(name string, args ...string) (string, error) {
-			out, err := exec.CommandContext(cmd.Context(), name, args...).Output() //nolint:gosec
-
-			return string(out), err
-		}, logger)
-
-		inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
-			InvocationID:   registerInvocationID,
-			InvocationDate: time.Now(),
-			BuildTool:      registerInvocationBuildTool,
-		}, config.AuthConfig, metadata)
-
-		if err := client.PutInvocation(*inv); err != nil {
+		if err := inv.RegisterInvocation(cmd.Context(), ccachepkg.RegisterInvocationParams{
+			InvocationID: registerInvocationID,
+			BuildTool:    registerInvocationBuildTool,
+		}); err != nil {
 			return fmt.Errorf("register invocation: %w", err)
 		}
 
