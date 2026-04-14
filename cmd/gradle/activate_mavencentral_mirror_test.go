@@ -17,10 +17,11 @@ func TestActivateMavenCentralMirrorFn(t *testing.T) {
 	initFileName := "bitrise-mavencentral-mirror.init.gradle.kts"
 
 	tests := []struct {
-		name           string
-		envs           map[string]string
-		expectCreated  bool
-		expectContains string
+		name                     string
+		envs                     map[string]string
+		expectCreated            bool
+		expectContainsCentral    string
+		expectContainsGoogle     string
 	}{
 		{
 			name:          "disabled when env not set",
@@ -43,8 +44,9 @@ func TestActivateMavenCentralMirrorFn(t *testing.T) {
 				"BITRISE_MAVENCENTRAL_PROXY_ENABLED": "true",
 				"BITRISE_DEN_VM_DATACENTER":          "AMS1",
 			},
-			expectCreated:  true,
-			expectContains: "https://repository-manager-ams.services.bitrise.io:8090/maven/central",
+			expectCreated:         true,
+			expectContainsCentral: "https://repository-manager-ams.services.bitrise.io:8090/maven/central",
+			expectContainsGoogle:  "https://repository-manager-ams.services.bitrise.io:8090/maven/google",
 		},
 		{
 			name: "IAD1 datacenter",
@@ -52,8 +54,9 @@ func TestActivateMavenCentralMirrorFn(t *testing.T) {
 				"BITRISE_MAVENCENTRAL_PROXY_ENABLED": "true",
 				"BITRISE_DEN_VM_DATACENTER":          "IAD1",
 			},
-			expectCreated:  true,
-			expectContains: "https://repository-manager-iad.services.bitrise.io:8090/maven/central",
+			expectCreated:         true,
+			expectContainsCentral: "https://repository-manager-iad.services.bitrise.io:8090/maven/central",
+			expectContainsGoogle:  "https://repository-manager-iad.services.bitrise.io:8090/maven/google",
 		},
 		{
 			name: "ORD1 datacenter",
@@ -61,8 +64,9 @@ func TestActivateMavenCentralMirrorFn(t *testing.T) {
 				"BITRISE_MAVENCENTRAL_PROXY_ENABLED": "true",
 				"BITRISE_DEN_VM_DATACENTER":          "ORD1",
 			},
-			expectCreated:  true,
-			expectContains: "https://repository-manager-ord.services.bitrise.io:8090/maven/central",
+			expectCreated:         true,
+			expectContainsCentral: "https://repository-manager-ord.services.bitrise.io:8090/maven/central",
+			expectContainsGoogle:  "https://repository-manager-ord.services.bitrise.io:8090/maven/google",
 		},
 	}
 
@@ -84,8 +88,10 @@ func TestActivateMavenCentralMirrorFn(t *testing.T) {
 
 			content, readErr := os.ReadFile(initFile)
 			require.NoError(t, readErr, "init script should be created")
-			assert.Contains(t, string(content), tt.expectContains)
+			assert.Contains(t, string(content), tt.expectContainsCentral)
+			assert.Contains(t, string(content), tt.expectContainsGoogle)
 			assert.NotContains(t, string(content), "{{ .MirrorURL }}")
+			assert.NotContains(t, string(content), "{{ .GoogleMirrorURL }}")
 		})
 	}
 }

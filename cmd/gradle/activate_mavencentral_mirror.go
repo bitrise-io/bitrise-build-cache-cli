@@ -23,13 +23,15 @@ const (
 	datacenterEnvKey         = "BITRISE_DEN_VM_DATACENTER"
 	mavenCentralInitFileName = "bitrise-mavencentral-mirror.init.gradle.kts"
 	mirrorURLTemplate        = "https://repository-manager-%s.services.bitrise.io:8090/maven/central"
+	googleMirrorURLTemplate  = "https://repository-manager-%s.services.bitrise.io:8090/maven/google"
 )
 
 //go:embed asset/mavencentral-mirror.init.gradle.kts.gotemplate
 var mavenCentralInitTemplate string
 
 type mavenCentralMirrorTemplateData struct {
-	MirrorURL string
+	MirrorURL       string
+	GoogleMirrorURL string
 }
 
 var activateMavenCentralMirrorCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -92,7 +94,8 @@ func ActivateMavenCentralMirrorFn(
 
 	region := datacenterToMirrorRegion(dc)
 	mirrorURL := fmt.Sprintf(mirrorURLTemplate, region)
-	logger.Debugf("Datacenter: %s, mirror region: %s, mirror URL: %s", dc, region, mirrorURL)
+	googleMirrorURL := fmt.Sprintf(googleMirrorURLTemplate, region)
+	logger.Debugf("Datacenter: %s, mirror region: %s, mirror URL: %s, google mirror URL: %s", dc, region, mirrorURL, googleMirrorURL)
 
 	tmpl, err := template.New("mavencentral-mirror").Parse(mavenCentralInitTemplate)
 	if err != nil {
@@ -100,7 +103,7 @@ func ActivateMavenCentralMirrorFn(
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, mavenCentralMirrorTemplateData{MirrorURL: mirrorURL}); err != nil {
+	if err := tmpl.Execute(&buf, mavenCentralMirrorTemplateData{MirrorURL: mirrorURL, GoogleMirrorURL: googleMirrorURL}); err != nil {
 		return fmt.Errorf("execute mavencentral-mirror init template: %w", err)
 	}
 
