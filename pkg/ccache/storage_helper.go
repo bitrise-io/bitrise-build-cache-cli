@@ -86,6 +86,7 @@ type StorageHelper struct {
 	config  ccacheconfig.Config
 	params  StorageHelperParams
 	osProxy utils.OsProxy
+	logger  log.Logger
 }
 
 // NewStorageHelper reads the ccache configuration from the default config path
@@ -105,6 +106,7 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 		config:  config,
 		params:  params,
 		osProxy: osProxy,
+		logger:  log.NewLogger(log.WithDebugLog(config.DebugLogging)),
 	}, nil
 }
 
@@ -155,7 +157,7 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 // analytics, then registers the invocation relation. Returns nil without
 // error if the helper is not running.
 func (h *StorageHelper) Stop(ctx context.Context) error {
-	logger := log.NewLogger(log.WithDebugLog(h.config.DebugLogging))
+	logger := h.logger
 	socketPath := h.socketPath()
 
 	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
@@ -193,7 +195,7 @@ func (h *StorageHelper) CollectStats(ctx context.Context, params CollectStatsPar
 		return fmt.Errorf("invocation ID is required")
 	}
 
-	logger := log.NewLogger(log.WithDebugLog(h.config.DebugLogging))
+	logger := h.logger
 	socketPath := h.socketPath()
 	dl, ul := params.DownloadedBytes, params.UploadedBytes
 

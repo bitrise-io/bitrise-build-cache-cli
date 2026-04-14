@@ -33,65 +33,97 @@ type ActivatorParams struct {
 	Xcode        bool
 	Cpp          bool
 	DebugLogging bool
+
+	// Logger overrides the default logger. If nil, a default logger is created.
+	Logger log.Logger
 }
 
 // Activator orchestrates Bitrise Build Cache activation for React Native.
 type Activator struct {
-	Params ActivatorParams
-	Logger log.Logger
+	gradle       *gradleActivator
+	xcode        *xcodeActivator
+	cpp          *ccachepkg.Activator
+	helper       *storageHelperStarter
+	debugLogging bool
+	logger       log.Logger
+}
+
+// NewActivator creates an Activator with production defaults.
+func NewActivator(params ActivatorParams) *Activator {
+	logger := params.Logger
+	if logger == nil {
+		logger = log.NewLogger(log.WithDebugLog(params.DebugLogging))
+	}
+
+	a := &Activator{
+		debugLogging: params.DebugLogging,
+		logger:       logger,
+	}
+
+	if params.Gradle {
+		a.gradle = &gradleActivator{logger: logger, debugLogging: params.DebugLogging}
+	}
+
+	if params.Xcode {
+		a.xcode = &xcodeActivator{logger: logger, debugLogging: params.DebugLogging}
+	}
+
+	if params.Cpp {
+		a.cpp = ccachepkg.NewActivator(ccachepkg.ActivatorParams{
+			PushEnabled:  ccacheconfig.DefaultParams().PushEnabled,
+			DebugLogging: params.DebugLogging,
+			Logger:       logger,
+		})
+		a.helper = &storageHelperStarter{logger: logger}
+	}
+
+	return a
 }
 
 // Activate runs the full React Native build cache activation flow:
 // install dependencies → activate sub-systems → start storage helper → save config.
 func (a *Activator) Activate(ctx context.Context) error {
-	logger := a.Logger
-	if logger == nil {
-		logger = log.NewLogger(log.WithDebugLog(a.Params.DebugLogging))
-	}
+	a.logger.TInfof("Activate Bitrise Build Cache for React Native")
 
-	logger.TInfof("Activate Bitrise Build Cache for React Native")
-
-	if err := installDeps(ctx, logger, a.Params.Cpp); err != nil {
+	if err := installDeps(ctx, a.logger, a.cpp != nil); err != nil {
 		return fmt.Errorf("install dependencies: %w", err)
 	}
 
-	exportInstallDirToPath(logger)
+	exportInstallDirToPath(a.logger)
 
-	if a.Params.Gradle {
-		logger.TInfof("Activating Gradle build cache...")
+	if a.gradle != nil {
+		a.logger.TInfof("Activating Gradle build cache...")
 
-		if err := activateGradle(logger, a.Params.DebugLogging); err != nil {
+		if err := a.gradle.activate(); err != nil {
 			return fmt.Errorf("activate Gradle build cache: %w", err)
 		}
 	}
 
-	if a.Params.Xcode {
-		logger.TInfof("Activating Xcode build cache...")
+	if a.xcode != nil {
+		a.logger.TInfof("Activating Xcode build cache...")
 
-		if err := activateXcode(ctx, logger, a.Params.DebugLogging); err != nil {
+		if err := a.xcode.activate(ctx); err != nil {
 			return fmt.Errorf("activate Xcode build cache: %w", err)
 		}
 	}
 
-	if a.Params.Cpp {
-		logger.TInfof("Activating C++ build cache...")
+	if a.cpp != nil {
+		a.logger.TInfof("Activating C++ build cache...")
 
-		if err := activateCpp(ctx, logger, a.Params.DebugLogging); err != nil {
+		if err := a.cpp.Activate(ctx); err != nil {
 			return fmt.Errorf("activate C++ build cache: %w", err)
 		}
 
-		logger.TInfof("Starting ccache storage helper...")
-
-		if err := startStorageHelper(logger); err != nil {
+		if err := a.helper.start(); err != nil {
 			return fmt.Errorf("start ccache storage helper: %w", err)
 		}
 	}
 
-	if err := saveMultiplatformConfig(a.Params.DebugLogging); err != nil {
+	if err := saveMultiplatformConfig(a.debugLogging); err != nil {
 		return err
 	}
 
-	logger.TInfof("✅ Bitrise Build Cache for React Native activated")
+	a.logger.TInfof("✅ Bitrise Build Cache for React Native activated")
 
 	return nil
 }
@@ -105,7 +137,7 @@ func exportInstallDirToPath(logger log.Logger) {
 	envs := utils.AllEnvs()
 
 	currentPath := envs["PATH"]
-	if strings.Contains(currentPath, dir) {
+	if strings.Contains(string(os.PathListSeparator)+currentPath+string(os.PathListSeparator), string(os.PathListSeparator)+dir+string(os.PathListSeparator)) {
 		return
 	}
 
@@ -137,7 +169,12 @@ func installDeps(ctx context.Context, logger log.Logger, doCpp bool) error {
 	return nil
 }
 
-func activateGradle(logger log.Logger, debugLogging bool) error {
+type gradleActivator struct {
+	logger       log.Logger
+	debugLogging bool
+}
+
+func (g *gradleActivator) activate() error {
 	gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")
 	if err != nil {
 		return fmt.Errorf("expand Gradle home path: %w", err)
@@ -148,14 +185,14 @@ func activateGradle(logger log.Logger, debugLogging bool) error {
 	gradleParams.Cache.PushEnabled = true
 
 	if err := gradleconfig.Activate(
-		logger,
+		g.logger,
 		gradleHome,
 		utils.AllEnvs(),
-		debugLogging,
+		g.debugLogging,
 		gradleParams.TemplateInventory,
 		func(inventory gradleconfig.TemplateInventory, path string) error {
 			return inventory.WriteToGradleInit(
-				logger,
+				g.logger,
 				path,
 				utils.DefaultOsProxy{},
 				gradleconfig.GradleTemplateProxy(),
@@ -170,13 +207,18 @@ func activateGradle(logger log.Logger, debugLogging bool) error {
 	return nil
 }
 
-func activateXcode(ctx context.Context, logger log.Logger, debugLogging bool) error {
+type xcodeActivator struct {
+	logger       log.Logger
+	debugLogging bool
+}
+
+func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams := xcelerate.DefaultParams()
-	xcodeParams.DebugLogging = debugLogging
+	xcodeParams.DebugLogging = x.debugLogging
 
 	if err := xcelerate.Activate(
 		ctx,
-		logger,
+		x.logger,
 		utils.DefaultOsProxy{},
 		utils.DefaultCommandFunc(),
 		utils.DefaultEncoderFactory{},
@@ -190,21 +232,13 @@ func activateXcode(ctx context.Context, logger log.Logger, debugLogging bool) er
 	return nil
 }
 
-func activateCpp(ctx context.Context, logger log.Logger, debugLogging bool) error {
-	a := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
-		PushEnabled:  ccacheconfig.DefaultParams().PushEnabled,
-		DebugLogging: debugLogging,
-	})
-	a.Logger = logger
-
-	if err := a.Activate(ctx); err != nil {
-		return fmt.Errorf("cpp activation: %w", err)
-	}
-
-	return nil
+type storageHelperStarter struct {
+	logger log.Logger
 }
 
-func startStorageHelper(logger log.Logger) error {
+func (s *storageHelperStarter) start() error {
+	s.logger.TInfof("Starting ccache storage helper...")
+
 	binary, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("get executable path: %w", err)
@@ -218,7 +252,7 @@ func startStorageHelper(logger log.Logger) error {
 		return fmt.Errorf("start storage helper process: %w", err)
 	}
 
-	logger.TInfof("Ccache storage helper started (pid %d)", cmd.Process.Pid)
+	s.logger.TInfof("Ccache storage helper started (pid %d)", cmd.Process.Pid)
 
 	return nil
 }

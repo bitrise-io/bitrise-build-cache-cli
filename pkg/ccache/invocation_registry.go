@@ -59,6 +59,7 @@ type InvocationsAPI interface {
 type InvocationRegistry struct {
 	config ccacheconfig.Config
 	params InvocationRegistryParams
+	logger log.Logger
 
 	// API handles invocation and relation registration. If nil, a production client is created.
 	api InvocationsAPI
@@ -79,6 +80,7 @@ func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry
 	return &InvocationRegistry{
 		config: config,
 		params: params,
+		logger: log.NewLogger(log.WithDebugLog(config.DebugLogging)),
 	}, nil
 }
 
@@ -89,15 +91,13 @@ func (inv *InvocationRegistry) RegisterInvocation(ctx context.Context, params Re
 		buildTool = "multiplatform"
 	}
 
-	logger := log.NewLogger(log.WithDebugLog(inv.config.DebugLogging))
-
-	api, err := inv.resolveAPI(logger)
+	api, err := inv.resolveAPI(inv.logger)
 	if err != nil {
 		return fmt.Errorf("create analytics client: %w", err)
 	}
 
 	commandFunc := newCommandFunc(ctx)
-	metadata := configcommon.NewMetadata(inv.params.Envs, commandFunc, logger)
+	metadata := configcommon.NewMetadata(inv.params.Envs, commandFunc, inv.logger)
 
 	invocation := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationID:   params.InvocationID,
@@ -120,9 +120,7 @@ func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params Regi
 		buildTool = "ccache"
 	}
 
-	logger := log.NewLogger(log.WithDebugLog(inv.config.DebugLogging))
-
-	api, err := inv.resolveAPI(logger)
+	api, err := inv.resolveAPI(inv.logger)
 	if err != nil {
 		return fmt.Errorf("create analytics client: %w", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -44,6 +45,7 @@ func newTestRegistry(envs map[string]string) *InvocationRegistry {
 		params: InvocationRegistryParams{
 			Envs: envs,
 		},
+		logger: log.NewLogger(),
 	}
 }
 
