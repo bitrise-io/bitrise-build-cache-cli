@@ -44,7 +44,7 @@ type Activator struct {
 func (a *Activator) Activate(ctx context.Context) error {
 	logger := a.Logger
 	if logger == nil {
-		logger = log.NewLogger()
+		logger = log.NewLogger(log.WithDebugLog(a.Params.DebugLogging))
 	}
 
 	logger.TInfof("Activate Bitrise Build Cache for React Native")

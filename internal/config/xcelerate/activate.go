@@ -242,7 +242,7 @@ func addXcelerateCommandToPathWithScriptWrapper(
 
 	if err := osProxy.WriteFile(scriptPath,
 		[]byte(fmt.Sprintf(xcrunWrapperScriptContent,
-			config.OriginalXcodebuildPath,
+			config.OriginalXcrunPath,
 			binPath,
 			config.OriginalXcrunPath)), 0o755); err != nil {
 		return fmt.Errorf("failed to create xcrun wrapper script: %w", err)

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	ErrFmtFailedToUpdateProps = `failed to update gradle.properties: %w"`
+	ErrFmtFailedToUpdateProps = "failed to update gradle.properties: %w"
 )
 
 // Activate creates the Gradle init script and updates gradle.properties
