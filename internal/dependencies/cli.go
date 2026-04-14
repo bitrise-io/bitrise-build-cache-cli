@@ -116,6 +116,8 @@ func extractBinaryFromTarGz(r io.Reader, name, destPath string) error {
 			defer f.Close()
 
 			if _, err := io.Copy(f, io.LimitReader(tr, header.Size)); err != nil {
+				os.Remove(destPath)
+
 				return fmt.Errorf("write binary: %w", err)
 			}
 

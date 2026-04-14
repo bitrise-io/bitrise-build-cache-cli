@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 func downloadFile(ctx context.Context, url string) (io.ReadCloser, error) {
@@ -13,7 +14,11 @@ func downloadFile(ctx context.Context, url string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET: %w", err)
 	}
