@@ -7,10 +7,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 // ActivateGradleCmd represents the `gradle` subcommand under `activate`

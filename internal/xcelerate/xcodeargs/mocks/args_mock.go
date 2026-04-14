@@ -4,7 +4,7 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
 	"sync"
 )
 

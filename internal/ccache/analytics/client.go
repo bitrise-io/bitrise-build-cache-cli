@@ -5,7 +5,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
 )
 
 // Client sends ccache analytics to the Bitrise backend.

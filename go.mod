@@ -1,4 +1,4 @@
-module github.com/bitrise-io/bitrise-build-cache-cli
+module github.com/bitrise-io/bitrise-build-cache-cli/v2
 
 go 1.24.0
 

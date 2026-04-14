@@ -9,9 +9,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
-	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 // ---------------------------------------------------------------------------

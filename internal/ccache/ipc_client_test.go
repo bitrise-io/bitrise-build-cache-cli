@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
 )
 
 // shortTempSocket creates a Unix socket path short enough for macOS (< 104 chars).

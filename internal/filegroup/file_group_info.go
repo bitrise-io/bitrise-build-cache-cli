@@ -17,7 +17,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/pkg/xattr"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/hash"
 )
 
 type Info struct {

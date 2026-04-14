@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
 )
 
 func Test_DefaultXcodeArgs(t *testing.T) {

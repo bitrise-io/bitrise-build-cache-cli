@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/hash"
 )
 
 func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key string) error {
