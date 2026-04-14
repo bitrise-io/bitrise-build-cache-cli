@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/pathutil"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,6 +18,7 @@ import (
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/dependencies"
+	"github.com/bitrise-io/bitrise-build-cache-cli/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/pkg/ccache"
 )
@@ -52,6 +54,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 	if err := installDeps(ctx, logger, a.Params.Cpp); err != nil {
 		return fmt.Errorf("install dependencies: %w", err)
 	}
+
+	exportInstallDirToPath(logger)
 
 	if a.Params.Gradle {
 		logger.TInfof("Activating Gradle build cache...")
@@ -95,6 +99,22 @@ func (a *Activator) Activate(ctx context.Context) error {
 // ---------------------------------------------------------------------------
 // Private — sub-system activation
 // ---------------------------------------------------------------------------
+
+func exportInstallDirToPath(logger log.Logger) {
+	dir := dependencies.InstallDir
+	envs := utils.AllEnvs()
+
+	currentPath := envs["PATH"]
+	if strings.Contains(currentPath, dir) {
+		return
+	}
+
+	newPath := dir + ":" + currentPath
+	exporter := envexport.New(envs, logger)
+	exporter.Export("PATH", newPath)
+
+	logger.TInfof("Added %s to PATH", dir)
+}
 
 func installDeps(ctx context.Context, logger log.Logger, doCpp bool) error {
 	var tools []dependencies.Tool

@@ -18,7 +18,8 @@ import (
 const (
 	cliBinaryName = "bitrise-build-cache"
 	cliModulePath = "github.com/bitrise-io/bitrise-build-cache-cli"
-	installDir    = "/usr/local/bin"
+	// InstallDir is the directory where dependency binaries (CLI, ccache) are installed.
+	InstallDir = "/usr/local/bin"
 )
 
 // CLITool returns a Tool that installs the bitrise-build-cache binary
@@ -79,7 +80,7 @@ func installFromGitHubRelease(ctx context.Context, logger log.Logger, url, binar
 	}
 	defer resp.Close()
 
-	destPath := filepath.Join(installDir, binaryName)
+	destPath := filepath.Join(InstallDir, binaryName)
 	if err := extractBinaryFromTarGz(resp, binaryName, destPath); err != nil {
 		return fmt.Errorf("extract binary: %w", err)
 	}
