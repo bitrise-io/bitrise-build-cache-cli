@@ -55,20 +55,19 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats { return xcodeargs.RunStats{} },
 		}
 
-		SUT := xcode.XcodebuildCmdFn
+		SUT := &xcode.XcodebuildRunner{
+			Config:             xcelerate.Config{},
+			Metadata:           common.CacheConfigMetadata{},
+			InvocationID:       uuid.NewString(),
+			Logger:             mockLogger,
+			CacheLogger:        mockLogger,
+			XcodeRunner:        xcodeRunner,
+			ProxySessionClient: sessionClientMock,
+			XcodeArgs:          &xcodeArgProvider,
+		}
 
 		// When
-		_ = SUT(
-			context.Background(),
-			uuid.NewString(),
-			mockLogger,
-			mockLogger,
-			xcodeRunner,
-			sessionClientMock,
-			xcelerate.Config{},
-			common.CacheConfigMetadata{},
-			&xcodeArgProvider,
-		)
+		_ = SUT.Run(context.Background())
 
 		// Then
 		assert.Len(t, xcodeArgProvider.ArgsCalls(), 1)
@@ -109,20 +108,19 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			},
 		}
 
-		SUT := xcode.XcodebuildCmdFn
+		SUT := &xcode.XcodebuildRunner{
+			Config:             xcelerate.Config{},
+			Metadata:           common.CacheConfigMetadata{},
+			InvocationID:       uuid.NewString(),
+			Logger:             mockLogger,
+			CacheLogger:        mockLogger,
+			XcodeRunner:        xcodeRunner,
+			ProxySessionClient: sessionClientMock,
+			XcodeArgs:          &xcodeArgProvider,
+		}
 
 		// When
-		actual := SUT(
-			context.Background(),
-			uuid.NewString(),
-			mockLogger,
-			mockLogger,
-			xcodeRunner,
-			sessionClientMock,
-			xcelerate.Config{},
-			common.CacheConfigMetadata{},
-			&xcodeArgProvider,
-		)
+		actual := SUT.Run(context.Background())
 
 		// Then
 		require.EqualError(t, actual.Error, expected.Error())
@@ -161,24 +159,22 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 
 				sessionClientMock := &mocks.SessionClientMock{}
 
-				SUT := xcode.XcodebuildCmdFn
-				config := xcelerate.Config{
-					BuildCacheEnabled:   tc.buildCacheEnabled,
-					BuildCacheSkipFlags: tc.buildCacheSkipFlags,
-					ProxySocketPath:     "/tmp/proxy.sock",
+				SUT := &xcode.XcodebuildRunner{
+					Config: xcelerate.Config{
+						BuildCacheEnabled:   tc.buildCacheEnabled,
+						BuildCacheSkipFlags: tc.buildCacheSkipFlags,
+						ProxySocketPath:     "/tmp/proxy.sock",
+					},
+					Metadata:           common.CacheConfigMetadata{},
+					InvocationID:       uuid.NewString(),
+					Logger:             mockLogger,
+					CacheLogger:        mockLogger,
+					XcodeRunner:        xcodeRunner,
+					ProxySessionClient: sessionClientMock,
+					XcodeArgs:          &xcodeArgProvider,
 				}
 
-				_ = SUT(
-					context.Background(),
-					uuid.NewString(),
-					mockLogger,
-					mockLogger,
-					xcodeRunner,
-					sessionClientMock,
-					config,
-					common.CacheConfigMetadata{},
-					&xcodeArgProvider,
-				)
+				_ = SUT.Run(context.Background())
 
 				for k, v := range xcodeargs.CacheArgs {
 					if tc.expectCacheFlags {
@@ -221,24 +217,22 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 					RunFunc: func(_ context.Context, args []string) xcodeargs.RunStats { return xcodeargs.RunStats{} },
 				}
 				sessionClientMock := &mocks.SessionClientMock{}
-				SUT := xcode.XcodebuildCmdFn
-				config := xcelerate.Config{
-					BuildCacheEnabled:   true,
-					BuildCacheSkipFlags: false,
-					DebugLogging:        tc.debugLogging,
-					ProxySocketPath:     "/tmp/proxy.sock",
+				SUT := &xcode.XcodebuildRunner{
+					Config: xcelerate.Config{
+						BuildCacheEnabled:   true,
+						BuildCacheSkipFlags: false,
+						DebugLogging:        tc.debugLogging,
+						ProxySocketPath:     "/tmp/proxy.sock",
+					},
+					Metadata:           common.CacheConfigMetadata{},
+					InvocationID:       uuid.NewString(),
+					Logger:             mockLogger,
+					CacheLogger:        mockLogger,
+					XcodeRunner:        xcodeRunner,
+					ProxySessionClient: sessionClientMock,
+					XcodeArgs:          &xcodeArgProvider,
 				}
-				_ = SUT(
-					context.Background(),
-					uuid.NewString(),
-					mockLogger,
-					mockLogger,
-					xcodeRunner,
-					sessionClientMock,
-					config,
-					common.CacheConfigMetadata{},
-					&xcodeArgProvider,
-				)
+				_ = SUT.Run(context.Background())
 				assert.Equal(t, tc.expected, receivedAdditional["COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS"], "Diagnostic remarks should be %s if debug is %v", tc.expected, tc.debugLogging)
 			})
 		}
