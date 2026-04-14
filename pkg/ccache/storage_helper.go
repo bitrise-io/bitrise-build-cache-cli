@@ -157,11 +157,10 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 // analytics, then registers the invocation relation. Returns nil without
 // error if the helper is not running.
 func (h *StorageHelper) Stop(ctx context.Context) error {
-	logger := h.logger
 	socketPath := h.socketPath()
 
 	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
-		logger.TInfof("Storage helper is not running, nothing to stop")
+		h.logger.TInfof("Storage helper is not running, nothing to stop")
 
 		return nil
 	}
@@ -171,17 +170,17 @@ func (h *StorageHelper) Stop(ctx context.Context) error {
 
 	dl, ul, err := iccache.SendGetSessionStats(ctx, socketPath)
 	if err != nil {
-		logger.TWarnf("Failed to get session stats from storage helper: %v", err)
+		h.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
 	}
 
 	if err := iccache.SendStop(ctx, socketPath); err != nil {
 		return fmt.Errorf("send stop to storage helper: %w", err)
 	}
 
-	collectAndZeroCcacheStats(ctx, h.config, ccacheInvocationID, parentInvocationID, dl, ul, logger)
+	collectAndZeroCcacheStats(ctx, h.config, ccacheInvocationID, parentInvocationID, dl, ul, h.logger)
 
 	if parentInvocationID != "" {
-		registerInvocationRelation(h.config, parentInvocationID, ccacheInvocationID, logger)
+		registerInvocationRelation(h.config, parentInvocationID, ccacheInvocationID, h.logger)
 	}
 
 	return nil
@@ -195,20 +194,19 @@ func (h *StorageHelper) CollectStats(ctx context.Context, params CollectStatsPar
 		return fmt.Errorf("invocation ID is required")
 	}
 
-	logger := h.logger
 	socketPath := h.socketPath()
 	dl, ul := params.DownloadedBytes, params.UploadedBytes
 
 	if iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
 		sessionDL, sessionUL, err := iccache.SendGetSessionStats(ctx, socketPath)
 		if err != nil {
-			logger.TWarnf("Failed to get session stats from storage helper: %v", err)
+			h.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
 		} else {
 			dl, ul = sessionDL, sessionUL
 		}
 	}
 
-	collectAndZeroCcacheStats(ctx, h.config, params.InvocationID, params.ParentID, dl, ul, logger)
+	collectAndZeroCcacheStats(ctx, h.config, params.InvocationID, params.ParentID, dl, ul, h.logger)
 
 	return nil
 }
