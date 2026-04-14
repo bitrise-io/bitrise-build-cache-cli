@@ -89,7 +89,7 @@ func (inv *InvocationRegistry) RegisterInvocation(ctx context.Context, params Re
 		buildTool = "multiplatform"
 	}
 
-	logger := log.NewLogger()
+	logger := log.NewLogger(log.WithDebugLog(inv.config.DebugLogging))
 
 	api, err := inv.resolveAPI(logger)
 	if err != nil {
@@ -120,7 +120,7 @@ func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params Regi
 		buildTool = "ccache"
 	}
 
-	logger := log.NewLogger()
+	logger := log.NewLogger(log.WithDebugLog(inv.config.DebugLogging))
 
 	api, err := inv.resolveAPI(logger)
 	if err != nil {

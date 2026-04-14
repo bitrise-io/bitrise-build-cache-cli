@@ -155,7 +155,7 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 // analytics, then registers the invocation relation. Returns nil without
 // error if the helper is not running.
 func (h *StorageHelper) Stop(ctx context.Context) error {
-	logger := log.NewLogger()
+	logger := log.NewLogger(log.WithDebugLog(h.config.DebugLogging))
 	socketPath := h.socketPath()
 
 	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
@@ -193,7 +193,7 @@ func (h *StorageHelper) CollectStats(ctx context.Context, params CollectStatsPar
 		return fmt.Errorf("invocation ID is required")
 	}
 
-	logger := log.NewLogger()
+	logger := log.NewLogger(log.WithDebugLog(h.config.DebugLogging))
 	socketPath := h.socketPath()
 	dl, ul := params.DownloadedBytes, params.UploadedBytes
 

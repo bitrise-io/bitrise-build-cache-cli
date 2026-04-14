@@ -106,7 +106,7 @@ const ActivateCppSuccessful = "✅ Bitrise Build Cache for C++ activated"
 func (a *Activator) resolvedDeps() (log.Logger, utils.OsProxy, utils.CommandFunc, utils.EncoderFactory) {
 	logger := a.Logger
 	if logger == nil {
-		logger = log.NewLogger()
+		logger = log.NewLogger(log.WithDebugLog(a.Params.DebugLogging))
 	}
 
 	osProxy := a.OsProxy
