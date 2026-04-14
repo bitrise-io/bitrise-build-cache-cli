@@ -25,20 +25,42 @@ The `-tags unit` flag is required for all test runs.
 
 This is a Go CLI tool (Cobra-based) that configures build cache for Gradle, Bazel, and Xcode on machines where it runs. The binary name is `bitrise-build-cache`.
 
-**Entry point:** `main.go` imports command packages via blank imports (`_`), which register their Cobra subcommands via `init()` functions. `cmd/common` contains the root command and shared utilities (HTTP client, logging).
+### Three-layer package structure
 
-**Command structure:** `cmd/{gradle,bazel,xcode}/` — each package has `activate_*.go` (main entry point for configuring cache) and supporting commands (save/restore, enable-for, etc.).
+```
+cmd/          → Thin cobra wrappers (flags → params, call pkg/)
+pkg/          → Public API structs for external Go consumers (steps)
+internal/     → Core business logic, config, protocols
+```
 
-**Internal packages:**
-- `internal/config/{gradle,bazel,xcelerate,common}/` — configuration generation and file modification for each build system
-- `internal/xcelerate/` — Xcode compilation caching implementation (proxy server, derived data handling, Xcode arg parsing, analytics)
-- `internal/build_cache/kv/` — key-value storage client for the build cache protocol
+**Dependency direction:** `cmd/` → `pkg/` → `internal/`. Never the reverse. This allows external Go packages to import `pkg/` without pulling in cobra or command-level code.
+
+**`cmd/` layer:** Each cobra command maps flags to a params struct and calls the corresponding `pkg/` struct. No business logic — just wiring. `main.go` registers commands via blank imports (`_`) and `init()` functions. `cmd/common` holds the root command and shared globals (`IsDebugLogMode`).
+
+**`pkg/` layer — public API for external consumers:**
+- `pkg/ccache/` — `StorageHelper` (Start/Stop/HealthCheck/...), `Activator`, `InvocationRegistry`
+- `pkg/reactnative/` — `Activator` (Gradle/Xcode/C++ activation), `Runner` (command execution with analytics)
+- Exported structs with public methods, no Go `interface` types at the provider side — consumers define their own interfaces for mocking via Go's implicit satisfaction
+
+**`internal/` layer:**
+- `internal/config/{gradle,bazel,xcelerate,common}/` — configuration generation, activation logic, file modification
+- `internal/ccache/` — IPC server/client, `Socket` struct for storage helper communication
+- `internal/xcelerate/` — Xcode compilation caching (proxy server, derived data, arg parsing, analytics)
+- `internal/build_cache/kv/` — key-value storage client for the build cache GRPC protocol
 - `internal/hash/` — blake3 hashing utilities
 - `internal/stringmerge/` — merges content into config files using `# [start]/[end] generated-by-bitrise-build-cache` marker blocks
 
 **Protocol Buffers:** `proto/` contains definitions for Bazel remote execution API, KV storage, and LLVM CAS/session protocols. Regenerate with `make protoc`.
 
 **Authentication:** Uses `BITRISE_BUILD_CACHE_AUTH_TOKEN` and `BITRISE_BUILD_CACHE_WORKSPACE_ID` env vars (auto-configured on Bitrise CI).
+
+### Patterns for pkg/ structs
+
+- **Exported struct, no interface type:** Export concrete structs with public methods. Consumers define their own interfaces for mocking.
+- **Lightweight constructor:** `NewXxx(params)` reads config only — heavy work (GRPC, IPC) happens in methods like `Start()`.
+- **DI via exported fields:** For structs that need test injection (e.g. `Activator.Logger`, `Activator.OsProxy`), export the dependency fields. Nil means production default.
+- **DI via unexported interface + moq:** For internal details (e.g. analytics hooks), define an unexported interface, implement with a real struct, and use moq to generate test mocks in the internal test package.
+- **Section markers:** Use `// Private — ...` comment blocks to visually separate public API from private implementation in files.
 
 ## Testing Patterns
 

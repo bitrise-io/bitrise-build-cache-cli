@@ -3,12 +3,9 @@ package ccache
 import (
 	"fmt"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -23,37 +20,19 @@ var (
 		Short:        "Collect and report ccache statistics, then zero the counters",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if collectStatsInvocationID == "" {
-				return fmt.Errorf("--invocation-id is required")
-			}
-
-			config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{})
 			if err != nil {
-				return fmt.Errorf("read ccache config: %w", err)
+				return fmt.Errorf("create storage helper: %w", err)
 			}
 
-			dl, ul := collectStatsDownloadBytes, collectStatsUploadBytes
-
-			// If the storage helper is running, prefer its session byte counts over the flag values.
-			if ccache.IsListening(config.IPCEndpoint) {
-				sessionDL, sessionUL, err := ccache.SendGetSessionStats(cmd.Context(), config.IPCEndpoint)
-				if err != nil {
-					log.NewLogger().TWarnf("Failed to get session stats from storage helper: %v", err)
-				} else {
-					dl, ul = sessionDL, sessionUL
-				}
+			if err := helper.CollectStats(cmd.Context(), ccachepkg.CollectStatsParams{
+				InvocationID:    collectStatsInvocationID,
+				ParentID:        collectStatsParentID,
+				DownloadedBytes: collectStatsDownloadBytes,
+				UploadedBytes:   collectStatsUploadBytes,
+			}); err != nil {
+				return fmt.Errorf("collect stats: %w", err)
 			}
-
-			logger := log.NewLogger()
-			collectAndZeroCcacheStats(
-				cmd.Context(),
-				config,
-				collectStatsInvocationID,
-				collectStatsParentID,
-				dl,
-				ul,
-				logger,
-			)
 
 			return nil
 		},
