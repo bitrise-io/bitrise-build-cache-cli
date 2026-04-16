@@ -118,7 +118,7 @@ ccacheInvocationID = runner-generated UUID (C++ child)
 **collectStats — ccache dependency:**
 
 ```go
-func (d *postRunDeps) collectStats(ctx, ccacheInvocationID, parentID string) {
+func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
     helper, _ := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
         InvocationID:       ccacheInvocationID,
         ParentInvocationID: parentID,
