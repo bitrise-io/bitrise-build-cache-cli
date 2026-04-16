@@ -12,13 +12,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
-	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/analytics"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 // ---------------------------------------------------------------------------
@@ -28,11 +27,9 @@ import (
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
 type postRunDeps struct {
-	logger         log.Logger
-	osProxy        utils.OsProxy
-	decoderFactory utils.DecoderFactory
-	authConfig     common.CacheAuthConfig
-	client         *ccacheanalytics.Client
+	logger     log.Logger
+	authConfig common.CacheAuthConfig
+	client     *ccacheanalytics.Client
 }
 
 func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) *postRunDeps {
@@ -51,11 +48,9 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 	}
 
 	return &postRunDeps{
-		logger:         logger,
-		osProxy:        osProxy,
-		decoderFactory: decoderFactory,
-		authConfig:     config.AuthConfig,
-		client:         client,
+		logger:     logger,
+		authConfig: config.AuthConfig,
+		client:     client,
 	}
 }
 
@@ -128,25 +123,19 @@ func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
 }
 
 func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
-	configPath := ccacheconfig.PathFor(d.osProxy, "config.json")
-	if _, err := d.osProxy.Stat(configPath); err != nil {
-		return
-	}
-
-	config, err := ccacheconfig.ReadConfig(d.osProxy, d.decoderFactory)
+	helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+		InvocationID:       ccacheInvocationID,
+		ParentInvocationID: parentID,
+	})
 	if err != nil {
+		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", err)
+
 		return
 	}
 
-	var dl, ul int64
-	if ccacheipc.IsListening(config.IPCEndpoint) { //nolint:contextcheck // IsListening uses its own short-lived context
-		dl, ul, err = ccacheipc.SendGetSessionStats(ctx, config.IPCEndpoint)
-		if err != nil {
-			d.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
-		}
+	if err := helper.CollectStats(ctx, ccachepkg.CollectStatsParams{}); err != nil {
+		d.logger.TWarnf("Failed to collect ccache stats: %v", err)
 	}
-
-	ccacheanalytics.CollectAndZero(ctx, d.client, ccacheInvocationID, parentID, dl, ul, d.logger)
 }
 
 func (d *postRunDeps) sendRelation(parentID, childID string) {

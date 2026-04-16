@@ -28,9 +28,15 @@ var stopStorageHelperCmd = &cobra.Command{
 			return fmt.Errorf("create storage helper: %w", err)
 		}
 
+		if err := helper.CollectStats(cmd.Context(), ccachepkg.CollectStatsParams{}); err != nil {
+			return fmt.Errorf("collect ccache stats: %w", err)
+		}
+
 		if err := helper.Stop(cmd.Context()); err != nil {
 			return fmt.Errorf("stop storage helper: %w", err)
 		}
+
+		helper.RegisterInvocationRelation()
 
 		return nil
 	},

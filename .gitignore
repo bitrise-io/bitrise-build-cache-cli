@@ -15,4 +15,3 @@ vendor/*
 !.claude/skills/
 .vscode/
 package-lock.json
-docs/

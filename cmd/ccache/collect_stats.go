@@ -20,14 +20,15 @@ var (
 		Short:        "Collect and report ccache statistics, then zero the counters",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{})
+			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+				InvocationID:       collectStatsInvocationID,
+				ParentInvocationID: collectStatsParentID,
+			})
 			if err != nil {
 				return fmt.Errorf("create storage helper: %w", err)
 			}
 
 			if err := helper.CollectStats(cmd.Context(), ccachepkg.CollectStatsParams{
-				InvocationID:    collectStatsInvocationID,
-				ParentID:        collectStatsParentID,
 				DownloadedBytes: collectStatsDownloadBytes,
 				UploadedBytes:   collectStatsUploadBytes,
 			}); err != nil {
@@ -44,6 +45,10 @@ func init() {
 	collectStatsCmd.Flags().StringVar(&collectStatsParentID, "parent-id", "", "Parent invocation ID")
 	collectStatsCmd.Flags().Int64Var(&collectStatsDownloadBytes, "downloaded-bytes", 0, "Bytes downloaded from cache during this invocation (overridden by session state if helper is running)")
 	collectStatsCmd.Flags().Int64Var(&collectStatsUploadBytes, "uploaded-bytes", 0, "Bytes uploaded to cache during this invocation (overridden by session state if helper is running)")
+
+	if err := collectStatsCmd.MarkFlagRequired("invocation-id"); err != nil {
+		panic(err)
+	}
 
 	storageHelperCmd.AddCommand(collectStatsCmd)
 }
