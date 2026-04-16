@@ -39,7 +39,13 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 		return nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	// Use a debug-enabled logger for the analytics client if activation was done
+	// with --debug. The runner's logger (passed in) is NOT modified — we create
+	// a separate client logger so HTTP PUT lines appear in the output when debug
+	// mode was requested at activation time.
+	clientLogger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
+
+	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), clientLogger)
 	if err != nil {
 		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
