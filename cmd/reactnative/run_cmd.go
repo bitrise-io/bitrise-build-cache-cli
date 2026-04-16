@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/reactnative"
 )
 
@@ -20,9 +22,13 @@ var runCmd = &cobra.Command{
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
 	RunE: func(_ *cobra.Command, args []string) error {
+		logger := log.NewLogger()
+		logger.EnableDebugLog(common.IsDebugLogMode)
+
 		r := rnpkg.NewRunner(rnpkg.RunnerParams{
 			ExecFn:             defaultExecFn,
 			CcacheInvocationID: uuid.New().String(),
+			Logger:             logger,
 		})
 
 		return r.Run(args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())
