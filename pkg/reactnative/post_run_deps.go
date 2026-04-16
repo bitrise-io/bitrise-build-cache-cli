@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/analytics"
@@ -77,26 +76,24 @@ func (d *postRunDeps) run(invocationID string, args []string, duration time.Dura
 		Wrapper:        "bitrise-build-cache-cli react-native",
 	}, d.authConfig, metadata)
 
-	if ccacheInvocationID == "" {
-		ccacheInvocationID = uuid.New().String()
-	}
-
 	rnSendErr := d.sendInvocation(*inv)
 	if rnSendErr != nil {
 		d.logger.TWarnf("Failed to send run invocation analytics: %v", rnSendErr)
 	}
 
-	d.logger.TInfof("Ccache invocation ID: %s", ccacheInvocationID)
-	d.collectStats(context.Background(), ccacheInvocationID, invocationID)
+	if ccacheInvocationID != "" {
+		d.logger.TInfof("Ccache invocation ID: %s", ccacheInvocationID)
+		d.collectStats(context.Background(), ccacheInvocationID, invocationID)
 
-	if rnSendErr == nil {
-		relParentID := os.Getenv("BITRISE_INVOCATION_ID")
-		if relParentID == "" {
-			relParentID = invocationID
+		if rnSendErr == nil {
+			relParentID := os.Getenv("BITRISE_INVOCATION_ID")
+			if relParentID == "" {
+				relParentID = invocationID
+			}
+
+			d.logger.TInfof("Parent invocation ID: %s", relParentID)
+			d.sendRelation(relParentID, ccacheInvocationID)
 		}
-
-		d.logger.TInfof("Parent invocation ID: %s", relParentID)
-		d.sendRelation(relParentID, ccacheInvocationID)
 	}
 }
 

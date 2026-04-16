@@ -166,12 +166,13 @@ func TestRunner_PostRunHook(t *testing.T) {
 		assert.ErrorIs(t, mock.runCalls()[0].ExecErr, execErr)
 	})
 
-	t.Run("passes ccacheInvocationID to postRun", func(t *testing.T) {
+	t.Run("passes ccacheInvocationID to postRun when socket is configured", func(t *testing.T) {
 		mock := &postRunRunnerMock{}
 		r := newTestRunner(RunnerParams{
 			ExecFn:             noOpExec,
 			CcacheInvocationID: "ccache-789",
 		})
+		r.socket = &stubSocket{listening: true}
 		r.postRun = mock
 
 		err := r.Run([]string{"true"}, "inv", []string{})
@@ -179,6 +180,22 @@ func TestRunner_PostRunHook(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, mock.runCalls(), 1)
 		assert.Equal(t, "ccache-789", mock.runCalls()[0].CcacheInvocationID)
+	})
+
+	t.Run("passes empty ccacheInvocationID to postRun when socket is nil", func(t *testing.T) {
+		mock := &postRunRunnerMock{}
+		r := newTestRunner(RunnerParams{
+			ExecFn:             noOpExec,
+			CcacheInvocationID: "ccache-789",
+		})
+		// r.socket is nil from newTestRunner — ccache not configured
+		r.postRun = mock
+
+		err := r.Run([]string{"true"}, "inv", []string{})
+
+		require.NoError(t, err)
+		require.Len(t, mock.runCalls(), 1)
+		assert.Empty(t, mock.runCalls()[0].CcacheInvocationID)
 	})
 
 	t.Run("generates invocation ID when empty and passes it to postRun", func(t *testing.T) {

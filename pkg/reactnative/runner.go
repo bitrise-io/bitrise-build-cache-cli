@@ -114,7 +114,12 @@ func (r *Runner) Run(args []string, invocationID string, environ []string) error
 	duration := time.Since(start)
 
 	if r.postRun != nil {
-		r.postRun.run(invocationID, args, duration, execErr, r.ccacheInvocationID)
+		ccacheInvocationID := r.ccacheInvocationID
+		if r.socket == nil {
+			ccacheInvocationID = ""
+		}
+
+		r.postRun.run(invocationID, args, duration, execErr, ccacheInvocationID)
 	}
 
 	return execErr
