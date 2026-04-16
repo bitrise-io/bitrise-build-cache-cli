@@ -102,6 +102,8 @@ Implemented by `internal/ccache.Socket` in production. This interface talks to t
 
 **postRunDeps** handles all analytics after command execution. Created by `newPostRunDeps(logger, osProxy, decoderFactory)` which reads the multiplatform analytics config and creates a `ccacheanalytics.Client`.
 
+The analytics client receives its own `clientLogger` created with `log.WithDebugLog(config.DebugLogging)`. This is separate from the runner's logger — `HTTP PUT:` debug lines appear when `activate react-native --debug` was used, without relying on cobra's `IsDebugLogMode` (which cobra never sets for `DisableFlagParsing` commands).
+
 **postRunDeps.run call sequence:**
 
 ```
