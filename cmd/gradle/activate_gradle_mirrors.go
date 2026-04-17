@@ -133,20 +133,20 @@ func ActivateGradleMirrorsFn(
 ) error {
 	enabled := envProvider[gradleMirrorsEnvKey]
 	if enabled != "true" {
-		fmt.Fprintf(os.Stdout, "%s is not set to \"true\", skipping Gradle mirror activation\n", gradleMirrorsEnvKey)
+		logger.Infof("%s is not set to \"true\", skipping Gradle mirror activation", gradleMirrorsEnvKey)
 
 		return nil
 	}
 
 	dc := envProvider[datacenterEnvKey]
 	if dc == "" {
-		fmt.Fprintf(os.Stdout, "%s is not set, skipping Gradle mirror activation (e.g. local dev environment)\n", datacenterEnvKey)
+		logger.Infof("%s is not set, skipping Gradle mirror activation (e.g. local dev environment)", datacenterEnvKey)
 
 		return nil
 	}
 
 	if len(mirrors) == 0 {
-		fmt.Fprintln(os.Stdout, "No mirrors selected, skipping Gradle mirror activation")
+		logger.Infof("No mirrors selected, skipping Gradle mirror activation")
 
 		return nil
 	}
@@ -186,7 +186,7 @@ func ActivateGradleMirrorsFn(
 		return fmt.Errorf("write %s: %w", initFilePath, err)
 	}
 
-	fmt.Fprintln(os.Stdout, "Gradle mirrors activated")
+	logger.Infof("Gradle mirrors activated")
 
 	return nil
 }
