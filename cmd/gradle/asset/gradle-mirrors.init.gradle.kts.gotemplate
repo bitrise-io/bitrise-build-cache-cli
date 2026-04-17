@@ -3,22 +3,21 @@ apply<InternalRepositoryPlugin>()
 
 class InternalRepositoryPlugin : Plugin<Gradle> {
     override fun apply(gradle: Gradle) {
-        val mavenCentralMirrorUrl: String = "{{ .MirrorURL }}"
-        val googleMirrorUrl: String = "{{ .GoogleMirrorURL }}"
+        {{- range .Mirrors }}
+        val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
+            Spec { r -> r.getName().equals({{ .GradleMatch }}) }
 
-        val isMavenCentral: Spec<MavenArtifactRepository> =
-            Spec { r -> r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME) }
-
-        val isGoogle: Spec<MavenArtifactRepository> =
-            Spec { r -> r.getUrl().toString().startsWith("https://dl.google.com/dl/android/maven2") }
-
+        val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
+            val mirrorUrl: String = "{{ .MirrorURL }}"
+            setUrl(mirrorUrl)
+        }
+        {{- end }}
         val configureMirror: Action<RepositoryHandler> = Action {
+            {{- range .Mirrors }}
             withType(MavenArtifactRepository::class.java)
-                .matching(isMavenCentral)
-                .configureEach { setUrl(mavenCentralMirrorUrl) }
-            withType(MavenArtifactRepository::class.java)
-                .matching(isGoogle)
-                .configureEach { setUrl(googleMirrorUrl) }
+                .matching(canBeMirrored{{ .ID }})
+                .configureEach(useMirror{{ .ID }})
+            {{- end }}
         }
         gradle.beforeSettings(Action {
             configureMirror.execute(getBuildscript().getRepositories())

@@ -923,7 +923,7 @@ workflows:
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
             export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
-            ../bitrise-build-cache-cli activate mavencentral-mirror -d
+            ../bitrise-build-cache-cli activate gradle-mirrors -d
     - script:
         title: Print init scripts
         inputs:
@@ -931,8 +931,8 @@ workflows:
               echo "=== bitrise-build-cache.init.gradle.kts ==="
               cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
               echo ""
-              echo "=== bitrise-mavencentral-mirror.init.gradle.kts ==="
-              cat ~/.gradle/init.d/bitrise-mavencentral-mirror.init.gradle.kts
+              echo "=== bitrise-gradle-mirrors.init.gradle.kts ==="
+              cat ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts
     - script:
         title: Build and capture logs
         inputs:
