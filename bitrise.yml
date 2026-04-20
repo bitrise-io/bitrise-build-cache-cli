@@ -903,9 +903,6 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
 
-  # NOTE: e2e-mavencentral-mirror-duckduck is excluded from the features-e2e pipeline because
-  # it is extremely flaky — the MavenCentral mirror proxy (repository-manager-ams.services.bitrise.io)
-  # frequently times out mid-build, causing spurious failures unrelated to code changes.
   e2e-mavencentral-mirror-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -923,7 +920,7 @@ workflows:
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
             export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
-            ../bitrise-build-cache-cli activate mavencentral-mirror -d
+            ../bitrise-build-cache-cli activate gradle-mirrors -d
     - script:
         title: Print init scripts
         inputs:
@@ -931,8 +928,8 @@ workflows:
               echo "=== bitrise-build-cache.init.gradle.kts ==="
               cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
               echo ""
-              echo "=== bitrise-mavencentral-mirror.init.gradle.kts ==="
-              cat ~/.gradle/init.d/bitrise-mavencentral-mirror.init.gradle.kts
+              echo "=== bitrise-gradle-mirrors.init.gradle.kts ==="
+              cat ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts
     - script:
         title: Build and capture logs
         inputs:
@@ -957,6 +954,24 @@ workflows:
             fi
 
             echo "SUCCESS: Verified $MATCH_COUNT downloads from the MavenCentral mirror."
+    - script:
+        title: Assert downloads from Google mirror
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            MIRROR_URL="repository-manager-[a-z]*\.services\.bitrise\.io:8090/maven/google"
+            MATCH_COUNT=$(grep -cE "$MIRROR_URL" "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+
+            echo "Found $MATCH_COUNT log lines referencing the Google mirror"
+
+            if [[ "$MATCH_COUNT" -eq 0 ]]; then
+              echo "ERROR: No downloads from the Google mirror were found in the build logs."
+              echo "Expected to find references to $MIRROR_URL"
+              exit 1
+            fi
+
+            echo "SUCCESS: Verified $MATCH_COUNT downloads from the Google mirror."
     - script:
         title: Check for cache invocations
         inputs:
@@ -1254,6 +1269,7 @@ pipelines:
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
+      e2e-mavencentral-mirror-duckduck: {}
     triggers:
       pull_request:
         - source_branch: "*"

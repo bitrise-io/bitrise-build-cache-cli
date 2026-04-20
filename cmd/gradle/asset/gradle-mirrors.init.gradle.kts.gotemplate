@@ -3,17 +3,21 @@ apply<InternalRepositoryPlugin>()
 
 class InternalRepositoryPlugin : Plugin<Gradle> {
     override fun apply(gradle: Gradle) {
-        val canBeMirrored: Spec<MavenArtifactRepository> =
-            Spec { r -> r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME) }
+        {{- range .Mirrors }}
+        val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
+            Spec { r -> r.getName().equals({{ .GradleMatch }}) }
 
-        val useMirror: Action<MavenArtifactRepository> = Action {
+        val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
             val mirrorUrl: String = "{{ .MirrorURL }}"
             setUrl(mirrorUrl)
         }
+        {{- end }}
         val configureMirror: Action<RepositoryHandler> = Action {
+            {{- range .Mirrors }}
             withType(MavenArtifactRepository::class.java)
-                .matching(canBeMirrored)
-                .configureEach(useMirror)
+                .matching(canBeMirrored{{ .ID }})
+                .configureEach(useMirror{{ .ID }})
+            {{- end }}
         }
         gradle.beforeSettings(Action {
             configureMirror.execute(getBuildscript().getRepositories())
