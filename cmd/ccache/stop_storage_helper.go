@@ -9,10 +9,7 @@ import (
 )
 
 //nolint:gochecknoglobals
-var (
-	stopHelperSocketPath   string
-	stopHelperInvocationID string
-)
+var stopHelperSocketPath string
 
 //nolint:gochecknoglobals
 var stopStorageHelperCmd = &cobra.Command{
