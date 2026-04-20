@@ -8,55 +8,40 @@ import (
 	"time"
 )
 
+//nolint:gochecknoglobals
+var (
+	configLineRe = regexp.MustCompile(`^\(([^)]+)\)\s+(\S+)\s*=\s*(.*)$`)
+)
+
 // ParseCcacheStats parses the text output of `ccache -v -v -s`.
 // CacheHitRate and TotalCalls are derived fields computed after parsing.
 // Always returns nil — unrecognised lines are silently ignored.
 func ParseCcacheStats(data []byte) (CcacheStats, error) {
 	var stats CcacheStats
-	lines := strings.Split(string(data), "\n")
+	var path []string
 
-	// sectionParents[level] = section name at that indent level (2 spaces = 1 level).
-	const maxDepth = 6
-	sectionParents := make([]string, maxDepth)
-
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
+	for _, line := range strings.Split(string(data), "\n") {
+		m := statsLineRe.FindStringSubmatch(line)
+		if m == nil {
 			continue
 		}
 
-		indent := countLeadingSpaces(line)
-		level := indent / 2
-		if level >= maxDepth {
-			continue
+		level := len(m[1]) / 2
+		key := m[2]
+		rest := m[3]
+
+		if level > len(path) {
+			continue // skip malformed indent jumps
 		}
 
-		trimmed := strings.TrimSpace(line)
-		key, rest, ok := strings.Cut(trimmed, ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		rest = strings.TrimSpace(rest)
-
-		// Clear deeper levels (stale from a previous branch at this depth).
-		for i := range maxDepth - level - 1 {
-			sectionParents[level+1+i] = ""
-		}
-		sectionParents[level] = key
-
-		// Build full path from ancestor sections + current key.
-		parts := make([]string, 0, level+1)
-		for i := range level {
-			if sectionParents[i] != "" {
-				parts = append(parts, sectionParents[i])
-			}
-		}
-		parts = append(parts, key)
-		fullKey := strings.Join(parts, " / ")
+		// Truncate to parent depth, then append current key.
+		// e.g. at level 2 under ["Cacheable calls", "Hits"] → append "Direct"
+		// At level 1 after ["Cacheable calls", "Hits", "Direct"] → truncate to ["Cacheable calls"], append "Misses"
+		path = append(path[:level], key)
+		fullKey := strings.Join(path, " / ")
 
 		nums := extractNumbers(rest)
-		first := 0.0
-		second := 0.0
+		var first, second float64
 		if len(nums) > 0 {
 			first = nums[0]
 		}
@@ -69,13 +54,45 @@ func ParseCcacheStats(data []byte) (CcacheStats, error) {
 
 	// Derived fields.
 	stats.TotalCalls = stats.CacheableCalls + stats.UncacheableCalls
+	stats.CacheHit = stats.DirectCacheHit + stats.PreprocessedCacheHit
 
-	total := stats.DirectCacheHit + stats.PreprocessedCacheHit + stats.CacheMiss
-	if total > 0 {
-		stats.CacheHitRate = float64(stats.DirectCacheHit+stats.PreprocessedCacheHit) / float64(total)
+	if stats.CacheHit > 0 {
+		stats.DirectCacheHitPercentage = float64(stats.DirectCacheHit) / float64(stats.CacheHit)
+		stats.PreprocessedCacheHitPercentage = float64(stats.PreprocessedCacheHit) / float64(stats.CacheHit)
+	}
+
+	if stats.CacheableCalls > 0 {
+		cacheable := float64(stats.CacheableCalls)
+		stats.CacheHitRate = float64(stats.CacheHit) / cacheable
+		stats.CacheMissRate = float64(stats.CacheMiss) / cacheable
+		stats.RemoteStorageHitPercentage = float64(stats.RemoteStorageHit) / cacheable
+		stats.RemoteStorageMissPercentage = float64(stats.RemoteStorageMiss) / cacheable
+		stats.RemoteStorageErrorPercentage = float64(stats.RemoteStorageError) / cacheable
+		stats.RemoteStorageTimeoutPercentage = float64(stats.RemoteStorageTimeout) / cacheable
 	}
 
 	return stats, nil
+}
+
+// ParseCcacheConfig parses the text output of `ccache --show-config` into a slice of CcacheConfigEntry.
+// Each line has the form: (source) key = value
+// Blank and malformed lines are silently ignored.
+func ParseCcacheConfig(data []byte) []CcacheConfigEntry {
+	lines := strings.Split(string(data), "\n")
+	entries := make([]CcacheConfigEntry, 0, len(lines))
+	for _, line := range lines {
+		m := configLineRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		entries = append(entries, CcacheConfigEntry{
+			Source: strings.TrimSpace(m[1]),
+			Key:    strings.TrimSpace(m[2]),
+			Value:  strings.TrimSpace(m[3]),
+		})
+	}
+
+	return entries
 }
 
 // NewCcacheInvocation assembles a CcacheInvocation from a ccache stats snapshot and transfer byte counts.
@@ -106,19 +123,12 @@ func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error {
 // ---------------------------------------------------------------------------
 
 //nolint:gochecknoglobals
-var numberRe = regexp.MustCompile(`\d+(?:\.\d+)?`)
-
-func countLeadingSpaces(s string) int {
-	n := 0
-	for _, ch := range s {
-		if ch != ' ' {
-			break
-		}
-		n++
-	}
-
-	return n
-}
+var (
+	// statsLineRe captures: (indent)(key): (rest)
+	// Non-greedy key matches up to the first colon.
+	statsLineRe = regexp.MustCompile(`^( *)(.*?): *(.*)$`)
+	numberRe    = regexp.MustCompile(`\d+(?:\.\d+)?`)
+)
 
 func extractNumbers(s string) []float64 {
 	matches := numberRe.FindAllString(s, -1)

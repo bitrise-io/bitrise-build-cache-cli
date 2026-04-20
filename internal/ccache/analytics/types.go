@@ -5,14 +5,32 @@ import "time"
 // CcacheStats holds statistics parsed from `ccache -v -v -s`.
 // CacheHitRate is the only computed field (not emitted by ccache).
 type CcacheStats struct {
-	// Cache outcomes
-	DirectCacheHit       int     `json:"direct_cache_hit"`
-	PreprocessedCacheHit int     `json:"preprocessed_cache_hit"`
-	CacheMiss            int     `json:"cache_miss"`
-	CacheHitRate         float64 `json:"cache_hit_rate"`
-	CacheableCalls       int     `json:"cacheable_calls"`
-	TotalCalls           int     `json:"total_calls"`
-	UncacheableCalls     int     `json:"uncacheable_calls"`
+	// Diagnostic main                              // UI usage
+	TotalCalls       int `json:"total_calls"`       // `Total calls`
+	CacheableCalls   int `json:"cacheable_calls"`   // `Cacheable calls` - Used as the denominator in `Cache hits & misses` -> `Cache hits`, `Cache misses` and `Remote storage` -> `Hits`, `Misses`, `Errors`, `Timeouts`
+	UncacheableCalls int `json:"uncacheable_calls"` // `UncacheableCalls`
+
+	// Cache hits & misses
+	CacheHit                       int     `json:"cache_hit"`                         // `Cache hits & misses` -> `Cache hits` - Used as the denominator in `Cache hits & misses` -> `Direct hits` and `Preprocessed hits`
+	CacheHitRate                   float64 `json:"cache_hit_rate"`                    // `Cache hits & misses` -> `Cache hits` percentage
+	DirectCacheHit                 int     `json:"direct_cache_hit"`                  // `Cache hits & misses` -> `Direct hits`
+	DirectCacheHitPercentage       float64 `json:"direct_cache_hit_percentage"`       // `Cache hits & misses` -> `Direct hits` percentage
+	PreprocessedCacheHit           int     `json:"preprocessed_cache_hit"`            // `Cache hits & misses` -> `Preprocessed hits`
+	PreprocessedCacheHitPercentage float64 `json:"preprocessed_cache_hit_percentage"` // `Cache hits & misses` -> `Preprocessed hits` percentage
+	CacheMiss                      int     `json:"cache_miss"`                        // `Cache hits & misses` -> `Cache misses`
+	CacheMissRate                  float64 `json:"cache_miss_rate"`                   // `Cache hits & misses` -> `Cache misses` percentage
+
+	// Remote storage
+	RemoteStorageHit               int     `json:"remote_storage_hit"`                // `Remote storage` -> `Hits`
+	RemoteStorageHitPercentage     float64 `json:"remote_storage_hit_percentage"`     // `Remote storage` -> `Hits` percentage
+	RemoteStorageMiss              int     `json:"remote_storage_miss"`               // `Remote storage` -> `Misses`
+	RemoteStorageMissPercentage    float64 `json:"remote_storage_miss_percentage"`    // `Remote storage` -> `Misses` percentage
+	RemoteStorageError             int     `json:"remote_storage_error"`              // `Remote storage` -> `Errors`
+	RemoteStorageErrorPercentage   float64 `json:"remote_storage_error_percentage"`   // `Remote storage` -> `Errors` percentage
+	RemoteStorageTimeout           int     `json:"remote_storage_timeout"`            // `Remote storage` -> `Timeouts`
+	RemoteStorageTimeoutPercentage float64 `json:"remote_storage_timeout_percentage"` // `Remote storage` -> `Timeouts` percentage
+	RemoteStorageWrite             int     `json:"remote_storage_write"`
+	RemoteStorageReads             int     `json:"remote_storage_reads"`
 
 	// Local storage
 	FilesInCache      int     `json:"files_in_cache"`
@@ -23,14 +41,6 @@ type CcacheStats struct {
 	LocalStorageMiss  int     `json:"local_storage_miss"`
 	LocalStorageReads int     `json:"local_storage_reads"`
 	LocalStorageWrite int     `json:"local_storage_write"`
-
-	// Remote storage
-	RemoteStorageHit     int `json:"remote_storage_hit"`
-	RemoteStorageMiss    int `json:"remote_storage_miss"`
-	RemoteStorageError   int `json:"remote_storage_error"`
-	RemoteStorageTimeout int `json:"remote_storage_timeout"`
-	RemoteStorageWrite   int `json:"remote_storage_write"`
-	RemoteStorageReads   int `json:"remote_storage_reads"`
 
 	// Compiler errors and unsupported inputs
 	CompileFailed                int `json:"compile_failed"`
@@ -66,11 +76,21 @@ type CcacheStats struct {
 	InternalError         int `json:"internal_error"`
 	ErrorHashingExtraFile int `json:"error_hashing_extra_file"`
 	MissingCacheFile      int `json:"missing_cache_file"`
+
+	Config []CcacheConfigEntry `json:"config"`
 }
 
 // HasActivity returns true if ccache processed any compilations (hits or misses).
 func (s CcacheStats) HasActivity() bool {
-	return s.DirectCacheHit+s.PreprocessedCacheHit+s.CacheMiss > 0
+	return s.CacheableCalls+s.UncacheableCalls > 0
+}
+
+// CcacheConfigEntry is a single configuration key-value pair from `ccache --show-config`,
+// annotated with its source (e.g. "default" or the path of the config file that set it).
+type CcacheConfigEntry struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
 }
 
 // CcacheInvocation is the analytics payload for ccache statistics captured during a run.

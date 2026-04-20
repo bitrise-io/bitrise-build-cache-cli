@@ -66,6 +66,64 @@ Remote storage:
   Timeouts:                                  0
 `
 
+const sampleConfigOutput = `(default) absolute_paths_in_stderr = false
+(default) base_dir =
+(default) cache_dir = /Users/user/Library/Caches/ccache
+(default) compiler_check = mtime
+(/Users/user/Library/Preferences/ccache/ccache.conf) hash_dir = false
+(/Users/user/Library/Preferences/ccache/ccache.conf) max_size = 10.0 GiB
+(/Users/user/Library/Preferences/ccache/ccache.conf) remote_only = true
+(/Users/user/Library/Preferences/ccache/ccache.conf) remote_storage = crsh:/var/folders/tmp/ccache-ipc.sock
+`
+
+func Test_ParseCcacheConfig(t *testing.T) {
+	t.Run("parses default source entries", func(t *testing.T) {
+		entries := ParseCcacheConfig([]byte(sampleConfigOutput))
+
+		assert.Contains(t, entries, CcacheConfigEntry{Key: "absolute_paths_in_stderr", Value: "false", Source: "default"})
+		assert.Contains(t, entries, CcacheConfigEntry{Key: "compiler_check", Value: "mtime", Source: "default"})
+	})
+
+	t.Run("parses file source entries", func(t *testing.T) {
+		entries := ParseCcacheConfig([]byte(sampleConfigOutput))
+
+		assert.Contains(t, entries, CcacheConfigEntry{
+			Key:    "max_size",
+			Value:  "10.0 GiB",
+			Source: "/Users/user/Library/Preferences/ccache/ccache.conf",
+		})
+		assert.Contains(t, entries, CcacheConfigEntry{
+			Key:    "remote_storage",
+			Value:  "crsh:/var/folders/tmp/ccache-ipc.sock",
+			Source: "/Users/user/Library/Preferences/ccache/ccache.conf",
+		})
+	})
+
+	t.Run("empty value trimmed to empty string", func(t *testing.T) {
+		entries := ParseCcacheConfig([]byte(sampleConfigOutput))
+
+		assert.Contains(t, entries, CcacheConfigEntry{Key: "base_dir", Value: "", Source: "default"})
+	})
+
+	t.Run("returns all entries", func(t *testing.T) {
+		entries := ParseCcacheConfig([]byte(sampleConfigOutput))
+
+		assert.Len(t, entries, 8)
+	})
+
+	t.Run("malformed lines silently ignored", func(t *testing.T) {
+		entries := ParseCcacheConfig([]byte("not a valid line\nalso bad\n"))
+
+		assert.Empty(t, entries)
+	})
+
+	t.Run("empty input returns empty slice", func(t *testing.T) {
+		entries := ParseCcacheConfig([]byte(""))
+
+		assert.Empty(t, entries)
+	})
+}
+
 func Test_ParseCcacheStats(t *testing.T) {
 	t.Run("parses cacheable call counts", func(t *testing.T) {
 		stats, err := ParseCcacheStats([]byte(sampleStatsOutput))
