@@ -16,7 +16,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
 	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/analytics"
@@ -54,17 +53,6 @@ type StorageHelperParams struct {
 	SocketPath string
 }
 
-// CollectStatsParams configures the CollectStats operation.
-type CollectStatsParams struct {
-	// DownloadedBytes is the fallback byte count if the storage helper is not running.
-	// Overridden by the helper's session state when it is reachable.
-	DownloadedBytes int64
-
-	// UploadedBytes is the fallback byte count if the storage helper is not running.
-	// Overridden by the helper's session state when it is reachable.
-	UploadedBytes int64
-}
-
 // HealthCheckParams configures the HealthCheck operation.
 type HealthCheckParams struct {
 	// Timeout is how long to wait for the server to become ready.
@@ -78,13 +66,18 @@ type HealthCheckParams struct {
 
 // StorageHelper manages the ccache IPC storage helper lifecycle.
 type StorageHelper struct {
-	config       ccacheconfig.Config
-	params       StorageHelperParams
-	osProxy      utils.OsProxy
-	logger       log.Logger
+	config   ccacheconfig.Config
+	params   StorageHelperParams
+	osProxy  utils.OsProxy
+	logger   log.Logger
+	registry *InvocationRegistry
+
+	// Session state
+	sessionMu    sync.RWMutex
 	invocationID string
 	parentID     string
-	idMu         sync.RWMutex
+	downloaded   int64
+	uploaded     int64
 }
 
 // NewStorageHelper reads the ccache configuration from the default config path
@@ -100,13 +93,22 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 
 	config.DebugLogging = config.DebugLogging || params.DebugLogging
 
+	registry, err := NewInvocationRegistry(InvocationRegistryParams{params.Envs})
+	if err != nil {
+		return nil, fmt.Errorf("create invocation registry: %w", err)
+	}
+
 	return &StorageHelper{
-		config:       config,
-		params:       params,
-		osProxy:      osProxy,
-		logger:       log.NewLogger(log.WithDebugLog(config.DebugLogging)),
+		config:   config,
+		params:   params,
+		osProxy:  osProxy,
+		logger:   log.NewLogger(log.WithDebugLog(config.DebugLogging)),
+		registry: registry,
+
 		invocationID: params.InvocationID,
 		parentID:     params.ParentInvocationID,
+		uploaded:     0,
+		downloaded:   0,
 	}, nil
 }
 
@@ -154,8 +156,8 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 }
 
 // Stop gracefully shuts down a running storage helper. Returns nil without
-// error if the helper is not running. Callers that need analytics should call
-// CollectStats before Stop and RegisterInvocationRelation after Stop.
+// error if the helper is not running. Only stops the process — does not
+// collect or send analytics. Use CollectAndSendStats separately.
 func (h *StorageHelper) Stop(ctx context.Context) error {
 	socketPath := h.socketPath()
 
@@ -175,46 +177,79 @@ func (h *StorageHelper) Stop(ctx context.Context) error {
 // RegisterInvocationRelation records the parent→child invocation relation
 // using the IDs from internal state (set at construction or via SetInvocationID).
 // Errors are logged but do not fail the caller. No-op if parentID is empty.
-func (h *StorageHelper) RegisterInvocationRelation() {
-	h.idMu.RLock()
+func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
+	h.sessionMu.RLock()
 	parentID := h.parentID
 	childID := h.invocationID
-	h.idMu.RUnlock()
+	h.sessionMu.RUnlock()
 
 	if parentID == "" {
+		h.logger.TInfof("No parent invocation ID available, skipping invocation relation registration")
+
 		return
 	}
 
-	registerInvocationRelation(h.config, parentID, childID, h.logger)
+	if err := h.registry.RegisterRelation(ctx, RegisterRelationParams{
+		ParentID:  parentID,
+		ChildID:   childID,
+		BuildTool: "ccache",
+	}); err != nil {
+		h.logger.TWarnf("Failed to register invocation relation: %v", err)
+	}
 }
 
-// CollectStats collects and reports ccache statistics, then zeros the counters.
-// If the storage helper is reachable, its session byte counts override the
-// values provided in params. InvocationID and ParentID are read from internal
-// state (set at construction or via SetInvocationID).
-func (h *StorageHelper) CollectStats(ctx context.Context, params CollectStatsParams) error {
-	h.idMu.RLock()
+// CollectAndSendStats collects ccache statistics and, if ccache had any activity,
+// reports the ccache invocation and registers the parent→child relationship.
+// Always zeros ccache counters at the end regardless of activity.
+// If the storage helper is reachable, its session byte counts and active invocation
+// IDs override the values from internal state and params.
+func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) error {
+	_, err := h.loadSessionInfo(ctx, invocationIDOverride, parentIDOverride)
+	if err != nil {
+		h.logger.TWarnf("Failed to load session info from storage helper, stats collection will be skipped: %v", err)
+
+		return nil
+	}
+
+	stats, err := h.parseCcacheStats(ctx)
+	if err != nil {
+		h.logger.TWarnf("Failed to parse ccache stats: %v", err)
+
+		return nil
+	}
+
+	h.sessionMu.RLock()
+	dl, ul := h.downloaded, h.uploaded
 	invocationID := h.invocationID
 	parentID := h.parentID
-	h.idMu.RUnlock()
+	h.sessionMu.RUnlock()
+
+	defer h.zeroCcacheStats(ctx, h.logger)
+
+	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
+	if !hasActivity {
+		h.logger.TInfof("No ccache activity detected, skipping analytics")
+
+		return nil
+	}
 
 	if invocationID == "" {
-		return fmt.Errorf("invocation ID is required")
+		h.logger.TWarnf("No invocation ID available for ccache stats, skipping analytics")
+
+		return nil
 	}
 
-	socketPath := h.socketPath()
-	dl, ul := params.DownloadedBytes, params.UploadedBytes
-
-	if iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
-		sessionDL, sessionUL, err := iccache.SendGetSessionStats(ctx, socketPath)
-		if err != nil {
-			h.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
-		} else {
-			dl, ul = sessionDL, sessionUL
-		}
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, h.config.AuthConfig.TokenInGradleFormat(), h.logger)
+	if err != nil {
+		return fmt.Errorf("create analytics client for ccache stats: %w", err)
 	}
 
-	collectAndZeroCcacheStats(ctx, h.config, invocationID, parentID, dl, ul, h.logger)
+	h.registerInvocationRelation(ctx)
+
+	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul)
+	if err := client.PutCcacheInvocation(*inv); err != nil {
+		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
+	}
 
 	return nil
 }
@@ -253,10 +288,10 @@ func (h *StorageHelper) SetInvocationID(ctx context.Context, parentID, childID s
 		return fmt.Errorf("send invocation ID: %w", err)
 	}
 
-	h.idMu.Lock()
+	h.sessionMu.Lock()
 	h.parentID = parentID
 	h.invocationID = childID
-	h.idMu.Unlock()
+	h.sessionMu.Unlock()
 
 	return nil
 }
@@ -314,6 +349,77 @@ func (h *StorageHelper) logFilePath(invocationID string) (string, error) {
 	return filepath.Join(dir, fmt.Sprintf(h.config.LogFile, invocationID)), nil
 }
 
+func (h *StorageHelper) loadSessionInfo(ctx context.Context, invocationIDOverride, parentIDOverride string) (iccache.SessionStats, error) {
+	socketPath := h.socketPath()
+
+	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
+		h.logger.TInfof("Storage helper is not running, no session info available")
+
+		return iccache.SessionStats{}, fmt.Errorf("storage helper is not running")
+	}
+
+	stats, err := iccache.SendGetSessionStats(ctx, socketPath)
+	if err != nil {
+		h.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
+
+		return iccache.SessionStats{}, fmt.Errorf("failed to get session stats: %w", err)
+	}
+
+	// Update internal state with loaded session info, allowing overrides from params.
+	// This ensures the caller can correlate the session info with the correct invocation IDs
+	// even if the helper was running with different IDs or the caller wants to override them for analytics purposes.
+	h.sessionMu.Lock()
+	switch {
+	case invocationIDOverride != "":
+		h.invocationID = invocationIDOverride
+	case stats.InvocationID != "":
+		h.invocationID = stats.InvocationID
+	}
+
+	switch {
+	case parentIDOverride != "":
+		h.parentID = parentIDOverride
+	case stats.ParentID != "":
+		h.parentID = stats.ParentID
+	}
+
+	h.uploaded = stats.UploadedBytes
+	h.downloaded = stats.DownloadedBytes
+	h.sessionMu.Unlock()
+
+	return stats, nil
+}
+
+func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.CcacheStats, error) {
+	ccachePath, err := exec.LookPath("ccache")
+	if err != nil {
+		return ccacheanalytics.CcacheStats{}, fmt.Errorf("ccache binary not found: %w", err)
+	}
+
+	statsData, err := exec.CommandContext(ctx, ccachePath, "--print-stats", "--format=json").Output() //nolint:gosec
+	if err != nil {
+		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache --print-stats: %w", err)
+	}
+
+	stats, err := ccacheanalytics.ParseCcacheStats(statsData)
+	if err != nil {
+		return ccacheanalytics.CcacheStats{}, fmt.Errorf("parse ccache stats: %w", err)
+	}
+
+	return stats, nil
+}
+
+func (h *StorageHelper) zeroCcacheStats(ctx context.Context, logger log.Logger) {
+	ccachePath, err := exec.LookPath("ccache")
+	if err != nil {
+		return
+	}
+
+	if err := exec.CommandContext(ctx, ccachePath, "-z").Run(); err != nil { //nolint:gosec
+		logger.TErrorf("Failed to reset ccache stats: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Private — package-level helpers
 // ---------------------------------------------------------------------------
@@ -344,37 +450,6 @@ func withDefaults(params StorageHelperParams) StorageHelperParams {
 	}
 
 	return params
-}
-
-func collectAndZeroCcacheStats(ctx context.Context, config ccacheconfig.Config, invocationID, parentID string, downloadedBytes, uploadedBytes int64, logger log.Logger) {
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-	if err != nil {
-		logger.TErrorf("Skipping ccache stats collection because analytics client creation failed: %v", err)
-
-		return
-	}
-
-	ccacheanalytics.CollectAndZero(ctx, client, invocationID, parentID, downloadedBytes, uploadedBytes, logger)
-}
-
-func registerInvocationRelation(config ccacheconfig.Config, parentID, childID string, logger log.Logger) {
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-	if err != nil {
-		logger.TErrorf("Failed to create analytics client for invocation relation: %v", err)
-
-		return
-	}
-
-	rel := multiplatform.InvocationRelation{
-		ParentInvocationID: parentID,
-		ChildInvocationID:  childID,
-		InvocationDate:     time.Now(),
-		BuildTool:          "ccache",
-	}
-
-	if err := client.PutInvocationRelation(rel); err != nil {
-		logger.TErrorf("Failed to register invocation relation (parent=%s child=%s): %v", parentID, childID, err)
-	}
 }
 
 func createKVClient(

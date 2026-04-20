@@ -13,10 +13,7 @@ import (
 
 var helperTestLogger = log.NewLogger() //nolint:gochecknoglobals
 
-const (
-	testRNInvocationID     = "rn-invocation-id"
-	testCcacheInvocationID = "ccache-invocation-id"
-)
+const testRNInvocationID = "rn-invocation-id"
 
 type stubSocket struct {
 	listening          bool
@@ -25,18 +22,18 @@ type stubSocket struct {
 	healthCheckErr     error
 	setInvocationIDErr error
 
-	startCalled          bool
-	awaitCalled          bool
-	healthCheckCalled    bool
-	setInvocationCalled  bool
-	capturedParentID     string
-	capturedChildID      string
+	startCalled         bool
+	awaitCalled         bool
+	healthCheckCalled   bool
+	setInvocationCalled bool
+	capturedParentID    string
+	capturedChildID     string
 }
 
-func (s *stubSocket) IsListening() bool                        { return s.listening }
-func (s *stubSocket) Start() error                             { s.startCalled = true; return s.startErr }
-func (s *stubSocket) AwaitReady() bool                         { s.awaitCalled = true; return s.awaitResult }
-func (s *stubSocket) HealthCheck(_ context.Context) error      { s.healthCheckCalled = true; return s.healthCheckErr }
+func (s *stubSocket) IsListening() bool                   { return s.listening }
+func (s *stubSocket) Start() error                        { s.startCalled = true; return s.startErr }
+func (s *stubSocket) AwaitReady() bool                    { s.awaitCalled = true; return s.awaitResult }
+func (s *stubSocket) HealthCheck(_ context.Context) error { s.healthCheckCalled = true; return s.healthCheckErr }
 func (s *stubSocket) SetInvocationID(_ context.Context, parentID, childID string) error {
 	s.setInvocationCalled = true
 	s.capturedParentID = parentID
@@ -47,13 +44,14 @@ func (s *stubSocket) SetInvocationID(_ context.Context, parentID, childID string
 
 func newTestRunnerWithSocket(socket ccacheSocket) *Runner {
 	return &Runner{
-		ccacheInvocationID: testCcacheInvocationID,
-		logger:             helperTestLogger,
-		socket:             socket,
+		logger: helperTestLogger,
+		socket: socket,
 	}
 }
 
 func TestEnsureHelper(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("nil socket means Run skips ensureHelper entirely", func(t *testing.T) {
 		r := newTestRunnerWithSocket(nil)
 		// socket is nil, so ensureHelper is never called — just verify no panic
@@ -64,7 +62,7 @@ func TestEnsureHelper(t *testing.T) {
 		s := &stubSocket{listening: true, awaitResult: true}
 		r := newTestRunnerWithSocket(s)
 
-		r.ensureHelper(testRNInvocationID)
+		r.ensureHelper(ctx, testRNInvocationID)
 
 		assert.False(t, s.startCalled)
 		assert.True(t, s.healthCheckCalled)
@@ -75,7 +73,7 @@ func TestEnsureHelper(t *testing.T) {
 		s := &stubSocket{listening: false, awaitResult: true}
 		r := newTestRunnerWithSocket(s)
 
-		r.ensureHelper(testRNInvocationID)
+		r.ensureHelper(ctx, testRNInvocationID)
 
 		assert.True(t, s.startCalled)
 		assert.True(t, s.awaitCalled)
@@ -86,7 +84,7 @@ func TestEnsureHelper(t *testing.T) {
 		s := &stubSocket{listening: false, startErr: errors.New("start failed")}
 		r := newTestRunnerWithSocket(s)
 
-		r.ensureHelper(testRNInvocationID)
+		r.ensureHelper(ctx, testRNInvocationID)
 
 		assert.True(t, s.startCalled)
 		assert.False(t, s.awaitCalled)
@@ -98,7 +96,7 @@ func TestEnsureHelper(t *testing.T) {
 		s := &stubSocket{listening: false, awaitResult: false}
 		r := newTestRunnerWithSocket(s)
 
-		r.ensureHelper(testRNInvocationID)
+		r.ensureHelper(ctx, testRNInvocationID)
 
 		assert.True(t, s.awaitCalled)
 		assert.True(t, s.healthCheckCalled) // still proceeds
@@ -108,19 +106,19 @@ func TestEnsureHelper(t *testing.T) {
 		s := &stubSocket{listening: true, healthCheckErr: errors.New("unhealthy")}
 		r := newTestRunnerWithSocket(s)
 
-		r.ensureHelper(testRNInvocationID)
+		r.ensureHelper(ctx, testRNInvocationID)
 
 		assert.True(t, s.healthCheckCalled)
 		assert.True(t, s.setInvocationCalled, "SetInvocationID should still be called after a failed health check")
 	})
 
-	t.Run("calls SetInvocationID with correct IDs", func(t *testing.T) {
+	t.Run("calls SetInvocationID with correct parent ID and a generated child ID", func(t *testing.T) {
 		s := &stubSocket{listening: true}
 		r := newTestRunnerWithSocket(s)
 
-		r.ensureHelper(testRNInvocationID)
+		r.ensureHelper(ctx, testRNInvocationID)
 
 		assert.Equal(t, testRNInvocationID, s.capturedParentID)
-		assert.Equal(t, testCcacheInvocationID, s.capturedChildID)
+		assert.NotEmpty(t, s.capturedChildID, "child ID should be a generated UUID")
 	})
 }

@@ -47,22 +47,21 @@ type RegisterRelationParams struct {
 	BuildTool string
 }
 
-// InvocationsAPI handles invocation and relation registration with the analytics backend.
-type InvocationsAPI interface {
+// invocationsAPI handles invocation and relation registration with the analytics backend.
+type invocationsAPI interface {
 	PutInvocation(inv multiplatform.Invocation) error
 	PutInvocationRelation(rel multiplatform.InvocationRelation) error
 }
 
 // InvocationRegistry manages invocation registration with the analytics backend.
-// Exported fields are optional dependencies — when nil, production defaults are used.
-// Set them in tests to inject mocks.
 type InvocationRegistry struct {
 	config ccacheconfig.Config
 	params InvocationRegistryParams
 	logger log.Logger
 
-	// API handles invocation and relation registration. If nil, a production client is created.
-	api InvocationsAPI
+	// api handles invocation and relation registration. If nil, a production client is created.
+	// Set in tests to inject mocks.
+	api invocationsAPI
 }
 
 // NewInvocationRegistry reads the ccache configuration and returns an InvocationRegistry
@@ -84,8 +83,8 @@ func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry
 	}, nil
 }
 
-// RegisterInvocation registers an invocation with the analytics backend.
-func (inv *InvocationRegistry) RegisterInvocation(ctx context.Context, params RegisterInvocationParams) error {
+// RegisterMultiplatformInvocation registers a multiplatform invocation with the analytics backend.
+func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Context, params RegisterInvocationParams) error {
 	buildTool := params.BuildTool
 	if buildTool == "" {
 		buildTool = "multiplatform"
@@ -143,12 +142,12 @@ func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params Regi
 // Private — InvocationRegistry methods
 // ---------------------------------------------------------------------------
 
-func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (InvocationsAPI, error) {
+func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (invocationsAPI, error) {
 	if inv.api != nil {
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, inv.config.AuthConfig.TokenInGradleFormat(), logger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, inv.config.AuthConfig.TokenInGradleFormat(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}

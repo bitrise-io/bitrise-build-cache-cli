@@ -10,10 +10,8 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	collectStatsInvocationID  string
-	collectStatsParentID      string
-	collectStatsDownloadBytes int64
-	collectStatsUploadBytes   int64
+	collectStatsInvocationID string
+	collectStatsParentID     string
 
 	collectStatsCmd = &cobra.Command{
 		Use:          "collect-stats",
@@ -28,10 +26,7 @@ var (
 				return fmt.Errorf("create storage helper: %w", err)
 			}
 
-			if err := helper.CollectStats(cmd.Context(), ccachepkg.CollectStatsParams{
-				DownloadedBytes: collectStatsDownloadBytes,
-				UploadedBytes:   collectStatsUploadBytes,
-			}); err != nil {
+			if err := helper.CollectAndSendStats(cmd.Context(), collectStatsInvocationID, collectStatsParentID); err != nil {
 				return fmt.Errorf("collect stats: %w", err)
 			}
 
@@ -41,14 +36,8 @@ var (
 )
 
 func init() {
-	collectStatsCmd.Flags().StringVar(&collectStatsInvocationID, "invocation-id", "", "Invocation ID to report stats under (required)")
-	collectStatsCmd.Flags().StringVar(&collectStatsParentID, "parent-id", "", "Parent invocation ID")
-	collectStatsCmd.Flags().Int64Var(&collectStatsDownloadBytes, "downloaded-bytes", 0, "Bytes downloaded from cache during this invocation (overridden by session state if helper is running)")
-	collectStatsCmd.Flags().Int64Var(&collectStatsUploadBytes, "uploaded-bytes", 0, "Bytes uploaded to cache during this invocation (overridden by session state if helper is running)")
-
-	if err := collectStatsCmd.MarkFlagRequired("invocation-id"); err != nil {
-		panic(err)
-	}
+	collectStatsCmd.Flags().StringVar(&collectStatsInvocationID, "invocation-id", "", "Invocation ID to report stats under (defaults to value from config or internal state)")
+	collectStatsCmd.Flags().StringVar(&collectStatsParentID, "parent-id", "", "Parent invocation ID (defaults to value from config or internal state)")
 
 	storageHelperCmd.AddCommand(collectStatsCmd)
 }

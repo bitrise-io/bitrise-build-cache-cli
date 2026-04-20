@@ -30,6 +30,7 @@ type IpcServer struct {
 	capabilitiesOnce   sync.Once
 	capabilitiesErr    error
 	activeInvocationID string
+	activeParentID     string
 	activeInvocationMu sync.Mutex
 }
 
@@ -157,6 +158,7 @@ func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
 	if !isDuplicate {
 		s.sessionState.resetAndGet()
 		s.activeInvocationID = result.InvocationChildID
+		s.activeParentID = result.InvocationParentID
 	}
 	s.activeInvocationMu.Unlock()
 }
@@ -173,9 +175,11 @@ func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	s.activeInvocationMu.Lock()
 	dl := s.sessionState.downloadBytes.Load()
 	ul := s.sessionState.uploadBytes.Load()
+	invocationID := s.activeInvocationID
+	parentID := s.activeParentID
 	s.activeInvocationMu.Unlock()
 
-	if err := protocol.WriteSessionStats(conn, dl, ul); err != nil {
+	if err := protocol.WriteSessionStats(conn, dl, ul, invocationID, parentID); err != nil {
 		s.logger.TErrorf("[%s] Failed to write session stats response: %v", conID, err)
 	}
 }

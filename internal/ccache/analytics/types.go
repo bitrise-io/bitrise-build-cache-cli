@@ -75,6 +75,11 @@ type CcacheStats struct {
 	StatsZeroedTimestamp  int64 `json:"stats_zeroed_timestamp"`
 }
 
+// HasActivity returns true if ccache processed any compilations (hits or misses).
+func (s CcacheStats) HasActivity() bool {
+	return s.DirectCacheHit+s.PreprocessedCacheHit+s.CacheMiss > 0
+}
+
 // CcacheInvocation is the analytics payload for ccache statistics captured during a run.
 // It references the parent Invocation and contains only ccache-specific data.
 type CcacheInvocation struct {

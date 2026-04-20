@@ -230,16 +230,16 @@ func Test_IpcServer_Integration_GetSessionStats_returns_accumulated_bytes(t *tes
 	require.Equal(t, []byte(downloadData), data)
 
 	// GetSessionStats should return the accumulated bytes without resetting them
-	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
+	stats, err := SendGetSessionStats(context.Background(), socketPath)
 	require.NoError(t, err)
-	assert.Equal(t, int64(len(downloadData)), dl)
-	assert.Equal(t, int64(0), ul)
+	assert.Equal(t, int64(len(downloadData)), stats.DownloadedBytes)
+	assert.Equal(t, int64(0), stats.UploadedBytes)
 
 	// A second call should return the same bytes (not reset by the query)
-	dl2, ul2, err := SendGetSessionStats(context.Background(), socketPath)
+	stats2, err := SendGetSessionStats(context.Background(), socketPath)
 	require.NoError(t, err)
-	assert.Equal(t, dl, dl2)
-	assert.Equal(t, ul, ul2)
+	assert.Equal(t, stats.DownloadedBytes, stats2.DownloadedBytes)
+	assert.Equal(t, stats.UploadedBytes, stats2.UploadedBytes)
 
 	cancel()
 	<-serverDone
@@ -251,10 +251,10 @@ func Test_IpcServer_Integration_GetSessionStats_zero_when_no_activity(t *testing
 	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil)
 	defer cancel()
 
-	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
+	stats, err := SendGetSessionStats(context.Background(), socketPath)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), dl)
-	assert.Equal(t, int64(0), ul)
+	assert.Equal(t, int64(0), stats.DownloadedBytes)
+	assert.Equal(t, int64(0), stats.UploadedBytes)
 
 	cancel()
 	<-serverDone
@@ -280,10 +280,10 @@ func Test_IpcServer_Integration_Stop_shuts_down_server(t *testing.T) {
 	defer cancel()
 
 	// Mirrors what stopStorageHelperCmd does: get stats then stop.
-	dl, ul, err := SendGetSessionStats(context.Background(), socketPath)
+	stats, err := SendGetSessionStats(context.Background(), socketPath)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), dl)
-	assert.Equal(t, int64(0), ul)
+	assert.Equal(t, int64(0), stats.DownloadedBytes)
+	assert.Equal(t, int64(0), stats.UploadedBytes)
 
 	require.NoError(t, SendStop(context.Background(), socketPath))
 
@@ -296,4 +296,29 @@ func Test_IpcServer_Integration_Stop_shuts_down_server(t *testing.T) {
 	}
 
 	assert.False(t, IsListening(socketPath), "socket should no longer be listening after stop")
+}
+
+func Test_IpcServer_Integration_GetSessionStats_returns_active_invocation_IDs(t *testing.T) {
+	socketPath := integrationTempSocket(t, "ids.sock")
+
+	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil)
+	defer cancel()
+
+	// Before SetInvocationID, stats should return the initial invocation ID
+	stats, err := SendGetSessionStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Equal(t, "initial-id", stats.InvocationID, "initial invocation ID should match NewServer arg")
+	assert.Equal(t, "", stats.ParentID, "parent ID should be empty before SetInvocationID")
+
+	// After SetInvocationID, stats should return the updated IDs
+	err = SendInvocationID(context.Background(), socketPath, "my-parent", "my-child")
+	require.NoError(t, err)
+
+	stats, err = SendGetSessionStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Equal(t, "my-child", stats.InvocationID)
+	assert.Equal(t, "my-parent", stats.ParentID)
+
+	cancel()
+	<-serverDone
 }

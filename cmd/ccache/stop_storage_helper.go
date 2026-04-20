@@ -17,7 +17,7 @@ var (
 //nolint:gochecknoglobals
 var stopStorageHelperCmd = &cobra.Command{
 	Use:          "stop",
-	Short:        "Flush final ccache statistics and shut down the storage helper",
+	Short:        "Shut down the storage helper process",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
@@ -28,15 +28,9 @@ var stopStorageHelperCmd = &cobra.Command{
 			return fmt.Errorf("create storage helper: %w", err)
 		}
 
-		if err := helper.CollectStats(cmd.Context(), ccachepkg.CollectStatsParams{}); err != nil {
-			return fmt.Errorf("collect ccache stats: %w", err)
-		}
-
 		if err := helper.Stop(cmd.Context()); err != nil {
 			return fmt.Errorf("stop storage helper: %w", err)
 		}
-
-		helper.RegisterInvocationRelation()
 
 		return nil
 	},

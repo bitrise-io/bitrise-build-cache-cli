@@ -49,13 +49,13 @@ func newTestRegistry(envs map[string]string) *InvocationRegistry {
 	}
 }
 
-func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
+func TestInvocationRegistry_RegisterMultiplatformInvocation(t *testing.T) {
 	t.Run("sends invocation with provided BuildTool", func(t *testing.T) {
 		stub := &stubInvocationsAPI{}
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-123",
 			BuildTool:    "gradle",
 		})
@@ -70,7 +70,7 @@ func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-456",
 		})
 
@@ -83,7 +83,7 @@ func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-789",
 		})
 
@@ -95,7 +95,7 @@ func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-ws",
 		})
 

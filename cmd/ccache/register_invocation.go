@@ -25,7 +25,7 @@ var registerInvocationCmd = &cobra.Command{
 			return fmt.Errorf("create invocation registry: %w", err)
 		}
 
-		if err := inv.RegisterInvocation(cmd.Context(), ccachepkg.RegisterInvocationParams{
+		if err := inv.RegisterMultiplatformInvocation(cmd.Context(), ccachepkg.RegisterInvocationParams{
 			InvocationID: registerInvocationID,
 			BuildTool:    registerInvocationBuildTool,
 		}); err != nil {

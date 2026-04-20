@@ -3,7 +3,6 @@ package reactnative
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -45,7 +44,7 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 	// mode was requested at activation time.
 	clientLogger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), clientLogger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), clientLogger)
 	if err != nil {
 		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
@@ -59,9 +58,9 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 	}
 }
 
-// run sends invocation analytics, collects ccache stats, and registers
-// the invocation relation.
-func (d *postRunDeps) run(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string) {
+// run sends invocation analytics, and if needed, collects ccache
+// stats, and registers the invocation relation.
+func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) {
 	metadata := d.getMetadata()
 
 	command := parseCommand(args)
@@ -70,9 +69,10 @@ func (d *postRunDeps) run(invocationID string, args []string, duration time.Dura
 		fullCommand = strings.Join(args, " ")
 	}
 
+	// Send wrapper invocation analytics
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationDate: time.Now().Add(-duration),
-		InvocationID:   invocationID,
+		InvocationID:   wrapperInvocationID,
 		Duration:       duration,
 		Command:        command,
 		FullCommand:    fullCommand,
@@ -85,21 +85,21 @@ func (d *postRunDeps) run(invocationID string, args []string, duration time.Dura
 	rnSendErr := d.sendInvocation(*inv)
 	if rnSendErr != nil {
 		d.logger.TWarnf("Failed to send run invocation analytics: %v", rnSendErr)
+
+		return
 	}
 
-	if ccacheInvocationID != "" {
-		d.logger.TInfof("Ccache invocation ID: %s", ccacheInvocationID)
-		d.collectStats(context.Background(), ccacheInvocationID, invocationID)
+	helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+		ParentInvocationID: wrapperInvocationID,
+	})
+	if err != nil {
+		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", err)
 
-		if rnSendErr == nil {
-			relParentID := os.Getenv("BITRISE_INVOCATION_ID")
-			if relParentID == "" {
-				relParentID = invocationID
-			}
+		return
+	}
 
-			d.logger.TInfof("Parent invocation ID: %s", relParentID)
-			d.sendRelation(relParentID, ccacheInvocationID)
-		}
+	if err := helper.CollectAndSendStats(ctx, "", ""); err != nil {
+		d.logger.TWarnf("Failed to collect and send ccache stats: %v", err)
 	}
 }
 
@@ -123,35 +123,6 @@ func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
 	}
 
 	return nil
-}
-
-func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
-	helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
-		InvocationID:       ccacheInvocationID,
-		ParentInvocationID: parentID,
-	})
-	if err != nil {
-		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", err)
-
-		return
-	}
-
-	if err := helper.CollectStats(ctx, ccachepkg.CollectStatsParams{}); err != nil {
-		d.logger.TWarnf("Failed to collect ccache stats: %v", err)
-	}
-}
-
-func (d *postRunDeps) sendRelation(parentID, childID string) {
-	rel := multiplatform.InvocationRelation{
-		ParentInvocationID: parentID,
-		ChildInvocationID:  childID,
-		InvocationDate:     time.Now(),
-		BuildTool:          "ccache",
-	}
-
-	if err := d.client.PutInvocationRelation(rel); err != nil {
-		d.logger.TWarnf("Failed to register invocation relation: %v", err)
-	}
 }
 
 // ---------------------------------------------------------------------------
