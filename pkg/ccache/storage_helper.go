@@ -203,19 +203,19 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 // Always zeros ccache counters at the end regardless of activity.
 // If the storage helper is reachable, its session byte counts and active invocation
 // IDs override the values from internal state and params.
-func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) error {
+func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) {
 	_, err := h.loadSessionInfo(ctx, invocationIDOverride, parentIDOverride)
 	if err != nil {
 		h.logger.TWarnf("Failed to load session info from storage helper, stats collection will be skipped: %v", err)
 
-		return nil
+		return
 	}
 
-	stats, err := h.parseCcacheStats(ctx)
-	if err != nil {
-		h.logger.TWarnf("Failed to parse ccache stats: %v", err)
-
-		return nil
+	var stats ccacheanalytics.CcacheStats
+	if s, err := h.parseCcacheStats(ctx); err != nil {
+		h.logger.TWarnf("Failed to parse ccache stats, reporting transfer bytes only: %v", err)
+	} else {
+		stats = s
 	}
 
 	h.sessionMu.RLock()
@@ -230,13 +230,13 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	if !hasActivity {
 		h.logger.TInfof("No ccache activity detected, skipping analytics")
 
-		return nil
+		return
 	}
 
 	if invocationID == "" {
 		h.logger.TWarnf("No invocation ID available for ccache stats, skipping analytics")
 
-		return nil
+		return
 	}
 
 	h.logger.TInfof("Ccache invocation ID: %s", invocationID)
@@ -244,7 +244,9 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, h.config.AuthConfig.TokenInGradleFormat(), h.logger)
 	if err != nil {
-		return fmt.Errorf("create analytics client for ccache stats: %w", err)
+		h.logger.TWarnf("Failed to create analytics client for ccache stats: %v", err)
+
+		return
 	}
 
 	h.registerInvocationRelation(ctx)
@@ -253,8 +255,6 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
 	}
-
-	return nil
 }
 
 // HealthCheck polls the storage helper until it responds or the timeout expires.

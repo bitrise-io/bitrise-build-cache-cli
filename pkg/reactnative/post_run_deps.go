@@ -98,9 +98,7 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		return
 	}
 
-	if err := helper.CollectAndSendStats(ctx, "", ""); err != nil {
-		d.logger.TWarnf("Failed to collect and send ccache stats: %v", err)
-	}
+	helper.CollectAndSendStats(ctx, "", "")
 }
 
 // ---------------------------------------------------------------------------

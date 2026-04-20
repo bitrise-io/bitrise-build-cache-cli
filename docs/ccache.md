@@ -18,7 +18,7 @@ ccache integration enables C++ build caching via a local IPC proxy server. The p
 | Command | Flags | What it does |
 |---------|-------|-------------|
 | `storage-helper start` | `--invocation-id` (default: new UUID) | Starts IPC proxy; blocks until ctx done or idle timeout |
-| `storage-helper stop` | `--socket`, `--invocation-id` (parent) | CollectStats → Stop → RegisterInvocationRelation |
+| `storage-helper stop` | `--socket`, `--invocation-id` (parent) | Shuts down the running storage helper process |
 | `storage-helper health-check` | `--socket`, `--timeout` (10s), `--poll-interval` (100ms) | Polls until server ready |
 | `storage-helper set-invocation-id` | `--parent-id` (req), `--child-id` (req), `--socket` | Sends parent→child pair to running server via IPC |
 | `storage-helper collect-stats` | `--invocation-id` (req), `--parent-id`, `--downloaded-bytes`, `--uploaded-bytes` | Reports ccache stats to analytics, zeros counters |
@@ -69,25 +69,20 @@ func (h *StorageHelper) SetInvocationID(ctx context.Context, parentID, childID s
 
 Sends IPC request, then updates internal state. State only updated on success.
 
-### StorageHelper — analytics methods
-
-Both methods read IDs from internal state — callers do not pass IDs.
+### StorageHelper — analytics method
 
 ```go
-func (h *StorageHelper) CollectStats(ctx context.Context, params CollectStatsParams) error
-func (h *StorageHelper) RegisterInvocationRelation()
+func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string)
 ```
 
-`CollectStats` checks if server is listening; if so, overrides `DownloadedBytes`/`UploadedBytes` with live session bytes from IPC before reporting.
+Queries the running storage helper for session byte counts via IPC (`0xB2`), parses `ccache --print-stats`, and if there was any activity (cache hits/misses or transfer bytes > 0):
+- Registers the parent→child invocation relation
+- Reports the ccache invocation to the analytics backend
+- Zeros ccache counters (`ccache -z`)
 
-```go
-type CollectStatsParams struct {
-    DownloadedBytes int64 // fallback if helper not reachable
-    UploadedBytes   int64 // fallback if helper not reachable
-}
-```
+Pass empty strings for both overrides to use the IDs from internal state (set at construction or via `SetInvocationID`). Override params are for callers that know the correct IDs explicitly (e.g. `collect-stats` CLI command with `--invocation-id`/`--parent-id` flags).
 
-`RegisterInvocationRelation` no-ops if `parentID` is empty.
+If ccache binary is missing, proceeds with empty stats but still reports transfer bytes. All failures are logged as warnings — the method never propagates errors.
 
 ### Typical stop-command call sequence
 
@@ -95,12 +90,11 @@ type CollectStatsParams struct {
 helper, _ := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
     ParentInvocationID: parentID, // withDefaults fills BITRISE_INVOCATION_ID if empty
 })
-// helper.invocationID = fresh UUID
+// helper.invocationID = fresh UUID (queried from running server by CollectAndSendStats)
 // helper.parentID     = resolved parent
 
-helper.CollectStats(ctx, ccachepkg.CollectStatsParams{})
+helper.CollectAndSendStats(ctx, "", "")
 helper.Stop(ctx)
-helper.RegisterInvocationRelation()
 ```
 
 ---

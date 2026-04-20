@@ -59,26 +59,25 @@ func (a *Activator) Activate(ctx context.Context) error
 
 ```go
 type RunnerParams struct {
-    ExecFn             ExecFunc          // func(environ []string, name string, args ...string) error
-    CcacheInvocationID string            // unique ID for C++ invocation; generated if empty
-    Logger             log.Logger
-    OsProxy            utils.OsProxy
-    DecoderFactory     utils.DecoderFactory
+    ExecFn         ExecFunc // func(environ []string, name string, args ...string) error
+    Logger         log.Logger
+    OsProxy        utils.OsProxy
+    DecoderFactory utils.DecoderFactory
 }
 
 func NewRunner(params RunnerParams) *Runner
-func (r *Runner) Run(args []string, invocationID string, environ []string) error
+func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) error
 ```
 
 **Run flow:**
 1. Strip leading `"--"` from args (cobra `DisableFlagParsing` artifact)
 2. If ccache socket available:
-   - Start storage helper if not already listening; await ready (5s timeout)
+   - Start storage helper if not already listening; await ready
    - Health check
-   - `socket.SetInvocationID(invocationID, ccacheInvocationID)` — links RN invocation to ccache session
+   - `socket.SetInvocationID(wrapperInvocationID, <new UUID>)` — links RN invocation to a fresh ccache session; resets byte counters on the server
    - `ccache -z` — zero local ccache stats
-3. Execute command with `BITRISE_INVOCATION_ID=invocationID` injected into environ
-4. Post-run: `postRunDeps.run(invocationID, args, duration, execErr, ccacheInvocationID)`
+3. Execute command with `BITRISE_INVOCATION_ID=wrapperInvocationID` injected into environ
+4. Post-run: `postRunDeps.run(ctx, wrapperInvocationID, args, duration, execErr)`
 
 ---
 
@@ -107,29 +106,22 @@ The analytics client receives its own `clientLogger` created with `log.WithDebug
 **postRunDeps.run call sequence:**
 
 ```
-invocationID      = BITRISE_INVOCATION_ID (RN parent)
-ccacheInvocationID = runner-generated UUID (C++ child)
+wrapperInvocationID = injected BITRISE_INVOCATION_ID (RN parent)
 
 1. sendInvocation — reports React Native invocation (duration, command, success/error)
-2. collectStats   — reports C++ cache stats (see below)
-3. sendRelation   — registers parent→child: invocationID → ccacheInvocationID
+2. CollectAndSendStats — if ccache had activity, reports ccache invocation + relation
 ```
 
-**collectStats — ccache dependency:**
+**CollectAndSendStats — ccache dependency:**
 
 ```go
-func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
-    helper, _ := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
-        InvocationID:       ccacheInvocationID,
-        ParentInvocationID: parentID,
-    })
-    helper.CollectStats(ctx, ccachepkg.CollectStatsParams{})
-}
+helper, _ := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+    ParentInvocationID: wrapperInvocationID,
+})
+helper.CollectAndSendStats(ctx, "", "")
 ```
 
-`CollectStats` queries the running storage helper for session bytes (download/upload) via IPC, reports to analytics backend via `ccacheanalytics.CollectAndZero`, then zeros ccache counters.
-
-**sendRelation** uses `postRunDeps.client.PutInvocationRelation` directly (not via `StorageHelper.RegisterInvocationRelation`) because `postRunDeps` has its own analytics client.
+`CollectAndSendStats` queries the running storage helper for session IDs and byte counts via IPC (`0xB2`), then only sends analytics if ccache had activity (hits/misses or transfer bytes > 0). Relation registration is handled internally. No-op if helper is not running.
 
 ---
 
@@ -141,8 +133,8 @@ Bitrise build
     │
     └── react-native run [args]
         │
-        ├── [pre-run] socket.SetInvocationID(parent, ccacheInvocationID)
-        │       → IPC 0xB1 → server resets session byte counters
+        ├── [pre-run] socket.SetInvocationID(parent, <new UUID>)
+        │       → IPC 0xB1 → server resets session byte counters, assigns ccache child ID
         │       → ccache -z (zeros local ccache stats)
         │
         ├── [exec] command runs, C++ files compiled via ccache
@@ -151,11 +143,12 @@ Bitrise build
         │
         └── [post-run]
             ├── sendInvocation(RN invocation, build tool="react-native")
-            ├── collectStats(ccacheInvocationID, parent)
-            │       → StorageHelper.CollectStats()
-            │       → IPC 0xB2 → get session bytes
-            │       → ccacheanalytics.CollectAndZero: report + ccache -z
-            └── sendRelation(parent → ccacheInvocationID, build tool="ccache")
+            └── CollectAndSendStats(parentOverride="", childOverride="")
+                    → IPC 0xB2 → get session IDs + byte counts from server
+                    → if activity: register relation (parent → ccache child)
+                    → if activity: report ccache invocation
+                    → ccache -z (zeros local ccache stats)
+                    (no-op if helper not running or no activity)
 ```
 
 ### Command parsing

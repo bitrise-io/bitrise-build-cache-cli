@@ -26,9 +26,7 @@ var (
 				return fmt.Errorf("create storage helper: %w", err)
 			}
 
-			if err := helper.CollectAndSendStats(cmd.Context(), collectStatsInvocationID, collectStatsParentID); err != nil {
-				return fmt.Errorf("collect stats: %w", err)
-			}
+			helper.CollectAndSendStats(cmd.Context(), collectStatsInvocationID, collectStatsParentID)
 
 			return nil
 		},
