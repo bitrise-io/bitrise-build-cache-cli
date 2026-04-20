@@ -209,6 +209,8 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 // If the storage helper is reachable, its session byte counts and active invocation
 // IDs override the values from internal state and params.
 func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) {
+	defer h.zeroCcacheStats(ctx, h.logger)
+
 	_, err := h.loadSessionInfo(ctx, invocationIDOverride, parentIDOverride)
 	if err != nil {
 		h.logger.TWarnf("Failed to load session info from storage helper, stats collection will be skipped: %v", err)
@@ -228,8 +230,6 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	invocationID := h.invocationID
 	parentID := h.parentID
 	h.sessionMu.RUnlock()
-
-	defer h.zeroCcacheStats(ctx, h.logger)
 
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {
