@@ -404,9 +404,9 @@ func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.C
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("ccache binary not found: %w", err)
 	}
 
-	statsData, err := exec.CommandContext(ctx, ccachePath, "--print-stats", "--format=json").Output() //nolint:gosec
+	statsData, err := exec.CommandContext(ctx, ccachePath, "-v", "-v", "-s").Output() //nolint:gosec
 	if err != nil {
-		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache --print-stats: %w", err)
+		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache -v -v -s: %w", err)
 	}
 
 	stats, err := ccacheanalytics.ParseCcacheStats(statsData)
