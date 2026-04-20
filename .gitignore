@@ -15,3 +15,7 @@ vendor/*
 !.claude/skills/
 .vscode/
 package-lock.json
+
+# Local tooling files
+entities.json
+mempalace.yaml
