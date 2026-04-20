@@ -24,23 +24,85 @@ const (
 
 // CLITool returns a Tool that installs the bitrise-build-cache binary
 // matching the version embedded in the current binary's module dependencies.
+// When the current process IS the CLI binary (e.g. dev builds via `go run`),
+// it self-installs by copying the running executable to InstallDir.
 func CLITool() (Tool, error) {
 	version, err := cliVersion()
 	if err != nil {
 		return Tool{}, fmt.Errorf("determine CLI version: %w", err)
 	}
 
+	install := func(ctx context.Context, logger log.Logger) error {
+		return installFromGitHubRelease(
+			ctx, logger,
+			downloadURL(version, runtime.GOOS, runtime.GOARCH),
+			cliBinaryName,
+		)
+	}
+
+	if isMainCLIBinary() {
+		install = func(_ context.Context, logger log.Logger) error {
+			return selfInstall(logger)
+		}
+	}
+
 	return Tool{
 		Name:    cliBinaryName,
 		Version: version,
-		Install: func(ctx context.Context, logger log.Logger) error {
-			return installFromGitHubRelease(
-				ctx, logger,
-				downloadURL(version, runtime.GOOS, runtime.GOARCH),
-				cliBinaryName,
-			)
-		},
+		Install: install,
 	}, nil
+}
+
+// isMainCLIBinary reports whether the current process IS the CLI binary
+// (as opposed to a step binary that embeds it as a dependency).
+func isMainCLIBinary() bool {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+
+	return info.Main.Path == cliModulePath
+}
+
+// selfInstall copies the running executable to InstallDir.
+// Used when the CLI is already running but not on PATH (e.g. `go run` dev builds).
+func selfInstall(logger log.Logger) error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("find current executable: %w", err)
+	}
+
+	exePath, err = filepath.EvalSymlinks(exePath)
+	if err != nil {
+		return fmt.Errorf("resolve executable symlinks: %w", err)
+	}
+
+	destPath := filepath.Join(InstallDir, cliBinaryName)
+	logger.Debugf("Self-installing: copying %s to %s", exePath, destPath)
+
+	src, err := os.Open(exePath)
+	if err != nil {
+		return fmt.Errorf("open current executable: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create destination: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		os.Remove(destPath)
+
+		return fmt.Errorf("copy executable: %w", err)
+	}
+
+	if err := os.Chmod(destPath, 0o755); err != nil {
+		return fmt.Errorf("chmod: %w", err)
+	}
+
+	return nil
 }
 
 func cliVersion() (string, error) {
