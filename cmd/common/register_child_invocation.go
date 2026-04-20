@@ -1,11 +1,11 @@
-package ccache
+package common
 
 import (
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
+	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
 )
 
 //nolint:gochecknoglobals
@@ -21,12 +21,12 @@ var registerChildInvocationCmd = &cobra.Command{
 	Short:        "Register a parent→child relationship between two invocation IDs",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		inv, err := ccachepkg.NewInvocationRegistry(ccachepkg.InvocationRegistryParams{})
+		inv, err := pkgcommon.NewInvocationRegistry(pkgcommon.InvocationRegistryParams{})
 		if err != nil {
 			return fmt.Errorf("create invocation registry: %w", err)
 		}
 
-		if err := inv.RegisterRelation(cmd.Context(), ccachepkg.RegisterRelationParams{
+		if err := inv.RegisterRelation(cmd.Context(), pkgcommon.RegisterRelationParams{
 			ParentID:  registerChildParentID,
 			ChildID:   registerChildChildID,
 			BuildTool: registerChildBuildTool,
@@ -45,5 +45,5 @@ func init() {
 	_ = registerChildInvocationCmd.MarkFlagRequired("child-id")
 	registerChildInvocationCmd.Flags().StringVar(&registerChildBuildTool, "build-tool", "ccache", "Build tool label for the child invocation (e.g. ccache, gradle)")
 
-	ccacheCmd.AddCommand(registerChildInvocationCmd)
+	RootCmd.AddCommand(registerChildInvocationCmd)
 }

@@ -23,6 +23,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
 )
 
 // ---------------------------------------------------------------------------
@@ -70,7 +71,7 @@ type StorageHelper struct {
 	params   StorageHelperParams
 	osProxy  utils.OsProxy
 	logger   log.Logger
-	registry *InvocationRegistry
+	registry *pkgcommon.InvocationRegistry
 
 	// Session state
 	sessionMu    sync.RWMutex
@@ -93,7 +94,11 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 
 	config.DebugLogging = config.DebugLogging || params.DebugLogging
 
-	registry, err := NewInvocationRegistry(InvocationRegistryParams{params.Envs})
+	registry, err := pkgcommon.NewInvocationRegistry(pkgcommon.InvocationRegistryParams{
+		Envs:         params.Envs,
+		AuthConfig:   &config.AuthConfig,
+		DebugLogging: config.DebugLogging,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create invocation registry: %w", err)
 	}
@@ -189,7 +194,7 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 		return
 	}
 
-	if err := h.registry.RegisterRelation(ctx, RegisterRelationParams{
+	if err := h.registry.RegisterRelation(ctx, pkgcommon.RegisterRelationParams{
 		ParentID:  parentID,
 		ChildID:   childID,
 		BuildTool: "ccache",

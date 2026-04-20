@@ -18,17 +18,23 @@ ccache integration enables C++ build caching via a local IPC proxy server. The p
 | Command | Flags | What it does |
 |---------|-------|-------------|
 | `storage-helper start` | `--invocation-id` (default: new UUID) | Starts IPC proxy; blocks until ctx done or idle timeout |
-| `storage-helper stop` | `--socket` | Shuts down the running storage helper process |
+| `storage-helper stop` | `--socket`, `--invocation-id` | Shuts down the running storage helper process |
 | `storage-helper health-check` | `--socket`, `--timeout` (10s), `--poll-interval` (100ms) | Polls until server ready |
 | `storage-helper set-invocation-id` | `--parent-id` (req), `--child-id` (req), `--socket` | Sends parent→child pair to running server via IPC |
 | `storage-helper collect-stats` | `--invocation-id`, `--parent-id` | Reports ccache stats to analytics, zeros counters |
 
-### Other commands
+---
+
+## Top-level analytics commands
+
+These commands are build-tool-agnostic and registered on the root command (not under `ccache`). Used by Kotlin/Gradle code to register invocation relationships from outside the CLI wrapper.
 
 | Command | Flags | What it does |
 |---------|-------|-------------|
 | `register-invocation` | `--invocation-id` (req), `--build-tool` (default: "multiplatform") | Registers invocation with analytics backend |
 | `register-child-invocation` | `--parent-id` (req), `--child-id` (req), `--build-tool` (default: "ccache") | Registers parent→child relation in analytics |
+
+Both commands read auth credentials from the multiplatform analytics config (`~/.bitrise/analytics/multiplatform/config.json`), written by `activate react-native` or `activate c++`.
 
 ---
 
