@@ -18,7 +18,7 @@ ccache integration enables C++ build caching via a local IPC proxy server. The p
 | Command | Flags | What it does |
 |---------|-------|-------------|
 | `storage-helper start` | `--invocation-id` (default: new UUID) | Starts IPC proxy; blocks until ctx done or idle timeout |
-| `storage-helper stop` | `--socket`, `--invocation-id` | Shuts down the running storage helper process |
+| `storage-helper stop` | `--socket` | Shuts down the running storage helper process |
 | `storage-helper health-check` | `--socket`, `--timeout` (10s), `--poll-interval` (100ms) | Polls until server ready |
 | `storage-helper set-invocation-id` | `--parent-id` (req), `--child-id` (req), `--socket` | Sends parent→child pair to running server via IPC |
 | `storage-helper collect-stats` | `--invocation-id`, `--parent-id` | Reports ccache stats to analytics, zeros counters |
@@ -80,6 +80,8 @@ Sends IPC request, then updates internal state. State only updated on success.
 ```go
 func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string)
 ```
+
+Returns early (no-op) if the storage helper is not running - means we didn't start it and we expect no ccache calls.
 
 Queries the running storage helper for session byte counts via IPC (`0xB2`), parses `ccache --print-stats`, and if there was any activity (cache hits/misses or transfer bytes > 0):
 - Registers the parent→child invocation relation
