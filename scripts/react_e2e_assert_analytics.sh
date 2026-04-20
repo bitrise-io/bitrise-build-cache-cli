@@ -46,7 +46,12 @@ if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
   fi
   echo "Parent invocation ID present ✅"
 else
-  echo "Ccache invocation ID not present (C++ cache not activated, skipping ccache checks) ℹ️"
+  echo "Ccache invocation ID not present (ccache not active or no activity) ℹ️"
+  if grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
+    echo "Unexpected ccache invocation relation HTTP call found when ccache was inactive ❌"
+    exit 1
+  fi
+  echo "No unexpected ccache relation HTTP calls ✅"
 fi
 
 # --- HTTP responses (only when debug logging is active) ---

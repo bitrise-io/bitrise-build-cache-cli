@@ -239,6 +239,9 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 		return nil
 	}
 
+	h.logger.TInfof("Ccache invocation ID: %s", invocationID)
+	h.logger.TInfof("Parent invocation ID: %s", parentID)
+
 	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, h.config.AuthConfig.TokenInGradleFormat(), h.logger)
 	if err != nil {
 		return fmt.Errorf("create analytics client for ccache stats: %w", err)
