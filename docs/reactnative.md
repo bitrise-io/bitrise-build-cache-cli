@@ -109,6 +109,7 @@ The analytics client receives its own `clientLogger` created with `log.WithDebug
 wrapperInvocationID = injected BITRISE_INVOCATION_ID (RN parent)
 
 1. sendInvocation — reports React Native invocation (duration, command, success/error)
+   → if this fails, returns early (ccache stats skipped)
 2. CollectAndSendStats — if ccache had activity, reports ccache invocation + relation
 ```
 

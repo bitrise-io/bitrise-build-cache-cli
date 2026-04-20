@@ -18,10 +18,10 @@ ccache integration enables C++ build caching via a local IPC proxy server. The p
 | Command | Flags | What it does |
 |---------|-------|-------------|
 | `storage-helper start` | `--invocation-id` (default: new UUID) | Starts IPC proxy; blocks until ctx done or idle timeout |
-| `storage-helper stop` | `--socket`, `--invocation-id` (parent) | Shuts down the running storage helper process |
+| `storage-helper stop` | `--socket` | Shuts down the running storage helper process |
 | `storage-helper health-check` | `--socket`, `--timeout` (10s), `--poll-interval` (100ms) | Polls until server ready |
 | `storage-helper set-invocation-id` | `--parent-id` (req), `--child-id` (req), `--socket` | Sends parent→child pair to running server via IPC |
-| `storage-helper collect-stats` | `--invocation-id` (req), `--parent-id`, `--downloaded-bytes`, `--uploaded-bytes` | Reports ccache stats to analytics, zeros counters |
+| `storage-helper collect-stats` | `--invocation-id`, `--parent-id` | Reports ccache stats to analytics, zeros counters |
 
 ### Other commands
 
@@ -125,7 +125,7 @@ Fields relevant to understanding behavior:
 | `RequestRemove` | `0x02` | Remove cache entry |
 | `RequestStop` | `0x03` | Shutdown server |
 | `RequestSetInvocationID` | `0xB1` | Set parent→child invocation IDs |
-| `RequestGetSessionStats` | `0xB2` | Get download/upload byte counts |
+| `RequestGetSessionStats` | `0xB2` | Get session stats: byte counts + active invocation IDs |
 | `RequestHealthCheck` | `0xB3` | Health check |
 
 Response bytes: `0x00` OK, `0x01` noop/miss, `0x02` error (followed by message string).
@@ -164,15 +164,12 @@ The `cache-ccache-test` workflow asserts on these exact strings in `~/.local/sta
 
 ### internal/ccache/analytics/
 
-`Client` wraps `multiplatform.Client`. Key function:
+`Client` wraps `multiplatform.Client`. Key functions:
 
 ```go
-func CollectAndZero(ctx, client, invocationID, parentID, dlBytes, ulBytes, logger)
+func ParseCcacheStats(data []byte) (CcacheStats, error)
+func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate time.Time, stats CcacheStats, downloadedBytes, uploadedBytes int64) *CcacheInvocation
+func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 ```
 
-1. Runs `ccache --print-stats --format=json`
-2. Creates `CcacheInvocation` with parsed stats + byte counts
-3. Reports to analytics backend
-4. On success: runs `ccache -z` to zero local counters
-
-Errors are logged but non-fatal.
+`CcacheStats.HasActivity()` returns true when `DirectCacheHit + PreprocessedCacheHit + CacheMiss > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.
