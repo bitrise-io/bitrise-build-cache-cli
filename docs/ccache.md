@@ -167,4 +167,6 @@ func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate
 func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 ```
 
+`ParseCcacheStats` parses the text output of `ccache -v -v -s`. It is line-by-line: indent depth (2 spaces = 1 level) builds a section path like `"Cacheable calls / Hits / Direct"`, which is dispatched to the matching `CcacheStats` field. `CacheHitRate` and `TotalCalls` are derived after parsing. Always returns `nil` error.
+
 `CcacheStats.HasActivity()` returns true when `DirectCacheHit + PreprocessedCacheHit + CacheMiss > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.

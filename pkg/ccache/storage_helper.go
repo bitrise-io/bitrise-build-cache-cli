@@ -225,6 +225,12 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 		stats = s
 	}
 
+	if c, err := h.parseCcacheConfig(ctx); err != nil {
+		h.logger.TWarnf("Failed to parse ccache config: %v", err)
+	} else {
+		stats.Config = c
+	}
+
 	h.sessionMu.RLock()
 	dl, ul := h.downloaded, h.uploaded
 	invocationID := h.invocationID
@@ -404,9 +410,9 @@ func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.C
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("ccache binary not found: %w", err)
 	}
 
-	statsData, err := exec.CommandContext(ctx, ccachePath, "--print-stats", "--format=json").Output() //nolint:gosec
+	statsData, err := exec.CommandContext(ctx, ccachePath, "-v", "-v", "-s").Output() //nolint:gosec
 	if err != nil {
-		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache --print-stats: %w", err)
+		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache -v -v -s: %w", err)
 	}
 
 	stats, err := ccacheanalytics.ParseCcacheStats(statsData)
@@ -415,6 +421,20 @@ func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.C
 	}
 
 	return stats, nil
+}
+
+func (h *StorageHelper) parseCcacheConfig(ctx context.Context) ([]ccacheanalytics.CcacheConfigEntry, error) {
+	ccachePath, err := exec.LookPath("ccache")
+	if err != nil {
+		return nil, fmt.Errorf("ccache binary not found: %w", err)
+	}
+
+	configData, err := exec.CommandContext(ctx, ccachePath, "--show-config").Output() //nolint:gosec
+	if err != nil {
+		return nil, fmt.Errorf("run ccache --show-config: %w", err)
+	}
+
+	return ccacheanalytics.ParseCcacheConfig(configData), nil
 }
 
 func (h *StorageHelper) zeroCcacheStats(ctx context.Context, logger log.Logger) {
