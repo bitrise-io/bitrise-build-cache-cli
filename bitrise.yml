@@ -935,7 +935,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            ./gradlew debug --info --stacktrace > "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1
     - script:
         title: Assert downloads from MavenCentral mirror
         inputs:
