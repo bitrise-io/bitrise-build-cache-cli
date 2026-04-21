@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/go-utils/pathutil"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -16,6 +17,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
+	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/dependencies"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/envexport"
@@ -123,7 +125,38 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
+	if err := a.saveReactNativeMarker(); err != nil {
+		return err
+	}
+
 	a.logger.TInfof("✅ Bitrise Build Cache for React Native activated")
+
+	return nil
+}
+
+// saveReactNativeMarker writes ~/.bitrise/cache/reactnative/config.json to
+// signal that RN build cache is active. The marker is what `status
+// --feature=react-native` and external step integrations read to decide
+// whether to wrap build commands with `react-native run --`.
+func (a *Activator) saveReactNativeMarker() error {
+	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(utils.AllEnvs())
+	if err != nil {
+		return fmt.Errorf("read auth config for react-native marker: %w", err)
+	}
+
+	cfg := rnconfig.Config{
+		Version:     configcommon.GetCLIVersion(a.logger),
+		ActivatedAt: time.Now().UTC(),
+		Enabled:     true,
+		Gradle:      a.gradle != nil,
+		Xcode:       a.xcode != nil,
+		Cpp:         a.cpp != nil,
+		AuthConfig:  authConfig,
+	}
+
+	if err := cfg.Save(a.logger, utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
+		return fmt.Errorf("save react-native marker: %w", err)
+	}
 
 	return nil
 }
