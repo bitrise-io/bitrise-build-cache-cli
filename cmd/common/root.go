@@ -26,6 +26,10 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 func Execute() {
 	err := RootCmd.Execute()
 	if err != nil {
+		if code, ok := HandleStatusExit(err); ok {
+			os.Exit(code)
+		}
+
 		os.Exit(1)
 	}
 }
