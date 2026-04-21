@@ -8,11 +8,9 @@ package reactnative
 import (
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -27,14 +25,11 @@ const (
 	ErrFmtCreateFolder     = "failed to create %s folder: %w"
 )
 
+// Config is the on-disk marker consumers read to decide whether RN cache
+// wrapping should engage. The schema is intentionally minimal — add fields
+// only when a concrete consumer needs them.
 type Config struct {
-	Version     string                 `json:"version,omitempty"`
-	ActivatedAt time.Time              `json:"activatedAt"`
-	Enabled     bool                   `json:"enabled"`
-	Gradle      bool                   `json:"gradle"`
-	Xcode       bool                   `json:"xcode"`
-	Cpp         bool                   `json:"cpp"`
-	AuthConfig  common.CacheAuthConfig `json:"authConfig"`
+	Enabled bool `json:"enabled"`
 }
 
 func DirPath(osProxy utils.OsProxy) string {
@@ -98,13 +93,4 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 	}
 
 	return cfg, nil
-}
-
-func Remove(osProxy utils.OsProxy) error {
-	path := PathFor(osProxy, ConfigFileName)
-	if err := osProxy.Remove(path); err != nil {
-		return fmt.Errorf("remove react-native config file (%s): %w", path, err)
-	}
-
-	return nil
 }

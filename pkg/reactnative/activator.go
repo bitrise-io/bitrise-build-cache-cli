@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/bitrise-io/go-utils/pathutil"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -139,20 +138,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 // --feature=react-native` and external step integrations read to decide
 // whether to wrap build commands with `react-native run --`.
 func (a *Activator) saveReactNativeMarker() error {
-	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(utils.AllEnvs())
-	if err != nil {
-		return fmt.Errorf("read auth config for react-native marker: %w", err)
-	}
-
-	cfg := rnconfig.Config{
-		Version:     configcommon.GetCLIVersion(a.logger),
-		ActivatedAt: time.Now().UTC(),
-		Enabled:     true,
-		Gradle:      a.gradle != nil,
-		Xcode:       a.xcode != nil,
-		Cpp:         a.cpp != nil,
-		AuthConfig:  authConfig,
-	}
+	cfg := rnconfig.Config{Enabled: true}
 
 	if err := cfg.Save(a.logger, utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
 		return fmt.Errorf("save react-native marker: %w", err)

@@ -53,7 +53,7 @@ func writeFixture(t *testing.T, home string, b featureBits) {
 	if b.rn {
 		dir := filepath.Join(home, ".bitrise", "cache", "reactnative")
 		require.NoError(t, os.MkdirAll(dir, 0o755))
-		payload, err := json.Marshal(rnconfig.Config{Enabled: true, Gradle: true, Xcode: true})
+		payload, err := json.Marshal(rnconfig.Config{Enabled: true})
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), payload, 0o600))
 	}
@@ -108,7 +108,7 @@ func TestChecker_Status_Matrix(t *testing.T) {
 			want: status.Status{ReactNative: true},
 		},
 		{
-			name: "everything except bazel",
+			name: "everything",
 			bits: featureBits{gradle: true, xcode: true, cpp: true, rn: true},
 			want: status.Status{Gradle: true, Xcode: true, Cpp: true, ReactNative: true},
 		},
@@ -162,9 +162,9 @@ func TestChecker_IsEnabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, gradle)
 
-	bazel, err := c.IsEnabled(status.FeatureBazel)
-	require.NoError(t, err)
-	assert.False(t, bazel)
+	_, err = c.IsEnabled("bazel")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, status.ErrUnknownFeature))
 
 	_, err = c.IsEnabled("nonsense")
 	require.Error(t, err)

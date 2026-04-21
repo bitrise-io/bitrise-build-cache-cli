@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,14 +34,7 @@ func TestConfig_SaveAndRead_RoundTrip(t *testing.T) {
 		DecoderFunc: func(r io.Reader) utils.Decoder { return json.NewDecoder(r) },
 	}
 
-	saved := reactnative.Config{
-		Version:     "1.2.3",
-		ActivatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
-		Enabled:     true,
-		Gradle:      true,
-		Xcode:       true,
-		Cpp:         false,
-	}
+	saved := reactnative.Config{Enabled: true}
 
 	err := saved.Save(mockLogger, osProxy, encoderFactory)
 	require.NoError(t, err)
@@ -67,21 +59,4 @@ func TestReadConfig_MissingFile(t *testing.T) {
 
 	_, err := reactnative.ReadConfig(osProxy, decoderFactory)
 	require.Error(t, err)
-}
-
-func TestRemove(t *testing.T) {
-	temp := t.TempDir()
-	dir := filepath.Join(temp, ".bitrise/cache/reactnative")
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	file := filepath.Join(dir, reactnative.ConfigFileName)
-	require.NoError(t, os.WriteFile(file, []byte("{}"), 0o600))
-
-	osProxy := &utilsMocks.OsProxyMock{
-		UserHomeDirFunc: func() (string, error) { return temp, nil },
-		RemoveFunc:      os.Remove,
-	}
-
-	require.NoError(t, reactnative.Remove(osProxy))
-	_, err := os.Stat(file)
-	assert.True(t, os.IsNotExist(err))
 }

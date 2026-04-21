@@ -18,12 +18,14 @@ import (
 )
 
 // Feature names accepted by IsEnabled and the `--feature` flag.
+// Bazel activation has no reliable on-disk marker yet, so it's intentionally
+// absent from this set — `status --feature=bazel` returns ErrUnknownFeature
+// (exit 2) rather than silently lying about disabled state.
 const (
 	FeatureGradle      = "gradle"
 	FeatureXcode       = "xcode"
 	FeatureCpp         = "cpp"
 	FeatureReactNative = "react-native"
-	FeatureBazel       = "bazel"
 )
 
 // ErrUnknownFeature is returned by IsEnabled when the feature name is not
@@ -37,7 +39,6 @@ type Status struct {
 	Xcode       bool `json:"xcode"`
 	Cpp         bool `json:"cpp"`
 	ReactNative bool `json:"reactNative"`
-	Bazel       bool `json:"bazel"`
 }
 
 // CheckerParams holds the dependencies for a Checker.
@@ -88,7 +89,6 @@ func (c *Checker) Status() Status {
 		Xcode:       c.xcodeEnabled(),
 		Cpp:         c.cppEnabled(),
 		ReactNative: c.reactNativeEnabled(),
-		Bazel:       c.bazelEnabled(),
 	}
 }
 
@@ -104,8 +104,6 @@ func (c *Checker) IsEnabled(feature string) (bool, error) {
 		return c.cppEnabled(), nil
 	case FeatureReactNative:
 		return c.reactNativeEnabled(), nil
-	case FeatureBazel:
-		return c.bazelEnabled(), nil
 	default:
 		return false, fmt.Errorf("%w: %q", ErrUnknownFeature, feature)
 	}
@@ -154,11 +152,4 @@ func (c *Checker) reactNativeEnabled() bool {
 	}
 
 	return cfg.Enabled
-}
-
-func (c *Checker) bazelEnabled() bool {
-	// TODO: detect bazel activation (~/.bazelrc marker block). Stubbed as false
-	// for now — activation isn't easily distinguishable from a user-authored
-	// .bazelrc and the consumers introduced alongside this command don't need it.
-	return false
 }

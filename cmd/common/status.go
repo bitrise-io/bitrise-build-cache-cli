@@ -23,7 +23,7 @@ var (
 var statusCmd = &cobra.Command{
 	Use:           "status",
 	Short:         "Show which Bitrise Build Cache features are enabled on this machine",
-	Long:          "Reports gradle / xcode / cpp / react-native / bazel activation status. Intended for step integrations that need to decide whether to engage cache wrapping.",
+	Long:          "Reports gradle / xcode / cpp / react-native activation status. Intended for step integrations that need to decide whether to engage cache wrapping.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -33,7 +33,7 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	statusCmd.Flags().BoolVar(&statusJSONOutput, "json", false, "Emit machine-readable JSON instead of a text table")
-	statusCmd.Flags().StringVar(&statusFeature, "feature", "", "Query a single feature: gradle, xcode, cpp, react-native, bazel")
+	statusCmd.Flags().StringVar(&statusFeature, "feature", "", "Query a single feature: gradle, xcode, cpp, react-native")
 	statusCmd.Flags().BoolVar(&statusQuiet, "quiet", false, "Suppress stdout; only meaningful with --feature (exit 0=enabled, 1=disabled)")
 
 	RootCmd.AddCommand(statusCmd)
@@ -79,7 +79,7 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 	enabled, err := checker.IsEnabled(statusFeature)
 	if err != nil {
 		if errors.Is(err, status.ErrUnknownFeature) {
-			fmt.Fprintf(errOut, "error: unknown feature %q (expected: gradle, xcode, cpp, react-native, bazel)\n", statusFeature)
+			fmt.Fprintf(errOut, "error: unknown feature %q (expected: gradle, xcode, cpp, react-native)\n", statusFeature)
 
 			return &statusExitError{code: 2}
 		}
@@ -130,7 +130,6 @@ func writeTable(out io.Writer, s status.Status) error {
 		{"xcode", s.Xcode},
 		{"cpp", s.Cpp},
 		{"react-native", s.ReactNative},
-		{"bazel", s.Bazel},
 	} {
 		if _, err := fmt.Fprintf(tw, "%s\t%s\n", row.name, statusLabel(row.enabled)); err != nil {
 			return fmt.Errorf("write status row: %w", err)

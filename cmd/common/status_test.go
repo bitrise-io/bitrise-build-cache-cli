@@ -87,9 +87,10 @@ func TestStatus_TextTable(t *testing.T) {
 	assert.Empty(t, stderr)
 
 	// Table rows — labels & values.
-	for _, want := range []string{"gradle", "xcode", "cpp", "react-native", "bazel", "enabled", "disabled"} {
+	for _, want := range []string{"gradle", "xcode", "cpp", "react-native", "enabled", "disabled"} {
 		assert.Contains(t, stdout, want)
 	}
+	assert.NotContains(t, stdout, "bazel")
 	// Spot-check specific rows.
 	assert.Contains(t, stdout, "xcode")
 	assert.Contains(t, stdout, "cpp")
@@ -109,7 +110,19 @@ func TestStatus_JSON_Shape(t *testing.T) {
 	assert.False(t, got["xcode"])
 	assert.False(t, got["cpp"])
 	assert.True(t, got["reactNative"])
-	assert.False(t, got["bazel"])
+	_, hasBazel := got["bazel"]
+	assert.False(t, hasBazel)
+}
+
+func TestStatus_FeatureBazel_ExitTwo(t *testing.T) {
+	home := t.TempDir()
+
+	_, stderr, err := runStatusCmd(t, home, "--feature=bazel", "--quiet")
+	require.Error(t, err)
+	code, ok := common.HandleStatusExit(err)
+	require.True(t, ok)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, strings.ToLower(stderr), "unknown feature")
 }
 
 func TestStatus_Feature_Enabled(t *testing.T) {
