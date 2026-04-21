@@ -378,7 +378,7 @@ func (c *XcodebuildRunner) resolveRelationAPI() (relationSender, error) {
 		return c.relationAPI, nil
 	}
 
-	client, err := multiplatform.NewClient(consts.CcacheAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
+	client, err := multiplatform.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create multiplatform analytics client: %w", err)
 	}

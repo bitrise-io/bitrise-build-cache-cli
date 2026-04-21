@@ -3,22 +3,19 @@ package reactnative
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
-	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/analytics"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 // ---------------------------------------------------------------------------
@@ -28,11 +25,9 @@ import (
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
 type postRunDeps struct {
-	logger         log.Logger
-	osProxy        utils.OsProxy
-	decoderFactory utils.DecoderFactory
-	authConfig     common.CacheAuthConfig
-	client         *ccacheanalytics.Client
+	logger     log.Logger
+	authConfig common.CacheAuthConfig
+	client     *ccacheanalytics.Client
 }
 
 func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) *postRunDeps {
@@ -43,7 +38,13 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 		return nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	// Use a debug-enabled logger for the analytics client if activation was done
+	// with --debug. The runner's logger (passed in) is NOT modified — we create
+	// a separate client logger so HTTP PUT lines appear in the output when debug
+	// mode was requested at activation time.
+	clientLogger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
+
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), clientLogger)
 	if err != nil {
 		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
@@ -51,17 +52,15 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 	}
 
 	return &postRunDeps{
-		logger:         logger,
-		osProxy:        osProxy,
-		decoderFactory: decoderFactory,
-		authConfig:     config.AuthConfig,
-		client:         client,
+		logger:     logger,
+		authConfig: config.AuthConfig,
+		client:     client,
 	}
 }
 
-// run sends invocation analytics, collects ccache stats, and registers
-// the invocation relation.
-func (d *postRunDeps) run(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string) {
+// run sends invocation analytics, and if needed, collects ccache
+// stats, and registers the invocation relation.
+func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) {
 	metadata := d.getMetadata()
 
 	command := parseCommand(args)
@@ -70,9 +69,10 @@ func (d *postRunDeps) run(invocationID string, args []string, duration time.Dura
 		fullCommand = strings.Join(args, " ")
 	}
 
+	// Send wrapper invocation analytics
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationDate: time.Now().Add(-duration),
-		InvocationID:   invocationID,
+		InvocationID:   wrapperInvocationID,
 		Duration:       duration,
 		Command:        command,
 		FullCommand:    fullCommand,
@@ -82,27 +82,23 @@ func (d *postRunDeps) run(invocationID string, args []string, duration time.Dura
 		Wrapper:        "bitrise-build-cache-cli react-native",
 	}, d.authConfig, metadata)
 
-	if ccacheInvocationID == "" {
-		ccacheInvocationID = uuid.New().String()
-	}
-
 	rnSendErr := d.sendInvocation(*inv)
 	if rnSendErr != nil {
 		d.logger.TWarnf("Failed to send run invocation analytics: %v", rnSendErr)
+
+		return
 	}
 
-	d.logger.TInfof("Ccache invocation ID: %s", ccacheInvocationID)
-	d.collectStats(context.Background(), ccacheInvocationID, invocationID)
+	helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+		ParentInvocationID: wrapperInvocationID,
+	})
+	if err != nil {
+		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", err)
 
-	if rnSendErr == nil {
-		relParentID := os.Getenv("BITRISE_INVOCATION_ID")
-		if relParentID == "" {
-			relParentID = invocationID
-		}
-
-		d.logger.TInfof("Parent invocation ID: %s", relParentID)
-		d.sendRelation(relParentID, ccacheInvocationID)
+		return
 	}
+
+	helper.CollectAndSendStats(ctx, "", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -125,41 +121,6 @@ func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
 	}
 
 	return nil
-}
-
-func (d *postRunDeps) collectStats(ctx context.Context, ccacheInvocationID, parentID string) {
-	configPath := ccacheconfig.PathFor(d.osProxy, "config.json")
-	if _, err := d.osProxy.Stat(configPath); err != nil {
-		return
-	}
-
-	config, err := ccacheconfig.ReadConfig(d.osProxy, d.decoderFactory)
-	if err != nil {
-		return
-	}
-
-	var dl, ul int64
-	if ccacheipc.IsListening(config.IPCEndpoint) { //nolint:contextcheck // IsListening uses its own short-lived context
-		dl, ul, err = ccacheipc.SendGetSessionStats(ctx, config.IPCEndpoint)
-		if err != nil {
-			d.logger.TWarnf("Failed to get session stats from storage helper: %v", err)
-		}
-	}
-
-	ccacheanalytics.CollectAndZero(ctx, d.client, ccacheInvocationID, parentID, dl, ul, d.logger)
-}
-
-func (d *postRunDeps) sendRelation(parentID, childID string) {
-	rel := multiplatform.InvocationRelation{
-		ParentInvocationID: parentID,
-		ChildInvocationID:  childID,
-		InvocationDate:     time.Now(),
-		BuildTool:          "ccache",
-	}
-
-	if err := d.client.PutInvocationRelation(rel); err != nil {
-		d.logger.TWarnf("Failed to register invocation relation: %v", err)
-	}
 }
 
 // ---------------------------------------------------------------------------

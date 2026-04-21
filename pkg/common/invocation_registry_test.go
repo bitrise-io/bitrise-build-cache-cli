@@ -1,6 +1,6 @@
 //go:build unit
 
-package ccache
+package common
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 )
 
 type stubInvocationsAPI struct {
@@ -35,12 +35,14 @@ func (s *stubInvocationsAPI) PutInvocationRelation(rel multiplatform.InvocationR
 }
 
 func newTestRegistry(envs map[string]string) *InvocationRegistry {
+	authConfig := configcommon.CacheAuthConfig{
+		AuthToken:   "test-token",
+		WorkspaceID: "test-workspace",
+	}
+
 	return &InvocationRegistry{
-		config: ccacheconfig.Config{
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "test-token",
-				WorkspaceID: "test-workspace",
-			},
+		config: multiplatformconfig.Config{
+			AuthConfig: authConfig,
 		},
 		params: InvocationRegistryParams{
 			Envs: envs,
@@ -49,13 +51,13 @@ func newTestRegistry(envs map[string]string) *InvocationRegistry {
 	}
 }
 
-func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
+func TestInvocationRegistry_RegisterMultiplatformInvocation(t *testing.T) {
 	t.Run("sends invocation with provided BuildTool", func(t *testing.T) {
 		stub := &stubInvocationsAPI{}
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-123",
 			BuildTool:    "gradle",
 		})
@@ -70,7 +72,7 @@ func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-456",
 		})
 
@@ -83,7 +85,7 @@ func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-789",
 		})
 
@@ -95,7 +97,7 @@ func TestInvocationRegistry_RegisterInvocation(t *testing.T) {
 		reg := newTestRegistry(map[string]string{})
 		reg.api = stub
 
-		err := reg.RegisterInvocation(context.Background(), RegisterInvocationParams{
+		err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{
 			InvocationID: "inv-ws",
 		})
 

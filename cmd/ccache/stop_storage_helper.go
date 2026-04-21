@@ -9,20 +9,16 @@ import (
 )
 
 //nolint:gochecknoglobals
-var (
-	stopHelperSocketPath   string
-	stopHelperInvocationID string
-)
+var stopHelperSocketPath string
 
 //nolint:gochecknoglobals
 var stopStorageHelperCmd = &cobra.Command{
 	Use:          "stop",
-	Short:        "Flush final ccache statistics and shut down the storage helper",
+	Short:        "Shut down the storage helper process",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
-			SocketPath:         stopHelperSocketPath,
-			ParentInvocationID: stopHelperInvocationID,
+			SocketPath: stopHelperSocketPath,
 		})
 		if err != nil {
 			return fmt.Errorf("create storage helper: %w", err)
@@ -38,7 +34,6 @@ var stopStorageHelperCmd = &cobra.Command{
 
 func init() {
 	stopStorageHelperCmd.Flags().StringVar(&stopHelperSocketPath, "socket", "", "Path to the ccache IPC socket (defaults to value from config)")
-	stopStorageHelperCmd.Flags().StringVar(&stopHelperInvocationID, "invocation-id", "", "Parent invocation ID used when reporting analytics (omit if there is no parent)")
 
 	storageHelperCmd.AddCommand(stopStorageHelperCmd)
 }

@@ -82,7 +82,8 @@ func (s *Socket) Stop(ctx context.Context) error {
 	return SendStop(ctx, s.path)
 }
 
-// GetSessionStats returns the accumulated downloaded and uploaded byte counts.
-func (s *Socket) GetSessionStats(ctx context.Context) (int64, int64, error) {
+// GetSessionStats returns the accumulated session stats from the running helper,
+// including byte counts and the active invocation IDs.
+func (s *Socket) GetSessionStats(ctx context.Context) (SessionStats, error) {
 	return SendGetSessionStats(ctx, s.path)
 }

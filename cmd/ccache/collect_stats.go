@@ -10,29 +10,23 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	collectStatsInvocationID  string
-	collectStatsParentID      string
-	collectStatsDownloadBytes int64
-	collectStatsUploadBytes   int64
+	collectStatsInvocationID string
+	collectStatsParentID     string
 
 	collectStatsCmd = &cobra.Command{
 		Use:          "collect-stats",
 		Short:        "Collect and report ccache statistics, then zero the counters",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{})
+			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+				InvocationID:       collectStatsInvocationID,
+				ParentInvocationID: collectStatsParentID,
+			})
 			if err != nil {
 				return fmt.Errorf("create storage helper: %w", err)
 			}
 
-			if err := helper.CollectStats(cmd.Context(), ccachepkg.CollectStatsParams{
-				InvocationID:    collectStatsInvocationID,
-				ParentID:        collectStatsParentID,
-				DownloadedBytes: collectStatsDownloadBytes,
-				UploadedBytes:   collectStatsUploadBytes,
-			}); err != nil {
-				return fmt.Errorf("collect stats: %w", err)
-			}
+			helper.CollectAndSendStats(cmd.Context(), collectStatsInvocationID, collectStatsParentID)
 
 			return nil
 		},
@@ -40,10 +34,8 @@ var (
 )
 
 func init() {
-	collectStatsCmd.Flags().StringVar(&collectStatsInvocationID, "invocation-id", "", "Invocation ID to report stats under (required)")
-	collectStatsCmd.Flags().StringVar(&collectStatsParentID, "parent-id", "", "Parent invocation ID")
-	collectStatsCmd.Flags().Int64Var(&collectStatsDownloadBytes, "downloaded-bytes", 0, "Bytes downloaded from cache during this invocation (overridden by session state if helper is running)")
-	collectStatsCmd.Flags().Int64Var(&collectStatsUploadBytes, "uploaded-bytes", 0, "Bytes uploaded to cache during this invocation (overridden by session state if helper is running)")
+	collectStatsCmd.Flags().StringVar(&collectStatsInvocationID, "invocation-id", "", "Invocation ID to report stats under (defaults to value from config or internal state)")
+	collectStatsCmd.Flags().StringVar(&collectStatsParentID, "parent-id", "", "Parent invocation ID (defaults to value from config or internal state)")
 
 	storageHelperCmd.AddCommand(collectStatsCmd)
 }

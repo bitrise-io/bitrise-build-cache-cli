@@ -1,11 +1,11 @@
-package ccache
+package common
 
 import (
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
+	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
 )
 
 //nolint:gochecknoglobals
@@ -20,12 +20,12 @@ var registerInvocationCmd = &cobra.Command{
 	Short:        "Register an invocation with the analytics backend",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		inv, err := ccachepkg.NewInvocationRegistry(ccachepkg.InvocationRegistryParams{})
+		inv, err := pkgcommon.NewInvocationRegistry(pkgcommon.InvocationRegistryParams{})
 		if err != nil {
 			return fmt.Errorf("create invocation registry: %w", err)
 		}
 
-		if err := inv.RegisterInvocation(cmd.Context(), ccachepkg.RegisterInvocationParams{
+		if err := inv.RegisterMultiplatformInvocation(cmd.Context(), pkgcommon.RegisterInvocationParams{
 			InvocationID: registerInvocationID,
 			BuildTool:    registerInvocationBuildTool,
 		}); err != nil {
@@ -41,5 +41,5 @@ func init() {
 	_ = registerInvocationCmd.MarkFlagRequired("invocation-id")
 	registerInvocationCmd.Flags().StringVar(&registerInvocationBuildTool, "build-tool", "multiplatform", "Build tool label for the invocation")
 
-	ccacheCmd.AddCommand(registerInvocationCmd)
+	RootCmd.AddCommand(registerInvocationCmd)
 }

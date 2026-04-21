@@ -173,26 +173,40 @@ func WriteSetInvocationID(w io.Writer, parentID, childID string) error {
 	return WriteMsg(w, childID)
 }
 
-func WriteSessionStats(w io.Writer, downloadBytes, uploadBytes int64) error {
+func WriteSessionStats(w io.Writer, downloadBytes, uploadBytes int64, invocationID, parentID string) error {
 	if err := WriteByte(w, ResponseOK); err != nil {
 		return err
 	}
 	if err := binary.Write(w, binary.NativeEndian, downloadBytes); err != nil {
 		return err
 	}
+	if err := binary.Write(w, binary.NativeEndian, uploadBytes); err != nil {
+		return err
+	}
+	if err := WriteMsg(w, invocationID); err != nil {
+		return err
+	}
 
-	return binary.Write(w, binary.NativeEndian, uploadBytes)
+	return WriteMsg(w, parentID)
 }
 
-func ReadSessionStats(r io.Reader) (downloadBytes, uploadBytes int64, err error) {
+func ReadSessionStats(r io.Reader) (downloadBytes, uploadBytes int64, invocationID, parentID string, err error) {
 	if err := binary.Read(r, binary.NativeEndian, &downloadBytes); err != nil {
-		return 0, 0, fmt.Errorf("read download bytes: %w", err)
+		return 0, 0, "", "", fmt.Errorf("read download bytes: %w", err)
 	}
 	if err := binary.Read(r, binary.NativeEndian, &uploadBytes); err != nil {
-		return 0, 0, fmt.Errorf("read upload bytes: %w", err)
+		return 0, 0, "", "", fmt.Errorf("read upload bytes: %w", err)
+	}
+	invocationID, err = ReadMsg(r)
+	if err != nil {
+		return 0, 0, "", "", fmt.Errorf("read invocation ID: %w", err)
+	}
+	parentID, err = ReadMsg(r)
+	if err != nil {
+		return 0, 0, "", "", fmt.Errorf("read parent ID: %w", err)
 	}
 
-	return downloadBytes, uploadBytes, nil
+	return downloadBytes, uploadBytes, invocationID, parentID, nil
 }
 
 func ReadSetInvocationID(r io.Reader) (parentID, childID string, err error) {

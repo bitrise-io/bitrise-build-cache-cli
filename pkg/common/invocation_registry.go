@@ -1,16 +1,17 @@
-package ccache
+package common
 
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/analytics"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -24,9 +25,16 @@ type InvocationRegistryParams struct {
 	// Envs is the set of environment variables used for metadata.
 	// If nil, the current process environment is used.
 	Envs map[string]string
+
+	// AuthConfig, when non-nil, is used directly and skips reading the
+	// multiplatform config file. Callers that already have credentials
+	// loaded (e.g. StorageHelper) should set this to avoid a redundant
+	// file read and to work when no multiplatform config file exists.
+	AuthConfig   *configcommon.CacheAuthConfig
+	DebugLogging bool
 }
 
-// RegisterInvocationParams configures the RegisterInvocation operation.
+// RegisterInvocationParams configures the RegisterMultiplatformInvocation operation.
 type RegisterInvocationParams struct {
 	// InvocationID to register (required).
 	InvocationID string
@@ -47,34 +55,43 @@ type RegisterRelationParams struct {
 	BuildTool string
 }
 
-// InvocationsAPI handles invocation and relation registration with the analytics backend.
-type InvocationsAPI interface {
+// invocationsAPI handles invocation and relation registration with the analytics backend.
+type invocationsAPI interface {
 	PutInvocation(inv multiplatform.Invocation) error
 	PutInvocationRelation(rel multiplatform.InvocationRelation) error
 }
 
 // InvocationRegistry manages invocation registration with the analytics backend.
-// Exported fields are optional dependencies — when nil, production defaults are used.
-// Set them in tests to inject mocks.
 type InvocationRegistry struct {
-	config ccacheconfig.Config
+	config multiplatformconfig.Config
 	params InvocationRegistryParams
 	logger log.Logger
 
-	// API handles invocation and relation registration. If nil, a production client is created.
-	api InvocationsAPI
+	// api handles invocation and relation registration. If nil, a production client is created.
+	// Set in tests to inject mocks.
+	api invocationsAPI
 }
 
-// NewInvocationRegistry reads the ccache configuration and returns an InvocationRegistry
-// ready to register invocations and relations.
+// NewInvocationRegistry returns an InvocationRegistry ready to register invocations
+// and relations. If params.AuthConfig is non-nil it is used directly; otherwise the
+// multiplatform analytics config file is read from disk.
 func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry, error) {
 	if params.Envs == nil {
 		params.Envs = utils.AllEnvs()
 	}
 
-	config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	if err != nil {
-		return nil, fmt.Errorf("read ccache config: %w", err)
+	var config multiplatformconfig.Config
+	if params.AuthConfig != nil {
+		config = multiplatformconfig.Config{
+			AuthConfig:   *params.AuthConfig,
+			DebugLogging: params.DebugLogging,
+		}
+	} else {
+		var err error
+		config, err = multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		if err != nil {
+			return nil, fmt.Errorf("read multiplatform config: %w", err)
+		}
 	}
 
 	return &InvocationRegistry{
@@ -84,8 +101,8 @@ func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry
 	}, nil
 }
 
-// RegisterInvocation registers an invocation with the analytics backend.
-func (inv *InvocationRegistry) RegisterInvocation(ctx context.Context, params RegisterInvocationParams) error {
+// RegisterMultiplatformInvocation registers a multiplatform invocation with the analytics backend.
+func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Context, params RegisterInvocationParams) error {
 	buildTool := params.BuildTool
 	if buildTool == "" {
 		buildTool = "multiplatform"
@@ -143,15 +160,23 @@ func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params Regi
 // Private — InvocationRegistry methods
 // ---------------------------------------------------------------------------
 
-func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (InvocationsAPI, error) {
+func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (invocationsAPI, error) {
 	if inv.api != nil {
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.CcacheAnalyticsServiceEndpoint, inv.config.AuthConfig.TokenInGradleFormat(), logger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, inv.config.AuthConfig.TokenInGradleFormat(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}
 
 	return client, nil
+}
+
+func newCommandFunc(ctx context.Context) configcommon.CommandFunc {
+	return func(name string, args ...string) (string, error) {
+		output, err := exec.CommandContext(ctx, name, args...).Output() //nolint:gosec
+
+		return string(output), err
+	}
 }

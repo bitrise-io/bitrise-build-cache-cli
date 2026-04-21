@@ -3,6 +3,7 @@
 package reactnative
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -20,6 +21,8 @@ func newTestRunner(params RunnerParams) *Runner {
 }
 
 func TestRunner_Run(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("args are passed through to the command", func(t *testing.T) {
 		var capturedName string
 		var capturedArgs []string
@@ -32,7 +35,7 @@ func TestRunner_Run(t *testing.T) {
 				return nil
 			},
 		})
-		err := r.Run([]string{"bash", "-c", "echo hello"}, "", []string{})
+		err := r.Run(ctx, []string{"bash", "-c", "echo hello"}, "", []string{})
 
 		require.NoError(t, err)
 		assert.Equal(t, "bash", capturedName)
@@ -49,7 +52,7 @@ func TestRunner_Run(t *testing.T) {
 				return nil
 			},
 		})
-		err := r.Run([]string{"true"}, "", []string{"EXISTING=value"})
+		err := r.Run(ctx, []string{"true"}, "", []string{"EXISTING=value"})
 
 		require.NoError(t, err)
 		assert.Contains(t, capturedEnviron, "EXISTING=value")
@@ -80,7 +83,7 @@ func TestRunner_Run(t *testing.T) {
 					return nil
 				},
 			})
-			_ = r.Run([]string{"true"}, "", []string{})
+			_ = r.Run(ctx, []string{"true"}, "", []string{})
 
 			return id
 		}
@@ -98,7 +101,7 @@ func TestRunner_Run(t *testing.T) {
 			ExecFn: func(_ []string, _ string, _ ...string) error { return execErr },
 		})
 
-		err := r.Run([]string{"true"}, "", []string{})
+		err := r.Run(ctx, []string{"true"}, "", []string{})
 		assert.ErrorIs(t, err, execErr)
 	})
 
@@ -107,7 +110,7 @@ func TestRunner_Run(t *testing.T) {
 			ExecFn: func(_ []string, _ string, _ ...string) error { return nil },
 		})
 
-		err := r.Run([]string{}, "", []string{})
+		err := r.Run(ctx, []string{}, "", []string{})
 		assert.Error(t, err)
 	})
 
@@ -126,7 +129,7 @@ func TestRunner_Run(t *testing.T) {
 				return nil
 			},
 		})
-		err := r.Run([]string{"true"}, fixedID, []string{})
+		err := r.Run(ctx, []string{"true"}, fixedID, []string{})
 
 		require.NoError(t, err)
 		assert.Equal(t, fixedID, capturedEnvID)
@@ -134,6 +137,7 @@ func TestRunner_Run(t *testing.T) {
 }
 
 func TestRunner_PostRunHook(t *testing.T) {
+	ctx := context.Background()
 	noOpExec := func(_ []string, _ string, _ ...string) error { return nil }
 
 	t.Run("calls postRun with invocation ID and args", func(t *testing.T) {
@@ -141,13 +145,13 @@ func TestRunner_PostRunHook(t *testing.T) {
 		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
 		r.postRun = mock
 
-		err := r.Run([]string{"yarn", "build"}, "inv-123", []string{})
+		err := r.Run(ctx, []string{"yarn", "build"}, "inv-123", []string{})
 
 		require.NoError(t, err)
 		require.Len(t, mock.runCalls(), 1)
 
 		call := mock.runCalls()[0]
-		assert.Equal(t, "inv-123", call.InvocationID)
+		assert.Equal(t, "inv-123", call.WrapperInvocationID)
 		assert.Equal(t, []string{"yarn", "build"}, call.Args)
 		assert.Nil(t, call.ExecErr)
 	})
@@ -160,25 +164,10 @@ func TestRunner_PostRunHook(t *testing.T) {
 		})
 		r.postRun = mock
 
-		_ = r.Run([]string{"yarn", "build"}, "inv-456", []string{})
+		_ = r.Run(ctx, []string{"yarn", "build"}, "inv-456", []string{})
 
 		require.Len(t, mock.runCalls(), 1)
 		assert.ErrorIs(t, mock.runCalls()[0].ExecErr, execErr)
-	})
-
-	t.Run("passes ccacheInvocationID to postRun", func(t *testing.T) {
-		mock := &postRunRunnerMock{}
-		r := newTestRunner(RunnerParams{
-			ExecFn:             noOpExec,
-			CcacheInvocationID: "ccache-789",
-		})
-		r.postRun = mock
-
-		err := r.Run([]string{"true"}, "inv", []string{})
-
-		require.NoError(t, err)
-		require.Len(t, mock.runCalls(), 1)
-		assert.Equal(t, "ccache-789", mock.runCalls()[0].CcacheInvocationID)
 	})
 
 	t.Run("generates invocation ID when empty and passes it to postRun", func(t *testing.T) {
@@ -186,18 +175,18 @@ func TestRunner_PostRunHook(t *testing.T) {
 		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
 		r.postRun = mock
 
-		err := r.Run([]string{"true"}, "", []string{})
+		err := r.Run(ctx, []string{"true"}, "", []string{})
 
 		require.NoError(t, err)
 		require.Len(t, mock.runCalls(), 1)
-		assert.NotEmpty(t, mock.runCalls()[0].InvocationID)
+		assert.NotEmpty(t, mock.runCalls()[0].WrapperInvocationID)
 	})
 
 	t.Run("postRun is not called when postRun is nil", func(t *testing.T) {
 		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
 		// postRun is already nil from newTestRunner
 
-		err := r.Run([]string{"true"}, "inv", []string{})
+		err := r.Run(ctx, []string{"true"}, "inv", []string{})
 
 		require.NoError(t, err)
 		// no panic — nil postRun is handled gracefully
@@ -210,7 +199,7 @@ func TestRunner_PostRunHook(t *testing.T) {
 		})
 		r.postRun = mock
 
-		_ = r.Run([]string{"true"}, "inv", []string{})
+		_ = r.Run(ctx, []string{"true"}, "inv", []string{})
 
 		require.Len(t, mock.runCalls(), 1)
 	})

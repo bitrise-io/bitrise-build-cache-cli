@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/reactnative"
@@ -19,13 +18,12 @@ var runCmd = &cobra.Command{
 	Long:               `Run a process, forwarding all provided arguments directly.`,
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		r := rnpkg.NewRunner(rnpkg.RunnerParams{
-			ExecFn:             defaultExecFn,
-			CcacheInvocationID: uuid.New().String(),
+			ExecFn: defaultExecFn,
 		})
 
-		return r.Run(args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())
+		return r.Run(cmd.Context(), args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())
 	},
 }
 

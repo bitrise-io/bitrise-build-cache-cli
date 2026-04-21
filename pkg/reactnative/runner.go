@@ -23,8 +23,7 @@ type ExecFunc func(environ []string, name string, args ...string) error
 
 // RunnerParams holds the configuration for creating a Runner.
 type RunnerParams struct {
-	ExecFn             ExecFunc
-	CcacheInvocationID string
+	ExecFn ExecFunc
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -37,19 +36,25 @@ type RunnerParams struct {
 //go:generate moq -stub -out post_run_runner_mock_test.go -pkg reactnative . postRunRunner
 
 type postRunRunner interface {
-	run(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string)
+	run(
+		context context.Context,
+		wrapperInvocationID string,
+		args []string,
+		duration time.Duration,
+		execErr error,
+	)
 }
 
 // Runner wraps a command execution with invocation ID injection, pre-run hooks,
 // and post-run analytics.
 type Runner struct {
-	execFn             ExecFunc
-	ccacheInvocationID string
-	logger             log.Logger
-	osProxy            utils.OsProxy
-	decoderFactory     utils.DecoderFactory
-	socket             ccacheSocket
-	postRun            postRunRunner
+	execFn         ExecFunc
+	logger         log.Logger
+	osProxy        utils.OsProxy
+	decoderFactory utils.DecoderFactory
+	postRun        postRunRunner
+	ccacheConfig   *ccacheconfig.Config
+	socket         ccacheSocket
 }
 
 // NewRunner creates a Runner with production pre-run and post-run hooks.
@@ -69,29 +74,36 @@ func NewRunner(params RunnerParams) *Runner {
 		decoderFactory = utils.DefaultDecoderFactory{}
 	}
 
-	r := &Runner{
-		execFn:             params.ExecFn,
-		ccacheInvocationID: params.CcacheInvocationID,
-		logger:             logger,
-		osProxy:            osProxy,
-		decoderFactory:     decoderFactory,
-		postRun:            newPostRunDeps(logger, osProxy, decoderFactory),
+	var ccacheConfig *ccacheconfig.Config
+	var socket ccacheSocket
+	if config, err := ccacheconfig.ReadConfig(osProxy, decoderFactory); err == nil {
+		ccacheConfig = &config
+		socket = ccacheipc.NewSocket(config.IPCEndpoint)
 	}
-	r.socket = r.newSocketFromConfig()
+
+	r := &Runner{
+		execFn:         params.ExecFn,
+		logger:         logger,
+		osProxy:        osProxy,
+		decoderFactory: decoderFactory,
+		ccacheConfig:   ccacheConfig,
+		postRun:        newPostRunDeps(logger, osProxy, decoderFactory),
+		socket:         socket,
+	}
 
 	return r
 }
 
 // Run injects a BITRISE_INVOCATION_ID into environ and delegates execution to ExecFn.
-// If invocationID is empty, a random UUID is used.
-func (r *Runner) Run(args []string, invocationID string, environ []string) error {
-	if invocationID == "" {
+// If wrapperInvocationID is empty, a random UUID is used.
+func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) error {
+	if wrapperInvocationID == "" {
 		r.logger.TInfof("No invocation ID provided, generating a random one")
 
-		invocationID = uuid.New().String()
+		wrapperInvocationID = uuid.New().String()
 	}
 
-	r.logger.TInfof("React Native invocation ID: %s", invocationID)
+	r.logger.TInfof("React Native invocation ID: %s", wrapperInvocationID)
 
 	// Strip leading "--" separator (cobra passes it through with DisableFlagParsing)
 	if len(args) > 0 && args[0] == "--" {
@@ -105,16 +117,16 @@ func (r *Runner) Run(args []string, invocationID string, environ []string) error
 	name, cmdArgs := args[0], args[1:]
 
 	if r.socket != nil {
-		r.ensureHelper(invocationID)
-		r.zeroCcacheStats()
+		r.ensureHelper(ctx, wrapperInvocationID)
+		r.zeroCcacheStats(ctx)
 	}
 
 	start := time.Now()
-	execErr := r.execFn(append(environ, "BITRISE_INVOCATION_ID="+invocationID), name, cmdArgs...)
+	execErr := r.execFn(append(environ, "BITRISE_INVOCATION_ID="+wrapperInvocationID), name, cmdArgs...)
 	duration := time.Since(start)
 
 	if r.postRun != nil {
-		r.postRun.run(invocationID, args, duration, execErr, r.ccacheInvocationID)
+		r.postRun.run(context.Background(), wrapperInvocationID, args, duration, execErr) //nolint:contextcheck // intentionally detached: post-run analytics must complete even if parent ctx is cancelled
 	}
 
 	return execErr
@@ -132,44 +144,40 @@ type ccacheSocket interface {
 	SetInvocationID(ctx context.Context, parentID, childID string) error
 }
 
-func (r *Runner) newSocketFromConfig() ccacheSocket {
-	config, err := ccacheconfig.ReadConfig(r.osProxy, r.decoderFactory)
-	if err != nil {
-		return nil
+func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
+	socket := r.socket
+	if socket == nil {
+		return
 	}
 
-	return ccacheipc.NewSocket(config.IPCEndpoint)
-}
-
-func (r *Runner) ensureHelper(rnInvocationID string) {
-	if !r.socket.IsListening() {
-		if err := r.socket.Start(); err != nil {
+	if !socket.IsListening() {
+		if err := socket.Start(); err != nil {
 			r.logger.TWarnf("Failed to start ccache storage helper: %v", err)
 
 			return
 		}
 
-		if !r.socket.AwaitReady() {
+		if !socket.AwaitReady() {
 			r.logger.TWarnf("Ccache storage helper did not become ready")
 		}
 	}
 
-	if err := r.socket.HealthCheck(context.Background()); err != nil {
+	if err := socket.HealthCheck(ctx); err != nil {
 		r.logger.TWarnf("Ccache storage helper health check failed: %v", err)
 	}
 
-	if err := r.socket.SetInvocationID(context.Background(), rnInvocationID, r.ccacheInvocationID); err != nil {
+	if err := socket.SetInvocationID(ctx, wrapperInvocationID, uuid.NewString()); err != nil {
 		r.logger.TWarnf("Failed to send invocation ID to storage helper: %v", err)
 	}
 }
 
-func (r *Runner) zeroCcacheStats() {
+func (r *Runner) zeroCcacheStats(ctx context.Context) {
 	path, err := exec.LookPath("ccache")
 	if err != nil {
 		return
 	}
 
-	if err := exec.CommandContext(context.Background(), path, "-z").Run(); err != nil { //nolint:gosec
+	if err := exec.CommandContext(ctx, path, "-z").Run(); err != nil { //nolint:gosec
 		r.logger.TWarnf("Failed to reset ccache stats: %v", err)
 	}
 }

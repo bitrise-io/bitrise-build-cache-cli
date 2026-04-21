@@ -4,6 +4,7 @@
 package reactnative
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -18,7 +19,7 @@ var _ postRunRunner = &postRunRunnerMock{}
 //
 //		// make and configure a mocked postRunRunner
 //		mockedpostRunRunner := &postRunRunnerMock{
-//			runFunc: func(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string)  {
+//			runFunc: func(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error)  {
 //				panic("mock out the run method")
 //			},
 //		}
@@ -29,41 +30,41 @@ var _ postRunRunner = &postRunRunnerMock{}
 //	}
 type postRunRunnerMock struct {
 	// runFunc mocks the run method.
-	runFunc func(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string)
+	runFunc func(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error)
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// run holds details about calls to the run method.
 		run []struct {
-			// InvocationID is the invocationID argument value.
-			InvocationID string
+			// ContextMoqParam is the contextMoqParam argument value.
+			ContextMoqParam context.Context
+			// WrapperInvocationID is the wrapperInvocationID argument value.
+			WrapperInvocationID string
 			// Args is the args argument value.
 			Args []string
 			// Duration is the duration argument value.
 			Duration time.Duration
 			// ExecErr is the execErr argument value.
 			ExecErr error
-			// CcacheInvocationID is the ccacheInvocationID argument value.
-			CcacheInvocationID string
 		}
 	}
 	lockrun sync.RWMutex
 }
 
 // run calls runFunc.
-func (mock *postRunRunnerMock) run(invocationID string, args []string, duration time.Duration, execErr error, ccacheInvocationID string) {
+func (mock *postRunRunnerMock) run(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) {
 	callInfo := struct {
-		InvocationID       string
-		Args               []string
-		Duration           time.Duration
-		ExecErr            error
-		CcacheInvocationID string
+		ContextMoqParam     context.Context
+		WrapperInvocationID string
+		Args                []string
+		Duration            time.Duration
+		ExecErr             error
 	}{
-		InvocationID:       invocationID,
-		Args:               args,
-		Duration:           duration,
-		ExecErr:            execErr,
-		CcacheInvocationID: ccacheInvocationID,
+		ContextMoqParam:     contextMoqParam,
+		WrapperInvocationID: wrapperInvocationID,
+		Args:                args,
+		Duration:            duration,
+		ExecErr:             execErr,
 	}
 	mock.lockrun.Lock()
 	mock.calls.run = append(mock.calls.run, callInfo)
@@ -71,7 +72,7 @@ func (mock *postRunRunnerMock) run(invocationID string, args []string, duration 
 	if mock.runFunc == nil {
 		return
 	}
-	mock.runFunc(invocationID, args, duration, execErr, ccacheInvocationID)
+	mock.runFunc(contextMoqParam, wrapperInvocationID, args, duration, execErr)
 }
 
 // runCalls gets all the calls that were made to run.
@@ -79,18 +80,18 @@ func (mock *postRunRunnerMock) run(invocationID string, args []string, duration 
 //
 //	len(mockedpostRunRunner.runCalls())
 func (mock *postRunRunnerMock) runCalls() []struct {
-	InvocationID       string
-	Args               []string
-	Duration           time.Duration
-	ExecErr            error
-	CcacheInvocationID string
+	ContextMoqParam     context.Context
+	WrapperInvocationID string
+	Args                []string
+	Duration            time.Duration
+	ExecErr             error
 } {
 	var calls []struct {
-		InvocationID       string
-		Args               []string
-		Duration           time.Duration
-		ExecErr            error
-		CcacheInvocationID string
+		ContextMoqParam     context.Context
+		WrapperInvocationID string
+		Args                []string
+		Duration            time.Duration
+		ExecErr             error
 	}
 	mock.lockrun.RLock()
 	calls = mock.calls.run

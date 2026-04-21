@@ -36,13 +36,15 @@ func Test_handleSetInvocationIDResult(t *testing.T) {
 		s.sessionState.downloadBytes.Store(100)
 		s.activeInvocationID = "old-id"
 
-		s.handleSetInvocationIDResult(processResult{InvocationChildID: "new-id"})
+		s.handleSetInvocationIDResult(processResult{InvocationParentID: "parent-1", InvocationChildID: "new-id"})
 
 		s.activeInvocationMu.Lock()
 		gotID := s.activeInvocationID
+		gotParentID := s.activeParentID
 		s.activeInvocationMu.Unlock()
 
 		assert.Equal(t, "new-id", gotID)
+		assert.Equal(t, "parent-1", gotParentID)
 		dl, _ := s.SessionBytes()
 		assert.Equal(t, int64(0), dl, "stats should be reset on new invocation")
 	})
@@ -51,14 +53,17 @@ func Test_handleSetInvocationIDResult(t *testing.T) {
 		s := &IpcServer{sessionState: newSessionState()}
 		s.sessionState.downloadBytes.Store(200)
 		s.activeInvocationID = "same-id"
+		s.activeParentID = "parent-orig"
 
-		s.handleSetInvocationIDResult(processResult{InvocationChildID: "same-id"})
+		s.handleSetInvocationIDResult(processResult{InvocationParentID: "parent-new", InvocationChildID: "same-id"})
 
 		s.activeInvocationMu.Lock()
 		gotID := s.activeInvocationID
+		gotParentID := s.activeParentID
 		s.activeInvocationMu.Unlock()
 
 		assert.Equal(t, "same-id", gotID)
+		assert.Equal(t, "parent-orig", gotParentID, "parent ID should not change for duplicate invocation ID")
 		dl, _ := s.SessionBytes()
 		assert.Equal(t, int64(200), dl, "stats should not be reset for duplicate invocation ID")
 	})
