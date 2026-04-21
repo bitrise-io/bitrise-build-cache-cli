@@ -41,6 +41,12 @@ func DirPath(osProxy utils.OsProxy) string {
 		return filepath.Join(wd, reactNativePath)
 	}
 
+	if exe, err := osProxy.Executable(); err == nil {
+		if dir := filepath.Dir(exe); dir != "" {
+			return filepath.Join(dir, reactNativePath)
+		}
+	}
+
 	return filepath.Join(".", reactNativePath)
 }
 

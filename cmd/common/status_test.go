@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -32,17 +33,24 @@ func runStatusCmd(t *testing.T, home string, args ...string) (string, string, er
 	cmd, _, err := common.RootCmd.Find([]string{"status"})
 	require.NoError(t, err)
 
+	// Reset command-local flag state BEFORE the run; cobra holds globals
+	// between calls. Doing it up-front (rather than in Cleanup) means a
+	// previous test's state can't leak into this one even if that test
+	// skipped cleanup.
+	require.NoError(t, cmd.Flags().Set("json", "false"))
+	require.NoError(t, cmd.Flags().Set("feature", ""))
+	require.NoError(t, cmd.Flags().Set("quiet", "false"))
+
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
+	prevOut, prevErr := common.RootCmd.OutOrStderr(), common.RootCmd.ErrOrStderr()
 	common.RootCmd.SetOut(stdout)
 	common.RootCmd.SetErr(stderr)
 	common.RootCmd.SetArgs(append([]string{"status"}, args...))
 
-	// Reset command-local flag state; cobra holds globals between runs.
 	t.Cleanup(func() {
-		_ = cmd.Flags().Set("json", "false")
-		_ = cmd.Flags().Set("feature", "")
-		_ = cmd.Flags().Set("quiet", "false")
+		common.RootCmd.SetOut(prevOut)
+		common.RootCmd.SetErr(prevErr)
 	})
 
 	execErr := common.RootCmd.Execute()
@@ -85,15 +93,22 @@ func TestStatus_TextTable(t *testing.T) {
 	stdout, stderr, err := runStatusCmd(t, home)
 	require.NoError(t, err)
 	assert.Empty(t, stderr)
-
-	// Table rows — labels & values.
-	for _, want := range []string{"gradle", "xcode", "cpp", "react-native", "enabled", "disabled"} {
-		assert.Contains(t, stdout, want)
-	}
 	assert.NotContains(t, stdout, "bazel")
-	// Spot-check specific rows.
-	assert.Contains(t, stdout, "xcode")
-	assert.Contains(t, stdout, "cpp")
+
+	// Per-row assertions: match `<label><whitespace><state>\n` so we catch
+	// cross-row contamination (e.g. xcode row claiming "disabled").
+	for _, row := range []struct {
+		label string
+		state string
+	}{
+		{"gradle", "disabled"},
+		{"xcode", "enabled"},
+		{"cpp", "enabled"},
+		{"react-native", "disabled"},
+	} {
+		re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(row.label) + `\s+` + row.state + `$`)
+		assert.Regexp(t, re, stdout, "row %q should be %s", row.label, row.state)
+	}
 }
 
 func TestStatus_JSON_Shape(t *testing.T) {

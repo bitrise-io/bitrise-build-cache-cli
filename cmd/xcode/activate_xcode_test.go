@@ -121,7 +121,8 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			CreateFunc: func(name string) (*os.File, error) {
 				return nil, expectedError
 			},
-			TempDirFunc: os.TempDir,
+			OpenFileFunc: os.OpenFile,
+			TempDirFunc:  os.TempDir,
 		}
 
 		err := xcode.ActivateXcodeCommandFn(

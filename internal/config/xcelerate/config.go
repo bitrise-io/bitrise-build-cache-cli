@@ -3,7 +3,6 @@ package xcelerate
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -65,7 +64,7 @@ type Config struct {
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
 	configFilePath := PathFor(osProxy, xcelerateConfigFileName)
 
-	f, err := os.OpenFile(configFilePath, 0, 0)
+	f, err := osProxy.OpenFile(configFilePath, 0, 0)
 	if err != nil {
 		return Config{}, fmt.Errorf("open xcelerate config file (%s): %w", configFilePath, err)
 	}

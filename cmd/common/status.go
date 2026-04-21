@@ -34,7 +34,7 @@ var statusCmd = &cobra.Command{
 func init() {
 	statusCmd.Flags().BoolVar(&statusJSONOutput, "json", false, "Emit machine-readable JSON instead of a text table")
 	statusCmd.Flags().StringVar(&statusFeature, "feature", "", "Query a single feature: gradle, xcode, cpp, react-native")
-	statusCmd.Flags().BoolVar(&statusQuiet, "quiet", false, "Suppress stdout; only meaningful with --feature (exit 0=enabled, 1=disabled)")
+	statusCmd.Flags().BoolVar(&statusQuiet, "quiet", false, "Suppress stdout; only meaningful with --feature (exit 0=enabled, 1=disabled, 2=unknown feature or misuse). Takes precedence over --json.")
 
 	RootCmd.AddCommand(statusCmd)
 }
@@ -75,6 +75,8 @@ func runStatus(out, errOut io.Writer, checker *status.Checker) error {
 	return writeTable(out, s)
 }
 
+// runStatusFeature handles --feature queries. Precedence when combined:
+// --quiet wins over --json (silent exit-code semantics beat machine output).
 func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 	enabled, err := checker.IsEnabled(statusFeature)
 	if err != nil {
