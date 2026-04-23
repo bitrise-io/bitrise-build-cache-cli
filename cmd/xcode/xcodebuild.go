@@ -466,16 +466,16 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 }
 
 // resolveBenchmarkPhase reads the benchmark phase from:
-// 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var (set during activation)
-// 2. ~/.local/state/xcelerate/benchmark/benchmark-phase.json (file fallback)
+// 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE env var (set during activation)
+// 2. ~/.local/state/xcelerate/benchmark/benchmark-phase-xcode.json (file fallback)
 func resolveBenchmarkPhase(logger log.Logger) string {
-	if phase := os.Getenv("BITRISE_BUILD_CACHE_BENCHMARK_PHASE"); phase != "" {
+	if phase := os.Getenv(common.BenchmarkPhaseEnvVar(common.BuildToolXcode)); phase != "" {
 		logger.Debugf("Benchmark phase from env: %s", phase)
 
 		return phase
 	}
 
-	if phase := common.ReadBenchmarkPhaseFile(logger); phase != "" {
+	if phase := common.ReadBenchmarkPhaseFile(common.BuildToolXcode, logger); phase != "" {
 		logger.Debugf("Benchmark phase from file: %s", phase)
 
 		return phase

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -123,19 +124,25 @@ type BenchmarkPhaseFile struct {
 	Phase string `json:"phase"`
 }
 
-// BenchmarkPhaseFilePath returns the path to the benchmark phase file.
-func BenchmarkPhaseFilePath() (string, error) {
+// BenchmarkPhaseEnvVar returns the env var name for a build tool's benchmark phase,
+// e.g. "gradle" → "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE".
+func BenchmarkPhaseEnvVar(buildTool string) string {
+	return "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_" + strings.ToUpper(buildTool)
+}
+
+// BenchmarkPhaseFilePath returns the path to the benchmark phase file for a build tool.
+func BenchmarkPhaseFilePath(buildTool string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("get home directory: %w", err)
 	}
 
-	return filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json"), nil
+	return filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-"+buildTool+".json"), nil
 }
 
-// WriteBenchmarkPhaseFile writes the benchmark phase to a JSON file.
-func WriteBenchmarkPhaseFile(phase string, logger log.Logger) {
-	filePath, err := BenchmarkPhaseFilePath()
+// WriteBenchmarkPhaseFile writes the benchmark phase to a JSON file for the given build tool.
+func WriteBenchmarkPhaseFile(buildTool, phase string, logger log.Logger) {
+	filePath, err := BenchmarkPhaseFilePath(buildTool)
 	if err != nil {
 		logger.Debugf("Failed to get benchmark phase file path: %v", err)
 
@@ -165,10 +172,10 @@ func WriteBenchmarkPhaseFile(phase string, logger log.Logger) {
 	logger.Debugf("Benchmark phase written to %s", filePath)
 }
 
-// ReadBenchmarkPhaseFile reads the benchmark phase from the JSON file.
+// ReadBenchmarkPhaseFile reads the benchmark phase from the JSON file for the given build tool.
 // Returns empty string if the file doesn't exist or can't be read.
-func ReadBenchmarkPhaseFile(logger log.Logger) string {
-	filePath, err := BenchmarkPhaseFilePath()
+func ReadBenchmarkPhaseFile(buildTool string, logger log.Logger) string {
+	filePath, err := BenchmarkPhaseFilePath(buildTool)
 	if err != nil {
 		logger.Debugf("Failed to get benchmark phase file path: %v", err)
 

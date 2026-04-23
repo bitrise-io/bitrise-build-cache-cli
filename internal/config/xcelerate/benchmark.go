@@ -36,11 +36,11 @@ func ApplyBenchmarkPhase(
 		return
 	}
 
+	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolXcode)
 	logger.Infof("(i) Benchmark phase: %s", phase)
-	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
-	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
-	// Also write to ~/.local/state/xcelerate/benchmark/benchmark-phase.json as fallback
-	common.WriteBenchmarkPhaseFile(phase, logger)
+	exporter.Export(envVar, phase)
+	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export "+envVar+"="+phase)
+	common.WriteBenchmarkPhaseFile(common.BuildToolXcode, phase, logger)
 
 	switch phase {
 	case common.BenchmarkPhaseBaseline:

@@ -36,10 +36,11 @@ func ApplyBenchmarkPhase(
 		return
 	}
 
+	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolGradle)
 	logger.Infof("(i) Benchmark phase: %s", phase)
-	exporter.Export("BITRISE_BUILD_CACHE_BENCHMARK_PHASE", phase)
-	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export BITRISE_BUILD_CACHE_BENCHMARK_PHASE="+phase)
-	common.WriteBenchmarkPhaseFile(phase, logger)
+	exporter.Export(envVar, phase)
+	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export "+envVar+"="+phase)
+	common.WriteBenchmarkPhaseFile(common.BuildToolGradle, phase, logger)
 
 	switch phase {
 	case common.BenchmarkPhaseBaseline:
