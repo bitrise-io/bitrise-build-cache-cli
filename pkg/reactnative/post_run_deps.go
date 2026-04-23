@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
 )
 
 // ---------------------------------------------------------------------------
@@ -58,8 +59,9 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 	}
 }
 
-// run sends invocation analytics, and if needed, collects ccache
-// stats, and registers the invocation relation.
+// run collects ccache stats, aggregates child invocation hit rates into
+// the wrapper invocation, and sends the wrapper analytics. ccache collection
+// runs first so its ledger entry can contribute to the aggregated hit rate.
 func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) {
 	metadata := d.getMetadata()
 
@@ -69,7 +71,23 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		fullCommand = strings.Join(args, " ")
 	}
 
-	// Send wrapper invocation analytics
+	helper, helperErr := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+		ParentInvocationID: wrapperInvocationID,
+	})
+	if helperErr != nil {
+		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", helperErr)
+	} else {
+		helper.CollectAndSendStats(ctx, "", "")
+	}
+
+	agg := childstats.NewAggregator(wrapperInvocationID)
+	summary, aggErr := agg.Compute()
+	if aggErr != nil {
+		d.logger.TWarnf("Failed to aggregate child invocation hit rates: %v", aggErr)
+	} else if summary.ChildCount > 0 {
+		d.logger.TInfof("Cache hit rate: %.1f%% (avg of %d child invocations)", summary.MeanHitRate*100, summary.ChildCount)
+	}
+
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationDate: time.Now().Add(-duration),
 		InvocationID:   wrapperInvocationID,
@@ -80,25 +98,16 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		Error:          execErr,
 		BuildTool:      "react-native",
 		Wrapper:        "bitrise-build-cache-cli react-native",
+		HitRate:        summary.MeanHitRate,
 	}, d.authConfig, metadata)
 
-	rnSendErr := d.sendInvocation(*inv)
-	if rnSendErr != nil {
-		d.logger.TWarnf("Failed to send run invocation analytics: %v", rnSendErr)
-
-		return
+	if err := d.sendInvocation(*inv); err != nil {
+		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
 	}
 
-	helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
-		ParentInvocationID: wrapperInvocationID,
-	})
-	if err != nil {
-		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", err)
-
-		return
+	if err := agg.Cleanup(); err != nil {
+		d.logger.TWarnf("Failed to clean up child stats ledger: %v", err)
 	}
-
-	helper.CollectAndSendStats(ctx, "", "")
 }
 
 // ---------------------------------------------------------------------------

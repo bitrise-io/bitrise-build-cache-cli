@@ -24,6 +24,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
 )
 
 // ---------------------------------------------------------------------------
@@ -265,6 +266,33 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
+	}
+
+	h.writeChildStatsLedger(invocationID, parentID, stats)
+}
+
+// writeChildStatsLedger records this ccache invocation's hit rate in the
+// parent's local ledger so a parent wrapper (e.g. react-native) can
+// aggregate child hit rates at the end of its run. No-op when no parent.
+func (h *StorageHelper) writeChildStatsLedger(invocationID, parentID string, stats ccacheanalytics.CcacheStats) {
+	if parentID == "" {
+		return
+	}
+
+	total := int64(stats.CacheHit + stats.CacheMiss)
+
+	entry := childstats.Entry{
+		ChildInvocationID:  invocationID,
+		ParentInvocationID: parentID,
+		BuildTool:          "ccache",
+		HitRate:            float32(stats.CacheHitRate),
+		Hits:               int64(stats.CacheHit),
+		Total:              total,
+		BenchmarkPhase:     os.Getenv(configcommon.BenchmarkPhaseEnvVar("ccache")),
+	}
+
+	if err := childstats.NewWriter().Write(entry); err != nil {
+		h.logger.TWarnf("Failed to write child stats ledger: %v", err)
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/session"
 )
 
@@ -357,6 +358,24 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation) {
 
 	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
 		c.sendRelation(parentID)
+		c.writeChildStatsLedger(parentID, inv)
+	}
+}
+
+// writeChildStatsLedger records this xcode invocation's hit rate in the
+// parent's local ledger so a parent wrapper (e.g. react-native) can
+// aggregate child hit rates at the end of its run.
+func (c *XcodebuildRunner) writeChildStatsLedger(parentID string, inv analytics.Invocation) {
+	entry := childstats.Entry{
+		ChildInvocationID:  c.InvocationID,
+		ParentInvocationID: parentID,
+		BuildTool:          "xcode",
+		HitRate:            inv.HitRate,
+		BenchmarkPhase:     c.Metadata.BenchmarkPhase,
+	}
+
+	if err := childstats.NewWriter().Write(entry); err != nil {
+		c.Logger.Warnf("Failed to write child stats ledger: %v", err)
 	}
 }
 
