@@ -25,13 +25,6 @@ type InvocationRegistryParams struct {
 	// Envs is the set of environment variables used for metadata.
 	// If nil, the current process environment is used.
 	Envs map[string]string
-
-	// AuthConfig, when non-nil, is used directly and skips reading the
-	// multiplatform config file. Callers that already have credentials
-	// loaded (e.g. StorageHelper) should set this to avoid a redundant
-	// file read and to work when no multiplatform config file exists.
-	AuthConfig   *configcommon.CacheAuthConfig
-	DebugLogging bool
 }
 
 // RegisterInvocationParams configures the RegisterMultiplatformInvocation operation.
@@ -73,25 +66,16 @@ type InvocationRegistry struct {
 }
 
 // NewInvocationRegistry returns an InvocationRegistry ready to register invocations
-// and relations. If params.AuthConfig is non-nil it is used directly; otherwise the
-// multiplatform analytics config file is read from disk.
+// and relations. Auth credentials and the debug-logging flag are read from the
+// multiplatform analytics config file on disk (single canonical source).
 func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry, error) {
 	if params.Envs == nil {
 		params.Envs = utils.AllEnvs()
 	}
 
-	var config multiplatformconfig.Config
-	if params.AuthConfig != nil {
-		config = multiplatformconfig.Config{
-			AuthConfig:   *params.AuthConfig,
-			DebugLogging: params.DebugLogging,
-		}
-	} else {
-		var err error
-		config, err = multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-		if err != nil {
-			return nil, fmt.Errorf("read multiplatform config: %w", err)
-		}
+	config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	if err != nil {
+		return nil, fmt.Errorf("read multiplatform config: %w", err)
 	}
 
 	return &InvocationRegistry{

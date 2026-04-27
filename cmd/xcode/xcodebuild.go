@@ -390,7 +390,7 @@ func (c *XcodebuildRunner) resolveInvocationAPI() (invocationSaver, error) {
 		return c.invocationAPI, nil
 	}
 
-	client, err := analytics.NewClient(consts.AnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
+	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create analytics client: %w", err)
 	}

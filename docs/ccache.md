@@ -27,14 +27,7 @@ ccache integration enables C++ build caching via a local IPC proxy server. The p
 
 ## Top-level analytics commands
 
-These commands are build-tool-agnostic and registered on the root command (not under `ccache`). Used by Kotlin/Gradle code to register invocation relationships from outside the CLI wrapper.
-
-| Command | Flags | What it does |
-|---------|-------|-------------|
-| `register-invocation` | `--invocation-id` (req), `--build-tool` (default: "multiplatform") | Registers invocation with analytics backend |
-| `register-child-invocation` | `--parent-id` (req), `--child-id` (req), `--build-tool` (default: "ccache") | Registers parent→child relation in analytics |
-
-Both commands read auth credentials from the multiplatform analytics config (`~/.bitrise/analytics/multiplatform/config.json`), written by `activate react-native` or `activate c++`.
+`register-invocation` and `register-child-invocation` are build-tool-agnostic commands shared with other tools (xcode, react-native, the gradle plugin). They are documented in `docs/analytics.md` along with the CLI-internal and gradle-plugin use cases.
 
 ---
 
@@ -169,4 +162,4 @@ func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 
 `ParseCcacheStats` parses the text output of `ccache -v -v -s`. It is line-by-line: indent depth (2 spaces = 1 level) builds a section path like `"Cacheable calls / Hits / Direct"`, which is dispatched to the matching `CcacheStats` field. `CacheHitRate` and `TotalCalls` are derived after parsing. Always returns `nil` error.
 
-`CcacheStats.HasActivity()` returns true when `DirectCacheHit + PreprocessedCacheHit + CacheMiss > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.
+`CcacheStats.HasActivity()` returns true when `CacheableCalls + UncacheableCalls > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.

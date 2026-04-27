@@ -2,7 +2,7 @@
 
 ## Overview
 
-React Native support wraps build/run commands with pre/post hooks that activate multi-platform build caching (Gradle, Xcode, C++/ccache) and report analytics. The C++ side is tightly coupled to the ccache storage helper — see `docs/ccache.md` for the ccache internals.
+React Native support wraps build/run commands with pre/post hooks that activate multi-platform build caching (Gradle, Xcode, C++/ccache) and report analytics. The C++ side is tightly coupled to the ccache storage helper — see `docs/ccache.md` for the ccache internals. Invocation registration (parent → child relations) is documented in `docs/analytics.md`.
 
 **Layers:**
 - `cmd/reactnative/` — cobra commands
@@ -70,14 +70,15 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 ```
 
 **Run flow:**
-1. Strip leading `"--"` from args (cobra `DisableFlagParsing` artifact)
-2. If ccache socket available:
+1. Resolve `wrapperInvocationID`: caller (the `react-native run` cobra command) reads `BITRISE_INVOCATION_ID` from the environment and passes it in. If it is empty, `Run` generates a fresh UUID. Either way the resolved value is the React Native invocation ID for this run — there is no pre-existing parent ID; the wrapper invocation is created here.
+2. Strip leading `"--"` from args (cobra `DisableFlagParsing` artifact)
+3. If ccache socket available:
    - Start storage helper if not already listening; await ready
    - Health check
    - `socket.SetInvocationID(wrapperInvocationID, <new UUID>)` — links RN invocation to a fresh ccache session; resets byte counters on the server
    - `ccache -z` — zero local ccache stats
-3. Execute command with `BITRISE_INVOCATION_ID=wrapperInvocationID` injected into environ
-4. Post-run: `postRunDeps.run(ctx, wrapperInvocationID, args, duration, execErr)`
+4. Execute the command with `BITRISE_INVOCATION_ID=wrapperInvocationID` exported into the child environment, so any subprocess (e.g. xcodebuild, ccache) treats this RN run as its parent.
+5. Post-run: `postRunDeps.run(ctx, wrapperInvocationID, args, duration, execErr)`
 
 ---
 
@@ -101,12 +102,12 @@ Implemented by `internal/ccache.Socket` in production. This interface talks to t
 
 **postRunDeps** handles all analytics after command execution. Created by `newPostRunDeps(logger, osProxy, decoderFactory)` which reads the multiplatform analytics config and creates a `ccacheanalytics.Client`.
 
-The analytics client receives its own `clientLogger` created with `log.WithDebugLog(config.DebugLogging)`. This is separate from the runner's logger — `HTTP PUT:` debug lines appear when `activate react-native --debug` was used, without relying on cobra's `IsDebugLogMode` (which cobra never sets for `DisableFlagParsing` commands).
+The analytics client uses the runner's logger directly. The runner constructs its default logger with `WithDebugLog(config.DebugLogging)` (read from the multiplatform config), so `HTTP PUT:` debug lines appear when `activate react-native --debug` was used. Cobra's `IsDebugLogMode` is bypassed because cobra never sets it for `DisableFlagParsing` commands.
 
 **postRunDeps.run call sequence:**
 
 ```
-wrapperInvocationID = injected BITRISE_INVOCATION_ID (RN parent)
+wrapperInvocationID = the RN invocation ID created in `react-native run` (and exported as BITRISE_INVOCATION_ID for children)
 
 1. sendInvocation — reports React Native invocation (duration, command, success/error)
    → if this fails, returns early (ccache stats skipped)
@@ -129,16 +130,21 @@ helper.CollectAndSendStats(ctx, "", "")
 ## Full Analytics Data Flow
 
 ```
-Bitrise build
-└── BITRISE_INVOCATION_ID = <parent>
+Bitrise build / shell
     │
     └── react-native run [args]
+        │   wrapperInvocationID is created here:
+        │     • if BITRISE_INVOCATION_ID is set in the environment, use it
+        │     • otherwise generate a fresh UUID
+        │   The resolved ID is exported to child processes as BITRISE_INVOCATION_ID
+        │   so xcodebuild, ccache, etc. treat this RN run as their parent.
         │
-        ├── [pre-run] socket.SetInvocationID(parent, <new UUID>)
+        ├── [pre-run] socket.SetInvocationID(wrapperInvocationID, <new UUID>)
         │       → IPC 0xB1 → server resets session byte counters, assigns ccache child ID
         │       → ccache -z (zeros local ccache stats)
         │
-        ├── [exec] command runs, C++ files compiled via ccache
+        ├── [exec] command runs with BITRISE_INVOCATION_ID=wrapperInvocationID
+        │       → C++ files compiled via ccache
         │       → ccache GET/PUT requests proxy through storage helper
         │       → session byte counters accumulate
         │
