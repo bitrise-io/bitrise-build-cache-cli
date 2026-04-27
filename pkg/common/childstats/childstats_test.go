@@ -252,3 +252,32 @@ func TestAggregator_Cleanup_RemovesDir(t *testing.T) {
 	// Cleanup on a missing dir is a no-op, not an error.
 	require.NoError(t, agg.Cleanup())
 }
+
+func TestAggregator_Compute_CountsFailedEntries(t *testing.T) {
+	setHome(t)
+
+	w := NewWriter()
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "ok", BuildTool: "gradle", HitRate: 0.5}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "fail-1", BuildTool: "xcode", HitRate: 0.3, Failed: true}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "fail-2", BuildTool: "ccache", HitRate: 0, Failed: true}))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+	assert.Equal(t, 3, summary.ChildCount)
+	assert.Equal(t, 2, summary.FailedCount)
+}
+
+func TestAggregator_Compute_LegacyEntriesDefaultToNotFailed(t *testing.T) {
+	setHome(t)
+
+	// Simulate a legacy entry written by a writer that did not know about Failed.
+	dir := LedgerDir("p")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	legacy := `{"child_invocation_id":"old","parent_invocation_id":"p","build_tool":"gradle","hit_rate":0.5,"schema_version":1}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "old"+EntryFileSuffix), []byte(legacy), 0o600))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+	assert.Equal(t, 1, summary.ChildCount)
+	assert.Equal(t, 0, summary.FailedCount, "missing 'failed' field must default to not-failed")
+}

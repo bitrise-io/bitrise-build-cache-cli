@@ -289,6 +289,7 @@ func (h *StorageHelper) writeChildStatsLedger(invocationID, parentID string, sta
 		Hits:               int64(stats.CacheHit),
 		Total:              total,
 		BenchmarkPhase:     os.Getenv(configcommon.BenchmarkPhaseEnvVar("ccache")),
+		Failed:             !stats.Success(),
 	}
 
 	if err := childstats.NewWriter().Write(entry); err != nil {

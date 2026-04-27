@@ -50,15 +50,19 @@ const (
 
 // Entry is a single child invocation's ledger record.
 type Entry struct {
-	ChildInvocationID  string    `json:"child_invocation_id"`
-	ParentInvocationID string    `json:"parent_invocation_id"`
-	BuildTool          string    `json:"build_tool"`
-	HitRate            float32   `json:"hit_rate"`
-	Hits               int64     `json:"hits,omitempty"`
-	Total              int64     `json:"total,omitempty"`
-	BenchmarkPhase     string    `json:"benchmark_phase,omitempty"`
-	WrittenAt          time.Time `json:"written_at"`
-	SchemaVersion      int       `json:"schema_version"`
+	ChildInvocationID  string  `json:"child_invocation_id"`
+	ParentInvocationID string  `json:"parent_invocation_id"`
+	BuildTool          string  `json:"build_tool"`
+	HitRate            float32 `json:"hit_rate"`
+	Hits               int64   `json:"hits,omitempty"`
+	Total              int64   `json:"total,omitempty"`
+	BenchmarkPhase     string  `json:"benchmark_phase,omitempty"`
+	// Failed indicates the child invocation reported a failure. Default is
+	// false (no failure) for legacy entries that don't carry the field —
+	// writers that can detect failure must set this explicitly.
+	Failed        bool      `json:"failed,omitempty"`
+	WrittenAt     time.Time `json:"written_at"`
+	SchemaVersion int       `json:"schema_version"`
 }
 
 // LedgerDir returns the directory for a parent invocation's child entries.
@@ -185,6 +189,12 @@ type Summary struct {
 	// SkippedCount is the number of entries excluded (malformed only).
 	SkippedCount int
 
+	// FailedCount is the number of entries that reported Failed=true. Used
+	// by parent wrappers to fail the wrapper invocation when any child
+	// failed (e.g. an xcodebuild child errored even though the parent script
+	// kept running).
+	FailedCount int
+
 	// ByTool breaks down the stats per build tool (gradle, ccache, xcode, ...).
 	ByTool map[string]ToolSummary
 }
@@ -265,6 +275,10 @@ func (a *Aggregator) Compute() (Summary, error) {
 		summary.ChildCount++
 		summary.TotalHits += entry.Hits
 		summary.TotalCount += entry.Total
+
+		if entry.Failed {
+			summary.FailedCount++
+		}
 
 		byToolSums[entry.BuildTool] += entry.HitRate
 		byToolCounts[entry.BuildTool]++
