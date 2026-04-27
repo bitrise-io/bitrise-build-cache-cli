@@ -163,7 +163,10 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 
 	// Auth credentials live in the multiplatform analytics config. Populate the
 	// in-memory AuthConfig from there so callers can keep using config.AuthConfig.
-	if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil {
+	// Guard against an empty/decoded-but-unauthenticated multiplatform config —
+	// matches the xcelerate fallback so we don't silently wipe credentials when
+	// the file exists but carries no token.
+	if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
 		config.AuthConfig = mpCfg.AuthConfig
 	}
 
