@@ -96,4 +96,46 @@ if grep -q "Warning: failed to register invocation relation" "$RN_CLI_LOG"; then
   exit 1
 fi
 
+# --- Child-stats ledger aggregation ---
+# The react-native wrapper aggregates child invocation hit rates at the end of
+# its run and reports the mean on its own invocation. The ledger lives under
+# ~/.bitrise/cache/invocations/<parent-id>/ and must be cleaned up after.
+
+rn_invocation_id=$(grep -oE "React Native invocation ID: [a-zA-Z0-9-]+" "$RN_CLI_LOG" | head -1 | awk '{print $NF}' || true)
+
+has_child=false
+if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
+  has_child=true
+fi
+if [ -n "${XCELERATE_LOGS:-}" ]; then
+  has_child=true
+fi
+
+if [ "$has_child" = "true" ]; then
+  if ! grep -qE "Cache hit rate \(avg of [0-9]+ child invocations\): [0-9]+\.[0-9]+%" "$RN_CLI_LOG"; then
+    echo "Child hit rate aggregation log line missing ❌"
+    exit 1
+  fi
+  echo "Child hit rate aggregation log line present ✅"
+
+  if grep -q "Failed to aggregate child invocation hit rates" "$RN_CLI_LOG"; then
+    echo "Aggregation reported an error ❌"
+    exit 1
+  fi
+
+  if grep -q "Failed to write child stats ledger" "$RN_CLI_LOG"; then
+    echo "Ledger writer reported an error ❌"
+    exit 1
+  fi
+else
+  echo "No ccache/xcode child detected, skipping aggregation log check ℹ️"
+fi
+
+if [ -n "$rn_invocation_id" ] && [ -d "$HOME/.bitrise/cache/invocations/$rn_invocation_id" ]; then
+  echo "Ledger dir for RN wrapper was not cleaned up ❌"
+  ls -la "$HOME/.bitrise/cache/invocations/$rn_invocation_id" || true
+  exit 1
+fi
+echo "Ledger dir cleaned up after RN run ✅"
+
 echo "All analytics assertions passed ✅"

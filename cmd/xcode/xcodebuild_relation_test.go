@@ -109,7 +109,7 @@ func Test_saveInvocationAndRelation(t *testing.T) {
 			relationAPI:   relMock,
 		}
 
-		runner.saveInvocationAndRelation(testInvocation())
+		runner.saveInvocationAndRelation(testInvocation(), 0, 0)
 
 		assert.True(t, relationCalled)
 	})
@@ -134,7 +134,7 @@ func Test_saveInvocationAndRelation(t *testing.T) {
 			relationAPI:   relMock,
 		}
 
-		runner.saveInvocationAndRelation(testInvocation())
+		runner.saveInvocationAndRelation(testInvocation(), 0, 0)
 
 		assert.False(t, relationCalled)
 	})
@@ -159,7 +159,7 @@ func Test_saveInvocationAndRelation(t *testing.T) {
 			relationAPI:   relMock,
 		}
 
-		runner.saveInvocationAndRelation(testInvocation())
+		runner.saveInvocationAndRelation(testInvocation(), 0, 0)
 
 		assert.False(t, relationCalled)
 	})
