@@ -296,3 +296,41 @@ func TestBenchmarkPhaseEnvVar(t *testing.T) {
 	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE", BenchmarkPhaseEnvVar(BuildToolXcode))
 	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL", BenchmarkPhaseEnvVar(BuildToolBazel))
 }
+
+func TestLegacyBenchmarkPhaseEnvVar(t *testing.T) {
+	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE", LegacyBenchmarkPhaseEnvVar)
+}
+
+func TestWriteLegacyBenchmarkPhaseFile(t *testing.T) {
+	logger := log.NewLogger()
+
+	t.Run("creates legacy-named file", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteLegacyBenchmarkPhaseFile("baseline", logger)
+
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		assert.FileExists(t, filePath)
+
+		data, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+
+		var result BenchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(data, &result))
+		assert.Equal(t, "baseline", result.Phase)
+	})
+
+	t.Run("legacy and per-tool files coexist", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteBenchmarkPhaseFile(BuildToolGradle, "warmup", logger)
+		WriteLegacyBenchmarkPhaseFile("warmup", logger)
+
+		legacyPath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		gradlePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-gradle.json")
+		assert.FileExists(t, legacyPath)
+		assert.FileExists(t, gradlePath)
+	})
+}

@@ -14,8 +14,12 @@ type EnvExporter interface {
 
 // ApplyBenchmarkPhase queries the benchmark phase and overrides xcode params accordingly.
 // Baseline phase disables cache. Warmup phase logs a warning.
-// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
-// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json as fallback.
+// The phase is exported as the per-build-tool BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE
+// env var and written to ~/.local/state/xcelerate/benchmark/benchmark-phase-xcode.json.
+// The legacy BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var is intentionally NOT mirrored
+// here — only the gradle activation path writes it, to avoid clobbering the gradle
+// phase in mixed (e.g. React Native) activations where the legacy reader is the
+// gradle plugin.
 func ApplyBenchmarkPhase(
 	params *Params,
 	logger log.Logger,

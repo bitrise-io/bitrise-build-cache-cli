@@ -14,8 +14,11 @@ type EnvExporter interface {
 
 // ApplyBenchmarkPhase queries the benchmark phase and overrides gradle params accordingly.
 // Baseline phase disables cache and enables analytics only. Warmup phase logs a warning.
-// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
-// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json as fallback.
+// The phase is exported as the per-build-tool BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE
+// env var and written to ~/.local/state/xcelerate/benchmark/benchmark-phase-gradle.json.
+// For back-compat with older gradle-analytics plugins (< 2.6.1) that still read the
+// pre-split BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var and benchmark-phase.json file,
+// the gradle phase is mirrored to those legacy names too.
 func ApplyBenchmarkPhase(
 	params *ActivateGradleParams,
 	logger log.Logger,
@@ -41,6 +44,12 @@ func ApplyBenchmarkPhase(
 	exporter.Export(envVar, phase)
 	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export "+envVar+"="+phase)
 	common.WriteBenchmarkPhaseFile(common.BuildToolGradle, phase, logger)
+
+	// Back-compat: pre-2.6.1 gradle-analytics plugins read the legacy env var
+	// and file name. Mirror the gradle phase so older plugin versions still
+	// tag their invocations correctly.
+	exporter.Export(common.LegacyBenchmarkPhaseEnvVar, phase)
+	common.WriteLegacyBenchmarkPhaseFile(phase, logger)
 
 	switch phase {
 	case common.BenchmarkPhaseBaseline:

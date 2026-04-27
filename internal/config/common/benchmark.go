@@ -25,6 +25,14 @@ const (
 	BuildToolGradle = "gradle"
 	BuildToolXcode  = "xcode"
 	BuildToolBazel  = "bazel"
+
+	// LegacyBenchmarkPhaseEnvVar is the pre-per-build-tool env var name. Older
+	// external readers (notably gradle-analytics plugin versions < 2.6.1) still
+	// look up this name, so the gradle activation path mirrors its phase here
+	// for back-compat. New code should use BenchmarkPhaseEnvVar instead.
+	LegacyBenchmarkPhaseEnvVar = "BITRISE_BUILD_CACHE_BENCHMARK_PHASE"
+
+	legacyBenchmarkPhaseFileName = "benchmark-phase.json"
 )
 
 type benchmarkResponse struct {
@@ -132,12 +140,23 @@ func BenchmarkPhaseEnvVar(buildTool string) string {
 
 // BenchmarkPhaseFilePath returns the path to the benchmark phase file for a build tool.
 func BenchmarkPhaseFilePath(buildTool string) (string, error) {
+	return benchmarkPhaseDirJoin("benchmark-phase-" + buildTool + ".json")
+}
+
+// LegacyBenchmarkPhaseFilePath returns the pre-per-build-tool file path. Kept
+// as a fallback for older external readers; mirrored from the gradle activation
+// path for back-compat.
+func LegacyBenchmarkPhaseFilePath() (string, error) {
+	return benchmarkPhaseDirJoin(legacyBenchmarkPhaseFileName)
+}
+
+func benchmarkPhaseDirJoin(name string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("get home directory: %w", err)
 	}
 
-	return filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-"+buildTool+".json"), nil
+	return filepath.Join(homeDir, ".local", "state", "xcelerate", "benchmark", name), nil
 }
 
 // WriteBenchmarkPhaseFile writes the benchmark phase to a JSON file for the given build tool.
@@ -149,6 +168,23 @@ func WriteBenchmarkPhaseFile(buildTool, phase string, logger log.Logger) {
 		return
 	}
 
+	writeBenchmarkPhaseFileTo(filePath, phase, logger)
+}
+
+// WriteLegacyBenchmarkPhaseFile writes the benchmark phase to the pre-per-build-tool
+// file path so older external readers still find it.
+func WriteLegacyBenchmarkPhaseFile(phase string, logger log.Logger) {
+	filePath, err := LegacyBenchmarkPhaseFilePath()
+	if err != nil {
+		logger.Debugf("Failed to get legacy benchmark phase file path: %v", err)
+
+		return
+	}
+
+	writeBenchmarkPhaseFileTo(filePath, phase, logger)
+}
+
+func writeBenchmarkPhaseFileTo(filePath, phase string, logger log.Logger) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		logger.Debugf("Failed to create benchmark phase dir: %v", err)

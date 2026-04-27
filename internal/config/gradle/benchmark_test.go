@@ -19,6 +19,18 @@ type noopExporter struct{}
 func (n *noopExporter) Export(_, _ string)          {}
 func (n *noopExporter) ExportToShellRC(_, _ string) {}
 
+type recordingExporter struct {
+	exports map[string]string
+}
+
+func (r *recordingExporter) Export(key, value string) {
+	if r.exports == nil {
+		r.exports = map[string]string{}
+	}
+	r.exports[key] = value
+}
+func (r *recordingExporter) ExportToShellRC(_, _ string) {}
+
 func Test_ApplyBenchmarkPhase(t *testing.T) {
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
@@ -107,6 +119,45 @@ func Test_ApplyBenchmarkPhase(t *testing.T) {
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
+	})
+
+	t.Run("exports both per-tool and legacy env vars for back-compat", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{
+			Cache: CacheParams{Enabled: true},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseWarmup, nil
+			},
+		}
+
+		exporter := &recordingExporter{}
+		ApplyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, exporter)
+
+		assert.Equal(t, common.BenchmarkPhaseWarmup, exporter.exports[common.BenchmarkPhaseEnvVar(common.BuildToolGradle)])
+		assert.Equal(t, common.BenchmarkPhaseWarmup, exporter.exports[common.LegacyBenchmarkPhaseEnvVar],
+			"legacy env var must be mirrored for older gradle-analytics plugins")
+	})
+
+	t.Run("does not export legacy env var when phase is empty", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{
+			Cache: CacheParams{Enabled: true},
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return "", nil
+			},
+		}
+
+		exporter := &recordingExporter{}
+		ApplyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, exporter)
+
+		_, hasLegacy := exporter.exports[common.LegacyBenchmarkPhaseEnvVar]
+		assert.False(t, hasLegacy)
 	})
 
 	t.Run("error falls back to original params", func(t *testing.T) {
