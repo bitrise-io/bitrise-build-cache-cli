@@ -261,12 +261,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	h.registerInvocationRelation(ctx)
 
-	commandFunc := func(name string, args ...string) (string, error) {
-		out, cmdErr := exec.CommandContext(ctx, name, args...).Output() //nolint:gosec
-
-		return string(out), cmdErr
-	}
-	metadata := configcommon.NewMetadata(h.params.Envs, commandFunc, h.logger)
+	metadata := configcommon.NewMetadata(h.params.Envs, newCommandFunc(ctx), h.logger)
 
 	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, h.config.AuthConfig, metadata)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
