@@ -29,7 +29,7 @@ func TestLedgerPaths(t *testing.T) {
 	assert.Contains(t, dir, filepath.Join(".bitrise", "cache", "invocations", "parent-x"))
 
 	path := LedgerPath("parent-x", "child-y")
-	assert.Equal(t, filepath.Join(dir, "child-y.json"), path)
+	assert.Equal(t, filepath.Join(dir, "child-y.childstats.json"), path)
 }
 
 func TestWriter_Write_CreatesAtomicFile(t *testing.T) {
@@ -116,7 +116,7 @@ func TestAggregator_Compute_SimpleMeanAndByTool(t *testing.T) {
 	assert.InDelta(t, 0.5, ccache.MeanHitRate, 1e-6)
 }
 
-func TestAggregator_Compute_ExcludesBaseline(t *testing.T) {
+func TestAggregator_Compute_IncludesBaselineWithCount(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
@@ -131,9 +131,37 @@ func TestAggregator_Compute_ExcludesBaseline(t *testing.T) {
 
 	summary, err := NewAggregator("p").Compute()
 	require.NoError(t, err)
-	assert.Equal(t, 1, summary.ChildCount)
-	assert.Equal(t, 1, summary.SkippedCount)
-	assert.InDelta(t, 0.9, summary.MeanHitRate, 1e-6)
+	assert.Equal(t, 2, summary.ChildCount)
+	assert.Equal(t, 1, summary.BaselineCount)
+	assert.Equal(t, 0, summary.SkippedCount)
+	assert.InDelta(t, 0.45, summary.MeanHitRate, 1e-6)
+}
+
+func TestAggregator_Compute_WeightedHitRate(t *testing.T) {
+	setHome(t)
+
+	w := NewWriter()
+	require.NoError(t, w.Write(Entry{
+		ParentInvocationID: "p", ChildInvocationID: "small", BuildTool: "gradle",
+		HitRate: 1.0, Hits: 1, Total: 1,
+	}))
+	require.NoError(t, w.Write(Entry{
+		ParentInvocationID: "p", ChildInvocationID: "big", BuildTool: "gradle",
+		HitRate: 0.5, Hits: 50, Total: 100,
+	}))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+
+	assert.InDelta(t, 0.75, summary.MeanHitRate, 1e-6)
+	assert.InDelta(t, 51.0/101.0, summary.WeightedHitRate, 1e-6)
+	assert.Equal(t, int64(51), summary.TotalHits)
+	assert.Equal(t, int64(101), summary.TotalCount)
+
+	gradle := summary.ByTool["gradle"]
+	assert.InDelta(t, 51.0/101.0, gradle.WeightedHitRate, 1e-6)
+	assert.Equal(t, int64(51), gradle.TotalHits)
+	assert.Equal(t, int64(101), gradle.TotalCount)
 }
 
 func TestAggregator_Compute_SkipsMalformedFiles(t *testing.T) {
@@ -142,7 +170,7 @@ func TestAggregator_Compute_SkipsMalformedFiles(t *testing.T) {
 	w := NewWriter()
 	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "good", BuildTool: "gradle", HitRate: 0.4}))
 
-	bad := filepath.Join(LedgerDir("p"), "broken.json")
+	bad := filepath.Join(LedgerDir("p"), "broken"+EntryFileSuffix)
 	require.NoError(t, os.WriteFile(bad, []byte("{not json"), 0o600))
 
 	summary, err := NewAggregator("p").Compute()
@@ -152,7 +180,7 @@ func TestAggregator_Compute_SkipsMalformedFiles(t *testing.T) {
 	assert.InDelta(t, 0.4, summary.MeanHitRate, 1e-6)
 }
 
-func TestAggregator_Compute_IgnoresNonJSONAndSubdirs(t *testing.T) {
+func TestAggregator_Compute_IgnoresUnrelatedFilesAndSubdirs(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
@@ -160,6 +188,8 @@ func TestAggregator_Compute_IgnoresNonJSONAndSubdirs(t *testing.T) {
 
 	dir := LedgerDir("p")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hi"), 0o600))
+	// Plain .json without the .childstats. suffix is reserved for other ledgers — must be ignored.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "other.json"), []byte(`{"foo":"bar"}`), 0o600))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
 
 	summary, err := NewAggregator("p").Compute()

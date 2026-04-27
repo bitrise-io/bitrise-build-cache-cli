@@ -81,11 +81,29 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	}
 
 	agg := childstats.NewAggregator(wrapperInvocationID)
+	agg.Logger = d.logger
 	summary, aggErr := agg.Compute()
 	if aggErr != nil {
 		d.logger.TWarnf("Failed to aggregate child invocation hit rates: %v", aggErr)
 	} else if summary.ChildCount > 0 {
-		d.logger.TInfof("Cache hit rate: %.1f%% (avg of %d child invocations)", summary.MeanHitRate*100, summary.ChildCount)
+		d.logger.TInfof(
+			"Cache hit rate (avg of %d child invocations): %.1f%%",
+			summary.ChildCount, summary.MeanHitRate*100,
+		)
+
+		if summary.TotalCount > 0 {
+			d.logger.TInfof(
+				"Cache hit rate (total ratio %d/%d across child invocations): %.1f%%",
+				summary.TotalHits, summary.TotalCount, summary.WeightedHitRate*100,
+			)
+		}
+
+		if summary.BaselineCount > 0 {
+			d.logger.TWarnf(
+				"%d of %d child invocations ran in baseline benchmark mode (cache disabled) — they pull the average down.",
+				summary.BaselineCount, summary.ChildCount,
+			)
+		}
 	}
 
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{

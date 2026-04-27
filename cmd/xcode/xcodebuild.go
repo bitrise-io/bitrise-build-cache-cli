@@ -335,12 +335,12 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		XcodeBuildNumber: runStats.XcodeBuildNumber,
 	}, c.Config.AuthConfig, c.Metadata)
 
-	c.saveInvocationAndRelation(*inv)
+	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
 	return runStats
 }
 
-func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation) {
+func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {
 	saver, err := c.resolveInvocationAPI()
 	if err != nil {
 		c.Logger.Errorf("Failed to create analytics client: %v", err)
@@ -358,19 +358,25 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation) {
 
 	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
 		c.sendRelation(parentID)
-		c.writeChildStatsLedger(parentID, inv)
+		c.writeChildStatsLedger(parentID, inv, hits, total)
 	}
 }
 
 // writeChildStatsLedger records this xcode invocation's hit rate in the
 // parent's local ledger so a parent wrapper (e.g. react-native) can
 // aggregate child hit rates at the end of its run.
-func (c *XcodebuildRunner) writeChildStatsLedger(parentID string, inv analytics.Invocation) {
+//
+// hits and total come from xcode's reported per-target cache stats so the
+// parent can compute a weighted hit rate (sum(hits)/sum(total)) in addition
+// to the simple mean of per-child hit rates.
+func (c *XcodebuildRunner) writeChildStatsLedger(parentID string, inv analytics.Invocation, hits, total int64) {
 	entry := childstats.Entry{
 		ChildInvocationID:  c.InvocationID,
 		ParentInvocationID: parentID,
 		BuildTool:          "xcode",
 		HitRate:            inv.HitRate,
+		Hits:               hits,
+		Total:              total,
 		BenchmarkPhase:     c.Metadata.BenchmarkPhase,
 	}
 

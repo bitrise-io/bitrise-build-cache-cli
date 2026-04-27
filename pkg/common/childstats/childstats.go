@@ -3,9 +3,13 @@
 // aggregate them at the end of a wrapper run (e.g. react-native).
 //
 // The ledger lives under ~/.bitrise/cache/invocations/<parent-id>/
-// with one <child-id>.json file per child invocation. Writes are atomic
-// (tmp file + rename). The path contract is stable and cross-language:
-// the gradle plugin writes files to the same location.
+// with one <child-id>.childstats.json file per child invocation. Writes
+// are atomic (tmp file + rename). The path contract is stable and
+// cross-language: the gradle plugin writes files to the same location.
+//
+// The .childstats.json suffix leaves the per-parent directory free for
+// other future per-invocation ledgers (with their own suffixes) without
+// path collisions.
 package childstats
 
 import (
@@ -17,6 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const (
@@ -25,8 +31,15 @@ const (
 	SchemaVersion = 1
 
 	// BenchmarkPhaseBaseline identifies entries written during a baseline
-	// benchmark run (cache disabled). These are excluded from the mean.
+	// benchmark run (cache disabled). Included in the aggregate at their
+	// reported hit rate (typically 0%) and logged so the user can see the
+	// baseline drag on the average.
 	BenchmarkPhaseBaseline = "baseline"
+
+	// EntryFileSuffix is the suffix used for ledger entry files. The
+	// suffix namespaces this ledger so additional per-invocation ledgers
+	// can coexist under the same parent directory.
+	EntryFileSuffix = ".childstats.json"
 
 	// DefaultSweepTTL is how long a parent ledger directory is kept before
 	// Sweep considers it stale. Long enough to outlast any real build;
@@ -55,7 +68,7 @@ func LedgerDir(parentID string) string {
 
 // LedgerPath returns the path of a single child entry file.
 func LedgerPath(parentID, childID string) string {
-	return filepath.Join(LedgerDir(parentID), childID+".json")
+	return filepath.Join(LedgerDir(parentID), childID+EntryFileSuffix)
 }
 
 // Writer persists ledger entries.
@@ -92,7 +105,7 @@ func (w *Writer) Write(entry Entry) error {
 		return fmt.Errorf("marshal entry: %w", err)
 	}
 
-	finalPath := filepath.Join(dir, entry.ChildInvocationID+".json")
+	finalPath := filepath.Join(dir, entry.ChildInvocationID+EntryFileSuffix)
 	tmp, err := os.CreateTemp(dir, entry.ChildInvocationID+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("create tmp file: %w", err)
@@ -123,28 +136,66 @@ func (w *Writer) Write(entry Entry) error {
 
 // ToolSummary holds per-build-tool aggregate stats.
 type ToolSummary struct {
+	// MeanHitRate is the unweighted mean of hit_rate across the tool's children.
 	MeanHitRate float32
-	Count       int
+
+	// WeightedHitRate is sum(hits) / sum(total) across the tool's children.
+	// Zero when no entry reported Total > 0.
+	WeightedHitRate float32
+
+	// TotalHits is the sum of Hits across the tool's children.
+	TotalHits int64
+
+	// TotalCount is the sum of Total across the tool's children.
+	TotalCount int64
+
+	// Count is the number of entries included for this tool.
+	Count int
 }
 
 // Summary is the aggregated result of all child entries for one parent.
+//
+// Two hit-rate views are reported: MeanHitRate is a simple unweighted mean
+// of each child's reported hit rate (every child weighs the same). WeightedHitRate
+// is the cache-wide ratio sum(hits)/sum(total) (every cacheable call weighs the
+// same). They can diverge when children process very different numbers of items.
+// Callers are expected to surface both so users can interpret the result.
 type Summary struct {
 	// MeanHitRate is the unweighted mean of hit_rate across included children.
 	MeanHitRate float32
 
+	// WeightedHitRate is sum(hits) / sum(total) across included children.
+	// Zero when no entry reported Total > 0.
+	WeightedHitRate float32
+
+	// TotalHits is the sum of Hits across included children.
+	TotalHits int64
+
+	// TotalCount is the sum of Total across included children.
+	TotalCount int64
+
 	// ChildCount is the number of entries included in MeanHitRate.
 	ChildCount int
 
-	// SkippedCount is the number of entries excluded (baseline phase, malformed, missing hit rate).
+	// BaselineCount is the number of entries included that came from a baseline
+	// benchmark run. They are NOT excluded from the mean — surfaced here so the
+	// caller can warn the user that baseline runs drag the average down.
+	BaselineCount int
+
+	// SkippedCount is the number of entries excluded (malformed only).
 	SkippedCount int
 
-	// ByTool breaks down the mean per build tool (gradle, ccache, xcode, ...).
+	// ByTool breaks down the stats per build tool (gradle, ccache, xcode, ...).
 	ByTool map[string]ToolSummary
 }
 
 // Aggregator reads a parent's ledger directory and produces a Summary.
 type Aggregator struct {
 	parentID string
+
+	// Logger receives warnings about malformed entries and info logs about
+	// baseline entries included in the aggregate. Nil means silent.
+	Logger log.Logger
 }
 
 // NewAggregator returns an Aggregator for the given parent invocation ID.
@@ -155,7 +206,8 @@ func NewAggregator(parentID string) *Aggregator {
 // Compute reads all entries under the parent's ledger directory and
 // returns the aggregated Summary. Missing directory is not an error —
 // Summary is returned empty. Malformed entries are skipped and counted
-// in SkippedCount.
+// in SkippedCount; baseline entries are included with their reported
+// hit rate (typically 0%) and counted in BaselineCount.
 func (a *Aggregator) Compute() (Summary, error) {
 	summary := Summary{ByTool: map[string]ToolSummary{}}
 
@@ -177,41 +229,70 @@ func (a *Aggregator) Compute() (Summary, error) {
 	var sum float32
 	byToolSums := map[string]float32{}
 	byToolCounts := map[string]int{}
+	byToolHits := map[string]int64{}
+	byToolTotals := map[string]int64{}
 
 	for _, de := range entries {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), EntryFileSuffix) {
 			continue
 		}
 
-		entry, err := readEntry(filepath.Join(dir, de.Name()))
+		entryPath := filepath.Join(dir, de.Name())
+
+		entry, err := readEntry(entryPath)
 		if err != nil {
 			summary.SkippedCount++
+
+			if a.Logger != nil {
+				a.Logger.Warnf("Skipping malformed child stats entry %s: %v", entryPath, err)
+			}
 
 			continue
 		}
 
 		if entry.BenchmarkPhase == BenchmarkPhaseBaseline {
-			summary.SkippedCount++
+			summary.BaselineCount++
 
-			continue
+			if a.Logger != nil {
+				a.Logger.Infof(
+					"Including baseline child invocation %s (build tool: %s, hit rate: %.1f%%) in aggregate",
+					entry.ChildInvocationID, entry.BuildTool, entry.HitRate*100,
+				)
+			}
 		}
 
 		sum += entry.HitRate
 		summary.ChildCount++
+		summary.TotalHits += entry.Hits
+		summary.TotalCount += entry.Total
 
 		byToolSums[entry.BuildTool] += entry.HitRate
 		byToolCounts[entry.BuildTool]++
+		byToolHits[entry.BuildTool] += entry.Hits
+		byToolTotals[entry.BuildTool] += entry.Total
 	}
 
 	if summary.ChildCount > 0 {
 		summary.MeanHitRate = sum / float32(summary.ChildCount)
 	}
 
+	if summary.TotalCount > 0 {
+		summary.WeightedHitRate = float32(summary.TotalHits) / float32(summary.TotalCount)
+	}
+
 	for tool, count := range byToolCounts {
-		summary.ByTool[tool] = ToolSummary{
+		ts := ToolSummary{
 			MeanHitRate: byToolSums[tool] / float32(count),
+			TotalHits:   byToolHits[tool],
+			TotalCount:  byToolTotals[tool],
 			Count:       count,
 		}
+
+		if ts.TotalCount > 0 {
+			ts.WeightedHitRate = float32(ts.TotalHits) / float32(ts.TotalCount)
+		}
+
+		summary.ByTool[tool] = ts
 	}
 
 	return summary, nil

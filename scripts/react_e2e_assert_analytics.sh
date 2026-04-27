@@ -112,7 +112,7 @@ if [ -n "${XCELERATE_LOGS:-}" ]; then
 fi
 
 if [ "$has_child" = "true" ]; then
-  if ! grep -qE "Cache hit rate: [0-9]+\.[0-9]+% \(avg of [0-9]+ child invocations\)" "$RN_CLI_LOG"; then
+  if ! grep -qE "Cache hit rate \(avg of [0-9]+ child invocations\): [0-9]+\.[0-9]+%" "$RN_CLI_LOG"; then
     echo "Child hit rate aggregation log line missing ❌"
     exit 1
   fi
