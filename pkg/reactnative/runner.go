@@ -11,6 +11,7 @@ import (
 
 	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -59,11 +60,6 @@ type Runner struct {
 
 // NewRunner creates a Runner with production pre-run and post-run hooks.
 func NewRunner(params RunnerParams) *Runner {
-	logger := params.Logger
-	if logger == nil {
-		logger = log.NewLogger()
-	}
-
 	osProxy := params.OsProxy
 	if osProxy == nil {
 		osProxy = utils.DefaultOsProxy{}
@@ -72,6 +68,19 @@ func NewRunner(params RunnerParams) *Runner {
 	decoderFactory := params.DecoderFactory
 	if decoderFactory == nil {
 		decoderFactory = utils.DefaultDecoderFactory{}
+	}
+
+	logger := params.Logger
+	if logger == nil {
+		// Honour DebugLogging from the multiplatform analytics config so
+		// `activate react-native --debug` propagates to the runner and to any
+		// component (e.g. the analytics client) that uses this logger.
+		debug := false
+		if cfg, err := multiplatformconfig.ReadConfig(osProxy, decoderFactory); err == nil {
+			debug = cfg.DebugLogging
+		}
+
+		logger = log.NewLogger(log.WithDebugLog(debug))
 	}
 
 	var ccacheConfig *ccacheconfig.Config

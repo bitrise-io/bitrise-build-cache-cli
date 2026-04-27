@@ -7,6 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -109,6 +110,17 @@ func (a *Activator) Activate(ctx context.Context) error {
 
 	if err := config.Save(a.logger, a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
+	}
+
+	// Auth credentials are persisted only in the multiplatform analytics config
+	// (single source of truth on disk). The ccache config carries auth in-memory
+	// at runtime via ReadConfig, but never to JSON.
+	mpCfg := multiplatformconfig.Config{
+		AuthConfig:   config.AuthConfig,
+		DebugLogging: a.debugLogging,
+	}
+	if err := mpCfg.Save(a.osProxy, a.encoderFactory); err != nil {
+		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
 
 	baseDir := a.baseDirOverride

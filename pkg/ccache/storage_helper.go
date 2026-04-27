@@ -96,9 +96,7 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 	config.DebugLogging = config.DebugLogging || params.DebugLogging
 
 	registry, err := pkgcommon.NewInvocationRegistry(pkgcommon.InvocationRegistryParams{
-		Envs:         params.Envs,
-		AuthConfig:   &config.AuthConfig,
-		DebugLogging: config.DebugLogging,
+		Envs: params.Envs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create invocation registry: %w", err)

@@ -13,6 +13,7 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
@@ -81,6 +82,17 @@ func Activate(
 
 	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+	}
+
+	// Auth credentials are persisted only in the multiplatform analytics config
+	// (single source of truth on disk). The xcelerate config carries auth in-memory
+	// at runtime via ReadConfig, but never to JSON.
+	mpCfg := multiplatformconfig.Config{
+		AuthConfig:   config.AuthConfig,
+		DebugLogging: config.DebugLogging,
+	}
+	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
+		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
 
 	if err := copyCLIToXcelerateBinDir(ctx, osProxy, logger); err != nil {

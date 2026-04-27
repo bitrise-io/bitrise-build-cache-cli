@@ -39,7 +39,8 @@ var registerInvocationCmd = &cobra.Command{
 func init() {
 	registerInvocationCmd.Flags().StringVar(&registerInvocationID, "invocation-id", "", "Invocation ID to register (required)")
 	_ = registerInvocationCmd.MarkFlagRequired("invocation-id")
-	registerInvocationCmd.Flags().StringVar(&registerInvocationBuildTool, "build-tool", "multiplatform", "Build tool label for the invocation")
+	registerInvocationCmd.Flags().StringVar(&registerInvocationBuildTool, "build-tool", "", "Build tool label for the invocation (required, e.g. gradle, ccache, reactnative)")
+	_ = registerInvocationCmd.MarkFlagRequired("build-tool")
 
 	RootCmd.AddCommand(registerInvocationCmd)
 }
