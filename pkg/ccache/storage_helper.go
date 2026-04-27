@@ -261,7 +261,9 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	h.registerInvocationRelation(ctx)
 
-	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul)
+	metadata := configcommon.NewMetadata(h.params.Envs, newCommandFunc(ctx), h.logger)
+
+	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, h.config.AuthConfig, metadata)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
 	}

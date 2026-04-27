@@ -1,11 +1,15 @@
 package analytics
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 //nolint:gochecknoglobals
@@ -95,17 +99,39 @@ func ParseCcacheConfig(data []byte) []CcacheConfigEntry {
 	return entries
 }
 
-// NewCcacheInvocation assembles a CcacheInvocation from a ccache stats snapshot and transfer byte counts.
-// It references the parent Invocation via parentInvocationID and contains only ccache-specific data.
-func NewCcacheInvocation(invocationID, parentInvocationID string, invocationDate time.Time, stats CcacheStats, downloadedBytes, uploadedBytes int64) *CcacheInvocation {
+// NewCcacheInvocation assembles a CcacheInvocation from a ccache stats snapshot,
+// transfer byte counts, and the auth + host metadata. It mirrors
+// multiplatform.NewInvocation for the embedded fields so the BE receives the
+// full set of CI / host / repository metadata at the top level (the BE does
+// not unwrap fields from inside `buildToolStats`).
+func NewCcacheInvocation(
+	invocationID, parentInvocationID string,
+	invocationDate time.Time,
+	stats CcacheStats,
+	downloadedBytes, uploadedBytes int64,
+	authMetadata common.CacheAuthConfig,
+	commonMetadata common.CacheConfigMetadata,
+) *CcacheInvocation {
+	var ccacheErr error
+	if summary := stats.ErrorSummary(); summary != "" {
+		ccacheErr = errors.New(summary)
+	}
+
+	base := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
+		InvocationID:   invocationID,
+		InvocationDate: invocationDate,
+		BuildTool:      "ccache",
+		HitRate:        float32(stats.CacheHitRate),
+		Success:        stats.Success(),
+		Error:          ccacheErr,
+	}, authMetadata, commonMetadata)
+
 	return &CcacheInvocation{
-		InvocationID:       invocationID,
+		Invocation:         *base,
 		ParentInvocationID: parentInvocationID,
-		InvocationDate:     invocationDate,
 		BuildToolStats:     stats,
 		DownloadedBytes:    downloadedBytes,
 		UploadedBytes:      uploadedBytes,
-		BuildTool:          "ccache",
 	}
 }
 

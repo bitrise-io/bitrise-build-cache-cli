@@ -4,8 +4,12 @@ package analytics
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 // sampleStatsOutput is representative `ccache -v -v -s` text output.
@@ -220,5 +224,135 @@ func Test_ParseCcacheStats(t *testing.T) {
 		_, err := ParseCcacheStats([]byte("Future field: 99\n"))
 
 		assert.NoError(t, err)
+	})
+}
+
+func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
+	stats := CcacheStats{CacheableCalls: 10, CacheHit: 7}
+	auth := common.CacheAuthConfig{WorkspaceID: "ws-1", AuthToken: "tok"}
+	meta := common.CacheConfigMetadata{
+		BitriseAppID:           "app-1",
+		BitriseBuildID:         "build-1",
+		BitriseStepExecutionID: "step-1",
+		BitriseWorkflowName:    "primary",
+		CIProvider:             "bitrise",
+		CLIVersion:             "9.9.9",
+		HostMetadata: common.HostMetadata{
+			Hostname:       "host-1",
+			Username:       "user-1",
+			OS:             "darwin",
+			CPUCores:       8,
+			MemSize:        17179869184,
+			DefaultCharset: "UTF-8",
+			Locale:         "en_US",
+		},
+		GitMetadata: common.GitMetadata{
+			CommitHash:  "deadbeef",
+			Branch:      "main",
+			RepoURL:     "git@example.com:org/repo.git",
+			CommitEmail: "dev@example.com",
+		},
+		Datacenter:     "iad1",
+		ExternalAppID:  "ext-app",
+		ExternalBuildID: "ext-build",
+	}
+
+	invDate := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	inv := NewCcacheInvocation("child-1", "parent-1", invDate, stats, 100, 200, auth, meta)
+
+	require.NotNil(t, inv)
+	// Top-level metadata propagated from common metadata.
+	assert.Equal(t, "child-1", inv.InvocationID)
+	assert.Equal(t, "parent-1", inv.ParentInvocationID)
+	assert.Equal(t, invDate, inv.InvocationDate)
+	assert.Equal(t, "ws-1", inv.BitriseWorkspaceSlug)
+	assert.Equal(t, "app-1", inv.BitriseAppSlug)
+	assert.Equal(t, "build-1", inv.BitriseBuildSlug)
+	assert.Equal(t, "step-1", inv.BitriseStepID)
+	assert.Equal(t, "host-1", inv.Hostname)
+	assert.Equal(t, "user-1", inv.Username)
+	assert.Equal(t, "deadbeef", inv.CommitHash)
+	assert.Equal(t, "main", inv.Branch)
+	assert.Equal(t, "darwin", inv.OS)
+	assert.Equal(t, "primary", inv.WorkflowName)
+	assert.Equal(t, "bitrise", inv.ProviderID)
+	assert.Equal(t, "9.9.9", inv.CLIVersion)
+	assert.Equal(t, "ccache", inv.BuildTool)
+	// Ccache-specific fields preserved.
+	assert.Equal(t, stats, inv.BuildToolStats)
+	assert.Equal(t, int64(100), inv.DownloadedBytes)
+	assert.Equal(t, int64(200), inv.UploadedBytes)
+}
+
+func TestCcacheStats_Success(t *testing.T) {
+	t.Run("no errors → success", func(t *testing.T) {
+		s := CcacheStats{CacheHit: 5, CacheMiss: 1}
+		assert.True(t, s.Success())
+	})
+
+	t.Run("internal error → not success", func(t *testing.T) {
+		s := CcacheStats{InternalError: 1}
+		assert.False(t, s.Success())
+	})
+
+	t.Run("compile failed → not success", func(t *testing.T) {
+		s := CcacheStats{CompileFailed: 2}
+		assert.False(t, s.Success())
+	})
+
+	t.Run("storage misses do not flip success", func(t *testing.T) {
+		// remote_storage_miss / cache_miss are normal, not errors.
+		s := CcacheStats{RemoteStorageMiss: 100, CacheMiss: 100}
+		assert.True(t, s.Success())
+	})
+}
+
+func TestCcacheStats_ErrorSummary(t *testing.T) {
+	t.Run("empty when no errors", func(t *testing.T) {
+		assert.Empty(t, CcacheStats{}.ErrorSummary())
+	})
+
+	t.Run("lists every non-zero error counter", func(t *testing.T) {
+		s := CcacheStats{InternalError: 2, CompileFailed: 1, BadInputFile: 4}
+		got := s.ErrorSummary()
+		assert.Contains(t, got, "internal_error=2")
+		assert.Contains(t, got, "compile_failed=1")
+		assert.Contains(t, got, "bad_input_file=4")
+	})
+}
+
+func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
+	auth := common.CacheAuthConfig{}
+	meta := common.CacheConfigMetadata{}
+
+	t.Run("clean run propagates hit rate, success=true, empty error", func(t *testing.T) {
+		stats := CcacheStats{
+			CacheableCalls: 10,
+			CacheHit:       7,
+			CacheHitRate:   0.7,
+		}
+
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+
+		assert.InDelta(t, 0.7, inv.HitRate, 1e-6)
+		assert.True(t, inv.Success)
+		assert.Empty(t, inv.Error)
+	})
+
+	t.Run("internal errors propagate as success=false + summary string", func(t *testing.T) {
+		stats := CcacheStats{
+			CacheableCalls: 10,
+			CacheHit:       5,
+			CacheHitRate:   0.5,
+			InternalError:  1,
+			CompileFailed:  3,
+		}
+
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+
+		assert.InDelta(t, 0.5, inv.HitRate, 1e-6)
+		assert.False(t, inv.Success)
+		assert.Contains(t, inv.Error, "internal_error=1")
+		assert.Contains(t, inv.Error, "compile_failed=3")
 	})
 }

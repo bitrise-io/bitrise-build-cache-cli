@@ -24,6 +24,7 @@ type Invocation struct {
 	Command              string            `json:"command"`
 	FullCommand          string            `json:"fullCommand"`
 	DurationMs           int64             `json:"durationMs"`
+	HitRate              float32           `json:"hitRate"`
 	Success              bool              `json:"success"`
 	Error                string            `json:"error"`
 	WorkflowName         string            `json:"workflowName"`
@@ -41,7 +42,6 @@ type Invocation struct {
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
 	BuildTool            string            `json:"buildTool"`
 	Wrapper              string            `json:"wrapper,omitempty"`
-	HitRate              float32           `json:"hitRate"`
 }
 
 // InvocationRelation records a parent→child relationship between two invocations.
@@ -59,11 +59,11 @@ type InvocationRunStats struct {
 	Duration       time.Duration
 	Command        string
 	FullCommand    string
+	HitRate        float32
 	Success        bool
 	Error          error
 	BuildTool      string
 	Wrapper        string
-	HitRate        float32
 }
 
 // NewInvocation assembles an Invocation from run stats, auth config, and system metadata.
@@ -89,6 +89,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		Command:              runStats.Command,
 		FullCommand:          runStats.FullCommand,
 		DurationMs:           runStats.Duration.Milliseconds(),
+		HitRate:              runStats.HitRate,
 		Success:              runStats.Success,
 		Error:                errorStr,
 		WorkflowName:         commonMetadata.BitriseWorkflowName,
@@ -106,7 +107,6 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
 		BuildTool:            runStats.BuildTool,
 		Wrapper:              runStats.Wrapper,
-		HitRate:              runStats.HitRate,
 	}
 }
 
