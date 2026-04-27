@@ -98,6 +98,19 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 				summary.BaselineCount, summary.ChildCount,
 			)
 		}
+
+		if summary.FailedCount > 0 {
+			d.logger.TWarnf(
+				"%d of %d child invocations reported a failure — marking the wrapper run as failed.",
+				summary.FailedCount, summary.ChildCount,
+			)
+		}
+	}
+
+	wrapperSuccess := execErr == nil && summary.FailedCount == 0
+	wrapperErr := execErr
+	if wrapperErr == nil && summary.FailedCount > 0 {
+		wrapperErr = fmt.Errorf("%d of %d child invocations failed", summary.FailedCount, summary.ChildCount)
 	}
 
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
@@ -106,8 +119,8 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		Duration:       duration,
 		Command:        command,
 		FullCommand:    fullCommand,
-		Success:        execErr == nil,
-		Error:          execErr,
+		Success:        wrapperSuccess,
+		Error:          wrapperErr,
 		BuildTool:      "react-native",
 		Wrapper:        "bitrise-build-cache-cli react-native",
 		HitRate:        summary.MeanHitRate,

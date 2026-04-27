@@ -378,6 +378,7 @@ func (c *XcodebuildRunner) writeChildStatsLedger(parentID string, inv analytics.
 		Hits:               hits,
 		Total:              total,
 		BenchmarkPhase:     c.Metadata.BenchmarkPhase,
+		Failed:             !inv.Success,
 	}
 
 	if err := childstats.NewWriter().Write(entry); err != nil {
