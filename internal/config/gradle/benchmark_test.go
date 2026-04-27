@@ -19,6 +19,18 @@ type noopExporter struct{}
 func (n *noopExporter) Export(_, _ string)          {}
 func (n *noopExporter) ExportToShellRC(_, _ string) {}
 
+type recordingShellRCExporter struct {
+	blocks map[string]string
+}
+
+func (r *recordingShellRCExporter) Export(_, _ string) {}
+func (r *recordingShellRCExporter) ExportToShellRC(blockName, content string) {
+	if r.blocks == nil {
+		r.blocks = map[string]string{}
+	}
+	r.blocks[blockName] = content
+}
+
 func Test_ApplyBenchmarkPhase(t *testing.T) {
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
@@ -107,6 +119,25 @@ func Test_ApplyBenchmarkPhase(t *testing.T) {
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
+	})
+
+	t.Run("uses gradle-specific shell-rc block name", func(t *testing.T) {
+		logger := prep()
+		params := ActivateGradleParams{Cache: CacheParams{Enabled: true}}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseWarmup, nil
+			},
+		}
+
+		exporter := &recordingShellRCExporter{}
+		ApplyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, exporter)
+
+		_, hasGradleBlock := exporter.blocks["Bitrise Benchmark Phase Gradle"]
+		assert.True(t, hasGradleBlock, "expected gradle-specific block name so xcode activation doesn't clobber it")
+		_, hasGenericBlock := exporter.blocks["Bitrise Benchmark Phase"]
+		assert.False(t, hasGenericBlock, "generic block name reintroduces the cross-tool clobber")
 	})
 
 	t.Run("error falls back to original params", func(t *testing.T) {

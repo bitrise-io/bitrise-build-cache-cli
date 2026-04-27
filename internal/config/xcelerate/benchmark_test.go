@@ -18,6 +18,18 @@ type noopExporter struct{}
 func (n *noopExporter) Export(_, _ string)          {}
 func (n *noopExporter) ExportToShellRC(_, _ string) {}
 
+type recordingShellRCExporter struct {
+	blocks map[string]string
+}
+
+func (r *recordingShellRCExporter) Export(_, _ string) {}
+func (r *recordingShellRCExporter) ExportToShellRC(blockName, content string) {
+	if r.blocks == nil {
+		r.blocks = map[string]string{}
+	}
+	r.blocks[blockName] = content
+}
+
 func TestApplyBenchmarkPhase(t *testing.T) {
 	t.Run("baseline phase disables cache", func(t *testing.T) {
 		params := xcelerate.Params{
@@ -71,6 +83,24 @@ func TestApplyBenchmarkPhase(t *testing.T) {
 		xcelerate.ApplyBenchmarkPhase(&params, mockLogger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
 
 		assert.True(t, params.BuildCacheEnabled)
+	})
+
+	t.Run("uses xcode-specific shell-rc block name", func(t *testing.T) {
+		params := xcelerate.Params{BuildCacheEnabled: true}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseWarmup, nil
+			},
+		}
+
+		exporter := &recordingShellRCExporter{}
+		xcelerate.ApplyBenchmarkPhase(&params, mockLogger, mockProvider, common.CacheConfigMetadata{}, exporter)
+
+		_, hasXcodeBlock := exporter.blocks["Bitrise Benchmark Phase Xcode"]
+		assert.True(t, hasXcodeBlock, "expected xcode-specific block name so gradle activation doesn't clobber it")
+		_, hasGenericBlock := exporter.blocks["Bitrise Benchmark Phase"]
+		assert.False(t, hasGenericBlock, "generic block name reintroduces the cross-tool clobber")
 	})
 
 	t.Run("error falls back to original params", func(t *testing.T) {

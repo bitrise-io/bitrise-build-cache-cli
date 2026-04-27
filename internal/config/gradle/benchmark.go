@@ -39,7 +39,9 @@ func ApplyBenchmarkPhase(
 	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolGradle)
 	logger.Infof("(i) Benchmark phase: %s", phase)
 	exporter.Export(envVar, phase)
-	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export "+envVar+"="+phase)
+	// Block name is per-build-tool so xcode's call doesn't overwrite gradle's
+	// block (or vice versa) in mixed activations like React Native.
+	exporter.ExportToShellRC("Bitrise Benchmark Phase Gradle", "export "+envVar+"="+phase)
 	common.WriteBenchmarkPhaseFile(common.BuildToolGradle, phase, logger)
 
 	switch phase {
