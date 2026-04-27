@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -111,10 +112,18 @@ func NewCcacheInvocation(
 	authMetadata common.CacheAuthConfig,
 	commonMetadata common.CacheConfigMetadata,
 ) *CcacheInvocation {
+	var ccacheErr error
+	if summary := stats.ErrorSummary(); summary != "" {
+		ccacheErr = errors.New(summary)
+	}
+
 	base := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationID:   invocationID,
 		InvocationDate: invocationDate,
 		BuildTool:      "ccache",
+		HitRate:        float32(stats.CacheHitRate),
+		Success:        stats.Success(),
+		Error:          ccacheErr,
 	}, authMetadata, commonMetadata)
 
 	return &CcacheInvocation{

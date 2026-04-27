@@ -283,3 +283,76 @@ func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
 	assert.Equal(t, int64(100), inv.DownloadedBytes)
 	assert.Equal(t, int64(200), inv.UploadedBytes)
 }
+
+func TestCcacheStats_Success(t *testing.T) {
+	t.Run("no errors → success", func(t *testing.T) {
+		s := CcacheStats{CacheHit: 5, CacheMiss: 1}
+		assert.True(t, s.Success())
+	})
+
+	t.Run("internal error → not success", func(t *testing.T) {
+		s := CcacheStats{InternalError: 1}
+		assert.False(t, s.Success())
+	})
+
+	t.Run("compile failed → not success", func(t *testing.T) {
+		s := CcacheStats{CompileFailed: 2}
+		assert.False(t, s.Success())
+	})
+
+	t.Run("storage misses do not flip success", func(t *testing.T) {
+		// remote_storage_miss / cache_miss are normal, not errors.
+		s := CcacheStats{RemoteStorageMiss: 100, CacheMiss: 100}
+		assert.True(t, s.Success())
+	})
+}
+
+func TestCcacheStats_ErrorSummary(t *testing.T) {
+	t.Run("empty when no errors", func(t *testing.T) {
+		assert.Empty(t, CcacheStats{}.ErrorSummary())
+	})
+
+	t.Run("lists every non-zero error counter", func(t *testing.T) {
+		s := CcacheStats{InternalError: 2, CompileFailed: 1, BadInputFile: 4}
+		got := s.ErrorSummary()
+		assert.Contains(t, got, "internal_error=2")
+		assert.Contains(t, got, "compile_failed=1")
+		assert.Contains(t, got, "bad_input_file=4")
+	})
+}
+
+func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
+	auth := common.CacheAuthConfig{}
+	meta := common.CacheConfigMetadata{}
+
+	t.Run("clean run propagates hit rate, success=true, empty error", func(t *testing.T) {
+		stats := CcacheStats{
+			CacheableCalls: 10,
+			CacheHit:       7,
+			CacheHitRate:   0.7,
+		}
+
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+
+		assert.InDelta(t, 0.7, inv.HitRate, 1e-6)
+		assert.True(t, inv.Success)
+		assert.Empty(t, inv.Error)
+	})
+
+	t.Run("internal errors propagate as success=false + summary string", func(t *testing.T) {
+		stats := CcacheStats{
+			CacheableCalls: 10,
+			CacheHit:       5,
+			CacheHitRate:   0.5,
+			InternalError:  1,
+			CompileFailed:  3,
+		}
+
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+
+		assert.InDelta(t, 0.5, inv.HitRate, 1e-6)
+		assert.False(t, inv.Success)
+		assert.Contains(t, inv.Error, "internal_error=1")
+		assert.Contains(t, inv.Error, "compile_failed=3")
+	})
+}

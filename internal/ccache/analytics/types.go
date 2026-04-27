@@ -1,6 +1,9 @@
 package analytics
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
 )
 
@@ -85,6 +88,63 @@ type CcacheStats struct {
 // HasActivity returns true if ccache processed any compilations (hits or misses).
 func (s CcacheStats) HasActivity() bool {
 	return s.CacheableCalls+s.UncacheableCalls > 0
+}
+
+// Success reports whether ccache did its job without internal/IO/compile errors
+// during the run. Storage hits/misses are normal and do NOT affect Success —
+// only conditions that indicate ccache itself misbehaved or the user's build
+// hit a hard error are counted. The intent is the same as the Success bool on
+// the wrapper invocation: did the tool perform its task correctly?
+func (s CcacheStats) Success() bool {
+	return s.errorCount() == 0
+}
+
+// ErrorSummary returns a comma-separated `field=count` list of every non-zero
+// error counter, or an empty string when ccache reported no errors. Designed
+// for the multiplatform invocation's `error` field so the BE can surface a
+// short reason string without re-implementing the parser.
+func (s CcacheStats) ErrorSummary() string {
+	parts := make([]string, 0, errorFieldCount)
+	for _, f := range errorFields(s) {
+		if f.count > 0 {
+			parts = append(parts, fmt.Sprintf("%s=%d", f.name, f.count))
+		}
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// errorFieldCount is len(errorFields(...)) — kept in sync with the helper
+// to size the slice in ErrorSummary without re-counting at every call.
+const errorFieldCount = 10
+
+func (s CcacheStats) errorCount() int {
+	total := 0
+	for _, f := range errorFields(s) {
+		total += f.count
+	}
+
+	return total
+}
+
+type errorField struct {
+	name  string
+	count int
+}
+
+func errorFields(s CcacheStats) []errorField {
+	return []errorField{
+		{"internal_error", s.InternalError},
+		{"compile_failed", s.CompileFailed},
+		{"compiler_check_failed", s.CompilerCheckFailed},
+		{"preprocessor_error", s.PreprocessorError},
+		{"could_not_find_compiler", s.CouldNotFindCompiler},
+		{"bad_input_file", s.BadInputFile},
+		{"bad_output_file", s.BadOutputFile},
+		{"error_hashing_extra_file", s.ErrorHashingExtraFile},
+		{"missing_cache_file", s.MissingCacheFile},
+		{"modified_input_file", s.ModifiedInputFile},
+	}
 }
 
 // CcacheConfigEntry is a single configuration key-value pair from `ccache --show-config`,
