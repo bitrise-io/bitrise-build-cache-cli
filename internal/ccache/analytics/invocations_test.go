@@ -4,8 +4,12 @@ package analytics
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 // sampleStatsOutput is representative `ccache -v -v -s` text output.
@@ -221,4 +225,61 @@ func Test_ParseCcacheStats(t *testing.T) {
 
 		assert.NoError(t, err)
 	})
+}
+
+func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
+	stats := CcacheStats{CacheableCalls: 10, CacheHit: 7}
+	auth := common.CacheAuthConfig{WorkspaceID: "ws-1", AuthToken: "tok"}
+	meta := common.CacheConfigMetadata{
+		BitriseAppID:           "app-1",
+		BitriseBuildID:         "build-1",
+		BitriseStepExecutionID: "step-1",
+		BitriseWorkflowName:    "primary",
+		CIProvider:             "bitrise",
+		CLIVersion:             "9.9.9",
+		HostMetadata: common.HostMetadata{
+			Hostname:       "host-1",
+			Username:       "user-1",
+			OS:             "darwin",
+			CPUCores:       8,
+			MemSize:        17179869184,
+			DefaultCharset: "UTF-8",
+			Locale:         "en_US",
+		},
+		GitMetadata: common.GitMetadata{
+			CommitHash:  "deadbeef",
+			Branch:      "main",
+			RepoURL:     "git@example.com:org/repo.git",
+			CommitEmail: "dev@example.com",
+		},
+		Datacenter:     "iad1",
+		ExternalAppID:  "ext-app",
+		ExternalBuildID: "ext-build",
+	}
+
+	invDate := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	inv := NewCcacheInvocation("child-1", "parent-1", invDate, stats, 100, 200, auth, meta)
+
+	require.NotNil(t, inv)
+	// Top-level metadata propagated from common metadata.
+	assert.Equal(t, "child-1", inv.InvocationID)
+	assert.Equal(t, "parent-1", inv.ParentInvocationID)
+	assert.Equal(t, invDate, inv.InvocationDate)
+	assert.Equal(t, "ws-1", inv.BitriseWorkspaceSlug)
+	assert.Equal(t, "app-1", inv.BitriseAppSlug)
+	assert.Equal(t, "build-1", inv.BitriseBuildSlug)
+	assert.Equal(t, "step-1", inv.BitriseStepID)
+	assert.Equal(t, "host-1", inv.Hostname)
+	assert.Equal(t, "user-1", inv.Username)
+	assert.Equal(t, "deadbeef", inv.CommitHash)
+	assert.Equal(t, "main", inv.Branch)
+	assert.Equal(t, "darwin", inv.OS)
+	assert.Equal(t, "primary", inv.WorkflowName)
+	assert.Equal(t, "bitrise", inv.ProviderID)
+	assert.Equal(t, "9.9.9", inv.CLIVersion)
+	assert.Equal(t, "ccache", inv.BuildTool)
+	// Ccache-specific fields preserved.
+	assert.Equal(t, stats, inv.BuildToolStats)
+	assert.Equal(t, int64(100), inv.DownloadedBytes)
+	assert.Equal(t, int64(200), inv.UploadedBytes)
 }

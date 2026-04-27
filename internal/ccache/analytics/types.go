@@ -1,6 +1,8 @@
 package analytics
 
-import "time"
+import (
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
+)
 
 // CcacheStats holds statistics parsed from `ccache -v -v -s`.
 // CacheHitRate is the only computed field (not emitted by ccache).
@@ -94,13 +96,14 @@ type CcacheConfigEntry struct {
 }
 
 // CcacheInvocation is the analytics payload for ccache statistics captured during a run.
-// It references the parent Invocation and contains only ccache-specific data.
+// It embeds multiplatform.Invocation so the BE receives the full set of CI / host /
+// repository metadata at the top level (the BE does not unwrap fields nested under
+// `buildToolStats`). The ccache-specific fields live alongside the embedded ones.
 type CcacheInvocation struct {
-	InvocationID       string      `json:"invocationId"`
+	multiplatform.Invocation
+
 	ParentInvocationID string      `json:"parentInvocationId"`
-	InvocationDate     time.Time   `json:"invocationDate"`
 	BuildToolStats     CcacheStats `json:"buildToolStats"`
 	DownloadedBytes    int64       `json:"downloadedBytes"`
 	UploadedBytes      int64       `json:"uploadedBytes"`
-	BuildTool          string      `json:"buildTool"`
 }
