@@ -26,6 +26,7 @@ A release can be triggered by:
 | Gradle step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` |
 | Xcode step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` |
 | Gradle features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-features` |
+| React Native features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-react-native-features` |
 | Steplib | — | `bitrise-io/bitrise-steplib` |
 
 ## Steps
@@ -72,11 +73,12 @@ Create a GitHub release in `bitrise-build-cache-cli`.
 
 ### 7. Wait for step auto-update PRs
 
-The CLI release triggers auto-update PRs in **three** step repos (all use unified CI app `48fa8fbee698622c`). The PR title will be "feat: Release new CLI". Monitor CI on all three, then approve and merge:
+The CLI release triggers auto-update PRs in **four** step repos (all use unified CI app `48fa8fbee698622c`). The PR title will be "feat: Release new CLI". Monitor CI on all four, then approve and merge:
 
 1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache`
 2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode`
 3. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` (experimental, no release needed)
+4. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` (experimental, no release needed)
 
 ```bash
 # For each step repo:
@@ -101,10 +103,10 @@ After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each rel
 
 ```bash
 gh pr review --approve --repo bitrise-io/bitrise-steplib <PR_NUMBER>
-gh pr merge --merge --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
+gh pr merge --squash --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
 ```
 
-Always wait for CI to pass — never bypass branch protection.
+Always wait for CI to pass — never bypass branch protection. The steplib repo requires squash merges (merge commits are blocked).
 
 ## Flaky E2E tests — cache hit rate
 

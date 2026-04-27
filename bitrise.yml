@@ -132,6 +132,10 @@ workflows:
         envs:
         - STEP_NAME: bitrise-step-activate-build-cache-for-xcode
         - UPDATE_SCRIPT_PATH: ../scripts/update_activate_build_cache_for_xcode.sh
+    - bundle::update-step:
+        envs:
+        - STEP_NAME: bitrise-step-activate-react-native-features
+        - UPDATE_SCRIPT_PATH: ../scripts/update_activate_react_native_features.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -1038,6 +1042,10 @@ workflows:
           envs:
             - STEP_NAME: bitrise-step-activate-build-cache-for-xcode
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_build_cache_for_xcode.sh
+      - bundle::update-step:
+          envs:
+            - STEP_NAME: bitrise-step-activate-react-native-features
+            - UPDATE_SCRIPT_PATH: ../scripts/update_activate_react_native_features.sh
 
 step_bundles:
   generate_gradle_verification_reference:
