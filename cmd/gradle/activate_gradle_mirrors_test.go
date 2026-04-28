@@ -16,8 +16,18 @@ import (
 func TestActivateGradleMirrorsFn(t *testing.T) {
 	initFileName := "bitrise-gradle-mirrors.init.gradle.kts"
 	allMirrors := gradle.KnownMirrors
-	centralOnly := []gradle.RepoMirror{gradle.KnownMirrors[0]}
-	googleOnly := []gradle.RepoMirror{gradle.KnownMirrors[1]}
+	mirrorByFlag := func(flag string) gradle.RepoMirror {
+		for _, m := range gradle.KnownMirrors {
+			if m.FlagName == flag {
+				return m
+			}
+		}
+		t.Fatalf("mirror with flag %q not found", flag)
+
+		return gradle.RepoMirror{}
+	}
+	centralOnly := []gradle.RepoMirror{mirrorByFlag("mavencentral")}
+	googleOnly := []gradle.RepoMirror{mirrorByFlag("google")}
 
 	tests := []struct {
 		name             string

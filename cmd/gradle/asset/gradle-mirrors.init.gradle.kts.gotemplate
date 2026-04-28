@@ -23,13 +23,22 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
             withType(MavenArtifactRepository::class.java)
                 .matching(canBeMirrored{{ .ID }})
-                .configureEach(useMirror{{ .ID }})
+                .all(useMirror{{ .ID }})
             {{- end }}{{ end }}
         }
         gradle.beforeSettings(Action {
             configureMirror.execute(getBuildscript().getRepositories())
+            // pluginManagement.repositories is empty here, so adding the mirror first
+            // makes plugin resolution try it before any repos declared in settings.gradle.
             // Only mirrors flagged ApplyToPluginManagement run here — google's mirror URL is incompatible with Gradle's plugin portal.
-            configurePluginManagementMirror.execute(getPluginManagement().getRepositories())
+            val pmRepos = getPluginManagement().getRepositories()
+            {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
+            pmRepos.maven {
+                setName("BitriseMirror{{ .ID }}")
+                setUrl("{{ .MirrorURL }}")
+            }
+            {{- end }}{{ end }}
+            configurePluginManagementMirror.execute(pmRepos)
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
         gradle.settingsEvaluated(Action {
