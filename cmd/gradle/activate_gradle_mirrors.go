@@ -39,7 +39,7 @@ type RepoMirror struct {
 // (e.g. apache-central) must run before name-based ones that overwrite the URL.
 var KnownMirrors = []RepoMirror{ //nolint:gochecknoglobals
 	{FlagName: "mavencentral-apache", TemplateID: "ApacheCentral", URLSegment: "apache-central", GradleMatch: `r.getUrl().toString().trimEnd('/').equals("https://repo.maven.apache.org/maven2")`, ApplyToPluginManagement: true},
-	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: `r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME) || r.getUrl().toString().trimEnd('/').equals("https://repo1.maven.org/maven2")`},
+	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: `r.getUrl().toString().trimEnd('/').equals("https://repo1.maven.org/maven2")`},
 	{FlagName: "google", TemplateID: "Google", URLSegment: "google", GradleMatch: `r.getName().equals("Google")`},
 }
 

@@ -110,11 +110,10 @@ func (params ActivateGradleParams) TemplateInventory(
 	testDistroInventory := params.testDistroTemplateInventory(logger, isDebug)
 
 	return TemplateInventory{
-		Common:                commonInventory,
-		Cache:                 cacheInventory,
-		Analytics:             analyticsInventory,
-		TestDistro:            testDistroInventory,
-		MavenCentralMirrorURL: ApacheCentralMirrorURL(envs),
+		Common:     commonInventory,
+		Cache:      cacheInventory,
+		Analytics:  analyticsInventory,
+		TestDistro: testDistroInventory,
 	}, nil
 }
 
