@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc/codes"

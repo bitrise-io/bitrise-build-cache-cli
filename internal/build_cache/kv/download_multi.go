@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
+	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/filegroup"

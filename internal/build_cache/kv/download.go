@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
+	"github.com/bitrise-io/go-utils/v2/retry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
