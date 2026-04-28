@@ -7,8 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"time"
-
-	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 const (
@@ -38,12 +36,20 @@ type Detection struct {
 	ReactNativeEnabled bool
 }
 
+// Logger is the small subset of github.com/bitrise-io/go-utils/v2/log.Logger
+// this package needs. Any go-utils logger satisfies it implicitly, and tests
+// can implement it without stubbing the full Logger surface.
+type Logger interface {
+	Warnf(format string, args ...any)
+	Debugf(format string, args ...any)
+}
+
 // DetectParams configures Detect. The zero value uses production defaults
 // (real PATH lookup, real exec, the default timeouts) and a no-op logger.
 type DetectParams struct {
-	// Logger receives a warn line if the CLI is found but its probe fails.
-	// Nil → silent.
-	Logger log.Logger
+	// Logger receives a warn line if the CLI is found but its probe fails,
+	// and a debug line on each skip path. Nil → silent.
+	Logger Logger
 
 	// LookPath overrides exec.LookPath. Useful for tests.
 	LookPath func(file string) (string, error)
@@ -158,7 +164,7 @@ func queryRNEnabled(ctx context.Context, commandContext func(context.Context, st
 	return false, fmt.Errorf("run status probe: %w", err)
 }
 
-func warn(logger log.Logger, format string, args ...any) {
+func warn(logger Logger, format string, args ...any) {
 	if logger == nil {
 		return
 	}
@@ -166,7 +172,7 @@ func warn(logger log.Logger, format string, args ...any) {
 	logger.Warnf(format, args...)
 }
 
-func debug(logger log.Logger, format string, args ...any) {
+func debug(logger Logger, format string, args ...any) {
 	if logger == nil {
 		return
 	}
