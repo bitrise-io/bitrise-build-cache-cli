@@ -73,6 +73,8 @@ func Detect(ctx context.Context, params DetectParams) Detection {
 	}
 
 	if getenv(OptOutEnv) == "0" {
+		debug(params.Logger, "Bitrise Build Cache RN wrap: %s=0 set, skipping detection.", OptOutEnv)
+
 		return Detection{}
 	}
 
@@ -98,6 +100,8 @@ func Detect(ctx context.Context, params DetectParams) Detection {
 
 	path, err := lookPath(CLIBinary)
 	if err != nil {
+		debug(params.Logger, "Bitrise Build Cache RN wrap: %s not on PATH, skipping (%v).", CLIBinary, err)
+
 		return Detection{}
 	}
 
@@ -112,6 +116,10 @@ func Detect(ctx context.Context, params DetectParams) Detection {
 		warn(params.Logger, "Bitrise Build Cache status probe failed (%s). Skipping RN cache wrap.", err)
 
 		return Detection{CLIPath: path}
+	}
+
+	if !enabled {
+		debug(params.Logger, "Bitrise Build Cache RN wrap: CLI at %s reports react-native cache not activated, skipping wrap.", path)
 	}
 
 	return Detection{
@@ -156,4 +164,12 @@ func warn(logger log.Logger, format string, args ...any) {
 	}
 
 	logger.Warnf(format, args...)
+}
+
+func debug(logger log.Logger, format string, args ...any) {
+	if logger == nil {
+		return
+	}
+
+	logger.Debugf(format, args...)
 }

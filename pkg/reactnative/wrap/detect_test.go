@@ -128,3 +128,67 @@ func TestDetect_DefaultTimeoutsApplied(t *testing.T) {
 	})
 	assert.Less(t, time.Since(start), 5*time.Second, "default-timeout path must not hang")
 }
+
+// recordingLogger captures Debugf / Warnf calls so the skip-path debug logs
+// can be asserted on.
+type recordingLogger struct {
+	debugs []string
+	warns  []string
+}
+
+func (l *recordingLogger) Debugf(format string, args ...any) {
+	l.debugs = append(l.debugs, fmt.Sprintf(format, args...))
+}
+func (l *recordingLogger) Warnf(format string, args ...any) {
+	l.warns = append(l.warns, fmt.Sprintf(format, args...))
+}
+func (l *recordingLogger) Errorf(string, ...any)         {}
+func (l *recordingLogger) Infof(string, ...any)          {}
+func (l *recordingLogger) Printf(string, ...any)         {}
+func (l *recordingLogger) Donef(string, ...any)          {}
+func (l *recordingLogger) Println()                      {}
+func (l *recordingLogger) Print(...any)                  {}
+func (l *recordingLogger) TDebugf(string, ...any)        {}
+func (l *recordingLogger) TWarnf(string, ...any)         {}
+func (l *recordingLogger) TErrorf(string, ...any)        {}
+func (l *recordingLogger) TInfof(string, ...any)         {}
+func (l *recordingLogger) TPrintf(string, ...any)        {}
+func (l *recordingLogger) TDonef(string, ...any)         {}
+func (l *recordingLogger) EnableDebugLog(bool)           {}
+
+func TestDetect_DebugLogsOnSkipPaths(t *testing.T) {
+	t.Run("opt-out env logs debug", func(t *testing.T) {
+		logger := &recordingLogger{}
+		Detect(context.Background(), DetectParams{
+			Getenv: func(string) string { return "0" },
+			Logger: logger,
+		})
+		assert.Len(t, logger.debugs, 1)
+		assert.Contains(t, logger.debugs[0], OptOutEnv)
+	})
+
+	t.Run("missing CLI logs debug", func(t *testing.T) {
+		logger := &recordingLogger{}
+		Detect(context.Background(), DetectParams{
+			LookPath: func(string) (string, error) { return "", errors.New("not found") },
+			Getenv:   func(string) string { return "" },
+			Logger:   logger,
+		})
+		assert.Len(t, logger.debugs, 1)
+		assert.Contains(t, logger.debugs[0], "not on PATH")
+	})
+
+	t.Run("RN cache disabled logs debug", func(t *testing.T) {
+		logger := &recordingLogger{}
+		Detect(context.Background(), DetectParams{
+			LookPath: func(string) (string, error) { return "/cli", nil },
+			Getenv:   func(string) string { return "" },
+			Logger:   logger,
+			CommandContext: fakeCommandContext(map[string]int{
+				"status": 1,
+			}),
+		})
+		assert.Len(t, logger.debugs, 1)
+		assert.Contains(t, logger.debugs[0], "not activated")
+	})
+}

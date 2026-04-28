@@ -21,6 +21,8 @@
 package wrap
 
 import (
+	"path/filepath"
+
 	"github.com/bitrise-io/go-utils/v2/command"
 )
 
@@ -61,18 +63,20 @@ func Wrap(det Detection, name string, args []string) (string, []string) {
 }
 
 // NewWrappingCommandFactory returns a command.Factory that forwards every
-// call to inner unchanged, except when the requested binary name matches one
-// of wrappedBinaries — those are rewritten as `<cliPath> react-native run --
-// <name> <args...>` so the underlying invocation runs as a child of the
+// call to inner unchanged, except when the requested binary's basename matches
+// one of wrappedBinaries — those are rewritten as `<cliPath> react-native run
+// -- <name> <args...>` so the underlying invocation runs as a child of the
 // React Native parent invocation.
 //
 // When Detection says no wrap should happen (CLI absent, probe failed, RN
 // cache not activated), inner is returned directly so the call sites observe
 // the same factory shape with no overhead.
 //
-// wrappedBinaries are matched by exact name (e.g. "xcodebuild", "gradlew").
-// An empty wrappedBinaries list disables interception entirely (effectively
-// the no-wrap branch).
+// wrappedBinaries are matched by basename (filepath.Base) so callers that
+// invoke a target via an absolute path (`/usr/bin/xcodebuild`) or a relative
+// path (`./gradlew`) still get wrapped. Compare with the bare-name targets
+// the caller passes (e.g. "xcodebuild", "gradlew"). An empty wrappedBinaries
+// list disables interception entirely (effectively the no-wrap branch).
 func NewWrappingCommandFactory(inner command.Factory, det Detection, wrappedBinaries ...string) command.Factory {
 	if !det.ReactNativeEnabled || det.CLIPath == "" || len(wrappedBinaries) == 0 {
 		return inner
@@ -97,7 +101,7 @@ type wrappingFactory struct {
 }
 
 func (w *wrappingFactory) Create(name string, args []string, opts *command.Opts) command.Command {
-	if _, hit := w.targets[name]; !hit {
+	if _, hit := w.targets[filepath.Base(name)]; !hit {
 		return w.inner.Create(name, args, opts)
 	}
 

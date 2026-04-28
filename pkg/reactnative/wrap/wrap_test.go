@@ -114,3 +114,28 @@ func TestNewWrappingCommandFactory_RewritesTargetCommands(t *testing.T) {
 			inner.calls[1].args)
 	}
 }
+
+func TestNewWrappingCommandFactory_MatchesAbsolutePathByBasename(t *testing.T) {
+	inner := &recordingFactory{}
+	det := Detection{CLIPath: "/cli", ReactNativeEnabled: true}
+
+	f := NewWrappingCommandFactory(inner, det, "xcodebuild", "gradlew")
+	// Caller invokes via absolute path → must still wrap.
+	f.Create("/usr/bin/xcodebuild", []string{"-project", "App.xcodeproj"}, nil)
+	// Caller invokes via relative path → must still wrap.
+	f.Create("./gradlew", []string{"assembleDebug"}, nil)
+
+	if assert.Len(t, inner.calls, 2) {
+		assert.Equal(t, "/cli", inner.calls[0].name)
+		// The wrapped argv carries the original path verbatim — only the
+		// outer binary changes to the CLI.
+		assert.Equal(t,
+			[]string{"react-native", "run", "--", "/usr/bin/xcodebuild", "-project", "App.xcodeproj"},
+			inner.calls[0].args)
+
+		assert.Equal(t, "/cli", inner.calls[1].name)
+		assert.Equal(t,
+			[]string{"react-native", "run", "--", "./gradlew", "assembleDebug"},
+			inner.calls[1].args)
+	}
+}
