@@ -30,13 +30,14 @@ type RepoMirror struct {
 	FlagName    string // cobra flag name, e.g. "mavencentral"
 	TemplateID  string // unique suffix for Kotlin variable names, e.g. "Central"
 	URLSegment  string // last path segment in the mirror URL, e.g. "central"
-	GradleMatch string // Kotlin expression used in the init script to match the repo
+	GradleMatch string // Kotlin predicate body (using `r` as the repo) that decides whether the repo should be mirrored
 }
 
 // KnownMirrors is the registry of supported mirrors.
 var KnownMirrors = []RepoMirror{ //nolint:gochecknoglobals
-	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: "ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME"},
-	{FlagName: "google", TemplateID: "Google", URLSegment: "google", GradleMatch: `"Google"`},
+	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: "r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME)"},
+	{FlagName: "google", TemplateID: "Google", URLSegment: "google", GradleMatch: `r.getName().equals("Google")`},
+	{FlagName: "mavencentral-apache", TemplateID: "CentralApache", URLSegment: "central-apache", GradleMatch: `r.getUrl().toString().trimEnd('/').equals("https://repo.maven.apache.org/maven2")`},
 }
 
 //go:embed asset/gradle-mirrors.init.gradle.kts.gotemplate

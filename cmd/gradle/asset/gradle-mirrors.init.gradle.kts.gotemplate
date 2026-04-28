@@ -5,7 +5,7 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
     override fun apply(gradle: Gradle) {
         {{- range .Mirrors }}
         val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
-            Spec { r -> r.getName().equals({{ .GradleMatch }}) }
+            Spec { r -> {{ .GradleMatch }} }
 
         val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
             val mirrorUrl: String = "{{ .MirrorURL }}"
