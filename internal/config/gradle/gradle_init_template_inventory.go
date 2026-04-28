@@ -50,10 +50,12 @@ type TemplateInventory struct {
 	Cache      CacheTemplateInventory
 	Analytics  AnalyticsTemplateInventory
 	TestDistro TestDistroTemplateInventory
-	// MavenCentralMirrorURL is the Bitrise-hosted apache-central mirror URL,
-	// or "" when the mirror is disabled. Used to route initscript classpath
-	// resolution through the mirror to avoid apache rate-limiting.
-	MavenCentralMirrorURL string
+	// GradlePluginsMirrorURL is the Bitrise-hosted mirror URL proxying
+	// https://plugins.gradle.org/m2/, or "" when the mirror is disabled.
+	// Used in the initscript repo list so io.bitrise.gradle:* artifacts
+	// resolve through the mirror instead of plugins.gradle.org's redirect
+	// chain to apache (which can 429-rate-limit).
+	GradlePluginsMirrorURL string
 }
 
 func (inventory TemplateInventory) HasDependencies() bool {

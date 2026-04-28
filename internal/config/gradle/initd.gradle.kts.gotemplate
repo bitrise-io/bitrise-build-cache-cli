@@ -6,10 +6,10 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
-        {{- if .MavenCentralMirrorURL }}
+        {{- if .GradlePluginsMirrorURL }}
         maven {
-            name = "bitriseApacheCentralMirror"
-            url = uri("{{ .MavenCentralMirrorURL }}")
+            name = "bitriseGradlePluginsMirror"
+            url = uri("{{ .GradlePluginsMirrorURL }}")
         }
         {{- end }}
         maven {
