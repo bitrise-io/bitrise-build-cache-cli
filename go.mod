@@ -7,7 +7,7 @@ require (
 	github.com/bazelbuild/remote-apis v0.0.0-20240703191324-0d21f29acdb9
 	github.com/beevik/etree v1.4.1
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.38
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.27
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.34
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gofrs/uuid/v5 v5.2.0
 	github.com/golang/protobuf v1.5.4
