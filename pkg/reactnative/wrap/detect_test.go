@@ -129,8 +129,8 @@ func TestDetect_DefaultTimeoutsApplied(t *testing.T) {
 	assert.Less(t, time.Since(start), 5*time.Second, "default-timeout path must not hang")
 }
 
-// recordingLogger captures Debugf / Warnf calls so the skip-path debug logs
-// can be asserted on.
+// recordingLogger satisfies the package's small Logger interface and captures
+// Debugf / Warnf calls so the skip-path debug logs can be asserted on.
 type recordingLogger struct {
 	debugs []string
 	warns  []string
@@ -139,22 +139,10 @@ type recordingLogger struct {
 func (l *recordingLogger) Debugf(format string, args ...any) {
 	l.debugs = append(l.debugs, fmt.Sprintf(format, args...))
 }
+
 func (l *recordingLogger) Warnf(format string, args ...any) {
 	l.warns = append(l.warns, fmt.Sprintf(format, args...))
 }
-func (l *recordingLogger) Errorf(string, ...any)         {}
-func (l *recordingLogger) Infof(string, ...any)          {}
-func (l *recordingLogger) Printf(string, ...any)         {}
-func (l *recordingLogger) Donef(string, ...any)          {}
-func (l *recordingLogger) Println()                      {}
-func (l *recordingLogger) Print(...any)                  {}
-func (l *recordingLogger) TDebugf(string, ...any)        {}
-func (l *recordingLogger) TWarnf(string, ...any)         {}
-func (l *recordingLogger) TErrorf(string, ...any)        {}
-func (l *recordingLogger) TInfof(string, ...any)         {}
-func (l *recordingLogger) TPrintf(string, ...any)        {}
-func (l *recordingLogger) TDonef(string, ...any)         {}
-func (l *recordingLogger) EnableDebugLog(bool)           {}
 
 func TestDetect_DebugLogsOnSkipPaths(t *testing.T) {
 	t.Run("opt-out env logs debug", func(t *testing.T) {
