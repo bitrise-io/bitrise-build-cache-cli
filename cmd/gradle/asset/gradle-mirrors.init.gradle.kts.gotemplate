@@ -5,7 +5,7 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
     override fun apply(gradle: Gradle) {
         {{- range .Mirrors }}
         val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
-            Spec { r -> r.getName().equals({{ .GradleMatch }}) }
+            Spec { r -> {{ .GradleMatch }} }
 
         val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
             val mirrorUrl: String = "{{ .MirrorURL }}"
@@ -19,10 +19,17 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                 .configureEach(useMirror{{ .ID }})
             {{- end }}
         }
+        val configurePluginManagementMirror: Action<RepositoryHandler> = Action {
+            {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
+            withType(MavenArtifactRepository::class.java)
+                .matching(canBeMirrored{{ .ID }})
+                .configureEach(useMirror{{ .ID }})
+            {{- end }}{{ end }}
+        }
         gradle.beforeSettings(Action {
             configureMirror.execute(getBuildscript().getRepositories())
-            // Note: PluginManagement repositories are not configurable because google's mirror URL is not compatible with Gradle's plugin portal
-            //configureMirror.execute(getPluginManagement().getRepositories())
+            // Only mirrors flagged ApplyToPluginManagement run here — google's mirror URL is incompatible with Gradle's plugin portal.
+            configurePluginManagementMirror.execute(getPluginManagement().getRepositories())
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
         gradle.settingsEvaluated(Action {
