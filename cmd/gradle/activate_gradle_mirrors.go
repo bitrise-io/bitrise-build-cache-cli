@@ -37,7 +37,7 @@ type RepoMirror struct {
 var KnownMirrors = []RepoMirror{ //nolint:gochecknoglobals
 	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: "r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME)"},
 	{FlagName: "google", TemplateID: "Google", URLSegment: "google", GradleMatch: `r.getName().equals("Google")`},
-	{FlagName: "mavencentral-apache", TemplateID: "CentralApache", URLSegment: "central-apache", GradleMatch: `r.getUrl().toString().trimEnd('/').equals("https://repo.maven.apache.org/maven2")`},
+	{FlagName: "mavencentral-apache", TemplateID: "ApacheCentral", URLSegment: "apache-central", GradleMatch: `r.getUrl().toString().trimEnd('/').equals("https://repo.maven.apache.org/maven2")`},
 }
 
 //go:embed asset/gradle-mirrors.init.gradle.kts.gotemplate
