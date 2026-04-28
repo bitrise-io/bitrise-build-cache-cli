@@ -13,9 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/retry"
 )
 
 var (
