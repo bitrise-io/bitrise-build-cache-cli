@@ -38,6 +38,12 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                 setUrl("{{ .MirrorURL }}")
             }
             {{- end }}{{ end }}
+            // Adding any repo above suppresses Gradle's default
+            // pluginManagement.repositories = [gradlePluginPortal()] for projects without
+            // an explicit pluginManagement {} block. Re-add it explicitly so plugin
+            // resolution can fall back to the portal when the prepended mirrors don't
+            // serve the artifact (e.g. plugins that aren't on maven central).
+            pmRepos.gradlePluginPortal()
             configurePluginManagementMirror.execute(pmRepos)
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
