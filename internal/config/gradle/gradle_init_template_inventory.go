@@ -50,6 +50,10 @@ type TemplateInventory struct {
 	Cache      CacheTemplateInventory
 	Analytics  AnalyticsTemplateInventory
 	TestDistro TestDistroTemplateInventory
+	// MavenCentralMirrorURL is the Bitrise-hosted apache-central mirror URL,
+	// or "" when the mirror is disabled. Used to route initscript classpath
+	// resolution through the mirror to avoid apache rate-limiting.
+	MavenCentralMirrorURL string
 }
 
 func (inventory TemplateInventory) HasDependencies() bool {

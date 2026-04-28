@@ -2,22 +2,13 @@
 apply<InternalRepositoryPlugin>()
 
 class InternalRepositoryPlugin : Plugin<Gradle> {
-    private val logPrefix = "[bitrise-mirrors]"
-
     override fun apply(gradle: Gradle) {
-        println("$logPrefix init script applied")
-
         {{- range .Mirrors }}
         val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
-            Spec { r ->
-                val matched = {{ .GradleMatch }}
-                println("$logPrefix [{{ .ID }}] check repo name='${r.getName()}' url='${r.getUrl()}' -> matched=$matched")
-                matched
-            }
+            Spec { r -> {{ .GradleMatch }} }
 
         val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
             val mirrorUrl: String = "{{ .MirrorURL }}"
-            println("$logPrefix [{{ .ID }}] rewriting repo name='${getName()}' from '${getUrl()}' to '$mirrorUrl'")
             setUrl(mirrorUrl)
         }
         {{- end }}
@@ -36,33 +27,27 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- end }}{{ end }}
         }
         gradle.beforeSettings(Action {
-            println("$logPrefix beforeSettings fired")
             configureMirror.execute(getBuildscript().getRepositories())
             // pluginManagement.repositories is empty here, so adding the mirror first
             // makes plugin resolution try it before any repos declared in settings.gradle.
             // Only mirrors flagged ApplyToPluginManagement run here — google's mirror URL is incompatible with Gradle's plugin portal.
             val pmRepos = getPluginManagement().getRepositories()
-            println("$logPrefix beforeSettings: pluginManagement.repositories size before prepend=${pmRepos.size}")
             {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
             pmRepos.maven {
                 setName("BitriseMirror{{ .ID }}")
                 setUrl("{{ .MirrorURL }}")
             }
-            println("$logPrefix beforeSettings: prepended BitriseMirror{{ .ID }} -> {{ .MirrorURL }}")
             {{- end }}{{ end }}
             configurePluginManagementMirror.execute(pmRepos)
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
         gradle.settingsEvaluated(Action {
-            println("$logPrefix settingsEvaluated fired")
             configureMirror.execute(getDependencyResolutionManagement().getRepositories())
         })
         gradle.beforeProject(Action {
-            println("$logPrefix beforeProject fired for project='${getName()}'")
             configureMirror.execute(getBuildscript().getRepositories())
         })
         gradle.afterProject(Action {
-            println("$logPrefix afterProject fired for project='${getName()}'")
             configureMirror.execute(getRepositories())
         })
     }
