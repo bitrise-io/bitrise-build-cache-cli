@@ -27,25 +27,30 @@ const (
 
 // RepoMirror describes a single repository that can be mirrored.
 type RepoMirror struct {
-	FlagName    string // cobra flag name, e.g. "mavencentral"
-	TemplateID  string // unique suffix for Kotlin variable names, e.g. "Central"
-	URLSegment  string // last path segment in the mirror URL, e.g. "central"
-	GradleMatch string // Kotlin expression used in the init script to match the repo
+	FlagName                string // cobra flag name, e.g. "mavencentral"
+	TemplateID              string // unique suffix for Kotlin variable names, e.g. "Central"
+	URLSegment              string // last path segment in the mirror URL, e.g. "central"
+	GradleMatch             string // Kotlin predicate body (using `r` as the repo) that decides whether the repo should be mirrored
+	ApplyToPluginManagement bool   // also apply this mirror to pluginManagement.repositories
 }
 
 // KnownMirrors is the registry of supported mirrors.
+// Order matters: entries are applied in the listed order, so URL-based predicates
+// (e.g. apache-central) must run before name-based ones that overwrite the URL.
 var KnownMirrors = []RepoMirror{ //nolint:gochecknoglobals
-	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: "ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME"},
-	{FlagName: "google", TemplateID: "Google", URLSegment: "google", GradleMatch: `"Google"`},
+	{FlagName: "mavencentral-apache", TemplateID: "ApacheCentral", URLSegment: "apache-central", GradleMatch: `r.getUrl().toString().trimEnd('/').equals("https://repo.maven.apache.org/maven2")`, ApplyToPluginManagement: true},
+	{FlagName: "mavencentral", TemplateID: "Central", URLSegment: "central", GradleMatch: "r.getName().equals(ArtifactRepositoryContainer.DEFAULT_MAVEN_CENTRAL_REPO_NAME)"},
+	{FlagName: "google", TemplateID: "Google", URLSegment: "google", GradleMatch: `r.getName().equals("Google")`},
 }
 
 //go:embed asset/gradle-mirrors.init.gradle.kts.gotemplate
 var gradleMirrorsInitTemplate string
 
 type mirrorTemplateEntry struct {
-	ID          string // unique suffix for Kotlin variable names (e.g. "Central", "Google")
-	GradleMatch string
-	MirrorURL   string
+	ID                      string // unique suffix for Kotlin variable names (e.g. "Central", "Google")
+	GradleMatch             string
+	MirrorURL               string
+	ApplyToPluginManagement bool
 }
 
 type gradleMirrorsTemplateData struct {
@@ -157,9 +162,10 @@ func ActivateGradleMirrorsFn(
 	for _, m := range mirrors {
 		url := fmt.Sprintf(gradleMirrorURLPattern, region, m.URLSegment)
 		entries = append(entries, mirrorTemplateEntry{
-			ID:          m.TemplateID,
-			GradleMatch: m.GradleMatch,
-			MirrorURL:   url,
+			ID:                      m.TemplateID,
+			GradleMatch:             m.GradleMatch,
+			MirrorURL:               url,
+			ApplyToPluginManagement: m.ApplyToPluginManagement,
 		})
 		logger.Debugf("Mirror %s: region=%s, URL=%s", m.FlagName, region, url)
 	}

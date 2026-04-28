@@ -6,6 +6,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
+        {{- if .MavenCentralMirrorURL }}
+        maven {
+            name = "bitriseApacheCentralMirror"
+            url = uri("{{ .MavenCentralMirrorURL }}")
+        }
+        {{- end }}
         maven {
             name = "gradlePlugins"
             url = uri("https://plugins.gradle.org/m2/")
