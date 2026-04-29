@@ -59,6 +59,11 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 	}
 
 	region := DatacenterToRegion(params.Datacenter)
+	if !IsSupportedRegion(region) {
+		logger.Infof("Datacenter %q (region %q) has no Bitrise mirror deployment, skipping Gradle mirror activation", params.Datacenter, region)
+
+		return nil
+	}
 
 	entries := make([]templateEntry, 0, len(params.Mirrors))
 	for _, m := range params.Mirrors {

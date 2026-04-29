@@ -71,3 +71,19 @@ func DatacenterToRegion(dc string) string {
 
 	return strings.TrimRightFunc(lower, unicode.IsDigit)
 }
+
+// SupportedRegions lists the datacenter region slugs that have a Bitrise mirror
+// deployed. Datacenters outside this set are skipped during activation.
+var SupportedRegions = []string{"iad", "ord", "ams"} //nolint:gochecknoglobals
+
+// IsSupportedRegion reports whether the given region slug (e.g. "iad") has a
+// Bitrise mirror deployment.
+func IsSupportedRegion(region string) bool {
+	for _, r := range SupportedRegions {
+		if r == region {
+			return true
+		}
+	}
+
+	return false
+}
