@@ -54,6 +54,11 @@ func TestActivate(t *testing.T) {
 			expectCreated: false,
 		},
 		{
+			name:          "unsupported datacenter",
+			params:        mirrors.Params{Enabled: true, Datacenter: "ATL1", Mirrors: allMirrors},
+			expectCreated: false,
+		},
+		{
 			name:          "AMS1 all mirrors",
 			params:        mirrors.Params{Enabled: true, Datacenter: "AMS1", Mirrors: allMirrors},
 			expectCreated: true,
@@ -150,5 +155,19 @@ func TestDatacenterToRegion(t *testing.T) {
 
 	for in, want := range cases {
 		assert.Equal(t, want, mirrors.DatacenterToRegion(in), "input=%q", in)
+	}
+}
+
+func TestIsSupportedRegion(t *testing.T) {
+	cases := map[string]bool{
+		"iad": true,
+		"ord": true,
+		"ams": true,
+		"atl": false,
+		"":    false,
+	}
+
+	for in, want := range cases {
+		assert.Equal(t, want, mirrors.IsSupportedRegion(in), "input=%q", in)
 	}
 }
