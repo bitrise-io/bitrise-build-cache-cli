@@ -5,6 +5,9 @@ meta:
   bitrise.io:
     stack: linux-docker-android-22.04
     machine_type_id: g2.linux.medium
+    # Pin to US region — AMS mirror has been passing through Maven Central 429s
+    # (postmortem: https://bitrise.atlassian.net/wiki/spaces/INCIDENT/pages/4980998155).
+    machine_region: region-us
 
 app:
   envs:
