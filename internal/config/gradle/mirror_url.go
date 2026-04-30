@@ -2,8 +2,8 @@ package gradleconfig
 
 import (
 	"fmt"
-	"strings"
-	"unicode"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle/mirrors"
 )
 
 const (
@@ -18,7 +18,9 @@ const (
 
 // GradlePluginsMirrorURL returns the Bitrise-hosted gradle-plugins mirror URL
 // (proxying https://plugins.gradle.org/m2/) for the current datacenter, or ""
-// when the mirror is disabled or no datacenter is set (e.g. local dev).
+// when the mirror is disabled, no datacenter is set (e.g. local dev), or the
+// datacenter is outside the regions where a Bitrise mirror is deployed
+// (e.g. customer-private GCP envs like US_EAST4).
 func GradlePluginsMirrorURL(envs map[string]string) string {
 	if envs[MirrorEnabledEnvKey] != "true" {
 		return ""
@@ -29,7 +31,10 @@ func GradlePluginsMirrorURL(envs map[string]string) string {
 		return ""
 	}
 
-	region := strings.TrimRightFunc(strings.ToLower(dc), unicode.IsDigit)
+	region := mirrors.DatacenterToRegion(dc)
+	if !mirrors.IsSupportedRegion(region) {
+		return ""
+	}
 
 	return fmt.Sprintf(mirrorURLPattern, region, mirrorSegmentGradlePlugins)
 }
