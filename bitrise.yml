@@ -1146,15 +1146,6 @@ step_bundles:
 
                 pandoc --version
       - script:
-          title: Install go versions
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -ex
-
-                asdf install golang 1.23.8
-                asdf install golang 1.21.5
-      - script:
           title: Generate dependency matrix
           inputs:
             - content: |
