@@ -7,6 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -94,6 +95,7 @@ func NewActivator(params ActivatorParams) *Activator {
 // Activate creates the ccache config and exports the required environment
 // variables via envman.
 func (a *Activator) Activate(ctx context.Context) error {
+	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
 	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{

@@ -84,6 +84,7 @@ func NewActivator(params ActivatorParams) *Activator {
 // Activate runs the full React Native build cache activation flow:
 // install dependencies → activate sub-systems → start storage helper → save config.
 func (a *Activator) Activate(ctx context.Context) error {
+	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for React Native")
 
 	if err := installDeps(ctx, a.logger, a.cpp != nil); err != nil {

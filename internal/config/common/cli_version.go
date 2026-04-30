@@ -30,3 +30,11 @@ func GetCLIVersion(logger log.Logger) string {
 
 	return modules[idx].Version
 }
+
+// LogCLIVersion writes a single info-level log line with the resolved CLI
+// version. Call it from public entry points (cobra root PersistentPreRun,
+// pkg/* Activator/Runner methods) so each invocation records which CLI the
+// caller is running.
+func LogCLIVersion(logger log.Logger) {
+	logger.Infof("Bitrise Build Cache CLI version: %s", GetCLIVersion(logger))
+}
