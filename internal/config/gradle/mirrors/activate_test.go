@@ -69,7 +69,7 @@ func TestActivate(t *testing.T) {
 				`"https://jitpack.io"`,
 				`"https://www.jitpack.io"`,
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
-				`r.getName().equals("Gradle Central Plugin Repository")`,
+				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
 			},
 		},
 		{
