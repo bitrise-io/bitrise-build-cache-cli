@@ -12,6 +12,7 @@ import (
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle/mirrors"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -143,6 +144,7 @@ func (a *Activator) Activate(_ context.Context) error {
 		Datacenter:  datacenter,
 		Enabled:     enabled,
 		ProjectRoot: projectRoot,
+		Exporter:    envexport.New(a.envs, a.logger),
 	}); err != nil {
 		return fmt.Errorf("activate gradle mirrors: %w", err)
 	}

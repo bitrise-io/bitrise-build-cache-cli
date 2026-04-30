@@ -151,6 +151,52 @@ func TestFilterByFlagNames(t *testing.T) {
 	})
 }
 
+type recordingExporter struct {
+	exported map[string]string
+}
+
+func (r *recordingExporter) Export(key, value string) {
+	if r.exported == nil {
+		r.exported = map[string]string{}
+	}
+	r.exported[key] = value
+}
+
+func TestActivate_ExportsMirrorURLs(t *testing.T) {
+	exp := &recordingExporter{}
+	tmpDir := t.TempDir()
+
+	err := mirrors.Activate(log.NewLogger(), utils.DefaultOsProxy{}, mirrors.Params{
+		GradleHome: tmpDir,
+		Mirrors:    mirrors.KnownMirrors,
+		Datacenter: "AMS1",
+		Enabled:    true,
+		Exporter:   exp,
+	})
+	require.NoError(t, err)
+
+	for _, m := range mirrors.KnownMirrors {
+		key := mirrors.MirrorURLEnvKeyPrefix + m.TemplateID
+		want := "https://repository-manager-ams.services.bitrise.io:8090/maven/" + m.URLSegment
+		assert.Equal(t, want, exp.exported[key], "exported value for %s", key)
+	}
+}
+
+func TestActivate_NoExportWhenSkipped(t *testing.T) {
+	exp := &recordingExporter{}
+	tmpDir := t.TempDir()
+
+	err := mirrors.Activate(log.NewLogger(), utils.DefaultOsProxy{}, mirrors.Params{
+		GradleHome: tmpDir,
+		Mirrors:    mirrors.KnownMirrors,
+		Datacenter: "ATL1", // unsupported region
+		Enabled:    true,
+		Exporter:   exp,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, exp.exported, "no env vars should be exported when activation skips")
+}
+
 func TestDatacenterToRegion(t *testing.T) {
 	cases := map[string]string{
 		"AMS1": "ams",
