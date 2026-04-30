@@ -19,6 +19,7 @@ release:
     For reference, the verification metadata is available as an attached assset.
   extra_files:
     - glob: ./cmd/gradle/asset/verification-metadata.xml
+    - glob: ./cmd/gradle/asset/verification-metadata-mirror.xml
 
 
 before:
