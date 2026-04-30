@@ -3,7 +3,10 @@ package common
 import (
 	"os"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
+
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -19,6 +22,14 @@ It creates the necessary config to enable Build Cache and Command Exec/Invocatio
 In case of Gradle it's done via creating or modifying the following two files: $HOME/.gradle/init.d/bitrise-build-cache.init.gradle and $HOME/.gradle/gradle.properties (adding org.gradle.caching=true to gradle.properties).
 
 In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
+	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		// `version` already prints the CLI version itself; skip the duplicate log line.
+		if cmd.Name() == "version" {
+			return
+		}
+
+		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

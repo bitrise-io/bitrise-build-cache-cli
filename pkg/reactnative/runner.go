@@ -11,6 +11,7 @@ import (
 
 	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -106,6 +107,8 @@ func NewRunner(params RunnerParams) *Runner {
 // Run injects a BITRISE_INVOCATION_ID into environ and delegates execution to ExecFn.
 // If wrapperInvocationID is empty, a random UUID is used.
 func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) error {
+	configcommon.LogCLIVersion(r.logger)
+
 	if wrapperInvocationID == "" {
 		r.logger.TInfof("No invocation ID provided, generating a random one")
 

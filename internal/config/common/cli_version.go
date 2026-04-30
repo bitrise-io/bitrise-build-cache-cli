@@ -1,6 +1,8 @@
 package common
 
 import (
+	"fmt"
+	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -29,4 +31,15 @@ func GetCLIVersion(logger log.Logger) string {
 	}
 
 	return modules[idx].Version
+}
+
+// LogCLIVersion writes a single line with the resolved CLI version to STDERR.
+// Stderr (not stdout) is intentional: some callers — e.g. xcodebuild wrappers
+// fronted by `@react-native-community/cli-platform-apple` — parse the CLI's
+// stdout as JSON. Writing the version line to stdout breaks that JSON parse.
+// Call this from public entry points (cobra root PersistentPreRun, pkg/*
+// Activator/Runner methods) so each invocation records which CLI the caller
+// is running.
+func LogCLIVersion(logger log.Logger) {
+	_, _ = fmt.Fprintf(os.Stderr, "Bitrise Build Cache CLI version: %s\n", GetCLIVersion(logger))
 }

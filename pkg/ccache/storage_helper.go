@@ -120,6 +120,8 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 // that proxies ccache secondary storage requests. It blocks until ctx is
 // cancelled or the configured idle timeout is reached.
 func (h *StorageHelper) Start(ctx context.Context) error {
+	configcommon.LogCLIVersion(h.logger)
+
 	kvClient, err := createKVClient(ctx, h.config, h.params.Envs, h.params.InvocationID)
 	if err != nil {
 		return fmt.Errorf("create KV client: %w", err)
