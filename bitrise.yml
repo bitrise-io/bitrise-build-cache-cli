@@ -123,6 +123,10 @@ workflows:
         is_always_run: true
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+    - deploy-to-bitrise-io@2:
+        is_always_run: true
+        inputs:
+          - deploy_path: "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
     - bundle::update-step:
         envs:
         - STEP_NAME: bitrise-step-activate-gradle-remote-cache
@@ -174,6 +178,9 @@ workflows:
     - deploy-to-bitrise-io@2:
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+    - deploy-to-bitrise-io@2:
+        inputs:
+          - deploy_path: "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
@@ -1071,12 +1078,13 @@ step_bundles:
             SAMPLE_PATH=$(realpath ./gradle_verification_sample)
             GRADLE_VERIFICATION_REF_PATH=$SAMPLE_PATH/gradle/verification-metadata.xml
             GRADLE_VERIFICATION_REF_TARGET_PATH=$(realpath ./cmd/gradle/asset/verification-metadata.xml)
+            GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH=$(realpath ./cmd/gradle/asset/verification-metadata-mirror.xml)
 
             # add plugin with CLI
             cd "$SAMPLE_PATH"
             /tmp/bin/bitrise-build-cache-cli -d gradle-verification add-reference-deps
 
-            # generate xml
+            # generate xml against the original repos (no mirror)
             rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
             ./gradlew --write-verification-metadata sha256 help
 
@@ -1087,6 +1095,19 @@ step_bundles:
             mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_TARGET_PATH"
             envman add --key GRADLE_VERIFICATION_REF_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_TARGET_PATH"
 
+            # generate xml against the Bitrise Maven mirror
+            export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
+            /tmp/bin/bitrise-build-cache-cli -d activate gradle-mirrors
+
+            rm -f "$SAMPLE_PATH/gradle/verification-metadata.xml"
+            ./gradlew --write-verification-metadata sha256 help
+
+            cat $GRADLE_VERIFICATION_REF_PATH
+            echo "Generated mirror verification xml: $GRADLE_VERIFICATION_REF_PATH"
+
+            mv -f "$GRADLE_VERIFICATION_REF_PATH" "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
+            envman add --key GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH --value "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
+
   check_gradle_verification_reference:
     steps:
     - script@1:
@@ -1095,13 +1116,15 @@ step_bundles:
           - content: |-
               set -x
 
-              git update-index --refresh | grep "cmd/gradle/asset/verification-metadata.xml"
-              if [[ $? == 0 ]]; then
+              DIRTY=$(git status --porcelain -- \
+                cmd/gradle/asset/verification-metadata.xml \
+                cmd/gradle/asset/verification-metadata-mirror.xml)
+              if [[ -n "$DIRTY" ]]; then
                 echo "Please manually commit the changes to the repo:"
-                echo "$GRADLE_VERIFICATION_REF_TARGET_PATH"
+                echo "$DIRTY"
                 exit 1
               else
-                echo "The files have no unstaged changes: $GRADLE_VERIFICATION_REF_TARGET_PATH"
+                echo "Verification metadata files have no unstaged changes."
                 exit 0
               fi
   generate_and_commit_dependency_matrix:
