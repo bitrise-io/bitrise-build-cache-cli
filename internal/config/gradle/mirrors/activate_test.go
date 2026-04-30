@@ -65,11 +65,12 @@ func TestActivate(t *testing.T) {
 			expectContains: []string{
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/central",
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/google",
-				"https://repository-manager-ams.services.bitrise.io:8090/maven/jitpack",
-				`"https://jitpack.io"`,
-				`"https://www.jitpack.io"`,
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
 				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
+			},
+			expectNotContain: []string{
+				"https://repository-manager-ams.services.bitrise.io:8090/maven/jitpack",
+				`"https://jitpack.io"`,
 			},
 		},
 		{
