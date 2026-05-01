@@ -43,8 +43,8 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             // an explicit pluginManagement {} block. Re-add it explicitly so plugin
             // resolution can fall back to the portal when the prepended mirrors don't
             // serve the artifact (e.g. plugins that aren't on maven central).
-            pmRepos.gradlePluginPortal()
             configurePluginManagementMirror.execute(pmRepos)
+            pmRepos.gradlePluginPortal()
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
         gradle.settingsEvaluated(Action {
