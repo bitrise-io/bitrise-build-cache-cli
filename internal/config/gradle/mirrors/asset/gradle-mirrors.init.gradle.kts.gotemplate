@@ -44,7 +44,6 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             // resolution can fall back to the portal when the prepended mirrors don't
             // serve the artifact (e.g. plugins that aren't on maven central).
             configurePluginManagementMirror.execute(pmRepos)
-            pmRepos.gradlePluginPortal()
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
         gradle.settingsEvaluated(Action {
