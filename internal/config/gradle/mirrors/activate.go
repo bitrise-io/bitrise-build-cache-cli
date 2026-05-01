@@ -40,11 +40,12 @@ type Params struct {
 }
 
 type templateEntry struct {
-	ID                      string
-	GradleMatch             string
-	MirrorURL               string
-	ApplyToPluginManagement bool
-	UseAsRobolectricRepo    bool
+	ID                           string
+	GradleMatch                  string
+	MirrorURL                    string
+	ApplyToPluginManagement      bool
+	RewritePluginManagementRepos bool
+	UseAsRobolectricRepo         bool
 }
 
 type templateData struct {
@@ -84,11 +85,12 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 	for _, m := range params.Mirrors {
 		url := fmt.Sprintf(URLPattern, region, m.URLSegment)
 		entries = append(entries, templateEntry{
-			ID:                      m.TemplateID,
-			GradleMatch:             m.GradleMatch,
-			MirrorURL:               url,
-			ApplyToPluginManagement: m.ApplyToPluginManagement,
-			UseAsRobolectricRepo:    m.UseAsRobolectricRepo,
+			ID:                           m.TemplateID,
+			GradleMatch:                  m.GradleMatch,
+			MirrorURL:                    url,
+			ApplyToPluginManagement:      m.ApplyToPluginManagement,
+			RewritePluginManagementRepos: m.RewritePluginManagementRepos,
+			UseAsRobolectricRepo:         m.UseAsRobolectricRepo,
 		})
 		logger.Debugf("Mirror %s: region=%s, URL=%s", m.FlagName, region, url)
 	}

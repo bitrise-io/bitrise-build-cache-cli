@@ -20,10 +20,10 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- end }}
         }
         val configurePluginManagementMirror: Action<RepositoryHandler> = Action {
-            {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
+            {{- range .Mirrors }}{{ if .RewritePluginManagementRepos }}
             withType(MavenArtifactRepository::class.java)
                 .matching(canBeMirrored{{ .ID }})
-                .configureEach(useMirror{{ .ID }})
+                .all(useMirror{{ .ID }})
             {{- end }}{{ end }}
         }
         gradle.beforeSettings(Action {
