@@ -23,7 +23,7 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
             withType(MavenArtifactRepository::class.java)
                 .matching(canBeMirrored{{ .ID }})
-                .all(useMirror{{ .ID }})
+                .configureEach(useMirror{{ .ID }})
             {{- end }}{{ end }}
         }
         gradle.beforeSettings(Action {
