@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
+	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
