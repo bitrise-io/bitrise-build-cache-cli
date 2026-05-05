@@ -23,6 +23,13 @@ import (
 // Private — post-run analytics
 // ---------------------------------------------------------------------------
 
+// MsgRNInvocationSaved is the log line emitted after the BE confirms the
+// React Native wrapper invocation was persisted. The URL points at the
+// per-invocation details page in the Bitrise app. Mirrors the equivalent
+// xcode and gradle messages so users (especially on non-Bitrise CI) can
+// jump straight to the invocation in the Bitrise UI.
+const MsgRNInvocationSaved = "React Native invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/react-native/%s"
+
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
 type postRunDeps struct {
@@ -128,6 +135,10 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 
 	if err := d.sendInvocation(*inv); err != nil {
 		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
+	} else {
+		// BE confirmed the invocation was stored — surface the details URL
+		// so users can jump to it from the build log.
+		d.logger.TInfof(MsgRNInvocationSaved, wrapperInvocationID)
 	}
 
 	if err := agg.Cleanup(); err != nil {
