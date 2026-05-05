@@ -30,6 +30,9 @@ builds:
   - binary: bitrise-build-cache
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common.injectedVersion={{.Version}}
     goos:
       - linux
       # - windows
