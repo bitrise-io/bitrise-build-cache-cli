@@ -587,6 +587,13 @@ workflows:
         title: Activate ccache remote storage
         inputs:
         - content: ./bitrise-build-cache-cli activate c++
+    - script@1:
+        title: Change apt sources to enzu mirror
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+
+              sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
     - script:
         title: Install ccache and gcc
         inputs:
