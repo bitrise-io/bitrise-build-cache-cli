@@ -224,6 +224,13 @@ workflows:
           - fetch_tags: "yes"
           - shallow_clone: "false"
           - clone_depth: "-1"
+      - script@1:
+          title: Change apt sources to enzu mirror
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+
+                sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
       - apt-get-install:
           inputs:
             - packages: libxml2-utils
@@ -317,6 +324,13 @@ workflows:
     - BRANCH: develop
     steps:
     - bundle::feature-e2e-setup: {}
+    - script@1:
+        title: Change apt sources to enzu mirror
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+
+              sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
     - apt-get-install:
         inputs:
           - packages: 'bc'
@@ -387,6 +401,13 @@ workflows:
       - BRANCH: main
     steps:
       - bundle::feature-e2e-setup: { }
+      - script@1:
+          title: Change apt sources to enzu mirror
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+
+                sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
       - apt-get-install:
           inputs:
             - packages: 'bc'
@@ -453,6 +474,13 @@ workflows:
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
     - bundle::feature-e2e-setup: {}
+    - script@1:
+        title: Change apt sources to enzu mirror
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+
+              sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
     - apt-get-install:
         inputs:
           - packages: 'bc'
@@ -550,6 +578,13 @@ workflows:
     - BRANCH: master
     steps:
     - bundle::feature-e2e-setup: {}
+    - script@1:
+        title: Change apt sources to enzu mirror
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+
+              sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
     - apt-get-install:
         inputs:
           - packages: 'bc'
@@ -623,6 +658,13 @@ workflows:
       - BRANCH: master
     steps:
       - bundle::feature-e2e-setup: { }
+      - script@1:
+          title: Change apt sources to enzu mirror
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+
+                sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
       - apt-get-install:
           inputs:
             - packages: 'bc dnsutils iputils-ping'
@@ -660,7 +702,7 @@ workflows:
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   ubuntu:22.04 \
-                  bash -c "set -o pipefail; apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
+                  bash -c "set -o pipefail; sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list && apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
                     curl -Lo bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 && \
                     chmod +x bazelisk && \
                     ./bazelisk build //src:bazel-dev --announce_rc --copt='-w' 2>&1 | tee /bitrise-deploy/logs.txt"
@@ -923,6 +965,13 @@ workflows:
     - BRANCH: develop
     steps:
     - bundle::feature-e2e-setup: {}
+    - script@1:
+        title: Change apt sources to enzu mirror
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+
+              sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
     - apt-get-install:
         inputs:
           - packages: 'bc'
