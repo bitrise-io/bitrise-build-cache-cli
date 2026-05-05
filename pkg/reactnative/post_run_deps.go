@@ -100,18 +100,20 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		}
 
 		if summary.FailedCount > 0 {
-			d.logger.TWarnf(
-				"%d of %d child invocations reported a failure — marking the wrapper run as failed.",
+			d.logger.TInfof(
+				"%d of %d child invocations reported a failure (informational; wrapper success is driven by the wrapped process exit code).",
 				summary.FailedCount, summary.ChildCount,
 			)
 		}
 	}
 
-	wrapperSuccess := execErr == nil && summary.FailedCount == 0
-	wrapperErr := execErr
-	if wrapperErr == nil && summary.FailedCount > 0 {
-		wrapperErr = fmt.Errorf("%d of %d child invocations failed", summary.FailedCount, summary.ChildCount)
-	}
+	// Wrapper Success follows the wrapped process's exit code only. We used to
+	// also fail the wrapper when any child reported Failed=true, but child
+	// failure flags are noisy (e.g. ccache marks a run failed on user-side
+	// compile errors that don't affect ccache itself) and made successful
+	// builds report as failed wrappers. FailedCount stays in the summary for
+	// observability; the only signal that flips Success here is execErr.
+	wrapperSuccess := execErr == nil
 
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationDate: time.Now().Add(-duration),
@@ -120,7 +122,7 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		Command:        command,
 		FullCommand:    fullCommand,
 		Success:        wrapperSuccess,
-		Error:          wrapperErr,
+		Error:          execErr,
 		BuildTool:      "react-native",
 		Wrapper:        "bitrise-build-cache-cli react-native",
 		HitRate:        summary.MeanHitRate,

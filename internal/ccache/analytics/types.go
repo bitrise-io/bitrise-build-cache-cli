@@ -90,11 +90,15 @@ func (s CcacheStats) HasActivity() bool {
 	return s.CacheableCalls+s.UncacheableCalls > 0
 }
 
-// Success reports whether ccache did its job without internal/IO/compile errors
-// during the run. Storage hits/misses are normal and do NOT affect Success —
-// only conditions that indicate ccache itself misbehaved or the user's build
-// hit a hard error are counted. The intent is the same as the Success bool on
-// the wrapper invocation: did the tool perform its task correctly?
+// Success reports whether ccache itself did its job without internal/IO errors
+// during the run. Storage hits/misses are normal and do NOT affect Success.
+// Counters that reflect the *invoked compiler* failing (compile_failed,
+// preprocessor_error, bad_input_file, bad_output_file) are NOT counted here —
+// those mean the user's compilation/preprocessing exited non-zero, which is
+// orthogonal to whether ccache itself worked. Only counters that indicate
+// ccache itself misbehaved (internal error, missing compiler, file hashing,
+// missing cache file, modified-during-compile, compiler identity check) flip
+// Success to false.
 func (s CcacheStats) Success() bool {
 	return s.errorCount() == 0
 }
@@ -116,7 +120,7 @@ func (s CcacheStats) ErrorSummary() string {
 
 // errorFieldCount is len(errorFields(...)) — kept in sync with the helper
 // to size the slice in ErrorSummary without re-counting at every call.
-const errorFieldCount = 10
+const errorFieldCount = 6
 
 func (s CcacheStats) errorCount() int {
 	total := 0
@@ -132,15 +136,18 @@ type errorField struct {
 	count int
 }
 
+// errorFields lists the ccache-internal error counters that flip Success to
+// false. compile_failed / preprocessor_error / bad_input_file / bad_output_file
+// are deliberately excluded — those increment when the *invoked compiler*
+// fails (e.g. autoconf-style probe compiles, NDK build hiccups, transient
+// races during parallel Gradle builds), not when ccache misbehaves. Including
+// them caused successful RN Android builds with high hit rates to be reported
+// as failed ccache invocations.
 func errorFields(s CcacheStats) []errorField {
 	return []errorField{
 		{"internal_error", s.InternalError},
-		{"compile_failed", s.CompileFailed},
 		{"compiler_check_failed", s.CompilerCheckFailed},
-		{"preprocessor_error", s.PreprocessorError},
 		{"could_not_find_compiler", s.CouldNotFindCompiler},
-		{"bad_input_file", s.BadInputFile},
-		{"bad_output_file", s.BadOutputFile},
 		{"error_hashing_extra_file", s.ErrorHashingExtraFile},
 		{"missing_cache_file", s.MissingCacheFile},
 		{"modified_input_file", s.ModifiedInputFile},

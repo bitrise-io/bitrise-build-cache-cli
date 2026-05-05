@@ -295,9 +295,17 @@ func TestCcacheStats_Success(t *testing.T) {
 		assert.False(t, s.Success())
 	})
 
-	t.Run("compile failed → not success", func(t *testing.T) {
-		s := CcacheStats{CompileFailed: 2}
-		assert.False(t, s.Success())
+	t.Run("compiler-side failures do not flip success", func(t *testing.T) {
+		// compile_failed / preprocessor_error / bad_input_file / bad_output_file
+		// reflect the invoked compiler exiting non-zero (e.g. autoconf probes,
+		// transient build races) — ccache itself worked fine.
+		s := CcacheStats{
+			CompileFailed:     5,
+			PreprocessorError: 2,
+			BadInputFile:      1,
+			BadOutputFile:     1,
+		}
+		assert.True(t, s.Success())
 	})
 
 	t.Run("storage misses do not flip success", func(t *testing.T) {
@@ -312,12 +320,17 @@ func TestCcacheStats_ErrorSummary(t *testing.T) {
 		assert.Empty(t, CcacheStats{}.ErrorSummary())
 	})
 
-	t.Run("lists every non-zero error counter", func(t *testing.T) {
-		s := CcacheStats{InternalError: 2, CompileFailed: 1, BadInputFile: 4}
+	t.Run("lists every non-zero ccache-internal error counter", func(t *testing.T) {
+		s := CcacheStats{InternalError: 2, MissingCacheFile: 1, ModifiedInputFile: 4}
 		got := s.ErrorSummary()
 		assert.Contains(t, got, "internal_error=2")
-		assert.Contains(t, got, "compile_failed=1")
-		assert.Contains(t, got, "bad_input_file=4")
+		assert.Contains(t, got, "missing_cache_file=1")
+		assert.Contains(t, got, "modified_input_file=4")
+	})
+
+	t.Run("compiler-side errors are not listed in summary", func(t *testing.T) {
+		s := CcacheStats{CompileFailed: 7, PreprocessorError: 3, BadInputFile: 1, BadOutputFile: 1}
+		assert.Empty(t, s.ErrorSummary())
 	})
 }
 
@@ -341,11 +354,11 @@ func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
 
 	t.Run("internal errors propagate as success=false + summary string", func(t *testing.T) {
 		stats := CcacheStats{
-			CacheableCalls: 10,
-			CacheHit:       5,
-			CacheHitRate:   0.5,
-			InternalError:  1,
-			CompileFailed:  3,
+			CacheableCalls:    10,
+			CacheHit:          5,
+			CacheHitRate:      0.5,
+			InternalError:     1,
+			ModifiedInputFile: 3,
 		}
 
 		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
@@ -353,6 +366,20 @@ func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
 		assert.InDelta(t, 0.5, inv.HitRate, 1e-6)
 		assert.False(t, inv.Success)
 		assert.Contains(t, inv.Error, "internal_error=1")
-		assert.Contains(t, inv.Error, "compile_failed=3")
+		assert.Contains(t, inv.Error, "modified_input_file=3")
+	})
+
+	t.Run("compiler-side errors keep success=true", func(t *testing.T) {
+		stats := CcacheStats{
+			CacheableCalls: 10,
+			CacheHit:       9,
+			CacheHitRate:   0.9,
+			CompileFailed:  2,
+		}
+
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+
+		assert.True(t, inv.Success)
+		assert.Empty(t, inv.Error)
 	})
 }
