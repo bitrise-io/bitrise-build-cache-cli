@@ -979,6 +979,9 @@ workflows:
         inputs:
           - packages: 'bc'
           - upgrade: "no"
+    - set-java-version@1:
+        inputs:
+          - set_java_version: '21'
     - script:
         title: Enable build cache and MavenCentral mirror
         inputs:
