@@ -13,6 +13,7 @@ import (
 //nolint:gochecknoglobals
 var (
 	initialInvocationID string
+	startNoIdleTimeout  bool
 
 	ccacheCmd = &cobra.Command{
 		Use:          "ccache",
@@ -32,8 +33,9 @@ var (
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
-				InvocationID: initialInvocationID,
-				DebugLogging: common.IsDebugLogMode,
+				InvocationID:  initialInvocationID,
+				DebugLogging:  common.IsDebugLogMode,
+				NoIdleTimeout: startNoIdleTimeout,
 			})
 			if err != nil {
 				return fmt.Errorf("create storage helper: %w", err)
@@ -54,6 +56,12 @@ func init() {
 		"invocation-id",
 		uuid.NewString(),
 		"Invocation ID to be used in the proxy",
+	)
+	startStorageHelperCmd.Flags().BoolVar(
+		&startNoIdleTimeout,
+		"no-idle-timeout",
+		false,
+		"Disable the idle-shutdown timer; the helper runs until explicitly stopped (for desktop-app use)",
 	)
 
 	common.RootCmd.AddCommand(ccacheCmd)

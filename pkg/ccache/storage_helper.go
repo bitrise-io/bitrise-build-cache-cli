@@ -54,6 +54,11 @@ type StorageHelperParams struct {
 	// Used by Stop, CollectStats, HealthCheck, SetInvocationID.
 	// If empty, the path from the ccache config file is used.
 	SocketPath string
+
+	// NoIdleTimeout disables the idle-shutdown timer so the helper stays
+	// running across CI-less idle periods. Intended for desktop-app use where
+	// the app manages the helper lifecycle explicitly via Stop().
+	NoIdleTimeout bool
 }
 
 // HealthCheckParams configures the HealthCheck operation.
@@ -95,6 +100,9 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 	}
 
 	config.DebugLogging = config.DebugLogging || params.DebugLogging
+	if params.NoIdleTimeout {
+		config.IdleTimeout = 0
+	}
 
 	registry, err := pkgcommon.NewInvocationRegistry(pkgcommon.InvocationRegistryParams{
 		Envs: params.Envs,
