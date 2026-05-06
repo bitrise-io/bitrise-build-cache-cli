@@ -108,7 +108,7 @@ step_bundles:
                 rm -rf "$WRAP_TEST_RN_DIR"
                 git clone --depth 1 "$SEEK_RN_REPO" "$WRAP_TEST_RN_DIR"
                 cd "$WRAP_TEST_RN_DIR"
-                yarn install --frozen-lockfile
+                npm install --legacy-peer-deps --no-audit --no-fund
                 if [[ "$(uname)" == "Darwin" ]]; then
                     cd ios
                     pod install
