@@ -1,7 +1,9 @@
 package common
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
@@ -57,29 +59,37 @@ var healthcheckCmd = &cobra.Command{
 			return fmt.Errorf("create build cache client: %w", err)
 		}
 
-		if err := kvClient.GetCapabilitiesWithRetry(cmd.Context()); err != nil {
-			wrappedErr := fmt.Errorf("build cache backend unreachable: %w", err)
-			if healthcheckJSONOutput {
-				_ = WriteJSON(cmd.OutOrStdout(), map[string]any{"success": false, "error": wrappedErr.Error()})
-			} else {
-				logger.TErrorf("%s", wrappedErr)
-			}
+		homeDir, _ := os.UserHomeDir()
 
-			return wrappedErr
-		}
-
-		if homeDir, err := os.UserHomeDir(); err == nil {
-			health.NewTracker(homeDir).RecordSuccess()
-		}
-
-		logger.TInfof("✅ Build cache backend reachable")
-
-		if healthcheckJSONOutput {
-			return WriteJSON(cmd.OutOrStdout(), map[string]any{"success": true, "error": nil})
-		}
-
-		return nil
+		return execHealthcheck(cmd.Context(), cmd.OutOrStdout(), healthcheckJSONOutput, logger, homeDir, kvClient.GetCapabilitiesWithRetry)
 	},
+}
+
+// execHealthcheck runs the capabilities check and writes JSON or logs the result.
+// Extracted for testability — callers inject checkFn instead of a real kv client.
+func execHealthcheck(ctx context.Context, out io.Writer, jsonOutput bool, logger log.Logger, homeDir string, checkFn func(context.Context) error) error {
+	if err := checkFn(ctx); err != nil {
+		wrappedErr := fmt.Errorf("build cache backend unreachable: %w", err)
+		if jsonOutput {
+			_ = WriteJSON(out, map[string]any{"success": false, "error": wrappedErr.Error()})
+		} else {
+			logger.TErrorf("%s", wrappedErr)
+		}
+
+		return wrappedErr
+	}
+
+	if homeDir != "" {
+		health.NewTracker(homeDir).RecordSuccess()
+	}
+
+	logger.TInfof("✅ Build cache backend reachable")
+
+	if jsonOutput {
+		return WriteJSON(out, map[string]any{"success": true, "error": nil})
+	}
+
+	return nil
 }
 
 func init() {
