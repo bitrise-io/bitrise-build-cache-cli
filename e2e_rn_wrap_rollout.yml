@@ -59,8 +59,14 @@ pipelines:
 step_bundles:
   # Build the CLI binary from this repo and put it on PATH so the wrap pkg
   # (compiled into each step under test) finds it during wrap.Detect.
+  # Also leaves the CLI repo checked out at $BITRISE_SOURCE_DIR so the nested
+  # `bitrise run <inner>` invocations later can find this same bitrise.yml
+  # (with its `include:` of e2e_rn_wrap_rollout.yml).
   rn-wrap-build-cli:
     steps:
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@8: {}
       - script@1:
           title: Build CLI binary
           inputs:
