@@ -58,7 +58,14 @@ var healthcheckCmd = &cobra.Command{
 		}
 
 		if err := kvClient.GetCapabilitiesWithRetry(cmd.Context()); err != nil {
-			return fmt.Errorf("build cache backend unreachable: %w", err)
+			wrappedErr := fmt.Errorf("build cache backend unreachable: %w", err)
+			if healthcheckJSONOutput {
+				_ = WriteJSON(cmd.OutOrStdout(), map[string]any{"success": false, "error": wrappedErr.Error()})
+			} else {
+				logger.TErrorf("%s", wrappedErr)
+			}
+
+			return wrappedErr
 		}
 
 		if homeDir, err := os.UserHomeDir(); err == nil {
@@ -68,7 +75,7 @@ var healthcheckCmd = &cobra.Command{
 		logger.TInfof("✅ Build cache backend reachable")
 
 		if healthcheckJSONOutput {
-			return WriteJSON(cmd.OutOrStdout(), map[string]bool{"success": true})
+			return WriteJSON(cmd.OutOrStdout(), map[string]any{"success": true, "error": nil})
 		}
 
 		return nil
