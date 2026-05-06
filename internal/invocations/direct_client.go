@@ -18,6 +18,13 @@ import (
 // For local hackathon use, pass "http://localhost:3000" instead.
 const XcodeServiceDefaultBaseURL = "https://xcode-analytics.services.bitrise.io"
 
+// ProviderIDLocal is the magic value for the `providerId` query param that
+// matches invocations recorded with an empty CI provider — i.e. local builds.
+// The service maps `providerId=unknown` to `WHERE provider_id = ''` (see
+// xcode-analytics-service `parseQueryParams`). Verified for ACI-4910:
+// existing CI vs local split is sufficient, no schema change needed.
+const ProviderIDLocal = "unknown"
+
 // DirectClient talks straight to xcode-analytics-service, bypassing the
 // bitrise-website BuildCache UI controller. Useful for local dev/hackathon
 // against a `make dev-up` stack — and for any consumer that already holds
@@ -105,6 +112,7 @@ type DirectListFilter struct {
 	RepositoryURL string
 	CommitEmail   string // ACI-4908: server-side user filter (added in xcode-analytics-service)
 	Hostname      string // ACI-4909: this-Mac-only filter (added in xcode-analytics-service)
+	LocalOnly     bool   // ACI-4910: shorthand for ProviderID = ProviderIDLocal — only matters when ProviderID is empty
 	Success       *bool
 	Before        time.Time
 	After         time.Time
@@ -141,8 +149,11 @@ func (c *DirectClient) List(filter DirectListFilter) (*DirectListResponse, error
 	if filter.Command != "" {
 		q.Set("command", filter.Command)
 	}
-	if filter.ProviderID != "" {
+	switch {
+	case filter.ProviderID != "":
 		q.Set("providerId", filter.ProviderID)
+	case filter.LocalOnly:
+		q.Set("providerId", ProviderIDLocal)
 	}
 	if filter.RepositoryURL != "" {
 		q.Set("repositoryUrl", filter.RepositoryURL)
