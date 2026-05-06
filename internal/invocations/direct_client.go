@@ -104,6 +104,7 @@ type DirectListFilter struct {
 	ProviderID    string
 	RepositoryURL string
 	CommitEmail   string // ACI-4908: server-side user filter (added in xcode-analytics-service)
+	Hostname      string // ACI-4909: this-Mac-only filter (added in xcode-analytics-service)
 	Success       *bool
 	Before        time.Time
 	After         time.Time
@@ -148,6 +149,9 @@ func (c *DirectClient) List(filter DirectListFilter) (*DirectListResponse, error
 	}
 	if filter.CommitEmail != "" {
 		q.Set("commitEmail", filter.CommitEmail)
+	}
+	if filter.Hostname != "" {
+		q.Set("hostname", filter.Hostname)
 	}
 	if filter.Success != nil {
 		q.Set("success", strconv.FormatBool(*filter.Success))

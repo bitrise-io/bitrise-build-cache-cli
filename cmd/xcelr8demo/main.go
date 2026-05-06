@@ -24,7 +24,8 @@ func main() {
 		baseURL     = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
 		orgSlug     = flag.String("org", "test-org", "Bitrise workspace / org slug")
 		token       = flag.String("token", "", "Personal Access Token (optional in dev mode)")
-		commitEmail = flag.String("commit-email", "", "filter invocations by commit email (the new ACI-4908 filter)")
+		commitEmail = flag.String("commit-email", "", "filter invocations by commit email (ACI-4908)")
+		hostname    = flag.String("hostname", "", "filter invocations by hostname / this-Mac-only (ACI-4909)")
 		limit       = flag.Int("limit", 10, "max rows to return")
 	)
 	flag.Parse()
@@ -34,6 +35,7 @@ func main() {
 
 	resp, err := client.List(invocations.DirectListFilter{
 		CommitEmail: *commitEmail,
+		Hostname:    *hostname,
 		Limit:       *limit,
 		// Wide window so seeded fixtures fall inside.
 		After: time.Now().Add(-365 * 24 * time.Hour),
@@ -43,13 +45,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("totalCount=%d returned=%d filter.commitEmail=%q\n\n",
-		resp.TotalCount, len(resp.Items), *commitEmail)
+	fmt.Printf("totalCount=%d returned=%d filter.commitEmail=%q filter.hostname=%q\n\n",
+		resp.TotalCount, len(resp.Items), *commitEmail, *hostname)
 
 	for _, inv := range resp.Items {
-		fmt.Printf("  %s  %s  %s  hit=%.2f  %s\n",
+		fmt.Printf("  %s  %s  %s  %s  hit=%.2f  %s\n",
 			inv.InvocationDate.Format(time.RFC3339),
 			inv.InvocationID,
+			inv.Hostname,
 			inv.CommitEmail,
 			inv.HitRate,
 			inv.Branch,
