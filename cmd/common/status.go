@@ -12,6 +12,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
 )
 
+const neverLabel = "never"
+
 //nolint:gochecknoglobals
 var (
 	statusJSONOutput bool
@@ -139,11 +141,23 @@ func writeTable(out io.Writer, s status.Status) error {
 		}
 	}
 
+	if _, err := fmt.Fprintf(tw, "last-success\t%s\n", healthLabel(s.Health)); err != nil {
+		return fmt.Errorf("write health row: %w", err)
+	}
+
 	if err := tw.Flush(); err != nil {
 		return fmt.Errorf("flush status table: %w", err)
 	}
 
 	return nil
+}
+
+func healthLabel(h status.HealthStatus) string {
+	if h.LastSuccessAt == nil || h.SecondsSince == nil {
+		return neverLabel
+	}
+
+	return fmt.Sprintf("%s (%ds ago)", h.LastSuccessAt.Format("2006-01-02 15:04:05 UTC"), *h.SecondsSince)
 }
 
 func statusLabel(enabled bool) string {

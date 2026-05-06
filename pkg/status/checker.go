@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/health"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -32,13 +34,21 @@ const (
 // recognised. The exit-code layer translates this into a status-2 exit.
 var ErrUnknownFeature = errors.New("unknown feature")
 
+// HealthStatus carries the result of the last successful build cache call.
+// Both fields are nil when no successful call has ever been recorded.
+type HealthStatus struct {
+	LastSuccessAt *time.Time `json:"lastSuccessAt"`
+	SecondsSince  *int64     `json:"secondsSince"`
+}
+
 // Status is the machine-readable shape returned by Checker.Status and the
 // `--json` output of the cobra command.
 type Status struct {
-	Gradle      bool `json:"gradle"`
-	Xcode       bool `json:"xcode"`
-	Cpp         bool `json:"cpp"`
-	ReactNative bool `json:"reactNative"`
+	Gradle      bool         `json:"gradle"`
+	Xcode       bool         `json:"xcode"`
+	Cpp         bool         `json:"cpp"`
+	ReactNative bool         `json:"reactNative"`
+	Health      HealthStatus `json:"health"`
 }
 
 // CheckerParams holds the dependencies for a Checker.
@@ -53,6 +63,7 @@ type Checker struct {
 	logger         log.Logger
 	osProxy        utils.OsProxy
 	decoderFactory utils.DecoderFactory
+	healthTracker  *health.Tracker
 }
 
 // NewChecker creates a Checker, filling in production defaults for any nil
@@ -73,10 +84,16 @@ func NewChecker(p CheckerParams) *Checker {
 		decoderFactory = utils.DefaultDecoderFactory{}
 	}
 
+	var healthTracker *health.Tracker
+	if homeDir, err := osProxy.UserHomeDir(); err == nil {
+		healthTracker = health.NewTracker(homeDir)
+	}
+
 	return &Checker{
 		logger:         logger,
 		osProxy:        osProxy,
 		decoderFactory: decoderFactory,
+		healthTracker:  healthTracker,
 	}
 }
 
@@ -89,6 +106,25 @@ func (c *Checker) Status() Status {
 		Xcode:       c.xcodeEnabled(),
 		Cpp:         c.cppEnabled(),
 		ReactNative: c.reactNativeEnabled(),
+		Health:      c.healthStatus(),
+	}
+}
+
+func (c *Checker) healthStatus() HealthStatus {
+	if c.healthTracker == nil {
+		return HealthStatus{}
+	}
+
+	ts, ok, err := c.healthTracker.LastSuccess()
+	if err != nil || !ok {
+		return HealthStatus{}
+	}
+
+	secs := int64(time.Since(ts).Seconds())
+
+	return HealthStatus{
+		LastSuccessAt: &ts,
+		SecondsSince:  &secs,
 	}
 }
 
