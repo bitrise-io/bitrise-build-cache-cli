@@ -15,8 +15,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
 )
 
 func main() {
@@ -53,7 +54,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		fmt.Printf("count=%d hitRateP50=%.3f timeSavedMs=%d (filter.commitEmail=%q hostname=%q providerId=%q localOnly=%v)\n",
+		fmt.Fprintf(os.Stdout, "count=%d hitRateP50=%.3f timeSavedMs=%d (filter.commitEmail=%q hostname=%q providerId=%q localOnly=%v)\n",
 			s.Count, s.HitRateP50, s.TimeSavedMs,
 			*commitEmail, *hostname, *providerID, *localOnly)
 
@@ -66,11 +67,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("totalCount=%d returned=%d filter.commitEmail=%q filter.hostname=%q filter.providerId=%q filter.localOnly=%v\n\n",
+	fmt.Fprintf(os.Stdout, "totalCount=%d returned=%d filter.commitEmail=%q filter.hostname=%q filter.providerId=%q filter.localOnly=%v\n\n",
 		resp.TotalCount, len(resp.Items), *commitEmail, *hostname, *providerID, *localOnly)
 
 	for _, inv := range resp.Items {
-		fmt.Printf("  %s  %s  %s  %s  provider=%q  hit=%.2f  %s\n",
+		fmt.Fprintf(os.Stdout, "  %s  %s  %s  %s  provider=%q  hit=%.2f  %s\n",
 			inv.InvocationDate.Format(time.RFC3339),
 			inv.InvocationID,
 			inv.Hostname,

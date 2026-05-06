@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -30,6 +31,7 @@ import (
 	"time"
 )
 
+//nolint:gochecknoglobals
 var (
 	emails = []string{
 		"balazs@bitrise.io",
@@ -128,12 +130,12 @@ type serviceInvocation struct {
 
 func main() {
 	var (
-		count   = flag.Int("count", 200, "number of invocations to generate")
-		baseURL = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
-		orgSlug = flag.String("org", "test-org", "Bitrise workspace / org slug")
+		count      = flag.Int("count", 200, "number of invocations to generate")
+		baseURL    = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
+		orgSlug    = flag.String("org", "test-org", "Bitrise workspace / org slug")
 		windowDays = flag.Int("window-days", 30, "spread invocationDate uniformly across the last N days")
-		seed    = flag.Int64("seed", 1, "RNG seed for deterministic re-runs")
-		dryRun  = flag.Bool("dry-run", false, "print PUT bodies to stdout, do not call the service")
+		seed       = flag.Int64("seed", 1, "RNG seed for deterministic re-runs")
+		dryRun     = flag.Bool("dry-run", false, "print PUT bodies to stdout, do not call the service")
 	)
 	flag.Parse()
 
@@ -145,12 +147,18 @@ func main() {
 
 	var put, failed int
 
-	for i := 0; i < *count; i++ {
+	for i := range *count {
 		inv := generate(rng, *orgSlug, windowStart, now)
 
 		if *dryRun {
-			body, _ := json.MarshalIndent(inv, "", "  ")
-			fmt.Printf("--- PUT /invocations/%s ---\n%s\n", inv.InvocationID, body)
+			body, err := json.MarshalIndent(inv, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[%d] dry-run marshal: %v\n", i, err)
+				failed++
+
+				continue
+			}
+			fmt.Fprintf(os.Stdout, "--- PUT /invocations/%s ---\n%s\n", inv.InvocationID, body)
 			put++
 
 			continue
@@ -164,7 +172,7 @@ func main() {
 			continue
 		}
 
-		req, err := http.NewRequest(http.MethodPut, *baseURL+"/invocations/"+inv.InvocationID, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, *baseURL+"/invocations/"+inv.InvocationID, bytes.NewReader(body))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%d] new req: %v\n", i, err)
 			failed++
@@ -197,7 +205,7 @@ func main() {
 		put++
 	}
 
-	fmt.Printf("done — put=%d failed=%d (count=%d, seed=%d, window=%dd)\n", put, failed, *count, *seed, *windowDays)
+	fmt.Fprintf(os.Stdout, "done — put=%d failed=%d (count=%d, seed=%d, window=%dd)\n", put, failed, *count, *seed, *windowDays)
 
 	if failed > 0 {
 		os.Exit(1)

@@ -59,11 +59,12 @@ type ListResponse struct {
 // consumers know when to expect them.
 //
 // **Pinned, always-present fields (presenter `to_h` head):**
-//   projectSlug, projectTitle, buildSlug, cacheHitRate, ciProvider, command,
-//   shortCommand, commitHash, duration, invocationId, repositoryUrl,
-//   startedAt (ISO 8601 string), stepExecutionId, status, tool, toolVersion,
-//   toolBuildNumber, toolWithVersionInfo, usesCache, workflowName,
-//   hasMeaningfulExecutionReasons, hasAnyChildInvocation
+//
+//	projectSlug, projectTitle, buildSlug, cacheHitRate, ciProvider, command,
+//	shortCommand, commitHash, duration, invocationId, repositoryUrl,
+//	startedAt (ISO 8601 string), stepExecutionId, status, tool, toolVersion,
+//	toolBuildNumber, toolWithVersionInfo, usesCache, workflowName,
+//	hasMeaningfulExecutionReasons, hasAnyChildInvocation
 //
 // **Conditional fields** (added by the presenter only when the underlying
 // data is present — see `to_h` body): benchmarkPhase, wrapper,
@@ -116,21 +117,21 @@ type InvocationSummary struct {
 	HasAnyChildInvocation         bool      `json:"hasAnyChildInvocation"`
 
 	// Conditional — populated by the presenter only when present in source.
-	BenchmarkPhase   string                  `json:"benchmarkPhase,omitempty"`
-	Wrapper          string                  `json:"wrapper,omitempty"`
-	ParentInvocation *ParentInvocationRef    `json:"parentInvocation,omitempty"`
-	FailedTaskPath   string                  `json:"failedTaskPath,omitempty"`
-	FailureReason    string                  `json:"failureReason,omitempty"`
-	TargetOS         []string                `json:"targetOs,omitempty"`
-	BazelTotalActionCount  *int              `json:"bazelTotalActionCount,omitempty"`
-	BazelCachedActionCount *int              `json:"bazelCachedActionCount,omitempty"`
-	TaskStatistics   *GradleTaskStatistics   `json:"taskStatistics,omitempty"`
-	GitRepositoryTitle    string             `json:"gitRepositoryTitle,omitempty"`
-	GitRepositoryWebURL   string             `json:"gitRepositoryWebUrl,omitempty"`
-	GitRepositoryProvider string             `json:"gitRepositoryProvider,omitempty"`
-	BuildNumber           *int64             `json:"buildNumber,omitempty"`
-	BranchName            string             `json:"branchName,omitempty"`
-	BranchURL             string             `json:"branchUrl,omitempty"`
+	BenchmarkPhase         string                `json:"benchmarkPhase,omitempty"`
+	Wrapper                string                `json:"wrapper,omitempty"`
+	ParentInvocation       *ParentInvocationRef  `json:"parentInvocation,omitempty"`
+	FailedTaskPath         string                `json:"failedTaskPath,omitempty"`
+	FailureReason          string                `json:"failureReason,omitempty"`
+	TargetOS               []string              `json:"targetOs,omitempty"`
+	BazelTotalActionCount  *int                  `json:"bazelTotalActionCount,omitempty"`
+	BazelCachedActionCount *int                  `json:"bazelCachedActionCount,omitempty"`
+	TaskStatistics         *GradleTaskStatistics `json:"taskStatistics,omitempty"`
+	GitRepositoryTitle     string                `json:"gitRepositoryTitle,omitempty"`
+	GitRepositoryWebURL    string                `json:"gitRepositoryWebUrl,omitempty"`
+	GitRepositoryProvider  string                `json:"gitRepositoryProvider,omitempty"`
+	BuildNumber            *int64                `json:"buildNumber,omitempty"`
+	BranchName             string                `json:"branchName,omitempty"`
+	BranchURL              string                `json:"branchUrl,omitempty"`
 }
 
 // ParentInvocationRef is the shape of `parentInvocation` on
@@ -145,11 +146,11 @@ type ParentInvocationRef struct {
 // GradleTaskStatistics is the shape of `taskStatistics` set by the presenter
 // for Gradle invocations that report task stats.
 type GradleTaskStatistics struct {
-	TotalTaskCount     int `json:"totalTaskCount"`
-	UpToDateTaskCount  int `json:"upToDateTaskCount"`
-	FromCacheTaskCount int `json:"fromCacheTaskCount"`
+	TotalTaskCount      int `json:"totalTaskCount"`
+	UpToDateTaskCount   int `json:"upToDateTaskCount"`
+	FromCacheTaskCount  int `json:"fromCacheTaskCount"`
 	ActionableTaskCount int `json:"actionableTaskCount"`
-	CacheableTaskCount int `json:"cacheableTaskCount"`
+	CacheableTaskCount  int `json:"cacheableTaskCount"`
 }
 
 // GradleTask is a row from GET .../invocations/gradle/:id/tasks.json.
@@ -186,7 +187,7 @@ type BazelTargetsResponse struct {
 // ChildInvocationGroup is a buildTool-grouped slice in
 // get_child_invocations / get_sibling_invocations responses.
 type ChildInvocationGroup struct {
-	BuildTool   string            `json:"buildTool"`
+	BuildTool   string              `json:"buildTool"`
 	Invocations []InvocationSummary `json:"invocations"`
 }
 

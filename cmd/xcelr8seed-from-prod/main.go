@@ -19,6 +19,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1" //nolint:gosec // not security-critical, just deterministic bucketing
 	"encoding/binary"
 	"encoding/json"
@@ -32,6 +33,8 @@ import (
 )
 
 // Synthetic users + macs. Rotated deterministically so re-runs stay stable.
+//
+//nolint:gochecknoglobals
 var syntheticEmails = []string{
 	"balazs@bitrise.io",
 	"zsolt@bitrise.io",
@@ -40,6 +43,7 @@ var syntheticEmails = []string{
 	"anna@bitrise.io",
 }
 
+//nolint:gochecknoglobals
 var syntheticHostnames = []string{
 	"MacBook-balazs.local",
 	"MacBook-zsolt.local",
@@ -59,7 +63,7 @@ type presenterItem struct {
 	BuildSlug       string   `json:"buildSlug"`
 	RepositoryURL   string   `json:"repositoryUrl"`
 	CommitHash      string   `json:"commitHash"`
-	WorkflowName   string   `json:"workflowName"`
+	WorkflowName    string   `json:"workflowName"`
 	CIProvider      string   `json:"ciProvider"`
 	Command         string   `json:"command"`
 	ShortCommand    string   `json:"shortCommand"`
@@ -120,11 +124,11 @@ type serviceInvocation struct {
 
 func main() {
 	var (
-		input       = flag.String("input", "_xcelr8/snapshots/list-xcode.json", "path to presenter-shape snapshot")
-		baseURL     = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
-		orgSlug     = flag.String("org", "test-org", "Bitrise workspace / org slug to write under (must match the local stack auth token)")
-		toolFilter  = flag.String("tool", "xcode", "only PUT items where presenter `tool` equals this; xcode-analytics-service stores xcode invocations only")
-		dryRun      = flag.Bool("dry-run", false, "render PUT bodies to stdout, do not call the service")
+		input      = flag.String("input", "_xcelr8/snapshots/list-xcode.json", "path to presenter-shape snapshot")
+		baseURL    = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
+		orgSlug    = flag.String("org", "test-org", "Bitrise workspace / org slug to write under (must match the local stack auth token)")
+		toolFilter = flag.String("tool", "xcode", "only PUT items where presenter `tool` equals this; xcode-analytics-service stores xcode invocations only")
+		dryRun     = flag.Bool("dry-run", false, "render PUT bodies to stdout, do not call the service")
 	)
 	flag.Parse()
 
@@ -154,8 +158,14 @@ func main() {
 		inv := mapItem(p, *orgSlug)
 
 		if *dryRun {
-			body, _ := json.MarshalIndent(inv, "", "  ")
-			fmt.Printf("--- PUT /invocations/%s ---\n%s\n", inv.InvocationID, body)
+			body, err := json.MarshalIndent(inv, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[%d] dry-run marshal: %v\n", i, err)
+				failed++
+
+				continue
+			}
+			fmt.Fprintf(os.Stdout, "--- PUT /invocations/%s ---\n%s\n", inv.InvocationID, body)
 			put++
 
 			continue
@@ -169,7 +179,7 @@ func main() {
 			continue
 		}
 
-		req, err := http.NewRequest(http.MethodPut, *baseURL+"/invocations/"+inv.InvocationID, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, *baseURL+"/invocations/"+inv.InvocationID, bytes.NewReader(body))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%d] new req: %v\n", i, err)
 			failed++
@@ -202,7 +212,7 @@ func main() {
 		put++
 	}
 
-	fmt.Printf("done — put=%d skipped=%d failed=%d\n", put, skipped, failed)
+	fmt.Fprintf(os.Stdout, "done — put=%d skipped=%d failed=%d\n", put, skipped, failed)
 
 	if failed > 0 {
 		os.Exit(1)

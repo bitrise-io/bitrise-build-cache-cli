@@ -18,9 +18,12 @@ import (
 // For local hackathon use, pass "http://localhost:3000" instead.
 const XcodeServiceDefaultBaseURL = "https://xcode-analytics.services.bitrise.io"
 
+// ErrNotFound is returned by Get when the requested invocation does not exist.
+var ErrNotFound = fmt.Errorf("invocation not found")
+
 // ProviderIDLocal is the magic value for the `providerId` query param that
 // matches invocations recorded with an empty CI provider — i.e. local builds.
-// The service maps `providerId=unknown` to `WHERE provider_id = ''` (see
+// The service maps `providerId=unknown` to `WHERE provider_id = ”` (see
 // xcode-analytics-service `parseQueryParams`). Verified for ACI-4910:
 // existing CI vs local split is sufficient, no schema change needed.
 const ProviderIDLocal = "unknown"
@@ -345,7 +348,7 @@ func (c *DirectClient) Get(invocationID string) (*XcodeInvocation, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
+		return nil, ErrNotFound
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
