@@ -28,6 +28,7 @@ func main() {
 		hostname    = flag.String("hostname", "", "filter invocations by hostname / this-Mac-only (ACI-4909)")
 		localOnly   = flag.Bool("local-only", false, "show only local invocations (provider id empty in DB; ACI-4910)")
 		providerID  = flag.String("provider-id", "", "filter by CI provider id (e.g. bitrise / github); takes precedence over --local-only")
+		stats       = flag.Bool("stats", false, "fetch aggregate stats (count, hit rate P50, time saved) instead of listing rows; ACI-4911")
 		limit       = flag.Int("limit", 10, "max rows to return")
 	)
 	flag.Parse()
@@ -35,7 +36,7 @@ func main() {
 	logger := log.NewLogger()
 	client := invocations.NewDirectClient(*baseURL, *token, *orgSlug, logger)
 
-	resp, err := client.List(invocations.DirectListFilter{
+	filter := invocations.DirectListFilter{
 		CommitEmail: *commitEmail,
 		Hostname:    *hostname,
 		ProviderID:  *providerID,
@@ -43,7 +44,23 @@ func main() {
 		Limit:       *limit,
 		// Wide window so seeded fixtures fall inside.
 		After: time.Now().Add(-365 * 24 * time.Hour),
-	})
+	}
+
+	if *stats {
+		s, err := client.Stats(filter)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "stats failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("count=%d hitRateP50=%.3f timeSavedMs=%d (filter.commitEmail=%q hostname=%q providerId=%q localOnly=%v)\n",
+			s.Count, s.HitRateP50, s.TimeSavedMs,
+			*commitEmail, *hostname, *providerID, *localOnly)
+
+		return
+	}
+
+	resp, err := client.List(filter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "list failed: %v\n", err)
 		os.Exit(1)

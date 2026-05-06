@@ -234,6 +234,94 @@ func (c *DirectClient) authHeader() string {
 	return "Bearer " + c.workspaceSlug + ":" + c.personalToken
 }
 
+// InvocationStats matches the JSON returned by GET /internal/invocations/stats
+// on xcode-analytics-service.
+//
+// `TimeSavedMs` is an estimate computed server-side as
+// SUM(duration_ms × hit_rate); see the service's `GetInvocationStats`.
+type InvocationStats struct {
+	Count       uint64  `json:"count"`
+	HitRateP50  float64 `json:"hitRateP50"`
+	TimeSavedMs int64   `json:"timeSavedMs"`
+}
+
+// Stats returns aggregate metrics over the same filter as List.
+// ACI-4911.
+func (c *DirectClient) Stats(filter DirectListFilter) (*InvocationStats, error) {
+	if c.workspaceSlug == "" {
+		return nil, fmt.Errorf("workspace slug required")
+	}
+
+	q := url.Values{}
+	q.Set("workspaceId", c.workspaceSlug)
+
+	if filter.AppSlug != "" {
+		q.Set("appSlug", filter.AppSlug)
+	}
+	if filter.BuildSlug != "" {
+		q.Set("buildSlug", filter.BuildSlug)
+	}
+	if filter.WorkflowName != "" {
+		q.Set("workflowName", filter.WorkflowName)
+	}
+	if filter.Command != "" {
+		q.Set("command", filter.Command)
+	}
+	switch {
+	case filter.ProviderID != "":
+		q.Set("providerId", filter.ProviderID)
+	case filter.LocalOnly:
+		q.Set("providerId", ProviderIDLocal)
+	}
+	if filter.RepositoryURL != "" {
+		q.Set("repositoryUrl", filter.RepositoryURL)
+	}
+	if filter.CommitEmail != "" {
+		q.Set("commitEmail", filter.CommitEmail)
+	}
+	if filter.Hostname != "" {
+		q.Set("hostname", filter.Hostname)
+	}
+	if filter.Success != nil {
+		q.Set("success", strconv.FormatBool(*filter.Success))
+	}
+	if !filter.Before.IsZero() {
+		q.Set("before", filter.Before.UTC().Format(time.RFC3339))
+	}
+	if !filter.After.IsZero() {
+		q.Set("after", filter.After.UTC().Format(time.RFC3339))
+	}
+
+	requestURL := c.baseURL + "/internal/invocations/stats?" + q.Encode()
+	c.logger.Debugf("HTTP GET: %s", requestURL)
+
+	req, err := retryablehttp.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP request: %w", err)
+	}
+	req.Header.Set("Authorization", c.authHeader())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("perform HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
+	}
+
+	var stats InvocationStats
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	return &stats, nil
+}
+
 // Get calls GET /internal/invocations/{id} on xcode-analytics-service.
 func (c *DirectClient) Get(invocationID string) (*XcodeInvocation, error) {
 	if invocationID == "" {
