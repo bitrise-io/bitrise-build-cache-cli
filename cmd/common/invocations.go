@@ -169,17 +169,7 @@ func resolveInvocationsAuth() (string, string, error) {
 		workspace = os.Getenv("BITRISE_WORKSPACE_ID")
 	}
 
-	if token == "" || workspace == "" {
-		fromConfig, err := readCcacheConfigAuth()
-		if err == nil {
-			if token == "" {
-				token = fromConfig.token
-			}
-			if workspace == "" {
-				workspace = fromConfig.workspace
-			}
-		}
-	}
+	token, workspace = fillFromConfigIfMissing(token, workspace)
 
 	if token == "" {
 		return "", "", fmt.Errorf("missing PAT — set --token, BITRISE_TOKEN, or AuthToken in ~/.bitrise/cache/ccache/config.json")
@@ -190,6 +180,26 @@ func resolveInvocationsAuth() (string, string, error) {
 	}
 
 	return token, workspace, nil
+}
+
+func fillFromConfigIfMissing(token, workspace string) (string, string) {
+	if token != "" && workspace != "" {
+		return token, workspace
+	}
+
+	fromConfig, err := readCcacheConfigAuth()
+	if err != nil {
+		return token, workspace
+	}
+
+	if token == "" {
+		token = fromConfig.token
+	}
+	if workspace == "" {
+		workspace = fromConfig.workspace
+	}
+
+	return token, workspace
 }
 
 func buildInvocationsListFilter() (invocations.ListFilter, error) {
