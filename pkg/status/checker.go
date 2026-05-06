@@ -5,13 +5,16 @@
 package status
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
@@ -44,11 +47,13 @@ type HealthStatus struct {
 // Status is the machine-readable shape returned by Checker.Status and the
 // `--json` output of the cobra command.
 type Status struct {
-	Gradle      bool         `json:"gradle"`
-	Xcode       bool         `json:"xcode"`
-	Cpp         bool         `json:"cpp"`
-	ReactNative bool         `json:"reactNative"`
-	Health      HealthStatus `json:"health"`
+	Gradle                bool         `json:"gradle"`
+	Xcode                 bool         `json:"xcode"`
+	Cpp                   bool         `json:"cpp"`
+	ReactNative           bool         `json:"reactNative"`
+	Health                HealthStatus `json:"health"`
+	CcacheHelperRunning   bool         `json:"ccacheHelperRunning"`
+	XcelerateProxyRunning bool         `json:"xcelerateProxyRunning"`
 }
 
 // CheckerParams holds the dependencies for a Checker.
@@ -102,11 +107,13 @@ func NewChecker(p CheckerParams) *Checker {
 // return an error here.
 func (c *Checker) Status() Status {
 	return Status{
-		Gradle:      c.gradleEnabled(),
-		Xcode:       c.xcodeEnabled(),
-		Cpp:         c.cppEnabled(),
-		ReactNative: c.reactNativeEnabled(),
-		Health:      c.healthStatus(),
+		Gradle:                c.gradleEnabled(),
+		Xcode:                 c.xcodeEnabled(),
+		Cpp:                   c.cppEnabled(),
+		ReactNative:           c.reactNativeEnabled(),
+		Health:                c.healthStatus(),
+		CcacheHelperRunning:   c.ccacheHelperRunning(),
+		XcelerateProxyRunning: c.xcelerateProxyRunning(),
 	}
 }
 
@@ -188,4 +195,34 @@ func (c *Checker) reactNativeEnabled() bool {
 	}
 
 	return cfg.Enabled
+}
+
+func (c *Checker) ccacheHelperRunning() bool {
+	cfg, err := ccacheconfig.ReadConfig(c.osProxy, c.decoderFactory)
+	if err != nil || cfg.IPCEndpoint == "" {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	return iccache.SendHealthCheck(ctx, cfg.IPCEndpoint) == nil
+}
+
+func (c *Checker) xcelerateProxyRunning() bool {
+	cfg, err := xcelerate.ReadConfig(c.osProxy, c.decoderFactory)
+	if err != nil || cfg.ProxySocketPath == "" {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", cfg.ProxySocketPath)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+
+	return true
 }

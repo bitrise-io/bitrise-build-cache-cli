@@ -128,15 +128,17 @@ func WriteJSON(out io.Writer, v any) error {
 func writeTable(out io.Writer, s status.Status) error {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	for _, row := range [...]struct {
-		name    string
-		enabled bool
+		name  string
+		value string
 	}{
-		{"gradle", s.Gradle},
-		{"xcode", s.Xcode},
-		{"cpp", s.Cpp},
-		{"react-native", s.ReactNative},
+		{"gradle", statusLabel(s.Gradle)},
+		{"xcode", statusLabel(s.Xcode)},
+		{"cpp", statusLabel(s.Cpp)},
+		{"react-native", statusLabel(s.ReactNative)},
+		{"ccache-helper", runningLabel(s.CcacheHelperRunning)},
+		{"xcelerate-proxy", runningLabel(s.XcelerateProxyRunning)},
 	} {
-		if _, err := fmt.Fprintf(tw, "%s\t%s\n", row.name, statusLabel(row.enabled)); err != nil {
+		if _, err := fmt.Fprintf(tw, "%s\t%s\n", row.name, row.value); err != nil {
 			return fmt.Errorf("write status row: %w", err)
 		}
 	}
@@ -166,6 +168,14 @@ func statusLabel(enabled bool) string {
 	}
 
 	return "disabled"
+}
+
+func runningLabel(running bool) string {
+	if running {
+		return "running"
+	}
+
+	return "stopped"
 }
 
 // jsonKey maps CLI feature names (dash-case) to the JSON field name in
