@@ -32,7 +32,13 @@ app:
     # react-seek-{android,ios}-e2e workflows use, so the wrap helpers
     # exercise the same code path RN customers see.
     - SEEK_RN_REPO: git@github.com:bitrise-io/SeekReactNative.git
-    - ANDROID_SAMPLE_REPO: https://github.com/bitrise-samples/sample-apps-android-simple.git
+    - ANDROID_SAMPLE_REPO: git@github.com:bitrise-samples/sample-apps-android-simple.git
+    # Hardcoded test app dirs — used by both the setup bundles and the
+    # inner workflows. Inner workflows can't see envman vars from the
+    # outer bundle (each `bitrise run <inner>` starts with a fresh
+    # envstore), so we keep the paths as constants here.
+    - WRAP_TEST_ANDROID_DIR: /tmp/wrap-test-android
+    - WRAP_TEST_RN_DIR: /tmp/wrap-test-rn
     # Hardcoded branch reference for every wrap PR. Flip to default branch
     # post-merge.
     - WRAP_HELPER_REF: feat/use-cli-wrap-helper
@@ -94,9 +100,8 @@ step_bundles:
             - content: |-
                 #!/usr/bin/env bash
                 set -euxo pipefail
-                rm -rf /tmp/wrap-test-android
-                git clone --depth 1 "$ANDROID_SAMPLE_REPO" /tmp/wrap-test-android
-                envman add --key WRAP_TEST_ANDROID_DIR --value /tmp/wrap-test-android
+                rm -rf "$WRAP_TEST_ANDROID_DIR"
+                git clone --depth 1 "$ANDROID_SAMPLE_REPO" "$WRAP_TEST_ANDROID_DIR"
 
   # Activate React Native cache + clone SeekReactNative for the iOS / RN wrap tests.
   rn-wrap-activate-rn-ios:
@@ -118,9 +123,8 @@ step_bundles:
             - content: |-
                 #!/usr/bin/env bash
                 set -euxo pipefail
-                rm -rf /tmp/wrap-test-rn
-                git clone --depth 1 "$SEEK_RN_REPO" /tmp/wrap-test-rn
-                envman add --key WRAP_TEST_RN_DIR --value /tmp/wrap-test-rn
+                rm -rf "$WRAP_TEST_RN_DIR"
+                git clone --depth 1 "$SEEK_RN_REPO" "$WRAP_TEST_RN_DIR"
 
 workflows:
   # ---------------------------------------------------------------------------
