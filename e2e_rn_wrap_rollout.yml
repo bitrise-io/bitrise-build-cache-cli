@@ -315,8 +315,8 @@ workflows:
   rn-wrap-xcode-archive:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -338,8 +338,8 @@ workflows:
   rn-wrap-xcode-archive-inner:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-io/steps-xcode-archive.git@feat/use-cli-wrap-helper:
           title: steps-xcode-archive (PR branch)
@@ -352,8 +352,8 @@ workflows:
   rn-wrap-xcode-test:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -375,8 +375,8 @@ workflows:
   rn-wrap-xcode-test-inner:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-io/steps-xcode-test.git@feat/use-cli-wrap-helper:
           title: steps-xcode-test (PR branch)
@@ -388,8 +388,8 @@ workflows:
   rn-wrap-xcode-analyze:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -411,8 +411,8 @@ workflows:
   rn-wrap-xcode-analyze-inner:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/steps-xcode-analyze.git@feat/use-cli-wrap-helper:
           title: steps-xcode-analyze (PR branch)
@@ -423,8 +423,8 @@ workflows:
   rn-wrap-xcode-build-for-test:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -446,8 +446,8 @@ workflows:
   rn-wrap-xcode-build-for-test-inner:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/steps-xcode-build-for-test.git@feat/use-cli-wrap-helper:
           title: steps-xcode-build-for-test (PR branch)
@@ -459,8 +459,8 @@ workflows:
   rn-wrap-xcode-build-for-simulator:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -482,8 +482,8 @@ workflows:
   rn-wrap-xcode-build-for-simulator-inner:
     meta:
       bitrise.io:
-        stack: osx-xcode-edge
-        machine_type_id: g2.mac.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/steps-xcode-build-for-simulator.git@feat/use-cli-wrap-helper:
           title: steps-xcode-build-for-simulator (PR branch)
