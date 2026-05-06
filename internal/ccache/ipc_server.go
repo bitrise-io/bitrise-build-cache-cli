@@ -32,6 +32,7 @@ type IpcServer struct {
 	activeInvocationID string
 	activeParentID     string
 	activeInvocationMu sync.Mutex
+	onSuccess          func()
 }
 
 func NewServer(
@@ -41,6 +42,7 @@ func NewServer(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	initialInvocationID string,
+	onSuccess func(),
 ) (*IpcServer, error) {
 	return &IpcServer{
 		config:             config,
@@ -50,6 +52,7 @@ func NewServer(
 		loggerFactory:      loggerFactory,
 		sessionState:       newSessionState(),
 		activeInvocationID: initialInvocationID,
+		onSuccess:          onSuccess,
 	}, nil
 }
 
@@ -112,7 +115,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.onSuccess)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)

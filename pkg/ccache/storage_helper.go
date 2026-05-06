@@ -22,6 +22,7 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/health"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
@@ -142,6 +143,11 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 		BitriseStepExecutionID: h.params.Envs["BITRISE_STEP_EXECUTION_ID"],
 	}
 
+	var onSuccess func()
+	if homeDir, err := h.osProxy.UserHomeDir(); err == nil {
+		onSuccess = health.NewTracker(homeDir).RecordSuccess
+	}
+
 	server, err := iccache.NewServer(
 		h.config,
 		metadata,
@@ -149,6 +155,7 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 		logger,
 		h.createLogger,
 		h.params.InvocationID,
+		onSuccess,
 	)
 	if err != nil {
 		return fmt.Errorf("create IPC server: %w", err)

@@ -51,6 +51,10 @@ func (c *Client) UploadStreamToBuildCache(ctx context.Context, source io.ReadSee
 		return fmt.Errorf("upload stream: %w", err)
 	}
 
+	if c.onSuccess != nil {
+		c.onSuccess()
+	}
+
 	return nil
 }
 

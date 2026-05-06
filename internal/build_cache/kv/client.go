@@ -37,6 +37,7 @@ type Client struct {
 	downloadRetryWait   time.Duration
 	uploadRetry         uint
 	uploadRetryWait     time.Duration
+	onSuccess           func()
 }
 
 type NewClientParams struct {
@@ -55,6 +56,8 @@ type NewClientParams struct {
 	DownloadRetryWait   time.Duration
 	UploadRetry         uint
 	UploadRetryWait     time.Duration
+	// OnSuccess is called after each successful download or upload. May be nil.
+	OnSuccess func()
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -104,6 +107,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		downloadRetryWait:   p.DownloadRetryWait,
 		uploadRetry:         p.UploadRetry,
 		uploadRetryWait:     p.UploadRetryWait,
+		onSuccess:           p.OnSuccess,
 	}, nil
 }
 

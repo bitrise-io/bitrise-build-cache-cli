@@ -27,6 +27,7 @@ type requestProcessor struct {
 	metadata        configcommon.CacheConfigMetadata
 	loggerFactory   LoggerFactory
 	getCapabilities func(context.Context) error
+	onSuccess       func()
 }
 
 func newRequestProcessor(
@@ -37,6 +38,7 @@ func newRequestProcessor(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	getCapabilities func(context.Context) error,
+	onSuccess func(),
 ) *requestProcessor {
 	sem := make(chan struct{}, 1)
 	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
@@ -51,6 +53,7 @@ func newRequestProcessor(
 		ccSemaphore:     sem,
 		loggerFactory:   loggerFactory,
 		getCapabilities: getCapabilities,
+		onSuccess:       onSuccess,
 	}
 }
 
@@ -340,11 +343,17 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 	switch reqType {
 	case protocol.RequestGet:
 		result = p.handleGet(ctx)
+		if result.Outcome == PROCESS_REQUEST_OK && p.onSuccess != nil {
+			p.onSuccess()
+		}
 
 		return result
 
 	case protocol.RequestPut:
 		result = p.handlePut(ctx)
+		if result.Outcome == PROCESS_REQUEST_OK && p.onSuccess != nil {
+			p.onSuccess()
+		}
 
 		return result
 

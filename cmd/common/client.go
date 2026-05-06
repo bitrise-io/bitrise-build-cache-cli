@@ -3,12 +3,14 @@ package common
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/health"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/kv_storage"
 )
@@ -47,6 +49,11 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 	}
 	params.Logger.Debugf("Build Cache host: %s", buildCacheHost)
 
+	var onSuccess func()
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		onSuccess = health.NewTracker(homeDir).RecordSuccess
+	}
+
 	kvClient, err := kv.NewClient(kv.NewClientParams{
 		UseInsecure:         insecureGRPC,
 		Host:                buildCacheHost,
@@ -59,6 +66,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		BitriseKVClient:     params.BitriseKVClient,
 		CapabilitiesClient:  params.CapabilitiesClient,
 		InvocationID:        params.InvocationID,
+		OnSuccess:           onSuccess,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)

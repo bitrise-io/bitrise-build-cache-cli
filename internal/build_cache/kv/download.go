@@ -146,6 +146,10 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		}
 	}
 
+	if c.onSuccess != nil {
+		c.onSuccess()
+	}
+
 	return nil
 }
 
