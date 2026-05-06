@@ -74,17 +74,17 @@ var invocationsListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		client, err := newInvocationsClient(cmd)
 		if err != nil {
-			return err
+			return writeInvocationsErr(cmd, err)
 		}
 
 		filter, err := buildInvocationsListFilter()
 		if err != nil {
-			return err
+			return writeInvocationsErr(cmd, err)
 		}
 
 		resp, err := client.List(filter)
 		if err != nil {
-			return fmt.Errorf("list invocations: %w", err)
+			return writeInvocationsErr(cmd, fmt.Errorf("list invocations: %w", err))
 		}
 
 		return WriteJSON(cmd.OutOrStdout(), resp)
@@ -102,12 +102,12 @@ var invocationsGetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := newInvocationsClient(cmd)
 		if err != nil {
-			return err
+			return writeInvocationsErr(cmd, err)
 		}
 
 		raw, err := client.Get(invocationsGetTool, args[0])
 		if err != nil {
-			return fmt.Errorf("get invocation: %w", err)
+			return writeInvocationsErr(cmd, fmt.Errorf("get invocation: %w", err))
 		}
 
 		// `Get` already returns json.RawMessage; pretty-print verbatim so
@@ -135,17 +135,25 @@ var invocationsStatsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		filter, err := buildInvocationsListFilter()
 		if err != nil {
-			return err
+			return writeInvocationsErr(cmd, err)
 		}
+
+		var runErr error
 
 		switch invocationsStatsSource {
 		case "direct":
-			return runInvocationsStatsDirect(cmd, filter)
+			runErr = runInvocationsStatsDirect(cmd, filter)
 		case "list", "":
-			return runInvocationsStatsFromList(cmd, filter)
+			runErr = runInvocationsStatsFromList(cmd, filter)
 		default:
-			return fmt.Errorf("unknown --source %q (use list or direct)", invocationsStatsSource)
+			runErr = fmt.Errorf("unknown --source %q (use list or direct)", invocationsStatsSource)
 		}
+
+		if runErr != nil {
+			return writeInvocationsErr(cmd, runErr)
+		}
+
+		return nil
 	},
 }
 
@@ -211,16 +219,24 @@ var invocationsTasksCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := newInvocationsClient(cmd)
 		if err != nil {
-			return err
+			return writeInvocationsErr(cmd, err)
 		}
 
 		resp, err := client.GetGradleTasks(args[0])
 		if err != nil {
-			return fmt.Errorf("get gradle tasks: %w", err)
+			return writeInvocationsErr(cmd, fmt.Errorf("get gradle tasks: %w", err))
 		}
 
 		return WriteJSON(cmd.OutOrStdout(), resp)
 	},
+}
+
+// writeInvocationsErr writes {"error":"..."} to stdout and returns err so
+// callers can do `return writeInvocationsErr(cmd, err)` in one line.
+func writeInvocationsErr(cmd *cobra.Command, err error) error {
+	_ = WriteJSON(cmd.OutOrStdout(), map[string]any{"error": err.Error()})
+
+	return err
 }
 
 func newInvocationsClient(cmd *cobra.Command) (*invocations.Client, error) {
