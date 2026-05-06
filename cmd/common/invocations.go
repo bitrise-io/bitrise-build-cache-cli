@@ -29,6 +29,14 @@ var (
 
 //nolint:gochecknoglobals
 var (
+	// stats flags
+	invocationsStatsSource    string
+	invocationsStatsDirectURL string
+	invocationsStatsMaxItems  int
+)
+
+//nolint:gochecknoglobals
+var (
 	// list flags
 	invocationsListTool         string
 	invocationsListStatus       string
@@ -115,6 +123,71 @@ var invocationsGetCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+//nolint:gochecknoglobals
+var invocationsStatsCmd = &cobra.Command{
+	Use:           "stats",
+	Short:         "Aggregate count + hit rate P50 + estimated time saved",
+	Long:          "Two sources:\n  --source list   (default) — page through GET /build-cache/:ws/invocations.json on bitrise-website and aggregate client-side. Works against the public website API.\n  --source direct           — call GET /internal/invocations/stats on xcode-analytics-service. Faster (single roundtrip) but requires direct service access; xcode-only.\n\nFilter flags match `invocations list` (tool, project, build, workflow, ci-provider, status, command, before, after).",
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		filter, err := buildInvocationsListFilter()
+		if err != nil {
+			return err
+		}
+
+		switch invocationsStatsSource {
+		case "direct":
+			return runInvocationsStatsDirect(cmd, filter)
+		case "list", "":
+			return runInvocationsStatsFromList(cmd, filter)
+		default:
+			return fmt.Errorf("unknown --source %q (use list or direct)", invocationsStatsSource)
+		}
+	},
+}
+
+func runInvocationsStatsFromList(cmd *cobra.Command, filter invocations.ListFilter) error {
+	client, err := newInvocationsClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	stats, err := invocations.AggregateFromList(client, filter, invocationsStatsMaxItems)
+	if err != nil {
+		return fmt.Errorf("aggregate: %w", err)
+	}
+
+	return WriteJSON(cmd.OutOrStdout(), stats)
+}
+
+func runInvocationsStatsDirect(cmd *cobra.Command, filter invocations.ListFilter) error {
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+
+	token, workspace, err := resolveInvocationsAuth()
+	if err != nil {
+		return err
+	}
+
+	directClient := invocations.NewDirectClient(invocationsStatsDirectURL, token, workspace, logger)
+
+	stats, err := directClient.Stats(invocations.DirectListFilter{
+		AppSlug:       filter.ProjectSlug,
+		BuildSlug:     filter.BuildSlug,
+		WorkflowName:  filter.Workflow,
+		Command:       filter.Command,
+		ProviderID:    filter.CIProvider,
+		RepositoryURL: filter.RepositoryURL,
+		Before:        filter.Before,
+		After:         filter.After,
+	})
+	if err != nil {
+		return fmt.Errorf("direct stats: %w", err)
+	}
+
+	return WriteJSON(cmd.OutOrStdout(), stats)
 }
 
 //nolint:gochecknoglobals
@@ -255,6 +328,20 @@ func init() { //nolint:gochecknoinits
 	invocationsGetCmd.Flags().StringVar(&invocationsGetTool, "tool", invocations.BuildToolGradle, "Build tool of the invocation: gradle / bazel / xcode / react-native / ccache")
 
 	invocationsCmd.AddCommand(invocationsTasksCmd)
+
+	invocationsCmd.AddCommand(invocationsStatsCmd)
+	invocationsStatsCmd.Flags().StringVar(&invocationsStatsSource, "source", "list", "Aggregation source: list (paginated, via bitrise-website) or direct (xcode-analytics-service)")
+	invocationsStatsCmd.Flags().StringVar(&invocationsStatsDirectURL, "direct-url", invocations.XcodeServiceDefaultBaseURL, "Base URL for the direct source (use http://localhost:3000 for the local stack)")
+	invocationsStatsCmd.Flags().IntVar(&invocationsStatsMaxItems, "max-items", 1000, "Cap for client-side aggregation (--source list only)")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListTool, "tool", invocations.BuildToolGradle, "Build tool filter")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListStatus, "status", "", "Filter: success / failed")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListProject, "project", "", "Bitrise app slug filter")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListBuild, "build", "", "Bitrise build slug filter")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListWorkflow, "workflow", "", "Workflow name filter")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListCIProvider, "ci-provider", "", "CI provider filter (use 'unknown' for local-only)")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListCommand, "command", "", "Command filter")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListBefore, "before", "", "Upper time bound, RFC 3339")
+	invocationsStatsCmd.Flags().StringVar(&invocationsListAfter, "after", "", "Lower time bound, RFC 3339")
 }
 
 // ccacheConfigAuth captures the workspace + PAT we look up from the
