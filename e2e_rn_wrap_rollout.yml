@@ -28,17 +28,20 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 
 app:
   envs:
-    # Test app refs. SeekReactNative is the same RN project the
-    # react-seek-{android,ios}-e2e workflows use, so the wrap helpers
-    # exercise the same code path RN customers see.
+    # SeekReactNative serves all wrap-rollout workflows: the wrap-rollout
+    # validates that gradle (android/) and xcodebuild (ios/) and npm
+    # invocations from inside a single RN project all pick up the wrap
+    # helper. This is the same RN project the react-seek-{android,ios}-e2e
+    # workflows use.
     - SEEK_RN_REPO: git@github.com:bitrise-io/SeekReactNative.git
-    - ANDROID_SAMPLE_REPO: git@github.com:bitrise-samples/sample-apps-android-simple.git
     # Hardcoded test app dirs — used by both the setup bundles and the
     # inner workflows. Inner workflows can't see envman vars from the
     # outer bundle (each `bitrise run <inner>` starts with a fresh
     # envstore), so we keep the paths as constants here.
-    - WRAP_TEST_ANDROID_DIR: /tmp/wrap-test-android
+    # WRAP_TEST_ANDROID_DIR / WRAP_TEST_RN_DIR both point inside the
+    # same SeekReactNative checkout (android/ and root respectively).
     - WRAP_TEST_RN_DIR: /tmp/wrap-test-rn
+    - WRAP_TEST_ANDROID_DIR: /tmp/wrap-test-rn/android
     # Hardcoded branch reference for every wrap PR. Flip to default branch
     # post-merge.
     - WRAP_HELPER_REF: feat/use-cli-wrap-helper
@@ -82,8 +85,11 @@ step_bundles:
                 go build -o /usr/local/bin/bitrise-build-cache .
                 bitrise-build-cache version
 
-  # Activate React Native cache + clone Android sample app for the wrap-rollout test.
-  rn-wrap-activate-rn-android:
+  # Activate React Native cache + clone SeekReactNative. Used by every
+  # wrap-rollout workflow regardless of platform — its android/ subdir
+  # backs gradle steps, ios/ backs xcodebuild steps, and the repo root
+  # backs the npm step.
+  rn-wrap-setup-app:
     steps:
       - bundle::rn-wrap-build-cli: {}
       - script@1:
@@ -94,29 +100,6 @@ step_bundles:
                 set -euxo pipefail
                 bitrise-build-cache activate react-native
                 bitrise-build-cache status --feature=react-native --quiet
-      - script@1:
-          title: Clone Android sample app
-          inputs:
-            - content: |-
-                #!/usr/bin/env bash
-                set -euxo pipefail
-                rm -rf "$WRAP_TEST_ANDROID_DIR"
-                git clone --depth 1 "$ANDROID_SAMPLE_REPO" "$WRAP_TEST_ANDROID_DIR"
-
-  # Activate React Native cache + clone SeekReactNative for the iOS / RN wrap tests.
-  rn-wrap-activate-rn-ios:
-    steps:
-      - bundle::rn-wrap-build-cli: {}
-      - script@1:
-          title: Activate React Native build cache
-          inputs:
-            - content: |-
-                #!/usr/bin/env bash
-                set -euxo pipefail
-                bitrise-build-cache activate react-native
-                bitrise-build-cache status --feature=react-native --quiet
-      - activate-ssh-key@4:
-          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
       - script@1:
           title: Clone SeekReactNative
           inputs:
@@ -146,7 +129,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     steps:
-      - bundle::rn-wrap-activate-rn-android: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run android-build via PR branch + capture
           is_always_run: true
@@ -183,7 +166,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     steps:
-      - bundle::rn-wrap-activate-rn-android: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run android-unit-test via PR branch + capture
           is_always_run: true
@@ -217,7 +200,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     steps:
-      - bundle::rn-wrap-activate-rn-android: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run android-lint via PR branch + capture
           is_always_run: true
@@ -251,7 +234,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     steps:
-      - bundle::rn-wrap-activate-rn-android: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run gradle-unit-test via PR branch + capture
           is_always_run: true
@@ -286,7 +269,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     steps:
-      - bundle::rn-wrap-activate-rn-android: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run gradle-runner via PR branch + capture
           is_always_run: true
@@ -325,7 +308,7 @@ workflows:
         stack: osx-xcode-edge
         machine_type_id: g2.mac.medium
     steps:
-      - bundle::rn-wrap-activate-rn-ios: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run xcode-archive via PR branch + capture
           is_always_run: true
@@ -362,7 +345,7 @@ workflows:
         stack: osx-xcode-edge
         machine_type_id: g2.mac.medium
     steps:
-      - bundle::rn-wrap-activate-rn-ios: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run xcode-test via PR branch + capture
           is_always_run: true
@@ -398,7 +381,7 @@ workflows:
         stack: osx-xcode-edge
         machine_type_id: g2.mac.medium
     steps:
-      - bundle::rn-wrap-activate-rn-ios: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run xcode-analyze via PR branch + capture
           is_always_run: true
@@ -433,7 +416,7 @@ workflows:
         stack: osx-xcode-edge
         machine_type_id: g2.mac.medium
     steps:
-      - bundle::rn-wrap-activate-rn-ios: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run xcode-build-for-test via PR branch + capture
           is_always_run: true
@@ -469,7 +452,7 @@ workflows:
         stack: osx-xcode-edge
         machine_type_id: g2.mac.medium
     steps:
-      - bundle::rn-wrap-activate-rn-ios: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run xcode-build-for-simulator via PR branch + capture
           is_always_run: true
@@ -508,7 +491,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     steps:
-      - bundle::rn-wrap-activate-rn-ios: {}
+      - bundle::rn-wrap-setup-app: {}
       - script@1:
           title: Run npm via PR branch + capture
           is_always_run: true
