@@ -33,15 +33,14 @@ app:
     # invocations from inside a single RN project all pick up the wrap
     # helper. This is the same RN project the react-seek-{android,ios}-e2e
     # workflows use.
-    - SEEK_RN_REPO: git@github.com:bitrise-io/SeekReactNative.git
     # Hardcoded test app dirs — used by both the setup bundles and the
     # inner workflows. Inner workflows can't see envman vars from the
     # outer bundle (each `bitrise run <inner>` starts with a fresh
     # envstore), so we keep the paths as constants here.
     # WRAP_TEST_ANDROID_DIR / WRAP_TEST_RN_DIR both point inside the
     # same SeekReactNative checkout (android/ and root respectively).
-    - WRAP_TEST_RN_DIR: /tmp/wrap-test-rn
-    - WRAP_TEST_ANDROID_DIR: /tmp/wrap-test-rn/android
+    - WRAP_TEST_RN_DIR: $BITRISE_SOURCE_DIR/_seek
+    - WRAP_TEST_ANDROID_DIR: $BITRISE_SOURCE_DIR/_seek/android
     # Hardcoded branch reference for every wrap PR. Flip to default branch
     # post-merge.
     - WRAP_HELPER_REF: feat/use-cli-wrap-helper
@@ -100,18 +99,24 @@ step_bundles:
                 bitrise-build-cache activate react-native
                 bitrise-build-cache status --feature=react-native --quiet
       - script@1:
-          title: Clone SeekReactNative + JS / pod deps
+          title: Clone Seek app
           inputs:
             - content: |-
                 #!/usr/bin/env bash
-                set -euxo pipefail
-                rm -rf "$WRAP_TEST_RN_DIR"
-                git clone --depth 1 "$SEEK_RN_REPO" "$WRAP_TEST_RN_DIR"
-                cd "$WRAP_TEST_RN_DIR"
-                npm install --legacy-peer-deps --no-audit --no-fund
+                set -exo pipefail
+                cd "$BITRISE_SOURCE_DIR"
+                rm -rf _seek
+                git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
+      - script@1:
+          title: Configure and install dependencies
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -exo pipefail
                 if [[ "$(uname)" == "Darwin" ]]; then
-                    cd ios
-                    pod install
+                    bash "$BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh"
+                else
+                    bash "$BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_android.sh"
                 fi
 
 workflows:
