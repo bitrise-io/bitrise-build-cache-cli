@@ -1,0 +1,58 @@
+// xcelr8demo is a hackathon-only smoke binary that exercises
+// `internal/invocations.DirectClient` against a local xcode-analytics-service.
+//
+// Usage:
+//
+//	go run ./cmd/xcelr8demo --base-url http://localhost:3000 --org test-org --commit-email balazs@bitrise.io
+//
+// In dev mode the service treats the bearer token as the org slug, so passing
+// --token is optional.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
+	"github.com/bitrise-io/go-utils/v2/log"
+)
+
+func main() {
+	var (
+		baseURL     = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
+		orgSlug     = flag.String("org", "test-org", "Bitrise workspace / org slug")
+		token       = flag.String("token", "", "Personal Access Token (optional in dev mode)")
+		commitEmail = flag.String("commit-email", "", "filter invocations by commit email (the new ACI-4908 filter)")
+		limit       = flag.Int("limit", 10, "max rows to return")
+	)
+	flag.Parse()
+
+	logger := log.NewLogger()
+	client := invocations.NewDirectClient(*baseURL, *token, *orgSlug, logger)
+
+	resp, err := client.List(invocations.DirectListFilter{
+		CommitEmail: *commitEmail,
+		Limit:       *limit,
+		// Wide window so seeded fixtures fall inside.
+		After: time.Now().Add(-365 * 24 * time.Hour),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "list failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("totalCount=%d returned=%d filter.commitEmail=%q\n\n",
+		resp.TotalCount, len(resp.Items), *commitEmail)
+
+	for _, inv := range resp.Items {
+		fmt.Printf("  %s  %s  %s  hit=%.2f  %s\n",
+			inv.InvocationDate.Format(time.RFC3339),
+			inv.InvocationID,
+			inv.CommitEmail,
+			inv.HitRate,
+			inv.Branch,
+		)
+	}
+}
