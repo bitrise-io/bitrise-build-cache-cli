@@ -171,7 +171,17 @@ func runInvocationsStatsDirect(cmd *cobra.Command, filter invocations.ListFilter
 		return err
 	}
 
-	directClient := invocations.NewDirectClient(invocationsStatsDirectURL, token, workspace, logger)
+	// Pick the right service per the requested tool. xcode/gradle/multiplatform
+	// all map; bazel does not (different filter shape).
+	tool := filter.Tool
+	if tool == "" {
+		tool = invocations.BuildToolXcode
+	}
+
+	directClient, err := invocations.NewDirectClientForTool(tool, invocationsStatsDirectURL, token, workspace, logger)
+	if err != nil {
+		return fmt.Errorf("--source direct: %w", err)
+	}
 
 	stats, err := directClient.Stats(invocations.DirectListFilter{
 		AppSlug:       filter.ProjectSlug,

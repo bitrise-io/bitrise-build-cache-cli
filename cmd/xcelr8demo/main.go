@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -20,9 +21,26 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
 )
 
+// toolKey normalises shorthand --service values so the demo accepts
+// xcode|gradle|multiplatform|rn|ccache and feeds the right canonical
+// BuildTool* constant into ProfileForTool.
+func toolKey(s string) string {
+	switch strings.ToLower(s) {
+	case "xcode":
+		return invocations.BuildToolXcode
+	case "gradle":
+		return invocations.BuildToolGradle
+	case "multiplatform", "react-native", "rn", "ccache":
+		return invocations.BuildToolReactNative
+	default:
+		return s
+	}
+}
+
 func main() {
 	var (
-		baseURL     = flag.String("base-url", "http://localhost:3000", "xcode-analytics-service base URL")
+		service     = flag.String("service", "xcode", "Sink service: xcode | gradle | multiplatform (a.k.a. react-native / ccache)")
+		baseURL     = flag.String("base-url", "", "Base URL override (defaults to the profile's local-stack URL)")
 		orgSlug     = flag.String("org", "test-org", "Bitrise workspace / org slug")
 		token       = flag.String("token", "", "Personal Access Token (optional in dev mode)")
 		commitEmail = flag.String("commit-email", "", "filter invocations by commit email (ACI-4908)")
@@ -34,8 +52,19 @@ func main() {
 	)
 	flag.Parse()
 
+	profile, ok := invocations.ProfileForTool(toolKey(*service))
+	if !ok {
+		fmt.Fprintf(os.Stderr, "no DirectClient profile for --service=%q (try xcode / gradle / multiplatform)\n", *service)
+		os.Exit(2)
+	}
+
+	resolvedBaseURL := *baseURL
+	if resolvedBaseURL == "" {
+		resolvedBaseURL = profile.LocalBaseURL
+	}
+
 	logger := log.NewLogger()
-	client := invocations.NewDirectClient(*baseURL, *token, *orgSlug, logger)
+	client := invocations.NewDirectClientWithProfile(profile, resolvedBaseURL, *token, *orgSlug, logger)
 
 	filter := invocations.DirectListFilter{
 		CommitEmail: *commitEmail,

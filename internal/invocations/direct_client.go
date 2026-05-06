@@ -28,27 +28,54 @@ var ErrNotFound = fmt.Errorf("invocation not found")
 // existing CI vs local split is sufficient, no schema change needed.
 const ProviderIDLocal = "unknown"
 
-// DirectClient talks straight to xcode-analytics-service, bypassing the
-// bitrise-website BuildCache UI controller. Useful for local dev/hackathon
-// against a `make dev-up` stack — and for any consumer that already holds
-// a workspace-scoped PAT.
+// DirectClient talks straight to one of the analytics sink services
+// (xcode / gradle / multiplatform), bypassing the bitrise-website BuildCache
+// UI controller. Useful for local dev/hackathon against a `make dev-up`
+// stack and for any consumer that already holds a workspace-scoped PAT.
+//
+// The per-tool path differences (xcode/multiplatform use
+// `/internal/invocations`, gradle uses `/builds`) are captured by the
+// `ServiceProfile` selected at construction.
 type DirectClient struct {
 	httpClient    *retryablehttp.Client
 	baseURL       string
 	personalToken string
 	workspaceSlug string
+	profile       ServiceProfile
 	logger        log.Logger
 }
 
-// NewDirectClient creates a DirectClient.
+// NewDirectClient creates a DirectClient targeting xcode-analytics-service.
+// Kept as a backward-compatible shorthand; new code should prefer
+// `NewDirectClientForTool` or `NewDirectClientWithProfile`.
 //
-//   - baseURL — defaults to XcodeServiceDefaultBaseURL when empty
+//   - baseURL — defaults to XcodeProfile.DefaultBaseURL when empty
 //   - personalAccessToken — Bitrise PAT
 //   - workspaceSlug — workspace (org) slug. Sent as the username half of
 //     the "Bearer <orgSlug>:<PAT>" auth scheme the service expects.
 func NewDirectClient(baseURL, personalAccessToken, workspaceSlug string, logger log.Logger) *DirectClient {
+	return NewDirectClientWithProfile(XcodeProfile, baseURL, personalAccessToken, workspaceSlug, logger)
+}
+
+// NewDirectClientForTool resolves the right `ServiceProfile` for the given
+// build-tool key and returns a DirectClient pointed at it. Returns an error
+// for tools without a profile (e.g. bazel — different filter shape).
+func NewDirectClientForTool(tool, baseURL, personalAccessToken, workspaceSlug string, logger log.Logger) (*DirectClient, error) {
+	profile, ok := ProfileForTool(tool)
+	if !ok {
+		return nil, fmt.Errorf("no DirectClient profile for tool %q", tool)
+	}
+
+	return NewDirectClientWithProfile(profile, baseURL, personalAccessToken, workspaceSlug, logger), nil
+}
+
+// NewDirectClientWithProfile is the explicit form: pass the profile yourself.
+//
+//   - baseURL — overrides `profile.DefaultBaseURL` when non-empty
+//     (use `profile.LocalBaseURL` for the local `make dev-up` stack).
+func NewDirectClientWithProfile(profile ServiceProfile, baseURL, personalAccessToken, workspaceSlug string, logger log.Logger) *DirectClient {
 	if baseURL == "" {
-		baseURL = XcodeServiceDefaultBaseURL
+		baseURL = profile.DefaultBaseURL
 	}
 
 	httpClient := retryhttp.NewClient(logger)
@@ -60,6 +87,7 @@ func NewDirectClient(baseURL, personalAccessToken, workspaceSlug string, logger 
 		baseURL:       baseURL,
 		personalToken: personalAccessToken,
 		workspaceSlug: workspaceSlug,
+		profile:       profile,
 		logger:        logger,
 	}
 }
@@ -189,7 +217,7 @@ func (c *DirectClient) List(filter DirectListFilter) (*DirectListResponse, error
 		q.Set("offset", strconv.Itoa(filter.Offset))
 	}
 
-	requestURL := c.baseURL + "/internal/invocations?" + q.Encode()
+	requestURL := c.baseURL + c.profile.InvocationsPath + "?" + q.Encode()
 	c.logger.Debugf("HTTP GET: %s", requestURL)
 
 	req, err := retryablehttp.NewRequest(http.MethodGet, requestURL, nil)
@@ -295,7 +323,7 @@ func (c *DirectClient) Stats(filter DirectListFilter) (*InvocationStats, error) 
 		q.Set("after", filter.After.UTC().Format(time.RFC3339))
 	}
 
-	requestURL := c.baseURL + "/internal/invocations/stats?" + q.Encode()
+	requestURL := c.baseURL + c.profile.StatsPath + "?" + q.Encode()
 	c.logger.Debugf("HTTP GET: %s", requestURL)
 
 	req, err := retryablehttp.NewRequest(http.MethodGet, requestURL, nil)
@@ -331,7 +359,7 @@ func (c *DirectClient) Get(invocationID string) (*XcodeInvocation, error) {
 		return nil, fmt.Errorf("invocation ID required")
 	}
 
-	requestURL := c.baseURL + "/internal/invocations/" + url.PathEscape(invocationID)
+	requestURL := c.baseURL + c.profile.InvocationsPath + "/" + url.PathEscape(invocationID)
 	c.logger.Debugf("HTTP GET: %s", requestURL)
 
 	req, err := retryablehttp.NewRequest(http.MethodGet, requestURL, nil)
