@@ -2,6 +2,7 @@ package xcode
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -27,6 +28,13 @@ type XcelerateConfig interface {
 	Save(logger log.Logger, os utils.OsProxy, encoderFactory utils.EncoderFactory) error
 }
 
+type xcodeActivateResult struct {
+	Cache struct {
+		Enabled     bool `json:"enabled"`
+		PushEnabled bool `json:"pushEnabled"`
+	} `json:"cache"`
+}
+
 // activateXcodeCmd represents the `xcode` subcommand under `activate`
 var activateXcodeCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "xcode",
@@ -40,14 +48,17 @@ This command will:
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
-		logger.EnableDebugLog(common.IsDebugLogMode)
+		logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+		if activateXcodeJSONOutput {
+			logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+		}
+		logger := log.NewLogger(logOpts...)
 		logger.TInfof(activateXcode)
 
 		activateXcodeParams.DebugLogging = common.IsDebugLogMode
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		return xcelerate.Activate(
+		if err := xcelerate.Activate(
 			cmd.Context(),
 			logger,
 			utils.DefaultOsProxy{},
@@ -56,15 +67,31 @@ This command will:
 			utils.DefaultDecoderFactory{},
 			activateXcodeParams,
 			utils.AllEnvs(),
-		)
+		); err != nil {
+			return fmt.Errorf("activate Xcode: %w", err)
+		}
+
+		if activateXcodeJSONOutput {
+			var result xcodeActivateResult
+			result.Cache.Enabled = activateXcodeParams.BuildCacheEnabled
+			result.Cache.PushEnabled = activateXcodeParams.PushEnabled
+
+			return common.WriteJSON(cmd.OutOrStdout(), result)
+		}
+
+		return nil
 	},
 }
 
 //nolint:gochecknoglobals
-var activateXcodeParams = xcelerate.DefaultParams()
+var (
+	activateXcodeParams     = xcelerate.DefaultParams()
+	activateXcodeJSONOutput bool
+)
 
 func init() {
 	common.ActivateCmd.AddCommand(activateXcodeCmd)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeJSONOutput, "json", false, "Emit machine-readable JSON to stdout instead of human-readable output")
 	activateXcodeCmd.Flags().StringVar(
 		&activateXcodeParams.ProxySocketPathOverride,
 		"proxy-socket-path",

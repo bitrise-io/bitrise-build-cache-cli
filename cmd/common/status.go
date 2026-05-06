@@ -69,7 +69,7 @@ func runStatus(out, errOut io.Writer, checker *status.Checker) error {
 
 	s := checker.Status()
 	if statusJSONOutput {
-		return writeJSON(out, s)
+		return WriteJSON(out, s)
 	}
 
 	return writeTable(out, s)
@@ -100,7 +100,7 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 	if statusJSONOutput {
 		payload := map[string]bool{jsonKey(statusFeature): enabled}
 
-		return writeJSON(out, payload)
+		return WriteJSON(out, payload)
 	}
 
 	if enabled {
@@ -112,11 +112,12 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 	return nil
 }
 
-func writeJSON(out io.Writer, v any) error {
+// WriteJSON encodes v as indented JSON to out.
+func WriteJSON(out io.Writer, v any) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		return fmt.Errorf("encode status JSON: %w", err)
+		return fmt.Errorf("encode JSON: %w", err)
 	}
 
 	return nil

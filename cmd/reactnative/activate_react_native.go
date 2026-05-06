@@ -3,17 +3,31 @@ package reactnative
 import (
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/reactnative"
 )
 
+type rnActivateResult struct {
+	Gradle struct {
+		Enabled bool `json:"enabled"`
+	} `json:"gradle"`
+	Xcode struct {
+		Enabled bool `json:"enabled"`
+	} `json:"xcode"`
+	CPP struct {
+		Enabled bool `json:"enabled"`
+	} `json:"cpp"`
+}
+
 //nolint:gochecknoglobals
 var (
 	gradleEnabled bool
 	xcodeEnabled  bool
 	cppEnabled    bool
+	rnJSONOutput  bool
 )
 
 //nolint:gochecknoglobals
@@ -32,15 +46,30 @@ Note: This is a convenience activation method, if your activation requires fine-
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+		if rnJSONOutput {
+			logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+		}
+
 		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
 			GradleEnabled: gradleEnabled,
 			XcodeEnabled:  xcodeEnabled,
 			CppEnabled:    cppEnabled,
 			DebugLogging:  common.IsDebugLogMode,
+			Logger:        log.NewLogger(logOpts...),
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
 			return fmt.Errorf("activate react-native: %w", err)
+		}
+
+		if rnJSONOutput {
+			var result rnActivateResult
+			result.Gradle.Enabled = gradleEnabled
+			result.Xcode.Enabled = xcodeEnabled
+			result.CPP.Enabled = cppEnabled
+
+			return common.WriteJSON(cmd.OutOrStdout(), result)
 		}
 
 		return nil
@@ -49,6 +78,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 
 func init() {
 	common.ActivateCmd.AddCommand(activateReactNativeCmd)
+	activateReactNativeCmd.Flags().BoolVar(&rnJSONOutput, "json", false, "Emit machine-readable JSON to stdout instead of human-readable output")
 	activateReactNativeCmd.Flags().BoolVar(&gradleEnabled, "gradle", true, "Activate Gradle build cache (Android).")
 	activateReactNativeCmd.Flags().BoolVar(&xcodeEnabled, "xcode", true, "Activate Xcode build cache (iOS).")
 	activateReactNativeCmd.Flags().BoolVar(&cppEnabled, "cpp", true, "Activate C++ build cache via ccache (native modules).")

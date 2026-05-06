@@ -3,6 +3,7 @@ package ccache
 import (
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
@@ -10,8 +11,17 @@ import (
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
+type cppActivateResult struct {
+	Cache struct {
+		PushEnabled bool `json:"pushEnabled"`
+	} `json:"cache"`
+}
+
 //nolint:gochecknoglobals
-var activateCppParams = ccacheconfig.DefaultParams()
+var (
+	activateCppParams     = ccacheconfig.DefaultParams()
+	activateCppJSONOutput bool
+)
 
 //nolint:gochecknoglobals
 var activateCppCmd = &cobra.Command{
@@ -26,16 +36,29 @@ This command will:
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+		if activateCppJSONOutput {
+			logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+		}
+
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,
 			PushEnabled:           activateCppParams.PushEnabled,
 			IPCSocketPathOverride: activateCppParams.IPCSocketPathOverride,
 			BaseDirOverride:       activateCppParams.BaseDirOverride,
 			DebugLogging:          common.IsDebugLogMode,
+			Logger:                log.NewLogger(logOpts...),
 		})
 
 		if err := activator.Activate(cmd.Context()); err != nil {
 			return fmt.Errorf("activate C++ cache: %w", err)
+		}
+
+		if activateCppJSONOutput {
+			var result cppActivateResult
+			result.Cache.PushEnabled = activateCppParams.PushEnabled
+
+			return common.WriteJSON(cmd.OutOrStdout(), result)
 		}
 
 		return nil
@@ -44,6 +67,7 @@ This command will:
 
 func init() {
 	common.ActivateCmd.AddCommand(activateCppCmd)
+	activateCppCmd.Flags().BoolVar(&activateCppJSONOutput, "json", false, "Emit machine-readable JSON to stdout instead of human-readable output")
 	activateCppCmd.Flags().StringVar(
 		&activateCppParams.BuildCacheEndpoint,
 		"cache-endpoint",

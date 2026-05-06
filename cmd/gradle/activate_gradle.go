@@ -13,6 +13,21 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
+type gradleActivateResult struct {
+	Cache struct {
+		Enabled         bool   `json:"enabled"`
+		PushEnabled     bool   `json:"pushEnabled"`
+		ValidationLevel string `json:"validationLevel"`
+	} `json:"cache"`
+	Analytics struct {
+		Enabled bool `json:"enabled"`
+	} `json:"analytics"`
+	TestDistribution struct {
+		Enabled   bool `json:"enabled"`
+		ShardSize int  `json:"shardSize"`
+	} `json:"testDistribution"`
+}
+
 // ActivateGradleCmd represents the `gradle` subcommand under `activate`
 var ActivateGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "gradle",
@@ -29,8 +44,11 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
-		logger.EnableDebugLog(common.IsDebugLogMode)
+		logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+		if activateGradleJSONOutput {
+			logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+		}
+		logger := log.NewLogger(logOpts...)
 		logger.TInfof("Activate Bitrise plugins for Gradle")
 
 		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
@@ -65,15 +83,31 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		logger.TInfof("✅ Bitrise plugins activated")
 
+		if activateGradleJSONOutput {
+			var result gradleActivateResult
+			result.Cache.Enabled = activateGradleParams.Cache.Enabled
+			result.Cache.PushEnabled = activateGradleParams.Cache.PushEnabled
+			result.Cache.ValidationLevel = activateGradleParams.Cache.ValidationLevel
+			result.Analytics.Enabled = activateGradleParams.Analytics.Enabled
+			result.TestDistribution.Enabled = activateGradleParams.TestDistro.Enabled
+			result.TestDistribution.ShardSize = activateGradleParams.TestDistro.ShardSize
+
+			return common.WriteJSON(cmd.OutOrStdout(), result)
+		}
+
 		return nil
 	},
 }
 
 //nolint:gochecknoglobals
-var activateGradleParams = gradleconfig.DefaultActivateGradleParams()
+var (
+	activateGradleParams     = gradleconfig.DefaultActivateGradleParams()
+	activateGradleJSONOutput bool
+)
 
 func init() {
 	common.ActivateCmd.AddCommand(ActivateGradleCmd)
+	ActivateGradleCmd.Flags().BoolVar(&activateGradleJSONOutput, "json", false, "Emit machine-readable JSON to stdout instead of human-readable output")
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.Enabled, "cache", activateGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.JustDependency, "cache-dep", activateGradleParams.Cache.JustDependency, "Add cache plugin as a dependency only.")
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.PushEnabled, "cache-push", activateGradleParams.Cache.PushEnabled, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")

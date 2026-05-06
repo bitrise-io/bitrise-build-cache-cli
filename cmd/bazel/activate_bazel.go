@@ -15,6 +15,19 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
+type bazelActivateResult struct {
+	Cache struct {
+		Enabled     bool `json:"enabled"`
+		PushEnabled bool `json:"pushEnabled"`
+	} `json:"cache"`
+	BES struct {
+		Enabled bool `json:"enabled"`
+	} `json:"bes"`
+	RBE struct {
+		Enabled bool `json:"enabled"`
+	} `json:"rbe"`
+}
+
 // activateBazelCmd represents the activate bazel command
 
 var activateBazelCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -36,12 +49,16 @@ The command supports:
 }
 
 //nolint:gochecknoglobals
-var activateBazelParams = bazelconfig.DefaultActivateBazelParams()
+var (
+	activateBazelParams     = bazelconfig.DefaultActivateBazelParams()
+	activateBazelJSONOutput bool
+)
 
 func init() {
 	common.ActivateCmd.AddCommand(activateBazelCmd)
 
 	flags := activateBazelCmd.Flags()
+	flags.BoolVar(&activateBazelJSONOutput, "json", false, "Emit machine-readable JSON to stdout instead of human-readable output")
 	flags.BoolVar(&activateBazelParams.Cache.Enabled, "cache", activateBazelParams.Cache.Enabled, "Enable remote cache")
 	flags.BoolVar(&activateBazelParams.Cache.PushEnabled, "cache-push", activateBazelParams.Cache.PushEnabled, "Enable pushing new cache entries")
 	flags.StringVar(&activateBazelParams.Cache.Endpoint, "cache-endpoint", activateBazelParams.Cache.Endpoint, "Remote cache endpoint URL")
@@ -52,9 +69,12 @@ func init() {
 	flags.BoolVar(&activateBazelParams.Timestamps, "timestamps", activateBazelParams.Timestamps, "Enable timestamps in build output")
 }
 
-func activateBazel(_ *cobra.Command, _ []string) error {
-	logger := log.NewLogger()
-	logger.EnableDebugLog(common.IsDebugLogMode)
+func activateBazel(cmd *cobra.Command, _ []string) error {
+	logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+	if activateBazelJSONOutput {
+		logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+	}
+	logger := log.NewLogger(logOpts...)
 	logger.TInfof("Activate Bitrise Build Cache for Bazel")
 
 	// Get bazelrc path
@@ -69,8 +89,8 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		logger,
 		bazelrcPath,
 		utils.AllEnvs(),
-		func(cmd string, params ...string) (string, error) {
-			output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx
+		func(c string, params ...string) (string, error) {
+			output, err2 := exec.Command(c, params...).CombinedOutput() //nolint:noctx
 			if err2 == nil {
 				return string(output), nil
 			}
@@ -86,6 +106,18 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")
+
+	if activateBazelJSONOutput {
+		var result bazelActivateResult
+		result.Cache.Enabled = activateBazelParams.Cache.Enabled
+		result.Cache.PushEnabled = activateBazelParams.Cache.PushEnabled
+		result.BES.Enabled = activateBazelParams.BES.Enabled
+		result.RBE.Enabled = activateBazelParams.RBE.Enabled
+
+		if err := common.WriteJSON(cmd.OutOrStdout(), result); err != nil {
+			return fmt.Errorf("write JSON: %w", err)
+		}
+	}
 
 	return nil
 }
