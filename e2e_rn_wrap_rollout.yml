@@ -136,8 +136,8 @@ workflows:
   rn-wrap-android-build:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -159,8 +159,8 @@ workflows:
   rn-wrap-android-build-inner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/bitrise-step-android-build.git@feat/use-cli-wrap-helper:
           title: bitrise-step-android-build (PR branch)
@@ -173,8 +173,8 @@ workflows:
   rn-wrap-android-unit-test:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -196,8 +196,8 @@ workflows:
   rn-wrap-android-unit-test-inner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/bitrise-step-android-unit-test.git@feat/use-cli-wrap-helper:
           title: bitrise-step-android-unit-test (PR branch)
@@ -207,8 +207,8 @@ workflows:
   rn-wrap-android-lint:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -230,8 +230,8 @@ workflows:
   rn-wrap-android-lint-inner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/bitrise-step-android-lint.git@feat/use-cli-wrap-helper:
           title: bitrise-step-android-lint (PR branch)
@@ -241,8 +241,8 @@ workflows:
   rn-wrap-gradle-unit-test:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -264,8 +264,8 @@ workflows:
   rn-wrap-gradle-unit-test-inner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/steps-gradle-unit-test.git@feat/use-cli-wrap-helper:
           title: steps-gradle-unit-test (PR branch)
@@ -276,8 +276,8 @@ workflows:
   rn-wrap-gradle-runner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -299,8 +299,8 @@ workflows:
   rn-wrap-gradle-runner-inner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/steps-gradle-runner.git@feat/use-cli-wrap-helper:
           title: steps-gradle-runner (PR branch)
@@ -498,8 +498,8 @@ workflows:
   rn-wrap-npm:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - bundle::rn-wrap-setup-app: {}
       - script@1:
@@ -521,8 +521,8 @@ workflows:
   rn-wrap-npm-inner:
     meta:
       bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
+        stack: osx-xcode-26.3.x
+        machine_type_id: g2.mac.large
     steps:
       - git::https://github.com/bitrise-steplib/steps-npm.git@feat/use-cli-wrap-helper:
           title: steps-npm (PR branch)
