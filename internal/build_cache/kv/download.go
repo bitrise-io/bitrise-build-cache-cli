@@ -20,8 +20,9 @@ import (
 
 var (
 	// ErrCacheNotFound ...
-	ErrCacheNotFound        = errors.New("no cache archive found for the provided keys")
-	ErrCacheUnauthenticated = errors.New("unauthenticated")
+	ErrCacheNotFound         = errors.New("no cache archive found for the provided keys")
+	ErrCacheUnauthenticated  = errors.New("unauthenticated")
+	ErrCachePermissionDenied = errors.New("permission denied")
 )
 
 // ErrFileExistsAndNotWritable ...

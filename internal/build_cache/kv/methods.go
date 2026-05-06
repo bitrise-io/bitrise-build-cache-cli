@@ -47,6 +47,9 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 		if ok && st.Code() == codes.Unauthenticated {
 			return ErrCacheUnauthenticated
 		}
+		if ok && st.Code() == codes.PermissionDenied {
+			return ErrCachePermissionDenied
+		}
 
 		return fmt.Errorf("get capabilities: %w", err)
 	}
@@ -65,6 +68,9 @@ func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
 			c.logger.Errorf("Error in GetCapabilities attempt %d: %s", attempt, err)
 			if errors.Is(err, ErrCacheUnauthenticated) {
 				return ErrCacheUnauthenticated, true
+			}
+			if errors.Is(err, ErrCachePermissionDenied) {
+				return ErrCachePermissionDenied, true
 			}
 
 			return err, false
