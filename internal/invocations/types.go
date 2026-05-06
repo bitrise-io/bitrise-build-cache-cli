@@ -112,7 +112,7 @@ type InvocationSummary struct {
 	Duration                      *float64  `json:"duration,omitempty"`
 	CacheHitRate                  *float64  `json:"cacheHitRate"`
 	UsesCache                     bool      `json:"usesCache"`
-	HasMeaningfulExecutionReasons bool      `json:"hasMeaningfulExecutionReasons"`
+	HasMeaningfulExecutionReasons *bool     `json:"hasMeaningfulExecutionReasons"` // nullable in prod responses
 	HasAnyChildInvocation         bool      `json:"hasAnyChildInvocation"`
 
 	// Conditional — populated by the presenter only when present in source.
