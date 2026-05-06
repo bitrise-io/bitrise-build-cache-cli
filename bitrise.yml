@@ -20,6 +20,7 @@ app:
 
 include:
 - path: bitrise_rn_config/bitrise.yml
+- path: e2e_rn_wrap_rollout.yml
 
 workflows:
   release:

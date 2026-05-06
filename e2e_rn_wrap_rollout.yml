@@ -1,0 +1,528 @@
+format_version: "13"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+# Manually-triggered pipeline that validates the React Native wrap-helper
+# rollout across the bitrise-steplib steps that adopt
+# `pkg/reactnative/wrap`. For each step, a small workflow:
+#
+#   1. Builds the CLI from this repo's source.
+#   2. Activates the React Native build cache via the freshly-built CLI so
+#      `wrap.Detect` will report ReactNativeEnabled=true.
+#   3. Runs the step under test from its `feat/use-cli-wrap-helper` PR
+#      branch via `bitrise run` so the inner step's stdout/stderr can be
+#      captured to a log file.
+#   4. Asserts that the step printed the wrap-engagement line
+#      ("wrapping (gradle|xcodebuild|npm) with /usr/local/bin/bitrise-build-cache").
+#
+# The actual build is allowed to fail — we only care that the wrap helper
+# engaged correctly and didn't crash the step before the underlying compile
+# command was constructed.
+#
+# Pipeline is intentionally NOT in the trigger_map — run manually from the
+# Bitrise UI ("Start Build" → pick `rn-wrapping-e2e` pipeline) or via
+# `bitrise trigger`.
+#
+# After the wrap PRs are merged and their `feat/use-cli-wrap-helper` branches
+# deleted, flip the `STEP_REF` env vars below from `feat/use-cli-wrap-helper`
+# to `master` / `main`.
+
+app:
+  envs:
+    # Test app refs. SeekReactNative is the same RN project the
+    # react-seek-{android,ios}-e2e workflows use, so the wrap helpers
+    # exercise the same code path RN customers see.
+    - SEEK_RN_REPO: git@github.com:bitrise-io/SeekReactNative.git
+    - ANDROID_SAMPLE_REPO: https://github.com/bitrise-samples/sample-apps-android-simple.git
+    # Hardcoded branch reference for every wrap PR. Flip to default branch
+    # post-merge.
+    - WRAP_HELPER_REF: feat/use-cli-wrap-helper
+    # Where each per-step workflow tees its inner-run log so the assert
+    # script can grep it.
+    - WRAP_LOG_PATH: /tmp/rn-wrap-rollout.log
+
+pipelines:
+  rn-wrapping-e2e:
+    # Manually triggered. Excluded from trigger_map.
+    workflows:
+      rn-wrap-android-build: {}
+      rn-wrap-android-unit-test: {}
+      rn-wrap-android-lint: {}
+      rn-wrap-gradle-unit-test: {}
+      rn-wrap-gradle-runner: {}
+      rn-wrap-xcode-archive: {}
+      rn-wrap-xcode-test: {}
+      rn-wrap-xcode-analyze: {}
+      rn-wrap-xcode-build-for-test: {}
+      rn-wrap-xcode-build-for-simulator: {}
+      rn-wrap-npm: {}
+
+step_bundles:
+  # Build the CLI binary from this repo and put it on PATH so the wrap pkg
+  # (compiled into each step under test) finds it during wrap.Detect.
+  rn-wrap-build-cli:
+    steps:
+      - script@1:
+          title: Build CLI binary
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                go build -o /usr/local/bin/bitrise-build-cache .
+                bitrise-build-cache version
+
+  # Activate React Native cache + clone Android sample app for the wrap-rollout test.
+  rn-wrap-activate-rn-android:
+    steps:
+      - bundle::rn-wrap-build-cli: {}
+      - script@1:
+          title: Activate React Native build cache
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                bitrise-build-cache activate react-native
+                bitrise-build-cache status --feature=react-native --quiet
+      - script@1:
+          title: Clone Android sample app
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                rm -rf /tmp/wrap-test-android
+                git clone --depth 1 "$ANDROID_SAMPLE_REPO" /tmp/wrap-test-android
+                envman add --key WRAP_TEST_ANDROID_DIR --value /tmp/wrap-test-android
+
+  # Activate React Native cache + clone SeekReactNative for the iOS / RN wrap tests.
+  rn-wrap-activate-rn-ios:
+    steps:
+      - bundle::rn-wrap-build-cli: {}
+      - script@1:
+          title: Activate React Native build cache
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                bitrise-build-cache activate react-native
+                bitrise-build-cache status --feature=react-native --quiet
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - script@1:
+          title: Clone SeekReactNative
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                rm -rf /tmp/wrap-test-rn
+                git clone --depth 1 "$SEEK_RN_REPO" /tmp/wrap-test-rn
+                envman add --key WRAP_TEST_RN_DIR --value /tmp/wrap-test-rn
+
+workflows:
+  # ---------------------------------------------------------------------------
+  # Helper assertion workflow body
+  # ---------------------------------------------------------------------------
+  # Each per-step workflow runs a nested `bitrise run <inner>` via a script
+  # step so the inner step's stdout can be teed to $WRAP_LOG_PATH. The script
+  # step then greps for the expected wrap-engagement line. The inner step's
+  # exit code is intentionally NOT propagated — a failed compile after the
+  # wrap engaged is still a successful wrap-rollout test.
+
+  # ---------------------------------------------------------------------------
+  # Android / Gradle steps
+  # ---------------------------------------------------------------------------
+
+  rn-wrap-android-build:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-android: {}
+      - script@1:
+          title: Run android-build via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-android-build-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping gradle with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in android-build"; exit 1; }
+                echo "OK: wrap engaged in android-build"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-android-build-inner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/bitrise-step-android-build.git@feat/use-cli-wrap-helper:
+          title: bitrise-step-android-build (PR branch)
+          inputs:
+            - project_location: $WRAP_TEST_ANDROID_DIR
+            - module: app
+            - variant: debug
+            - build_type: apk
+
+  rn-wrap-android-unit-test:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-android: {}
+      - script@1:
+          title: Run android-unit-test via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-android-unit-test-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping gradle with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in android-unit-test"; exit 1; }
+                echo "OK: wrap engaged in android-unit-test"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-android-unit-test-inner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/bitrise-step-android-unit-test.git@feat/use-cli-wrap-helper:
+          title: bitrise-step-android-unit-test (PR branch)
+          inputs:
+            - project_location: $WRAP_TEST_ANDROID_DIR
+
+  rn-wrap-android-lint:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-android: {}
+      - script@1:
+          title: Run android-lint via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-android-lint-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping gradle with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in android-lint"; exit 1; }
+                echo "OK: wrap engaged in android-lint"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-android-lint-inner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/bitrise-step-android-lint.git@feat/use-cli-wrap-helper:
+          title: bitrise-step-android-lint (PR branch)
+          inputs:
+            - project_location: $WRAP_TEST_ANDROID_DIR
+
+  rn-wrap-gradle-unit-test:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-android: {}
+      - script@1:
+          title: Run gradle-unit-test via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-gradle-unit-test-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping gradle with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in gradle-unit-test"; exit 1; }
+                echo "OK: wrap engaged in gradle-unit-test"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-gradle-unit-test-inner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/steps-gradle-unit-test.git@feat/use-cli-wrap-helper:
+          title: steps-gradle-unit-test (PR branch)
+          inputs:
+            - project_root_dir: $WRAP_TEST_ANDROID_DIR
+            - test_task: testDebugUnitTest
+
+  rn-wrap-gradle-runner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-android: {}
+      - script@1:
+          title: Run gradle-runner via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-gradle-runner-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping gradle with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in gradle-runner"; exit 1; }
+                echo "OK: wrap engaged in gradle-runner"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-gradle-runner-inner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/steps-gradle-runner.git@feat/use-cli-wrap-helper:
+          title: steps-gradle-runner (PR branch)
+          inputs:
+            - gradle_task: assembleDebug
+            - gradlew_path: $WRAP_TEST_ANDROID_DIR/gradlew
+
+  # ---------------------------------------------------------------------------
+  # Xcode steps (iOS via SeekReactNative)
+  # ---------------------------------------------------------------------------
+
+  rn-wrap-xcode-archive:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-ios: {}
+      - script@1:
+          title: Run xcode-archive via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-xcode-archive-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in xcode-archive"; exit 1; }
+                echo "OK: wrap engaged in xcode-archive"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-xcode-archive-inner:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - git::https://github.com/bitrise-io/steps-xcode-archive.git@feat/use-cli-wrap-helper:
+          title: steps-xcode-archive (PR branch)
+          inputs:
+            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - scheme: SeekReactNative
+            - distribution_method: development
+            - automatic_code_signing: api-key
+
+  rn-wrap-xcode-test:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-ios: {}
+      - script@1:
+          title: Run xcode-test via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-xcode-test-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in xcode-test"; exit 1; }
+                echo "OK: wrap engaged in xcode-test"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-xcode-test-inner:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - git::https://github.com/bitrise-io/steps-xcode-test.git@feat/use-cli-wrap-helper:
+          title: steps-xcode-test (PR branch)
+          inputs:
+            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - scheme: SeekReactNative
+            - destination: platform=iOS Simulator,name=iPhone 15
+
+  rn-wrap-xcode-analyze:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-ios: {}
+      - script@1:
+          title: Run xcode-analyze via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-xcode-analyze-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in xcode-analyze"; exit 1; }
+                echo "OK: wrap engaged in xcode-analyze"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-xcode-analyze-inner:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/steps-xcode-analyze.git@feat/use-cli-wrap-helper:
+          title: steps-xcode-analyze (PR branch)
+          inputs:
+            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - scheme: SeekReactNative
+
+  rn-wrap-xcode-build-for-test:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-ios: {}
+      - script@1:
+          title: Run xcode-build-for-test via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-xcode-build-for-test-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in xcode-build-for-test"; exit 1; }
+                echo "OK: wrap engaged in xcode-build-for-test"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-xcode-build-for-test-inner:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/steps-xcode-build-for-test.git@feat/use-cli-wrap-helper:
+          title: steps-xcode-build-for-test (PR branch)
+          inputs:
+            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - scheme: SeekReactNative
+            - destination: generic/platform=iOS Simulator
+
+  rn-wrap-xcode-build-for-simulator:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-ios: {}
+      - script@1:
+          title: Run xcode-build-for-simulator via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-xcode-build-for-simulator-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in xcode-build-for-simulator"; exit 1; }
+                echo "OK: wrap engaged in xcode-build-for-simulator"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-xcode-build-for-simulator-inner:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/steps-xcode-build-for-simulator.git@feat/use-cli-wrap-helper:
+          title: steps-xcode-build-for-simulator (PR branch)
+          inputs:
+            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - scheme: SeekReactNative
+
+  # ---------------------------------------------------------------------------
+  # NPM
+  # ---------------------------------------------------------------------------
+
+  rn-wrap-npm:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - bundle::rn-wrap-activate-rn-ios: {}
+      - script@1:
+          title: Run npm via PR branch + capture
+          is_always_run: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -uo pipefail
+                rm -f "$WRAP_LOG_PATH"
+                set +e
+                bitrise run rn-wrap-npm-inner 2>&1 | tee "$WRAP_LOG_PATH"
+                set -e
+                grep -E "wrapping npm with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                  || { echo "ERROR: wrap did not engage in steps-npm"; exit 1; }
+                echo "OK: wrap engaged in steps-npm"
+      - deploy-to-bitrise-io@2: {}
+
+  rn-wrap-npm-inner:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    steps:
+      - git::https://github.com/bitrise-steplib/steps-npm.git@feat/use-cli-wrap-helper:
+          title: steps-npm (PR branch)
+          inputs:
+            - workdir: $WRAP_TEST_RN_DIR
+            - command: --version
