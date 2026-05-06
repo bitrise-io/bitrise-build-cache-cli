@@ -345,7 +345,7 @@ workflows:
           title: steps-xcode-archive (PR branch)
           inputs:
             - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
-            - scheme: SeekReactNative
+            - scheme: Seek
             - distribution_method: development
             - automatic_code_signing: api-key
 
@@ -382,7 +382,7 @@ workflows:
           title: steps-xcode-test (PR branch)
           inputs:
             - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
-            - scheme: SeekReactNative
+            - scheme: Seek
             - destination: platform=iOS Simulator,name=iPhone 15
 
   rn-wrap-xcode-analyze:
@@ -418,7 +418,7 @@ workflows:
           title: steps-xcode-analyze (PR branch)
           inputs:
             - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
-            - scheme: SeekReactNative
+            - scheme: Seek
 
   rn-wrap-xcode-build-for-test:
     meta:
@@ -453,7 +453,7 @@ workflows:
           title: steps-xcode-build-for-test (PR branch)
           inputs:
             - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
-            - scheme: SeekReactNative
+            - scheme: Seek
             - destination: generic/platform=iOS Simulator
 
   rn-wrap-xcode-build-for-simulator:
@@ -489,7 +489,7 @@ workflows:
           title: steps-xcode-build-for-simulator (PR branch)
           inputs:
             - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
-            - scheme: SeekReactNative
+            - scheme: Seek
 
   # ---------------------------------------------------------------------------
   # NPM
