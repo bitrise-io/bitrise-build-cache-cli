@@ -330,7 +330,7 @@ workflows:
                 set +e
                 bitrise run rn-wrap-xcode-archive-inner 2>&1 | tee "$WRAP_LOG_PATH"
                 set -e
-                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                grep -E "(wrapping xcodebuild with .*bitrise-build-cache|bitrise-build-cache react-native run -- xcodebuild)" "$WRAP_LOG_PATH" \
                   || { echo "ERROR: wrap did not engage in xcode-archive"; exit 1; }
                 echo "OK: wrap engaged in xcode-archive"
       - deploy-to-bitrise-io@2: {}
@@ -344,7 +344,7 @@ workflows:
       - git::https://github.com/bitrise-io/steps-xcode-archive.git@feat/use-cli-wrap-helper:
           title: steps-xcode-archive (PR branch)
           inputs:
-            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
             - scheme: SeekReactNative
             - distribution_method: development
             - automatic_code_signing: api-key
@@ -367,7 +367,7 @@ workflows:
                 set +e
                 bitrise run rn-wrap-xcode-test-inner 2>&1 | tee "$WRAP_LOG_PATH"
                 set -e
-                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                grep -E "(wrapping xcodebuild with .*bitrise-build-cache|bitrise-build-cache react-native run -- xcodebuild)" "$WRAP_LOG_PATH" \
                   || { echo "ERROR: wrap did not engage in xcode-test"; exit 1; }
                 echo "OK: wrap engaged in xcode-test"
       - deploy-to-bitrise-io@2: {}
@@ -381,7 +381,7 @@ workflows:
       - git::https://github.com/bitrise-io/steps-xcode-test.git@feat/use-cli-wrap-helper:
           title: steps-xcode-test (PR branch)
           inputs:
-            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
             - scheme: SeekReactNative
             - destination: platform=iOS Simulator,name=iPhone 15
 
@@ -403,7 +403,7 @@ workflows:
                 set +e
                 bitrise run rn-wrap-xcode-analyze-inner 2>&1 | tee "$WRAP_LOG_PATH"
                 set -e
-                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                grep -E "(wrapping xcodebuild with .*bitrise-build-cache|bitrise-build-cache react-native run -- xcodebuild)" "$WRAP_LOG_PATH" \
                   || { echo "ERROR: wrap did not engage in xcode-analyze"; exit 1; }
                 echo "OK: wrap engaged in xcode-analyze"
       - deploy-to-bitrise-io@2: {}
@@ -417,7 +417,7 @@ workflows:
       - git::https://github.com/bitrise-steplib/steps-xcode-analyze.git@feat/use-cli-wrap-helper:
           title: steps-xcode-analyze (PR branch)
           inputs:
-            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
             - scheme: SeekReactNative
 
   rn-wrap-xcode-build-for-test:
@@ -438,7 +438,7 @@ workflows:
                 set +e
                 bitrise run rn-wrap-xcode-build-for-test-inner 2>&1 | tee "$WRAP_LOG_PATH"
                 set -e
-                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                grep -E "(wrapping xcodebuild with .*bitrise-build-cache|bitrise-build-cache react-native run -- xcodebuild)" "$WRAP_LOG_PATH" \
                   || { echo "ERROR: wrap did not engage in xcode-build-for-test"; exit 1; }
                 echo "OK: wrap engaged in xcode-build-for-test"
       - deploy-to-bitrise-io@2: {}
@@ -452,7 +452,7 @@ workflows:
       - git::https://github.com/bitrise-steplib/steps-xcode-build-for-test.git@feat/use-cli-wrap-helper:
           title: steps-xcode-build-for-test (PR branch)
           inputs:
-            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
             - scheme: SeekReactNative
             - destination: generic/platform=iOS Simulator
 
@@ -474,7 +474,7 @@ workflows:
                 set +e
                 bitrise run rn-wrap-xcode-build-for-simulator-inner 2>&1 | tee "$WRAP_LOG_PATH"
                 set -e
-                grep -E "wrapping xcodebuild with .*bitrise-build-cache" "$WRAP_LOG_PATH" \
+                grep -E "(wrapping xcodebuild with .*bitrise-build-cache|bitrise-build-cache react-native run -- xcodebuild)" "$WRAP_LOG_PATH" \
                   || { echo "ERROR: wrap did not engage in xcode-build-for-simulator"; exit 1; }
                 echo "OK: wrap engaged in xcode-build-for-simulator"
       - deploy-to-bitrise-io@2: {}
@@ -488,7 +488,7 @@ workflows:
       - git::https://github.com/bitrise-steplib/steps-xcode-build-for-simulator.git@feat/use-cli-wrap-helper:
           title: steps-xcode-build-for-simulator (PR branch)
           inputs:
-            - project_path: $WRAP_TEST_RN_DIR/ios/SeekReactNative.xcworkspace
+            - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
             - scheme: SeekReactNative
 
   # ---------------------------------------------------------------------------
