@@ -57,7 +57,6 @@ pipelines:
       rn-wrap-android-unit-test: {}
       rn-wrap-android-lint: {}
       rn-wrap-gradle-unit-test: {}
-      rn-wrap-gradle-runner: {}
       rn-wrap-xcode-archive: {}
       rn-wrap-xcode-test: {}
       rn-wrap-xcode-analyze: {}
@@ -101,13 +100,19 @@ step_bundles:
                 bitrise-build-cache activate react-native
                 bitrise-build-cache status --feature=react-native --quiet
       - script@1:
-          title: Clone SeekReactNative
+          title: Clone SeekReactNative + JS / pod deps
           inputs:
             - content: |-
                 #!/usr/bin/env bash
                 set -euxo pipefail
                 rm -rf "$WRAP_TEST_RN_DIR"
                 git clone --depth 1 "$SEEK_RN_REPO" "$WRAP_TEST_RN_DIR"
+                cd "$WRAP_TEST_RN_DIR"
+                yarn install --frozen-lockfile
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    cd ios
+                    pod install
+                fi
 
 workflows:
   # ---------------------------------------------------------------------------
