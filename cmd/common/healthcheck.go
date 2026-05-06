@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -40,11 +41,16 @@ var healthcheckCmd = &cobra.Command{
 		}
 
 		kvClient, err := CreateKVClient(cmd.Context(), CreateKVClientParams{
-			ClientName:       ClientNameGradle,
-			AuthConfig:       authConfig,
-			Envs:             allEnvs,
-			Logger:           logger,
-			EndpointURL:      healthcheckEndpoint,
+			ClientName:  ClientNameGradle,
+			AuthConfig:  authConfig,
+			Envs:        allEnvs,
+			Logger:      logger,
+			EndpointURL: healthcheckEndpoint,
+			CommandFunc: func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output() //nolint:noctx // host metadata collection, no meaningful context to pass
+
+				return string(output), err
+			},
 			SkipCapabilities: true,
 		})
 		if err != nil {
