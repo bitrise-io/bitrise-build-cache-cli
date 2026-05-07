@@ -35,7 +35,12 @@ var (
 				return wrappedErr
 			}
 
-			logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+			logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+			if xceleratePrintStatsJSONOutput {
+				logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+			}
+
+			logger := log.NewLogger(logOpts...)
 			client, cleanup := createProxySessionClient(config, logger)
 			defer cleanup()
 
