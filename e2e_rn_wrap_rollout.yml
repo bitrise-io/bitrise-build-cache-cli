@@ -347,7 +347,10 @@ workflows:
             - project_path: $WRAP_TEST_RN_DIR/ios/Seek.xcworkspace
             - scheme: Seek
             - distribution_method: development
-            - automatic_code_signing: api-key
+            - automatic_code_signing: "off"
+            - xcconfig_content: |-
+                CODE_SIGNING_ALLOWED = NO
+                COMPILER_INDEX_STORE_ENABLE = NO
 
   rn-wrap-xcode-test:
     meta:
