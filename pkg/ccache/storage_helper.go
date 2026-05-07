@@ -219,6 +219,59 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 	}
 }
 
+// Stats holds the current runtime statistics of a running storage helper session.
+type Stats struct {
+	// From the IPC storage helper process
+	InvocationID    string `json:"invocationId"`
+	ParentID        string `json:"parentId,omitempty"`
+	DownloadedBytes int64  `json:"downloadedBytes"`
+	UploadedBytes   int64  `json:"uploadedBytes"`
+
+	// From ccache binary — zero when ccache is not available
+	TotalCalls   int     `json:"totalCalls"`
+	CacheHit     int     `json:"cacheHit"`
+	CacheMiss    int     `json:"cacheMiss"`
+	CacheHitRate float64 `json:"cacheHitRate"`
+
+	RemoteStorageHit  int `json:"remoteStorageHit"`
+	RemoteStorageMiss int `json:"remoteStorageMiss"`
+}
+
+// GetStats returns the current session statistics without modifying any state
+// or sending analytics. Returns an error if the storage helper is not running.
+// ccache binary stats (hit/miss) are collected on a best-effort basis; they
+// are zero when the ccache binary is unavailable.
+func (h *StorageHelper) GetStats(ctx context.Context) (Stats, error) {
+	socketPath := h.socketPath()
+
+	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
+		return Stats{}, fmt.Errorf("storage helper is not running")
+	}
+
+	session, err := iccache.SendGetSessionStats(ctx, socketPath)
+	if err != nil {
+		return Stats{}, fmt.Errorf("query session stats: %w", err)
+	}
+
+	s := Stats{
+		InvocationID:    session.InvocationID,
+		ParentID:        session.ParentID,
+		DownloadedBytes: session.DownloadedBytes,
+		UploadedBytes:   session.UploadedBytes,
+	}
+
+	if ccStats, err := h.parseCcacheStats(ctx); err == nil {
+		s.TotalCalls = ccStats.TotalCalls
+		s.CacheHit = ccStats.CacheHit
+		s.CacheMiss = ccStats.CacheMiss
+		s.CacheHitRate = ccStats.CacheHitRate
+		s.RemoteStorageHit = ccStats.RemoteStorageHit
+		s.RemoteStorageMiss = ccStats.RemoteStorageMiss
+	}
+
+	return s, nil
+}
+
 // CollectAndSendStats collects ccache statistics and, if ccache had any activity,
 // reports the ccache invocation and registers the parent→child relationship.
 // Always zeros ccache counters at the end regardless of activity.
