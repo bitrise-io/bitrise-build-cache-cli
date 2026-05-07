@@ -21,6 +21,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/mod v0.33.0
+	golang.org/x/term v0.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260203192932-546029d2fa20
 	google.golang.org/genproto/googleapis/bytestream v0.0.0-20251103181224-f26f9409b101
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260203192932-546029d2fa20
