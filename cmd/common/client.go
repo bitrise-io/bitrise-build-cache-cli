@@ -18,7 +18,6 @@ const (
 	ClientNameGradleConfigCache = "gradle-config"
 	ClientNameGradle            = "gradle"
 	ClientNameCcache            = "ccache"
-	ClientNameFile              = "file"
 )
 
 type CreateKVClientParams struct {
