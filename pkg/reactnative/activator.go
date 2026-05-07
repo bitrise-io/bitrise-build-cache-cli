@@ -153,7 +153,12 @@ func (a *Activator) saveReactNativeMarker() error {
 // ---------------------------------------------------------------------------
 
 func exportInstallDirToPath(logger log.Logger) {
-	dir := dependencies.InstallDir
+	dir, err := dependencies.ResolveInstallDir()
+	if err != nil {
+		logger.Warnf("Failed to resolve install dir: %s", err)
+
+		return
+	}
 	envs := utils.AllEnvs()
 
 	currentPath := envs["PATH"]

@@ -16,11 +16,43 @@ import (
 )
 
 const (
-	cliBinaryName = "bitrise-build-cache"
-	cliModulePath = "github.com/bitrise-io/bitrise-build-cache-cli/v2"
-	// InstallDir is the directory where dependency binaries (CLI, ccache) are installed.
-	InstallDir = "/usr/local/bin"
+	cliBinaryName     = "bitrise-build-cache"
+	cliModulePath     = "github.com/bitrise-io/bitrise-build-cache-cli/v2"
+	primaryInstallDir = "/usr/local/bin"
 )
+
+// ResolveInstallDir returns the directory where dependency binaries should be installed.
+// It prefers /usr/local/bin but falls back to ~/.local/bin when that directory is not
+// writable (e.g. on a developer machine where the CLI runs without root privileges).
+func ResolveInstallDir() (string, error) {
+	if probeWritable(primaryInstallDir) {
+		return primaryInstallDir, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
+
+	dir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create fallback install dir %s: %w", dir, err)
+	}
+
+	return dir, nil
+}
+
+// probeWritable returns true if a file can be created in dir.
+func probeWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".bitrise-write-test-*")
+	if err != nil {
+		return false
+	}
+	f.Close()
+	os.Remove(f.Name()) //nolint:errcheck
+
+	return true
+}
 
 // CLITool returns a Tool that installs the bitrise-build-cache binary
 // matching the version embedded in the current binary's module dependencies.
@@ -64,9 +96,14 @@ func isMainCLIBinary() bool {
 	return info.Main.Path == cliModulePath
 }
 
-// selfInstall copies the running executable to InstallDir.
+// selfInstall copies the running executable to the resolved install dir.
 // Used when the CLI is already running but not on PATH (e.g. `go run` dev builds).
 func selfInstall(logger log.Logger) error {
+	installDir, err := ResolveInstallDir()
+	if err != nil {
+		return fmt.Errorf("resolve install dir: %w", err)
+	}
+
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("find current executable: %w", err)
@@ -77,7 +114,7 @@ func selfInstall(logger log.Logger) error {
 		return fmt.Errorf("resolve executable symlinks: %w", err)
 	}
 
-	destPath := filepath.Join(InstallDir, cliBinaryName)
+	destPath := filepath.Join(installDir, cliBinaryName)
 	logger.Debugf("Self-installing: copying %s to %s", exePath, destPath)
 
 	src, err := os.Open(exePath)
@@ -136,6 +173,11 @@ func downloadURL(version, goos, goarch string) string {
 }
 
 func installFromGitHubRelease(ctx context.Context, logger log.Logger, url, binaryName string) error {
+	installDir, err := ResolveInstallDir()
+	if err != nil {
+		return fmt.Errorf("resolve install dir: %w", err)
+	}
+
 	logger.Debugf("Downloading from %s", url)
 
 	resp, err := downloadFile(ctx, url)
@@ -144,7 +186,7 @@ func installFromGitHubRelease(ctx context.Context, logger log.Logger, url, binar
 	}
 	defer resp.Close()
 
-	destPath := filepath.Join(InstallDir, binaryName)
+	destPath := filepath.Join(installDir, binaryName)
 	if err := extractBinaryFromTarGz(resp, binaryName, destPath); err != nil {
 		return fmt.Errorf("extract binary: %w", err)
 	}
