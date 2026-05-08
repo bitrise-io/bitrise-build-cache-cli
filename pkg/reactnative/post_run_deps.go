@@ -84,9 +84,10 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	agg := childstats.NewAggregator(wrapperInvocationID)
 	agg.Logger = d.logger
 	summary, aggErr := agg.Compute()
-	if aggErr != nil {
+	switch {
+	case aggErr != nil:
 		d.logger.TWarnf("Failed to aggregate child invocation hit rates: %v", aggErr)
-	} else if summary.ChildCount > 0 {
+	case summary.ChildCount > 0:
 		d.logger.TInfof(
 			"Cache hit rate (avg of %d child invocations): %.1f%%",
 			summary.ChildCount, summary.MeanHitRate*100,
@@ -106,12 +107,26 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 			)
 		}
 
+		if summary.NoActivityCount > 0 {
+			d.logger.TInfof(
+				"%d child invocation(s) excluded from the aggregate: no cache activity.",
+				summary.NoActivityCount,
+			)
+		}
+
 		if summary.FailedCount > 0 {
 			d.logger.TInfof(
 				"%d of %d child invocations reported a failure (informational; wrapper success is driven by the wrapped process exit code).",
 				summary.FailedCount, summary.ChildCount,
 			)
 		}
+	case summary.NoActivityCount > 0:
+		// All children present but none had activity — log it so the user
+		// understands why no aggregate hit rate is shown.
+		d.logger.TInfof(
+			"All %d child invocation(s) had no cache activity; skipping combined hit rate.",
+			summary.NoActivityCount,
+		)
 	}
 
 	// Wrapper Success follows the wrapped process's exit code only. We used to

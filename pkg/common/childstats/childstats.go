@@ -189,6 +189,12 @@ type Summary struct {
 	// SkippedCount is the number of entries excluded (malformed only).
 	SkippedCount int
 
+	// NoActivityCount is the number of entries excluded because the child
+	// did no cacheable work (Total == 0). They are excluded from
+	// MeanHitRate / WeightedHitRate / ChildCount / per-tool aggregates so
+	// that idle children don't pull the reported hit rate toward 0%.
+	NoActivityCount int
+
 	// FailedCount is the number of entries that reported Failed=true. Used
 	// by parent wrappers to fail the wrapper invocation when any child
 	// failed (e.g. an xcodebuild child errored even though the parent script
@@ -255,6 +261,21 @@ func (a *Aggregator) Compute() (Summary, error) {
 
 			if a.Logger != nil {
 				a.Logger.Warnf("Skipping malformed child stats entry %s: %v", entryPath, err)
+			}
+
+			continue
+		}
+
+		// Skip entries with no cacheable work — including them only drags
+		// MeanHitRate toward 0% without telling the user anything useful.
+		if entry.Total == 0 {
+			summary.NoActivityCount++
+
+			if a.Logger != nil {
+				a.Logger.Debugf(
+					"Excluding child invocation %s (build tool: %s) from aggregate: no cache activity",
+					entry.ChildInvocationID, entry.BuildTool,
+				)
 			}
 
 			continue
