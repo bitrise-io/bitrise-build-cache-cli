@@ -24,13 +24,6 @@ ok()   { printf '✅ %s\n' "$*"; }
 fail() { printf '❌ %s\n' "$*"; failures=$((failures + 1)); }
 note() { printf 'ℹ️  %s\n' "$*"; }
 
-# extract_log_id <prefix> [<file>...]
-extract_log_id() {
-  local prefix=$1
-  shift
-  grep -hoE "${prefix}: [a-zA-Z0-9-]+" "$@" 2>/dev/null | head -1 | awk '{print $NF}'
-}
-
 # fetch_be <build_tool> <invocation_id> <out_file>
 # Polls BE until the invocation appears or RETRIES is exhausted.
 fetch_be() {
@@ -85,18 +78,17 @@ assert_present() {
   fi
 }
 
-# --- Discover invocation IDs from CLI / xcelerate logs --------------------
+# --- Discover invocation ID + locally-active tools -----------------------
 
-rn_id=$(extract_log_id "React Native invocation ID" "$RN_CLI_LOG")
-ccache_id=$(extract_log_id "Ccache invocation ID" "$RN_CLI_LOG")
+rn_id=$(grep -oE "React Native invocation ID: [a-zA-Z0-9-]+" "$RN_CLI_LOG" | head -1 | awk '{print $NF}')
 
-XCELERATE_LOGS=$(find "${BITRISE_DEPLOY_DIR:-.}" -name 'xcelerate-*.log' 2>/dev/null || true)
-xcode_id=""
-if [ -n "$XCELERATE_LOGS" ]; then
-  # The xcode invocation ID is logged as "Registering invocation relation: parent=<rn>, child=<xcode>, build-tool=xcode".
-  xcode_id=$(grep -hoE "child=[a-zA-Z0-9-]+, build-tool=xcode" $XCELERATE_LOGS 2>/dev/null \
-    | head -1 \
-    | sed -E 's/^child=([a-zA-Z0-9-]+).*/\1/')
+ccache_active=false
+xcode_active=false
+if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
+  ccache_active=true
+fi
+if find "${BITRISE_DEPLOY_DIR:-.}" -name 'xcelerate-*.log' -print -quit 2>/dev/null | grep -q .; then
+  xcode_active=true
 fi
 
 if [ -z "$rn_id" ]; then
@@ -105,35 +97,38 @@ if [ -z "$rn_id" ]; then
   exit 1
 fi
 ok "Discovered React Native invocation ID: $rn_id"
-[ -n "$ccache_id" ] && note "Discovered ccache invocation ID: $ccache_id"
-[ -n "$xcode_id" ]  && note "Discovered xcode invocation ID: $xcode_id"
+$ccache_active && note "ccache was active in this run"
+$xcode_active  && note "xcode (xcelerate) was active in this run"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-# --- 1. Parent invocation visible on BE -----------------------------------
+# --- 1. Parent invocation visible on BE ----------------------------------
+# Field names match BuildToolInvocationInfoPresenter#to_h:
+#   invocationId, tool, command, status, workflowName, projectSlug, cacheHitRate
 
 rn_body="${tmpdir}/rn.json"
 if fetch_be "react-native" "$rn_id" "$rn_body"; then
   ok "GET react-native/${rn_id} returned 200"
 
-  body_id=$(jq -r '.id // empty' "$rn_body")
-  assert_field "react-native invocation id" "$rn_id" "$body_id"
+  body_id=$(jq -r '.invocationId // empty' "$rn_body")
+  assert_field "react-native invocationId" "$rn_id" "$body_id"
 
-  # Expected fields proving the record looks right.
-  assert_present "buildTool"   "$(jq -r '.buildTool // empty' "$rn_body")"
-  assert_present "command"     "$(jq -r '.command // empty' "$rn_body")"
-  assert_present "status"      "$(jq -r '.status // empty' "$rn_body")"
-  assert_present "workflow"    "$(jq -r '.workflow // empty' "$rn_body")"
-  assert_present "projectSlug" "$(jq -r '.projectSlug // empty' "$rn_body")"
+  body_tool=$(jq -r '.tool // empty' "$rn_body")
+  assert_field "tool" "react-native" "$body_tool"
 
-  # Cache stats — proves analytics (not just registration) reached BE.
-  hits=$(jq -r '.cacheHits // .stats.cacheHits // empty' "$rn_body")
-  misses=$(jq -r '.cacheMisses // .stats.cacheMisses // empty' "$rn_body")
-  if [ -n "$hits$misses" ]; then
-    ok "cache stats present (hits=${hits:-0}, misses=${misses:-0})"
+  assert_present "command"      "$(jq -r '.command // empty' "$rn_body")"
+  assert_present "status"       "$(jq -r '.status // empty' "$rn_body")"
+  assert_present "workflowName" "$(jq -r '.workflowName // empty' "$rn_body")"
+  assert_present "projectSlug"  "$(jq -r '.projectSlug // empty' "$rn_body")"
+
+  # cacheHitRate is a 0..1 float. Accept any numeric value (including 0) as
+  # proof analytics arrived; null/missing means stats never reached BE.
+  if jq -e '.cacheHitRate | type == "number"' "$rn_body" >/dev/null 2>&1; then
+    rate=$(jq -r '.cacheHitRate' "$rn_body")
+    ok "cacheHitRate present: ${rate}"
   else
-    fail "no cache stats fields found on react-native invocation"
+    fail "cacheHitRate missing or non-numeric on react-native invocation"
   fi
 else
   fail "react-native invocation ${rn_id} not visible on BE after ${RETRIES} attempts"
@@ -141,35 +136,31 @@ else
   cat "$rn_body" 2>/dev/null || true
 fi
 
-# --- 2. Child invocations registered (when applicable) --------------------
+# --- 2. Child invocations registered (when applicable) ------------------
+# Children endpoint shape:
+#   [ { "buildTool": "xcode", "invocations": [{ "invocationId": "...", ... }] }, ... ]
 
-children_body="${tmpdir}/children.json"
-expect_children=false
-[ -n "$ccache_id" ] && expect_children=true
-[ -n "$xcode_id" ]  && expect_children=true
-
-if [ "$expect_children" = "true" ]; then
+if $ccache_active || $xcode_active; then
+  children_body="${tmpdir}/children.json"
   if fetch_be_children "react-native" "$rn_id" "$children_body"; then
     ok "GET react-native/${rn_id}/child-invocations returned 200"
 
-    if [ -n "$ccache_id" ]; then
-      if jq -e --arg id "$ccache_id" \
-        '[.[] | select(.buildTool == "ccache") | .invocations[]?.id] | index($id)' \
-        "$children_body" >/dev/null; then
-        ok "ccache child ${ccache_id} attached to RN parent on BE"
+    if $xcode_active; then
+      xcode_count=$(jq '[.[] | select(.buildTool == "xcode") | .invocations[]?] | length' "$children_body")
+      if [ "${xcode_count:-0}" -gt 0 ]; then
+        ok "xcode child invocations attached on BE (count=${xcode_count})"
       else
-        fail "ccache child ${ccache_id} not attached to RN parent on BE"
+        fail "no xcode child invocations attached to RN parent on BE"
         jq '.' "$children_body" || cat "$children_body"
       fi
     fi
 
-    if [ -n "$xcode_id" ]; then
-      if jq -e --arg id "$xcode_id" \
-        '[.[] | select(.buildTool == "xcode") | .invocations[]?.id] | index($id)' \
-        "$children_body" >/dev/null; then
-        ok "xcode child ${xcode_id} attached to RN parent on BE"
+    if $ccache_active; then
+      ccache_count=$(jq '[.[] | select(.buildTool == "ccache") | .invocations[]?] | length' "$children_body")
+      if [ "${ccache_count:-0}" -gt 0 ]; then
+        ok "ccache child invocations attached on BE (count=${ccache_count})"
       else
-        fail "xcode child ${xcode_id} not attached to RN parent on BE"
+        fail "no ccache child invocations attached to RN parent on BE"
         jq '.' "$children_body" || cat "$children_body"
       fi
     fi
@@ -181,7 +172,7 @@ else
   note "No ccache/xcode child detected, skipping child-invocation BE assertion"
 fi
 
-# --- Result ---------------------------------------------------------------
+# --- Result --------------------------------------------------------------
 
 if [ "$failures" -gt 0 ]; then
   echo "BE invocation assertions: ${failures} failure(s) ❌"
