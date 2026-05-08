@@ -529,6 +529,10 @@ workflows:
         title: Assert analytics were sent
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+    - script:
+        title: Assert invocations are visible on Monolith BE
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_invocations_be.sh
 
   react-seek-ios-e2e:
     title: Seek iOS - assert react-native CLI invocation analytics
@@ -569,6 +573,10 @@ workflows:
         title: Assert CLI invocation analytics were sent
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+    - script:
+        title: Assert invocations are visible on Monolith BE
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_invocations_be.sh
 
 
   ccache-storage-helper-test:
