@@ -153,7 +153,7 @@ func installFromMirrors(ctx context.Context, logger log.Logger, urls []string, b
 		return fmt.Errorf("no download URLs provided for %s", binaryName)
 	}
 
-	var errs []error
+	errs := make([]error, 0, len(urls))
 
 	for i, url := range urls {
 		logger.Debugf("Trying mirror %d/%d: %s", i+1, len(urls), url)
