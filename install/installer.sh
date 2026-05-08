@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
-# Originally scaffolded by godownloader on 2024-01-15. The release flow
-# (`bitrise.yml` cli-release + `.goreleaser.yaml`) does NOT regenerate
-# this script — it has been hand-maintained for over a year. Edit freely.
+# Originally scaffolded by godownloader on 2024-01-15 and untouched
+# afterwards until 2026-05. The release flow (`bitrise.yml` cli-release
+# + `.goreleaser.yaml`) does NOT regenerate this script — there is no
+# godownloader step anywhere in the repo, so edits made here stick.
 #
 
 usage() {
