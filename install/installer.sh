@@ -45,8 +45,8 @@ parse_args() {
 execute() {
   tmpdir=$(mktemp -d)
   log_debug "downloading files into ${tmpdir}"
-  http_download "${tmpdir}/${TARBALL}" "${TARBALL_URL}"
-  http_download "${tmpdir}/${CHECKSUM}" "${CHECKSUM_URL}"
+  http_download_with_fallback "${tmpdir}/${TARBALL}" "${TARBALL_URL_GAR}" "${TARBALL_URL_GH}"
+  http_download_with_fallback "${tmpdir}/${CHECKSUM}" "${CHECKSUM_URL_GAR}" "${CHECKSUM_URL_GH}"
   hash_sha256_verify "${tmpdir}/${TARBALL}" "${tmpdir}/${CHECKSUM}"
   srcdir="${tmpdir}"
   (cd "${tmpdir}" && untar "${TARBALL}")
@@ -272,6 +272,16 @@ http_download() {
   log_crit "http_download unable to find wget or curl"
   return 1
 }
+http_download_with_fallback() {
+  local_file=$1
+  primary_url=$2
+  fallback_url=$3
+  if http_download "$local_file" "$primary_url"; then
+    return 0
+  fi
+  log_info "primary download failed for $local_file, falling back to $fallback_url"
+  http_download "$local_file" "$fallback_url"
+}
 http_copy() {
   tmp=$(mktemp)
   http_download "${tmp}" "$1" "$2" || return 1
@@ -369,8 +379,15 @@ log_info "found version: ${VERSION} for ${TAG}/${OS}/${ARCH}"
 
 NAME=bitrise-build-cache_${VERSION}_${OS}_${ARCH}
 TARBALL=${NAME}.${FORMAT}
-TARBALL_URL=${GITHUB_DOWNLOAD}/${TAG}/${TARBALL}
+TARBALL_URL_GH=${GITHUB_DOWNLOAD}/${TAG}/${TARBALL}
 CHECKSUM=${PROJECT_NAME}_${VERSION}_checksums.txt
-CHECKSUM_URL=${GITHUB_DOWNLOAD}/${TAG}/${CHECKSUM}
+CHECKSUM_URL_GH=${GITHUB_DOWNLOAD}/${TAG}/${CHECKSUM}
+
+# GAR mirror (primary). Repo grants public read; HTTP GET works anonymously.
+GAR_BASE="https://artifactregistry.googleapis.com/v1/projects/ip-build-cache-prod/locations/us-central1/repositories/build-cache-cli-releases/files"
+GAR_TARBALL_PACKAGE="${PROJECT_NAME}_${OS}_${ARCH}.${FORMAT}"
+GAR_CHECKSUM_PACKAGE="${PROJECT_NAME}_checksums.txt"
+TARBALL_URL_GAR="${GAR_BASE}/${GAR_TARBALL_PACKAGE}:${VERSION}:${TARBALL}:download?alt=media"
+CHECKSUM_URL_GAR="${GAR_BASE}/${GAR_CHECKSUM_PACKAGE}:${VERSION}:${CHECKSUM}:download?alt=media"
 
 execute

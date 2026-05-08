@@ -41,6 +41,25 @@ builds:
 archives:
   - name_template: 'bitrise-build-cache_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
+brews:
+  - name: bitrise-build-cache
+    homepage: https://bitrise.io
+    description: Bitrise Build Cache CLI — configure remote build cache for Gradle, Bazel, Xcode, and React Native.
+    license: MIT
+    tap:
+      owner: bitrise-io
+      name: homebrew-bitrise-build-cache
+      branch: main
+    commit_author:
+      name: bitbot
+      email: letsbuild@bitrise.io
+    commit_msg_template: 'brew formula update for {{ .ProjectName }} version {{ .Tag }}'
+    folder: Formula
+    test: |
+      system "#{bin}/bitrise-build-cache", "--help"
+    install: |
+      bin.install "bitrise-build-cache"
+
 changelog:
   sort: asc
   filters:

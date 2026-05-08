@@ -99,7 +99,8 @@ workflows:
             filenames=("bitrise-build-cache_${tag}_darwin_amd64.tar.gz"
                       "bitrise-build-cache_${tag}_linux_amd64.tar.gz"
                       "bitrise-build-cache_${tag}_darwin_arm64.tar.gz"
-                      "bitrise-build-cache_${tag}_linux_arm64.tar.gz")
+                      "bitrise-build-cache_${tag}_linux_arm64.tar.gz"
+                      "bitrise-build-cache_${tag}_checksums.txt")
             for filename in "${filenames[@]}"; do
               if [[ ! -f "$DIST_DIR/$filename" ]]; then
                 echo "File $DIST_DIR/$filename does not exist."
@@ -108,6 +109,12 @@ workflows:
               echo "Uploading $filename to GAR..."
 
               package_name="${filename/_${tag}/}" # Files will be versioned
+
+              gcloud artifacts files delete "$package_name:$tag:$filename" \
+                --project=ip-build-cache-prod \
+                --location=us-central1 \
+                --repository=build-cache-cli-releases \
+                --quiet || true
 
               gcloud artifacts generic upload \
                 --project=ip-build-cache-prod \
@@ -119,6 +126,49 @@ workflows:
             done
 
             echo "Uploaded artifacts to GAR."
+    - script:
+        title: Mirror ccache binaries to GAR
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # Pull the pinned ccache version straight from the source so the
+            # mirror always matches what the CLI's installer expects.
+            CCACHE_VERSION=$(grep -E '^[[:space:]]*ccacheVersion[[:space:]]*=[[:space:]]*"' internal/dependencies/ccache.go | sed -E 's/.*"([^"]+)".*/\1/')
+            if [[ -z "$CCACHE_VERSION" ]]; then
+              echo "Failed to extract ccache version from internal/dependencies/ccache.go"
+              exit 1
+            fi
+            echo "Mirroring ccache v${CCACHE_VERSION} to GAR..."
+
+            TMPDIR=$(mktemp -d)
+            trap 'rm -rf "$TMPDIR"' EXIT
+
+            for suffix in darwin linux-x86_64-glibc linux-aarch64-glibc; do
+              filename="ccache-${CCACHE_VERSION}-${suffix}.tar.gz"
+              package="ccache-${suffix}.tar.gz"
+              src_url="https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/${filename}"
+
+              echo "Downloading $src_url"
+              curl --retry 5 -sSfL -o "$TMPDIR/$filename" "$src_url"
+
+              gcloud artifacts files delete "$package:$CCACHE_VERSION:$filename" \
+                --project=ip-build-cache-prod \
+                --location=us-central1 \
+                --repository=build-cache-cli-releases \
+                --quiet || true
+
+              gcloud artifacts generic upload \
+                --project=ip-build-cache-prod \
+                --source="$TMPDIR/$filename" \
+                --package="$package" \
+                --version="$CCACHE_VERSION" \
+                --location=us-central1 \
+                --repository=build-cache-cli-releases
+            done
+
+            echo "Mirrored ccache to GAR."
     - deploy-to-bitrise-io@2:
         is_always_run: true
         inputs:

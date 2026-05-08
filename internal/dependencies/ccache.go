@@ -10,7 +10,10 @@ import (
 
 const (
 	ccacheBinaryName = "ccache"
-	ccacheVersion    = "4.13.2"
+	// ccacheVersion is the pinned upstream ccache version. The bitrise.yml
+	// release flow mirrors the matching tarballs to GAR, so this constant
+	// drives both the download URL and the GAR mirror upload.
+	ccacheVersion = "4.13.2"
 )
 
 // CcacheTool returns a Tool that installs ccache.
@@ -19,32 +22,46 @@ func CcacheTool() Tool {
 		Name:    ccacheBinaryName,
 		Version: ccacheVersion,
 		Install: func(ctx context.Context, logger log.Logger) error {
-			url, err := ccacheDownloadURL(ccacheVersion, runtime.GOOS, runtime.GOARCH)
+			suffix, err := ccachePlatformSuffix(runtime.GOOS, runtime.GOARCH)
 			if err != nil {
 				return err
 			}
 
-			return installFromGitHubRelease(ctx, logger, url, ccacheBinaryName)
+			return installFromMirrors(
+				ctx, logger,
+				[]string{
+					ccacheGARDownloadURL(ccacheVersion, suffix),
+					ccacheGitHubDownloadURL(ccacheVersion, suffix),
+				},
+				ccacheBinaryName,
+			)
 		},
 	}
 }
 
-func ccacheDownloadURL(version, goos, goarch string) (string, error) {
-	var platformSuffix string
-
+func ccachePlatformSuffix(goos, goarch string) (string, error) {
 	switch {
 	case goos == "darwin":
-		platformSuffix = "darwin"
+		return "darwin", nil
 	case goos == "linux" && goarch == "amd64":
-		platformSuffix = "linux-x86_64-glibc"
+		return "linux-x86_64-glibc", nil
 	case goos == "linux" && goarch == "arm64":
-		platformSuffix = "linux-aarch64-glibc"
+		return "linux-aarch64-glibc", nil
 	default:
 		return "", fmt.Errorf("unsupported platform: %s/%s", goos, goarch)
 	}
+}
 
+func ccacheGitHubDownloadURL(version, platformSuffix string) string {
 	return fmt.Sprintf(
 		"https://github.com/ccache/ccache/releases/download/v%s/ccache-%s-%s.tar.gz",
 		version, version, platformSuffix,
-	), nil
+	)
+}
+
+func ccacheGARDownloadURL(version, platformSuffix string) string {
+	pkg := fmt.Sprintf("ccache-%s.tar.gz", platformSuffix)
+	filename := fmt.Sprintf("ccache-%s-%s.tar.gz", version, platformSuffix)
+
+	return garDownloadURL(pkg, version, filename)
 }
