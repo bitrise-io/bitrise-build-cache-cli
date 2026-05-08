@@ -45,8 +45,8 @@ parse_args() {
 execute() {
   tmpdir=$(mktemp -d)
   log_debug "downloading files into ${tmpdir}"
-  http_download_with_fallback "${tmpdir}/${TARBALL}" "${TARBALL_URL_GAR}" "${TARBALL_URL_GH}"
-  http_download_with_fallback "${tmpdir}/${CHECKSUM}" "${CHECKSUM_URL_GAR}" "${CHECKSUM_URL_GH}"
+  http_download_with_fallback "${tmpdir}/${TARBALL}" "${TARBALL_URL_GH}" "${TARBALL_URL_GAR}"
+  http_download_with_fallback "${tmpdir}/${CHECKSUM}" "${CHECKSUM_URL_GH}" "${CHECKSUM_URL_GAR}"
   hash_sha256_verify "${tmpdir}/${TARBALL}" "${tmpdir}/${CHECKSUM}"
   srcdir="${tmpdir}"
   (cd "${tmpdir}" && untar "${TARBALL}")

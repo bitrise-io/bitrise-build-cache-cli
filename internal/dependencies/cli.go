@@ -37,8 +37,8 @@ func CLITool() (Tool, error) {
 		return installFromMirrors(
 			ctx, logger,
 			[]string{
-				cliGARDownloadURL(version, runtime.GOOS, runtime.GOARCH),
 				cliGitHubDownloadURL(version, runtime.GOOS, runtime.GOARCH),
+				cliGARDownloadURL(version, runtime.GOOS, runtime.GOARCH),
 			},
 			cliBinaryName,
 		)

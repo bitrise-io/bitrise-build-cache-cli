@@ -30,8 +30,8 @@ func CcacheTool() Tool {
 			return installFromMirrors(
 				ctx, logger,
 				[]string{
-					ccacheGARDownloadURL(ccacheVersion, suffix),
 					ccacheGitHubDownloadURL(ccacheVersion, suffix),
+					ccacheGARDownloadURL(ccacheVersion, suffix),
 				},
 				ccacheBinaryName,
 			)
