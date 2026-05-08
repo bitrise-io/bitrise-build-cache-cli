@@ -13,9 +13,11 @@ type EnvExporter interface {
 }
 
 // ApplyBenchmarkPhase queries the benchmark phase and overrides gradle params accordingly.
-// Baseline phase disables cache and enables analytics only. Warmup phase logs a warning.
-// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
-// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json as fallback.
+// Baseline phase disables cache and enables analytics only.
+// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE env var
+// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase-gradle.json
+// as fallback. The user-facing log line is emitted once by
+// common.LogBenchmarkSummary at the end of activation, not from this function.
 func ApplyBenchmarkPhase(
 	params *ActivateGradleParams,
 	logger log.Logger,
@@ -37,18 +39,18 @@ func ApplyBenchmarkPhase(
 	}
 
 	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolGradle)
-	logger.Infof("(i) Benchmark phase: %s", phase)
 	exporter.Export(envVar, phase)
 	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export "+envVar+"="+phase)
 	common.WriteBenchmarkPhaseFile(common.BuildToolGradle, phase, logger)
 
-	switch phase {
-	case common.BenchmarkPhaseBaseline:
-		logger.Warnf("Benchmark baseline mode: disabling cache and enabling analytics only")
+	// The user-facing summary is logged once at the end of activation by
+	// common.LogBenchmarkSummary. Avoid logging per-tool here so that on
+	// multi-tool activations (React Native) the user does not see one
+	// tool's baseline mode warning and assume the whole build is in
+	// baseline when the relevant tool is actually caching normally.
+	if phase == common.BenchmarkPhaseBaseline {
 		params.Cache.Enabled = false
 		params.Cache.JustDependency = false
 		params.Analytics.Enabled = true
-	case common.BenchmarkPhaseWarmup:
-		logger.Infof("(i) Benchmark warmup phase: cache performance might not be ideal")
 	}
 }

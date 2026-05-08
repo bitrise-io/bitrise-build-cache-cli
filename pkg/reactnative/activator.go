@@ -129,6 +129,20 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
+	// Single consolidated benchmark phase summary across whichever sub-tools
+	// were activated. Per-tool baseline warnings used to fire individually
+	// from each ApplyBenchmarkPhase call, which made multi-tool RN runs look
+	// like the whole build was in baseline even when only the *unused* tool
+	// was (the relevant tool was caching normally).
+	tools := []string{}
+	if a.gradle != nil {
+		tools = append(tools, configcommon.BuildToolGradle)
+	}
+	if a.xcode != nil {
+		tools = append(tools, configcommon.BuildToolXcode)
+	}
+	configcommon.LogBenchmarkSummary(a.logger, tools)
+
 	a.logger.TInfof("✅ Bitrise Build Cache for React Native activated")
 
 	return nil
