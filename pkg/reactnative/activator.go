@@ -69,13 +69,19 @@ func NewActivator(params ActivatorParams) *Activator {
 		a.xcode = &xcodeActivator{logger: logger, debugLogging: params.DebugLogging}
 	}
 
-	if params.CppEnabled {
+	// ccache only meaningfully wraps the Android/Gradle native build path in
+	// React Native projects — without Gradle activated there is nothing for
+	// ccache to accelerate here. Tie the two together so `--cpp=true
+	// --gradle=false` doesn't leave a stray ccache helper running.
+	if params.CppEnabled && params.GradleEnabled {
 		a.cpp = ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			PushEnabled:  ccacheconfig.DefaultParams().PushEnabled,
 			DebugLogging: params.DebugLogging,
 			Logger:       logger,
 		})
 		a.helper = &storageHelperStarter{logger: logger}
+	} else if params.CppEnabled && !params.GradleEnabled {
+		logger.Infof("(i) Skipping C++ (ccache) activation: Gradle is disabled — ccache only wraps the Android/Gradle native build path.")
 	}
 
 	return a
@@ -109,16 +115,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 		}
 	}
 
-	if a.cpp != nil {
-		a.logger.TInfof("Activating C++ build cache...")
-
-		if err := a.cpp.Activate(ctx); err != nil {
-			return fmt.Errorf("activate C++ build cache: %w", err)
-		}
-
-		if err := a.helper.start(); err != nil {
-			return fmt.Errorf("start ccache storage helper: %w", err)
-		}
+	if err := a.activateCppIfApplicable(ctx); err != nil {
+		return err
 	}
 
 	if err := saveMultiplatformConfig(a.debugLogging); err != nil {
@@ -129,7 +127,51 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
+	// Single consolidated benchmark phase summary across whichever sub-tools
+	// were activated. Per-tool baseline warnings used to fire individually
+	// from each ApplyBenchmarkPhase call, which made multi-tool RN runs look
+	// like the whole build was in baseline even when only the *unused* tool
+	// was (the relevant tool was caching normally).
+	tools := []string{}
+	if a.gradle != nil {
+		tools = append(tools, configcommon.BuildToolGradle)
+	}
+	if a.xcode != nil {
+		tools = append(tools, configcommon.BuildToolXcode)
+	}
+	configcommon.LogBenchmarkSummary(a.logger, tools)
+
 	a.logger.TInfof("✅ Bitrise Build Cache for React Native activated")
+
+	return nil
+}
+
+// activateCppIfApplicable activates ccache and starts the storage helper
+// when ccache was wired in NewActivator AND gradle did not end up in the
+// benchmark baseline phase. The gradle-baseline skip is a stop-gap until
+// ccache grows its own benchmark phase support (ACI-4926) so the rotation
+// stays consistent across both halves of the Android build.
+func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
+	if a.cpp == nil {
+		return nil
+	}
+
+	gradlePhase := configcommon.ReadBenchmarkPhaseFile(configcommon.BuildToolGradle, a.logger)
+	if gradlePhase == configcommon.BenchmarkPhaseBaseline {
+		a.logger.Infof("(i) Skipping C++ (ccache) activation: Gradle is in benchmark baseline mode.")
+
+		return nil
+	}
+
+	a.logger.TInfof("Activating C++ build cache...")
+
+	if err := a.cpp.Activate(ctx); err != nil {
+		return fmt.Errorf("activate C++ build cache: %w", err)
+	}
+
+	if err := a.helper.start(); err != nil {
+		return fmt.Errorf("start ccache storage helper: %w", err)
+	}
 
 	return nil
 }

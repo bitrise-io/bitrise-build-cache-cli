@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -47,7 +48,7 @@ This command will:
 		activateXcodeParams.DebugLogging = common.IsDebugLogMode
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		return xcelerate.Activate(
+		if err := xcelerate.Activate(
 			cmd.Context(),
 			logger,
 			utils.DefaultOsProxy{},
@@ -56,7 +57,13 @@ This command will:
 			utils.DefaultDecoderFactory{},
 			activateXcodeParams,
 			utils.AllEnvs(),
-		)
+		); err != nil {
+			return err //nolint:wrapcheck // xcelerate.Activate already returns wrapped errors
+		}
+
+		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolXcode})
+
+		return nil
 	},
 }
 

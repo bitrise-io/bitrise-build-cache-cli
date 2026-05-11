@@ -63,6 +63,8 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("activate plugins for Gradle: %w", err)
 		}
 
+		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolGradle})
+
 		logger.TInfof("✅ Bitrise plugins activated")
 
 		return nil
