@@ -5,6 +5,8 @@ package reactnative
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,7 +22,31 @@ func newTestRunner(params RunnerParams) *Runner {
 	return r
 }
 
+// activateRNHome points HOME at a temp dir and writes the marker + multiplatform
+// configs the Runner needs to consider RN "activated" (so the run path is not
+// bypassed by isReactNativeReady). Returns the fake HOME.
+func activateRNHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	rnDir := filepath.Join(home, ".bitrise/cache/reactnative")
+	require.NoError(t, os.MkdirAll(rnDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(rnDir, "config.json"), []byte(`{"enabled":true}`), 0o644))
+
+	mpDir := filepath.Join(home, ".bitrise/analytics/multiplatform")
+	require.NoError(t, os.MkdirAll(mpDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(mpDir, "config.json"),
+		[]byte(`{"authConfig":{"AuthToken":"tok","WorkspaceID":"ws-slug","IsJWT":false}}`),
+		0o644,
+	))
+
+	return home
+}
+
 func TestRunner_Run(t *testing.T) {
+	activateRNHome(t)
 	ctx := context.Background()
 
 	t.Run("args are passed through to the command", func(t *testing.T) {
@@ -137,6 +163,7 @@ func TestRunner_Run(t *testing.T) {
 }
 
 func TestRunner_PostRunHook(t *testing.T) {
+	activateRNHome(t)
 	ctx := context.Background()
 	noOpExec := func(_ []string, _ string, _ ...string) error { return nil }
 
@@ -202,6 +229,81 @@ func TestRunner_PostRunHook(t *testing.T) {
 		_ = r.Run(ctx, []string{"true"}, "inv", []string{})
 
 		require.Len(t, mock.runCalls(), 1)
+	})
+}
+
+func TestRunner_BypassWhenNotActivated(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("missing RN marker → command runs unwrapped, no invocation ID injected, postRun not called", func(t *testing.T) {
+		// Empty HOME — no RN marker, no multiplatform config.
+		t.Setenv("HOME", t.TempDir())
+
+		var capturedName string
+		var capturedArgs []string
+		var capturedEnviron []string
+
+		mock := &postRunRunnerMock{}
+		r := NewRunner(RunnerParams{
+			ExecFn: func(environ []string, name string, args ...string) error {
+				capturedName = name
+				capturedArgs = args
+				capturedEnviron = environ
+
+				return nil
+			},
+		})
+		r.socket = nil
+		r.postRun = mock
+
+		err := r.Run(ctx, []string{"yarn", "build"}, "given-id", []string{"EXISTING=value"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "yarn", capturedName)
+		assert.Equal(t, []string{"build"}, capturedArgs)
+		assert.Equal(t, []string{"EXISTING=value"}, capturedEnviron, "environ must be unchanged when bypassed")
+		for _, e := range capturedEnviron {
+			assert.False(t, strings.HasPrefix(e, "BITRISE_INVOCATION_ID="), "no invocation ID should be injected when bypassed")
+		}
+		assert.Empty(t, mock.runCalls(), "postRun must not fire when bypassed")
+	})
+
+	t.Run("missing workspace ID → command runs unwrapped", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		// RN marker present but multiplatform config has empty WorkspaceID.
+		rnDir := filepath.Join(home, ".bitrise/cache/reactnative")
+		require.NoError(t, os.MkdirAll(rnDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(rnDir, "config.json"), []byte(`{"enabled":true}`), 0o644))
+
+		mpDir := filepath.Join(home, ".bitrise/analytics/multiplatform")
+		require.NoError(t, os.MkdirAll(mpDir, 0o755))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(mpDir, "config.json"),
+			[]byte(`{"authConfig":{"AuthToken":"tok","WorkspaceID":"","IsJWT":false}}`),
+			0o644,
+		))
+
+		var capturedEnviron []string
+		mock := &postRunRunnerMock{}
+		r := NewRunner(RunnerParams{
+			ExecFn: func(environ []string, _ string, _ ...string) error {
+				capturedEnviron = environ
+
+				return nil
+			},
+		})
+		r.socket = nil
+		r.postRun = mock
+
+		err := r.Run(ctx, []string{"yarn", "build"}, "given-id", []string{"EXISTING=value"})
+
+		require.NoError(t, err)
+		for _, e := range capturedEnviron {
+			assert.False(t, strings.HasPrefix(e, "BITRISE_INVOCATION_ID="), "no invocation ID should be injected when bypassed")
+		}
+		assert.Empty(t, mock.runCalls(), "postRun must not fire when bypassed")
 	})
 }
 

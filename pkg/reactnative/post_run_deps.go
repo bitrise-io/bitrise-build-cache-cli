@@ -32,16 +32,11 @@ import (
 const MsgRNInvocationSaved = "React Native invocation saved. Visit 👉 %s"
 
 // rnInvocationDetailsURL returns the public details URL for a React Native
-// invocation. When the workspace slug is known, the URL includes it
-// (`/build-cache/<workspace>/invocations/react-native/<id>`) and renders
-// the page directly. When it isn't, fall back to the workspace-less form;
-// it does not currently render for react-native, but it stays consistent
-// with the other tools' log lines and with future BE behaviour.
+// invocation. The workspace slug is required: the route 404s without it for
+// the react-native build-tool (gradle / xcode happen to redirect through
+// session, but RN does not). Callers must only invoke this once the runner
+// has confirmed activation is complete and the workspace slug is set.
 func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
-	if workspaceSlug == "" {
-		return fmt.Sprintf("https://app.bitrise.io/build-cache/invocations/react-native/%s", invocationID)
-	}
-
 	return fmt.Sprintf("https://app.bitrise.io/build-cache/%s/invocations/react-native/%s", workspaceSlug, invocationID)
 }
 
