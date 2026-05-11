@@ -51,7 +51,7 @@ done
 echo "Uploaded CLI artifacts to GAR."
 
 # Mirror the pinned ccache release to GAR so the CLI installer can pull it
-# from there as the primary source.
+# from there as a fallback after the upstream GitHub release.
 CCACHE_VERSION=$(grep -E '^[[:space:]]*ccacheVersion[[:space:]]*=[[:space:]]*"' internal/dependencies/ccache.go | sed -E 's/.*"([^"]+)".*/\1/')
 if [[ -z "$CCACHE_VERSION" ]]; then
   echo "Failed to extract ccache version from internal/dependencies/ccache.go"
