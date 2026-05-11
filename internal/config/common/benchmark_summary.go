@@ -28,10 +28,8 @@ func LogBenchmarkSummary(logger log.Logger, tools []string) {
 		phase string
 	}
 
-	var (
-		entries         []entry
-		anyCacheEnabled bool
-	)
+	entries := make([]entry, 0, len(tools))
+	anyCacheEnabled := false
 
 	for _, tool := range tools {
 		phase := ReadBenchmarkPhaseFile(tool, logger)
