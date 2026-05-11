@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,9 +34,12 @@ func CLITool() (Tool, error) {
 	}
 
 	install := func(ctx context.Context, logger log.Logger) error {
-		return installFromGitHubRelease(
+		return installFromMirrors(
 			ctx, logger,
-			downloadURL(version, runtime.GOOS, runtime.GOARCH),
+			[]string{
+				cliGitHubDownloadURL(version, runtime.GOOS, runtime.GOARCH),
+				cliGARDownloadURL(version, runtime.GOOS, runtime.GOARCH),
+			},
 			cliBinaryName,
 		)
 	}
@@ -128,16 +132,49 @@ func cliVersion() (string, error) {
 	return "", fmt.Errorf("module %s not found in build info (main=%s, version=%s)", cliModulePath, info.Main.Path, info.Main.Version)
 }
 
-func downloadURL(version, goos, goarch string) string {
+func cliGitHubDownloadURL(version, goos, goarch string) string {
 	return fmt.Sprintf(
 		"https://github.com/bitrise-io/bitrise-build-cache-cli/releases/download/v%s/%s_%s_%s_%s.tar.gz",
 		version, cliBinaryName, version, goos, goarch,
 	)
 }
 
-func installFromGitHubRelease(ctx context.Context, logger log.Logger, url, binaryName string) error {
-	logger.Debugf("Downloading from %s", url)
+func cliGARDownloadURL(version, goos, goarch string) string {
+	pkg := fmt.Sprintf("%s_%s_%s.tar.gz", cliBinaryName, goos, goarch)
+	filename := fmt.Sprintf("%s_%s_%s_%s.tar.gz", cliBinaryName, version, goos, goarch)
 
+	return garDownloadURL(pkg, version, filename)
+}
+
+// installFromMirrors tries each URL in order; returns once one succeeds.
+// On total failure the joined error chain is returned.
+func installFromMirrors(ctx context.Context, logger log.Logger, urls []string, binaryName string) error {
+	if len(urls) == 0 {
+		return fmt.Errorf("no download URLs provided for %s", binaryName)
+	}
+
+	errs := make([]error, 0, len(urls))
+
+	for i, url := range urls {
+		logger.Debugf("Trying mirror %d/%d: %s", i+1, len(urls), url)
+
+		err := downloadAndExtract(ctx, url, binaryName)
+		if err == nil {
+			if i > 0 {
+				logger.Infof("Installed %s from fallback mirror %d/%d", binaryName, i+1, len(urls))
+			}
+
+			return nil
+		}
+
+		logger.Debugf("Mirror %d/%d failed: %v", i+1, len(urls), err)
+		errs = append(errs, fmt.Errorf("mirror %d (%s): %w", i+1, url, err))
+	}
+
+	return fmt.Errorf("all %d mirrors failed for %s: %w", len(urls), binaryName, errors.Join(errs...))
+}
+
+func downloadAndExtract(ctx context.Context, url, binaryName string) error {
 	resp, err := downloadFile(ctx, url)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
