@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
-version: 1
+version: 2
 
 project_name: bitrise-build-cache
 
@@ -46,7 +46,7 @@ brews:
     homepage: https://bitrise.io
     description: Bitrise Build Cache CLI — configure remote build cache for Gradle, Bazel, Xcode, and React Native.
     license: MIT
-    tap:
+    repository:
       owner: bitrise-io
       name: homebrew-bitrise-build-cache
       branch: main
@@ -54,7 +54,7 @@ brews:
       name: bitbot
       email: letsbuild@bitrise.io
     commit_msg_template: 'brew formula update for {{ .ProjectName }} version {{ .Tag }}'
-    folder: Formula
+    directory: Formula
     test: |
       system "#{bin}/bitrise-build-cache", "--help"
     install: |
