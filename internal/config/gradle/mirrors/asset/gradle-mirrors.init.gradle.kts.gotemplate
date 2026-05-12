@@ -59,17 +59,23 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             configureMirror.execute(getDependencyResolutionManagement().getRepositories())
         })
         gradle.beforeProject(Action {
-            log("beforeProject(${getPath()}) fired, configuring buildscript repositories")
+            if (getParent() == null) {
+                log("beforeProject(${getPath()}) fired, configuring buildscript repositories")
+            }
             configureMirror.execute(getBuildscript().getRepositories())
         })
         gradle.afterProject(Action {
-            log("afterProject(${getPath()}) fired, configuring project repositories")
+            if (getParent() == null) {
+                log("afterProject(${getPath()}) fired, configuring project repositories")
+            }
             configureMirror.execute(getRepositories())
         })
         {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
         gradle.afterProject(Action {
             tasks.withType(Test::class.java).configureEach {
-                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on ${getPath()}")
+                if (getProject().getParent() == null) {
+                    log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on ${getPath()}")
+                }
                 systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
             }
         })

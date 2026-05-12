@@ -70,8 +70,12 @@ func TestActivate(t *testing.T) {
 				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 				`log("beforeSettings fired,`,
 				`log("settingsEvaluated fired,`,
-				`log("beforeProject(${getPath()}) fired,`,
-				`log("afterProject(${getPath()}) fired,`,
+				`if (getParent() == null) {
+                log("beforeProject(${getPath()}) fired,`,
+				`if (getParent() == null) {
+                log("afterProject(${getPath()}) fired,`,
+				`if (getProject().getParent() == null) {
+                    log("setting robolectric.dependency.repo.url=`,
 				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/apache-central")`,
 				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins")`,
 				`log("setting robolectric.dependency.repo.url=\"https://repository-manager-ams.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
