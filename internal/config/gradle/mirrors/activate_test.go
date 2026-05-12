@@ -67,10 +67,26 @@ func TestActivate(t *testing.T) {
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/google",
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
 				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
+				`log("beforeSettings fired,`,
+				`log("settingsEvaluated fired,`,
+				`if (getParent() == null) {
+                log("beforeProject(${getPath()}) fired,`,
+				`if (getParent() == null) {
+                log("afterProject(${getPath()}) fired,`,
+				`if (getProject().getParent() == null) {
+                    log("setting robolectric.dependency.repo.url=`,
+				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/apache-central")`,
+				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins")`,
+				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
+				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
+				`log("setting robolectric.dependency.repo.url=\"https://repository-manager-ams.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/jitpack",
 				`"https://jitpack.io"`,
+				"mirrorBaseUrl",
+				"java.time.Instant.now()",
 			},
 		},
 		{
@@ -79,9 +95,11 @@ func TestActivate(t *testing.T) {
 			expectCreated: true,
 			expectContains: []string{
 				"https://repository-manager-iad.services.bitrise.io:8090/maven/central",
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-iad.services.bitrise.io:8090/maven/google",
+				"mirrorBaseUrl",
 			},
 		},
 		{
@@ -90,9 +108,13 @@ func TestActivate(t *testing.T) {
 			expectCreated: true,
 			expectContains: []string{
 				"https://repository-manager-ord.services.bitrise.io:8090/maven/google",
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-ord.services.bitrise.io:8090/maven/central",
+				"mirrorBaseUrl",
+				// google is not flagged ApplyToPluginManagement, so no PM mirror prepend log
+				"prepending pluginManagement mirror",
 			},
 		},
 	}
