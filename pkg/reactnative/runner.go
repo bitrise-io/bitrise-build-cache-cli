@@ -13,8 +13,15 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
+	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
+
+// MsgRNNotActivated is the warning emitted when `react-native run` is invoked
+// before (or without) `activate react-native`. The user's command is still
+// executed unchanged so the build doesn't fail; only the build-cache wrapping
+// (ccache plumbing, invocation ID injection, analytics) is skipped.
+const MsgRNNotActivated = "Bitrise Build Cache for React Native is not activated on this machine — running the wrapped command without build-cache instrumentation. Run `bitrise-build-cache activate react-native` (with a workspace ID configured) first to enable."
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -106,16 +113,14 @@ func NewRunner(params RunnerParams) *Runner {
 
 // Run injects a BITRISE_INVOCATION_ID into environ and delegates execution to ExecFn.
 // If wrapperInvocationID is empty, a random UUID is used.
+//
+// When `activate react-native` was never run on this machine (or the
+// activation didn't carry a workspace ID through), the wrapped command is
+// still executed but every build-cache-related side-effect — ccache helper
+// plumbing, invocation ID injection, analytics — is skipped. The user's
+// build never fails just because the cache wasn't activated.
 func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) error {
 	configcommon.LogCLIVersion(r.logger)
-
-	if wrapperInvocationID == "" {
-		r.logger.TInfof("No invocation ID provided, generating a random one")
-
-		wrapperInvocationID = uuid.New().String()
-	}
-
-	r.logger.TInfof("React Native invocation ID: %s", wrapperInvocationID)
 
 	// Strip leading "--" separator (cobra passes it through with DisableFlagParsing)
 	if len(args) > 0 && args[0] == "--" {
@@ -127,6 +132,20 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 	}
 
 	name, cmdArgs := args[0], args[1:]
+
+	if !r.isReactNativeReady() {
+		r.logger.TWarnf(MsgRNNotActivated)
+
+		return r.execFn(environ, name, cmdArgs...)
+	}
+
+	if wrapperInvocationID == "" {
+		r.logger.TInfof("No invocation ID provided, generating a random one")
+
+		wrapperInvocationID = uuid.New().String()
+	}
+
+	r.logger.TInfof("React Native invocation ID: %s", wrapperInvocationID)
 
 	if r.socket != nil {
 		r.ensureHelper(ctx, wrapperInvocationID)
@@ -142,6 +161,29 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 	}
 
 	return execErr
+}
+
+// isReactNativeReady reports whether `activate react-native` was run on this
+// machine AND the multiplatform analytics config has the workspace slug we
+// need to identify the user's workspace at analytics + UI URL time.
+//
+// Both signals must agree. The RN marker on its own only says "activate
+// happened"; the multiplatform config carries the workspace slug that the
+// post-run hook and the Visit-URL log line depend on. A missing or
+// empty-workspace config means we cannot safely report analytics or print
+// a working details URL, so we skip wrapping entirely (and log once).
+func (r *Runner) isReactNativeReady() bool {
+	cfg, err := rnconfig.ReadConfig(r.osProxy, r.decoderFactory)
+	if err != nil || !cfg.Enabled {
+		return false
+	}
+
+	mpCfg, err := multiplatformconfig.ReadConfig(r.osProxy, r.decoderFactory)
+	if err != nil {
+		return false
+	}
+
+	return mpCfg.AuthConfig.WorkspaceID != ""
 }
 
 // ---------------------------------------------------------------------------

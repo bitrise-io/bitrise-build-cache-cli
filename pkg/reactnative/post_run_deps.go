@@ -24,11 +24,21 @@ import (
 // ---------------------------------------------------------------------------
 
 // MsgRNInvocationSaved is the log line emitted after the BE confirms the
-// React Native wrapper invocation was persisted. The URL points at the
-// per-invocation details page in the Bitrise app. Mirrors the equivalent
-// xcode and gradle messages so users (especially on non-Bitrise CI) can
-// jump straight to the invocation in the Bitrise UI.
-const MsgRNInvocationSaved = "React Native invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/react-native/%s"
+// React Native wrapper invocation was persisted. Format args: pre-formatted
+// URL pointing at the per-invocation details page in the Bitrise app.
+// Use rnInvocationDetailsURL to build the URL — the workspace slug is
+// required for the page to render (without it the route 404s for
+// react-native, see ACI-4923).
+const MsgRNInvocationSaved = "React Native invocation saved. Visit 👉 %s"
+
+// rnInvocationDetailsURL returns the public details URL for a React Native
+// invocation. The workspace slug is required: the route 404s without it for
+// the react-native build-tool (gradle / xcode happen to redirect through
+// session, but RN does not). Callers must only invoke this once the runner
+// has confirmed activation is complete and the workspace slug is set.
+func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
+	return fmt.Sprintf("https://app.bitrise.io/build-cache/%s/invocations/react-native/%s", workspaceSlug, invocationID)
+}
 
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
@@ -155,7 +165,7 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	} else {
 		// BE confirmed the invocation was stored — surface the details URL
 		// so users can jump to it from the build log.
-		d.logger.TInfof(MsgRNInvocationSaved, wrapperInvocationID)
+		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(d.authConfig.WorkspaceID, wrapperInvocationID))
 	}
 
 	if err := agg.Cleanup(); err != nil {
