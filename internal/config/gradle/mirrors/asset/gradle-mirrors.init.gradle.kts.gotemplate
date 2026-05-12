@@ -7,13 +7,18 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             val ts = java.text.SimpleDateFormat("HH:mm:ss").format(System.currentTimeMillis())
             println("[Bitrise Gradle Mirrors] [$ts] $message")
         }
+        // Tracks (repoName|oldUrl|mirrorUrl) tuples we've already logged so the same
+        // replacement isn't logged once per subproject in multi-project builds.
+        val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         {{- range .Mirrors }}
         val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
             Spec { r -> {{ .GradleMatch }} }
 
         val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
             val mirrorUrl: String = "{{ .MirrorURL }}"
-            log("replacing repository ${getName()} (${getUrl()}) with $mirrorUrl")
+            if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl")) {
+                log("replacing repository ${getName()} (${getUrl()}) with $mirrorUrl")
+            }
             setUrl(mirrorUrl)
         }
         {{- end }}

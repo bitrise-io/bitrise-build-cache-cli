@@ -78,6 +78,8 @@ func TestActivate(t *testing.T) {
                     log("setting robolectric.dependency.repo.url=`,
 				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/apache-central")`,
 				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins")`,
+				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
+				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
 				`log("setting robolectric.dependency.repo.url=\"https://repository-manager-ams.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
 			},
 			expectNotContain: []string{
