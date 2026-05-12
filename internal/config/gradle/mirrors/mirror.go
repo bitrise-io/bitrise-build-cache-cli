@@ -39,11 +39,8 @@ func InitTemplate() string {
 // InitFileName is the filename written under ~/.gradle/init.d.
 const InitFileName = "bitrise-gradle-mirrors.init.gradle.kts"
 
-// URLBasePattern is the format string for the mirror base URL: region only.
-const URLBasePattern = "https://repository-manager-%s.services.bitrise.io:8090"
-
 // URLPattern is the format string for mirror URLs: region + URL segment.
-const URLPattern = URLBasePattern + "/maven/%s"
+const URLPattern = "https://repository-manager-%s.services.bitrise.io:8090/maven/%s"
 
 // FilterByFlagNames returns the subset of KnownMirrors whose FlagName matches
 // any of names. If names is empty, KnownMirrors is returned unchanged. Order

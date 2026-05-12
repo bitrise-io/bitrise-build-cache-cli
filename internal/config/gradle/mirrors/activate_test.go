@@ -67,12 +67,20 @@ func TestActivate(t *testing.T) {
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/google",
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
 				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
-				`val mirrorBaseUrl = "https://repository-manager-ams.services.bitrise.io:8090"`,
-				`Bitrise mirrors for Gradle are activated at $mirrorBaseUrl.`,
+				`"[Bitrise gradle mirrors] [$ts] $message"`,
+				`log("beforeSettings fired,`,
+				`log("settingsEvaluated fired,`,
+				`log("beforeProject(${getPath()}) fired,`,
+				`log("afterProject(${getPath()}) fired,`,
+				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/apache-central")`,
+				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins")`,
+				`log("setting robolectric.dependency.repo.url=\"https://repository-manager-ams.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/jitpack",
 				`"https://jitpack.io"`,
+				"mirrorBaseUrl",
+				"java.time.Instant.now()",
 			},
 		},
 		{
@@ -81,10 +89,11 @@ func TestActivate(t *testing.T) {
 			expectCreated: true,
 			expectContains: []string{
 				"https://repository-manager-iad.services.bitrise.io:8090/maven/central",
-				`val mirrorBaseUrl = "https://repository-manager-iad.services.bitrise.io:8090"`,
+				`"[Bitrise gradle mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-iad.services.bitrise.io:8090/maven/google",
+				"mirrorBaseUrl",
 			},
 		},
 		{
@@ -93,10 +102,13 @@ func TestActivate(t *testing.T) {
 			expectCreated: true,
 			expectContains: []string{
 				"https://repository-manager-ord.services.bitrise.io:8090/maven/google",
-				`val mirrorBaseUrl = "https://repository-manager-ord.services.bitrise.io:8090"`,
+				`"[Bitrise gradle mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-ord.services.bitrise.io:8090/maven/central",
+				"mirrorBaseUrl",
+				// google is not flagged ApplyToPluginManagement, so no PM mirror prepend log
+				"prepending pluginManagement mirror",
 			},
 		},
 	}
@@ -130,7 +142,6 @@ func TestActivate(t *testing.T) {
 			}
 
 			assert.NotContains(t, string(content), "{{ .MirrorURL }}")
-			assert.NotContains(t, string(content), "{{ .MirrorBaseURL }}")
 			assert.NotContains(t, string(content), "{{ .GradleMatch }}")
 		})
 	}

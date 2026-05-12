@@ -3,14 +3,17 @@ apply<InternalRepositoryPlugin>()
 
 class InternalRepositoryPlugin : Plugin<Gradle> {
     override fun apply(gradle: Gradle) {
-        val mirrorBaseUrl = "{{ .MirrorBaseURL }}"
-        println("${java.time.Instant.now()} Bitrise mirrors for Gradle are activated at $mirrorBaseUrl.")
+        fun log(message: String) {
+            val ts = java.text.SimpleDateFormat("HH:mm:ss").format(System.currentTimeMillis())
+            println("[Bitrise gradle mirrors] [$ts] $message")
+        }
         {{- range .Mirrors }}
         val canBeMirrored{{ .ID }}: Spec<MavenArtifactRepository> =
             Spec { r -> {{ .GradleMatch }} }
 
         val useMirror{{ .ID }}: Action<MavenArtifactRepository> = Action {
             val mirrorUrl: String = "{{ .MirrorURL }}"
+            log("replacing repository ${getName()} (${getUrl()}) with $mirrorUrl")
             setUrl(mirrorUrl)
         }
         {{- end }}
@@ -29,12 +32,14 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- end }}{{ end }}
         }
         gradle.beforeSettings(Action {
+            log("beforeSettings fired, configuring buildscript + pluginManagement repositories")
             configureMirror.execute(getBuildscript().getRepositories())
             // pluginManagement.repositories is empty here, so adding the mirror first
             // makes plugin resolution try it before any repos declared in settings.gradle.
             // Only mirrors flagged ApplyToPluginManagement run here — google's mirror URL is incompatible with Gradle's plugin portal.
             val pmRepos = getPluginManagement().getRepositories()
             {{- range .Mirrors }}{{ if .ApplyToPluginManagement }}
+            log("prepending pluginManagement mirror {{ .MirrorURL }}")
             pmRepos.maven {
                 setName("BitriseMirror{{ .ID }}")
                 setUrl("{{ .MirrorURL }}")
@@ -50,17 +55,21 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
         })
         // Remove the settingsEvaluated part if you are using Gradle <6.8
         gradle.settingsEvaluated(Action {
+            log("settingsEvaluated fired, configuring dependencyResolutionManagement repositories")
             configureMirror.execute(getDependencyResolutionManagement().getRepositories())
         })
         gradle.beforeProject(Action {
+            log("beforeProject(${getPath()}) fired, configuring buildscript repositories")
             configureMirror.execute(getBuildscript().getRepositories())
         })
         gradle.afterProject(Action {
+            log("afterProject(${getPath()}) fired, configuring project repositories")
             configureMirror.execute(getRepositories())
         })
         {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
         gradle.afterProject(Action {
             tasks.withType(Test::class.java).configureEach {
+                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on ${getPath()}")
                 systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
             }
         })

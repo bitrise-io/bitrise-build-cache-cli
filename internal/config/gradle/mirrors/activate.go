@@ -48,8 +48,7 @@ type templateEntry struct {
 }
 
 type templateData struct {
-	MirrorBaseURL string
-	Mirrors       []templateEntry
+	Mirrors []templateEntry
 }
 
 // Activate writes the Gradle init script when mirror activation is enabled and
@@ -94,15 +93,13 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 		logger.Debugf("Mirror %s: region=%s, URL=%s", m.FlagName, region, url)
 	}
 
-	baseURL := fmt.Sprintf(URLBasePattern, region)
-
 	tmpl, err := template.New("gradle-mirrors").Parse(initTemplate)
 	if err != nil {
 		return fmt.Errorf("parse gradle-mirrors init template: %w", err)
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, templateData{MirrorBaseURL: baseURL, Mirrors: entries}); err != nil {
+	if err := tmpl.Execute(&buf, templateData{Mirrors: entries}); err != nil {
 		return fmt.Errorf("execute gradle-mirrors init template: %w", err)
 	}
 
