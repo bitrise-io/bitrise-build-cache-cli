@@ -2,6 +2,16 @@
 
 Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the machine where you run this CLI.
 
+> [!IMPORTANT]
+> **`install/installer.sh` and the assets attached to every CLI GitHub release are on the critical path of every Bitrise build — not just builds that opt into the build cache.**
+>
+> The Bitrise default workflow runs the gradle-mirrors activation step (and other CLI-driven steps) unconditionally, and each of those installs the CLI by piping `install/installer.sh` to `sh` and fetching the platform tarball + checksum from the latest non-prerelease GitHub release. If any of those (the installer script, the binaries, the checksum file) is broken or missing, the CLI install fails, the mirror activation soft-fails, and Maven Central requests stop going through the Bitrise proxy on the entire fleet — exactly the failure mode behind the [2026-04-28 Maven Central rate-limit incident](https://bitrise.atlassian.net/wiki/spaces/INCIDENT/pages/4980998155/2026-04-28+-+Postmortem+for+incident-2026-04-28-mavencentral-too-many-requests-5238).
+>
+> When changing the installer script, the goreleaser config, the release flow, or anything that affects the GitHub release's asset list:
+> - Smoke-test end-to-end on a real Bitrise build before merging.
+> - Never publish a CLI GitHub release as anything other than `--prerelease` until the binaries have been verified attached.
+> - Treat any failure of the `release` workflow as a critical, drop-everything-and-fix incident.
+
 
 ## Install
 

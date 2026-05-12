@@ -10,6 +10,19 @@ Releasing a new version is a multi-step process across several repositories.
 
 **IMPORTANT: Drive the ENTIRE process end-to-end in a single conversation.** Use the Bitrise MCP server to monitor build statuses (poll every 30s), check for triggered workflows in downstream repos, and move to the next step as soon as the previous one completes. Do not stop and wait for the user between steps.
 
+## ⚠ Critical path — read before doing anything
+
+The `install/installer.sh` script and the binaries attached to every CLI GitHub release are **on the critical path of every Bitrise build — not just builds that opt into the build cache**. The Bitrise default workflow runs the gradle-mirrors activation step (and other CLI-driven steps) unconditionally, and each of those pipes `installer.sh` to `sh` and fetches the platform tarball + checksum from the latest non-prerelease GitHub release. If any of these break — installer script, binaries, checksum file, the wrong release marked as latest — the CLI install fails, the mirror activation soft-fails, and Maven Central requests bypass the Bitrise proxy on the entire fleet.
+
+That failure mode caused the [2026-04-28 Maven Central rate-limit incident](https://bitrise.atlassian.net/wiki/spaces/INCIDENT/pages/4980998155/2026-04-28+-+Postmortem+for+incident-2026-04-28-mavencentral-too-many-requests-5238).
+
+Concrete rules:
+
+- **Always create the CLI GitHub release as `--prerelease`** (see step 6). The installer ignores prereleases when resolving `latest`, so an empty / half-uploaded release cannot poison builds.
+- **Never let an empty release be marked `latest`.** If goreleaser fails midway, leave the release as prerelease until you have manually verified the assets list is complete.
+- **Treat any failure of the CLI `release` workflow as a drop-everything-and-fix incident.** Don't move on to step releases until the CLI release workflow is green AND the v2.6.x release has all 8 expected assets (6 platform tarballs, checksums.txt, both verification XMLs).
+- **Smoke-test installer.sh edits on a real Bitrise build before merging.** The release flow does not regenerate this file, and there is no automated test that exercises it under `/bin/sh`.
+
 ## Two Entry Points
 
 A release can be triggered by:
