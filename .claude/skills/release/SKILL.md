@@ -62,7 +62,9 @@ gh pr merge --merge --auto --repo bitrise-io/bitrise-build-cache-cli <PR_NUMBER>
 
 Create a GitHub release in `bitrise-build-cache-cli`.
 
-- **Do NOT mark it as "latest"** — another CI job handles that
+- **MUST mark it as `--prerelease`.** The release workflow uploads the binaries asynchronously; until those land, the release is empty. Marking it as latest (or as a regular release) at create-time makes a binary-less release "current," which breaks any consumer that downloads the latest asset. A separate CI job promotes the release out of prerelease once the binaries are appended.
+- **Do NOT pass `--latest`.** Without `--latest`, GitHub will not auto-promote a prerelease; with `--latest` it would, defeating the prerelease gate.
+- Example: `gh release create vX.Y.Z --repo bitrise-io/bitrise-build-cache-cli --title vX.Y.Z --prerelease --notes "..."`
 - Follow the format of existing releases for release notes
 - **Version numbering — always ask the user** which semver bump to apply (patch, minor, or major). Use these guidelines as defaults:
   - **Patch** bump: dependency-only updates (e.g., plugin version bumps) or bug fixes
