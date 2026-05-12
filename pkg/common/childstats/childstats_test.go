@@ -94,15 +94,16 @@ func TestAggregator_Compute_SimpleMeanAndByTool(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.2}))
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "b", BuildTool: "gradle", HitRate: 0.8}))
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "c", BuildTool: "ccache", HitRate: 0.5}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.2, Hits: 2, Total: 10}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "b", BuildTool: "gradle", HitRate: 0.8, Hits: 8, Total: 10}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "c", BuildTool: "ccache", HitRate: 0.5, Hits: 5, Total: 10}))
 
 	summary, err := NewAggregator("p").Compute()
 	require.NoError(t, err)
 
 	assert.Equal(t, 3, summary.ChildCount)
 	assert.Equal(t, 0, summary.SkippedCount)
+	assert.Equal(t, 0, summary.NoActivityCount)
 	assert.InDelta(t, 0.5, summary.MeanHitRate, 1e-6)
 
 	gradle, ok := summary.ByTool["gradle"]
@@ -120,12 +121,16 @@ func TestAggregator_Compute_IncludesBaselineWithCount(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.9}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.9, Hits: 9, Total: 10}))
+	// Baseline run: cache disabled but task still ran cacheable steps locally;
+	// writer reports Total > 0 with HitRate 0%. Must still count as baseline.
 	require.NoError(t, w.Write(Entry{
 		ParentInvocationID: "p",
 		ChildInvocationID:  "b",
 		BuildTool:          "gradle",
 		HitRate:            0.0,
+		Hits:               0,
+		Total:              10,
 		BenchmarkPhase:     BenchmarkPhaseBaseline,
 	}))
 
@@ -134,6 +139,7 @@ func TestAggregator_Compute_IncludesBaselineWithCount(t *testing.T) {
 	assert.Equal(t, 2, summary.ChildCount)
 	assert.Equal(t, 1, summary.BaselineCount)
 	assert.Equal(t, 0, summary.SkippedCount)
+	assert.Equal(t, 0, summary.NoActivityCount)
 	assert.InDelta(t, 0.45, summary.MeanHitRate, 1e-6)
 }
 
@@ -168,7 +174,7 @@ func TestAggregator_Compute_SkipsMalformedFiles(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "good", BuildTool: "gradle", HitRate: 0.4}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "good", BuildTool: "gradle", HitRate: 0.4, Hits: 4, Total: 10}))
 
 	bad := filepath.Join(LedgerDir("p"), "broken"+EntryFileSuffix)
 	require.NoError(t, os.WriteFile(bad, []byte("{not json"), 0o600))
@@ -184,7 +190,7 @@ func TestAggregator_Compute_IgnoresUnrelatedFilesAndSubdirs(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.3}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.3, Hits: 3, Total: 10}))
 
 	dir := LedgerDir("p")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hi"), 0o600))
@@ -202,8 +208,8 @@ func TestSweep_RemovesStaleDirsKeepsFresh(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "fresh", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5}))
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "stale", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "fresh", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5, Hits: 1, Total: 2}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "stale", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5, Hits: 1, Total: 2}))
 
 	staleDir := LedgerDir("stale")
 	old := time.Now().Add(-48 * time.Hour)
@@ -227,7 +233,7 @@ func TestSweep_MissingRootIsNoOp(t *testing.T) {
 func TestSweep_IgnoresNonDirEntries(t *testing.T) {
 	setHome(t)
 
-	require.NoError(t, NewWriter().Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5}))
+	require.NoError(t, NewWriter().Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5, Hits: 1, Total: 2}))
 
 	root := filepath.Dir(LedgerDir("p"))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "stray.txt"), []byte("hi"), 0o600))
@@ -241,7 +247,7 @@ func TestSweep_IgnoresNonDirEntries(t *testing.T) {
 func TestAggregator_Cleanup_RemovesDir(t *testing.T) {
 	setHome(t)
 
-	require.NoError(t, NewWriter().Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5}))
+	require.NoError(t, NewWriter().Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0.5, Hits: 1, Total: 2}))
 
 	agg := NewAggregator("p")
 	require.NoError(t, agg.Cleanup())
@@ -257,20 +263,25 @@ func TestAggregator_Compute_CountsFailedEntries(t *testing.T) {
 	setHome(t)
 
 	w := NewWriter()
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "ok", BuildTool: "gradle", HitRate: 0.5}))
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "fail-1", BuildTool: "xcode", HitRate: 0.3, Failed: true}))
-	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "fail-2", BuildTool: "ccache", HitRate: 0, Failed: true}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "ok", BuildTool: "gradle", HitRate: 0.5, Hits: 1, Total: 2}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "fail-1", BuildTool: "xcode", HitRate: 0.3, Hits: 3, Total: 10, Failed: true}))
+	// fail-2 reports a failure but actually had cache activity (hits=0/total=4) — still counts.
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "fail-2", BuildTool: "ccache", HitRate: 0, Hits: 0, Total: 4, Failed: true}))
 
 	summary, err := NewAggregator("p").Compute()
 	require.NoError(t, err)
 	assert.Equal(t, 3, summary.ChildCount)
 	assert.Equal(t, 2, summary.FailedCount)
+	assert.Equal(t, 0, summary.NoActivityCount)
 }
 
-func TestAggregator_Compute_LegacyEntriesDefaultToNotFailed(t *testing.T) {
+func TestAggregator_Compute_LegacyEntriesAreSkippedAsNoActivity(t *testing.T) {
 	setHome(t)
 
-	// Simulate a legacy entry written by a writer that did not know about Failed.
+	// Legacy entries (pre-Total field) marshal Total=0 even if they reported
+	// a hit rate. Without Total we cannot weigh them; safest is to drop them
+	// from the aggregate so they don't drag MeanHitRate down. The owning
+	// writer is expected to start emitting Total — see ACI-4918 follow-up.
 	dir := LedgerDir("p")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	legacy := `{"child_invocation_id":"old","parent_invocation_id":"p","build_tool":"gradle","hit_rate":0.5,"schema_version":1}`
@@ -278,6 +289,80 @@ func TestAggregator_Compute_LegacyEntriesDefaultToNotFailed(t *testing.T) {
 
 	summary, err := NewAggregator("p").Compute()
 	require.NoError(t, err)
+	assert.Equal(t, 0, summary.ChildCount)
+	assert.Equal(t, 1, summary.NoActivityCount)
+	assert.Equal(t, 0, summary.FailedCount)
+}
+
+func TestAggregator_Compute_ExcludesNoActivityChildren(t *testing.T) {
+	setHome(t)
+
+	w := NewWriter()
+	// Active child: 80% hit rate over 10 cacheable calls.
+	require.NoError(t, w.Write(Entry{
+		ParentInvocationID: "p", ChildInvocationID: "active", BuildTool: "xcode",
+		HitRate: 0.8, Hits: 8, Total: 10,
+	}))
+	// No-activity child: writer attempted to record but ccache had nothing
+	// cacheable to do. With the old behavior this would have pulled the mean
+	// from 80% down to 40%; it should now be excluded entirely.
+	require.NoError(t, w.Write(Entry{
+		ParentInvocationID: "p", ChildInvocationID: "idle", BuildTool: "ccache",
+		HitRate: 0, Hits: 0, Total: 0,
+	}))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+
 	assert.Equal(t, 1, summary.ChildCount)
-	assert.Equal(t, 0, summary.FailedCount, "missing 'failed' field must default to not-failed")
+	assert.Equal(t, 1, summary.NoActivityCount)
+	assert.InDelta(t, 0.8, summary.MeanHitRate, 1e-6)
+	assert.InDelta(t, 0.8, summary.WeightedHitRate, 1e-6)
+
+	// Per-tool aggregates only include the active child.
+	assert.Equal(t, 1, summary.ByTool["xcode"].Count)
+	_, hasCcache := summary.ByTool["ccache"]
+	assert.False(t, hasCcache, "no-activity tool must not appear in per-tool breakdown")
+}
+
+func TestAggregator_Compute_AllNoActivity(t *testing.T) {
+	setHome(t)
+
+	w := NewWriter()
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "a", BuildTool: "gradle", HitRate: 0, Hits: 0, Total: 0}))
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "b", BuildTool: "ccache", HitRate: 0, Hits: 0, Total: 0}))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, summary.ChildCount)
+	assert.Equal(t, 2, summary.NoActivityCount)
+	assert.Equal(t, float32(0), summary.MeanHitRate)
+	assert.Equal(t, float32(0), summary.WeightedHitRate)
+	assert.Empty(t, summary.ByTool)
+}
+
+func TestAggregator_Compute_BaselineWithNoActivityIsExcluded(t *testing.T) {
+	setHome(t)
+
+	w := NewWriter()
+	require.NoError(t, w.Write(Entry{
+		ParentInvocationID: "p", ChildInvocationID: "active", BuildTool: "gradle",
+		HitRate: 0.6, Hits: 6, Total: 10,
+	}))
+	// Baseline run that ALSO had no cacheable work — the no-activity rule
+	// trumps baseline counting; the mean reflects only the active child.
+	require.NoError(t, w.Write(Entry{
+		ParentInvocationID: "p", ChildInvocationID: "baseline-idle", BuildTool: "gradle",
+		HitRate: 0, Hits: 0, Total: 0,
+		BenchmarkPhase: BenchmarkPhaseBaseline,
+	}))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, summary.ChildCount)
+	assert.Equal(t, 0, summary.BaselineCount, "baseline child with no activity must not be counted")
+	assert.Equal(t, 1, summary.NoActivityCount)
+	assert.InDelta(t, 0.6, summary.MeanHitRate, 1e-6)
 }
