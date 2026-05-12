@@ -67,7 +67,7 @@ func TestActivate(t *testing.T) {
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/google",
 				"https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
 				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
-				`"[Bitrise gradle mirrors] [$ts] $message"`,
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 				`log("beforeSettings fired,`,
 				`log("settingsEvaluated fired,`,
 				`log("beforeProject(${getPath()}) fired,`,
@@ -89,7 +89,7 @@ func TestActivate(t *testing.T) {
 			expectCreated: true,
 			expectContains: []string{
 				"https://repository-manager-iad.services.bitrise.io:8090/maven/central",
-				`"[Bitrise gradle mirrors] [$ts] $message"`,
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-iad.services.bitrise.io:8090/maven/google",
@@ -102,7 +102,7 @@ func TestActivate(t *testing.T) {
 			expectCreated: true,
 			expectContains: []string{
 				"https://repository-manager-ord.services.bitrise.io:8090/maven/google",
-				`"[Bitrise gradle mirrors] [$ts] $message"`,
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager-ord.services.bitrise.io:8090/maven/central",
