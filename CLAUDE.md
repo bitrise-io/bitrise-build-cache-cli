@@ -163,8 +163,14 @@ The `release` workflow in `bitrise.yml` mirrors three things to a public GAR gen
 
 1. The four platform tarballs + the checksums file (consumed by `install/installer.sh`'s `*_URL_GAR` fallback).
 2. The pinned `ccache` binaries (consumed by the ccache install flow).
-3. **`install/installer.sh` itself**, pinned to the release tag (consumed by the Bitrise preboot init scripts in `bitrise-io/build-prebooting-deployments`; their primary source is `raw.githubusercontent.com`, GAR is the fallback when GitHub raw is degraded).
+3. **`install/installer.sh` itself**, in two views:
+   - `installer.sh:<tag>:installer.sh` — **immutable** pinned copy per release (audit trail; describe-or-upload).
+   - `installer.sh:latest:installer.sh` + `installer.sh:latest:VERSION` — **mutable** pointers refreshed on every release. The `VERSION` file holds the bare semver and is read by `installer.sh`'s `gar_latest_version()` helper as a tag-resolution fallback when github.com is unreachable.
 
-All three mirrors use the **describe-or-upload** pattern — never delete-then-upload. Artifacts in this GAR repo must be treated as **immutable**; the package + version combination acts as the cache key (see `#327` postmortem for the race-window reasoning).
+#### Immutability rule and the documented carve-out
 
-When changing the release flow, preserve all three mirrors. If you add a new artifact that consumers might depend on as a fallback, mirror it to GAR with the same describe-or-upload pattern and pin it to an immutable version (typically the release tag).
+The default rule for this GAR repo is **describe-or-upload, never delete-then-upload** (see `#327` postmortem — race window between delete and upload returns 404 to any consumer hitting the fallback in that window). All binary mirrors and the immutable `installer.sh:<tag>:*` follow this rule.
+
+The **only documented carve-out** is `installer.sh:latest:*` (installer.sh and VERSION). These are intentionally mutable, refreshed via delete-then-upload on every release. The carve-out is safe here because GAR `:latest` is **only consulted when the primary path (github.com / raw.githubusercontent.com) has already failed** — an already-degraded path, not a hot path that catches the race window during normal operation.
+
+If you add a new artifact, default to the describe-or-upload immutable pattern. Only adopt a mutable `:latest` view if (a) consumers genuinely need "always the newest" without a pin AND (b) the consumer's access pattern is fallback-only, not hot-path.

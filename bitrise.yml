@@ -186,11 +186,25 @@ workflows:
             #!/usr/bin/env bash
             set -euo pipefail
 
-            # Mirror the installer script itself so consumers (preboot init
-            # scripts) can fall back to GAR if raw.githubusercontent.com is
-            # down or rate-limits. We pin to the release tag (immutable
-            # artifact), matching the describe-or-upload pattern from the
-            # binary mirror — never delete-then-upload (#327 postmortem).
+            # Mirror the installer script itself so consumers can fall back
+            # to GAR if raw.githubusercontent.com or github.com is degraded.
+            # We maintain two views of the same file:
+            #
+            #   installer.sh:<tag>:installer.sh   — IMMUTABLE pinned copy
+            #                                       (audit trail; describe-
+            #                                       or-upload, never delete)
+            #   installer.sh:latest:installer.sh  — MUTABLE pointer to the
+            #                                       newest release's script
+            #   installer.sh:latest:VERSION       — bare semver string,
+            #                                       used by installer.sh's
+            #                                       GAR fallback to discover
+            #                                       which tag to install
+            #
+            # The :latest pointer is the *documented* carve-out from the
+            # #327 "never delete-then-upload" rule. The carve-out is safe
+            # here because GAR :latest is only hit when the primary
+            # (github.com / raw.githubusercontent.com) is already failing
+            # — i.e. it's an already-degraded path, not a hot path.
             tag="${BITRISE_GIT_TAG#v}"
             if [[ -z "$tag" ]]; then
               echo "BITRISE_GIT_TAG is not set. Exiting."
@@ -198,33 +212,59 @@ workflows:
             fi
 
             package="installer.sh"
-            filename="installer.sh"
             source_file="install/installer.sh"
+            gar_args=(--project=ip-build-cache-prod
+                      --location=us-central1
+                      --repository=build-cache-cli-releases)
 
             if [[ ! -f "$source_file" ]]; then
               echo "Source file $source_file does not exist."
               exit 1
             fi
 
-            if gcloud artifacts files describe "$package:$tag:$filename" \
-                 --project=ip-build-cache-prod \
-                 --location=us-central1 \
-                 --repository=build-cache-cli-releases \
-                 >/dev/null 2>&1; then
-              echo "installer.sh already mirrored for tag $tag, skipping"
-              exit 0
+            # ---- 1. Immutable pinned copy (describe-or-upload) ----
+            if gcloud artifacts files describe "$package:$tag:installer.sh" "${gar_args[@]}" >/dev/null 2>&1; then
+              echo "installer.sh already mirrored for tag $tag, skipping pinned upload"
+            else
+              echo "Uploading $source_file to GAR as $package:$tag:installer.sh..."
+              gcloud artifacts generic upload \
+                --source="$source_file" \
+                --package="$package" \
+                --version="$tag" \
+                "${gar_args[@]}"
             fi
 
-            echo "Uploading $source_file to GAR as $package:$tag:$filename..."
+            # ---- 2. Mutable :latest pointer (delete-then-upload) ----
+            # Refresh installer.sh
+            if gcloud artifacts files describe "$package:latest:installer.sh" "${gar_args[@]}" >/dev/null 2>&1; then
+              echo "Deleting stale $package:latest:installer.sh before re-upload..."
+              gcloud artifacts files delete "$package:latest:installer.sh" --quiet "${gar_args[@]}"
+            fi
+            echo "Uploading $source_file as $package:latest:installer.sh..."
             gcloud artifacts generic upload \
-              --project=ip-build-cache-prod \
               --source="$source_file" \
               --package="$package" \
-              --version="$tag" \
-              --location=us-central1 \
-              --repository=build-cache-cli-releases
+              --version="latest" \
+              "${gar_args[@]}"
 
-            echo "Mirrored installer.sh to GAR."
+            # Refresh VERSION (bare semver, no leading v). gcloud derives
+            # the GAR filename from the basename of --source, so the file
+            # on disk must literally be named "VERSION".
+            version_dir="$(mktemp -d)"
+            printf '%s' "$tag" > "$version_dir/VERSION"
+            if gcloud artifacts files describe "$package:latest:VERSION" "${gar_args[@]}" >/dev/null 2>&1; then
+              echo "Deleting stale $package:latest:VERSION before re-upload..."
+              gcloud artifacts files delete "$package:latest:VERSION" --quiet "${gar_args[@]}"
+            fi
+            echo "Uploading VERSION ($tag) as $package:latest:VERSION..."
+            gcloud artifacts generic upload \
+              --source="$version_dir/VERSION" \
+              --package="$package" \
+              --version="latest" \
+              "${gar_args[@]}"
+            rm -rf "$version_dir"
+
+            echo "Mirrored installer.sh to GAR (pinned $tag + :latest pointer)."
     - deploy-to-bitrise-io@2:
         is_always_run: true
         inputs:
