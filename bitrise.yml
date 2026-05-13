@@ -190,19 +190,26 @@ workflows:
             # to GAR if raw.githubusercontent.com or github.com is degraded.
             # We maintain two views of the same file:
             #
-            #   installer.sh:<tag>:installer.sh   — IMMUTABLE pinned copy
-            #                                       (audit trail; describe-
-            #                                       or-upload, never delete)
-            #   installer.sh:latest:installer.sh  — MUTABLE pointer to the
-            #                                       newest release's script
-            #   installer.sh:latest:VERSION       — bare semver string,
-            #                                       used by installer.sh's
-            #                                       GAR fallback to discover
-            #                                       which tag to install
+            #   installer.sh:<tag>:installer.sh           — IMMUTABLE pinned
+            #                                               copy (audit trail;
+            #                                               describe-or-upload,
+            #                                               never delete)
+            #   installer.sh:latest-pointer:installer.sh  — MUTABLE pointer to
+            #                                               the newest
+            #                                               release's script
+            #   installer.sh:latest-pointer:VERSION       — bare semver string,
+            #                                               used by
+            #                                               installer.sh's GAR
+            #                                               fallback to
+            #                                               discover which tag
+            #                                               to install
             #
-            # The :latest pointer is the *documented* carve-out from the
+            # Note: GAR rejects the literal version_id "latest" — it's
+            # reserved — so we use "latest-pointer" for the mutable view.
+            #
+            # The :latest-pointer view is the *documented* carve-out from the
             # #327 "never delete-then-upload" rule. The carve-out is safe
-            # here because GAR :latest is only hit when the primary
+            # here because the mutable view is only hit when the primary
             # (github.com / raw.githubusercontent.com) is already failing
             # — i.e. it's an already-degraded path, not a hot path.
             tag="${BITRISE_GIT_TAG#v}"
@@ -234,17 +241,17 @@ workflows:
                 "${gar_args[@]}"
             fi
 
-            # ---- 2. Mutable :latest pointer (delete-then-upload) ----
+            # ---- 2. Mutable :latest-pointer (delete-then-upload) ----
             # Refresh installer.sh
-            if gcloud artifacts files describe "$package:latest:installer.sh" "${gar_args[@]}" >/dev/null 2>&1; then
-              echo "Deleting stale $package:latest:installer.sh before re-upload..."
-              gcloud artifacts files delete "$package:latest:installer.sh" --quiet "${gar_args[@]}"
+            if gcloud artifacts files describe "$package:latest-pointer:installer.sh" "${gar_args[@]}" >/dev/null 2>&1; then
+              echo "Deleting stale $package:latest-pointer:installer.sh before re-upload..."
+              gcloud artifacts files delete "$package:latest-pointer:installer.sh" --quiet "${gar_args[@]}"
             fi
-            echo "Uploading $source_file as $package:latest:installer.sh..."
+            echo "Uploading $source_file as $package:latest-pointer:installer.sh..."
             gcloud artifacts generic upload \
               --source="$source_file" \
               --package="$package" \
-              --version="latest" \
+              --version="latest-pointer" \
               "${gar_args[@]}"
 
             # Refresh VERSION (bare semver, no leading v). gcloud derives
@@ -252,19 +259,19 @@ workflows:
             # on disk must literally be named "VERSION".
             version_dir="$(mktemp -d)"
             printf '%s' "$tag" > "$version_dir/VERSION"
-            if gcloud artifacts files describe "$package:latest:VERSION" "${gar_args[@]}" >/dev/null 2>&1; then
-              echo "Deleting stale $package:latest:VERSION before re-upload..."
-              gcloud artifacts files delete "$package:latest:VERSION" --quiet "${gar_args[@]}"
+            if gcloud artifacts files describe "$package:latest-pointer:VERSION" "${gar_args[@]}" >/dev/null 2>&1; then
+              echo "Deleting stale $package:latest-pointer:VERSION before re-upload..."
+              gcloud artifacts files delete "$package:latest-pointer:VERSION" --quiet "${gar_args[@]}"
             fi
-            echo "Uploading VERSION ($tag) as $package:latest:VERSION..."
+            echo "Uploading VERSION ($tag) as $package:latest-pointer:VERSION..."
             gcloud artifacts generic upload \
               --source="$version_dir/VERSION" \
               --package="$package" \
-              --version="latest" \
+              --version="latest-pointer" \
               "${gar_args[@]}"
             rm -rf "$version_dir"
 
-            echo "Mirrored installer.sh to GAR (pinned $tag + :latest pointer)."
+            echo "Mirrored installer.sh to GAR (pinned $tag + :latest-pointer)."
     - deploy-to-bitrise-io@2:
         is_always_run: true
         inputs:
@@ -273,6 +280,25 @@ workflows:
         is_always_run: true
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
+    - script:
+        title: Post-release verification (GH + GAR install paths)
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+
+            # End-to-end verification of the install pipeline against the
+            # artifacts we just published. If this fails, do NOT cascade
+            # consumer step bumps — they'd lock the broken release in.
+            #
+            # The script:
+            #  1. installs via raw.githubusercontent.com, asserts version
+            #  2. diffs the GAR-mirrored installer.sh vs the in-tree copy
+            #     + asserts latest-pointer:VERSION matches the tag
+            #  3. blocks github.com via /etc/hosts and re-runs the
+            #     installer, asserting it falls back to GAR for both
+            #     tag resolution AND binary download.
+            ./scripts/verify_release.sh
     - script:
         title: Publish Homebrew formula (non-fatal)
         is_skippable: true

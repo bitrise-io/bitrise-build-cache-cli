@@ -324,11 +324,13 @@ http_copy() {
 }
 gar_latest_version() {
   # Fetch the bare semver string (e.g. "2.6.4") from the GAR-mirrored
-  # installer.sh:latest:VERSION file. Used as a tag-resolution fallback
-  # when github.com is unreachable. Echoes the version on stdout.
-  # The CLI's release workflow refreshes this file on every release
-  # (see "Mirror install/installer.sh to GAR" step in bitrise.yml).
-  gar_version_url="https://artifactregistry.googleapis.com/v1/projects/ip-build-cache-prod/locations/us-central1/repositories/build-cache-cli-releases/files/installer.sh:latest:VERSION:download?alt=media"
+  # installer.sh:latest-pointer:VERSION file. Used as a tag-resolution
+  # fallback when github.com is unreachable. Echoes the version on
+  # stdout. The CLI's release workflow refreshes this file on every
+  # release (see "Mirror install/installer.sh to GAR" step in bitrise.yml).
+  # (GAR rejects "latest" as a version_id, so the mutable view uses
+  # "latest-pointer".)
+  gar_version_url="https://artifactregistry.googleapis.com/v1/projects/ip-build-cache-prod/locations/us-central1/repositories/build-cache-cli-releases/files/installer.sh:latest-pointer:VERSION:download?alt=media"
   http_copy "$gar_version_url"
 }
 github_release() {

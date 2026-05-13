@@ -165,12 +165,12 @@ The `release` workflow in `bitrise.yml` mirrors three things to a public GAR gen
 2. The pinned `ccache` binaries (consumed by the ccache install flow).
 3. **`install/installer.sh` itself**, in two views:
    - `installer.sh:<tag>:installer.sh` — **immutable** pinned copy per release (audit trail; describe-or-upload).
-   - `installer.sh:latest:installer.sh` + `installer.sh:latest:VERSION` — **mutable** pointers refreshed on every release. The `VERSION` file holds the bare semver and is read by `installer.sh`'s `gar_latest_version()` helper as a tag-resolution fallback when github.com is unreachable.
+   - `installer.sh:latest-pointer:installer.sh` + `installer.sh:latest-pointer:VERSION` — **mutable** pointers refreshed on every release. The `VERSION` file holds the bare semver and is read by `installer.sh`'s `gar_latest_version()` helper as a tag-resolution fallback when github.com is unreachable. (GAR rejects the literal version_id `latest` as reserved — that's why this view uses `latest-pointer`.)
 
 #### Immutability rule and the documented carve-out
 
 The default rule for this GAR repo is **describe-or-upload, never delete-then-upload** (see `#327` postmortem — race window between delete and upload returns 404 to any consumer hitting the fallback in that window). All binary mirrors and the immutable `installer.sh:<tag>:*` follow this rule.
 
-The **only documented carve-out** is `installer.sh:latest:*` (installer.sh and VERSION). These are intentionally mutable, refreshed via delete-then-upload on every release. The carve-out is safe here because GAR `:latest` is **only consulted when the primary path (github.com / raw.githubusercontent.com) has already failed** — an already-degraded path, not a hot path that catches the race window during normal operation.
+The **only documented carve-out** is `installer.sh:latest-pointer:*` (installer.sh and VERSION). These are intentionally mutable, refreshed via delete-then-upload on every release. The carve-out is safe here because GAR `latest-pointer` is **only consulted when the primary path (github.com / raw.githubusercontent.com) has already failed** — an already-degraded path, not a hot path that catches the race window during normal operation.
 
-If you add a new artifact, default to the describe-or-upload immutable pattern. Only adopt a mutable `:latest` view if (a) consumers genuinely need "always the newest" without a pin AND (b) the consumer's access pattern is fallback-only, not hot-path.
+If you add a new artifact, default to the describe-or-upload immutable pattern. Only adopt a mutable `latest-pointer` view if (a) consumers genuinely need "always the newest" without a pin AND (b) the consumer's access pattern is fallback-only, not hot-path.
