@@ -64,7 +64,12 @@ workflows:
             #!/usr/bin/env bash
             set -ex
 
-            goreleaser release
+            # Skip homebrew here — that step writes to a separate tap repo and
+            # has historically failed independently (404 when the bot user
+            # lacks push on the tap). We do not want it to block the critical
+            # path: binaries on GH + mirror to GAR. Homebrew is published
+            # in a dedicated, non-fatal step further down.
+            goreleaser release --skip=homebrew
     - script:
         title: Authenticate to GCP
         inputs:
@@ -177,6 +182,29 @@ workflows:
         is_always_run: true
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
+    - script:
+        title: Publish Homebrew formula (non-fatal)
+        is_skippable: true
+        deps:
+          brew:
+          - name: goreleaser
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            # Re-run goreleaser publishing only the homebrew step. Reuses
+            # the dist/ artefacts produced by the earlier release step so
+            # the formula embeds the correct SHA256 sums (no rebuild). We
+            # skip every other phase: the GH release and the binaries are
+            # already published.
+            #
+            # Homebrew is "nice to have" — installer.sh + GH release
+            # binaries + GAR mirror are the critical path for every Bitrise
+            # build. is_skippable=true ensures a tap-permission failure
+            # here does not fail the release workflow.
+            set -e
+
+            goreleaser release \
+              --skip=announce,archive,before,build,release,sign
     - bundle::update-step:
         envs:
         - STEP_NAME: bitrise-step-activate-gradle-remote-cache

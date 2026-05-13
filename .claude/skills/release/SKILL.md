@@ -23,6 +23,17 @@ Concrete rules:
 - **Treat any failure of the CLI `release` workflow as a drop-everything-and-fix incident.** Don't move on to step releases until the CLI release workflow is green AND the v2.6.x release has all 8 expected assets (6 platform tarballs, checksums.txt, both verification XMLs).
 - **Smoke-test installer.sh edits on a real Bitrise build before merging.** The release flow does not regenerate this file, and there is no automated test that exercises it under `/bin/sh`.
 
+### Brew tap is best-effort, NOT critical path
+
+`bitrise-io/homebrew-bitrise-build-cache` is a nice-to-have publication target, not part of the install flow used by Bitrise builds. The "Publish Homebrew formula" step in `bitrise.yml`'s `release` workflow runs goreleaser with only the brew publisher and is marked `is_skippable: true`, so a tap-permission failure (e.g. 404 from `PUT /Formula/bitrise-build-cache.rb`) won't break the release.
+
+If the brew step fails:
+
+- Confirm the release workflow's overall status is still green.
+- Verify the GitHub release has all 8 expected assets and the GAR mirror upload succeeded — these are critical.
+- Fix the tap separately. The most common cause is the bot user behind `GIT_BOT_USER_ACCESS_TOKEN` not being a collaborator with push access on `bitrise-io/homebrew-bitrise-build-cache`. Add them in the tap repo's settings.
+- Do NOT block other step releases on this — re-running the brew publish is a separate concern.
+
 ## Two Entry Points
 
 A release can be triggered by:
