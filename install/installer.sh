@@ -338,7 +338,11 @@ github_release() {
   version=$2
   test -z "$version" && version="latest"
   giturl="https://github.com/${owner_repo}/releases/${version}"
-  json=$(http_copy "$giturl" "Accept:application/json")
+  # `|| true` inside the substitution: without it, set -e (active for the
+  # whole script) kills this function the moment http_copy returns non-zero,
+  # before we can check $json and fall through to the GAR fallback below.
+  # This previously rendered the entire fallback path dead code.
+  json=$(http_copy "$giturl" "Accept:application/json" || true)
   if [ -n "$json" ]; then
     parsed=$(echo "$json" | tr -s '\n' ' ' | sed 's/.*"tag_name":"//' | sed 's/".*//')
     if [ -n "$parsed" ]; then
