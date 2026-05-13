@@ -1,9 +1,39 @@
 #!/bin/sh
 set -e
-# Originally scaffolded by godownloader on 2024-01-15 and untouched
-# afterwards until 2026-05. The release flow (`bitrise.yml` cli-release
-# + `.goreleaser.yaml`) does NOT regenerate this script — there is no
-# godownloader step anywhere in the repo, so edits made here stick.
+# ============================================================================
+# CRITICAL — DO NOT MODIFY THIS FILE WITHOUT EXTREME CARE
+# ============================================================================
+#
+# This script is fetched and piped to `sh` by EVERY Bitrise build — not just
+# builds that opt into the build cache. The Bitrise default workflow runs the
+# gradle-mirrors activation step (and other CLI-driven steps) unconditionally,
+# and each of those steps installs the CLI through this script.
+#
+# If installer.sh breaks, or if the GitHub release it fetches is missing the
+# platform tarball / checksum, the CLI cannot be installed, the gradle-mirrors
+# activation step fails open, and Maven Central requests stop going through
+# the Bitrise proxy on the entire fleet.
+#
+# That exact failure mode caused the 2026-04-28 Maven Central rate-limit
+# incident, post-mortem at:
+#   https://bitrise.atlassian.net/wiki/spaces/INCIDENT/pages/4980998155/2026-04-28+-+Postmortem+for+incident-2026-04-28-mavencentral-too-many-requests-5238
+#
+# Before changing this file, OR before publishing a CLI release that this
+# script will download, verify:
+#   1. The new flow has been smoke-tested end-to-end on a real Bitrise build.
+#   2. Both primary (GitHub) and fallback (GAR) download URLs resolve for
+#      every supported (OS, arch) combination — see get_binaries() below.
+#   3. The shell syntax stays POSIX-portable (this script runs under /bin/sh
+#      on every Bitrise stack — alpine /bin/sh included on some images).
+#   4. The release on GitHub actually has the binaries attached. Empty
+#      releases (e.g. while goreleaser is still uploading) MUST be marked as
+#      prerelease so this script's `releases/latest` lookup ignores them.
+#
+# Originally scaffolded by godownloader on 2024-01-15 and untouched until
+# 2026-05. The release flow (`bitrise.yml` cli-release + `.goreleaser.yaml`)
+# does NOT regenerate this script — there is no godownloader step anywhere
+# in the repo, so edits made here stick.
+# ============================================================================
 #
 
 usage() {
