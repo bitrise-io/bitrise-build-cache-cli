@@ -23,11 +23,10 @@ include:
 
 workflows:
   release:
-    description: Creates Linux and Darwin binaries, then publishes a GitHub release
-    triggers:
-      tag:
-      - name:
-          regex: '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+    description: |
+      Creates Linux and Darwin binaries, publishes a GitHub release, and
+      mirrors artifacts to GAR. NOT triggered directly by a tag; the
+      `release-and-verify` pipeline fans this out → `verify-release`.
     envs:
     - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
@@ -84,194 +83,22 @@ workflows:
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -eo pipefail
-
-            DIST_DIR="dist"
-            if [[ ! -d "$DIST_DIR" ]]; then
-              echo "Directory $DIST_DIR does not exist."
-              exit 1
-            fi
-            tree -L 2 dist
-
-            tag="${BITRISE_GIT_TAG#v}" # Remove the v from the tag
-            if [[ -z "$tag" ]]; then
-              echo "BITRISE_GIT_TAG is not set. Exiting."
-              exit 1
-            fi
-
-            echo "Uploading with tag: $tag"
-
-            filenames=("bitrise-build-cache_${tag}_darwin_amd64.tar.gz"
-                      "bitrise-build-cache_${tag}_linux_amd64.tar.gz"
-                      "bitrise-build-cache_${tag}_darwin_arm64.tar.gz"
-                      "bitrise-build-cache_${tag}_linux_arm64.tar.gz"
-                      "bitrise-build-cache_${tag}_checksums.txt")
-            for filename in "${filenames[@]}"; do
-              if [[ ! -f "$DIST_DIR/$filename" ]]; then
-                echo "File $DIST_DIR/$filename does not exist."
-                exit 1
-              fi
-              package_name="${filename/_${tag}/}" # Files will be versioned
-
-              if gcloud artifacts files describe "$package_name:$tag:$filename" \
-                   --project=ip-build-cache-prod \
-                   --location=us-central1 \
-                   --repository=build-cache-cli-releases \
-                   >/dev/null 2>&1; then
-                echo "Already uploaded, skipping: $filename"
-                continue
-              fi
-
-              echo "Uploading $filename to GAR..."
-              gcloud artifacts generic upload \
-                --project=ip-build-cache-prod \
-                --source="$DIST_DIR/$filename" \
-                --package="$package_name" \
-                --version="$tag" \
-                --location=us-central1 \
-                --repository=build-cache-cli-releases
-            done
-
-            echo "Uploaded artifacts to GAR."
+            set -e
+            ./scripts/gar_upload_release_artifacts.sh
     - script:
         title: Mirror ccache binaries to GAR
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -euo pipefail
-
-            # Pull the pinned ccache version straight from the source so the
-            # mirror always matches what the CLI's installer expects.
-            CCACHE_VERSION=$(grep -E '^[[:space:]]*ccacheVersion[[:space:]]*=[[:space:]]*"' internal/dependencies/ccache.go | sed -E 's/.*"([^"]+)".*/\1/')
-            if [[ -z "$CCACHE_VERSION" ]]; then
-              echo "Failed to extract ccache version from internal/dependencies/ccache.go"
-              exit 1
-            fi
-            echo "Mirroring ccache v${CCACHE_VERSION} to GAR..."
-
-            TMPDIR=$(mktemp -d)
-            trap 'rm -rf "$TMPDIR"' EXIT
-
-            for suffix in darwin linux-x86_64-glibc linux-aarch64-glibc; do
-              filename="ccache-${CCACHE_VERSION}-${suffix}.tar.gz"
-              package="ccache-${suffix}.tar.gz"
-
-              if gcloud artifacts files describe "$package:$CCACHE_VERSION:$filename" \
-                   --project=ip-build-cache-prod \
-                   --location=us-central1 \
-                   --repository=build-cache-cli-releases \
-                   >/dev/null 2>&1; then
-                echo "ccache ${CCACHE_VERSION} ${suffix} already mirrored, skipping"
-                continue
-              fi
-
-              src_url="https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/${filename}"
-              echo "Downloading $src_url"
-              curl --retry 5 -sSfL -o "$TMPDIR/$filename" "$src_url"
-
-              gcloud artifacts generic upload \
-                --project=ip-build-cache-prod \
-                --source="$TMPDIR/$filename" \
-                --package="$package" \
-                --version="$CCACHE_VERSION" \
-                --location=us-central1 \
-                --repository=build-cache-cli-releases
-            done
-
-            echo "Mirrored ccache to GAR."
+            set -e
+            ./scripts/gar_mirror_ccache.sh
     - script:
         title: Mirror install/installer.sh to GAR
         inputs:
         - content: |-
             #!/usr/bin/env bash
-            set -euo pipefail
-
-            # Mirror the installer script itself so consumers can fall back
-            # to GAR if raw.githubusercontent.com or github.com is degraded.
-            # We maintain two views of the same file:
-            #
-            #   installer.sh:<tag>:installer.sh           — IMMUTABLE pinned
-            #                                               copy (audit trail;
-            #                                               describe-or-upload,
-            #                                               never delete)
-            #   installer.sh:latest-pointer:installer.sh  — MUTABLE pointer to
-            #                                               the newest
-            #                                               release's script
-            #   installer.sh:latest-pointer:VERSION       — bare semver string,
-            #                                               used by
-            #                                               installer.sh's GAR
-            #                                               fallback to
-            #                                               discover which tag
-            #                                               to install
-            #
-            # Note: GAR rejects the literal version_id "latest" — it's
-            # reserved — so we use "latest-pointer" for the mutable view.
-            #
-            # The :latest-pointer view is the *documented* carve-out from the
-            # #327 "never delete-then-upload" rule. The carve-out is safe
-            # here because the mutable view is only hit when the primary
-            # (github.com / raw.githubusercontent.com) is already failing
-            # — i.e. it's an already-degraded path, not a hot path.
-            tag="${BITRISE_GIT_TAG#v}"
-            if [[ -z "$tag" ]]; then
-              echo "BITRISE_GIT_TAG is not set. Exiting."
-              exit 1
-            fi
-
-            package="installer.sh"
-            source_file="install/installer.sh"
-            gar_args=(--project=ip-build-cache-prod
-                      --location=us-central1
-                      --repository=build-cache-cli-releases)
-
-            if [[ ! -f "$source_file" ]]; then
-              echo "Source file $source_file does not exist."
-              exit 1
-            fi
-
-            # ---- 1. Immutable pinned copy (describe-or-upload) ----
-            if gcloud artifacts files describe "$package:$tag:installer.sh" "${gar_args[@]}" >/dev/null 2>&1; then
-              echo "installer.sh already mirrored for tag $tag, skipping pinned upload"
-            else
-              echo "Uploading $source_file to GAR as $package:$tag:installer.sh..."
-              gcloud artifacts generic upload \
-                --source="$source_file" \
-                --package="$package" \
-                --version="$tag" \
-                "${gar_args[@]}"
-            fi
-
-            # ---- 2. Mutable :latest-pointer (delete-then-upload) ----
-            # Refresh installer.sh
-            if gcloud artifacts files describe "$package:latest-pointer:installer.sh" "${gar_args[@]}" >/dev/null 2>&1; then
-              echo "Deleting stale $package:latest-pointer:installer.sh before re-upload..."
-              gcloud artifacts files delete "$package:latest-pointer:installer.sh" --quiet "${gar_args[@]}"
-            fi
-            echo "Uploading $source_file as $package:latest-pointer:installer.sh..."
-            gcloud artifacts generic upload \
-              --source="$source_file" \
-              --package="$package" \
-              --version="latest-pointer" \
-              "${gar_args[@]}"
-
-            # Refresh VERSION (bare semver, no leading v). gcloud derives
-            # the GAR filename from the basename of --source, so the file
-            # on disk must literally be named "VERSION".
-            version_dir="$(mktemp -d)"
-            printf '%s' "$tag" > "$version_dir/VERSION"
-            if gcloud artifacts files describe "$package:latest-pointer:VERSION" "${gar_args[@]}" >/dev/null 2>&1; then
-              echo "Deleting stale $package:latest-pointer:VERSION before re-upload..."
-              gcloud artifacts files delete "$package:latest-pointer:VERSION" --quiet "${gar_args[@]}"
-            fi
-            echo "Uploading VERSION ($tag) as $package:latest-pointer:VERSION..."
-            gcloud artifacts generic upload \
-              --source="$version_dir/VERSION" \
-              --package="$package" \
-              --version="latest-pointer" \
-              "${gar_args[@]}"
-            rm -rf "$version_dir"
-
-            echo "Mirrored installer.sh to GAR (pinned $tag + :latest-pointer)."
+            set -e
+            ./scripts/gar_mirror_installer.sh
     - deploy-to-bitrise-io@2:
         is_always_run: true
         inputs:
@@ -280,25 +107,6 @@ workflows:
         is_always_run: true
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
-    - script:
-        title: Post-release verification (GH + GAR install paths)
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-
-            # End-to-end verification of the install pipeline against the
-            # artifacts we just published. If this fails, do NOT cascade
-            # consumer step bumps — they'd lock the broken release in.
-            #
-            # The script:
-            #  1. installs via raw.githubusercontent.com, asserts version
-            #  2. diffs the GAR-mirrored installer.sh vs the in-tree copy
-            #     + asserts latest-pointer:VERSION matches the tag
-            #  3. blocks github.com via /etc/hosts and re-runs the
-            #     installer, asserting it falls back to GAR for both
-            #     tag resolution AND binary download.
-            ./scripts/verify_release.sh
     - script:
         title: Publish Homebrew formula (non-fatal)
         is_skippable: true
@@ -339,6 +147,53 @@ workflows:
       bitrise.io:
         machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
+
+  verify-release:
+    description: |
+      End-to-end verification of the install pipeline against the
+      just-published artifacts. Runs scripts/verify_release.sh which:
+        1. installs via raw.githubusercontent.com, asserts version == tag
+        2. diffs the GAR-mirrored installer.sh (pinned + latest-pointer)
+           against the in-tree copy + asserts latest-pointer:VERSION == tag
+        3. temporarily blocks github.com via /etc/hosts and re-runs
+           installer.sh — forces both tag resolution AND binary download
+           through GAR. /etc/hosts is restored via `trap` on exit.
+      Pinned to macOS: fresh VM per build, so /etc/hosts mutations are
+      contained. Posts to Slack on failure. Retry-safe (independent of
+      the release workflow).
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8:
+        inputs:
+        - fetch_tags: "yes"
+    - script:
+        title: Verify release end-to-end (GH + GAR install paths)
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/verify_release.sh
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              CLI release verification FAILED for $BITRISE_GIT_TAG! :rotating_light:
+
+              The release artifacts may be broken or unreachable via GAR.
+              Check build: $BITRISE_BUILD_URL
+
+              The release workflow itself succeeded — retry this workflow once the issue is fixed (no need to re-cut the tag).
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
+
   test:
     steps:
     - activate-ssh-key@4:
@@ -1624,6 +1479,22 @@ step_bundles:
             - webhook_url: "$SLACK_WEBHOOK_ALERTS"
 
 pipelines:
+  release-and-verify:
+    # Tag-triggered. Runs the `release` workflow (build + publish + GAR
+    # mirror), then `verify-release` (end-to-end smoke against the just-
+    # published artifacts + GAR fallback). The two workflows are
+    # independent builds so verify-release can be re-run on its own
+    # without re-cutting the tag.
+    workflows:
+      release: {}
+      verify-release:
+        depends_on:
+        - release
+    triggers:
+      tag:
+      - name:
+          regex: '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+
   features-e2e:
     workflows:
       test: {}

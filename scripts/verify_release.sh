@@ -32,10 +32,22 @@ GAR_BASE="https://artifactregistry.googleapis.com/v1/projects/ip-build-cache-pro
 TMPDIR="$(mktemp -d)"
 HOSTS_BACKUP=""
 
+# macOS aggressively caches DNS; /etc/hosts edits don't necessarily
+# apply to in-flight processes until the cache is flushed. Best-effort:
+# only run on Darwin, ignore failures (these commands need sudo and
+# behave differently across macOS versions).
+flush_dns_cache_if_mac() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    sudo dscacheutil -flushcache 2>/dev/null || true
+    sudo killall -HUP mDNSResponder 2>/dev/null || true
+  fi
+}
+
 cleanup() {
   if [[ -n "$HOSTS_BACKUP" && -f "$HOSTS_BACKUP" ]]; then
     echo "[cleanup] Restoring /etc/hosts from $HOSTS_BACKUP"
     sudo cp "$HOSTS_BACKUP" /etc/hosts
+    flush_dns_cache_if_mac
   fi
   rm -rf "$TMPDIR"
 }
@@ -45,6 +57,11 @@ assert_version() {
   local label="$1" binary="$2"
   local actual
   actual="$("$binary" version 2>&1 | tr -d '[:space:]')"
+  # Strip a leading "v" if present so the assertion is robust whether
+  # the CLI emits bare semver ("2.6.4") or tag-style ("v2.6.4").
+  # Today goreleaser injects bare semver via ldflags; this is defensive
+  # against a future config change.
+  actual="${actual#v}"
   if [[ "$actual" != "$TAG" ]]; then
     echo "FAIL [$label]: expected version '$TAG', got '$actual'" >&2
     exit 1
@@ -119,6 +136,8 @@ sudo tee -a /etc/hosts > /dev/null <<'HOSTS_EOF'
 0.0.0.0 codeload.github.com
 0.0.0.0 objects.githubusercontent.com
 HOSTS_EOF
+
+flush_dns_cache_if_mac
 
 # Sanity-check the block actually took effect before pretending the test
 # means anything.
