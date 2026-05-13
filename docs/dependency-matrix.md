@@ -83,6 +83,8 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | CLI version | Release date | Analytics plugin version | Cache plugin version | Test Distribution plugin version |
 |----|----|----|----|----|
+| [v2.6.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v2.6.2) | 2026-05-13 | 2.7.1 | \- | 2.2.10 |
+| [v2.6.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v2.6.1) | 2026-05-12 | 2.7.1 | \- | 2.2.10 |
 | [v2.6.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v2.6.0) | 2026-05-05 | 2.7.1 | \- | 2.2.10 |
 | [v2.5.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v2.5.0) | 2026-05-05 | 2.7.1 | \- | 2.2.10 |
 | [v2.4.9](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v2.4.9) | 2026-04-30 | 2.7.1 | \- | 2.2.10 |
