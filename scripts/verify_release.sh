@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Post-release verification for the CLI's install pipeline.
 #
-# Runs three independent checks against the just-released artifacts:
+# Runs four independent checks against the just-released artifacts:
 #   1. GH happy path                — install via raw.githubusercontent.com,
 #                                     execute CLI, assert version == tag.
 #   2. GAR file content sanity      — fetch the pinned and the mutable
 #                                     `latest-pointer` files from GAR
 #                                     anonymously, diff against the local
 #                                     installer.sh, verify VERSION == tag.
-#   3. Forced-GAR install path      — block github.com and
+#   3. Binary tarball checksums     — fetch checksums.txt from both GH and
+#                                     GAR (must be byte-identical), then
+#                                     download every platform tarball from
+#                                     each source and sha256-verify against
+#                                     the published checksums.
+#   4. Forced-GAR install path      — block github.com and
 #                                     raw.githubusercontent.com via
 #                                     /etc/hosts, then run installer.sh
 #                                     so tag-resolution AND binary
@@ -112,18 +117,81 @@ fi
 echo "OK   [GAR latest-pointer VERSION]: '$gar_version'"
 
 # =============================================================
-# Section 3: forced-GAR install (block GH via /etc/hosts)
+# Section 3: binary tarball checksum verification (GH and GAR)
+# =============================================================
+echo ""
+echo "=== Section 3: binary tarball checksum verification ==="
+
+GH_RELEASE_BASE="https://github.com/bitrise-io/bitrise-build-cache-cli/releases/download/v${TAG}"
+CHECKSUMS_FILE="bitrise-build-cache_${TAG}_checksums.txt"
+
+# 3a. Fetch checksums.txt from both sources.
+curl --retry 5 -sSfL -o "$TMPDIR/checksums-gh.txt" \
+  "${GH_RELEASE_BASE}/${CHECKSUMS_FILE}"
+curl --retry 5 -sSfL -o "$TMPDIR/checksums-gar.txt" \
+  "${GAR_BASE}/bitrise-build-cache_checksums.txt:${TAG}:${CHECKSUMS_FILE}:download?alt=media"
+
+# 3b. checksums.txt MUST be byte-identical across sources (it's the same
+# file generated once by goreleaser and uploaded to both).
+if ! diff -q "$TMPDIR/checksums-gh.txt" "$TMPDIR/checksums-gar.txt" >/dev/null; then
+  echo "FAIL: checksums.txt differs between GH and GAR" >&2
+  diff "$TMPDIR/checksums-gh.txt" "$TMPDIR/checksums-gar.txt" || true
+  exit 1
+fi
+echo "OK   GH-checksums.txt == GAR-checksums.txt"
+
+# Helper: verify a downloaded file's sha256 matches the checksums.txt entry.
+verify_tarball_sha() {
+  local label="$1" file="$2" checksums="$3"
+  local filename expected actual
+  filename="$(basename "$file")"
+  expected="$(grep "  ${filename}\$" "$checksums" | awk '{print $1}')"
+  if [[ -z "$expected" ]]; then
+    echo "FAIL [$label]: $filename not present in checksums.txt" >&2
+    return 1
+  fi
+  actual="$(shasum -a 256 "$file" | awk '{print $1}')"
+  if [[ "$expected" != "$actual" ]]; then
+    echo "FAIL [$label]: $filename expected $expected got $actual" >&2
+    return 1
+  fi
+  echo "OK   [$label]: $filename ($expected)"
+}
+
+# 3c. Verify each GAR-mirrored tarball. The release workflow mirrors 4
+# explicit platforms (linux_386 ships on GH only).
+GAR_PLATFORMS=(darwin_amd64 darwin_arm64 linux_amd64 linux_arm64)
+for plat in "${GAR_PLATFORMS[@]}"; do
+  filename="bitrise-build-cache_${TAG}_${plat}.tar.gz"
+  package="bitrise-build-cache_${plat}.tar.gz"
+  curl --retry 5 -sSfL -o "$TMPDIR/$filename" \
+    "${GAR_BASE}/${package}:${TAG}:${filename}:download?alt=media"
+  verify_tarball_sha "GAR " "$TMPDIR/$filename" "$TMPDIR/checksums-gar.txt"
+  rm -f "$TMPDIR/$filename"
+done
+
+# 3d. Verify each GH-published tarball. GH has all 5 platforms.
+GH_PLATFORMS=(darwin_amd64 darwin_arm64 linux_amd64 linux_arm64 linux_386)
+for plat in "${GH_PLATFORMS[@]}"; do
+  filename="bitrise-build-cache_${TAG}_${plat}.tar.gz"
+  curl --retry 5 -sSfL -o "$TMPDIR/$filename" "${GH_RELEASE_BASE}/${filename}"
+  verify_tarball_sha "GH  " "$TMPDIR/$filename" "$TMPDIR/checksums-gh.txt"
+  rm -f "$TMPDIR/$filename"
+done
+
+# =============================================================
+# Section 4: forced-GAR install (block GH via /etc/hosts)
 # =============================================================
 if [[ "${SKIP_HOSTS_BLOCK:-0}" == "1" ]]; then
   echo ""
-  echo "=== Section 3: SKIPPED (SKIP_HOSTS_BLOCK=1) ==="
+  echo "=== Section 4: SKIPPED (SKIP_HOSTS_BLOCK=1) ==="
   echo ""
-  echo "ALL CHECKS PASSED (Section 3 skipped)"
+  echo "ALL CHECKS PASSED (Section 4 skipped)"
   exit 0
 fi
 
 echo ""
-echo "=== Section 3: forced-GAR install (GH blocked via /etc/hosts) ==="
+echo "=== Section 4: forced-GAR install (GH blocked via /etc/hosts) ==="
 
 HOSTS_BACKUP="$TMPDIR/hosts.bak"
 sudo cp /etc/hosts "$HOSTS_BACKUP"
