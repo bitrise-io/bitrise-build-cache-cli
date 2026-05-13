@@ -179,6 +179,52 @@ workflows:
             done
 
             echo "Mirrored ccache to GAR."
+    - script:
+        title: Mirror install/installer.sh to GAR
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # Mirror the installer script itself so consumers (preboot init
+            # scripts) can fall back to GAR if raw.githubusercontent.com is
+            # down or rate-limits. We pin to the release tag (immutable
+            # artifact), matching the describe-or-upload pattern from the
+            # binary mirror — never delete-then-upload (#327 postmortem).
+            tag="${BITRISE_GIT_TAG#v}"
+            if [[ -z "$tag" ]]; then
+              echo "BITRISE_GIT_TAG is not set. Exiting."
+              exit 1
+            fi
+
+            package="installer.sh"
+            filename="installer.sh"
+            source_file="install/installer.sh"
+
+            if [[ ! -f "$source_file" ]]; then
+              echo "Source file $source_file does not exist."
+              exit 1
+            fi
+
+            if gcloud artifacts files describe "$package:$tag:$filename" \
+                 --project=ip-build-cache-prod \
+                 --location=us-central1 \
+                 --repository=build-cache-cli-releases \
+                 >/dev/null 2>&1; then
+              echo "installer.sh already mirrored for tag $tag, skipping"
+              exit 0
+            fi
+
+            echo "Uploading $source_file to GAR as $package:$tag:$filename..."
+            gcloud artifacts generic upload \
+              --project=ip-build-cache-prod \
+              --source="$source_file" \
+              --package="$package" \
+              --version="$tag" \
+              --location=us-central1 \
+              --repository=build-cache-cli-releases
+
+            echo "Mirrored installer.sh to GAR."
     - deploy-to-bitrise-io@2:
         is_always_run: true
         inputs:

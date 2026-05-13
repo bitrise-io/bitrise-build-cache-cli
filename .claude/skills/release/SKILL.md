@@ -21,7 +21,8 @@ Concrete rules:
 - **Always create the CLI GitHub release as `--prerelease`** (see step 6). The installer ignores prereleases when resolving `latest`, so an empty / half-uploaded release cannot poison builds.
 - **Never let an empty release be marked `latest`.** If goreleaser fails midway, leave the release as prerelease until you have manually verified the assets list is complete.
 - **Treat any failure of the CLI `release` workflow as a drop-everything-and-fix incident.** Don't move on to step releases until the CLI release workflow is green AND the v2.6.x release has all 8 expected assets (6 platform tarballs, checksums.txt, both verification XMLs).
-- **Smoke-test installer.sh edits on a real Bitrise build before merging.** The release flow does not regenerate this file, and there is no automated test that exercises it under `/bin/sh`.
+- **Smoke-test installer.sh edits on a real Bitrise build before merging.** The release flow does not regenerate this file. PR CI does exercise it (see `pr-release-check-{linux,mac}` workflows) but a real Bitrise build is still the canonical smoke test.
+- **The release workflow mirrors `install/installer.sh` to GAR**, pinned to the release tag. This mirror is what the Bitrise preboot init scripts (in `bitrise-io/build-prebooting-deployments`) fall back to if `raw.githubusercontent.com` is degraded. After every release, verify the `Mirror install/installer.sh to GAR` step succeeded — see the post-release verification in step 7.
 
 ### Brew tap is best-effort, NOT critical path
 
@@ -30,7 +31,7 @@ Concrete rules:
 If the brew step fails:
 
 - Confirm the release workflow's overall status is still green.
-- Verify the GitHub release has all 8 expected assets and the GAR mirror upload succeeded — these are critical.
+- Verify the GitHub release has all 8 expected assets and the GAR mirror uploads (binaries + checksums + `installer.sh`) succeeded — these are critical.
 - Fix the tap separately. The most common cause is the bot user behind `GIT_BOT_USER_ACCESS_TOKEN` not being a collaborator with push access on `bitrise-io/homebrew-bitrise-build-cache`. Add them in the tap repo's settings.
 - Do NOT block other step releases on this — re-running the brew publish is a separate concern.
 

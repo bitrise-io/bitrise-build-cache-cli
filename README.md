@@ -11,6 +11,8 @@ Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the
 > - Smoke-test end-to-end on a real Bitrise build before merging.
 > - Never publish a CLI GitHub release as anything other than `--prerelease` until the binaries have been verified attached.
 > - Treat any failure of the `release` workflow as a critical, drop-everything-and-fix incident.
+>
+> **GAR fallback mirror.** Every CLI release also mirrors the platform tarballs, the checksums file, **and `install/installer.sh` itself** to a public GAR generic repository (`build-cache-cli-releases` in `ip-build-cache-prod`, region `us-central1`). Both the installer script (when it falls back from GitHub Releases on the binary download) and the Bitrise preboot init scripts (when they fall back on fetching the installer script itself from `raw.githubusercontent.com`) use this mirror. Artifacts are pinned to the release tag and immutable; the upload step in `bitrise.yml`'s `release` workflow uses describe-or-upload (never delete-then-upload, see #327 postmortem).
 
 
 ## Install

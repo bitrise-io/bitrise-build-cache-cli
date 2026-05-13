@@ -156,3 +156,15 @@ This project uses golangci-lint v2. Notable rules to follow when generating code
 ## Release Process
 
 See the `/release` skill (`.claude/skills/release/SKILL.md`) for the full end-to-end release process. It covers both gradle-plugin-triggered releases and CLI-only releases.
+
+### GAR mirror of release artifacts (including installer.sh)
+
+The `release` workflow in `bitrise.yml` mirrors three things to a public GAR generic repo (`build-cache-cli-releases` in project `ip-build-cache-prod`, region `us-central1`):
+
+1. The four platform tarballs + the checksums file (consumed by `install/installer.sh`'s `*_URL_GAR` fallback).
+2. The pinned `ccache` binaries (consumed by the ccache install flow).
+3. **`install/installer.sh` itself**, pinned to the release tag (consumed by the Bitrise preboot init scripts in `bitrise-io/build-prebooting-deployments`; their primary source is `raw.githubusercontent.com`, GAR is the fallback when GitHub raw is degraded).
+
+All three mirrors use the **describe-or-upload** pattern — never delete-then-upload. Artifacts in this GAR repo must be treated as **immutable**; the package + version combination acts as the cache key (see `#327` postmortem for the race-window reasoning).
+
+When changing the release flow, preserve all three mirrors. If you add a new artifact that consumers might depend on as a fallback, mirror it to GAR with the same describe-or-upload pattern and pin it to an immutable version (typically the release tag).
