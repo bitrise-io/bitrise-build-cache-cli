@@ -322,16 +322,48 @@ http_copy() {
   rm -f "${tmp}"
   echo "$body"
 }
+gar_latest_version() {
+  # Fetch the bare semver string (e.g. "2.6.4") from the GAR-mirrored
+  # installer.sh:latest-pointer:VERSION file. Used as a tag-resolution
+  # fallback when github.com is unreachable. Echoes the version on
+  # stdout. The CLI's release workflow refreshes this file on every
+  # release (see "Mirror install/installer.sh to GAR" step in bitrise.yml).
+  # (GAR rejects "latest" as a version_id, so the mutable view uses
+  # "latest-pointer".)
+  gar_version_url="https://artifactregistry.googleapis.com/v1/projects/ip-build-cache-prod/locations/us-central1/repositories/build-cache-cli-releases/files/installer.sh:latest-pointer:VERSION:download?alt=media"
+  http_copy "$gar_version_url"
+}
 github_release() {
   owner_repo=$1
   version=$2
   test -z "$version" && version="latest"
   giturl="https://github.com/${owner_repo}/releases/${version}"
   json=$(http_copy "$giturl" "Accept:application/json")
-  test -z "$json" && return 1
-  version=$(echo "$json" | tr -s '\n' ' ' | sed 's/.*"tag_name":"//' | sed 's/".*//')
-  test -z "$version" && return 1
+  if [ -n "$json" ]; then
+    parsed=$(echo "$json" | tr -s '\n' ' ' | sed 's/.*"tag_name":"//' | sed 's/".*//')
+    if [ -n "$parsed" ]; then
+      echo "$parsed"
+      return 0
+    fi
+  fi
+  # GitHub unreachable or returned an unexpected payload. Fall back so
+  # an entirely-down github.com doesn't break CLI installs on the
+  # Bitrise fleet:
+  #   * caller asked for "latest" -> resolve via GAR's :latest VERSION
+  #   * caller pinned a specific tag -> trust the input; the binary
+  #     download step has its own GH->GAR fallback for that tag.
+  if [ "$version" = "latest" ]; then
+    log_info "GitHub tag resolution failed; falling back to GAR for latest version"
+    gar_version=$(gar_latest_version) || return 1
+    test -z "$gar_version" && return 1
+    # GAR stores bare semver; re-attach the leading "v" so downstream
+    # ${TAG#v} stripping yields the same VERSION as the GH path.
+    echo "v${gar_version}"
+    return 0
+  fi
+  log_info "GitHub tag verification failed for '${version}'; trusting caller-supplied tag (binary download will validate)"
   echo "$version"
+  return 0
 }
 hash_sha256() {
   TARGET=${1:-/dev/stdin}
