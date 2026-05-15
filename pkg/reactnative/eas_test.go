@@ -3,6 +3,7 @@
 package reactnative
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,10 +11,10 @@ import (
 
 func TestIsEASBuildInvocation(t *testing.T) {
 	cases := []struct {
-		name    string
-		binary  string
-		args    []string
-		want    bool
+		name   string
+		binary string
+		args   []string
+		want   bool
 	}{
 		{"direct eas build", "eas", []string{"build", "--platform=ios", "--local"}, true},
 		{"eas with no subcommand", "eas", []string{}, false},
@@ -37,16 +38,16 @@ func TestIsEASBuildInvocation(t *testing.T) {
 }
 
 func TestDefaultEASWorkingDir(t *testing.T) {
-	t.Run("Bitrise CI gets the documented /Users/vagrant/build path", func(t *testing.T) {
+	t.Run("Bitrise CI ($HOME=/Users/vagrant) → /Users/vagrant/build", func(t *testing.T) {
 		envs := map[string]string{
 			"BITRISE_IO":         "true",
 			"BITRISE_BUILD_SLUG": "abc",
-			"HOME":               "/Users/someone-else",
+			"HOME":               "/Users/vagrant",
 		}
 		assert.Equal(t, "/Users/vagrant/build", DefaultEASWorkingDir(envs))
 	})
 
-	t.Run("GitHub Actions falls back to $HOME/build", func(t *testing.T) {
+	t.Run("GitHub Actions ($HOME=/Users/runner) → /Users/runner/build", func(t *testing.T) {
 		envs := map[string]string{
 			"GITHUB_ACTIONS": "true",
 			"HOME":           "/Users/runner",
@@ -54,25 +55,14 @@ func TestDefaultEASWorkingDir(t *testing.T) {
 		assert.Equal(t, "/Users/runner/build", DefaultEASWorkingDir(envs))
 	})
 
-	t.Run("local (no CI) falls back to $HOME/build", func(t *testing.T) {
-		envs := map[string]string{
-			"HOME": "/Users/dev",
-		}
+	t.Run("local (no CI) → $HOME/build", func(t *testing.T) {
+		envs := map[string]string{"HOME": "/Users/dev"}
 		assert.Equal(t, "/Users/dev/build", DefaultEASWorkingDir(envs))
 	})
 
-	t.Run("HOME missing falls back to bitrise default", func(t *testing.T) {
-		assert.Equal(t, "/Users/vagrant/build", DefaultEASWorkingDir(map[string]string{}))
+	t.Run("HOME missing → empty string (signal to skip)", func(t *testing.T) {
+		assert.Equal(t, "", DefaultEASWorkingDir(map[string]string{}))
 	})
-}
-
-func TestEnvironContains(t *testing.T) {
-	environ := []string{"FOO=bar", "BAZ=", "EAS_LOCAL_BUILD_WORKINGDIR=/tmp/x"}
-	assert.True(t, environContains(environ, "FOO"))
-	assert.True(t, environContains(environ, "BAZ"))
-	assert.True(t, environContains(environ, "EAS_LOCAL_BUILD_WORKINGDIR"))
-	assert.False(t, environContains(environ, "MISSING"))
-	assert.False(t, environContains(environ, "FOO=bar")) // not a prefix match
 }
 
 func TestEnvironToMap(t *testing.T) {
@@ -83,4 +73,19 @@ func TestEnvironToMap(t *testing.T) {
 	assert.False(t, hasMalformed)
 	_, hasEmpty := got[""]
 	assert.False(t, hasEmpty)
+}
+
+func TestMapToEnviron(t *testing.T) {
+	got := mapToEnviron(map[string]string{"A": "1", "B": "two=halves"})
+	sort.Strings(got)
+	assert.Equal(t, []string{"A=1", "B=two=halves"}, got)
+}
+
+func TestEnvironRoundtrip(t *testing.T) {
+	original := []string{"A=1", "B=2", "C=three=equals"}
+	roundtripped := mapToEnviron(environToMap(original))
+	sort.Strings(roundtripped)
+	expected := append([]string(nil), original...)
+	sort.Strings(expected)
+	assert.Equal(t, expected, roundtripped)
 }

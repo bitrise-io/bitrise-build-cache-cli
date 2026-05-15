@@ -45,8 +45,9 @@ func resetEASEnvAfter(t *testing.T) {
 }
 
 func TestActivator_exportEASWorkingDirIfCI(t *testing.T) {
-	t.Run("Bitrise CI → workdir exported", func(t *testing.T) {
+	t.Run("CI detected → workdir exported as $HOME/build", func(t *testing.T) {
 		resetEASEnvAfter(t)
+		t.Setenv("HOME", "/Users/vagrant")
 		t.Setenv("BITRISE_IO", "true")
 		t.Setenv("BITRISE_BUILD_SLUG", "abc")
 		t.Setenv("CIRCLECI", "")
@@ -77,6 +78,7 @@ func TestActivator_exportEASWorkingDirIfCI(t *testing.T) {
 
 	t.Run("user-supplied value preserved on CI", func(t *testing.T) {
 		resetEASEnvAfter(t)
+		t.Setenv("HOME", "/Users/vagrant")
 		t.Setenv("BITRISE_IO", "true")
 		t.Setenv("BITRISE_BUILD_SLUG", "abc")
 		t.Setenv(EASWorkingDirEnv, "/custom/path")

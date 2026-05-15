@@ -152,11 +152,12 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 		r.zeroCcacheStats(ctx)
 	}
 
-	environ = append(environ, "BITRISE_INVOCATION_ID="+wrapperInvocationID)
-	environ = r.maybeInjectEASWorkingDir(environ, name, cmdArgs)
+	envMap := environToMap(environ)
+	envMap["BITRISE_INVOCATION_ID"] = wrapperInvocationID
+	r.maybeInjectEASWorkingDir(envMap, name, cmdArgs)
 
 	start := time.Now()
-	execErr := r.execFn(environ, name, cmdArgs...)
+	execErr := r.execFn(mapToEnviron(envMap), name, cmdArgs...)
 	duration := time.Since(start)
 
 	if r.postRun != nil {
@@ -235,20 +236,25 @@ func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
 // because absolute source paths feed into the cache keys.
 //
 // The injection is a no-op when the user has already set
-// EAS_LOCAL_BUILD_WORKINGDIR — explicit user intent wins.
-func (r *Runner) maybeInjectEASWorkingDir(environ []string, name string, cmdArgs []string) []string {
+// EAS_LOCAL_BUILD_WORKINGDIR — explicit user intent wins. It is also a no-op
+// when HOME is missing from the environment (DefaultEASWorkingDir returns ""),
+// because we have no safe path to pin to.
+func (r *Runner) maybeInjectEASWorkingDir(envs map[string]string, name string, cmdArgs []string) {
 	if !IsEASBuildInvocation(name, cmdArgs) {
-		return environ
+		return
 	}
 
-	if environContains(environ, EASWorkingDirEnv) {
-		return environ
+	if _, alreadySet := envs[EASWorkingDirEnv]; alreadySet {
+		return
 	}
 
-	workdir := DefaultEASWorkingDir(environToMap(environ))
+	workdir := DefaultEASWorkingDir(envs)
+	if workdir == "" {
+		return
+	}
+
 	r.logger.TInfof("Pinning %s=%s for EAS Build cache stability", EASWorkingDirEnv, workdir)
-
-	return append(environ, EASWorkingDirEnv+"="+workdir)
+	envs[EASWorkingDirEnv] = workdir
 }
 
 func (r *Runner) zeroCcacheStats(ctx context.Context) {

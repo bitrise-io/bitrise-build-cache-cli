@@ -366,13 +366,19 @@ func TestRunner_Run_EASWorkingDir(t *testing.T) {
 		assert.Equal(t, "/custom/path", val)
 	})
 
-	t.Run("Bitrise CI picks /Users/vagrant/build", func(t *testing.T) {
+	t.Run("HOME=/Users/vagrant (Bitrise stack default) → /Users/vagrant/build", func(t *testing.T) {
 		got := captureEnv(t,
 			[]string{"eas", "build"},
-			[]string{"HOME=/Users/someone-else", "BITRISE_IO=true", "BITRISE_BUILD_SLUG=abc"},
+			[]string{"HOME=/Users/vagrant", "BITRISE_IO=true", "BITRISE_BUILD_SLUG=abc"},
 		)
 		val, _ := findEnv(got, EASWorkingDirEnv)
 		assert.Equal(t, "/Users/vagrant/build", val)
+	})
+
+	t.Run("HOME missing → no injection", func(t *testing.T) {
+		got := captureEnv(t, []string{"eas", "build"}, []string{"FOO=bar"})
+		_, ok := findEnv(got, EASWorkingDirEnv)
+		assert.False(t, ok, "no injection without HOME — we have no safe path to pin")
 	})
 }
 
