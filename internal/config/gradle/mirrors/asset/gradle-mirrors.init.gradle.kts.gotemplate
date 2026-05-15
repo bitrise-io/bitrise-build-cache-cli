@@ -7,6 +7,13 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             val ts = java.text.SimpleDateFormat("HH:mm:ss").format(System.currentTimeMillis())
             println("[Bitrise Gradle Mirrors] [$ts] $message")
         }
+        // Runtime opt-out: customers can set BITRISE_MAVENCENTRAL_PROXY_ENABLED=false via
+        // Secrets / step inputs / app config to disable the mirrors without removing this
+        // file. Any other value (unset, "true", etc.) leaves the mirrors active.
+        if (System.getenv("BITRISE_MAVENCENTRAL_PROXY_ENABLED") == "false") {
+            log("BITRISE_MAVENCENTRAL_PROXY_ENABLED=false, skipping Bitrise Gradle mirror activation")
+            return
+        }
         // Tracks (repoName|oldUrl|mirrorUrl) tuples we've already logged so the same
         // replacement isn't logged once per subproject in multi-project builds.
         val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
