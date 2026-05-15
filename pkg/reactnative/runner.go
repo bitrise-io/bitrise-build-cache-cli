@@ -152,8 +152,11 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 		r.zeroCcacheStats(ctx)
 	}
 
+	environ = append(environ, "BITRISE_INVOCATION_ID="+wrapperInvocationID)
+	environ = r.maybeInjectEASWorkingDir(environ, name, cmdArgs)
+
 	start := time.Now()
-	execErr := r.execFn(append(environ, "BITRISE_INVOCATION_ID="+wrapperInvocationID), name, cmdArgs...)
+	execErr := r.execFn(environ, name, cmdArgs...)
 	duration := time.Since(start)
 
 	if r.postRun != nil {
@@ -223,6 +226,29 @@ func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
 	if err := socket.SetInvocationID(ctx, wrapperInvocationID, uuid.NewString()); err != nil {
 		r.logger.TWarnf("Failed to send invocation ID to storage helper: %v", err)
 	}
+}
+
+// maybeInjectEASWorkingDir pins EAS Build's local working directory to a
+// stable path when the wrapped command is `eas build` (directly or via a
+// package-manager runner). Without this, EAS picks a new tmp dir per
+// invocation and every downstream cache (Gradle, Xcode, ccache) misses
+// because absolute source paths feed into the cache keys.
+//
+// The injection is a no-op when the user has already set
+// EAS_LOCAL_BUILD_WORKINGDIR — explicit user intent wins.
+func (r *Runner) maybeInjectEASWorkingDir(environ []string, name string, cmdArgs []string) []string {
+	if !IsEASBuildInvocation(name, cmdArgs) {
+		return environ
+	}
+
+	if environContains(environ, EASWorkingDirEnv) {
+		return environ
+	}
+
+	workdir := DefaultEASWorkingDir(environToMap(environ))
+	r.logger.TInfof("Pinning %s=%s for EAS Build cache stability", EASWorkingDirEnv, workdir)
+
+	return append(environ, EASWorkingDirEnv+"="+workdir)
 }
 
 func (r *Runner) zeroCcacheStats(ctx context.Context) {

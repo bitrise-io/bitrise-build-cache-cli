@@ -307,6 +307,75 @@ func TestRunner_BypassWhenNotActivated(t *testing.T) {
 	})
 }
 
+func TestRunner_Run_EASWorkingDir(t *testing.T) {
+	activateRNHome(t)
+	ctx := context.Background()
+
+	captureEnv := func(t *testing.T, args []string, environ []string) []string {
+		t.Helper()
+
+		var captured []string
+		r := newTestRunner(RunnerParams{
+			ExecFn: func(env []string, _ string, _ ...string) error {
+				captured = env
+
+				return nil
+			},
+		})
+		require.NoError(t, r.Run(ctx, args, "", environ))
+
+		return captured
+	}
+
+	findEnv := func(environ []string, key string) (string, bool) {
+		prefix := key + "="
+		for _, e := range environ {
+			if strings.HasPrefix(e, prefix) {
+				return strings.TrimPrefix(e, prefix), true
+			}
+		}
+
+		return "", false
+	}
+
+	t.Run("eas build → workdir injected", func(t *testing.T) {
+		got := captureEnv(t, []string{"eas", "build", "--platform=ios", "--local"}, []string{"HOME=/Users/dev"})
+		val, ok := findEnv(got, EASWorkingDirEnv)
+		require.True(t, ok, "EAS workdir env should be injected")
+		assert.Equal(t, "/Users/dev/build", val)
+	})
+
+	t.Run("npx eas build → workdir injected", func(t *testing.T) {
+		got := captureEnv(t, []string{"npx", "eas", "build"}, []string{"HOME=/Users/dev"})
+		_, ok := findEnv(got, EASWorkingDirEnv)
+		assert.True(t, ok)
+	})
+
+	t.Run("non-eas command → workdir NOT injected", func(t *testing.T) {
+		got := captureEnv(t, []string{"yarn", "build"}, []string{"HOME=/Users/dev"})
+		_, ok := findEnv(got, EASWorkingDirEnv)
+		assert.False(t, ok)
+	})
+
+	t.Run("user-supplied workdir is preserved", func(t *testing.T) {
+		got := captureEnv(t,
+			[]string{"eas", "build"},
+			[]string{"HOME=/Users/dev", EASWorkingDirEnv + "=/custom/path"},
+		)
+		val, _ := findEnv(got, EASWorkingDirEnv)
+		assert.Equal(t, "/custom/path", val)
+	})
+
+	t.Run("Bitrise CI picks /Users/vagrant/build", func(t *testing.T) {
+		got := captureEnv(t,
+			[]string{"eas", "build"},
+			[]string{"HOME=/Users/someone-else", "BITRISE_IO=true", "BITRISE_BUILD_SLUG=abc"},
+		)
+		val, _ := findEnv(got, EASWorkingDirEnv)
+		assert.Equal(t, "/Users/vagrant/build", val)
+	})
+}
+
 func Test_parseCommand(t *testing.T) {
 	cases := []struct {
 		args            []string

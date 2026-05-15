@@ -49,7 +49,9 @@ const (
 
 type CommandFunc func(string, ...string) (string, error)
 
-func detectCIProvider(envs map[string]string) string {
+// DetectCIProvider inspects environment variables to identify which CI provider
+// (if any) the current build is running on. Returns "" when no CI is detected.
+func DetectCIProvider(envs map[string]string) string {
 	// Check other CI providers first, so that Build Hub builds
 	// (which also set BITRISE_IO) detect the original CI provider.
 	if envs["CIRCLECI"] != "" {
@@ -112,7 +114,7 @@ func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Log
 
 	cliVersion := GetCLIVersion(logger)
 
-	provider := detectCIProvider(envs)
+	provider := DetectCIProvider(envs)
 
 	redactedEnvs := maps.Clone(envs)
 	redactBitriseEnvs(redactedEnvs)

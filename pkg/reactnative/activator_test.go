@@ -3,9 +3,11 @@
 package reactnative
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -29,6 +31,61 @@ func TestActivator_saveReactNativeMarker_WritesEnabledTrue(t *testing.T) {
 	assert.True(t, cfg.Enabled)
 
 	assert.FileExists(t, filepath.Join(home, ".bitrise/cache/reactnative/config.json"))
+}
+
+// resetEASEnvAfter clears any leftover EAS_LOCAL_BUILD_WORKINGDIR and any CI
+// detection envs after the test, so that os-level state from one subtest does
+// not bleed into another. t.Setenv handles the original values but doesn't
+// clear vars set via os.Setenv inside the code under test.
+func resetEASEnvAfter(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		os.Unsetenv(EASWorkingDirEnv)
+	})
+}
+
+func TestActivator_exportEASWorkingDirIfCI(t *testing.T) {
+	t.Run("Bitrise CI → workdir exported", func(t *testing.T) {
+		resetEASEnvAfter(t)
+		t.Setenv("BITRISE_IO", "true")
+		t.Setenv("BITRISE_BUILD_SLUG", "abc")
+		t.Setenv("CIRCLECI", "")
+		t.Setenv("GITHUB_ACTIONS", "")
+		t.Setenv("GITLAB_CI", "")
+		t.Setenv(EASWorkingDirEnv, "")
+
+		a := &Activator{logger: log.NewLogger()}
+		a.exportEASWorkingDirIfCI()
+
+		assert.Equal(t, "/Users/vagrant/build", os.Getenv(EASWorkingDirEnv))
+	})
+
+	t.Run("no CI detected → workdir NOT exported", func(t *testing.T) {
+		resetEASEnvAfter(t)
+		t.Setenv("BITRISE_IO", "")
+		t.Setenv("BITRISE_BUILD_SLUG", "")
+		t.Setenv("CIRCLECI", "")
+		t.Setenv("GITHUB_ACTIONS", "")
+		t.Setenv("GITLAB_CI", "")
+		t.Setenv(EASWorkingDirEnv, "")
+
+		a := &Activator{logger: log.NewLogger()}
+		a.exportEASWorkingDirIfCI()
+
+		assert.Empty(t, os.Getenv(EASWorkingDirEnv))
+	})
+
+	t.Run("user-supplied value preserved on CI", func(t *testing.T) {
+		resetEASEnvAfter(t)
+		t.Setenv("BITRISE_IO", "true")
+		t.Setenv("BITRISE_BUILD_SLUG", "abc")
+		t.Setenv(EASWorkingDirEnv, "/custom/path")
+
+		a := &Activator{logger: log.NewLogger()}
+		a.exportEASWorkingDirIfCI()
+
+		assert.Equal(t, "/custom/path", os.Getenv(EASWorkingDirEnv))
+	})
 }
 
 func TestNewActivator_CppRequiresGradle(t *testing.T) {

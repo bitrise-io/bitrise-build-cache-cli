@@ -119,6 +119,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
+	a.exportEASWorkingDirIfCI()
+
 	if err := saveMultiplatformConfig(a.debugLogging); err != nil {
 		return err
 	}
@@ -174,6 +176,32 @@ func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// exportEASWorkingDirIfCI pins EAS Build's working directory on CI so that
+// `eas build --local` (Expo's local-build flow) reuses the same path across
+// runs. Without a stable path, every cache that hashes absolute paths
+// (Gradle, Xcode, ccache) misses. We only set it on CI — on a developer
+// machine the Runner injects it on demand when it sees an `eas build`
+// invocation, so we don't pollute the user's shell environment with an env
+// var they may not need.
+//
+// An explicit user-supplied value always wins.
+func (a *Activator) exportEASWorkingDirIfCI() {
+	envs := utils.AllEnvs()
+	if configcommon.DetectCIProvider(envs) == "" {
+		return
+	}
+
+	if existing := envs[EASWorkingDirEnv]; existing != "" {
+		a.logger.Debugf("%s already set to %q — leaving it alone", EASWorkingDirEnv, existing)
+
+		return
+	}
+
+	workdir := DefaultEASWorkingDir(envs)
+	envexport.New(envs, a.logger).Export(EASWorkingDirEnv, workdir)
+	a.logger.TInfof("Exported %s=%s for EAS Build cache stability", EASWorkingDirEnv, workdir)
 }
 
 // saveReactNativeMarker writes ~/.bitrise/cache/reactnative/config.json to
