@@ -184,9 +184,9 @@ func Test_ShortCommand(t *testing.T) {
 			expected: "clean",
 		},
 		{
-			name:     "with no action",
+			name:     "with no action defaults to build per xcodebuild(1)",
 			args:     "-destination mars 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
-			expected: "-destination mars 'platform=iOS Simulator,OS=18' CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO",
+			expected: "build",
 		},
 	}
 
@@ -298,6 +298,41 @@ func Test_ShortCommand_ShapingFlags(t *testing.T) {
 			name:     "last occurrence of scheme wins",
 			args:     []string{"xcodebuild", "test", "-scheme", "First", "-scheme", "Second"},
 			expected: "test [Second]",
+		},
+		{
+			name:     "no action keyword + workspace + scheme defaults base to build",
+			args:     []string{"xcodebuild", "-workspace", "Seek.xcworkspace", "-scheme", "Seek", "-destination", "generic/platform=iOS Simulator"},
+			expected: "build [Seek]",
+		},
+		{
+			name:     "no action keyword + workspace + scheme + configuration defaults base to build",
+			args:     []string{"xcodebuild", "-workspace", "Seek.xcworkspace", "-configuration", "Debug", "-scheme", "Seek", "-destination", "generic/platform=iOS Simulator"},
+			expected: "build [Seek / Debug]",
+		},
+		{
+			name:     "no action keyword + project + scheme + configuration defaults base to build",
+			args:     []string{"xcodebuild", "-project", "Pods.xcodeproj", "-scheme", "AppAuth", "-destination", "generic/platform=iOS", "-configuration", "Debug"},
+			expected: "build [AppAuth / Debug]",
+		},
+		{
+			name:     "no action keyword and no shaping flags renders bare build",
+			args:     []string{"xcodebuild", "-destination", "mars", "CODE_SIGN_IDENTITY=", "CODE_SIGNING_REQUIRED=NO"},
+			expected: "build",
+		},
+		{
+			name:     "scheme value with spaces, no action keyword",
+			args:     []string{"xcodebuild", "-workspace", "ios/mobile.xcworkspace", "-configuration", "ReleaseHimsStaging", "-scheme", "hims (staging)", "-sdk", "iphonesimulator"},
+			expected: "build [hims (staging) / ReleaseHimsStaging]",
+		},
+		{
+			name:     "explicit build action keyword is unchanged when also using shaping flags",
+			args:     []string{"xcodebuild", "build", "-workspace", "Foo.xcworkspace", "-scheme", "Foo", "-configuration", "Release"},
+			expected: "build [Foo / Release]",
+		},
+		{
+			name:     "installhdrs is recognized as an action keyword",
+			args:     []string{"xcodebuild", "installhdrs", "-scheme", "Foo"},
+			expected: "installhdrs [Foo]",
 		},
 	}
 
