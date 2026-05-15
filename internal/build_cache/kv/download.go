@@ -88,12 +88,15 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
 	var offset int64
+	var totalBytes int64
+	var attempts uint
 
 	hasher := sha256.New()
 	multiWriter := io.MultiWriter(hasher, destination)
 	expectedHash := ""
 
 	downloadErr := retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
+		attempts = attempt + 1
 		if attempt == 0 {
 			c.logger.TDebugf("Downloading %s", key)
 		} else {
@@ -111,8 +114,10 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		}
 		defer kvReader.Close()
 
-		if n, err := io.Copy(multiWriter, kvReader); err != nil {
-			st, ok := status.FromError(err)
+		n, copyErr := io.Copy(multiWriter, kvReader)
+		totalBytes += n
+		if copyErr != nil {
+			st, ok := status.FromError(copyErr)
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true
 			}
@@ -122,9 +127,9 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 
 			offset += n
 
-			c.logger.Warnf("Failed to download stream: attempt %d: %s", attempt+1, err)
+			c.logger.Warnf("Failed to download stream: attempt %d: %s", attempt+1, copyErr)
 
-			return fmt.Errorf("download archive: %w", err), false
+			return fmt.Errorf("download archive: %w", copyErr), false
 		}
 
 		expectedHash = kvReader.Metadata()["x-flare-blob-validation-sha256"]
@@ -140,10 +145,15 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 	if expectedHash != "" {
 		fileHash := hex.EncodeToString(hasher.Sum(nil))
 		if expectedHash != fileHash {
-			return fmt.Errorf("downloaded file hash mismatch: expected %s, got %s", expectedHash, fileHash)
-		} else {
-			c.logger.TDebugf("Downloaded %s hash matches expected: %s", key, expectedHash)
+			return fmt.Errorf(
+				"downloaded file hash mismatch for key %q: expected %s, got %s (received %d bytes across %d attempt(s), retried offset %d, cache-operation-id=%q, invocation-id=%q)",
+				key, expectedHash, fileHash,
+				totalBytes, attempts, offset,
+				c.cacheOperationID, c.invocationID,
+			)
 		}
+
+		c.logger.TDebugf("Downloaded %s hash matches expected: %s", key, expectedHash)
 	}
 
 	return nil
