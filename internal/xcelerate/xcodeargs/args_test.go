@@ -161,7 +161,7 @@ func Test_ShortCommand(t *testing.T) {
 		{
 			name:     "with command at the end",
 			args:     "xcodebuild -destination 'platform=iOS Simulator,OS=18.1,name=iPhone 16 Pro' -scheme WordPress -workspace WordPress.xcworkspace  CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO -showBuildTimingSummary test\n",
-			expected: "test",
+			expected: "test [WordPress]",
 		},
 		{
 			name:     "with command in the middle",
@@ -176,7 +176,7 @@ func Test_ShortCommand(t *testing.T) {
 		{
 			name:     "clean followed by archive returns archive",
 			args:     "xcodebuild clean archive -workspace /Users/vagrant/git/GuestSelfService.xcworkspace -scheme HyattApp -configuration Release -xcconfig /var/folders/f6/wf2hj3cj75qdwmt5rn814r_00000gn/T/2300449354/temp.xcconfig -archivePath /var/folders/f6/wf2hj3cj75qdwmt5rn814r_00000gn/T/xcodeArchive2352012375/HyattApp.xcarchive -destination generic/platform=iOS -skipPackagePluginValidation -disableAutomaticPackageResolution PROVISIONING_PROFILE= PROVISIONING_PROFILE_SPECIFIER=HyattApp_InHouse_Kermit",
-			expected: "archive",
+			expected: "archive [HyattApp / Release]",
 		},
 		{
 			name:     "clean alone returns clean",
@@ -196,6 +196,116 @@ func Test_ShortCommand(t *testing.T) {
 			args := strings.Split(tc.args, " ")
 			cmd := &cobra.Command{Use: "xcodebuild"}
 			SUT := xcodeargs.NewDefault(cmd, args, mockLogger)
+
+			// when
+			result := SUT.ShortCommand()
+
+			// then
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func Test_ShortCommand_ShapingFlags(t *testing.T) {
+	type testCase struct {
+		name     string
+		args     []string
+		expected string
+	}
+
+	tcs := []testCase{
+		{
+			name:     "scheme only",
+			args:     []string{"xcodebuild", "test", "-scheme", "StockTwits(Production)"},
+			expected: "test [StockTwits(Production)]",
+		},
+		{
+			name:     "scheme and testPlan",
+			args:     []string{"xcodebuild", "test", "-scheme", "StockTwits(Production)", "-testPlan", "StockTwits(Develop)_bitrise"},
+			expected: "test [StockTwits(Production) / StockTwits(Develop)_bitrise]",
+		},
+		{
+			name:     "scheme and configuration without testPlan (no double slash)",
+			args:     []string{"xcodebuild", "archive", "-scheme", "AccorHotelsApp", "-configuration", "SandboxDevelopmentRelease"},
+			expected: "archive [AccorHotelsApp / SandboxDevelopmentRelease]",
+		},
+		{
+			name:     "all three flags",
+			args:     []string{"xcodebuild", "test-without-building", "-scheme", "Substack", "-testPlan", "SubstackUITests", "-configuration", "Debug"},
+			expected: "test-without-building [Substack / SubstackUITests / Debug]",
+		},
+		{
+			name:     "testPlan without scheme still renders brackets",
+			args:     []string{"xcodebuild", "test", "-testPlan", "SubstackUITests"},
+			expected: "test [SubstackUITests]",
+		},
+		{
+			name:     "configuration without scheme still renders brackets",
+			args:     []string{"xcodebuild", "build", "-configuration", "Debug"},
+			expected: "build [Debug]",
+		},
+		{
+			name:     "testPlan and configuration without scheme",
+			args:     []string{"xcodebuild", "test", "-testPlan", "Smoke", "-configuration", "Debug"},
+			expected: "test [Smoke / Debug]",
+		},
+		{
+			name:     "scheme value with spaces",
+			args:     []string{"xcodebuild", "test", "-scheme", "DysonLink UI Tests"},
+			expected: "test [DysonLink UI Tests]",
+		},
+		{
+			name:     "scheme value containing hyphen segment",
+			args:     []string{"xcodebuild", "archive", "-scheme", "Terminal - Certifications"},
+			expected: "archive [Terminal - Certifications]",
+		},
+		{
+			name:     "non-action base showBuildSettings with no shaping flags is unchanged",
+			args:     []string{"xcodebuild", "-showBuildSettings", "-workspace", "Foo.xcworkspace"},
+			expected: "-showBuildSettings",
+		},
+		{
+			name:     "non-action base showBuildSettings with scheme still gets brackets",
+			args:     []string{"xcodebuild", "-showBuildSettings", "-scheme", "Foo"},
+			expected: "-showBuildSettings [Foo]",
+		},
+		{
+			name:     "equals form: -scheme=Value",
+			args:     []string{"xcodebuild", "test", "-scheme=WordPress"},
+			expected: "test [WordPress]",
+		},
+		{
+			name:     "equals form: all three with =",
+			args:     []string{"xcodebuild", "test", "-scheme=Substack", "-testPlan=SubstackUITests", "-configuration=Debug"},
+			expected: "test [Substack / SubstackUITests / Debug]",
+		},
+		{
+			name:     "double-dash form",
+			args:     []string{"xcodebuild", "test", "--scheme", "WordPress", "--configuration", "Release"},
+			expected: "test [WordPress / Release]",
+		},
+		{
+			name:     "empty scheme value is treated as absent",
+			args:     []string{"xcodebuild", "test", "-scheme", "", "-configuration", "Debug"},
+			expected: "test [Debug]",
+		},
+		{
+			name:     "scheme followed by another flag has no value",
+			args:     []string{"xcodebuild", "test", "-scheme", "-workspace", "Foo.xcworkspace"},
+			expected: "test",
+		},
+		{
+			name:     "last occurrence of scheme wins",
+			args:     []string{"xcodebuild", "test", "-scheme", "First", "-scheme", "Second"},
+			expected: "test [Second]",
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			// given
+			cmd := &cobra.Command{Use: "xcodebuild"}
+			SUT := xcodeargs.NewDefault(cmd, tc.args, mockLogger)
 
 			// when
 			result := SUT.ShortCommand()
