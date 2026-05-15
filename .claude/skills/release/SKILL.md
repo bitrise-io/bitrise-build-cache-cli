@@ -102,10 +102,10 @@ Create a GitHub release in `bitrise-build-cache-cli`.
 
 The CLI release triggers auto-update PRs in **four** step repos (all use unified CI app `48fa8fbee698622c`). The PR title will be "feat: Release new CLI". Monitor CI on all four, then approve and merge:
 
-1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache`
-2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode`
-3. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` (experimental, no release needed)
-4. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` (experimental, no release needed)
+1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` — released for every CLI version.
+2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` — released for every CLI version.
+3. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` — released, but releases are **not 1:1 with CLI releases** (each step release usually catches up across several intervening CLI patch versions; release when CLI changes matter for RN, e.g. an Xcode or Gradle-side improvement that RN builds benefit from).
+4. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` — truly experimental, no GitHub release flow yet (only a single early steplib PR exists). Merge the auto-update PR but do not cut a GitHub release until that changes.
 
 ```bash
 # For each step repo:
@@ -117,12 +117,14 @@ Always wait for CI to pass. Use `--squash` (merge commits are not allowed on the
 
 ### 8. Create step GitHub releases
 
-Create GitHub releases for the **Gradle step** and the **Xcode step** (NOT the gradle-features step — it doesn't need releases).
+Create GitHub releases for whichever of the four step repos the user actually wants to release (default: **Gradle step** + **Xcode step**; **React Native features step** when the CLI change is RN-relevant). The **Gradle features step** does not have a GitHub release flow yet — skip it.
 
 - These **can** be marked as "latest"
 - Follow the format of existing releases for release notes — only include "## What's Changed" with bullet points (changelog is added automatically)
-- **Version numbering: the step version bump should match the CLI version bump.** Patch CLI bump -> patch step bump. Minor CLI bump -> minor step bump
+- **Version numbering: the step version bump should match the CLI version bump.** Patch CLI bump → patch step bump. Minor CLI bump → minor step bump.
+- For step repos that don't release for every CLI version (currently the RN features step), the changelog should note the headline change for this release **and** mention any intervening CLI versions that are being picked up at the same time — readers should be able to tell what they're getting.
 - Check the latest existing release tag in each repo to determine the next version
+- The user may explicitly scope the release to a subset of step repos ("only release xcode and rn-features"). Honor that — do not release the others. Merging their auto-update PRs is still fine and expected (keeps the dependency current); skipping is only about the GitHub release / steplib PR.
 
 ### 9. Merge steplib PRs
 
