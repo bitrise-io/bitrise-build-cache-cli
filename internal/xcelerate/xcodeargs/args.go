@@ -36,6 +36,7 @@ var actions = []string{
 	"test-without-building",
 	"docbuild",
 	"installsrc",
+	"installhdrs",
 	"install",
 	"clean",
 	"-showsdks",
@@ -118,11 +119,14 @@ func (p Default) ShortCommand() string {
 	return base + " " + suffix
 }
 
+// shortCommandBase resolves the action keyword for the analytics short
+// command. Per xcodebuild(1), `build` is the default action and is used if no
+// action is given — so when argv contains no recognized action keyword we
+// return the literal "build" rather than the joined arg-string, which keeps
+// the rendered short command human-readable for invocations like
+// `xcodebuild -workspace Foo.xcworkspace -scheme Foo -configuration Debug`.
 func (p Default) shortCommandBase() string {
 	nonCommands := p.nonCommands()
-	if len(nonCommands) == 0 {
-		return ""
-	}
 
 	for _, action := range actions {
 		for _, cmd := range nonCommands {
@@ -134,9 +138,9 @@ func (p Default) shortCommandBase() string {
 		}
 	}
 
-	p.logger.Infof("No short command found, defaulting to all: %s", strings.Join(nonCommands, " "))
+	p.logger.Debugf("No action keyword in argv; defaulting to %q per xcodebuild(1)", "build")
 
-	return strings.TrimSpace(strings.Join(nonCommands, " "))
+	return "build"
 }
 
 // shapingSuffix returns the bracketed "[scheme / testPlan / configuration]"
