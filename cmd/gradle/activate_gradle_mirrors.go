@@ -20,7 +20,11 @@ When no flags are provided, all known mirrors are enabled.
 
 The command checks the BITRISE_MAVENCENTRAL_PROXY_ENABLED environment variable
 and only installs the init script when it is set to "true".
-The mirror URL is determined by the BITRISE_DEN_VM_DATACENTER environment variable.`,
+The mirror URL is determined by the BITRISE_DEN_VM_DATACENTER environment variable.
+
+The installed init script re-reads BITRISE_MAVENCENTRAL_PROXY_ENABLED at Gradle
+build time: setting it to "false" (via Secrets, step inputs, or app config)
+disables the mirrors per workflow / per workspace without removing the file.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		activator := mirrorspkg.NewActivator(mirrorspkg.ActivatorParams{

@@ -124,6 +124,11 @@ func NewActivator(params ActivatorParams) *Activator {
 // When disabled (via the Enabled param or the BITRISE_MAVENCENTRAL_PROXY_ENABLED
 // env var), or when no datacenter is available, Activate logs the reason and
 // returns nil.
+//
+// The installed init script also re-reads BITRISE_MAVENCENTRAL_PROXY_ENABLED at
+// Gradle build time: an explicit "false" disables the mirrors at runtime, so a
+// customer can opt out per workflow / per workspace via Secrets, step inputs,
+// or app config without having to remove the file.
 func (a *Activator) Activate(_ context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise mirrors for Gradle")
