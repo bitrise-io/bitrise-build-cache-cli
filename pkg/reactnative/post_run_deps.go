@@ -82,13 +82,22 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		fullCommand = strings.Join(args, " ")
 	}
 
-	helper, helperErr := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
-		ParentInvocationID: wrapperInvocationID,
-	})
-	if helperErr != nil {
-		d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", helperErr)
+	// Mirror the activate-side skip: when Gradle is in benchmark baseline,
+	// activate-react-native deliberately does not write ccache config (see
+	// Activator.activateCppIfApplicable). Attempting to load the helper here
+	// would fail with a scary ENOENT WARN even though the skip is intentional.
+	// Stop-gap until ccache grows its own benchmark phase support (ACI-4926).
+	if common.ReadBenchmarkPhaseFile(common.BuildToolGradle, d.logger) == common.BenchmarkPhaseBaseline {
+		d.logger.Debugf("Skipping ccache stats collection: Gradle is in benchmark baseline mode.")
 	} else {
-		helper.CollectAndSendStats(ctx, "", "")
+		helper, helperErr := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+			ParentInvocationID: wrapperInvocationID,
+		})
+		if helperErr != nil {
+			d.logger.TWarnf("Failed to create storage helper for ccache stats collection: %v", helperErr)
+		} else {
+			helper.CollectAndSendStats(ctx, "", "")
+		}
 	}
 
 	agg := childstats.NewAggregator(wrapperInvocationID)

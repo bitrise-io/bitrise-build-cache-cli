@@ -11,8 +11,9 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{ //nolint:gochecknoglobals
-	Use:   "bitrise-build-cache-cli",
-	Short: "Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the machine where you run this CLI.",
+	Use:     "bitrise-build-cache-cli",
+	Version: configcommon.GetCLIVersion(log.NewLogger()),
+	Short:   "Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the machine where you run this CLI.",
 	Long: `Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the machine where you run this CLI.
 
 What does the CLI do on a high level?
