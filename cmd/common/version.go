@@ -1,6 +1,8 @@
 package common
 
 import (
+	"fmt"
+
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
@@ -12,7 +14,7 @@ var VersionCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Short: "Show the version number of bitrise-build-cache-cli",
 	Long:  `Show the version number of bitrise-build-cache-cli`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Println(common.GetCLIVersion(log.NewLogger()))
+		fmt.Fprintln(cmd.OutOrStdout(), common.GetCLIVersion(log.NewLogger()))
 	},
 }
 
