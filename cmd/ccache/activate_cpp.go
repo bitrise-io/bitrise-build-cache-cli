@@ -60,7 +60,7 @@ func init() {
 		&activateCppParams.IPCSocketPathOverride,
 		"ipc-socket-path",
 		activateCppParams.IPCSocketPathOverride,
-		"Override the IPC socket path for the ccache storage helper. Defaults to <working-dir>/ccache-ipc.sock.",
+		"Override the IPC socket path for the ccache storage helper. Defaults to $BITRISE_CCACHE_IPC_SOCKET_PATH or <temp-dir>/ccache-ipc.sock.",
 	)
 	activateCppCmd.Flags().StringVar(
 		&activateCppParams.BaseDirOverride,
