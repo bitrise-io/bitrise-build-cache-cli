@@ -16,13 +16,10 @@ version (and therefore the plugin versions) used in your build:
   — `activate-build-cache-for-gradle`
 - [Bitrise Build Cache for React
   Native](https://github.com/bitrise-steplib/bitrise-step-activate-react-native-features)
-  — `activate-react-native-features`
+  — `activate-build-cache-for-react-native`
 - [Activate Bitrise-hosted Gradle repository
   mirrors](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-mirrors)
   — `activate-gradle-mirrors`
-- [Activate Bitrise Build Cache features for
-  Gradle](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-features)
-  — `activate-gradle-features` (experimental)
 
 Different consumer steps may bundle different CLI versions, so the
 plugin versions in your build depend on which step actually runs first
@@ -44,9 +41,8 @@ Two views over the same data:
 
 - [CLI release table](#cli-release-table)
 - [activate-build-cache-for-gradle](#activate-build-cache-for-gradle)
-- [activate-react-native-features](#activate-react-native-features)
+- [activate-build-cache-for-react-native](#activate-build-cache-for-react-native)
 - [activate-gradle-mirrors](#activate-gradle-mirrors)
-- [activate-gradle-features](#activate-gradle-features)
 
 ## Components
 
@@ -284,16 +280,12 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 ## activate-build-cache-for-gradle
 
-No tagged versions yet.
+Not yet published to the Bitrise steplib.
 
-## activate-react-native-features
+## activate-build-cache-for-react-native
 
-No tagged versions yet.
+Not yet published to the Bitrise steplib.
 
 ## activate-gradle-mirrors
 
-No tagged versions yet.
-
-## activate-gradle-features
-
-No tagged versions yet.
+Not yet published to the Bitrise steplib.
