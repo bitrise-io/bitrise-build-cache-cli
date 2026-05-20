@@ -17,8 +17,16 @@ Different consumer steps may bundle different CLI versions, so the plugin versio
 
 Two views over the same data:
 
-- **CLI releases → bundled plugin versions** — start here if you know the CLI version a build used and want to know which plugin versions it pulled.
+- **CLI release table** — start here if you know the CLI version a build used and want to know which plugin versions it pulled.
 - **One section per consumer step** — start here if you know the step version pinned in your workflow and want the CLI + plugin versions it resolves to.
+
+## Contents
+
+- [CLI release table](#cli-release-table)
+- [activate-build-cache-for-gradle](#activate-build-cache-for-gradle)
+- [activate-react-native-features](#activate-react-native-features)
+- [activate-gradle-mirrors](#activate-gradle-mirrors)
+- [activate-gradle-features](#activate-gradle-features)
 
 ## Components
 

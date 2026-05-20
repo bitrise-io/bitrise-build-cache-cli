@@ -127,7 +127,7 @@ cat "$MD_HEADER_PATH" > "$RESULT_MD_PATH"
 
 {
   echo
-  echo "## CLI releases → bundled plugin versions"
+  echo "## CLI release table"
   echo
   echo "| CLI version | Release date | Analytics plugin | Cache plugin | Test Distribution plugin | Common plugin |"
   echo "|-------------|--------------|------------------|--------------|--------------------------|----------------|"
