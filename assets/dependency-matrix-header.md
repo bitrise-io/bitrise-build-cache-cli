@@ -7,9 +7,8 @@ This page lists every released version of the [Bitrise Build Cache CLI](https://
 The CLI is downloaded and invoked by the Bitrise steps below. Pinning any of these steps to a specific patch version effectively pins the CLI version (and therefore the plugin versions) used in your build:
 
 - [Activate Bitrise Build Cache for Gradle](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-remote-cache) — `activate-build-cache-for-gradle`
-- [Bitrise Build Cache for React Native](https://github.com/bitrise-steplib/bitrise-step-activate-react-native-features) — `activate-react-native-features`
+- [Bitrise Build Cache for React Native](https://github.com/bitrise-steplib/bitrise-step-activate-react-native-features) — `activate-build-cache-for-react-native`
 - [Activate Bitrise-hosted Gradle repository mirrors](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-mirrors) — `activate-gradle-mirrors`
-- [Activate Bitrise Build Cache features for Gradle](https://github.com/bitrise-steplib/bitrise-step-activate-gradle-features) — `activate-gradle-features` (experimental)
 
 Different consumer steps may bundle different CLI versions, so the plugin versions in your build depend on which step actually runs first in your workflow. To find the CLI version a build used, look at the activating step's log — it prints the CLI version near the top of its section. Then look up that row below.
 
@@ -24,9 +23,8 @@ Two views over the same data:
 
 - [CLI release table](#cli-release-table)
 - [activate-build-cache-for-gradle](#activate-build-cache-for-gradle)
-- [activate-react-native-features](#activate-react-native-features)
+- [activate-build-cache-for-react-native](#activate-build-cache-for-react-native)
 - [activate-gradle-mirrors](#activate-gradle-mirrors)
-- [activate-gradle-features](#activate-gradle-features)
 
 ## Components
 
