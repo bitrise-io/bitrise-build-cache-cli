@@ -1353,6 +1353,8 @@ step_bundles:
                 set -ex
 
                 bash ./scripts/generate-dependency-matrix.sh
+          envs:
+            - GH_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
       - script:
           title: Reformat dependency matrix
           inputs:

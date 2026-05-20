@@ -38,9 +38,19 @@ STEPS=(
 
 # Let `gh` pick up whichever GitHub token Bitrise CI happens to expose.
 if [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
-  if [ -n "${GITHUB_API_TOKEN:-}" ]; then
+  if [ -n "${GIT_BOT_USER_ACCESS_TOKEN:-}" ]; then
+    export GH_TOKEN="$GIT_BOT_USER_ACCESS_TOKEN"
+  elif [ -n "${GITHUB_API_TOKEN:-}" ]; then
     export GH_TOKEN="$GITHUB_API_TOKEN"
   fi
+fi
+
+# Fail fast on missing auth — we make ~600 GitHub API calls per run, which would
+# blow past the 60/hour unauthenticated limit and silently produce a matrix with
+# empty per-step tables (the failure mode that motivated this check).
+if ! gh auth status >/dev/null 2>&1; then
+  echo "ERROR: gh is not authenticated. Set GH_TOKEN (or GIT_BOT_USER_ACCESS_TOKEN)." >&2
+  exit 1
 fi
 
 tmpdir=$(mktemp -d)
@@ -153,6 +163,7 @@ cat "$MD_HEADER_PATH" > "$RESULT_MD_PATH"
   done < "$cli_data"
 } >> "$RESULT_MD_PATH"
 
+total_step_rows=0
 for step_id in "${STEPS[@]}"; do
   echo "Processing step $step_id ..."
 
@@ -212,6 +223,7 @@ for step_id in "${STEPS[@]}"; do
   done
 
   echo "  $step_id: $total versions, $matched with CLI ref"
+  total_step_rows=$((total_step_rows + matched))
 
   if [ "$matched" -eq 0 ]; then
     echo "No published versions reference the Bitrise Build Cache CLI." >> "$RESULT_MD_PATH"
@@ -226,5 +238,10 @@ for step_id in "${STEPS[@]}"; do
     done < "$step_rows"
   } >> "$RESULT_MD_PATH"
 done
+
+if [ "$total_step_rows" -eq 0 ]; then
+  echo "ERROR: no step versions matched a CLI — every per-step table is empty." >&2
+  exit 1
+fi
 
 echo "Generated $RESULT_MD_PATH"
