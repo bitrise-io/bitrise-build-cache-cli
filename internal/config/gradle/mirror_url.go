@@ -12,7 +12,7 @@ const (
 	// MirrorDatacenterEnvKey identifies the datacenter, used to build the mirror region slug.
 	MirrorDatacenterEnvKey = "BITRISE_DEN_VM_DATACENTER"
 
-	mirrorURLPattern           = "https://repository-manager-%s.services.bitrise.io:8090/maven/%s"
+	mirrorURLPattern           = "https://repository-manager.services.bitrise.io:8090/maven/%s"
 	mirrorSegmentGradlePlugins = "gradle-plugins"
 )
 
@@ -36,5 +36,5 @@ func GradlePluginsMirrorURL(envs map[string]string) string {
 		return ""
 	}
 
-	return fmt.Sprintf(mirrorURLPattern, region, mirrorSegmentGradlePlugins)
+	return fmt.Sprintf(mirrorURLPattern, mirrorSegmentGradlePlugins)
 }

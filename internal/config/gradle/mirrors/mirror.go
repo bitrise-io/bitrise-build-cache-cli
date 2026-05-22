@@ -39,8 +39,10 @@ func InitTemplate() string {
 // InitFileName is the filename written under ~/.gradle/init.d.
 const InitFileName = "bitrise-gradle-mirrors.init.gradle.kts"
 
-// URLPattern is the format string for mirror URLs: region + URL segment.
-const URLPattern = "https://repository-manager-%s.services.bitrise.io:8090/maven/%s"
+// URLPattern is the format string for mirror URLs: URL segment.
+// The canonical un-suffixed hostname is redirected to DC-internal proxy IPs
+// via /etc/hosts entries written by the preboot reconciler (see ACI-4611).
+const URLPattern = "https://repository-manager.services.bitrise.io:8090/maven/%s"
 
 // FilterByFlagNames returns the subset of KnownMirrors whose FlagName matches
 // any of names. If names is empty, KnownMirrors is returned unchanged. Order

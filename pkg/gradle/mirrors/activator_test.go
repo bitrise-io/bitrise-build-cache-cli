@@ -40,7 +40,7 @@ func TestActivator_Activate_ExplicitParamsWin(t *testing.T) {
 	content, err := os.ReadFile(initFile)
 	require.NoError(t, err)
 
-	assert.Contains(t, string(content), "https://repository-manager-ams.services.bitrise.io:8090/maven/central")
+	assert.Contains(t, string(content), "https://repository-manager.services.bitrise.io:8090/maven/central")
 	assert.NotContains(t, string(content), "zzz")
 }
 
@@ -62,8 +62,8 @@ func TestActivator_Activate_FallsBackToEnv(t *testing.T) {
 	content, err := os.ReadFile(initFile)
 	require.NoError(t, err)
 
-	assert.Contains(t, string(content), "https://repository-manager-iad.services.bitrise.io:8090/maven/central")
-	assert.Contains(t, string(content), "https://repository-manager-iad.services.bitrise.io:8090/maven/google")
+	assert.Contains(t, string(content), "https://repository-manager.services.bitrise.io:8090/maven/central")
+	assert.Contains(t, string(content), "https://repository-manager.services.bitrise.io:8090/maven/google")
 }
 
 func TestActivator_Activate_DisabledNoOp(t *testing.T) {

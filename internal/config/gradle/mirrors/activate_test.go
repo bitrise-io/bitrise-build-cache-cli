@@ -63,9 +63,9 @@ func TestActivate(t *testing.T) {
 			params:        mirrors.Params{Enabled: true, Datacenter: "AMS1", Mirrors: allMirrors},
 			expectCreated: true,
 			expectContains: []string{
-				"https://repository-manager-ams.services.bitrise.io:8090/maven/central",
-				"https://repository-manager-ams.services.bitrise.io:8090/maven/google",
-				"https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
+				"https://repository-manager.services.bitrise.io:8090/maven/central",
+				"https://repository-manager.services.bitrise.io:8090/maven/google",
+				"https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins",
 				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
 				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 				`if (System.getenv("BITRISE_MAVENCENTRAL_PROXY_ENABLED") == "false") {`,
@@ -78,14 +78,14 @@ func TestActivate(t *testing.T) {
                 log("afterProject(${getPath()}) fired,`,
 				`if (getProject().getParent() == null) {
                     log("setting robolectric.dependency.repo.url=`,
-				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/apache-central")`,
-				`log("prepending pluginManagement mirror https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins")`,
+				`log("prepending pluginManagement mirror https://repository-manager.services.bitrise.io:8090/maven/apache-central")`,
+				`log("prepending pluginManagement mirror https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins")`,
 				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
 				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
-				`log("setting robolectric.dependency.repo.url=\"https://repository-manager-ams.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
+				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
 			},
 			expectNotContain: []string{
-				"https://repository-manager-ams.services.bitrise.io:8090/maven/jitpack",
+				"https://repository-manager.services.bitrise.io:8090/maven/jitpack",
 				`"https://jitpack.io"`,
 				"mirrorBaseUrl",
 				"java.time.Instant.now()",
@@ -96,11 +96,11 @@ func TestActivate(t *testing.T) {
 			params:        mirrors.Params{Enabled: true, Datacenter: "IAD1", Mirrors: centralOnly},
 			expectCreated: true,
 			expectContains: []string{
-				"https://repository-manager-iad.services.bitrise.io:8090/maven/central",
+				"https://repository-manager.services.bitrise.io:8090/maven/central",
 				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
-				"https://repository-manager-iad.services.bitrise.io:8090/maven/google",
+				"https://repository-manager.services.bitrise.io:8090/maven/google",
 				"mirrorBaseUrl",
 			},
 		},
@@ -109,11 +109,11 @@ func TestActivate(t *testing.T) {
 			params:        mirrors.Params{Enabled: true, Datacenter: "ORD1", Mirrors: googleOnly},
 			expectCreated: true,
 			expectContains: []string{
-				"https://repository-manager-ord.services.bitrise.io:8090/maven/google",
+				"https://repository-manager.services.bitrise.io:8090/maven/google",
 				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
 			},
 			expectNotContain: []string{
-				"https://repository-manager-ord.services.bitrise.io:8090/maven/central",
+				"https://repository-manager.services.bitrise.io:8090/maven/central",
 				"mirrorBaseUrl",
 				// google is not flagged ApplyToPluginManagement, so no PM mirror prepend log
 				"prepending pluginManagement mirror",
@@ -201,7 +201,7 @@ func TestActivate_ExportsMirrorURLs(t *testing.T) {
 
 	for _, m := range mirrors.KnownMirrors {
 		key := mirrors.MirrorURLEnvKeyPrefix + m.TemplateID
-		want := "https://repository-manager-ams.services.bitrise.io:8090/maven/" + m.URLSegment
+		want := "https://repository-manager.services.bitrise.io:8090/maven/" + m.URLSegment
 		assert.Equal(t, want, exp.exported[key], "exported value for %s", key)
 	}
 }
