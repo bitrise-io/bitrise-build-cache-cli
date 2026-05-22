@@ -82,7 +82,7 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 
 	entries := make([]templateEntry, 0, len(params.Mirrors))
 	for _, m := range params.Mirrors {
-		url := fmt.Sprintf(URLPattern, region, m.URLSegment)
+		url := fmt.Sprintf(URLPattern, m.URLSegment)
 		entries = append(entries, templateEntry{
 			ID:                      m.TemplateID,
 			GradleMatch:             m.GradleMatch,

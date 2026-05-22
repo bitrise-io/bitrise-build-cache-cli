@@ -21,11 +21,11 @@ func TestGradlePluginsMirrorURL(t *testing.T) {
 		},
 		"AMS1": {
 			envs: map[string]string{MirrorEnabledEnvKey: "true", MirrorDatacenterEnvKey: "AMS1"},
-			want: "https://repository-manager-ams.services.bitrise.io:8090/maven/gradle-plugins",
+			want: "https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins",
 		},
 		"IAD1": {
 			envs: map[string]string{MirrorEnabledEnvKey: "true", MirrorDatacenterEnvKey: "IAD1"},
-			want: "https://repository-manager-iad.services.bitrise.io:8090/maven/gradle-plugins",
+			want: "https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins",
 		},
 		"unsupported ATL1": {
 			envs: map[string]string{MirrorEnabledEnvKey: "true", MirrorDatacenterEnvKey: "ATL1"},
