@@ -834,13 +834,28 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # Gradle's configuration cache is keyed by the build invocation
-            # (tasks + start parameters), and `--dry-run` is part of that
-            # key. The dry-run above stores an entry under a key the
-            # restore-side invocation never looks up, so we need a second
-            # invocation with the exact same args the restore side runs —
-            # this is what produces the entry the restore will reuse.
+            # Stop the Gradle daemon before the real invocation. Without
+            # this, the second build runs in the same daemon and "Reuses
+            # configuration cache" purely from the daemon's in-memory
+            # state — Gradle never actually writes a non-dry-run-keyed
+            # entry to disk, so the cross-VM restore can't find one.
+            # A fresh daemon is forced to do a real key lookup against
+            # disk, miss (the dry-run entry is under a different key),
+            # run the configuration phase, and write a new entry.
+            ./gradlew --stop
             ./gradlew debug --configuration-cache --info --stacktrace
+    - script:
+        title: Inspect .gradle/configuration-cache (pre-save snapshot)
+        inputs:
+        - content: |-
+            set -eo pipefail
+            echo "=== .gradle/configuration-cache layout (pre-save) ==="
+            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
+            echo ""
+            echo "=== summary ==="
+            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
+            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
+            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
@@ -857,6 +872,18 @@ workflows:
     - restore-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
+    - script:
+        title: Inspect .gradle/configuration-cache (post-restore snapshot)
+        inputs:
+        - content: |-
+            set -eo pipefail
+            echo "=== .gradle/configuration-cache layout (post-restore) ==="
+            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
+            echo ""
+            echo "=== summary ==="
+            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
+            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
+            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
     - script:
         title: Build with restored configuration cache
         inputs:
@@ -896,13 +923,28 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # Gradle's configuration cache is keyed by the build invocation
-            # (tasks + start parameters), and `--dry-run` is part of that
-            # key. The dry-run above stores an entry under a key the
-            # restore-side invocation never looks up, so we need a second
-            # invocation with the exact same args the restore side runs —
-            # this is what produces the entry the restore will reuse.
+            # Stop the Gradle daemon before the real invocation. Without
+            # this, the second build runs in the same daemon and "Reuses
+            # configuration cache" purely from the daemon's in-memory
+            # state — Gradle never actually writes a non-dry-run-keyed
+            # entry to disk, so the cross-VM restore can't find one.
+            # A fresh daemon is forced to do a real key lookup against
+            # disk, miss (the dry-run entry is under a different key),
+            # run the configuration phase, and write a new entry.
+            ./gradlew --stop
             ./gradlew debug --configuration-cache --info --stacktrace
+    - script:
+        title: Inspect .gradle/configuration-cache (pre-save snapshot)
+        inputs:
+        - content: |-
+            set -eo pipefail
+            echo "=== .gradle/configuration-cache layout (pre-save) ==="
+            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
+            echo ""
+            echo "=== summary ==="
+            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
+            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
+            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
@@ -918,6 +960,18 @@ workflows:
     - restore-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
+    - script:
+        title: Inspect .gradle/configuration-cache (post-restore snapshot)
+        inputs:
+        - content: |-
+            set -eo pipefail
+            echo "=== .gradle/configuration-cache layout (post-restore) ==="
+            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
+            echo ""
+            echo "=== summary ==="
+            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
+            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
+            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
     - script:
         title: Build with restored configuration cache
         inputs:
