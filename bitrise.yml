@@ -1461,23 +1461,6 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
-            # `bitrise-build-cache-cli activate gradle` queries the per-
-            # workflow benchmark-phase API and disables the build cache
-            # plugin entirely if the response is "baseline". Brand-new
-            # workflow names (these save / restore × N variants) default
-            # to baseline until they have invocation history, so without
-            # this override the `🤖 Bitrise remote cache enabled` log
-            # line never fires and the post-build assertion fails.
-            # Override BITRISE_TRIGGERED_WORKFLOW_ID for the activate call
-            # only — point at a long-running sibling (gradle-configuration-
-            # e2e-linux) whose phase is established — so the cache plugin
-            # actually gets wired into the init script. We don't envman
-            # this; the override is scoped to this single shell, so
-            # downstream Gradle / analytics still see the real workflow
-            # name. TODO: replace with a proper --skip-benchmark-check
-            # flag or a BITRISE_BUILD_CACHE_BENCHMARK_PHASE_OVERRIDE env
-            # var on the CLI side.
-            export BITRISE_TRIGGERED_WORKFLOW_ID=gradle-configuration-e2e-linux
             ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
         title: Print ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
