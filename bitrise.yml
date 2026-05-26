@@ -597,7 +597,7 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              'Reusing configuration cache.' \
+              '^Reusing configuration cache\.$' \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
@@ -857,7 +857,7 @@ workflows:
             echo "Restore ran on DC: ${BITRISE_DEN_VM_DATACENTER:-<unset>}"
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              'Reusing configuration cache.' \
+              '^Reusing configuration cache\.$' \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
@@ -904,7 +904,7 @@ workflows:
             echo "Restore ran on DC: ${BITRISE_DEN_VM_DATACENTER:-<unset>}"
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              'Reusing configuration cache.' \
+              '^Reusing configuration cache\.$' \
               '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
               '\[Bitrise Build Cache\].*Request metadata invocationId' \
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
