@@ -805,12 +805,14 @@ workflows:
                 assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
       - deploy-to-bitrise-io@2: { }
 
-  # Configuration-cache cross-DC e2e: each platform runs one save workflow
-  # and three parallel restore workflows that depend on it. The prod
-  # save/restore steps auto-derive a deterministic cache key from app slug +
-  # branch (no --key), so a save in one DC must be reusable by a restore in
-  # any other DC. The "Reusing configuration cache." assertion is what
-  # proves Gradle re-used the entry end-to-end.
+  # Configuration-cache cross-DC e2e: each platform runs 5 parallel saves
+  # (to seed the accelerate cache in multiple DCs — writes are per-DC and
+  # cross-DC replication isn't immediate) and 3 parallel restore workflows
+  # that depend on them. The prod save/restore steps auto-derive a
+  # deterministic cache key from app slug + branch (no --key), so a save
+  # in any seeded DC must be reusable by a restore in any other seeded DC.
+  # The "Reusing configuration cache." assertion is what proves Gradle
+  # re-used the entry end-to-end.
 
   gradle-configuration-e2e-osx-save:
     meta:
@@ -1459,6 +1461,23 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
+            # `bitrise-build-cache-cli activate gradle` queries the per-
+            # workflow benchmark-phase API and disables the build cache
+            # plugin entirely if the response is "baseline". Brand-new
+            # workflow names (these save / restore × N variants) default
+            # to baseline until they have invocation history, so without
+            # this override the `🤖 Bitrise remote cache enabled` log
+            # line never fires and the post-build assertion fails.
+            # Override BITRISE_TRIGGERED_WORKFLOW_ID for the activate call
+            # only — point at a long-running sibling (gradle-configuration-
+            # e2e-linux) whose phase is established — so the cache plugin
+            # actually gets wired into the init script. We don't envman
+            # this; the override is scoped to this single shell, so
+            # downstream Gradle / analytics still see the real workflow
+            # name. TODO: replace with a proper --skip-benchmark-check
+            # flag or a BITRISE_BUILD_CACHE_BENCHMARK_PHASE_OVERRIDE env
+            # var on the CLI side.
+            export BITRISE_TRIGGERED_WORKFLOW_ID=gradle-configuration-e2e-linux
             ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
         title: Print ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
@@ -1515,13 +1534,20 @@ pipelines:
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
 
-      # Cross-DC configuration-cache reuse: 1 save → 3 parallel restores.
-      gradle-configuration-e2e-osx-save: {}
+      # Cross-DC configuration-cache reuse: 5 parallel saves blanket the
+      # DC pool, then 3 parallel restores per platform exercise the read
+      # path. The save fan-out is needed because the accelerate cache is
+      # written per-DC and cross-DC replication isn't immediate — a single
+      # save would only seed its own DC, and restores landing elsewhere
+      # would fall back to the stale slug-only key.
+      gradle-configuration-e2e-osx-save:
+        parallel: 5
       gradle-configuration-e2e-osx-restore:
         depends_on:
         - gradle-configuration-e2e-osx-save
         parallel: 3
-      gradle-configuration-e2e-linux-save: {}
+      gradle-configuration-e2e-linux-save:
+        parallel: 5
       gradle-configuration-e2e-linux-restore:
         depends_on:
         - gradle-configuration-e2e-linux-save
