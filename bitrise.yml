@@ -860,6 +860,16 @@ workflows:
         inputs:
         - verbose: "true"
         - config_cache_dir: ./.gradle/configuration-cache
+    # Save Gradle's dependency + transforms caches alongside the config
+    # cache. Per the docs, transforms are required for cross-build config-
+    # cache reuse because Gradle's config-cache entry key/fingerprint
+    # references the transforms cache; without it, the restore-side
+    # invocation hashes to a different key.
+    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
+    - save-gradle-cache@1:
+        inputs:
+        - save_transforms: "true"
+        - verbose: "true"
     - deploy-to-bitrise-io@2: {}
 
   gradle-configuration-e2e-osx-restore:
@@ -870,6 +880,14 @@ workflows:
     steps:
     - bundle::config-cache-e2e-activate: {}
     - restore-gradle-configuration-cache@1:
+        inputs:
+        - verbose: "true"
+    # Restore Gradle's dependency + transforms caches alongside the config
+    # cache. Required for cross-build config-cache reuse — Gradle's config-
+    # cache entry hashes the transforms cache, so this needs to be in
+    # place before the build for the entry to resolve.
+    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
+    - restore-gradle-cache@3:
         inputs:
         - verbose: "true"
     - script:
@@ -949,6 +967,16 @@ workflows:
         inputs:
         - verbose: "true"
         - config_cache_dir: ./.gradle/configuration-cache
+    # Save Gradle's dependency + transforms caches alongside the config
+    # cache. Per the docs, transforms are required for cross-build config-
+    # cache reuse because Gradle's config-cache entry key/fingerprint
+    # references the transforms cache; without it, the restore-side
+    # invocation hashes to a different key.
+    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
+    - save-gradle-cache@1:
+        inputs:
+        - save_transforms: "true"
+        - verbose: "true"
     - deploy-to-bitrise-io@2: {}
 
   gradle-configuration-e2e-linux-restore:
@@ -958,6 +986,14 @@ workflows:
     steps:
     - bundle::config-cache-e2e-activate: {}
     - restore-gradle-configuration-cache@1:
+        inputs:
+        - verbose: "true"
+    # Restore Gradle's dependency + transforms caches alongside the config
+    # cache. Required for cross-build config-cache reuse — Gradle's config-
+    # cache entry hashes the transforms cache, so this needs to be in
+    # place before the build for the entry to resolve.
+    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
+    - restore-gradle-cache@3:
         inputs:
         - verbose: "true"
     - script:
