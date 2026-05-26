@@ -822,11 +822,25 @@ workflows:
     steps:
     - bundle::config-cache-e2e-activate: {}
     - script:
-        title: Prime configuration cache (dry-run)
+        title: Prime SDK + dependency resolution (dry-run)
         inputs:
         - content: |-
             set -exo pipefail
+            # Dry-run first to let the Android Gradle Plugin download +
+            # initialize the SDK without paying for a full task execution.
             ./gradlew debug --configuration-cache --dry-run --info --stacktrace
+    - script:
+        title: Build to produce the real config-cache entry
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Gradle's configuration cache is keyed by the build invocation
+            # (tasks + start parameters), and `--dry-run` is part of that
+            # key. The dry-run above stores an entry under a key the
+            # restore-side invocation never looks up, so we need a second
+            # invocation with the exact same args the restore side runs —
+            # this is what produces the entry the restore will reuse.
+            ./gradlew debug --configuration-cache --info --stacktrace
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
@@ -870,11 +884,25 @@ workflows:
     steps:
     - bundle::config-cache-e2e-activate: {}
     - script:
-        title: Prime configuration cache (dry-run)
+        title: Prime SDK + dependency resolution (dry-run)
         inputs:
         - content: |-
             set -exo pipefail
+            # Dry-run first to let the Android Gradle Plugin download +
+            # initialize the SDK without paying for a full task execution.
             ./gradlew debug --configuration-cache --dry-run --info --stacktrace
+    - script:
+        title: Build to produce the real config-cache entry
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Gradle's configuration cache is keyed by the build invocation
+            # (tasks + start parameters), and `--dry-run` is part of that
+            # key. The dry-run above stores an entry under a key the
+            # restore-side invocation never looks up, so we need a second
+            # invocation with the exact same args the restore side runs —
+            # this is what produces the entry the restore will reuse.
+            ./gradlew debug --configuration-cache --info --stacktrace
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
