@@ -805,63 +805,54 @@ workflows:
                 assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
       - deploy-to-bitrise-io@2: { }
 
-  gradle-configuration-e2e-osx:
+  # Configuration-cache cross-DC e2e: each platform runs one save workflow
+  # and three parallel restore workflows that depend on it. The prod
+  # save/restore steps auto-derive a deterministic cache key from app slug +
+  # branch (no --key), so a save in one DC must be reusable by a restore in
+  # any other DC. The "Reusing configuration cache." assertion is what
+  # proves Gradle re-used the entry end-to-end.
+
+  gradle-configuration-e2e-osx-save:
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
         stack: osx-xcode-edge
-    envs:
-    - TEST_APP_URL: git@github.com:bitwarden/android.git
-    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::config-cache-e2e-activate: {}
     - script:
-        title: Enable build cache
-        inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
-    - script:
-        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
-        inputs:
-        - content: |-
-            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
-    - script:
-        title: Create local configuration cache
+        title: Prime configuration cache (dry-run)
         inputs:
         - content: |-
             set -exo pipefail
             ./gradlew debug --configuration-cache --dry-run --info --stacktrace
-    - script:
-        title: Save configuration cache
+    - save-gradle-configuration-cache@1:
         inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli save-gradle-configuration-cache \
-              --config-cache-dir "$PWD/.gradle/configuration-cache"
-    - script:
-        title: Delete local configuration cache
+        - verbose: "true"
+        - config_cache_dir: ./.gradle/configuration-cache
+    - deploy-to-bitrise-io@2: {}
+
+  gradle-configuration-e2e-osx-restore:
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    steps:
+    - bundle::config-cache-e2e-activate: {}
+    - restore-gradle-configuration-cache@1:
         inputs:
-        - content: |-
-            set -exo pipefail
-            rm -rf .gradle/configuration-cache
+        - verbose: "true"
     - script:
-        title: Restore configuration cache
-        inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli restore-gradle-configuration-cache
-    - script:
-        title: Build and capture logs
+        title: Build with restored configuration cache
         inputs:
         - content: |-
             set -exo pipefail
             (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
-        title: Check for cache invocations
+        title: Assert configuration cache reuse
         inputs:
         - content: |-
             set -exo pipefail
+            echo "Restore ran on DC: ${BITRISE_DEN_VM_DATACENTER:-<unset>}"
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               'Reusing configuration cache.' \
@@ -870,62 +861,45 @@ workflows:
               '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     - deploy-to-bitrise-io@2: {}
 
-  gradle-configuration-e2e-linux:
+  gradle-configuration-e2e-linux-save:
     meta:
       bitrise.io:
         stack: linux-docker-android-22.04
-    envs:
-    - TEST_APP_URL: git@github.com:bitwarden/android.git
-    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
-    - bundle::feature-e2e-setup: {}
+    - bundle::config-cache-e2e-activate: {}
     - script:
-        title: Enable build cache
-        inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
-    - script:
-        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
-        inputs:
-          - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
-    - script:
-        title: Create local configuration cache
+        title: Prime configuration cache (dry-run)
         inputs:
         - content: |-
             set -exo pipefail
             ./gradlew debug --configuration-cache --dry-run --info --stacktrace
-    - script:
-        title: Save configuration cache
+    - save-gradle-configuration-cache@1:
         inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli save-gradle-configuration-cache \
-              --config-cache-dir "$PWD/.gradle/configuration-cache"
-    - script:
-        title: Delete local configuration cache
+        - verbose: "true"
+        - config_cache_dir: ./.gradle/configuration-cache
+    - deploy-to-bitrise-io@2: {}
+
+  gradle-configuration-e2e-linux-restore:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+    steps:
+    - bundle::config-cache-e2e-activate: {}
+    - restore-gradle-configuration-cache@1:
         inputs:
-        - content: |-
-            set -exo pipefail
-            rm -rf .gradle/configuration-cache
+        - verbose: "true"
     - script:
-        title: Restore configuration cache
-        inputs:
-        - content: |-
-            set -exo pipefail
-            ../bitrise-build-cache-cli restore-gradle-configuration-cache
-    - script:
-        title: Build and capture logs
+        title: Build with restored configuration cache
         inputs:
         - content: |-
             set -exo pipefail
             (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
-        title: Check for cache invocations
+        title: Assert configuration cache reuse
         inputs:
         - content: |-
             set -exo pipefail
+            echo "Restore ran on DC: ${BITRISE_DEN_VM_DATACENTER:-<unset>}"
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
               'Reusing configuration cache.' \
@@ -1459,6 +1433,39 @@ step_bundles:
           title: Switch working dir to _tmp
           inputs:
             - path: "./_tmp"
+
+  config-cache-e2e-activate:
+    # Shared prep for the cross-DC configuration-cache e2e workflows. Clones
+    # bitwarden/android at a pinned commit, builds + activates the CLI's
+    # Gradle init script, then captures the assigned DEN datacenter so the
+    # log makes it obvious which DC ran which side of save/restore.
+    #
+    # GRADLE_ENCRYPTION_KEY is provisioned as an app-level Bitrise secret
+    # (Gradle 8.x requires it for config-cache encryption in CI) and flows
+    # through automatically — no explicit declaration needed here.
+    envs:
+    - TEST_APP_URL: git@github.com:bitwarden/android.git
+    - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Capture BITRISE_DEN_VM_DATACENTER
+        inputs:
+        - content: |-
+            set -exo pipefail
+            echo "BITRISE_DEN_VM_DATACENTER=${BITRISE_DEN_VM_DATACENTER:-<unset>}"
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+    - script:
+        title: Print ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        inputs:
+        - content: |-
+            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+
   update-step:
     steps:
       - script:
@@ -1508,8 +1515,17 @@ pipelines:
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
 
-      gradle-configuration-e2e-osx: {}
-      gradle-configuration-e2e-linux: {}
+      # Cross-DC configuration-cache reuse: 1 save → 3 parallel restores.
+      gradle-configuration-e2e-osx-save: {}
+      gradle-configuration-e2e-osx-restore:
+        depends_on:
+        - gradle-configuration-e2e-osx-save
+        parallel: 3
+      gradle-configuration-e2e-linux-save: {}
+      gradle-configuration-e2e-linux-restore:
+        depends_on:
+        - gradle-configuration-e2e-linux-save
+        parallel: 3
       e2e-xcode-comp-cache: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
