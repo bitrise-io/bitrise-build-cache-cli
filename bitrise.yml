@@ -86,6 +86,16 @@ workflows:
             set -e
             ./scripts/gar_upload_release_artifacts.sh
     - script:
+        title: Upload release artifacts to R2
+        deps:
+          brew:
+          - name: awscli
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/r2_upload_release_artifacts.sh
+    - script:
         title: Mirror ccache binaries to GAR
         inputs:
         - content: |-
@@ -188,6 +198,47 @@ workflows:
               Check build: $BITRISE_BUILD_URL
 
               The release workflow itself succeeded — retry this workflow once the issue is fixed (no need to re-cut the tag).
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
+
+  bump-prebooting:
+    description: |
+      Open an auto-merging PR against bitrise-io/build-prebooting-deployments
+      bumping the bitrise-build-cache CLI version + per-arch sha256 in the
+      preboot startup-script extensions (linux_amd64 + darwin_arm64). Chained
+      after verify-release so we never ship a bump pointing at a broken
+      release. Runs on Linux: GNU sed + cheaper machine. The Bitrise Infrabot
+      bypasses branch protection on `production` (ACI-5007).
+    envs:
+    - PREBOOTING_BOT_TOKEN: $PREBOOTING_BOT_TOKEN
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script:
+        title: Open prebooting bump PR
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/prebooting_pr_bump.sh
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              Preboot startup-script bump FAILED for $BITRISE_GIT_TAG! :rotating_light:
+
+              Could not open auto-merging PR to bitrise-io/build-prebooting-deployments.
+              Check build: $BITRISE_BUILD_URL
+
+              The release itself succeeded — retry this workflow once the issue is fixed (no need to re-cut the tag).
           - emoji: ":rotating_light:"
           - color: "#ee003b"
           - webhook_url: "$SLACK_WEBHOOK_ALERTS"
@@ -1483,15 +1534,19 @@ step_bundles:
 pipelines:
   release-and-verify:
     # Tag-triggered. Runs the `release` workflow (build + publish + GAR
-    # mirror), then `verify-release` (end-to-end smoke against the just-
-    # published artifacts + GAR fallback). The two workflows are
-    # independent builds so verify-release can be re-run on its own
+    # and R2 mirrors), then `verify-release` (end-to-end smoke against
+    # the just-published artifacts + GAR fallback), then `bump-prebooting`
+    # (opens an auto-merging PR to build-prebooting-deployments). Each
+    # workflow is an independent build so they can be re-run individually
     # without re-cutting the tag.
     workflows:
       release: {}
       verify-release:
         depends_on:
         - release
+      bump-prebooting:
+        depends_on:
+        - verify-release
     triggers:
       tag:
       - name:
