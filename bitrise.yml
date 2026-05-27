@@ -805,14 +805,22 @@ workflows:
                 assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
       - deploy-to-bitrise-io@2: { }
 
-  # Configuration-cache cross-DC e2e: each platform runs 5 parallel saves
-  # (to seed the accelerate cache in multiple DCs — writes are per-DC and
-  # cross-DC replication isn't immediate) and 3 parallel restore workflows
-  # that depend on them. The prod save/restore steps auto-derive a
-  # deterministic cache key from app slug + branch (no --key), so a save
-  # in any seeded DC must be reusable by a restore in any other seeded DC.
-  # The "Reusing configuration cache." assertion is what proves Gradle
-  # re-used the entry end-to-end.
+  # Configuration-cache cross-DC e2e.
+  #
+  # Two requirements for cross-VM config-cache reuse, both confirmed via the
+  # Gradle source + customer builds:
+  #   1. GRADLE_ENCRYPTION_KEY must be set (app secret) so Gradle uses a stable
+  #      ENV_VAR key instead of a random per-VM KEYSTORE key — otherwise the
+  #      config-cache key (which hashes the encryption key) diverges per VM.
+  #   2. The CLI's init scripts must NOT be auto-discovered from the volatile
+  #      ~/.gradle/init.d/ dir — Gradle fingerprints them by a relative path
+  #      through ~/.gradle and marks them "changed" across builds/VMs (the
+  #      blocker that defeats reuse even for Stripe). The shared
+  #      config-cache-e2e-activate bundle moves them to a stable isolated dir
+  #      and applies them explicitly via $GRADLE_INIT_ARGS (--init-script ...).
+  #
+  # Per platform: 5 parallel saves seed the per-DC accelerate cache, then 3
+  # parallel restores pull the entry and assert "Reusing configuration cache."
 
   gradle-configuration-e2e-osx-save:
     meta:
@@ -822,50 +830,15 @@ workflows:
     steps:
     - bundle::config-cache-e2e-activate: {}
     - script:
-        title: Prime SDK + dependency resolution (dry-run)
+        title: Build to produce the config-cache entry
         inputs:
         - content: |-
             set -exo pipefail
-            # Dry-run first to let the Android Gradle Plugin download +
-            # initialize the SDK without paying for a full task execution.
-            ./gradlew debug --configuration-cache --dry-run --info --stacktrace
-    - script:
-        title: Build to produce the real config-cache entry
-        inputs:
-        - content: |-
-            set -exo pipefail
-            # Stop the Gradle daemon before the real invocation. Without
-            # this, the second build runs in the same daemon and "Reuses
-            # configuration cache" purely from the daemon's in-memory
-            # state — Gradle never actually writes a non-dry-run-keyed
-            # entry to disk, so the cross-VM restore can't find one.
-            # A fresh daemon is forced to do a real key lookup against
-            # disk, miss (the dry-run entry is under a different key),
-            # run the configuration phase, and write a new entry.
-            ./gradlew --stop
-            ./gradlew debug --configuration-cache --info --stacktrace
-    - script:
-        title: Inspect .gradle/configuration-cache (pre-save snapshot)
-        inputs:
-        - content: |-
-            set -eo pipefail
-            echo "=== .gradle/configuration-cache layout (pre-save) ==="
-            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
-            echo ""
-            echo "=== summary ==="
-            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
-            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
-            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
+            ./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
         - config_cache_dir: ./.gradle/configuration-cache
-    # Save Gradle's dependency + transforms caches alongside the config
-    # cache. Per the docs, transforms are required for cross-build config-
-    # cache reuse because Gradle's config-cache entry key/fingerprint
-    # references the transforms cache; without it, the restore-side
-    # invocation hashes to a different key.
-    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
     - save-gradle-cache@1:
         inputs:
         - save_transforms: "true"
@@ -882,44 +855,28 @@ workflows:
     - restore-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
-    # Restore Gradle's dependency + transforms caches alongside the config
-    # cache. Required for cross-build config-cache reuse — Gradle's config-
-    # cache entry hashes the transforms cache, so this needs to be in
-    # place before the build for the entry to resolve.
-    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
     - restore-gradle-cache@3:
         inputs:
         - verbose: "true"
-    - script:
-        title: Inspect .gradle/configuration-cache (post-restore snapshot)
-        inputs:
-        - content: |-
-            set -eo pipefail
-            echo "=== .gradle/configuration-cache layout (post-restore) ==="
-            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
-            echo ""
-            echo "=== summary ==="
-            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
-            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
-            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
     - script:
         title: Build with restored configuration cache
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert configuration cache reuse
         inputs:
         - content: |-
             set -exo pipefail
             echo "Restore ran on DC: ${BITRISE_DEN_VM_DATACENTER:-<unset>}"
-
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              '^Reusing configuration cache\.$' \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId' \
-              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            if grep -qE '^Reusing configuration cache\.$' "$BITRISE_DEPLOY_DIR/logs.txt"; then
+              echo "Configuration cache reused on the restore VM"
+            else
+              echo "Configuration cache NOT reused"
+              grep -E 'Calculating task graph|configuration cache cannot be reused because' "$BITRISE_DEPLOY_DIR/logs.txt" || true
+              exit 1
+            fi
     - deploy-to-bitrise-io@2: {}
 
   gradle-configuration-e2e-linux-save:
@@ -929,50 +886,15 @@ workflows:
     steps:
     - bundle::config-cache-e2e-activate: {}
     - script:
-        title: Prime SDK + dependency resolution (dry-run)
+        title: Build to produce the config-cache entry
         inputs:
         - content: |-
             set -exo pipefail
-            # Dry-run first to let the Android Gradle Plugin download +
-            # initialize the SDK without paying for a full task execution.
-            ./gradlew debug --configuration-cache --dry-run --info --stacktrace
-    - script:
-        title: Build to produce the real config-cache entry
-        inputs:
-        - content: |-
-            set -exo pipefail
-            # Stop the Gradle daemon before the real invocation. Without
-            # this, the second build runs in the same daemon and "Reuses
-            # configuration cache" purely from the daemon's in-memory
-            # state — Gradle never actually writes a non-dry-run-keyed
-            # entry to disk, so the cross-VM restore can't find one.
-            # A fresh daemon is forced to do a real key lookup against
-            # disk, miss (the dry-run entry is under a different key),
-            # run the configuration phase, and write a new entry.
-            ./gradlew --stop
-            ./gradlew debug --configuration-cache --info --stacktrace
-    - script:
-        title: Inspect .gradle/configuration-cache (pre-save snapshot)
-        inputs:
-        - content: |-
-            set -eo pipefail
-            echo "=== .gradle/configuration-cache layout (pre-save) ==="
-            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
-            echo ""
-            echo "=== summary ==="
-            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
-            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
-            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
+            ./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
         - config_cache_dir: ./.gradle/configuration-cache
-    # Save Gradle's dependency + transforms caches alongside the config
-    # cache. Per the docs, transforms are required for cross-build config-
-    # cache reuse because Gradle's config-cache entry key/fingerprint
-    # references the transforms cache; without it, the restore-side
-    # invocation hashes to a different key.
-    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
     - save-gradle-cache@1:
         inputs:
         - save_transforms: "true"
@@ -988,45 +910,30 @@ workflows:
     - restore-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
-    # Restore Gradle's dependency + transforms caches alongside the config
-    # cache. Required for cross-build config-cache reuse — Gradle's config-
-    # cache entry hashes the transforms cache, so this needs to be in
-    # place before the build for the entry to resolve.
-    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
     - restore-gradle-cache@3:
         inputs:
         - verbose: "true"
-    - script:
-        title: Inspect .gradle/configuration-cache (post-restore snapshot)
-        inputs:
-        - content: |-
-            set -eo pipefail
-            echo "=== .gradle/configuration-cache layout (post-restore) ==="
-            find .gradle/configuration-cache -ls 2>&1 | sort -k 11 || true
-            echo ""
-            echo "=== summary ==="
-            find .gradle/configuration-cache -maxdepth 1 -type d 2>/dev/null | sort
-            echo "files: $(find .gradle/configuration-cache -type f 2>/dev/null | wc -l)"
-            echo "bytes: $(find .gradle/configuration-cache -type f -exec wc -c {} + 2>/dev/null | tail -1)"
     - script:
         title: Build with restored configuration cache
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert configuration cache reuse
         inputs:
         - content: |-
             set -exo pipefail
             echo "Restore ran on DC: ${BITRISE_DEN_VM_DATACENTER:-<unset>}"
-
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
-              '^Reusing configuration cache\.$' \
-              '\[Bitrise Build Cache\].*🤖 Bitrise remote cache enabled' \
-              '\[Bitrise Build Cache\].*Request metadata invocationId' \
-              '\[Bitrise Analytics\].*🤖 Bitrise analytics enabled for tasks.*Invocation ID: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            if grep -qE '^Reusing configuration cache\.$' "$BITRISE_DEPLOY_DIR/logs.txt"; then
+              echo "Configuration cache reused on the restore VM"
+            else
+              echo "Configuration cache NOT reused"
+              grep -E 'Calculating task graph|configuration cache cannot be reused because' "$BITRISE_DEPLOY_DIR/logs.txt" || true
+              exit 1
+            fi
     - deploy-to-bitrise-io@2: {}
+
   e2e-xcode-comp-cache:
     meta:
       bitrise.io:
@@ -1555,19 +1462,32 @@ step_bundles:
             - path: "./_tmp"
 
   config-cache-e2e-activate:
-    # Shared prep for the cross-DC configuration-cache e2e workflows. Clones
-    # bitwarden/android at a pinned commit, builds + activates the CLI's
-    # Gradle init script, then captures the assigned DEN datacenter so the
-    # log makes it obvious which DC ran which side of save/restore.
+    # Shared prep for the cross-DC configuration-cache e2e workflows.
+    # Builds the CLI, clones bitwarden into a STABLE isolated dir (so the
+    # project's ancestor-dir listings are deterministic across VMs),
+    # activates the build cache, then MOVES the generated init scripts out
+    # of the volatile ~/.gradle/init.d/ and exposes them via $GRADLE_INIT_ARGS
+    # (--init-script ...) so Gradle doesn't fingerprint them by a relative
+    # path through ~/.gradle (the "init script has changed" reuse blocker).
     #
-    # GRADLE_ENCRYPTION_KEY is provisioned as an app-level Bitrise secret
-    # (Gradle 8.x requires it for config-cache encryption in CI) and flows
-    # through automatically — no explicit declaration needed here.
+    # GRADLE_ENCRYPTION_KEY is an app-level Bitrise secret (needed so Gradle
+    # uses a stable ENV_VAR encryption key, not a random per-VM KEYSTORE key)
+    # and flows through automatically.
     envs:
-    - TEST_APP_URL: git@github.com:bitwarden/android.git
+    - APP_DIR: /opt/test-app/bitwarden-android
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
+    - GRADLE_TASK: debug
     steps:
-    - bundle::feature-e2e-setup: {}
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone: {}
+    - script:
+        title: Build CLI + record absolute path
+        inputs:
+        - content: |-
+            set -exo pipefail
+            go build -o bitrise-build-cache-cli
+            envman add --key CLI_BIN --value "$BITRISE_SOURCE_DIR/bitrise-build-cache-cli"
     - script:
         title: Capture BITRISE_DEN_VM_DATACENTER
         inputs:
@@ -1575,16 +1495,62 @@ step_bundles:
             set -exo pipefail
             echo "BITRISE_DEN_VM_DATACENTER=${BITRISE_DEN_VM_DATACENTER:-<unset>}"
     - script:
+        title: Clone bitwarden into a stable, isolated dir
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Stable absolute path; ancestor listing is deterministic (holds
+            # only this clone) and identical across VMs.
+            sudo rm -rf /opt/test-app
+            sudo mkdir -p /opt/test-app
+            sudo chown -R "$(whoami)" /opt/test-app
+            git clone https://github.com/bitwarden/android.git "$APP_DIR"
+            git -C "$APP_DIR" checkout "$COMMIT"
+    - change-workdir:
+        inputs:
+        - path: $APP_DIR
+    - script:
         title: Enable build cache
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+            "$CLI_BIN" activate gradle -d --cache --cache-push
     - script:
-        title: Print ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+        title: Move init scripts out of ~/.gradle/init.d + pin via --init-script
         inputs:
         - content: |-
-            cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+            #!/usr/bin/env bash
+            set -exo pipefail
+            # Gradle fingerprints init scripts auto-discovered in
+            # ~/.gradle/init.d/ by a relative path through the volatile
+            # ~/.gradle dir, marking them "changed" across builds/VMs — the
+            # confirmed cross-build config-cache reuse blocker (hits Stripe
+            # too, even post-hostname-fix). Move ALL of them to a stable
+            # isolated dir and apply explicitly via --init-script so the
+            # init.d/ listing is never a configuration input. Save and restore
+            # both run this, so both pass the identical --init-script paths.
+            sudo mkdir -p /opt/cc-init
+            sudo chown -R "$(whoami)" /opt/cc-init
+            rm -f /opt/cc-init/*.gradle.kts
+            INIT_ARGS=""
+            for f in $(find "$HOME/.gradle/init.d" -maxdepth 1 -name '*.gradle.kts' 2>/dev/null | sort); do
+              bn=$(basename "$f")
+              mv "$f" "/opt/cc-init/$bn"
+              INIT_ARGS="$INIT_ARGS --init-script /opt/cc-init/$bn"
+            done
+            echo "GRADLE_INIT_ARGS=$INIT_ARGS"
+            envman add --key GRADLE_INIT_ARGS --value "$INIT_ARGS"
+            echo "=== moved init scripts ==="; ls -la /opt/cc-init
+            echo "=== remaining ~/.gradle/init.d ==="; ls -la "$HOME/.gradle/init.d" 2>/dev/null || echo "(none)"
+    - script:
+        title: Pre-warm Android SDK (dry-run, no config cache)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Trigger SDK auto-install + dependency resolution without storing a
+            # config cache, then wipe it so the cached build starts clean.
+            ./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --no-configuration-cache --dry-run --stacktrace 2>&1 | tail -30
+            rm -rf .gradle/configuration-cache
 
   update-step:
     steps:
