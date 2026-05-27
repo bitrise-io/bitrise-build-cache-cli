@@ -1477,6 +1477,14 @@ step_bundles:
     - APP_DIR: /opt/test-app/bitwarden-android
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     - GRADLE_TASK: debug
+    # Set the workspace ID so `activate gradle` uses the constant PAT
+    # (BITRISE_BUILD_CACHE_AUTH_TOKEN) for the init script's authToken.
+    # Without it, ReadAuthConfigFromEnvironments falls back to the
+    # per-build BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN JWT, which gets
+    # baked into the init script and differs every build (same length,
+    # different bytes) → "init script has changed" → config cache never
+    # reused cross-build. (Advanced CI workspace slug.)
+    - BITRISE_BUILD_CACHE_WORKSPACE_ID: 322a005426441b60
     steps:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
