@@ -1502,12 +1502,7 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
-            # Pin a supported DC for activation only: the CLI gates the
-            # gradle-plugins mirror line in the init script on the DC region,
-            # and some VMs report DATACENTER=UNKNOWN, which would otherwise make
-            # the init script differ per VM. The mirror URL itself is canonical
-            # (DC-independent), so this just stabilises the generated init script.
-            BITRISE_DEN_VM_DATACENTER=ORD1 "$CLI_BIN" activate gradle -d --cache --cache-push
+            "$CLI_BIN" activate gradle -d --cache --cache-push
     - script:
         title: Print init scripts
         inputs:
