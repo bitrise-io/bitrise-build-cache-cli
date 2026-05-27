@@ -1514,7 +1514,16 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
-            "$CLI_BIN" activate gradle -d --cache --cache-push
+            # The CLI gates the gradle-plugins mirror line in the init script on
+            # BITRISE_DEN_VM_DATACENTER mapping to a supported region (iad/ord/ams).
+            # Some VMs report DATACENTER=UNKNOWN, so the mirror line is present on
+            # some VMs and absent on others → the init script content (hence its
+            # config-cache fingerprint) differs per VM → "init script has changed"
+            # and the entry can't be reused cross-VM. The mirror URL itself is
+            # DC-independent (canonical, post-ACI-4998), so pin a fixed supported
+            # DC for activation only, making the generated init script identical
+            # on every VM regardless of where it actually runs.
+            BITRISE_DEN_VM_DATACENTER=ORD1 "$CLI_BIN" activate gradle -d --cache --cache-push
     - script:
         title: Move init scripts out of ~/.gradle/init.d + pin via --init-script
         inputs:
