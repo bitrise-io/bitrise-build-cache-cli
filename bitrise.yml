@@ -826,6 +826,18 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
+            # Pin the Bitrise per-build / per-DC identifiers the gradle
+            # plugin reads at configuration time (see
+            # internal/config/common/cache_config.go NewMetadata) to fixed
+            # values, so the config-cache key/fingerprint is identical
+            # between the save and restore builds instead of diverging per
+            # build / DC. Exported here (after activate) so the benchmark-
+            # phase lookup still saw the real workflow name.
+            export BITRISE_APP_SLUG=1a2ddc0a-bab0-4db1-9b78-4c13aae180ba
+            export BITRISE_BUILD_SLUG=ccpin-build
+            export BITRISE_STEP_EXECUTION_ID=ccpin-step
+            export BITRISE_TRIGGERED_WORKFLOW_ID=ccpin-workflow
+            export BITRISE_DEN_VM_DATACENTER=CCPIN
             # Dry-run first to let the Android Gradle Plugin download +
             # initialize the SDK without paying for a full task execution.
             ./gradlew debug --configuration-cache --dry-run --info --stacktrace
@@ -842,6 +854,11 @@ workflows:
             # A fresh daemon is forced to do a real key lookup against
             # disk, miss (the dry-run entry is under a different key),
             # run the configuration phase, and write a new entry.
+            export BITRISE_APP_SLUG=1a2ddc0a-bab0-4db1-9b78-4c13aae180ba
+            export BITRISE_BUILD_SLUG=ccpin-build
+            export BITRISE_STEP_EXECUTION_ID=ccpin-step
+            export BITRISE_TRIGGERED_WORKFLOW_ID=ccpin-workflow
+            export BITRISE_DEN_VM_DATACENTER=CCPIN
             ./gradlew --stop
             ./gradlew debug --configuration-cache --info --stacktrace
     - script:
@@ -907,6 +924,14 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
+            # Pin the same Bitrise identifiers the save side pinned, so the
+            # restore-side gradle invocation computes the same config-cache
+            # key/fingerprint and can actually reuse the restored entry.
+            export BITRISE_APP_SLUG=1a2ddc0a-bab0-4db1-9b78-4c13aae180ba
+            export BITRISE_BUILD_SLUG=ccpin-build
+            export BITRISE_STEP_EXECUTION_ID=ccpin-step
+            export BITRISE_TRIGGERED_WORKFLOW_ID=ccpin-workflow
+            export BITRISE_DEN_VM_DATACENTER=CCPIN
             (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert configuration cache reuse
@@ -933,6 +958,18 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
+            # Pin the Bitrise per-build / per-DC identifiers the gradle
+            # plugin reads at configuration time (see
+            # internal/config/common/cache_config.go NewMetadata) to fixed
+            # values, so the config-cache key/fingerprint is identical
+            # between the save and restore builds instead of diverging per
+            # build / DC. Exported here (after activate) so the benchmark-
+            # phase lookup still saw the real workflow name.
+            export BITRISE_APP_SLUG=1a2ddc0a-bab0-4db1-9b78-4c13aae180ba
+            export BITRISE_BUILD_SLUG=ccpin-build
+            export BITRISE_STEP_EXECUTION_ID=ccpin-step
+            export BITRISE_TRIGGERED_WORKFLOW_ID=ccpin-workflow
+            export BITRISE_DEN_VM_DATACENTER=CCPIN
             # Dry-run first to let the Android Gradle Plugin download +
             # initialize the SDK without paying for a full task execution.
             ./gradlew debug --configuration-cache --dry-run --info --stacktrace
@@ -949,6 +986,11 @@ workflows:
             # A fresh daemon is forced to do a real key lookup against
             # disk, miss (the dry-run entry is under a different key),
             # run the configuration phase, and write a new entry.
+            export BITRISE_APP_SLUG=1a2ddc0a-bab0-4db1-9b78-4c13aae180ba
+            export BITRISE_BUILD_SLUG=ccpin-build
+            export BITRISE_STEP_EXECUTION_ID=ccpin-step
+            export BITRISE_TRIGGERED_WORKFLOW_ID=ccpin-workflow
+            export BITRISE_DEN_VM_DATACENTER=CCPIN
             ./gradlew --stop
             ./gradlew debug --configuration-cache --info --stacktrace
     - script:
@@ -1013,6 +1055,14 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
+            # Pin the same Bitrise identifiers the save side pinned, so the
+            # restore-side gradle invocation computes the same config-cache
+            # key/fingerprint and can actually reuse the restored entry.
+            export BITRISE_APP_SLUG=1a2ddc0a-bab0-4db1-9b78-4c13aae180ba
+            export BITRISE_BUILD_SLUG=ccpin-build
+            export BITRISE_STEP_EXECUTION_ID=ccpin-step
+            export BITRISE_TRIGGERED_WORKFLOW_ID=ccpin-workflow
+            export BITRISE_DEN_VM_DATACENTER=CCPIN
             (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert configuration cache reuse
