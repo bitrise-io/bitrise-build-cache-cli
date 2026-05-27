@@ -805,22 +805,15 @@ workflows:
                 assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
       - deploy-to-bitrise-io@2: { }
 
-  # Configuration-cache cross-DC e2e.
+  # Configuration-cache cross-DC e2e. Per platform: 5 parallel saves seed
+  # the per-DC accelerate cache, then 3 parallel restores pull the entry and
+  # assert "Reusing configuration cache." — proving the entry saved in one DC
+  # is reused by a build in another DC.
   #
-  # Two requirements for cross-VM config-cache reuse, both confirmed via the
-  # Gradle source + customer builds:
-  #   1. GRADLE_ENCRYPTION_KEY must be set (app secret) so Gradle uses a stable
-  #      ENV_VAR key instead of a random per-VM KEYSTORE key — otherwise the
-  #      config-cache key (which hashes the encryption key) diverges per VM.
-  #   2. The CLI's init scripts must NOT be auto-discovered from the volatile
-  #      ~/.gradle/init.d/ dir — Gradle fingerprints them by a relative path
-  #      through ~/.gradle and marks them "changed" across builds/VMs (the
-  #      blocker that defeats reuse even for Stripe). The shared
-  #      config-cache-e2e-activate bundle moves them to a stable isolated dir
-  #      and applies them explicitly via $GRADLE_INIT_ARGS (--init-script ...).
-  #
-  # Per platform: 5 parallel saves seed the per-DC accelerate cache, then 3
-  # parallel restores pull the entry and assert "Reusing configuration cache."
+  # Cross-build/cross-DC config-cache reuse requires (see the bundle below):
+  # GRADLE_ENCRYPTION_KEY (app secret), BITRISE_BUILD_CACHE_WORKSPACE_ID, and
+  # saving the transforms cache. See:
+  # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
 
   gradle-configuration-e2e-osx-save:
     meta:
@@ -834,7 +827,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
+            ./gradlew $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
@@ -863,7 +856,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew $GRADLE_TASK --configuration-cache --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert configuration cache reuse
         inputs:
@@ -890,7 +883,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
+            ./gradlew $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
     - save-gradle-configuration-cache@1:
         inputs:
         - verbose: "true"
@@ -918,7 +911,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --configuration-cache --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            (./gradlew $GRADLE_TASK --configuration-cache --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert configuration cache reuse
         inputs:
@@ -1462,28 +1455,17 @@ step_bundles:
             - path: "./_tmp"
 
   config-cache-e2e-activate:
-    # Shared prep for the cross-DC configuration-cache e2e workflows.
-    # Builds the CLI, clones bitwarden into a STABLE isolated dir (so the
-    # project's ancestor-dir listings are deterministic across VMs),
-    # activates the build cache, then MOVES the generated init scripts out
-    # of the volatile ~/.gradle/init.d/ and exposes them via $GRADLE_INIT_ARGS
-    # (--init-script ...) so Gradle doesn't fingerprint them by a relative
-    # path through ~/.gradle (the "init script has changed" reuse blocker).
-    #
-    # GRADLE_ENCRYPTION_KEY is an app-level Bitrise secret (needed so Gradle
-    # uses a stable ENV_VAR encryption key, not a random per-VM KEYSTORE key)
-    # and flows through automatically.
+    # Shared prep for the cross-DC configuration-cache e2e workflows: build the
+    # CLI, clone bitwarden into a stable isolated dir, activate the build cache,
+    # pre-warm the Android SDK. Cross-build/cross-DC config-cache reuse needs
+    # GRADLE_ENCRYPTION_KEY (app secret), BITRISE_BUILD_CACHE_WORKSPACE_ID (so
+    # the init script's authToken is the stable PAT, not a per-build JWT) and
+    # the transforms cache (saved by the save workflows). See:
+    # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
     envs:
     - APP_DIR: /opt/test-app/bitwarden-android
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     - GRADLE_TASK: debug
-    # Set the workspace ID so `activate gradle` uses the constant PAT
-    # (BITRISE_BUILD_CACHE_AUTH_TOKEN) for the init script's authToken.
-    # Without it, ReadAuthConfigFromEnvironments falls back to the
-    # per-build BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN JWT, which gets
-    # baked into the init script and differs every build (same length,
-    # different bytes) → "init script has changed" → config cache never
-    # reused cross-build. (Advanced CI workspace slug.)
     - BITRISE_BUILD_CACHE_WORKSPACE_ID: 322a005426441b60
     steps:
     - activate-ssh-key:
@@ -1507,8 +1489,6 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
-            # Stable absolute path; ancestor listing is deterministic (holds
-            # only this clone) and identical across VMs.
             sudo rm -rf /opt/test-app
             sudo mkdir -p /opt/test-app
             sudo chown -R "$(whoami)" /opt/test-app
@@ -1522,53 +1502,28 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
-            # The CLI gates the gradle-plugins mirror line in the init script on
-            # BITRISE_DEN_VM_DATACENTER mapping to a supported region (iad/ord/ams).
-            # Some VMs report DATACENTER=UNKNOWN, so the mirror line is present on
-            # some VMs and absent on others → the init script content (hence its
-            # config-cache fingerprint) differs per VM → "init script has changed"
-            # and the entry can't be reused cross-VM. The mirror URL itself is
-            # DC-independent (canonical, post-ACI-4998), so pin a fixed supported
-            # DC for activation only, making the generated init script identical
-            # on every VM regardless of where it actually runs.
+            # Pin a supported DC for activation only: the CLI gates the
+            # gradle-plugins mirror line in the init script on the DC region,
+            # and some VMs report DATACENTER=UNKNOWN, which would otherwise make
+            # the init script differ per VM. The mirror URL itself is canonical
+            # (DC-independent), so this just stabilises the generated init script.
             BITRISE_DEN_VM_DATACENTER=ORD1 "$CLI_BIN" activate gradle -d --cache --cache-push
     - script:
-        title: Move init scripts out of ~/.gradle/init.d + pin via --init-script
+        title: Print init scripts
         inputs:
         - content: |-
-            #!/usr/bin/env bash
-            set -exo pipefail
-            # Gradle fingerprints init scripts auto-discovered in
-            # ~/.gradle/init.d/ by a relative path through the volatile
-            # ~/.gradle dir, marking them "changed" across builds/VMs — the
-            # confirmed cross-build config-cache reuse blocker (hits Stripe
-            # too, even post-hostname-fix). Move ALL of them to a stable
-            # isolated dir and apply explicitly via --init-script so the
-            # init.d/ listing is never a configuration input. Save and restore
-            # both run this, so both pass the identical --init-script paths.
-            sudo mkdir -p /opt/cc-init
-            sudo chown -R "$(whoami)" /opt/cc-init
-            rm -f /opt/cc-init/*.gradle.kts
-            INIT_ARGS=""
-            for f in $(find "$HOME/.gradle/init.d" -maxdepth 1 -name '*.gradle.kts' 2>/dev/null | sort); do
-              bn=$(basename "$f")
-              mv "$f" "/opt/cc-init/$bn"
-              INIT_ARGS="$INIT_ARGS --init-script /opt/cc-init/$bn"
+            set -eo pipefail
+            for f in "$HOME"/.gradle/init.d/*.gradle.kts; do
+              echo "=== $f ==="
+              cat "$f"
             done
-            echo "GRADLE_INIT_ARGS=$INIT_ARGS"
-            envman add --key GRADLE_INIT_ARGS --value "$INIT_ARGS"
-            echo "=== moved init scripts ==="; ls -la /opt/cc-init
-            echo "=== remaining ~/.gradle/init.d ==="; ls -la "$HOME/.gradle/init.d" 2>/dev/null || echo "(none)"
     - script:
         title: Pre-warm Android SDK (dry-run, no config cache)
         inputs:
         - content: |-
             set -exo pipefail
-            # Trigger SDK auto-install + dependency resolution without storing a
-            # config cache, then wipe it so the cached build starts clean.
-            ./gradlew $GRADLE_INIT_ARGS $GRADLE_TASK --no-configuration-cache --dry-run --stacktrace 2>&1 | tail -30
+            ./gradlew $GRADLE_TASK --no-configuration-cache --dry-run --stacktrace 2>&1 | tail -20
             rm -rf .gradle/configuration-cache
-
   update-step:
     steps:
       - script:
