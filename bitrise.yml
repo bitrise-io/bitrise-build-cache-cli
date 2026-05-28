@@ -206,12 +206,14 @@ workflows:
 
   bump-prebooting:
     description: |
-      Open an auto-merging PR against bitrise-io/build-prebooting-deployments
-      bumping the bitrise-build-cache CLI version + per-arch sha256 in the
-      preboot startup-script extensions (linux_amd64 + darwin_arm64). Chained
-      after verify-release so we never ship a bump pointing at a broken
-      release. Runs on Linux: GNU sed + cheaper machine. The Bitrise Infrabot
-      bypasses branch protection on `production` (ACI-5007).
+      Open a PR against bitrise-io/build-prebooting-deployments bumping the
+      bitrise-build-cache CLI version + per-arch sha256 in the preboot
+      startup-script extensions (linux_amd64 + darwin_arm64), watch the
+      deployments repo's CI, then merge it as the Bitrise Infrabot (a bypass
+      actor on `production`). Chained after verify-release so we never ship
+      a bump pointing at a broken release. Runs on Linux: GNU sed + cheaper
+      machine. GH `--auto` merge is intentionally not used because it does
+      not honour bypass actors (ACI-5007).
     envs:
     - PREBOOTING_BOT_TOKEN: $PREBOOTING_BOT_TOKEN
     meta:
@@ -235,7 +237,7 @@ workflows:
           - text: |-
               Preboot startup-script bump FAILED for $BITRISE_GIT_TAG! :rotating_light:
 
-              Could not open auto-merging PR to bitrise-io/build-prebooting-deployments.
+              Could not open / merge bump PR to bitrise-io/build-prebooting-deployments.
               Check build: $BITRISE_BUILD_URL
 
               The release itself succeeded — retry this workflow once the issue is fixed (no need to re-cut the tag).
@@ -1536,7 +1538,7 @@ pipelines:
     # Tag-triggered. Runs the `release` workflow (build + publish + GAR
     # and R2 mirrors), then `verify-release` (end-to-end smoke against
     # the just-published artifacts + GAR fallback), then `bump-prebooting`
-    # (opens an auto-merging PR to build-prebooting-deployments). Each
+    # (opens + bypass-merges a PR to build-prebooting-deployments). Each
     # workflow is an independent build so they can be re-run individually
     # without re-cutting the tag.
     workflows:

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Open a PR against bitrise-io/build-prebooting-deployments to bump the
 # bitrise-build-cache CLI version + sha256 in the preboot startup-script
-# extensions (linux_amd64 + darwin_arm64). Enables auto-merge so the
-# Bitrise Infrabot lands the change without human review (the bot is in
-# the production branch-protection bypass list — ACI-5007).
+# extensions (linux_amd64 + darwin_arm64). Watches the PR's CI checks,
+# then explicitly merges as the Bitrise Infrabot. The bot is a bypass
+# actor on `production` so the explicit merge clears required-review
+# rules (ACI-5007). GitHub's `--auto` merge mode is intentionally NOT
+# used — it doesn't honour bypass actors and would block on any
+# required reviewer.
 #
 # Run AFTER verify-release so we never ship a bump pointing at a broken
 # release.
@@ -85,12 +88,29 @@ grep -q "BITRISE_BUILD_CACHE_CLI_LINUX_AMD64_SHASUM=\"${linux_sha}\"" "$linux_sc
 grep -q "BITRISE_BUILD_CACHE_CLI_VERSION=\"${tag}\"" "$macos_script" || { echo "macos version bump failed"; exit 1; }
 grep -q "BITRISE_BUILD_CACHE_CLI_DARWIN_ARM64_SHASUM=\"${darwin_sha}\"" "$macos_script" || { echo "macos sha bump failed"; exit 1; }
 
-if git diff --quiet; then
+# Assert nothing else in the working tree changed. Defensive: refuse
+# to push if sed touched any unexpected file or any unexpected line in
+# the expected files. Each startup script gets exactly one VERSION
+# bump + one SHASUM bump = +2/-2 lines.
+expected_diff=$(printf '2\t2\t%s\n2\t2\t%s\n' "$linux_script" "$macos_script" | sort)
+actual_diff=$(git diff --numstat | sort)
+
+if [[ -z "$actual_diff" ]]; then
   echo "No changes to commit — bump already applied for ${tag}. Exiting."
   exit 0
 fi
 
-# 4. Commit, push, open PR, enable auto-merge.
+if [[ "$actual_diff" != "$expected_diff" ]]; then
+  echo "Unexpected diff after sed bumps — refusing to commit." >&2
+  echo "Expected numstat:" >&2
+  echo "$expected_diff" >&2
+  echo "Actual numstat:" >&2
+  echo "$actual_diff" >&2
+  git diff >&2
+  exit 1
+fi
+
+# 4. Commit, push, open PR, wait for CI, merge as bypass actor.
 git add "$linux_script" "$macos_script"
 git commit -m "chore: bump bitrise-build-cache CLI to ${tag_v}
 
@@ -122,7 +142,16 @@ gh pr create \
   --title "chore: bump bitrise-build-cache CLI to ${tag_v}" \
   --body "$pr_body"
 
-gh pr merge "$BRANCH" --repo "$REPO" --auto --squash
+# Block until the prebooting repo's CI finishes. Exits non-zero on any
+# failed check, which fails this Bitrise step (Slack-alerted, retry-safe).
+echo "Watching prebooting CI checks on ${BRANCH}..."
+gh pr checks "$BRANCH" --repo "$REPO" --watch --fail-fast
+
+# Explicit merge by the bot. Because the bot is a bypass actor on
+# `production`, this clears required-review rules at merge time.
+# `--auto` is deliberately avoided: auto-merge runs as a background
+# process that does NOT apply bypass.
+gh pr merge "$BRANCH" --repo "$REPO" --squash --delete-branch
 
 popd >/dev/null
-echo "Opened auto-merging PR to ${REPO} bumping CLI to ${tag_v}."
+echo "Merged prebooting bump PR for ${tag_v}."
