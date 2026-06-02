@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Open a PR against bitrise-io/build-prebooting-deployments to bump the
 # bitrise-build-cache CLI version + sha256 in the preboot startup-script
-# extensions (linux_amd64 + darwin_arm64). Watches the PR's CI checks,
-# then explicitly merges as the Bitrise Infrabot. The bot is a bypass
-# actor on `production` so the explicit merge clears required-review
-# rules (ACI-5007). GitHub's `--auto` merge mode is intentionally NOT
-# used — it doesn't honour bypass actors and would block on any
-# required reviewer.
+# extensions (linux_amd64 + darwin_arm64), then explicitly merges as
+# the Bitrise Infrabot. The bot is a bypass actor on `production` so
+# the explicit merge clears required-review rules (ACI-5007).
+# GitHub's `--auto` merge mode is intentionally NOT used — it doesn't
+# honour bypass actors and would block on any required reviewer.
+#
+# Note: the deployments repo has NO CI on PRs (no GitHub Actions
+# workflows, no Bitrise commit-status hook). Check-suites stay
+# `queued` forever with zero check-runs, so any `gh pr checks --watch`
+# would block on phantom CI. We rely purely on the bot's bypass
+# perms — there is no other gate.
 #
 # Run AFTER verify-release so we never ship a bump pointing at a broken
 # release.
@@ -142,15 +147,15 @@ gh pr create \
   --title "chore: bump bitrise-build-cache CLI to ${tag_v}" \
   --body "$pr_body"
 
-# Block until the prebooting repo's CI finishes. Exits non-zero on any
-# failed check, which fails this Bitrise step (Slack-alerted, retry-safe).
-echo "Watching prebooting CI checks on ${BRANCH}..."
-gh pr checks "$BRANCH" --repo "$REPO" --watch --fail-fast
-
 # Explicit merge by the bot. Because the bot is a bypass actor on
 # `production`, this clears required-review rules at merge time.
 # `--auto` is deliberately avoided: auto-merge runs as a background
 # process that does NOT apply bypass.
+#
+# No `gh pr checks --watch` here: the deployments repo has no CI on
+# PRs, so any wait would either hang on phantom queued check-suites
+# or exit non-zero on "no checks reported". Bypass-merge is the only
+# gate.
 gh pr merge "$BRANCH" --repo "$REPO" --squash --delete-branch
 
 popd >/dev/null

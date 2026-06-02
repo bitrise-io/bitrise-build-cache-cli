@@ -187,7 +187,9 @@ Idempotency follows the same describe-or-upload rule (`aws s3api head-object` sk
 
 The `bump-prebooting` workflow (chained after `verify-release` in the `release-and-verify` pipeline) opens an auto-merging PR against `bitrise-io/build-prebooting-deployments`, bumping `BITRISE_BUILD_CACHE_CLI_VERSION` and the per-arch sha256 in both startup-script extensions (`preboot-reconciler/startup_script_extension_{linux,macos}_bitvirt.sh`). Only `linux_amd64` and `darwin_arm64` are bumped — those are the only preboot VM architectures.
 
-Script: `scripts/prebooting_pr_bump.sh`. After pushing the branch, the script waits on `gh pr checks --watch --fail-fast` until the deployments repo's `_unit-test` workflow turns green, then explicitly merges the PR with `gh pr merge --squash --delete-branch`. The Bitrise Infrabot is a bypass actor on the `production` rule, so the explicit merge clears required-review gates at merge time. GitHub's `--auto` merge mode is intentionally NOT used — auto-merge is a background process that does not honour bypass actors and would block on any required reviewer.
+Script: `scripts/prebooting_pr_bump.sh`. After pushing the branch, the script explicitly merges the PR with `gh pr merge --squash --delete-branch`. The Bitrise Infrabot is a bypass actor on the `production` rule, so the explicit merge clears required-review gates at merge time. GitHub's `--auto` merge mode is intentionally NOT used — auto-merge is a background process that does not honour bypass actors and would block on any required reviewer.
+
+The deployments repo has **no CI on PRs** (no GitHub Actions workflows; the Bitrise GitHub app's check-suites stay `queued` forever with zero check-runs). Any `gh pr checks --watch` would either block on phantom queued suites or exit non-zero on "no checks reported", so the script does not wait for CI. Bypass-merge is the only gate.
 
 After sed-bumping the constants, the script asserts the working tree shows **exactly** `+2/-2` per startup script and no other files modified — defensive check against a loose regex matching unintended lines.
 
