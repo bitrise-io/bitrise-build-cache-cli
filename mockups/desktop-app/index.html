@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bitrise Build Cache — Menubar Mockups (ACI-4337)</title>
+  <style>
+    /* =========================================================
+       Bitrise Build Cache — macOS menubar companion
+       Two states: default (running) and Gradle setup
+       ========================================================= */
+
+    :root {
+      --primary:        #6e22db;
+      --primary-soft:   #efe6ff;
+      --text:           #1c1a23;
+      --text-muted:     #6b6577;
+      --link:           #3573f0;
+      --success:        #14a45c;
+      --warning:        #d4860a;
+      --danger:         #d83a3a;
+      --shadow:         0 30px 60px -20px rgba(46, 28, 75, 0.35),
+                        0 8px 16px -8px rgba(46, 28, 75, 0.15);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 800px at 80% -10%, #d4c4ff33, transparent 60%),
+        radial-gradient(1000px 700px at -10% 110%, #ffb8d233, transparent 60%),
+        linear-gradient(180deg, #f3eef8 0%, #efe9f4 100%);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .board {
+      max-width: 1700px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    .board-header h1 {
+      font-size: 28px;
+      margin: 0 0 6px;
+      letter-spacing: -0.01em;
+    }
+    .board-header p {
+      margin: 0 0 36px;
+      color: var(--text-muted);
+      max-width: 760px;
+      line-height: 1.5;
+    }
+    .board-header a { color: var(--link); }
+
+    .frames {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(640px, 1fr));
+      gap: 48px;
+      align-items: start;
+    }
+
+    .panel-label {
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--primary);
+      background: var(--primary-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 4px;
+      letter-spacing: -0.005em;
+    }
+    .panel-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0 0 16px;
+      line-height: 1.5;
+      max-width: 520px;
+    }
+
+    /* ============ macOS frame ============ */
+
+    .mb-frame {
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      background: linear-gradient(180deg, #6b5fa8 0%, #4f4283 100%);
+    }
+
+    .mb-statusbar {
+      height: 28px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.42), rgba(0,0,0,0.28));
+      backdrop-filter: blur(20px);
+      color: rgba(255,255,255,0.95);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 14px;
+      font-size: 13px;
+    }
+    .mb-statusbar .apple { width: 14px; height: 14px; opacity: 0.95; }
+    .mb-statusbar .app-name { font-weight: 700; }
+    .mb-statusbar .menu-item { opacity: 0.95; }
+    .mb-statusbar .spacer { flex: 1; }
+    .mb-statusbar .right-icons {
+      display: flex; align-items: center; gap: 14px;
+      font-size: 12.5px;
+    }
+    .mb-statusbar .clock {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+    }
+
+    .mb-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.18);
+    }
+    .mb-trigger .glyph-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.25);
+    }
+    .mb-trigger .glyph-dot.ok   { background: #4ade80; }
+    .mb-trigger .glyph-dot.warn { background: #facc15; }
+
+    .mb-stage {
+      position: relative;
+      padding: 0 14px 28px;
+      min-height: 660px;
+      background:
+        radial-gradient(800px 500px at 80% 0%, rgba(255,255,255,0.18), transparent 60%),
+        radial-gradient(800px 500px at 0% 100%, rgba(0,0,0,0.18), transparent 60%);
+    }
+
+    /* ============ Dropdown — shared ============ */
+
+    .mb-dropdown {
+      position: absolute;
+      top: -2px;
+      right: 20px;
+      width: 360px;
+      background: rgba(40, 28, 60, 0.78);
+      backdrop-filter: blur(40px) saturate(140%);
+      -webkit-backdrop-filter: blur(40px) saturate(140%);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35),
+                  0 0 0 0.5px rgba(255,255,255,0.18) inset,
+                  0 1px 0 rgba(255,255,255,0.2) inset;
+      color: #fff;
+      font-size: 13px;
+      padding: 6px 0;
+    }
+    .mb-dropdown.setup { width: 380px; }
+    .mb-dropdown .group { padding: 4px 0; }
+
+    .mb-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px 8px;
+    }
+    .mb-header .badge {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #6e22db 0%, #b347d9 50%, #ff6fb4 100%);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+    }
+    .mb-header .badge.gradle {
+      background: linear-gradient(135deg, #02303a 0%, #0c5364 100%);
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+    }
+    .mb-header .title { font-weight: 700; font-size: 14px; line-height: 1.1; }
+    .mb-header .sub   { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 1px; }
+    .mb-header .header-action {
+      margin-left: auto;
+      font-size: 12px;
+      color: rgba(255,255,255,0.65);
+      cursor: pointer;
+    }
+
+    .mb-divider {
+      height: 0.5px;
+      background: rgba(255,255,255,0.14);
+      margin: 4px 0;
+    }
+
+    .mb-section-title {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      padding: 6px 14px 4px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .mb-section-title .action {
+      color: rgba(255,255,255,0.7);
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* Tool rows */
+    .mb-tool-row {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 6px 14px;
+      color: rgba(255,255,255,0.95);
+    }
+    .mb-tool-row .name { font-weight: 500; }
+    .mb-tool-row .state { color: rgba(255,255,255,0.7); font-size: 12px; }
+    .mb-tool-row .state.ok   { color: #6ee7b7; }
+    .mb-tool-row .state.warn { color: #fde68a; }
+    .mb-tool-row .state.err  { color: #fda4af; }
+
+    /* Dot */
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+    .dot.ok   { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,0.2); }
+    .dot.warn { background: #facc15; box-shadow: 0 0 0 3px rgba(250,204,21,0.2); }
+    .dot.err  { background: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,0.2); }
+    .dot.off  { background: #b8b3c4; }
+
+    /* Stat rows */
+    .mb-stat {
+      display: flex; justify-content: space-between;
+      padding: 4px 14px;
+      color: rgba(255,255,255,0.85);
+      font-size: 12.5px;
+    }
+    .mb-stat .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* Action rows */
+    .mb-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 12px;
+      color: rgba(255,255,255,0.95);
+    }
+    .mb-row.hover {
+      background: rgba(89, 100, 235, 0.85);
+      color: #fff;
+      border-radius: 4px;
+      margin: 0 4px;
+      padding: 6px 8px;
+    }
+    .mb-row .grow { flex: 1; }
+    .mb-row .right { color: rgba(255,255,255,0.65); font-size: 12px; }
+    .mb-row .kbd {
+      font-family: -apple-system, "SF Pro Display", system-ui;
+      font-size: 12px;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.02em;
+    }
+    .mb-icon {
+      width: 16px; height: 16px;
+      color: rgba(255,255,255,0.85);
+      flex: none;
+    }
+
+    /* Healthcheck */
+    .mb-health-row {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 6px 14px;
+      color: rgba(255,255,255,0.95);
+    }
+    .mb-health-row .name { font-weight: 500; font-size: 13px; }
+    .mb-health-row .meta { color: rgba(255,255,255,0.7); font-size: 12px; }
+    .mb-health-row .meta.ok   { color: #6ee7b7; }
+    .mb-health-row .meta.warn { color: #fde68a; }
+    .mb-health-row .meta.err  { color: #fda4af; }
+    .mb-health-row .value {
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============ Setup-mode controls ============ */
+
+    .mb-steps {
+      display: flex;
+      align-items: center;
+      padding: 6px 14px 10px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+    }
+    .mb-step { display: flex; align-items: center; gap: 6px; }
+    .mb-step-bullet {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: rgba(255,255,255,0.75);
+      font-size: 10.5px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mb-step.done .mb-step-bullet    { background: #4ade80; border-color: #4ade80; color: #0b3d23; }
+    .mb-step.current .mb-step-bullet { background: #818cf8; border-color: #a5b4fc; color: #1f1750; box-shadow: 0 0 0 3px rgba(129,140,248,0.25); }
+    .mb-step.current .mb-step-label  { color: #fff; font-weight: 600; }
+    .mb-step-connector {
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,0.18);
+      margin: 0 6px;
+    }
+    .mb-step.done + .mb-step-connector { background: #4ade80; }
+
+    .mb-field {
+      padding: 6px 14px;
+    }
+    .mb-field-label {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    .mb-field-label .hint {
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
+      color: rgba(255,255,255,0.5);
+      font-size: 11px;
+    }
+
+    .mb-input-wrap { position: relative; }
+    .mb-input {
+      width: 100%;
+      padding: 7px 10px;
+      font: inherit;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 7px;
+      outline: none;
+    }
+    .mb-input::placeholder { color: rgba(255,255,255,0.4); }
+    .mb-input:focus {
+      border-color: rgba(129,140,248,0.95);
+      background: rgba(255,255,255,0.12);
+      box-shadow: 0 0 0 3px rgba(129,140,248,0.22);
+    }
+    .mb-input.with-action { padding-right: 70px; }
+    .mb-input-action {
+      position: absolute;
+      right: 4px; top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      border: 0;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font: inherit;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mb-input-action:hover { background: rgba(255,255,255,0.18); }
+
+    select.mb-input {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 28px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+    }
+    select.mb-input option { color: #1c1a23; }
+
+    .mb-field-help {
+      font-size: 11.5px;
+      color: rgba(255,255,255,0.6);
+      margin-top: 5px;
+      line-height: 1.4;
+    }
+    .mb-field-help a { color: #a5b4fc; font-weight: 600; text-decoration: none; }
+    .mb-field-help a:hover { text-decoration: underline; }
+
+    .mb-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px 12px;
+    }
+    .mb-actions .spacer { flex: 1; }
+    .mb-btn {
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      cursor: pointer;
+    }
+    .mb-btn:hover { background: rgba(255,255,255,0.14); }
+    .mb-btn.primary {
+      background: #5964eb;
+      border-color: #5964eb;
+    }
+    .mb-btn.primary:hover { background: #4f59d8; }
+    .mb-btn.ghost {
+      background: transparent;
+      border-color: transparent;
+      color: rgba(255,255,255,0.65);
+    }
+    .mb-btn.ghost:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+    }
+
+    /* ============ Legend ============ */
+
+    .legend-row {
+      display: flex; flex-wrap: wrap; gap: 18px;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-top: 28px;
+    }
+    .legend-row b { color: var(--text); font-weight: 600; }
+
+  </style>
+</head>
+<body>
+
+<div class="board">
+  <div class="board-header">
+    <h1>Bitrise Build Cache — menubar companion</h1>
+    <p>
+      Always-on macOS menubar app for the local Build Cache experience —
+      brainstormed under <a href="https://bitrise.atlassian.net/browse/ACI-4337">ACI-4337</a>.
+      Same dropdown chrome serves both the default running state and in-flow setup wizards.
+      Healthcheck answers P5 ("is it working right now?") at a glance.
+    </p>
+  </div>
+
+  <div class="frames">
+
+    <!-- ============ FRAME 1 — DEFAULT / RUNNING ============ -->
+    <section>
+      <div class="panel-label">Default</div>
+      <h2 class="panel-title">Running — Xcode proxy up, Gradle configured, RN not set up</h2>
+      <p class="panel-desc">
+        Click the menubar glyph and you land here. Healthcheck surfaces CLI version
+        and PAT validity, then tools, then today's local invocation counters, then quick actions.
+      </p>
+
+      <div class="mb-frame">
+        <div class="mb-statusbar">
+          <svg class="apple" viewBox="0 0 170 170" fill="currentColor"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.197-2.12-9.973-3.17-14.34-3.17-4.58 0-9.492 1.05-14.746 3.17-5.262 2.13-9.501 3.24-12.742 3.35-4.929.21-9.842-1.96-14.746-6.52-3.13-2.73-7.045-7.41-11.735-14.04-5.032-7.08-9.169-15.29-12.41-24.65-3.471-10.11-5.211-19.9-5.211-29.378 0-10.857 2.346-20.221 7.045-28.068 3.693-6.303 8.606-11.275 14.755-14.925s12.793-5.51 19.948-5.629c3.915 0 9.049 1.211 15.429 3.591 6.362 2.388 10.443 3.599 12.227 3.599 1.334 0 5.868-1.416 13.55-4.239 7.265-2.618 13.397-3.702 18.444-3.274 13.676 1.104 23.948 6.495 30.781 16.196-12.228 7.41-18.276 17.787-18.156 31.114.11 10.385 3.86 19.024 11.235 25.882 3.34 3.17 7.07 5.62 11.22 7.36-.9 2.61-1.85 5.11-2.86 7.51zM119.11 7.24c0 8.1-2.96 15.66-8.86 22.66-7.12 8.32-15.732 13.13-25.071 12.37-.119-.972-.188-1.995-.188-3.07 0-7.778 3.386-16.1 9.397-22.903 3.002-3.444 6.821-6.31 11.45-8.597 4.619-2.253 8.987-3.498 13.099-3.71.12 1.083.181 2.166.181 3.24 0 .03-.001.04-.001.05z"/></svg>
+          <span class="app-name">Finder</span>
+          <span class="menu-item">File</span>
+          <span class="menu-item">Edit</span>
+          <span class="menu-item">View</span>
+          <span class="menu-item">Go</span>
+          <span class="menu-item">Window</span>
+          <span class="menu-item">Help</span>
+          <span class="spacer"></span>
+          <div class="right-icons">
+            <span class="mb-trigger" title="Bitrise Build Cache — active">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor" stroke="none"/></svg>
+              <span class="glyph-dot ok"></span>
+            </span>
+            <span>🔋 87%</span>
+            <span>🔍</span>
+            <span class="clock">Thu 21 May 14:32</span>
+          </div>
+        </div>
+
+        <div class="mb-stage">
+
+          <div class="mb-dropdown">
+            <!-- Header -->
+            <div class="mb-header">
+              <div class="badge">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor" stroke="none"/></svg>
+              </div>
+              <div>
+                <div class="title">Build Cache · Active</div>
+                <div class="sub">Advanced CI · zsolt.marta</div>
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Healthcheck -->
+            <div class="group">
+              <div class="mb-section-title">
+                Healthcheck
+                <span class="action">Re-run</span>
+              </div>
+              <div class="mb-health-row">
+                <span class="dot ok"></span>
+                <div>
+                  <div class="name">CLI version</div>
+                  <div class="meta ok">1.34.2 · up to date</div>
+                </div>
+              </div>
+              <div class="mb-health-row">
+                <span class="dot ok"></span>
+                <div>
+                  <div class="name">Personal access token</div>
+                  <div class="meta ok">Valid · expires in 42d</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Tools -->
+            <div class="group">
+              <div class="mb-section-title">Tools</div>
+              <div class="mb-tool-row">
+                <span class="dot ok"></span>
+                <div>
+                  <div class="name">Xcode <span style="opacity:.65; font-weight:500;">(XCC)</span></div>
+                  <div class="state ok">Proxy running · 2h 14m</div>
+                </div>
+                <span class="kbd">⌘1</span>
+              </div>
+              <div class="mb-tool-row">
+                <span class="dot ok"></span>
+                <div>
+                  <div class="name">Gradle</div>
+                  <div class="state ok">Configured · plugin v2.7.4</div>
+                </div>
+                <span class="kbd">⌘2</span>
+              </div>
+              <div class="mb-tool-row">
+                <span class="dot off"></span>
+                <div>
+                  <div class="name" style="opacity:.85;">React Native</div>
+                  <div class="state">Not configured</div>
+                </div>
+                <span class="kbd">⌘3</span>
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Today on this Mac -->
+            <div class="group">
+              <div class="mb-section-title">Today on this Mac</div>
+              <div class="mb-stat"><span>Invocations</span><span class="num">60</span></div>
+              <div class="mb-stat"><span>Cache hit rate</span><span class="num">71%</span></div>
+              <div class="mb-stat"><span>Time saved</span><span class="num">28m 42s</span></div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Actions -->
+            <div class="group">
+              <div class="mb-row hover">
+                <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span class="grow">Open my local invocations…</span>
+              </div>
+              <div class="mb-row">
+                <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span class="grow">Check for updates…</span>
+                <span class="right">CLI 1.34.2</span>
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Preferences / quit -->
+            <div class="group">
+              <div class="mb-row">
+                <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span class="grow">Preferences…</span>
+                <span class="kbd">⌘,</span>
+              </div>
+              <div class="mb-row">
+                <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span class="grow">Quit Build Cache</span>
+                <span class="kbd">⌘Q</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ============ FRAME 2 — SETUP MODE / GRADLE AUTH ============ -->
+    <section>
+      <div class="panel-label">Setup mode</div>
+      <h2 class="panel-title">Set up Gradle — authenticate</h2>
+      <p class="panel-desc">
+        Same dropdown chrome, opened in wizard mode. Step 2 of 4: paste or generate
+        a PAT, pick a workspace, set an optional username override. Token lands in Keychain
+        — no terminal env vars (addresses P2).
+      </p>
+
+      <div class="mb-frame">
+        <div class="mb-statusbar">
+          <svg class="apple" viewBox="0 0 170 170" fill="currentColor"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.197-2.12-9.973-3.17-14.34-3.17-4.58 0-9.492 1.05-14.746 3.17-5.262 2.13-9.501 3.24-12.742 3.35-4.929.21-9.842-1.96-14.746-6.52-3.13-2.73-7.045-7.41-11.735-14.04-5.032-7.08-9.169-15.29-12.41-24.65-3.471-10.11-5.211-19.9-5.211-29.378 0-10.857 2.346-20.221 7.045-28.068 3.693-6.303 8.606-11.275 14.755-14.925s12.793-5.51 19.948-5.629c3.915 0 9.049 1.211 15.429 3.591 6.362 2.388 10.443 3.599 12.227 3.599 1.334 0 5.868-1.416 13.55-4.239 7.265-2.618 13.397-3.702 18.444-3.274 13.676 1.104 23.948 6.495 30.781 16.196-12.228 7.41-18.276 17.787-18.156 31.114.11 10.385 3.86 19.024 11.235 25.882 3.34 3.17 7.07 5.62 11.22 7.36-.9 2.61-1.85 5.11-2.86 7.51zM119.11 7.24c0 8.1-2.96 15.66-8.86 22.66-7.12 8.32-15.732 13.13-25.071 12.37-.119-.972-.188-1.995-.188-3.07 0-7.778 3.386-16.1 9.397-22.903 3.002-3.444 6.821-6.31 11.45-8.597 4.619-2.253 8.987-3.498 13.099-3.71.12 1.083.181 2.166.181 3.24 0 .03-.001.04-.001.05z"/></svg>
+          <span class="app-name">Finder</span>
+          <span class="menu-item">File</span>
+          <span class="menu-item">Edit</span>
+          <span class="menu-item">View</span>
+          <span class="menu-item">Go</span>
+          <span class="menu-item">Window</span>
+          <span class="menu-item">Help</span>
+          <span class="spacer"></span>
+          <div class="right-icons">
+            <span class="mb-trigger" title="Bitrise Build Cache — setup in progress">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor" stroke="none"/></svg>
+              <span class="glyph-dot warn"></span>
+            </span>
+            <span>🔋 87%</span>
+            <span>🔍</span>
+            <span class="clock">Thu 21 May 14:32</span>
+          </div>
+        </div>
+
+        <div class="mb-stage">
+
+          <div class="mb-dropdown setup">
+            <!-- Header -->
+            <div class="mb-header">
+              <div class="badge gradle">G</div>
+              <div>
+                <div class="title">Set up Gradle</div>
+                <div class="sub">~/work/code/my-android-app</div>
+              </div>
+              <span class="header-action" title="Cancel setup">✕</span>
+            </div>
+
+            <!-- Steps -->
+            <div class="mb-steps">
+              <div class="mb-step done">
+                <div class="mb-step-bullet">✓</div>
+                <div class="mb-step-label">Detect</div>
+              </div>
+              <div class="mb-step-connector"></div>
+              <div class="mb-step current">
+                <div class="mb-step-bullet">2</div>
+                <div class="mb-step-label">Authenticate</div>
+              </div>
+              <div class="mb-step-connector"></div>
+              <div class="mb-step">
+                <div class="mb-step-bullet">3</div>
+                <div class="mb-step-label">Config</div>
+              </div>
+              <div class="mb-step-connector"></div>
+              <div class="mb-step">
+                <div class="mb-step-bullet">4</div>
+                <div class="mb-step-label">Verify</div>
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- PAT input -->
+            <div class="mb-field">
+              <div class="mb-field-label">
+                Personal access token
+                <span class="hint">required</span>
+              </div>
+              <div class="mb-input-wrap">
+                <input class="mb-input with-action" type="password" value="••••••••••••••••••••••••••••" />
+                <button class="mb-input-action">Paste</button>
+              </div>
+              <div class="mb-field-help">
+                Don't have one? <a href="#">Generate on bitrise.io ↗</a> — we'll open the
+                browser and walk you back here. Token stays in your macOS Keychain.
+              </div>
+            </div>
+
+            <!-- Workspace -->
+            <div class="mb-field">
+              <div class="mb-field-label">Workspace</div>
+              <select class="mb-input">
+                <option>Advanced CI · 322a005426441b60</option>
+                <option>Bitrise #Core · 26e1bb55524221dd</option>
+                <option>Bitrise #steps · 864c2feb914c2615</option>
+              </select>
+            </div>
+
+            <!-- Local username -->
+            <div class="mb-field">
+              <div class="mb-field-label">
+                Local username override
+                <span class="hint">optional</span>
+              </div>
+              <input class="mb-input" type="text" value="zsolt.marta" placeholder="zsolt.marta" />
+              <div class="mb-field-help">
+                Tags this Mac's invocations in Insights so you can filter to your own.
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Healthcheck preview -->
+            <div class="group">
+              <div class="mb-section-title">Healthcheck</div>
+              <div class="mb-health-row">
+                <span class="dot ok"></span>
+                <div>
+                  <div class="name">CLI version</div>
+                  <div class="meta ok">1.34.2 · up to date</div>
+                </div>
+              </div>
+              <div class="mb-health-row">
+                <span class="dot warn"></span>
+                <div>
+                  <div class="name">Personal access token</div>
+                  <div class="meta warn">Pending — enter token to verify</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-divider"></div>
+
+            <!-- Actions -->
+            <div class="mb-actions">
+              <button class="mb-btn ghost">Skip for now</button>
+              <span class="spacer"></span>
+              <button class="mb-btn">Back</button>
+              <button class="mb-btn primary">Continue</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="legend-row">
+    <span><b>Green dot</b> — at least one tool active, all healthchecks pass.</span>
+    <span><b>Yellow dot</b> — setup in progress, CLI update available, or PAT expiring soon.</span>
+    <span><b>Red dot</b> — proxy crashed, PAT invalid, or CLI unreachable.</span>
+    <span><b>Hollow dot</b> — paused or signed out.</span>
+  </div>
+</div>
+
+</body>
+</html>

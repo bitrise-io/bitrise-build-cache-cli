@@ -43,7 +43,7 @@ const (
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
 	MsgInvocationFailed         = "Invocation failed ❌ after %s: %s"
-	MsgInvocationSaved          = "Invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/xcode/%s"
+	MsgInvocationSaved          = "Invocation saved. Visit 👉 https://app-staging.bitrise.io/build-cache/invocations/xcode/%s"
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"

@@ -13,7 +13,7 @@ const (
 	XcodeAnalyticsServiceEndpoint         = "https://xcode-analytics.services.bitrise.io"
 	MultiplatformAnalyticsServiceEndpoint = "https://multiplatform-analytics.services.bitrise.io"
 
-	BitriseWebsiteBaseURL = "https://app.bitrise.io"
+	BitriseWebsiteBaseURL = "https://app-staging.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
 	GradleRemoteBuildCachePluginDepVersion = "1.3.4"
