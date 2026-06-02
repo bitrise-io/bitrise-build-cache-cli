@@ -37,7 +37,7 @@ const MsgRNInvocationSaved = "React Native invocation saved. Visit 👉 %s"
 // session, but RN does not). Callers must only invoke this once the runner
 // has confirmed activation is complete and the workspace slug is set.
 func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
-	return fmt.Sprintf("https://app.bitrise.io/build-cache/%s/invocations/react-native/%s", workspaceSlug, invocationID)
+	return fmt.Sprintf("https://app-staging.bitrise.io/build-cache/%s/invocations/react-native/%s", workspaceSlug, invocationID)
 }
 
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
