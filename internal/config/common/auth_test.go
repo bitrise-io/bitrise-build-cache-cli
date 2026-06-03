@@ -3,11 +3,88 @@ package common
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
+
+type fakeAuthLoader struct {
+	creds keychain.Credentials
+	err   error
+}
+
+func (f fakeAuthLoader) Load() (keychain.Credentials, error) { return f.creds, f.err }
+
+func TestResolveAuthConfig_keychainHit(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, err := resolveAuthConfig(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "kc-tok", got.AuthToken, "keychain wins over env")
+	assert.Equal(t, "kc-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_keychainNotFound_fallsBackToEnv(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, err := resolveAuthConfig(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken)
+	assert.Equal(t, "env-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_keychainError_fallsBackToEnv(t *testing.T) {
+	// Any keychain error (e.g. no D-Bus on a headless box) should fall through,
+	// not propagate up. Env path is the back-compat safety net.
+	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, err := resolveAuthConfig(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken)
+}
+
+func TestResolveAuthConfig_keychainEmpty_fallsBackToEnv(t *testing.T) {
+	// Stored zero-value creds → not usable, fall through to env.
+	loader := fakeAuthLoader{creds: keychain.Credentials{}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, err := resolveAuthConfig(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken)
+}
+
+func TestResolveAuthConfig_keychainPartial_fallsBackToEnv(t *testing.T) {
+	// Stored token but no workspace ID (or vice versa) → incomplete, fall through.
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, err := resolveAuthConfig(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken)
+	assert.Equal(t, "env-ws", got.WorkspaceID)
+}
 
 func makeJWT(payload map[string]any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
