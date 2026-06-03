@@ -77,7 +77,7 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 		},
 	}
 
-	grpcServer := grpc.NewServer(
+	serverOpts := []grpc.ServerOption{
 		grpc.UnaryInterceptor(func(
 			ctx context.Context,
 			req any,
@@ -92,7 +92,14 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 
 			return handler(ctx, req)
 		}),
-	)
+	}
+
+	if spikeStatsHandlerEnabled() {
+		logger.Infof("[spike] BITRISE_BUILD_CACHE_SPIKE_STATS=1 — wiring stats.Handler for ACI-5040")
+		serverOpts = append(serverOpts, grpc.StatsHandler(newSpikeStatsHandler(logger)))
+	}
+
+	grpcServer := grpc.NewServer(serverOpts...)
 
 	llvmcas.RegisterCASDBServiceServer(grpcServer, proxy)
 	llvmkv.RegisterKeyValueDBServer(grpcServer, proxy)
