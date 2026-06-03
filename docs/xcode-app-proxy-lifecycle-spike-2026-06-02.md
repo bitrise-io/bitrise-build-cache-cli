@@ -210,9 +210,35 @@ Confidence: **high** for the common single-developer single-Xcode case. Lower fo
 
 ## Loose ends / follow-ups
 
-- **GUI env injection:** `launchctl setenv XCODE_XCCONFIG_FILE …` did not visibly reach the Xcode.app process in this session. Either Xcode caches env at first launch (and `launchctl setenv` only applies to *new* launchd children), or some other mechanism is involved. Worth a dedicated follow-up before E2 ships, because the whole user-facing flow depends on it.
 - **Xcode.app long-lived XCBBuildService:** scenarios 4 / 5 (idle hold / index-while-build) only make sense against a resident build service. Re-run once GUI injection works.
 - **`ProxySocketPath` is read from `config.json` only**, not env, when starting the proxy. If we want `start-proxy` to honor `BITRISE_XCELERATE_PROXY_SOCKET_PATH` (matching what `activate` does), `ReadConfig` should consult env as a fallback. Small fix; not blocking.
+
+## Global injection blocker for Xcode.app GUI (Xcode 26.5 / macOS 26)
+
+Spent additional time trying to find a Xcode.app GUI injection mechanism that's both **persistent** and **doesn't require modifying the customer's repo**. None of the three documented / undocumented paths work on this OS+Xcode combo:
+
+| Mechanism | Result |
+| --- | --- |
+| `launchctl setenv XCODE_XCCONFIG_FILE` (Aqua-session env, Apple-documented) | `launchctl getenv` returns the value, but Xcode.app's build pipeline never sees it. Resolved swiftc invocations show no `-cache-compile-job` flag, `xcactivitylog` shows no xcconfig reference. |
+| Direct env on the Xcode binary (`XCODE_XCCONFIG_FILE=… /Applications/Xcode.app/Contents/MacOS/Xcode &`) | Same — env reaches Xcode's process, but XCBBuildService (which actually drives the build) doesn't inherit. |
+| `defaults write com.apple.dt.Xcode IDEBuildOperationCustomBuildSettings -dict …` (undocumented) | Defaults write succeeds and persists, but `xcodebuild -showBuildSettings` never lists the keys. Xcode reads this defaults entry but doesn't merge it into the build-settings hierarchy. Phantom on Xcode 26.5. |
+
+Working paths today:
+- **Project base xcconfig** committed in the customer's repo (modifies `.xcodeproj`).
+- **`xcodebuild` CLI** with env set in the same shell (per-invocation).
+
+Implication for E2 ([ACI-5041](https://bitrise.atlassian.net/browse/ACI-5041)): the "one command on a customer's machine to enable Xcode.app cache globally" UX **cannot ship today**. We have to fall back to either:
+
+- Per-project repo modification (which the M3 repo-controlled config can drive — `.bitrise/build-cache.json` → CLI writes / amends the project's base xcconfig).
+- Wait for Apple to ship a global-injection mechanism in Xcode 27.
+
+## Bonus discovery — `COMPILATION_CACHE_ENABLE_CACHING` is the Xcode 26 master toggle
+
+While hunting for working injection paths, found that Xcode 26 introduced a **new top-level toggle**: `COMPILATION_CACHE_ENABLE_CACHING = YES`. Without it, the individual `COMPILATION_CACHE_ENABLE_PLUGIN` + `SWIFT_ENABLE_COMPILE_CACHE` + `CLANG_ENABLE_COMPILE_CACHE` keys are insufficient on their own in some configurations.
+
+Today our wrapper passes the 8 individual keys (from `internal/xcelerate/xcodeargs/CacheArgs`) but not this master toggle. It worked for the CLI path empirically because some implicit Xcode default has it on for the project. For safety, **E2's xcconfig should include `COMPILATION_CACHE_ENABLE_CACHING = YES`** as a 10th key. Worth also adding to `CacheArgs` for consistency between CLI and GUI paths.
+
+Documented at https://livsycode.com/best-practices/xcode-26-compilation-cache/ — Apple's own docs are sparse on this key.
 
 ## Reproduction
 
