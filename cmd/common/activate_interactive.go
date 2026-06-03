@@ -17,10 +17,12 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -30,7 +32,7 @@ var interactiveFlag bool
 // wizard injects into the synthesized envs map for downstream activation.
 const (
 	envWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID"
-	envAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN"
+	envAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN" //nolint:gosec // env-var key, not a credential
 )
 
 type interactiveTool string
@@ -39,6 +41,7 @@ const (
 	toolGradle interactiveTool = "gradle"
 	toolBazel  interactiveTool = "bazel"
 	toolXcode  interactiveTool = "xcode"
+	toolCcache interactiveTool = "ccache"
 )
 
 // prompter abstracts user input/output so the wizard is testable.
@@ -107,12 +110,7 @@ func runInteractiveSetup(ctx context.Context, p *prompter) error {
 		return err
 	}
 
-	workspaceID, err := promptRequiredLine(p, "Workspace ID")
-	if err != nil {
-		return err
-	}
-
-	authToken, err := promptRequiredSecret(p, "Auth token (input hidden)")
+	workspaceID, authToken, err := resolveCredentials(p, keychain.New())
 	if err != nil {
 		return err
 	}
@@ -133,9 +131,70 @@ func runInteractiveSetup(ctx context.Context, p *prompter) error {
 		return runInteractiveBazel(logger, envs, pushEnabled)
 	case toolXcode:
 		return runInteractiveXcode(ctx, logger, envs, pushEnabled)
+	case toolCcache:
+		return runInteractiveCcache(ctx, logger, envs, pushEnabled)
 	default:
 		return fmt.Errorf("unsupported tool: %s", tool)
 	}
+}
+
+// keychainStore is the slice of *keychain.Keychain the wizard depends on.
+// Exists so tests can inject a fake without touching the OS keychain.
+type keychainStore interface {
+	Load() (keychain.Credentials, error)
+	Save(creds keychain.Credentials) error
+}
+
+// resolveCredentials walks the user through getting workspace + auth token.
+// Three paths:
+//  1. Keychain already populated → confirm + reuse silently (no re-prompt).
+//  2. Env vars set but keychain empty → offer migration to keychain.
+//  3. Nothing set → prompt the user, then persist to keychain.
+func resolveCredentials(p *prompter, kc keychainStore) (string, string, error) {
+	creds, err := kc.Load()
+	if err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+		fmt.Fprintln(p.out, "Reusing credentials already stored in the OS keychain.")
+
+		return creds.WorkspaceID, creds.AuthToken, nil
+	}
+
+	envToken := os.Getenv(envAuthToken)
+	envWS := os.Getenv(envWorkspaceID)
+
+	if envToken != "" && envWS != "" {
+		fmt.Fprintln(p.out)
+		fmt.Fprintln(p.out, "Found BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID in env.")
+		fmt.Fprintln(p.out, "Importing them into the OS keychain so you can remove them from your shell rc files.")
+
+		if err := kc.Save(keychain.Credentials{AuthToken: envToken, WorkspaceID: envWS}); err != nil {
+			fmt.Fprintf(p.out, "Could not save to keychain (%v). Continuing with env values for this run only.\n", err)
+
+			return envWS, envToken, nil
+		}
+
+		fmt.Fprintln(p.out, "✅ Credentials saved to the OS keychain.")
+		fmt.Fprintln(p.out, "You can now remove BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID from your shell rc files.")
+
+		return envWS, envToken, nil
+	}
+
+	workspaceID, err := promptRequiredLine(p, "Workspace ID")
+	if err != nil {
+		return "", "", err
+	}
+
+	authToken, err := promptRequiredSecret(p, "Auth token (input hidden)")
+	if err != nil {
+		return "", "", err
+	}
+
+	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
+		fmt.Fprintf(p.out, "Could not save credentials to the OS keychain (%v). Continuing with values for this run only.\n", err)
+	} else {
+		fmt.Fprintln(p.out, "✅ Credentials saved to the OS keychain. Future CLI runs will pick them up automatically.")
+	}
+
+	return workspaceID, authToken, nil
 }
 
 // promptPushEnabled asks whether to enable cache push.
@@ -172,7 +231,7 @@ func promptPushEnabled(p *prompter) (bool, error) {
 }
 
 func promptTool(p *prompter) (interactiveTool, error) {
-	tools := []interactiveTool{toolGradle, toolBazel, toolXcode}
+	tools := []interactiveTool{toolGradle, toolBazel, toolXcode, toolCcache}
 
 	fmt.Fprintln(p.out, "Which build tool would you like to set up?")
 
@@ -310,6 +369,21 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")
+
+	return nil
+}
+
+func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
+	activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
+		PushEnabled:  pushEnabled,
+		DebugLogging: IsDebugLogMode,
+		Envs:         envs,
+		Logger:       logger,
+	})
+
+	if err := activator.Activate(ctx); err != nil {
+		return fmt.Errorf("activate Bitrise Build Cache for ccache: %w", err)
+	}
 
 	return nil
 }
