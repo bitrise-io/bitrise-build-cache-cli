@@ -70,7 +70,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	commandFunc func(string, ...string) (string, error),
 ) error {
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {
 		return fmt.Errorf("read auth config from environments: %w", err)
 	}

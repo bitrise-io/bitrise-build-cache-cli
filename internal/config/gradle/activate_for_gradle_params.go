@@ -78,7 +78,7 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	// Read auth config and metadata upfront
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+	authConfig, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
