@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common/mocks"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 )
 
 type noopExporter struct{}

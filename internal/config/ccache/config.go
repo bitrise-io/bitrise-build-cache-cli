@@ -7,8 +7,9 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 const (
@@ -38,14 +39,19 @@ type Params struct {
 }
 
 type Config struct {
-	LogFile            string                 `json:"logFile,omitempty"`
-	ErrLogFile         string                 `json:"errLogFile,omitempty"`
-	IPCEndpoint        string                 `json:"ipcEndpoint,omitempty"`
-	IdleTimeout        time.Duration          `json:"idleTimeout,omitempty"`
-	PushEnabled        bool                   `json:"pushEnabled"`
-	Enabled            bool                   `json:"enabled"`
-	BuildCacheEndpoint string                 `json:"buildCacheEndpoint,omitempty"`
-	AuthConfig         common.CacheAuthConfig `json:"authConfig,omitempty"`
+	LogFile            string        `json:"logFile,omitempty"`
+	ErrLogFile         string        `json:"errLogFile,omitempty"`
+	IPCEndpoint        string        `json:"ipcEndpoint,omitempty"`
+	IdleTimeout        time.Duration `json:"idleTimeout,omitempty"`
+	PushEnabled        bool          `json:"pushEnabled"`
+	Enabled            bool          `json:"enabled"`
+	DebugLogging       bool          `json:"debugLogging,omitempty"`
+	BuildCacheEndpoint string        `json:"buildCacheEndpoint,omitempty"`
+
+	// AuthConfig is populated at runtime from the multiplatform analytics
+	// config (single canonical source for auth credentials on disk). Not
+	// persisted in the ccache config JSON.
+	AuthConfig common.CacheAuthConfig `json:"-"`
 }
 
 func DirPath(osProxy utils.OsProxy) string {
@@ -84,11 +90,10 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 
 	ipcEndpoint := params.IPCSocketPathOverride
 	if ipcEndpoint == "" {
-		wd, err := osProxy.Getwd()
-		if err != nil {
-			wd = "."
+		ipcEndpoint = envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
+		if ipcEndpoint == "" {
+			ipcEndpoint = filepath.Join(osProxy.TempDir(), "ccache-ipc.sock")
 		}
-		ipcEndpoint = filepath.Join(wd, "ccache-ipc.sock")
 	}
 
 	buildCacheEndpoint := common.SelectCacheEndpointURL(params.BuildCacheEndpoint, envs)
@@ -131,6 +136,10 @@ func (config Config) Save(logger log.Logger, osProxy utils.OsProxy, encoderFacto
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
 	}
 
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync ccache config file: %w", err)
+	}
+
 	logger.TInfof("Config saved to: %s", configFilePath)
 
 	return nil
@@ -149,6 +158,15 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 	var config Config
 	if err := dec.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf(ErrFmtDecodeConfigFile, configFilePath, err)
+	}
+
+	// Auth credentials live in the multiplatform analytics config. Populate the
+	// in-memory AuthConfig from there so callers can keep using config.AuthConfig.
+	// Guard against an empty/decoded-but-unauthenticated multiplatform config —
+	// matches the xcelerate fallback so we don't silently wipe credentials when
+	// the file exists but carries no token.
+	if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
+		config.AuthConfig = mpCfg.AuthConfig
 	}
 
 	return config, nil

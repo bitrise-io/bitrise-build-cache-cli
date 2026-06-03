@@ -12,28 +12,26 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 type IpcServer struct {
-	listener            net.Listener
-	client              Client
-	logger              log.Logger
-	loggerFactory       LoggerFactory
-	onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64)
-	onShutdown          func(invocationID string, downloadBytes, uploadBytes int64)
-	idleTimer           *time.Timer
-	sessionState        *sessionState
-	config              ccacheconfig.Config
-	metadata            configcommon.CacheConfigMetadata
-	timerMutex          sync.Mutex
-	capabilitiesOnce    sync.Once
-	capabilitiesErr     error
-	reportOnce          sync.Once
-	activeInvocationID  string
-	activeInvocationMu  sync.Mutex
+	listener           net.Listener
+	client             Client
+	logger             log.Logger
+	loggerFactory      LoggerFactory
+	idleTimer          *time.Timer
+	sessionState       *sessionState
+	config             ccacheconfig.Config
+	metadata           configcommon.CacheConfigMetadata
+	timerMutex         sync.Mutex
+	capabilitiesOnce   sync.Once
+	capabilitiesErr    error
+	activeInvocationID string
+	activeParentID     string
+	activeInvocationMu sync.Mutex
 }
 
 func NewServer(
@@ -43,19 +41,15 @@ func NewServer(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	initialInvocationID string,
-	onNewInvocationPair func(prevInvocationID, parentID, childID string, downloadBytes, uploadBytes int64),
-	onShutdown func(invocationID string, downloadBytes, uploadBytes int64),
 ) (*IpcServer, error) {
 	return &IpcServer{
-		config:              config,
-		metadata:            metadata,
-		client:              client,
-		logger:              logger,
-		loggerFactory:       loggerFactory,
-		onNewInvocationPair: onNewInvocationPair,
-		onShutdown:          onShutdown,
-		sessionState:        newSessionState(),
-		activeInvocationID:  initialInvocationID,
+		config:             config,
+		metadata:           metadata,
+		client:             client,
+		logger:             logger,
+		loggerFactory:      loggerFactory,
+		sessionState:       newSessionState(),
+		activeInvocationID: initialInvocationID,
 	}, nil
 }
 
@@ -69,25 +63,12 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	s.listener = listener
 	defer s.listener.Close()
 
-	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint)
+	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint) // CI: asserted by cache-ccache-test workflow
 	s.resetIdleTimer(cancelFn)
 	go s.acceptLoop(cancellableCtx, cancelFn)
-	<-cancellableCtx.Done() // wait for context cancellation
-	s.logger.TInfof("Server shutting down")
+	<-cancellableCtx.Done()                 // wait for context cancellation
+	s.logger.TInfof("Server shutting down") // CI: asserted by cache-ccache-test workflow
 	s.listener.Close()
-
-	// If shutdown was triggered by idle timeout (not by a STOP request), fire the final report now.
-	// resetAndGet must be called inside the mutex so that bytes and activeInvocationID are captured
-	// atomically — a concurrent SetInvocationID goroutine must not be able to interleave between them.
-	s.activeInvocationMu.Lock()
-	dl, ul := s.sessionState.resetAndGet()
-	activeID := s.activeInvocationID
-	s.activeInvocationMu.Unlock()
-	s.reportOnce.Do(func() {
-		if s.onShutdown != nil {
-			s.onShutdown(activeID, dl, ul)
-		}
-	})
 
 	return nil
 }
@@ -144,14 +125,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		s.sessionState.updateWithResult(result)
 
 		if result.CallStats.method == CALL_METHOD_SET_INVOCATION_ID && result.Outcome == PROCESS_REQUEST_OK {
-			s.activeInvocationMu.Lock()
-			dl, ul := s.sessionState.resetAndGet()
-			prevID := s.activeInvocationID
-			s.activeInvocationID = result.InvocationChildID
-			s.activeInvocationMu.Unlock()
-			if s.onNewInvocationPair != nil {
-				s.onNewInvocationPair(prevID, result.InvocationParentID, result.InvocationChildID, dl, ul)
-			}
+			s.handleSetInvocationIDResult(result)
 		}
 
 		if result.CallStats.method == CALL_METHOD_GET_SESSION_STATS && result.Outcome == PROCESS_REQUEST_OK {
@@ -159,19 +133,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		}
 
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
-			s.activeInvocationMu.Lock()
-			dl, ul := s.sessionState.resetAndGet()
-			activeID := s.activeInvocationID
-			s.activeInvocationMu.Unlock()
-			s.reportOnce.Do(func() {
-				if s.onShutdown != nil {
-					s.onShutdown(activeID, dl, ul)
-				}
-			})
-			if err := protocol.WriteOK(conn); err != nil {
-				s.logger.TErrorf("[%s] Failed to write STOP response: %v", conID, err)
-			}
-			cancelFn()
+			s.handleStopResult(conn, conID, cancelFn)
 
 			return
 		}
@@ -190,13 +152,34 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 	}
 }
 
+func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
+	s.activeInvocationMu.Lock()
+	isDuplicate := result.InvocationChildID == s.activeInvocationID
+	if !isDuplicate {
+		s.sessionState.resetAndGet()
+		s.activeInvocationID = result.InvocationChildID
+		s.activeParentID = result.InvocationParentID
+	}
+	s.activeInvocationMu.Unlock()
+}
+
+func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn context.CancelFunc) {
+	if err := protocol.WriteOK(conn); err != nil {
+		s.logger.TErrorf("[%s] Failed to write STOP response: %v", conID, err)
+	}
+
+	cancelFn()
+}
+
 func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	s.activeInvocationMu.Lock()
 	dl := s.sessionState.downloadBytes.Load()
 	ul := s.sessionState.uploadBytes.Load()
+	invocationID := s.activeInvocationID
+	parentID := s.activeParentID
 	s.activeInvocationMu.Unlock()
 
-	if err := protocol.WriteSessionStats(conn, dl, ul); err != nil {
+	if err := protocol.WriteSessionStats(conn, dl, ul, invocationID, parentID); err != nil {
 		s.logger.TErrorf("[%s] Failed to write session stats response: %v", conID, err)
 	}
 }

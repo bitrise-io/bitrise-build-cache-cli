@@ -9,7 +9,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/stringmerge"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/stringmerge"
 )
 
 // EnvExporter exports environment variables to the current process and CI-specific mechanisms.

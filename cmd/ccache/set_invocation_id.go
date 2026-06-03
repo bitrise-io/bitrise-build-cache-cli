@@ -5,9 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -23,17 +21,15 @@ var setInvocationIDCmd = &cobra.Command{
 	Short:        "Send a parent→child invocation ID pair to the running storage helper",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		socketPath := setInvocationIDSocketPath
-		if socketPath == "" {
-			config, err := ccacheconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-			if err != nil {
-				return fmt.Errorf("read ccache config (use --socket to override): %w", err)
-			}
-			socketPath = config.IPCEndpoint
+		helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
+			SocketPath: setInvocationIDSocketPath,
+		})
+		if err != nil {
+			return fmt.Errorf("create storage helper: %w", err)
 		}
 
-		if err := ccache.SendInvocationID(cmd.Context(), socketPath, setInvocationIDParentID, setInvocationIDChildID); err != nil {
-			return fmt.Errorf("send invocation ID: %w", err)
+		if err := helper.SetInvocationID(cmd.Context(), setInvocationIDParentID, setInvocationIDChildID); err != nil {
+			return fmt.Errorf("set invocation ID: %w", err)
 		}
 
 		return nil

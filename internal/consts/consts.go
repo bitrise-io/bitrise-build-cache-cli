@@ -10,16 +10,16 @@ const (
 	// More info: https://github.com/bitrise-io/build-prebooting-deployments/blob/production/preboot-reconciler/startup_script_extension_macos_bitvirt.sh#L72
 	BitriseAccelerate = "grpcs://bitrise-accelerate.services.bitrise.io"
 
-	AnalyticsServiceEndpoint       = "https://xcode-analytics.services.bitrise.io"
-	CcacheAnalyticsServiceEndpoint = "https://multiplatform-analytics.services.bitrise.io"
+	XcodeAnalyticsServiceEndpoint         = "https://xcode-analytics.services.bitrise.io"
+	MultiplatformAnalyticsServiceEndpoint = "https://multiplatform-analytics.services.bitrise.io"
 
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.2.28"
+	GradleRemoteBuildCachePluginDepVersion = "1.3.4"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "2.6.0"
+	GradleAnalyticsPluginDepVersion = "2.7.4"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsPort             = 443
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"

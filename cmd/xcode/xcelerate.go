@@ -3,7 +3,7 @@ package xcode
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 )
 
 var xcelerateCommand = &cobra.Command{ //nolint:gochecknoglobals

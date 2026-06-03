@@ -1,4 +1,4 @@
-module github.com/bitrise-io/bitrise-build-cache-cli
+module github.com/bitrise-io/bitrise-build-cache-cli/v2
 
 go 1.24.0
 
@@ -6,8 +6,7 @@ require (
 	cloud.google.com/go/longrunning v0.8.0
 	github.com/bazelbuild/remote-apis v0.0.0-20260331222004-becdd8f9ff81
 	github.com/beevik/etree v1.6.0
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.49
-	github.com/bitrise-io/go-utils v1.0.15
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.50
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.34
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gofrs/uuid/v5 v5.4.0
@@ -21,13 +20,14 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/blake3 v0.2.4
 	google.golang.org/genproto/googleapis/api v0.0.0-20260203192932-546029d2fa20
-	google.golang.org/genproto/googleapis/bytestream v0.0.0-20240822170219-fc7c04adadcd
+	google.golang.org/genproto/googleapis/bytestream v0.0.0-20251103181224-f26f9409b101
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260203192932-546029d2fa20
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 )
 
 require (
+	github.com/bitrise-io/go-utils v1.0.13 // indirect
 	github.com/bitrise-io/got v0.0.0-20240902113940-25f6469d1456 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -52,7 +52,7 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

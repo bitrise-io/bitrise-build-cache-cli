@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 // Invocation is the analytics payload for a run command, sent for every execution.
@@ -24,6 +24,7 @@ type Invocation struct {
 	Command              string            `json:"command"`
 	FullCommand          string            `json:"fullCommand"`
 	DurationMs           int64             `json:"durationMs"`
+	HitRate              float32           `json:"hitRate"`
 	Success              bool              `json:"success"`
 	Error                string            `json:"error"`
 	WorkflowName         string            `json:"workflowName"`
@@ -58,6 +59,7 @@ type InvocationRunStats struct {
 	Duration       time.Duration
 	Command        string
 	FullCommand    string
+	HitRate        float32
 	Success        bool
 	Error          error
 	BuildTool      string
@@ -87,6 +89,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		Command:              runStats.Command,
 		FullCommand:          runStats.FullCommand,
 		DurationMs:           runStats.Duration.Milliseconds(),
+		HitRate:              runStats.HitRate,
 		Success:              runStats.Success,
 		Error:                errorStr,
 		WorkflowName:         commonMetadata.BitriseWorkflowName,
@@ -114,5 +117,5 @@ func (c *Client) PutInvocation(inv Invocation) error {
 
 // PutInvocationRelation registers a parent→child invocation relationship with the analytics backend.
 func (c *Client) PutInvocationRelation(rel InvocationRelation) error {
-	return c.Put(fmt.Sprintf("/invocations/%s/children/%s", rel.ParentInvocationID, rel.ChildInvocationID), rel)
+	return c.Put(fmt.Sprintf("/v1/invocations/%s/children/%s", rel.ParentInvocationID, rel.ChildInvocationID), rel)
 }

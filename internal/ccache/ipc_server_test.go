@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
@@ -20,8 +20,6 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 		mockLogger,
 		nil,
 		"my-initial-id",
-		nil,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -30,6 +28,45 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 	server.activeInvocationMu.Unlock()
 
 	assert.Equal(t, "my-initial-id", got)
+}
+
+func Test_handleSetInvocationIDResult(t *testing.T) {
+	t.Run("updates active ID and resets stats on new invocation", func(t *testing.T) {
+		s := &IpcServer{sessionState: newSessionState()}
+		s.sessionState.downloadBytes.Store(100)
+		s.activeInvocationID = "old-id"
+
+		s.handleSetInvocationIDResult(processResult{InvocationParentID: "parent-1", InvocationChildID: "new-id"})
+
+		s.activeInvocationMu.Lock()
+		gotID := s.activeInvocationID
+		gotParentID := s.activeParentID
+		s.activeInvocationMu.Unlock()
+
+		assert.Equal(t, "new-id", gotID)
+		assert.Equal(t, "parent-1", gotParentID)
+		dl, _ := s.SessionBytes()
+		assert.Equal(t, int64(0), dl, "stats should be reset on new invocation")
+	})
+
+	t.Run("duplicate invocation ID does not reset stats or change active ID", func(t *testing.T) {
+		s := &IpcServer{sessionState: newSessionState()}
+		s.sessionState.downloadBytes.Store(200)
+		s.activeInvocationID = "same-id"
+		s.activeParentID = "parent-orig"
+
+		s.handleSetInvocationIDResult(processResult{InvocationParentID: "parent-new", InvocationChildID: "same-id"})
+
+		s.activeInvocationMu.Lock()
+		gotID := s.activeInvocationID
+		gotParentID := s.activeParentID
+		s.activeInvocationMu.Unlock()
+
+		assert.Equal(t, "same-id", gotID)
+		assert.Equal(t, "parent-orig", gotParentID, "parent ID should not change for duplicate invocation ID")
+		dl, _ := s.SessionBytes()
+		assert.Equal(t, int64(200), dl, "stats should not be reset for duplicate invocation ID")
+	})
 }
 
 func Test_IpcServer_SessionBytes(t *testing.T) {

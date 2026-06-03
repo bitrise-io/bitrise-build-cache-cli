@@ -16,12 +16,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/hash"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/slicebuf"
-	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/cas"
-	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/slicebuf"
+	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/cas"
+	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/session"
 )
 
 var (

@@ -7,10 +7,10 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/kv_storage"
 )
 
 const (

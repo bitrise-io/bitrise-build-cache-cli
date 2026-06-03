@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/ccache"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 // connStub implements io.ReadWriter using separate read/write buffers.
@@ -349,6 +349,23 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		assert.Equal(t, "my-app", changeSessionCalls[0].appSlug)
 		assert.Equal(t, "my-build", changeSessionCalls[0].buildSlug)
 		assert.Equal(t, "my-step", changeSessionCalls[0].stepID)
+	})
+
+	t.Run("HEALTH_CHECK returns OK", func(t *testing.T) {
+		client := &ClientMock{}
+
+		conn := &connStub{
+			r: bytes.NewBuffer([]byte{protocol.RequestHealthCheck}),
+			w: &bytes.Buffer{},
+		}
+
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps)
+		result := proc.processRequest(context.Background())
+
+		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
+		resp := conn.w.Bytes()
+		require.NotEmpty(t, resp)
+		assert.Equal(t, byte(protocol.ResponseOK), resp[0])
 	})
 
 	t.Run("context cancellation while waiting for semaphore", func(t *testing.T) {

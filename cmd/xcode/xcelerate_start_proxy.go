@@ -13,13 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/proxy"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/kv_storage"
 )
 
 const (

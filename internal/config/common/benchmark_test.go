@@ -193,9 +193,9 @@ func TestWriteBenchmarkPhaseFile(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 
-		WriteBenchmarkPhaseFile("baseline", logger)
+		WriteBenchmarkPhaseFile(BuildToolGradle, "baseline", logger)
 
-		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-gradle.json")
 		assert.FileExists(t, filePath)
 
 		data, err := os.ReadFile(filePath)
@@ -210,16 +210,39 @@ func TestWriteBenchmarkPhaseFile(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 
-		WriteBenchmarkPhaseFile("baseline", logger)
-		WriteBenchmarkPhaseFile("warmup", logger)
+		WriteBenchmarkPhaseFile(BuildToolGradle, "baseline", logger)
+		WriteBenchmarkPhaseFile(BuildToolGradle, "warmup", logger)
 
-		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase.json")
+		filePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-gradle.json")
 		data, err := os.ReadFile(filePath)
 		require.NoError(t, err)
 
 		var result BenchmarkPhaseFile
 		require.NoError(t, json.Unmarshal(data, &result))
 		assert.Equal(t, "warmup", result.Phase)
+	})
+
+	t.Run("different tools write to separate files", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteBenchmarkPhaseFile(BuildToolGradle, "baseline", logger)
+		WriteBenchmarkPhaseFile(BuildToolXcode, "warmup", logger)
+
+		gradlePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-gradle.json")
+		xcodePath := filepath.Join(home, ".local", "state", "xcelerate", "benchmark", "benchmark-phase-xcode.json")
+
+		gradleData, err := os.ReadFile(gradlePath)
+		require.NoError(t, err)
+		var gradleResult BenchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(gradleData, &gradleResult))
+		assert.Equal(t, "baseline", gradleResult.Phase)
+
+		xcodeData, err := os.ReadFile(xcodePath)
+		require.NoError(t, err)
+		var xcodeResult BenchmarkPhaseFile
+		require.NoError(t, json.Unmarshal(xcodeData, &xcodeResult))
+		assert.Equal(t, "warmup", xcodeResult.Phase)
 	})
 }
 
@@ -230,9 +253,9 @@ func TestReadBenchmarkPhaseFile(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 
-		WriteBenchmarkPhaseFile("established", logger)
+		WriteBenchmarkPhaseFile(BuildToolXcode, "established", logger)
 
-		phase := ReadBenchmarkPhaseFile(logger)
+		phase := ReadBenchmarkPhaseFile(BuildToolXcode, logger)
 		assert.Equal(t, "established", phase)
 	})
 
@@ -240,7 +263,7 @@ func TestReadBenchmarkPhaseFile(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 
-		phase := ReadBenchmarkPhaseFile(logger)
+		phase := ReadBenchmarkPhaseFile(BuildToolXcode, logger)
 		assert.Empty(t, phase)
 	})
 
@@ -250,9 +273,26 @@ func TestReadBenchmarkPhaseFile(t *testing.T) {
 
 		dir := filepath.Join(home, ".local", "state", "xcelerate", "benchmark")
 		require.NoError(t, os.MkdirAll(dir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "benchmark-phase.json"), []byte("not json"), 0o644)) //nolint:mnd,gosec
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "benchmark-phase-xcode.json"), []byte("not json"), 0o644)) //nolint:mnd,gosec
 
-		phase := ReadBenchmarkPhaseFile(logger)
+		phase := ReadBenchmarkPhaseFile(BuildToolXcode, logger)
 		assert.Empty(t, phase)
 	})
+
+	t.Run("reads correct tool's phase independently", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		WriteBenchmarkPhaseFile(BuildToolGradle, "baseline", logger)
+		WriteBenchmarkPhaseFile(BuildToolXcode, "warmup", logger)
+
+		assert.Equal(t, "baseline", ReadBenchmarkPhaseFile(BuildToolGradle, logger))
+		assert.Equal(t, "warmup", ReadBenchmarkPhaseFile(BuildToolXcode, logger))
+	})
+}
+
+func TestBenchmarkPhaseEnvVar(t *testing.T) {
+	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE", BenchmarkPhaseEnvVar(BuildToolGradle))
+	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE", BenchmarkPhaseEnvVar(BuildToolXcode))
+	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL", BenchmarkPhaseEnvVar(BuildToolBazel))
 }

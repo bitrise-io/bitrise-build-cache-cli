@@ -14,11 +14,11 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/proxy/mocks"
-	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/cas"
-	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/proxy/mocks"
+	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/cas"
+	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/kv"
 )
 
 func Test_Proxy_PushDisabled(t *testing.T) {

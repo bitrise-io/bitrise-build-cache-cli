@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
 )
 
 func Test_activateGradleCmdFn(t *testing.T) {

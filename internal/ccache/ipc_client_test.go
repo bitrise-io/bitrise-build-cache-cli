@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
 )
 
 // shortTempSocket creates a Unix socket path short enough for macOS (< 104 chars).
@@ -189,5 +189,121 @@ func Test_SendInvocationID(t *testing.T) {
 
 		serverErr := <-errCh
 		assert.NoError(t, serverErr)
+	})
+}
+
+func Test_SendHealthCheck(t *testing.T) {
+	t.Run("success: server writes greeting, reads request, writes OK", func(t *testing.T) {
+		socketPath := shortTempSocket(t, "hc.sock")
+		listener, err := net.Listen("unix", socketPath)
+		require.NoError(t, err)
+		defer listener.Close()
+
+		errCh := make(chan error, 1)
+		go func() {
+			conn, accept := listener.Accept()
+			if accept != nil {
+				errCh <- accept
+				return
+			}
+			defer conn.Close()
+
+			if writeErr := protocol.WriteGreeting(conn); writeErr != nil {
+				errCh <- writeErr
+				return
+			}
+
+			reqType, readErr := protocol.ReadByte(conn)
+			if readErr != nil {
+				errCh <- readErr
+				return
+			}
+			if reqType != protocol.RequestHealthCheck {
+				errCh <- nil
+				return
+			}
+
+			errCh <- protocol.WriteOK(conn)
+		}()
+
+		err = SendHealthCheck(context.Background(), socketPath)
+		assert.NoError(t, err)
+		assert.NoError(t, <-errCh)
+	})
+
+	t.Run("connection failure: nonexistent socket returns error", func(t *testing.T) {
+		socketPath := shortTempSocket(t, "nx-hc.sock")
+
+		err := SendHealthCheck(context.Background(), socketPath)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "connect to ccache socket")
+	})
+
+	t.Run("server error response returns error", func(t *testing.T) {
+		socketPath := shortTempSocket(t, "err-hc.sock")
+		listener, err := net.Listen("unix", socketPath)
+		require.NoError(t, err)
+		defer listener.Close()
+
+		errCh := make(chan error, 1)
+		go func() {
+			conn, accept := listener.Accept()
+			if accept != nil {
+				errCh <- accept
+				return
+			}
+			defer conn.Close()
+
+			if writeErr := protocol.WriteGreeting(conn); writeErr != nil {
+				errCh <- writeErr
+				return
+			}
+
+			if _, readErr := protocol.ReadByte(conn); readErr != nil {
+				errCh <- readErr
+				return
+			}
+
+			errCh <- protocol.WriteErr(conn, "boom")
+		}()
+
+		err = SendHealthCheck(context.Background(), socketPath)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "server error: boom")
+		assert.NoError(t, <-errCh)
+	})
+
+	t.Run("unexpected response byte returns error", func(t *testing.T) {
+		socketPath := shortTempSocket(t, "ux-hc.sock")
+		listener, err := net.Listen("unix", socketPath)
+		require.NoError(t, err)
+		defer listener.Close()
+
+		errCh := make(chan error, 1)
+		go func() {
+			conn, accept := listener.Accept()
+			if accept != nil {
+				errCh <- accept
+				return
+			}
+			defer conn.Close()
+
+			if writeErr := protocol.WriteGreeting(conn); writeErr != nil {
+				errCh <- writeErr
+				return
+			}
+
+			if _, readErr := protocol.ReadByte(conn); readErr != nil {
+				errCh <- readErr
+				return
+			}
+
+			errCh <- protocol.WriteByte(conn, 0xFF)
+		}()
+
+		err = SendHealthCheck(context.Background(), socketPath)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected response")
+		assert.NoError(t, <-errCh)
 	})
 }

@@ -39,10 +39,12 @@ func (c *Client) Put(path string, payload any) error {
 	requestURL := c.baseURL + path
 	c.logger.Debugf("HTTP PUT: %s", requestURL)
 
-	data, err := json.Marshal(payload)
+	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
 	}
+
+	c.logger.Debugf("Request body:\n%s", data)
 
 	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, data)
 	if err != nil {
@@ -58,18 +60,16 @@ func (c *Client) Put(path string, payload any) error {
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+
+	c.logger.Debugf("Response: %d %s", resp.StatusCode, body)
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return unwrapError(resp)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}
 
 	return nil
-}
-
-func unwrapError(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
-	}
-
-	return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 }

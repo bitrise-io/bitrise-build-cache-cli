@@ -3,7 +3,7 @@ package common
 import (
 	"slices"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 )
 
 const datacenterEnvKey = "BITRISE_DEN_VM_DATACENTER"

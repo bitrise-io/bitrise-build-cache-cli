@@ -3,7 +3,7 @@ package reactnative
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 )
 
 //nolint:gochecknoglobals

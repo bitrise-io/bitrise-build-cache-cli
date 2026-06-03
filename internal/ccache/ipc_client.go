@@ -6,13 +6,21 @@ import (
 	"net"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/ccache/protocol"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
 )
 
 const (
 	defaultDialTimeout = 2 * time.Second
 	isListeningTimeout = 100 * time.Millisecond
 )
+
+// SessionStats holds the stats returned by a GetSessionStats IPC call.
+type SessionStats struct {
+	DownloadedBytes int64
+	UploadedBytes   int64
+	InvocationID    string
+	ParentID        string
+}
 
 // IsListening returns true if a process is actively listening on the given Unix socket path.
 // It reads the server greeting before closing so the server sees a clean EOF rather than a broken pipe.
@@ -65,42 +73,81 @@ func SendStop(ctx context.Context, socketPath string) error {
 }
 
 // SendGetSessionStats connects to the ccache storage helper and requests the current
-// accumulated downloaded and uploaded byte counts for the active session.
-// Returns (0, 0, nil) if the helper is not running.
-func SendGetSessionStats(ctx context.Context, socketPath string) (int64, int64, error) {
+// accumulated downloaded and uploaded byte counts for the active session, along with
+// the active invocation ID and parent invocation ID.
+func SendGetSessionStats(ctx context.Context, socketPath string) (SessionStats, error) {
 	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
-		return 0, 0, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return SessionStats{}, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
 	}
 	defer conn.Close()
 
 	if err := protocol.ReadGreeting(conn); err != nil {
-		return 0, 0, fmt.Errorf("read greeting: %w", err)
+		return SessionStats{}, fmt.Errorf("read greeting: %w", err)
 	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestGetSessionStats); err != nil {
-		return 0, 0, fmt.Errorf("send get-session-stats request: %w", err)
+		return SessionStats{}, fmt.Errorf("send get-session-stats request: %w", err)
 	}
 
 	resp, err := protocol.ReadByte(conn)
 	if err != nil {
-		return 0, 0, fmt.Errorf("read response: %w", err)
+		return SessionStats{}, fmt.Errorf("read response: %w", err)
 	}
 
 	switch resp {
 	case protocol.ResponseOK:
-		dl, ul, err := protocol.ReadSessionStats(conn)
+		dl, ul, invocationID, parentID, err := protocol.ReadSessionStats(conn)
 		if err != nil {
-			return 0, 0, fmt.Errorf("read session stats: %w", err)
+			return SessionStats{}, fmt.Errorf("read session stats: %w", err)
 		}
 
-		return dl, ul, nil
+		return SessionStats{
+			DownloadedBytes: dl,
+			UploadedBytes:   ul,
+			InvocationID:    invocationID,
+			ParentID:        parentID,
+		}, nil
 	case protocol.ResponseErr:
 		msg, _ := protocol.ReadMsg(conn)
 
-		return 0, 0, fmt.Errorf("server error: %s", msg)
+		return SessionStats{}, fmt.Errorf("server error: %s", msg)
 	default:
-		return 0, 0, fmt.Errorf("unexpected response: 0x%02x", resp)
+		return SessionStats{}, fmt.Errorf("unexpected response: 0x%02x", resp)
+	}
+}
+
+// SendHealthCheck connects to the ccache storage helper and sends a health-check request.
+// Returns nil if the server is up and responding, or an error if unreachable or unhealthy.
+func SendHealthCheck(ctx context.Context, socketPath string) error {
+	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+	}
+	defer conn.Close()
+
+	if err := protocol.ReadGreeting(conn); err != nil {
+		return fmt.Errorf("read greeting: %w", err)
+	}
+
+	if err := protocol.WriteByte(conn, protocol.RequestHealthCheck); err != nil {
+		return fmt.Errorf("send health-check request: %w", err)
+	}
+
+	resp, err := protocol.ReadByte(conn)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	switch resp {
+	case protocol.ResponseOK:
+		return nil
+	case protocol.ResponseErr:
+		msg, _ := protocol.ReadMsg(conn)
+
+		return fmt.Errorf("server error: %s", msg)
+	default:
+		return fmt.Errorf("unexpected response: 0x%02x", resp)
 	}
 }
 

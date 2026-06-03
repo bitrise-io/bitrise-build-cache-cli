@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc/codes"
@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
 )
 
 type PutParams struct {

@@ -1,0 +1,249 @@
+//go:build unit
+
+package mirrors_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle/mirrors"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+)
+
+func TestActivate(t *testing.T) {
+	mirrorByFlag := func(flag string) mirrors.RepoMirror {
+		for _, m := range mirrors.KnownMirrors {
+			if m.FlagName == flag {
+				return m
+			}
+		}
+		t.Fatalf("mirror with flag %q not found", flag)
+
+		return mirrors.RepoMirror{}
+	}
+
+	allMirrors := mirrors.KnownMirrors
+	centralOnly := []mirrors.RepoMirror{mirrorByFlag("mavencentral")}
+	googleOnly := []mirrors.RepoMirror{mirrorByFlag("google")}
+
+	tests := []struct {
+		name             string
+		params           mirrors.Params
+		expectCreated    bool
+		expectContains   []string
+		expectNotContain []string
+	}{
+		{
+			name:          "disabled",
+			params:        mirrors.Params{Enabled: false, Datacenter: "AMS1", Mirrors: allMirrors},
+			expectCreated: false,
+		},
+		{
+			name:          "enabled but no datacenter",
+			params:        mirrors.Params{Enabled: true, Datacenter: "", Mirrors: allMirrors},
+			expectCreated: false,
+		},
+		{
+			name:          "enabled but no mirrors selected",
+			params:        mirrors.Params{Enabled: true, Datacenter: "AMS1", Mirrors: nil},
+			expectCreated: false,
+		},
+		{
+			name:          "unsupported datacenter",
+			params:        mirrors.Params{Enabled: true, Datacenter: "ATL1", Mirrors: allMirrors},
+			expectCreated: false,
+		},
+		{
+			name:          "AMS1 all mirrors",
+			params:        mirrors.Params{Enabled: true, Datacenter: "AMS1", Mirrors: allMirrors},
+			expectCreated: true,
+			expectContains: []string{
+				"https://repository-manager.services.bitrise.io:8090/maven/central",
+				"https://repository-manager.services.bitrise.io:8090/maven/google",
+				"https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins",
+				`r.getUrl().toString().trimEnd('/').equals("https://plugins.gradle.org/m2")`,
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
+				`if (System.getenv("BITRISE_MAVENCENTRAL_PROXY_ENABLED") == "false") {`,
+				`log("BITRISE_MAVENCENTRAL_PROXY_ENABLED=false, skipping Bitrise Gradle mirror activation")`,
+				`log("beforeSettings fired,`,
+				`log("settingsEvaluated fired,`,
+				`if (getParent() == null) {
+                log("beforeProject(${getPath()}) fired,`,
+				`if (getParent() == null) {
+                log("afterProject(${getPath()}) fired,`,
+				`if (getProject().getParent() == null) {
+                    log("setting robolectric.dependency.repo.url=`,
+				`log("prepending pluginManagement mirror https://repository-manager.services.bitrise.io:8090/maven/apache-central")`,
+				`log("prepending pluginManagement mirror https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins")`,
+				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
+				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
+				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
+			},
+			expectNotContain: []string{
+				"https://repository-manager.services.bitrise.io:8090/maven/jitpack",
+				`"https://jitpack.io"`,
+				"mirrorBaseUrl",
+				"java.time.Instant.now()",
+			},
+		},
+		{
+			name:          "IAD1 mavencentral only",
+			params:        mirrors.Params{Enabled: true, Datacenter: "IAD1", Mirrors: centralOnly},
+			expectCreated: true,
+			expectContains: []string{
+				"https://repository-manager.services.bitrise.io:8090/maven/central",
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
+			},
+			expectNotContain: []string{
+				"https://repository-manager.services.bitrise.io:8090/maven/google",
+				"mirrorBaseUrl",
+			},
+		},
+		{
+			name:          "ORD1 google only",
+			params:        mirrors.Params{Enabled: true, Datacenter: "ORD1", Mirrors: googleOnly},
+			expectCreated: true,
+			expectContains: []string{
+				"https://repository-manager.services.bitrise.io:8090/maven/google",
+				`"[Bitrise Gradle Mirrors] [$ts] $message"`,
+			},
+			expectNotContain: []string{
+				"https://repository-manager.services.bitrise.io:8090/maven/central",
+				"mirrorBaseUrl",
+				// google is not flagged ApplyToPluginManagement, so no PM mirror prepend log
+				"prepending pluginManagement mirror",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			tt.params.GradleHome = tmpDir
+
+			err := mirrors.Activate(log.NewLogger(), utils.DefaultOsProxy{}, tt.params)
+			require.NoError(t, err)
+
+			initFile := filepath.Join(tmpDir, "init.d", mirrors.InitFileName)
+
+			if !tt.expectCreated {
+				_, statErr := os.Stat(initFile)
+				assert.True(t, os.IsNotExist(statErr), "init script should not be created")
+
+				return
+			}
+
+			content, readErr := os.ReadFile(initFile)
+			require.NoError(t, readErr, "init script should be created")
+
+			for _, s := range tt.expectContains {
+				assert.Contains(t, string(content), s)
+			}
+
+			for _, s := range tt.expectNotContain {
+				assert.NotContains(t, string(content), s)
+			}
+
+			assert.NotContains(t, string(content), "{{ .MirrorURL }}")
+			assert.NotContains(t, string(content), "{{ .GradleMatch }}")
+		})
+	}
+}
+
+func TestFilterByFlagNames(t *testing.T) {
+	t.Run("empty returns all", func(t *testing.T) {
+		got := mirrors.FilterByFlagNames(nil)
+		assert.Equal(t, mirrors.KnownMirrors, got)
+	})
+
+	t.Run("preserves KnownMirrors order", func(t *testing.T) {
+		got := mirrors.FilterByFlagNames([]string{"google", "mavencentral"})
+		require.Len(t, got, 2)
+		assert.Equal(t, "mavencentral", got[0].FlagName)
+		assert.Equal(t, "google", got[1].FlagName)
+	})
+
+	t.Run("ignores unknown names", func(t *testing.T) {
+		got := mirrors.FilterByFlagNames([]string{"mavencentral", "unknown"})
+		require.Len(t, got, 1)
+		assert.Equal(t, "mavencentral", got[0].FlagName)
+	})
+}
+
+type recordingExporter struct {
+	exported map[string]string
+}
+
+func (r *recordingExporter) Export(key, value string) {
+	if r.exported == nil {
+		r.exported = map[string]string{}
+	}
+	r.exported[key] = value
+}
+
+func TestActivate_ExportsMirrorURLs(t *testing.T) {
+	exp := &recordingExporter{}
+	tmpDir := t.TempDir()
+
+	err := mirrors.Activate(log.NewLogger(), utils.DefaultOsProxy{}, mirrors.Params{
+		GradleHome: tmpDir,
+		Mirrors:    mirrors.KnownMirrors,
+		Datacenter: "AMS1",
+		Enabled:    true,
+		Exporter:   exp,
+	})
+	require.NoError(t, err)
+
+	for _, m := range mirrors.KnownMirrors {
+		key := mirrors.MirrorURLEnvKeyPrefix + m.TemplateID
+		want := "https://repository-manager.services.bitrise.io:8090/maven/" + m.URLSegment
+		assert.Equal(t, want, exp.exported[key], "exported value for %s", key)
+	}
+}
+
+func TestActivate_NoExportWhenSkipped(t *testing.T) {
+	exp := &recordingExporter{}
+	tmpDir := t.TempDir()
+
+	err := mirrors.Activate(log.NewLogger(), utils.DefaultOsProxy{}, mirrors.Params{
+		GradleHome: tmpDir,
+		Mirrors:    mirrors.KnownMirrors,
+		Datacenter: "ATL1", // unsupported region
+		Enabled:    true,
+		Exporter:   exp,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, exp.exported, "no env vars should be exported when activation skips")
+}
+
+func TestDatacenterToRegion(t *testing.T) {
+	cases := map[string]string{
+		"AMS1": "ams",
+		"IAD1": "iad",
+		"ORD1": "ord",
+		"":     "",
+	}
+
+	for in, want := range cases {
+		assert.Equal(t, want, mirrors.DatacenterToRegion(in), "input=%q", in)
+	}
+}
+
+func TestIsSupportedRegion(t *testing.T) {
+	cases := map[string]bool{
+		"iad": true,
+		"ord": true,
+		"ams": true,
+		"atl": false,
+		"":    false,
+	}
+
+	for in, want := range cases {
+		assert.Equal(t, want, mirrors.IsSupportedRegion(in), "input=%q", in)
+	}
+}

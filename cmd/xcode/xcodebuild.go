@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bitrise-io/go-utils/retry"
 	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
@@ -22,13 +22,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/xcodeargs"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/llvm/session"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/session"
 )
 
 const (
@@ -79,6 +81,12 @@ TBD`,
 	DisableFlagParsing: true, // pass all args to xcodebuild
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
 		invocationID := uuid.New().String()
+
+		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
+			fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (parent: %s)\n", invocationID, parentID)
+		} else {
+			fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (no parent)\n", invocationID)
+		}
 
 		decoder := utils.DefaultDecoderFactory{}
 		osProxy := utils.DefaultOsProxy{}
@@ -167,17 +175,17 @@ TBD`,
 
 		xcodeRunner := xcodeargs.NewRunner(logger, config, logFile)
 
-		if runStats := XcodebuildCmdFn(
-			cobraCmd.Context(),
-			invocationID,
-			logger,
-			cacheLogger,
-			xcodeRunner,
-			proxySessionClient,
-			config,
-			metadata,
-			xcodeArgs,
-		); runStats.Error != nil {
+		runner := &XcodebuildRunner{
+			Config:             config,
+			Metadata:           metadata,
+			InvocationID:       invocationID,
+			Logger:             logger,
+			CacheLogger:        cacheLogger,
+			XcodeRunner:        xcodeRunner,
+			ProxySessionClient: proxySessionClient,
+			XcodeArgs:          xcodeArgs,
+		}
+		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
 			os.Exit(runStats.ExitCode)
 		}
@@ -235,91 +243,195 @@ func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Wri
 	return w
 }
 
-// nolint:nestif
-func XcodebuildCmdFn(
-	ctx context.Context,
-	invocationID string,
-	logger log.Logger,
-	cacheLogger log.Logger,
-	xcodeRunner XcodeRunner,
-	proxySessionClient session.SessionClient,
-	config xcelerate.Config,
-	metadata common.CacheConfigMetadata,
-	xcodeArgs xcodeargs.XcodeArgs,
-) xcodeargs.RunStats {
-	toPass := getArgsToPass(config, xcodeArgs)
-	logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
+//go:generate moq -stub -out xcodebuild_relation_mock_test.go -pkg xcode . relationSender
 
-	if proxySessionClient != nil {
-		_, err := proxySessionClient.SetSession(ctx, &session.SetSessionRequest{
-			InvocationId: invocationID,
-			AppSlug:      metadata.BitriseAppID,
-			BuildSlug:    metadata.BitriseBuildID,
-			StepSlug:     metadata.BitriseStepExecutionID,
+type invocationSaver interface {
+	PutInvocation(inv analytics.Invocation) error
+}
+
+type relationSender interface {
+	PutInvocationRelation(rel multiplatform.InvocationRelation) error
+}
+
+// XcodebuildRunner holds configuration for the xcodebuild wrapper and provides
+// Run as its main entry point.
+type XcodebuildRunner struct {
+	Config             xcelerate.Config
+	Metadata           common.CacheConfigMetadata
+	InvocationID       string
+	Logger             log.Logger
+	CacheLogger        log.Logger
+	XcodeRunner        XcodeRunner
+	ProxySessionClient session.SessionClient
+	XcodeArgs          xcodeargs.XcodeArgs
+
+	// invocationAPI saves invocations. If nil, a production analytics client is created.
+	invocationAPI invocationSaver
+	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
+	relationAPI relationSender
+}
+
+// Run executes the xcodebuild wrapper: runs xcodebuild, collects stats,
+// sends analytics, and registers invocation relations.
+//
+//nolint:nestif
+func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
+	toPass := getArgsToPass(c.Config, c.XcodeArgs)
+	c.Logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
+
+	if c.ProxySessionClient != nil {
+		_, err := c.ProxySessionClient.SetSession(ctx, &session.SetSessionRequest{
+			InvocationId: c.InvocationID,
+			AppSlug:      c.Metadata.BitriseAppID,
+			BuildSlug:    c.Metadata.BitriseBuildID,
+			StepSlug:     c.Metadata.BitriseStepExecutionID,
 		})
 		if err != nil {
-			logger.TErrorf("Failed to set session: %v", err)
+			c.Logger.TErrorf("Failed to set session: %v", err)
 		}
 
-		if !config.Silent {
-			logger.Debugf("Streaming proxy logs...")
+		if !c.Config.Silent {
+			c.Logger.Debugf("Streaming proxy logs...")
 			proxyCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			go func() {
-				if err := streamProxyLogs(proxyCtx, invocationID, cacheLogger, utils.DefaultOsProxy{}); err != nil {
-					logger.Errorf("Failed to stream proxy logs: %v", err)
+				if err := streamProxyLogs(proxyCtx, c.InvocationID, c.CacheLogger, utils.DefaultOsProxy{}); err != nil {
+					c.Logger.Errorf("Failed to stream proxy logs: %v", err)
 				} else {
-					logger.Debugf("Proxy logs stream closed")
+					c.Logger.Debugf("Proxy logs stream closed")
 				}
 			}()
 		}
 	}
 
-	runStats := xcodeRunner.Run(ctx, toPass)
+	runStats := c.XcodeRunner.Run(ctx, toPass)
 	if runStats.Error != nil {
-		logger.TErrorf(MsgInvocationFailed, time.Duration(runStats.DurationMS)*time.Millisecond, runStats.Error)
+		c.Logger.TErrorf(MsgInvocationFailed, time.Duration(runStats.DurationMS)*time.Millisecond, runStats.Error)
 	} else {
-		logger.TDonef(MsgInvocationSuccess, time.Duration(runStats.DurationMS)*time.Millisecond)
+		c.Logger.TDonef(MsgInvocationSuccess, time.Duration(runStats.DurationMS)*time.Millisecond)
 	}
-	logger.Debugf("Run stats: %+v", runStats)
+	c.Logger.Debugf("Run stats: %+v", runStats)
 
-	hitRate := getHitRateFromSessionAndRunStats(ctx, proxySessionClient, runStats, logger)
+	hitRate := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
-	if !shouldSaveInvocation(xcodeArgs) {
-		logger.TDebugf("Save invocation skipped")
+	if !shouldSaveInvocation(c.XcodeArgs) {
+		c.Logger.TDebugf("Save invocation skipped")
 
 		return runStats
 	}
 
-	metadata.BenchmarkPhase = resolveBenchmarkPhase(logger)
+	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   runStats.StartTime,
-		InvocationID:     invocationID,
+		InvocationID:     c.InvocationID,
 		Duration:         runStats.DurationMS,
 		HitRate:          hitRate,
-		Command:          xcodeArgs.ShortCommand(),
-		FullCommand:      xcodeArgs.Command(),
+		Command:          c.XcodeArgs.ShortCommand(),
+		FullCommand:      c.XcodeArgs.Command(),
 		Success:          runStats.Success,
 		Error:            runStats.Error,
 		XcodeVersion:     runStats.XcodeVersion,
 		XcodeBuildNumber: runStats.XcodeBuildNumber,
-	}, config.AuthConfig, metadata)
+	}, c.Config.AuthConfig, c.Metadata)
 
-	client, err := analytics.NewClient(consts.AnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
-	if err != nil {
-		logger.Errorf("Failed to create analytics client: %v", err)
-
-		return runStats
-	}
-
-	if err = client.PutInvocation(*inv); err != nil {
-		logger.Errorf("Failed to send invocation analytics: %v", err)
-	} else {
-		logger.TInfof(MsgInvocationSaved, invocationID)
-	}
+	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
 	return runStats
+}
+
+func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {
+	saver, err := c.resolveInvocationAPI()
+	if err != nil {
+		c.Logger.Errorf("Failed to create analytics client: %v", err)
+
+		return
+	}
+
+	if err := saver.PutInvocation(inv); err != nil {
+		c.Logger.Errorf("Failed to send invocation analytics: %v", err)
+
+		return
+	}
+
+	c.Logger.TInfof(MsgInvocationSaved, c.InvocationID)
+
+	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
+		c.sendRelation(parentID)
+		c.writeChildStatsLedger(parentID, inv, hits, total)
+	}
+}
+
+// writeChildStatsLedger records this xcode invocation's hit rate in the
+// parent's local ledger so a parent wrapper (e.g. react-native) can
+// aggregate child hit rates at the end of its run.
+//
+// hits and total come from xcode's reported per-target cache stats so the
+// parent can compute a weighted hit rate (sum(hits)/sum(total)) in addition
+// to the simple mean of per-child hit rates.
+func (c *XcodebuildRunner) writeChildStatsLedger(parentID string, inv analytics.Invocation, hits, total int64) {
+	entry := childstats.Entry{
+		ChildInvocationID:  c.InvocationID,
+		ParentInvocationID: parentID,
+		BuildTool:          "xcode",
+		HitRate:            inv.HitRate,
+		Hits:               hits,
+		Total:              total,
+		BenchmarkPhase:     c.Metadata.BenchmarkPhase,
+		Failed:             !inv.Success,
+	}
+
+	if err := childstats.NewWriter().Write(entry); err != nil {
+		c.Logger.Warnf("Failed to write child stats ledger: %v", err)
+	}
+}
+
+func (c *XcodebuildRunner) resolveInvocationAPI() (invocationSaver, error) {
+	if c.invocationAPI != nil {
+		return c.invocationAPI, nil
+	}
+
+	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("create analytics client: %w", err)
+	}
+
+	return client, nil
+}
+
+func (c *XcodebuildRunner) resolveRelationAPI() (relationSender, error) {
+	if c.relationAPI != nil {
+		return c.relationAPI, nil
+	}
+
+	client, err := multiplatform.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("create multiplatform analytics client: %w", err)
+	}
+
+	return client, nil
+}
+
+func (c *XcodebuildRunner) sendRelation(parentID string) {
+	c.Logger.TInfof("Registering invocation relation: parent=%s → child=%s (build-tool=xcode)", parentID, c.InvocationID)
+
+	api, err := c.resolveRelationAPI()
+	if err != nil {
+		c.Logger.Errorf("Failed to create multiplatform analytics client: %v", err)
+
+		return
+	}
+
+	rel := multiplatform.InvocationRelation{
+		ParentInvocationID: parentID,
+		ChildInvocationID:  c.InvocationID,
+		InvocationDate:     time.Now(),
+		BuildTool:          "xcode",
+	}
+
+	if err := api.PutInvocationRelation(rel); err != nil {
+		c.Logger.Errorf("Failed to send invocation relation analytics: %v", err)
+	}
 }
 
 //nolint:nestif
@@ -380,16 +492,16 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 }
 
 // resolveBenchmarkPhase reads the benchmark phase from:
-// 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var (set during activation)
-// 2. ~/.local/state/xcelerate/benchmark/benchmark-phase.json (file fallback)
+// 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE env var (set during activation)
+// 2. ~/.local/state/xcelerate/benchmark/benchmark-phase-xcode.json (file fallback)
 func resolveBenchmarkPhase(logger log.Logger) string {
-	if phase := os.Getenv("BITRISE_BUILD_CACHE_BENCHMARK_PHASE"); phase != "" {
+	if phase := os.Getenv(common.BenchmarkPhaseEnvVar(common.BuildToolXcode)); phase != "" {
 		logger.Debugf("Benchmark phase from env: %s", phase)
 
 		return phase
 	}
 
-	if phase := common.ReadBenchmarkPhaseFile(logger); phase != "" {
+	if phase := common.ReadBenchmarkPhaseFile(common.BuildToolXcode, logger); phase != "" {
 		logger.Debugf("Benchmark phase from file: %s", phase)
 
 		return phase

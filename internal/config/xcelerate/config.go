@@ -3,15 +3,15 @@ package xcelerate
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 const (
@@ -43,29 +43,34 @@ type Params struct {
 // the BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var and written to
 // ~/.local/state/xcelerate/benchmark/benchmark-phase.json during activation.
 type Config struct {
-	ProxyVersion           string                 `json:"proxyVersion"`
-	ProxySocketPath        string                 `json:"proxySocketPath"`
-	CLIVersion             string                 `json:"cliVersion"`
-	WrapperVersion         string                 `json:"wrapperVersion"`
-	OriginalXcodebuildPath string                 `json:"originalXcodebuildPath"`
-	OriginalXcrunPath      string                 `json:"originalXcrunPath"`
-	BuildCacheEnabled      bool                   `json:"buildCacheEnabled"`
-	BuildCacheSkipFlags    bool                   `json:"buildCacheSkipFlags"`
-	BuildCacheEndpoint     string                 `json:"buildCacheEndpoint"`
-	PushEnabled            bool                   `json:"pushEnabled"`
-	DebugLogging           bool                   `json:"debugLogging,omitempty"`
-	Silent                 bool                   `json:"silent,omitempty"`
-	XcodebuildTimestamps   bool                   `json:"xcodebuildTimestamps,omitempty"`
-	AuthConfig             common.CacheAuthConfig `json:"authConfig,omitempty"`
-	ExternalAppID          string                 `json:"externalAppId,omitempty"`
-	ExternalBuildID        string                 `json:"externalBuildId,omitempty"`
-	ExternalWorkflowName   string                 `json:"externalWorkflowName,omitempty"`
+	ProxyVersion           string `json:"proxyVersion"`
+	ProxySocketPath        string `json:"proxySocketPath"`
+	CLIVersion             string `json:"cliVersion"`
+	WrapperVersion         string `json:"wrapperVersion"`
+	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
+	OriginalXcrunPath      string `json:"originalXcrunPath"`
+	BuildCacheEnabled      bool   `json:"buildCacheEnabled"`
+	BuildCacheSkipFlags    bool   `json:"buildCacheSkipFlags"`
+	BuildCacheEndpoint     string `json:"buildCacheEndpoint"`
+	PushEnabled            bool   `json:"pushEnabled"`
+	DebugLogging           bool   `json:"debugLogging,omitempty"`
+	Silent                 bool   `json:"silent,omitempty"`
+	XcodebuildTimestamps   bool   `json:"xcodebuildTimestamps,omitempty"`
+	// AuthConfig is sourced from the multiplatform analytics config at runtime
+	// (single canonical source for auth credentials on disk). The JSON tag is
+	// preserved for read-side backwards compatibility with older xcelerate
+	// configs that still have `authConfig` on disk from a previous CLI version;
+	// Save zeroes it before writing and `omitzero` keeps it out of the file.
+	AuthConfig           common.CacheAuthConfig `json:"authConfig,omitzero"`
+	ExternalAppID        string                 `json:"externalAppId,omitempty"`
+	ExternalBuildID      string                 `json:"externalBuildId,omitempty"`
+	ExternalWorkflowName string                 `json:"externalWorkflowName,omitempty"`
 }
 
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
 	configFilePath := PathFor(osProxy, xcelerateConfigFileName)
 
-	f, err := os.OpenFile(configFilePath, 0, 0)
+	f, err := osProxy.OpenFile(configFilePath, 0, 0)
 	if err != nil {
 		return Config{}, fmt.Errorf("open xcelerate config file (%s): %w", configFilePath, err)
 	}
@@ -75,6 +80,14 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 	var config Config
 	if err := dec.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf("decode xcelerate config file (%s): %w", configFilePath, err)
+	}
+
+	// Auth credentials live in the multiplatform analytics config. Prefer that
+	// source so callers can keep using config.AuthConfig; fall back to whatever
+	// the legacy xcelerate config (decoded above) carried, for users upgrading
+	// from a CLI version that still persisted auth in the xcelerate config.
+	if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
+		config.AuthConfig = mpCfg.AuthConfig
 	}
 
 	return config, nil
@@ -246,11 +259,21 @@ func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory ut
 	}
 	defer f.Close()
 
+	// Auth credentials live in the multiplatform analytics config now. Strip
+	// them before writing the xcelerate config so we don't persist a second
+	// copy on disk. Older configs that still carry `authConfig` on disk are
+	// tolerated on read (see ReadConfig).
+	config.AuthConfig = common.CacheAuthConfig{}
+
 	enc := encoderFactory.Encoder(f)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(config); err != nil {
 		return fmt.Errorf(ErrFmtEncodeConfigFile, err)
+	}
+
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync xcelerate config file: %w", err)
 	}
 
 	logger.TInfof("Config saved to: %s", configFilePath)

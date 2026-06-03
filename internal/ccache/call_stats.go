@@ -15,6 +15,7 @@ const (
 	CALL_METHOD_STOP              callMethod = "Stop"
 	CALL_METHOD_SET_INVOCATION_ID callMethod = "SetInvocationID"
 	CALL_METHOD_GET_SESSION_STATS callMethod = "GetSessionStats"
+	CALL_METHOD_HEALTH_CHECK      callMethod = "HealthCheck"
 )
 
 type callStats struct {
@@ -92,7 +93,7 @@ func (s *sessionState) updateWithResult(result processResult) {
 	case CALL_METHOD_PUT:
 		s.uploadBytes.Add(result.CallStats.uploadBytes)
 
-	case CALL_METHOD_REMOVE, CALL_METHOD_STOP, CALL_METHOD_SET_INVOCATION_ID, CALL_METHOD_GET_SESSION_STATS:
+	case CALL_METHOD_REMOVE, CALL_METHOD_STOP, CALL_METHOD_SET_INVOCATION_ID, CALL_METHOD_GET_SESSION_STATS, CALL_METHOD_HEALTH_CHECK:
 		// no byte tracking for these methods
 	}
 }

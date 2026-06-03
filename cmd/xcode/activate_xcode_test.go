@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/xcode"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
 )
 
 func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
@@ -121,7 +121,8 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			CreateFunc: func(name string) (*os.File, error) {
 				return nil, expectedError
 			},
-			TempDirFunc: os.TempDir,
+			OpenFileFunc: os.OpenFile,
+			TempDirFunc:  os.TempDir,
 		}
 
 		err := xcode.ActivateXcodeCommandFn(

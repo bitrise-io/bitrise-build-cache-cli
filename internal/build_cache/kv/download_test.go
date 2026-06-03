@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -14,8 +15,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv/mocks"
 )
 
 var downloadTestData = []byte("test content") //nolint:gochecknoglobals
@@ -180,4 +181,10 @@ func TestClient_DownloadStream_MismatchValidation(t *testing.T) {
 
 	err = client.DownloadStream(context.Background(), destination, "test-key")
 	require.Error(t, err)
+
+	msg := err.Error()
+	assert.Contains(t, msg, `"test-key"`, "error should identify the key")
+	assert.Contains(t, msg, "expected 3fc6540b6002f7622d978ea8c6fcb6a661089de0f4952f42390a694107269893")
+	assert.Contains(t, msg, fmt.Sprintf("received %d bytes", len(downloadTestData)))
+	assert.Contains(t, msg, "1 attempt(s)")
 }

@@ -3,7 +3,7 @@ syntax = "proto3";
 import "google/bytestream/bytestream.proto";
 
 package kv_storage;
-option go_package = "github.com/bitrise-io/bitrise-build-cache-cli/kv_storage";
+option go_package = "github.com/bitrise-io/bitrise-build-cache-cli/v2/kv_storage";
 
 message DeleteResponse {
   uint32 ok =1;

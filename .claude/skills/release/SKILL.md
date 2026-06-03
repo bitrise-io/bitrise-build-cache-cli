@@ -10,6 +10,31 @@ Releasing a new version is a multi-step process across several repositories.
 
 **IMPORTANT: Drive the ENTIRE process end-to-end in a single conversation.** Use the Bitrise MCP server to monitor build statuses (poll every 30s), check for triggered workflows in downstream repos, and move to the next step as soon as the previous one completes. Do not stop and wait for the user between steps.
 
+## ⚠ Critical path — read before doing anything
+
+The `install/installer.sh` script and the binaries attached to every CLI GitHub release are **on the critical path of every Bitrise build — not just builds that opt into the build cache**. The Bitrise default workflow runs the gradle-mirrors activation step (and other CLI-driven steps) unconditionally, and each of those pipes `installer.sh` to `sh` and fetches the platform tarball + checksum from the latest non-prerelease GitHub release. If any of these break — installer script, binaries, checksum file, the wrong release marked as latest — the CLI install fails, the mirror activation soft-fails, and Maven Central requests bypass the Bitrise proxy on the entire fleet.
+
+That failure mode caused the [2026-04-28 Maven Central rate-limit incident](https://bitrise.atlassian.net/wiki/spaces/INCIDENT/pages/4980998155/2026-04-28+-+Postmortem+for+incident-2026-04-28-mavencentral-too-many-requests-5238).
+
+Concrete rules:
+
+- **Always create the CLI GitHub release as `--prerelease`** (see step 6). The installer ignores prereleases when resolving `latest`, so an empty / half-uploaded release cannot poison builds.
+- **Never let an empty release be marked `latest`.** If goreleaser fails midway, leave the release as prerelease until you have manually verified the assets list is complete.
+- **Treat any failure of the CLI `release` workflow as a drop-everything-and-fix incident.** Don't move on to step releases until the CLI release workflow is green AND the v2.6.x release has all 8 expected assets (6 platform tarballs, checksums.txt, both verification XMLs).
+- **Smoke-test installer.sh edits on a real Bitrise build before merging.** The release flow does not regenerate this file. PR CI does exercise it (see `pr-release-check-{linux,mac}` workflows) but a real Bitrise build is still the canonical smoke test.
+- **The release workflow mirrors `install/installer.sh` to GAR** twice: once as `installer.sh:<tag>:installer.sh` (immutable, audit trail) and once as `installer.sh:latest-pointer:installer.sh` + `installer.sh:latest-pointer:VERSION` (mutable pointer + bare semver, refreshed via delete-then-upload each release). GAR rejects the literal `latest` as a reserved version_id, so the mutable view uses `latest-pointer`. The `latest-pointer` view is the documented carve-out from the `#327` immutability rule — safe because it's only consulted when the primary GitHub path is already failing. After every release, the **`verify-release` workflow** runs (chained after `release` via the `release-and-verify` pipeline) and executes `scripts/verify_release.sh` to assert the GH happy path and the GAR-only fallback both work end-to-end. Verification failures post to Slack and can be retried independently of `release` without re-cutting the tag.
+
+### Brew tap is best-effort, NOT critical path
+
+`bitrise-io/homebrew-bitrise-build-cache` is a nice-to-have publication target, not part of the install flow used by Bitrise builds. The "Publish Homebrew formula" step in `bitrise.yml`'s `release` workflow runs goreleaser with only the brew publisher and is marked `is_skippable: true`, so a tap-permission failure (e.g. 404 from `PUT /Formula/bitrise-build-cache.rb`) won't break the release.
+
+If the brew step fails:
+
+- Confirm the release workflow's overall status is still green.
+- Verify the GitHub release has all 8 expected assets, the GAR mirror uploads (binaries + checksums + `installer.sh:<tag>` + `installer.sh:latest-pointer:{installer.sh,VERSION}`) succeeded, and the chained `verify-release` workflow (running `scripts/verify_release.sh`) passed — all critical. A `verify-release` failure does NOT mean re-cut the tag — fix the underlying issue and re-run the `verify-release` workflow alone via the Bitrise UI.
+- Fix the tap separately. The most common cause is the bot user behind `GIT_BOT_USER_ACCESS_TOKEN` not being a collaborator with push access on `bitrise-io/homebrew-bitrise-build-cache`. Add them in the tap repo's settings.
+- Do NOT block other step releases on this — re-running the brew publish is a separate concern.
+
 ## Two Entry Points
 
 A release can be triggered by:
@@ -26,6 +51,7 @@ A release can be triggered by:
 | Gradle step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` |
 | Xcode step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` |
 | Gradle features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-features` |
+| React Native features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-react-native-features` |
 | Steplib | — | `bitrise-io/bitrise-steplib` |
 
 ## Steps
@@ -61,7 +87,9 @@ gh pr merge --merge --auto --repo bitrise-io/bitrise-build-cache-cli <PR_NUMBER>
 
 Create a GitHub release in `bitrise-build-cache-cli`.
 
-- **Do NOT mark it as "latest"** — another CI job handles that
+- **MUST mark it as `--prerelease`.** The release workflow uploads the binaries asynchronously; until those land, the release is empty. Marking it as latest (or as a regular release) at create-time makes a binary-less release "current," which breaks any consumer that downloads the latest asset. A separate CI job promotes the release out of prerelease once the binaries are appended.
+- **Do NOT pass `--latest`.** Without `--latest`, GitHub will not auto-promote a prerelease; with `--latest` it would, defeating the prerelease gate.
+- Example: `gh release create vX.Y.Z --repo bitrise-io/bitrise-build-cache-cli --title vX.Y.Z --prerelease --notes "..."`
 - Follow the format of existing releases for release notes
 - **Version numbering — always ask the user** which semver bump to apply (patch, minor, or major). Use these guidelines as defaults:
   - **Patch** bump: dependency-only updates (e.g., plugin version bumps) or bug fixes
@@ -72,11 +100,12 @@ Create a GitHub release in `bitrise-build-cache-cli`.
 
 ### 7. Wait for step auto-update PRs
 
-The CLI release triggers auto-update PRs in **three** step repos (all use unified CI app `48fa8fbee698622c`). The PR title will be "feat: Release new CLI". Monitor CI on all three, then approve and merge:
+The CLI release triggers auto-update PRs in **four** step repos (all use unified CI app `48fa8fbee698622c`). The PR title will be "feat: Release new CLI". Monitor CI on all four, then approve and merge:
 
-1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache`
-2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode`
-3. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` (experimental, no release needed)
+1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` — released for every CLI version.
+2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` — released for every CLI version.
+3. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` — released, but releases are **not 1:1 with CLI releases** (each step release usually catches up across several intervening CLI patch versions; release when CLI changes matter for RN, e.g. an Xcode or Gradle-side improvement that RN builds benefit from).
+4. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` — truly experimental, no GitHub release flow yet (only a single early steplib PR exists). Merge the auto-update PR but do not cut a GitHub release until that changes.
 
 ```bash
 # For each step repo:
@@ -88,12 +117,14 @@ Always wait for CI to pass. Use `--squash` (merge commits are not allowed on the
 
 ### 8. Create step GitHub releases
 
-Create GitHub releases for the **Gradle step** and the **Xcode step** (NOT the gradle-features step — it doesn't need releases).
+Create GitHub releases for whichever of the four step repos the user actually wants to release (default: **Gradle step** + **Xcode step**; **React Native features step** when the CLI change is RN-relevant). The **Gradle features step** does not have a GitHub release flow yet — skip it.
 
 - These **can** be marked as "latest"
 - Follow the format of existing releases for release notes — only include "## What's Changed" with bullet points (changelog is added automatically)
-- **Version numbering: the step version bump should match the CLI version bump.** Patch CLI bump -> patch step bump. Minor CLI bump -> minor step bump
+- **Version numbering: the step version bump should match the CLI version bump.** Patch CLI bump → patch step bump. Minor CLI bump → minor step bump.
+- For step repos that don't release for every CLI version (currently the RN features step), the changelog should note the headline change for this release **and** mention any intervening CLI versions that are being picked up at the same time — readers should be able to tell what they're getting.
 - Check the latest existing release tag in each repo to determine the next version
+- The user may explicitly scope the release to a subset of step repos ("only release xcode and rn-features"). Honor that — do not release the others. Merging their auto-update PRs is still fine and expected (keeps the dependency current); skipping is only about the GitHub release / steplib PR.
 
 ### 9. Merge steplib PRs
 
@@ -101,10 +132,10 @@ After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each rel
 
 ```bash
 gh pr review --approve --repo bitrise-io/bitrise-steplib <PR_NUMBER>
-gh pr merge --merge --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
+gh pr merge --squash --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
 ```
 
-Always wait for CI to pass — never bypass branch protection.
+Always wait for CI to pass — never bypass branch protection. The steplib repo requires squash merges (merge commits are blocked).
 
 ## Flaky E2E tests — cache hit rate
 

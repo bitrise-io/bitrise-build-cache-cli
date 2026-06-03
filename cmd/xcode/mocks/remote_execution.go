@@ -5,7 +5,7 @@ package mocks
 
 import (
 	context "context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/build/bazel/remote/execution/v2"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
 	grpc "google.golang.org/grpc"
 	sync "sync"
 )

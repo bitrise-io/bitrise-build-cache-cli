@@ -13,12 +13,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/filegroup"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/filegroup"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 const (

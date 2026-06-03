@@ -4,8 +4,8 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/deriveddata"
 	"sync"
 	"time"
 )

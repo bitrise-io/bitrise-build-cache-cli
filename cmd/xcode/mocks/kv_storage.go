@@ -5,7 +5,7 @@ package mocks
 
 import (
 	context "context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/proto/kv_storage"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/kv_storage"
 	bytestream "google.golang.org/genproto/googleapis/bytestream"
 	grpc "google.golang.org/grpc"
 	sync "sync"

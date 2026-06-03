@@ -6,6 +6,12 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 initscript {
     repositories {
         mavenLocal()
+        {{- if .GradlePluginsMirrorURL }}
+        maven {
+            name = "bitriseGradlePluginsMirror"
+            url = uri("{{ .GradlePluginsMirrorURL }}")
+        }
+        {{- end }}
         maven {
             name = "gradlePlugins"
             url = uri("https://plugins.gradle.org/m2/")
@@ -52,6 +58,9 @@ settingsEvaluated {
             collectMetadata = false
             {{- end }}
         }
+    }
+    rootProject {
+        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
     }
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}

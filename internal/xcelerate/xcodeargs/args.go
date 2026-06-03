@@ -36,6 +36,7 @@ var actions = []string{
 	"test-without-building",
 	"docbuild",
 	"installsrc",
+	"installhdrs",
 	"install",
 	"clean",
 	"-showsdks",
@@ -106,10 +107,26 @@ func (p Default) Command() string {
 }
 
 func (p Default) ShortCommand() string {
-	nonCommands := p.nonCommands()
-	if len(nonCommands) == 0 {
-		return ""
+	base := p.shortCommandBase()
+	suffix := p.shapingSuffix()
+	if suffix == "" {
+		return base
 	}
+	if base == "" {
+		return suffix
+	}
+
+	return base + " " + suffix
+}
+
+// shortCommandBase resolves the action keyword for the analytics short
+// command. Per xcodebuild(1), `build` is the default action and is used if no
+// action is given — so when argv contains no recognized action keyword we
+// return the literal "build" rather than the joined arg-string, which keeps
+// the rendered short command human-readable for invocations like
+// `xcodebuild -workspace Foo.xcworkspace -scheme Foo -configuration Debug`.
+func (p Default) shortCommandBase() string {
+	nonCommands := p.nonCommands()
 
 	for _, action := range actions {
 		for _, cmd := range nonCommands {
@@ -121,9 +138,88 @@ func (p Default) ShortCommand() string {
 		}
 	}
 
-	p.logger.Infof("No short command found, defaulting to all: %s", strings.Join(p.nonCommands(), " "))
+	p.logger.Debugf("No action keyword in argv; defaulting to %q per xcodebuild(1)", "build")
 
-	return strings.TrimSpace(strings.Join(p.nonCommands(), " "))
+	return "build"
+}
+
+// shapingSuffix returns the bracketed "[scheme / testPlan / configuration]"
+// suffix appended to the short command for analytics. Missing values are
+// skipped (no placeholder). Returns "" if none of the three are present.
+func (p Default) shapingSuffix() string {
+	scheme, testPlan, configuration := p.extractShapingFlagValues()
+
+	parts := make([]string, 0, 3)
+	if scheme != "" {
+		parts = append(parts, scheme)
+	}
+	if testPlan != "" {
+		parts = append(parts, testPlan)
+	}
+	if configuration != "" {
+		parts = append(parts, configuration)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return "[" + strings.Join(parts, " / ") + "]"
+}
+
+// extractShapingFlagValues scans OriginalArgs for `-scheme`, `-testPlan`, and
+// `-configuration` values. Supports both `-flag value` and `-flag=value` forms
+// (single- or double-dash). Last occurrence wins. A value that begins with `-`
+// is treated as the next flag, not as the current flag's value.
+func (p Default) extractShapingFlagValues() (string, string, string) {
+	var scheme, testPlan, configuration string
+
+	args := p.OriginalArgs
+	for i := 0; i < len(args); i++ {
+		name, value, hasInlineValue := splitShapingFlag(args[i])
+		if name != "scheme" && name != "testPlan" && name != "configuration" {
+			continue
+		}
+
+		if !hasInlineValue {
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				continue
+			}
+			value = args[i+1]
+			i++
+		}
+
+		if value == "" {
+			continue
+		}
+
+		switch name {
+		case "scheme":
+			scheme = value
+		case "testPlan":
+			testPlan = value
+		case "configuration":
+			configuration = value
+		}
+	}
+
+	return scheme, testPlan, configuration
+}
+
+// splitShapingFlag parses a single argv entry as a flag. Returns the flag name
+// (without leading dashes), the inline value (if a `=` was present), and a
+// boolean indicating whether the inline value form was used. Non-flag args
+// return an empty name.
+func splitShapingFlag(arg string) (string, string, bool) {
+	if !strings.HasPrefix(arg, "-") {
+		return "", "", false
+	}
+
+	trimmed := strings.TrimLeft(arg, "-")
+	if eq := strings.IndexByte(trimmed, '='); eq >= 0 {
+		return trimmed[:eq], trimmed[eq+1:], true
+	}
+
+	return trimmed, "", false
 }
 
 func (p Default) Args(additional map[string]string) []string {

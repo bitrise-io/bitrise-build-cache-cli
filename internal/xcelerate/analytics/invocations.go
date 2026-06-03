@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 type InvocationRunStats struct {
@@ -83,6 +83,7 @@ func (c *Client) PutInvocation(inv Invocation) error {
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
