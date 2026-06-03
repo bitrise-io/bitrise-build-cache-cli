@@ -174,3 +174,23 @@ The default rule for this GAR repo is **describe-or-upload, never delete-then-up
 The **only documented carve-out** is `installer.sh:latest-pointer:*` (installer.sh and VERSION). These are intentionally mutable, refreshed via delete-then-upload on every release. The carve-out is safe here because GAR `latest-pointer` is **only consulted when the primary path (github.com / raw.githubusercontent.com) has already failed** — an already-degraded path, not a hot path that catches the race window during normal operation.
 
 If you add a new artifact, default to the describe-or-upload immutable pattern. Only adopt a mutable `latest-pointer` view if (a) consumers genuinely need "always the newest" without a pin AND (b) the consumer's access pattern is fallback-only, not hot-path.
+
+### R2 mirror of release artifacts (preboot host-VM cache origin)
+
+The `release` workflow also mirrors the four platform tarballs + checksums file to a Cloudflare R2 bucket (`build-cache-cli-releases` in Cloudflare account `a484c7653eeba8c8c00a4bf3967860a3`). Script: `scripts/r2_upload_release_artifacts.sh`. Required Bitrise secrets: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
+
+The R2 bucket is the **origin** for the preboot host-VM cache proxy, served on each build VM at `http://${SUBNET_IP}1:59020/build-cache-cli-releases/<tarball>`. That proxy expects a **flat** layout (object key == filename, no `/<tag>/` prefix), so the R2 script uploads under the bare filename. GAR remains as a versioned public fallback for both `installer.sh` consumers and the startup-script's secondary download path; the two mirrors run in parallel and serve different fallback roles.
+
+Idempotency follows the same describe-or-upload rule (`aws s3api head-object` skip-if-present). R2's S3 API rejects AWS CLI v2's default flexible checksums, so the upload script forces `AWS_REQUEST_CHECKSUM_CALCULATION=when_required` / `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`.
+
+### Automated preboot startup-script bump
+
+The `bump-prebooting` workflow (chained after `verify-release` in the `release-and-verify` pipeline) opens an auto-merging PR against `bitrise-io/build-prebooting-deployments`, bumping `BITRISE_BUILD_CACHE_CLI_VERSION` and the per-arch sha256 in both startup-script extensions (`preboot-reconciler/startup_script_extension_{linux,macos}_bitvirt.sh`). Only `linux_amd64` and `darwin_arm64` are bumped — those are the only preboot VM architectures.
+
+Script: `scripts/prebooting_pr_bump.sh`. After pushing the branch, the script explicitly merges the PR with `gh pr merge --squash --delete-branch`. The Bitrise Infrabot is a bypass actor on the `production` rule, so the explicit merge clears required-review gates at merge time. GitHub's `--auto` merge mode is intentionally NOT used — auto-merge is a background process that does not honour bypass actors and would block on any required reviewer.
+
+The deployments repo has **no CI on PRs** (no GitHub Actions workflows; the Bitrise GitHub app's check-suites stay `queued` forever with zero check-runs). Any `gh pr checks --watch` would either block on phantom queued suites or exit non-zero on "no checks reported", so the script does not wait for CI. Bypass-merge is the only gate.
+
+After sed-bumping the constants, the script asserts the working tree shows **exactly** `+2/-2` per startup script and no other files modified — defensive check against a loose regex matching unintended lines.
+
+Required Bitrise secret: `PREBOOTING_BOT_TOKEN` (GH PAT for `Bitrise Infrabot`, scoped to `bitrise-io/build-prebooting-deployments`: `contents:write` + `pull_requests:write`). Slack-alerts on failure; safe to retry the workflow without re-cutting the tag.
