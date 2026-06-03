@@ -14,6 +14,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -91,8 +92,174 @@ func init() { //nolint:gochecknoinits
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
 		}
 
+		if term.IsTerminal(int(os.Stdin.Fd())) {
+			return runInteractiveSetupHuh(cmd.Context())
+		}
+
 		return runInteractiveSetup(cmd.Context(), newDefaultPrompter())
 	}
+}
+
+// runInteractiveSetupHuh is the TTY-only multi-select form path. Non-TTY
+// callers (piped stdin, tests) hit runInteractiveSetup instead.
+func runInteractiveSetupHuh(ctx context.Context) error {
+	logger := log.NewLogger()
+	logger.EnableDebugLog(IsDebugLogMode)
+	logger.TInfof("Bitrise Build Cache - interactive local setup")
+
+	kc := keychain.New()
+
+	// Pre-populate workspace + token from keychain or env so the form can skip
+	// those fields when we already have credentials.
+	startWS, startToken, source := loadStartingCredentials(kc, os.Getenv(envWorkspaceID), os.Getenv(envAuthToken))
+
+	var (
+		selectedTools []string
+		workspaceID   = startWS
+		authToken     = startToken
+		pushEnabled   bool
+	)
+
+	groups := []*huh.Group{
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("Which build tools should I set up?").
+				Description("Use space to toggle, enter to confirm.").
+				Options(
+					huh.NewOption("Gradle", string(toolGradle)),
+					huh.NewOption("Bazel", string(toolBazel)),
+					huh.NewOption("Xcode", string(toolXcode)),
+					huh.NewOption("ccache (C/C++)", string(toolCcache)),
+				).
+				Validate(func(s []string) error {
+					if len(s) == 0 {
+						return errors.New("pick at least one tool")
+					}
+
+					return nil
+				}).
+				Value(&selectedTools),
+		),
+	}
+
+	if source == credsSourceNone {
+		groups = append(groups,
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Workspace ID").
+					Description("Find it at https://app.bitrise.io").
+					Validate(nonEmpty("Workspace ID")).
+					Value(&workspaceID),
+				huh.NewInput().
+					Title("Auth token").
+					Description("Personal access token. Input is hidden.").
+					EchoMode(huh.EchoModePassword).
+					Validate(nonEmpty("Auth token")).
+					Value(&authToken),
+			),
+		)
+	}
+
+	groups = append(groups,
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Enable cache push?").
+				Description("Default off — recommended for local dev (so a flaky local build can't poison the shared cache).").
+				Affirmative("Yes, push too").
+				Negative("No, pull only").
+				Value(&pushEnabled),
+		),
+	)
+
+	if err := huh.NewForm(groups...).Run(); err != nil {
+		return fmt.Errorf("interactive wizard: %w", err)
+	}
+
+	// Surface the keychain / env source after the form so the user knows where creds came from.
+	switch source {
+	case credsSourceKeychain:
+		logger.TInfof("Using credentials from the OS keychain.")
+	case credsSourceEnv:
+		logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
+		logger.Infof("You can now remove them from your shell rc files.")
+		_ = persistCredentials(kc, workspaceID, authToken) // best-effort; non-fatal
+	case credsSourceNone:
+		_ = persistCredentials(kc, workspaceID, authToken)
+		logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
+	}
+
+	envs := utils.AllEnvs()
+	envs[envWorkspaceID] = workspaceID
+	envs[envAuthToken] = authToken
+
+	return runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled)
+}
+
+func nonEmpty(label string) func(string) error {
+	return func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return errors.New(label + " cannot be empty")
+		}
+
+		return nil
+	}
+}
+
+func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool) error {
+	for _, t := range tools {
+		var err error
+		switch interactiveTool(t) {
+		case toolGradle:
+			err = runInteractiveGradle(logger, envs, pushEnabled)
+		case toolBazel:
+			err = runInteractiveBazel(logger, envs, pushEnabled)
+		case toolXcode:
+			err = runInteractiveXcode(ctx, logger, envs, pushEnabled)
+		case toolCcache:
+			err = runInteractiveCcache(ctx, logger, envs, pushEnabled)
+		default:
+			err = fmt.Errorf("unsupported tool: %s", t)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type credsSource int
+
+const (
+	credsSourceNone credsSource = iota
+	credsSourceKeychain
+	credsSourceEnv
+)
+
+// loadStartingCredentials returns the credentials we already have (if any) +
+// where they came from. Caller decides whether to prompt the user or skip
+// the credential form group based on `source`.
+func loadStartingCredentials(kc keychainStore, envWS, envToken string) (string, string, credsSource) {
+	if creds, err := kc.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+		return creds.WorkspaceID, creds.AuthToken, credsSourceKeychain
+	}
+
+	if envToken != "" && envWS != "" {
+		return envWS, envToken, credsSourceEnv
+	}
+
+	return "", "", credsSourceNone
+}
+
+// persistCredentials writes credentials to the keychain. Save failures are
+// intentionally non-fatal — common on headless boxes — so the caller logs and
+// continues with the in-memory values for the current run.
+func persistCredentials(kc keychainStore, workspaceID, authToken string) error {
+	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
+		return fmt.Errorf("save credentials to keychain: %w", err)
+	}
+
+	return nil
 }
 
 func runInteractiveSetup(ctx context.Context, p *prompter) error {
