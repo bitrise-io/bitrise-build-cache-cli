@@ -82,7 +82,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	activateGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
 	activateGradleParams.TestDistro.Enabled = false
 
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, _ := configcommon.ResolveAuthConfig(envProvider)
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
 	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, benchmarkClient)

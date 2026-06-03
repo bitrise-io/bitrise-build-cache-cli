@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
 var (
@@ -29,6 +31,33 @@ func (cac CacheAuthConfig) TokenInGradleFormat() string {
 	}
 
 	return cac.WorkspaceID + ":" + cac.AuthToken
+}
+
+// authLoader is the slice of *keychain.Keychain the resolver depends on.
+// Exported indirectly so tests can inject a fake without touching the OS keychain.
+type authLoader interface {
+	Load() (keychain.Credentials, error)
+}
+
+// ResolveAuthConfig returns the cache auth config from the OS keychain when
+// available, falling back to environment variables for back-compat (CI and
+// for users who haven't migrated yet). Keychain errors other than ErrNotFound
+// fall through to env as well — common in headless boxes without a secret
+// service backend.
+func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, error) {
+	return resolveAuthConfig(envs, keychain.New())
+}
+
+func resolveAuthConfig(envs map[string]string, loader authLoader) (CacheAuthConfig, error) {
+	creds, err := loader.Load()
+	if err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+		return CacheAuthConfig{
+			AuthToken:   creds.AuthToken,
+			WorkspaceID: creds.WorkspaceID,
+		}, nil
+	}
+
+	return ReadAuthConfigFromEnvironments(envs)
 }
 
 // ReadAuthConfigFromEnvironments reads auth information from the environment variables
