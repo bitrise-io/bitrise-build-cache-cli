@@ -3,6 +3,8 @@ package deriveddata
 import (
 	"fmt"
 	"runtime"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 )
 
 type CacheKeyParams struct {
@@ -14,6 +16,9 @@ func GetCacheKey(envs map[string]string, keyParams CacheKeyParams) (string, erro
 	if branch == "" && !keyParams.IsFallback {
 		return "", fmt.Errorf("cache key is required if BITRISE_GIT_BRANCH env var is not set")
 	}
+	// Branches can contain '/', which would split the kv/<key> resource name
+	// into extra segments and collapse the per-OS keys onto one another.
+	branch = common.SanitizeCacheKeyComponent(branch)
 
 	appSlug := envs["BITRISE_APP_SLUG"]
 	if appSlug == "" {
