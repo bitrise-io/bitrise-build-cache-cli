@@ -2,7 +2,11 @@
 
 package common
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestSanitizeCacheKeyComponent(t *testing.T) {
 	tests := []struct {
@@ -18,9 +22,7 @@ func TestSanitizeCacheKeyComponent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SanitizeCacheKeyComponent(tt.in); got != tt.want {
-				t.Errorf("SanitizeCacheKeyComponent(%q) = %q, want %q", tt.in, got, tt.want)
-			}
+			assert.Equal(t, tt.want, SanitizeCacheKeyComponent(tt.in))
 		})
 	}
 }

@@ -4,8 +4,9 @@ package gradle
 
 import (
 	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetCacheKeySanitizesBranchSlash(t *testing.T) {
@@ -15,17 +16,10 @@ func TestGetCacheKeySanitizesBranchSlash(t *testing.T) {
 	}, nil)
 
 	key, err := c.GetCacheKey(CacheKeyParams{})
-	if err != nil {
-		t.Fatalf("GetCacheKey returned error: %v", err)
-	}
 
-	if strings.Contains(key, "/") {
-		t.Errorf("cache key must not contain '/', got %q", key)
-	}
-	want := "gradle-config-cache-metadata-app-slug-renovate_all-non-major-updates-" + runtime.GOOS
-	if key != want {
-		t.Errorf("GetCacheKey = %q, want %q", key, want)
-	}
+	assert.NoError(t, err)
+	assert.NotContains(t, key, "/", "cache key must not contain '/'")
+	assert.Equal(t, "gradle-config-cache-metadata-app-slug-renovate_all-non-major-updates-"+runtime.GOOS, key)
 }
 
 func TestGetCacheKeyFallbackHasNoBranch(t *testing.T) {
@@ -35,12 +29,7 @@ func TestGetCacheKeyFallbackHasNoBranch(t *testing.T) {
 	}, nil)
 
 	key, err := c.GetCacheKey(CacheKeyParams{IsFallback: true})
-	if err != nil {
-		t.Fatalf("GetCacheKey returned error: %v", err)
-	}
 
-	want := "gradle-config-cache-metadata-app-slug-" + runtime.GOOS
-	if key != want {
-		t.Errorf("fallback GetCacheKey = %q, want %q", key, want)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "gradle-config-cache-metadata-app-slug-"+runtime.GOOS, key)
 }

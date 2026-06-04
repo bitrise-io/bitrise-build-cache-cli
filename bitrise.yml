@@ -881,9 +881,6 @@ workflows:
         - content: |-
             set -exo pipefail
             ./gradlew $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
-    # Use the CLI built from this PR ($CLI_BIN, set by config-cache-e2e-activate)
-    # instead of the released binary the steplib step bundles, so the e2e exercises
-    # the code under test.
     - script:
         title: Save Gradle configuration cache (CLI built from this PR)
         inputs:
@@ -903,8 +900,6 @@ workflows:
         stack: osx-xcode-edge
     steps:
     - bundle::config-cache-e2e-activate: {}
-    # Use the CLI built from this PR ($CLI_BIN); is_skippable mirrors the steplib
-    # step's default so the "Assert configuration cache reuse" step stays the gate.
     - script:
         title: Restore Gradle configuration cache (CLI built from this PR)
         is_skippable: true
@@ -948,9 +943,6 @@ workflows:
         - content: |-
             set -exo pipefail
             ./gradlew $GRADLE_TASK --configuration-cache --stacktrace 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
-    # Use the CLI built from this PR ($CLI_BIN, set by config-cache-e2e-activate)
-    # instead of the released binary the steplib step bundles, so the e2e exercises
-    # the code under test.
     - script:
         title: Save Gradle configuration cache (CLI built from this PR)
         inputs:
@@ -969,8 +961,6 @@ workflows:
         stack: linux-docker-android-22.04
     steps:
     - bundle::config-cache-e2e-activate: {}
-    # Use the CLI built from this PR ($CLI_BIN); is_skippable mirrors the steplib
-    # step's default so the "Assert configuration cache reuse" step stays the gate.
     - script:
         title: Restore Gradle configuration cache (CLI built from this PR)
         is_skippable: true
