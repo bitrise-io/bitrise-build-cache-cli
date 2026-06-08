@@ -204,6 +204,32 @@ func TestAggregator_Compute_IgnoresUnrelatedFilesAndSubdirs(t *testing.T) {
 	assert.Equal(t, 0, summary.SkippedCount)
 }
 
+func TestAggregator_Compute_CollectsChildrenLineageIncludingNoActivity(t *testing.T) {
+	setHome(t)
+
+	w := NewWriter()
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "active", BuildTool: "gradle", HitRate: 0.5, Hits: 5, Total: 10}))
+	// No-activity child (Total == 0): excluded from the hit-rate aggregate but
+	// still part of the parent→child lineage.
+	require.NoError(t, w.Write(Entry{ParentInvocationID: "p", ChildInvocationID: "idle", BuildTool: "xcode", HitRate: 0, Hits: 0, Total: 0}))
+	// Malformed entry: not parseable, so it cannot appear in the lineage.
+	bad := filepath.Join(LedgerDir("p"), "broken"+EntryFileSuffix)
+	require.NoError(t, os.WriteFile(bad, []byte("{not json"), 0o600))
+
+	summary, err := NewAggregator("p").Compute()
+	require.NoError(t, err)
+
+	// Aggregate excludes the no-activity child; lineage includes it.
+	assert.Equal(t, 1, summary.ChildCount)
+	assert.Equal(t, 1, summary.NoActivityCount)
+	assert.Equal(t, 1, summary.SkippedCount)
+
+	assert.ElementsMatch(t, []ChildRef{
+		{InvocationID: "active", BuildTool: "gradle"},
+		{InvocationID: "idle", BuildTool: "xcode"},
+	}, summary.Children)
+}
+
 func TestSweep_RemovesStaleDirsKeepsFresh(t *testing.T) {
 	setHome(t)
 

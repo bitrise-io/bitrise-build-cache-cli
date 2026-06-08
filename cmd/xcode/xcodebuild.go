@@ -22,7 +22,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
@@ -243,14 +242,8 @@ func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Wri
 	return w
 }
 
-//go:generate moq -stub -out xcodebuild_relation_mock_test.go -pkg xcode . relationSender
-
 type invocationSaver interface {
 	PutInvocation(inv analytics.Invocation) error
-}
-
-type relationSender interface {
-	PutInvocationRelation(rel multiplatform.InvocationRelation) error
 }
 
 // XcodebuildRunner holds configuration for the xcodebuild wrapper and provides
@@ -267,12 +260,11 @@ type XcodebuildRunner struct {
 
 	// invocationAPI saves invocations. If nil, a production analytics client is created.
 	invocationAPI invocationSaver
-	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
-	relationAPI relationSender
 }
 
 // Run executes the xcodebuild wrapper: runs xcodebuild, collects stats,
-// sends analytics, and registers invocation relations.
+// sends analytics, and records its hit rate in the parent's child-stats
+// ledger when run under a parent wrapper.
 //
 //nolint:nestif
 func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
@@ -335,12 +327,12 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		XcodeBuildNumber: runStats.XcodeBuildNumber,
 	}, c.Config.AuthConfig, c.Metadata)
 
-	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+	c.saveInvocation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
 	return runStats
 }
 
-func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {
+func (c *XcodebuildRunner) saveInvocation(inv analytics.Invocation, hits, total int64) {
 	saver, err := c.resolveInvocationAPI()
 	if err != nil {
 		c.Logger.Errorf("Failed to create analytics client: %v", err)
@@ -356,8 +348,11 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, h
 
 	c.Logger.TInfof(MsgInvocationSaved, c.InvocationID)
 
+	// Record this invocation's hit rate in the parent's local ledger when run
+	// under a parent wrapper (e.g. react-native). The parent reads the ledger
+	// in its post-run phase to aggregate hit rates and report the parent→child
+	// lineage inline on its own invocation.
 	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
-		c.sendRelation(parentID)
 		c.writeChildStatsLedger(parentID, inv, hits, total)
 	}
 }
@@ -397,41 +392,6 @@ func (c *XcodebuildRunner) resolveInvocationAPI() (invocationSaver, error) {
 	}
 
 	return client, nil
-}
-
-func (c *XcodebuildRunner) resolveRelationAPI() (relationSender, error) {
-	if c.relationAPI != nil {
-		return c.relationAPI, nil
-	}
-
-	client, err := multiplatform.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("create multiplatform analytics client: %w", err)
-	}
-
-	return client, nil
-}
-
-func (c *XcodebuildRunner) sendRelation(parentID string) {
-	c.Logger.TInfof("Registering invocation relation: parent=%s → child=%s (build-tool=xcode)", parentID, c.InvocationID)
-
-	api, err := c.resolveRelationAPI()
-	if err != nil {
-		c.Logger.Errorf("Failed to create multiplatform analytics client: %v", err)
-
-		return
-	}
-
-	rel := multiplatform.InvocationRelation{
-		ParentInvocationID: parentID,
-		ChildInvocationID:  c.InvocationID,
-		InvocationDate:     time.Now(),
-		BuildTool:          "xcode",
-	}
-
-	if err := api.PutInvocationRelation(rel); err != nil {
-		c.Logger.Errorf("Failed to send invocation relation analytics: %v", err)
-	}
 }
 
 //nolint:nestif

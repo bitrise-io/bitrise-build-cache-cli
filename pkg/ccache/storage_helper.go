@@ -23,7 +23,6 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
 )
 
@@ -68,11 +67,10 @@ type HealthCheckParams struct {
 
 // StorageHelper manages the ccache IPC storage helper lifecycle.
 type StorageHelper struct {
-	config   ccacheconfig.Config
-	params   StorageHelperParams
-	osProxy  utils.OsProxy
-	logger   log.Logger
-	registry *pkgcommon.InvocationRegistry
+	config  ccacheconfig.Config
+	params  StorageHelperParams
+	osProxy utils.OsProxy
+	logger  log.Logger
 
 	// Session state
 	sessionMu    sync.RWMutex
@@ -95,19 +93,11 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 
 	config.DebugLogging = config.DebugLogging || params.DebugLogging
 
-	registry, err := pkgcommon.NewInvocationRegistry(pkgcommon.InvocationRegistryParams{
-		Envs: params.Envs,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create invocation registry: %w", err)
-	}
-
 	return &StorageHelper{
-		config:   config,
-		params:   params,
-		osProxy:  osProxy,
-		logger:   log.NewLogger(log.WithDebugLog(config.DebugLogging)),
-		registry: registry,
+		config:  config,
+		params:  params,
+		osProxy: osProxy,
+		logger:  log.NewLogger(log.WithDebugLog(config.DebugLogging)),
 
 		invocationID: params.InvocationID,
 		parentID:     params.ParentInvocationID,
@@ -180,33 +170,10 @@ func (h *StorageHelper) Stop(ctx context.Context) error {
 	return nil
 }
 
-// RegisterInvocationRelation records the parent→child invocation relation
-// using the IDs from internal state (set at construction or via SetInvocationID).
-// Errors are logged but do not fail the caller. No-op if parentID is empty.
-func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
-	h.sessionMu.RLock()
-	parentID := h.parentID
-	childID := h.invocationID
-	h.sessionMu.RUnlock()
-
-	if parentID == "" {
-		h.logger.TInfof("No parent invocation ID available, skipping invocation relation registration")
-
-		return
-	}
-
-	if err := h.registry.RegisterRelation(ctx, pkgcommon.RegisterRelationParams{
-		ParentID:  parentID,
-		ChildID:   childID,
-		BuildTool: "ccache",
-	}); err != nil {
-		h.logger.TWarnf("Failed to register invocation relation: %v", err)
-	}
-}
-
 // CollectAndSendStats collects ccache statistics and, if ccache had any activity,
-// reports the ccache invocation and registers the parent→child relationship.
-// Always zeros ccache counters at the end regardless of activity.
+// reports the ccache invocation and records its hit rate in the parent's
+// child-stats ledger (read by the parent wrapper to report the parent→child
+// lineage inline). Always zeros ccache counters at the end regardless of activity.
 // If the storage helper is reachable, its session byte counts and active invocation
 // IDs override the values from internal state and params.
 func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) {
@@ -260,8 +227,6 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 		return
 	}
-
-	h.registerInvocationRelation(ctx)
 
 	metadata := configcommon.NewMetadata(h.params.Envs, newCommandFunc(ctx), h.logger)
 
