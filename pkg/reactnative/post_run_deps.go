@@ -165,6 +165,7 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 			InvocationID: c.InvocationID,
 			BuildTool:    c.BuildTool,
 		})
+		d.logger.TInfof("Reporting child invocation %s (build tool: %s) on the react-native invocation", c.InvocationID, c.BuildTool)
 	}
 
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
