@@ -11,31 +11,35 @@ if ! grep -q "React Native invocation ID:" "$RN_CLI_LOG"; then
 fi
 echo "React Native invocation ID present ✅"
 
-# --- Xcode parent-child invocation relation (checked via xcelerate log files) ---
-# The xcodebuild wrapper's output is captured by react-native build-ios and doesn't
-# reach $RN_CLI_LOG. Instead, TInfof messages are written to xcelerate log files
-# at $BITRISE_DEPLOY_DIR/xcelerate-*.log.
+# --- Inline parent→child lineage ---
+# Children (gradle/xcode/ccache) are no longer reported via a separate per-child
+# relation API call. The react-native wrapper enumerates them from the local
+# child-stats ledger and reports them inline on its own invocation, logging one
+# "Reporting child invocation ... (build tool: X)" line per child.
+
+assert_child_reported() {
+  local tool="$1"
+  if ! grep -q "Reporting child invocation .* (build tool: ${tool})" "$RN_CLI_LOG"; then
+    echo "${tool} child invocation not reported inline on the react-native invocation ❌"
+    exit 1
+  fi
+  echo "${tool} child invocation reported inline ✅"
+}
+
+# --- Xcode child (activation detected via xcelerate log files) ---
+# The xcodebuild wrapper's output is captured by react-native build-ios and
+# doesn't reach $RN_CLI_LOG; its activation is detected via xcelerate-*.log.
+# The inline-reporting line itself is emitted by the RN wrapper into $RN_CLI_LOG.
 
 XCELERATE_LOGS=$(find "${BITRISE_DEPLOY_DIR:-.}" -name 'xcelerate-*.log' 2>/dev/null || true)
 if [ -n "$XCELERATE_LOGS" ]; then
   echo "Found xcelerate log(s): $XCELERATE_LOGS"
-
-  if ! grep -q "Registering invocation relation:.*build-tool=xcode" $XCELERATE_LOGS; then
-    echo "Xcode invocation relation not registered ❌"
-    exit 1
-  fi
-  echo "Xcode invocation relation registered ✅"
-
-  if grep -q "Failed to send invocation relation analytics" $XCELERATE_LOGS; then
-    echo "Xcode invocation relation send failed ❌"
-    exit 1
-  fi
-  echo "Xcode invocation relation send succeeded ✅"
+  assert_child_reported "xcode"
 else
-  echo "No xcelerate log files found (xcode not activated, skipping xcode relation checks) ℹ️"
+  echo "No xcelerate log files found (xcode not activated, skipping xcode child check) ℹ️"
 fi
 
-# --- Ccache invocation relation ---
+# --- Ccache child ---
 
 if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
   echo "Ccache invocation ID present ✅"
@@ -45,33 +49,27 @@ if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
     exit 1
   fi
   echo "Parent invocation ID present ✅"
+
+  assert_child_reported "ccache"
 else
   echo "Ccache invocation ID not present (ccache not active or no activity) ℹ️"
-  if grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
-    echo "Unexpected ccache invocation relation HTTP call found when ccache was inactive ❌"
-    exit 1
-  fi
-  echo "No unexpected ccache relation HTTP calls ✅"
 fi
 
 # --- HTTP responses (only when debug logging is active) ---
 
 if grep -q "HTTP PUT:" "$RN_CLI_LOG"; then
-  # PutInvocation (react-native run invocation)
+  # PutInvocation (react-native run invocation, carrying the children inline)
   if ! grep -q "HTTP PUT:.*/v1/invocations/" "$RN_CLI_LOG"; then
     echo "No PutInvocation HTTP call found ❌"
     exit 1
   fi
   echo "PutInvocation HTTP call present ✅"
 
-  # PutInvocationRelation (parent→ccache) — only when ccache was activated
-  if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
-    if ! grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
-      echo "No PutInvocationRelation HTTP call found ❌"
-      exit 1
-    fi
-    echo "PutInvocationRelation HTTP call present ✅"
-  fi
+  # We intentionally do NOT assert on per-child relation calls
+  # (PUT /v1/invocations/<parent>/children/<child>): xcode/ccache no longer make
+  # them, and gradle's register-child-invocation runs in the gradle daemon, not
+  # here. Lineage is verified above via the inline "Reporting child invocation"
+  # lines instead.
 
   # All HTTP responses should be 2xx
   if grep -q "Response: [^2]" "$RN_CLI_LOG"; then
@@ -86,13 +84,8 @@ fi
 
 # --- Failure indicators (should be absent) ---
 
-if grep -q "Warning: failed to send run invocation analytics" "$RN_CLI_LOG"; then
+if grep -q "Failed to send run invocation analytics" "$RN_CLI_LOG"; then
   echo "React-native invocation send failed ❌"
-  exit 1
-fi
-
-if grep -q "Warning: failed to register invocation relation" "$RN_CLI_LOG"; then
-  echo "Invocation relation registration failed ❌"
   exit 1
 fi
 

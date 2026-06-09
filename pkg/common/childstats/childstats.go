@@ -138,6 +138,14 @@ func (w *Writer) Write(entry Entry) error {
 	return nil
 }
 
+// ChildRef identifies a child invocation that wrote a ledger entry under the
+// parent, regardless of cache activity. Parent wrappers use it to report the
+// full parent→child lineage inline on the parent invocation.
+type ChildRef struct {
+	InvocationID string
+	BuildTool    string
+}
+
 // ToolSummary holds per-build-tool aggregate stats.
 type ToolSummary struct {
 	// MeanHitRate is the unweighted mean of hit_rate across the tool's children.
@@ -203,6 +211,12 @@ type Summary struct {
 
 	// ByTool breaks down the stats per build tool (gradle, ccache, xcode, ...).
 	ByTool map[string]ToolSummary
+
+	// Children lists every child invocation that wrote a ledger entry under
+	// the parent, including no-activity children excluded from the hit-rate
+	// aggregate. This is lineage, not stats: it captures which invocations ran
+	// under the parent so the parent can report them inline.
+	Children []ChildRef
 }
 
 // Aggregator reads a parent's ledger directory and produces a Summary.
@@ -266,6 +280,16 @@ func (a *Aggregator) Compute() (Summary, error) {
 			continue
 		}
 
+		// Record lineage for every well-formed entry, before any aggregate
+		// filtering — no-activity children still ran under this parent and
+		// must appear in the reported parent→child relationships.
+		if entry.ChildInvocationID != "" {
+			summary.Children = append(summary.Children, ChildRef{
+				InvocationID: entry.ChildInvocationID,
+				BuildTool:    entry.BuildTool,
+			})
+		}
+
 		// Skip entries with no cacheable work — including them only drags
 		// MeanHitRate toward 0% without telling the user anything useful.
 		if entry.Total == 0 {
@@ -315,11 +339,20 @@ func (a *Aggregator) Compute() (Summary, error) {
 		summary.WeightedHitRate = float32(summary.TotalHits) / float32(summary.TotalCount)
 	}
 
-	for tool, count := range byToolCounts {
+	summary.ByTool = summarizeByTool(byToolSums, byToolCounts, byToolHits, byToolTotals)
+
+	return summary, nil
+}
+
+// summarizeByTool folds the per-build-tool accumulators into ToolSummary values.
+func summarizeByTool(sums map[string]float32, counts map[string]int, hits, totals map[string]int64) map[string]ToolSummary {
+	byTool := make(map[string]ToolSummary, len(counts))
+
+	for tool, count := range counts {
 		ts := ToolSummary{
-			MeanHitRate: byToolSums[tool] / float32(count),
-			TotalHits:   byToolHits[tool],
-			TotalCount:  byToolTotals[tool],
+			MeanHitRate: sums[tool] / float32(count),
+			TotalHits:   hits[tool],
+			TotalCount:  totals[tool],
 			Count:       count,
 		}
 
@@ -327,10 +360,10 @@ func (a *Aggregator) Compute() (Summary, error) {
 			ts.WeightedHitRate = float32(ts.TotalHits) / float32(ts.TotalCount)
 		}
 
-		summary.ByTool[tool] = ts
+		byTool[tool] = ts
 	}
 
-	return summary, nil
+	return byTool
 }
 
 // Cleanup removes the parent's ledger directory. Safe to call when the

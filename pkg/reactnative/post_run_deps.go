@@ -156,6 +156,18 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	// observability; the only signal that flips Success here is execErr.
 	wrapperSuccess := execErr == nil
 
+	// Report the child invocations (gradle/xcode/ccache) inline so the backend
+	// gets the full parent→child lineage from the wrapper invocation itself,
+	// without a separate relation call per child.
+	children := make([]multiplatform.InvocationRef, 0, len(summary.Children))
+	for _, c := range summary.Children {
+		children = append(children, multiplatform.InvocationRef{
+			InvocationID: c.InvocationID,
+			BuildTool:    c.BuildTool,
+		})
+		d.logger.TInfof("Reporting child invocation %s (build tool: %s) on the react-native invocation", c.InvocationID, c.BuildTool)
+	}
+
 	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationDate: time.Now().Add(-duration),
 		InvocationID:   wrapperInvocationID,
@@ -167,6 +179,7 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		BuildTool:      "react-native",
 		Wrapper:        "bitrise-build-cache-cli react-native",
 		HitRate:        summary.MeanHitRate,
+		Children:       children,
 	}, d.authConfig, metadata)
 
 	if err := d.sendInvocation(*inv); err != nil {
