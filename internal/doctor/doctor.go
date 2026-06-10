@@ -371,7 +371,8 @@ func (r *Runner) ccacheBinaryCheck() Check {
 
 type logDirOutcome struct {
 	Missing     string
-	NotWritable string
+	NotWritable string // "non-fatal" permission failure we can describe to the user
+	WrongOwner  string // owned by a different uid (root, usually) — needs sudo chown
 	Fatal       error
 }
 
@@ -391,11 +392,76 @@ func checkLogDir(path string) logDirOutcome {
 
 	probe := filepath.Join(path, ".doctor-probe")
 	if werr := os.WriteFile(probe, []byte{}, 0o600); werr != nil {
+		// Distinguish "owned by another user" from generic write failures so the
+		// hint we surface is actionable.
+		if statT, ok := info.Sys().(*syscall.Stat_t); ok {
+			if int(statT.Uid) != os.Geteuid() {
+				return logDirOutcome{WrongOwner: path}
+			}
+		}
+
 		return logDirOutcome{NotWritable: path + " (" + werr.Error() + ")"}
 	}
 	_ = os.Remove(probe)
 
 	return logDirOutcome{}
+}
+
+type logDirsSummary struct {
+	Missing     []string
+	NotWritable []string
+	WrongOwner  []string
+	Fatal       error
+}
+
+func collectLogDirState(home string, candidates []string) logDirsSummary {
+	var s logDirsSummary
+	for _, candidate := range candidates {
+		path := strings.Replace(candidate, "~", home, 1)
+		out := checkLogDir(path)
+		if out.Fatal != nil {
+			s.Fatal = out.Fatal
+
+			return s
+		}
+		if out.Missing != "" {
+			s.Missing = append(s.Missing, out.Missing)
+		}
+		if out.NotWritable != "" {
+			s.NotWritable = append(s.NotWritable, out.NotWritable)
+		}
+		if out.WrongOwner != "" {
+			s.WrongOwner = append(s.WrongOwner, out.WrongOwner)
+		}
+	}
+
+	return s
+}
+
+func resultFromLogDirsSummary(s logDirsSummary) Result {
+	if s.Fatal != nil {
+		return Result{State: StateError, Detail: s.Fatal.Error()}
+	}
+	if len(s.WrongOwner) > 0 {
+		// Don't pretend doctor can fix root-owned files without elevation —
+		// surface the exact command instead.
+		return Result{
+			State: StateError,
+			Detail: fmt.Sprintf(
+				"owned by another user (likely root from a previous sudo run): %s — run `sudo chown -R $(whoami) %s` to repair",
+				strings.Join(s.WrongOwner, ", "),
+				strings.Join(s.WrongOwner, " "),
+			),
+		}
+	}
+	if len(s.NotWritable) > 0 {
+		return Result{State: StateError, Detail: "not writable: " + strings.Join(s.NotWritable, ", ")}
+	}
+	if len(s.Missing) > 0 {
+		return Result{State: StateWarn, Detail: "missing: " + strings.Join(s.Missing, ", ") + " — fixable", Fixable: true}
+	}
+
+	return Result{State: StateOK, Detail: "all log dirs present + writable"}
 }
 
 func (r *Runner) logDirsCheck() Check {
@@ -407,32 +473,7 @@ func (r *Runner) logDirsCheck() Check {
 				return Result{State: StateError, Detail: "could not determine home dir: " + err.Error()}
 			}
 
-			missing := []string{}
-			notWritable := []string{}
-
-			for _, candidate := range r.StateDirCandidates {
-				path := strings.Replace(candidate, "~", home, 1)
-				out := checkLogDir(path)
-				if out.Fatal != nil {
-					return Result{State: StateError, Detail: out.Fatal.Error()}
-				}
-				if out.Missing != "" {
-					missing = append(missing, out.Missing)
-				}
-				if out.NotWritable != "" {
-					notWritable = append(notWritable, out.NotWritable)
-				}
-			}
-
-			if len(notWritable) > 0 {
-				return Result{State: StateError, Detail: "not writable: " + strings.Join(notWritable, ", ")}
-			}
-
-			if len(missing) > 0 {
-				return Result{State: StateWarn, Detail: "missing: " + strings.Join(missing, ", ") + " — fixable", Fixable: true}
-			}
-
-			return Result{State: StateOK, Detail: "all log dirs present + writable"}
+			return resultFromLogDirsSummary(collectLogDirState(home, r.StateDirCandidates))
 		},
 		Fix: func() (string, error) {
 			home, err := os.UserHomeDir()
