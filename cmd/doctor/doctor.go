@@ -2,11 +2,13 @@ package doctor
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/doctor"
@@ -30,26 +32,44 @@ var (
 var doctorCmd = &cobra.Command{
 	Use:          "doctor",
 	Short:        "Diagnose + optionally repair the local Bitrise Build Cache setup",
-	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, xcconfig, CLI version — and optionally repairs the safe ones with --fix. The only network call (GitHub release lookup) can be skipped with --no-update-check.`,
+	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, CLI version — and optionally repairs the safe ones with --fix. The only network call (GitHub release lookup) can be skipped with --no-update-check.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		out := cmd.OutOrStdout()
+
 		report := doctorpkg.NewRunner().Run(cmd.Context(), doctorpkg.Options{
 			ApplyFixes:      fixFlag,
 			SkipUpdateCheck: skipUpdateCheckFlag,
 		})
 
 		if jsonOutput {
-			return writeJSON(os.Stdout, report)
+			return writeJSON(out, report)
 		}
 
-		writeHuman(os.Stdout, report, fixFlag)
+		writeHuman(out, report, fixFlag, colorEnabled(out))
 
 		if report.Overall() == doctorpkg.StateError {
-			return fmt.Errorf("doctor reported errors")
+			return errors.New("doctor reported errors")
 		}
 
 		return nil
 	},
+}
+
+// colorEnabled reports whether ANSI colour codes should be written to w.
+// Honours NO_COLOR (https://no-color.org) and falls back to TTY detection
+// when the writer is an *os.File so piped/CI output stays clean.
+func colorEnabled(w io.Writer) bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+
+	if f, ok := w.(*os.File); ok {
+		return term.IsTerminal(int(f.Fd()))
+	}
+
+	// Not a real file (e.g. a *bytes.Buffer in tests) — no colour.
+	return false
 }
 
 func writeJSON(w io.Writer, r doctorpkg.Report) error {
@@ -62,7 +82,9 @@ func writeJSON(w io.Writer, r doctorpkg.Report) error {
 	return nil
 }
 
-func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool) {
+func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, colored bool) {
+	c := palette(colored)
+
 	if fixed {
 		fmt.Fprintln(w, "Bitrise Build Cache - doctor (with --fix)")
 	} else {
@@ -71,43 +93,60 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool) {
 	fmt.Fprintf(w, "CLI version: %s\n\n", r.Version)
 
 	for _, it := range r.Items {
-		fmt.Fprintf(w, "  %s %-22s %s\n", icon(it.Result.State), it.Name, it.Result.Detail)
+		fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(it.Result.State), it.Name, it.Result.Detail)
 
 		switch {
 		case it.FixResult != nil:
-			fmt.Fprintf(w, "      %s%s%s %s\n", colorGreen, "↳ fixed:", colorReset, *it.FixResult)
+			fmt.Fprintf(w, "      %s↳ fixed:%s %s\n", c.green, c.reset, *it.FixResult)
 		case it.FixError != "":
-			fmt.Fprintf(w, "      %s%s%s %s\n", colorRed, "↳ fix failed:", colorReset, it.FixError)
+			fmt.Fprintf(w, "      %s↳ fix failed:%s %s\n", c.red, c.reset, it.FixError)
 		case !fixed && it.Result.Fixable:
-			fmt.Fprintf(w, "      %s%s%s rerun with --fix to repair\n", colorYellow, "↳", colorReset)
+			fmt.Fprintf(w, "      %s↳%s rerun with --fix to repair\n", c.yellow, c.reset)
 		}
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Overall: %s%s%s\n", overallColor(r.Overall()), r.Overall(), colorReset)
+	fmt.Fprintf(w, "Overall: %s%s%s\n", c.forState(r.Overall()), r.Overall(), c.reset)
 }
 
-func icon(state doctorpkg.State) string {
+type colorPalette struct {
+	reset, green, yellow, red string
+}
+
+func palette(enabled bool) colorPalette {
+	if !enabled {
+		return colorPalette{}
+	}
+
+	return colorPalette{
+		reset:  colorReset,
+		green:  colorGreen,
+		yellow: colorYellow,
+		red:    colorRed,
+	}
+}
+
+func (c colorPalette) icon(state doctorpkg.State) string {
 	switch state {
 	case doctorpkg.StateOK:
-		return colorGreen + "✓" + colorReset
+		return c.green + "✓" + c.reset
 	case doctorpkg.StateWarn:
-		return colorYellow + "!" + colorReset
+		return c.yellow + "!" + c.reset
 	case doctorpkg.StateError:
-		return colorRed + "✗" + colorReset
+		return c.red + "✗" + c.reset
 	default:
 		return "?"
 	}
 }
 
-func overallColor(state doctorpkg.State) string {
+func (c colorPalette) forState(state doctorpkg.State) string {
 	switch state {
 	case doctorpkg.StateOK:
-		return colorGreen
+		return c.green
 	case doctorpkg.StateWarn:
-		return colorYellow
+		return c.yellow
 	case doctorpkg.StateError:
-		return colorRed
+		return c.red
 	default:
 		return ""
 	}
