@@ -13,6 +13,8 @@ package doctor
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -186,7 +188,6 @@ func (r *Runner) checks(skipUpdateCheck bool) []Check {
 		r.ccacheHelperCheck(),
 		r.ccacheBinaryCheck(),
 		r.logDirsCheck(),
-		r.xcelerateXcconfigCheck(),
 	}
 
 	if !skipUpdateCheck {
@@ -223,14 +224,29 @@ func (r *Runner) authCheck() Check {
 const (
 	smokeServiceName = "bitrise-build-cache-doctor"
 	smokeAccountName = "smoketest"
-	smokeSecret      = "smoketest-value"
 )
+
+// newSmokeSecret returns a per-run nonce so a leftover entry from a previous
+// run (whose Delete failed) can't masquerade as a successful round-trip and
+// hide a backend bug.
+func newSmokeSecret() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// rand.Read should never fail in practice; fall back to a deterministic
+		// value so we still produce *some* secret rather than crash.
+		return "smoketest-fallback"
+	}
+
+	return "smoketest-" + hex.EncodeToString(b[:])
+}
 
 func (r *Runner) keychainSmokeCheck() Check {
 	return Check{
 		Name: "keychain-smoke",
 		Diagnose: func(_ context.Context) Result {
-			if err := r.Keyring.Set(smokeServiceName, smokeAccountName, smokeSecret); err != nil {
+			secret := newSmokeSecret()
+
+			if err := r.Keyring.Set(smokeServiceName, smokeAccountName, secret); err != nil {
 				return Result{
 					State:  StateError,
 					Detail: "keychain Set failed: " + err.Error() + ". On Linux check that a secret-service backend (e.g. gnome-keyring, KeePassXC) is running.",
@@ -238,13 +254,13 @@ func (r *Runner) keychainSmokeCheck() Check {
 			}
 
 			got, err := r.Keyring.Get(smokeServiceName, smokeAccountName)
-			if err != nil || got != smokeSecret {
+			if err != nil || got != secret {
 				_ = r.Keyring.Delete(smokeServiceName, smokeAccountName)
 				if err != nil {
 					return Result{State: StateError, Detail: "keychain Get failed: " + err.Error()}
 				}
 
-				return Result{State: StateError, Detail: "keychain Get returned mismatched value"}
+				return Result{State: StateError, Detail: "keychain Get returned mismatched value (stale entry from a previous run with a failed Delete?)"}
 			}
 
 			if err := r.Keyring.Delete(smokeServiceName, smokeAccountName); err != nil {
@@ -335,7 +351,7 @@ func (r *Runner) ccacheHelperCheck() Check {
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
 		},
 		Fix: func() (string, error) {
-			socketPath := os.Getenv("BITRISE_CCACHE_IPC_SOCKET_PATH")
+			socketPath := r.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
 			if socketPath == "" {
 				socketPath = filepath.Join(os.TempDir(), "ccache-ipc.sock")
 			}
@@ -496,38 +512,6 @@ func (r *Runner) logDirsCheck() Check {
 			}
 
 			return "created: " + strings.Join(created, ", "), nil
-		},
-	}
-}
-
-func (r *Runner) xcelerateXcconfigCheck() Check {
-	return Check{
-		Name: "xcelerate-xcconfig",
-		Diagnose: func(_ context.Context) Result {
-			dir := r.XcelerateProxyDir()
-
-			info, err := os.Stat(dir)
-			if err != nil || !info.IsDir() {
-				return Result{State: StateOK, Detail: "xcelerate not activated (skipping check)"}
-			}
-
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				return Result{State: StateError, Detail: "read " + dir + ": " + err.Error()}
-			}
-
-			var xcconfigs []string
-			for _, e := range entries {
-				if !e.IsDir() && strings.HasSuffix(e.Name(), ".xcconfig") {
-					xcconfigs = append(xcconfigs, e.Name())
-				}
-			}
-
-			if len(xcconfigs) == 0 {
-				return Result{State: StateOK, Detail: "xcelerate dir exists but no xcconfig files (no Xcode local activation yet)"}
-			}
-
-			return Result{State: StateOK, Detail: fmt.Sprintf("%d xcconfig file(s) present in %s", len(xcconfigs), dir)}
 		},
 	}
 }
