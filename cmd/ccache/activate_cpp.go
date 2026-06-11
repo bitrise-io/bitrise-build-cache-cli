@@ -31,6 +31,9 @@ This command will:
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		logger := log.NewLogger()
+		logger.EnableDebugLog(common.IsDebugLogMode)
+
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,
 			PushEnabled:           activateCppParams.PushEnabled,
@@ -47,8 +50,8 @@ This command will:
 		// CLI upgrades. Best-effort.
 		if home, homeErr := os.UserHomeDir(); homeErr == nil {
 			configFile := filepath.Join(home, ".bitrise", "cache", "ccache", "config.json")
-			if mErr := refresh.Mark(home, refresh.ToolCcache, configFile, configcommon.GetCLIVersion(log.NewLogger())); mErr != nil {
-				log.NewLogger().Debugf("refresh registry mark for ccache failed (non-fatal): %s", mErr)
+			if mErr := refresh.Mark(home, refresh.ToolCcache, configFile, configcommon.GetCLIVersion(logger)); mErr != nil {
+				logger.Debugf("refresh registry mark for ccache failed (non-fatal): %s", mErr)
 			}
 		}
 
