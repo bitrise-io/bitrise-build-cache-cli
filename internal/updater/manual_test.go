@@ -100,3 +100,49 @@ func TestManualUpgrade_failingInstallerSurfaces(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestManualUpgrade_rejectsOversizeInstaller(t *testing.T) {
+	// Hostile origin streams 2 MiB. Download must abort instead of writing
+	// the whole thing into os.TempDir.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("X"), 2*MaxInstallerBytes))
+	}))
+	defer srv.Close()
+
+	_, err := ManualUpgrade(context.Background(), ManualOptions{
+		Bindir:       t.TempDir(),
+		Out:          &bytes.Buffer{},
+		InstallerURL: srv.URL,
+		HTTPClient:   srv.Client(),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds")
+}
+
+func TestManualUpgrade_rejectsNon2xxStatusIncludingRedirect(t *testing.T) {
+	// Server emits a 301 with HTML body. The strict <200||>=300 check keeps
+	// us from executing an HTML page as a shell script when an upstream
+	// network appliance returns 3xx and the client isn't configured to
+	// follow it.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusMovedPermanently)
+		_, _ = w.Write([]byte("<html>moved</html>"))
+	}))
+	defer srv.Close()
+
+	noRedirect := &http.Client{
+		Transport: srv.Client().Transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	_, err := ManualUpgrade(context.Background(), ManualOptions{
+		Bindir:       t.TempDir(),
+		Out:          &bytes.Buffer{},
+		InstallerURL: srv.URL,
+		HTTPClient:   noRedirect,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "301")
+}
