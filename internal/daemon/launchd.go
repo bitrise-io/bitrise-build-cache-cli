@@ -19,8 +19,18 @@ const launchctlBin = "/bin/launchctl"
 type ExecRunner struct{}
 
 // Run executes bin with args. See CommandRunner contract for return semantics.
+//
+// LC_ALL=C / LANG=C are forced into the child environment so supervisor
+// error messages (systemctl's "Unit ... not loaded" / "does not exist", etc.)
+// stay in English regardless of the user's shell locale. Without this, a
+// dev box with LC_ALL=de_DE.UTF-8 would translate those strings and our
+// substring matches in systemd.go would silently fall through to the
+// generic-error path, breaking the idempotent uninstall contract.
+// launchctl's exit-code-based logic doesn't care about the locale, but the
+// pinning is harmless there.
 func (ExecRunner) Run(ctx context.Context, bin string, args ...string) (string, string, int, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -105,10 +115,13 @@ func guiTarget() string {
 // bootstrap registers the plist with launchd. Boots out first so a rerun
 // picks up the new executable path on CLI upgrades.
 func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath string) error {
-	// First bootout is best-effort: typical exit 5 on first install means
-	// "service not loaded", which is the expected state.
+	// First bootout is best-effort against exit code (typical 5 = "service
+	// not loaded" is fine), but a runner-side error means launchctl
+	// couldn't even start — binary missing, ctx canceled, fork failure.
+	// Surface that now instead of letting the bootstrap below mask it with
+	// a confusingly-identical error.
 	if _, _, _, runErr := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath); runErr != nil {
-		_ = runErr
+		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
 	}
 
 	_, stderr, code, err := b.Runner.Run(ctx, launchctlBin, "bootstrap", guiTarget(), plistPath)
