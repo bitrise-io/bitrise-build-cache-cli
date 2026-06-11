@@ -263,6 +263,34 @@ func TestRun_cooldownSuppressesSecondNetworkCall(t *testing.T) {
 	assert.Equal(t, 2, calls, "post-cooldown run should call GitHub")
 }
 
+func TestRun_throttleResponseAdvancesLastNudgeAt(t *testing.T) {
+	home := t.TempDir()
+	now := time.Now()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	_, err := Run(context.Background(), Options{
+		CurrentVersion: "2.8.4",
+		Home:           home,
+		Out:            &bytes.Buffer{},
+		Now:            now,
+		HTTPClient:     srv.Client(),
+		FetchURL:       srv.URL,
+	})
+	require.Error(t, err, "throttle is still surfaced as an error to the caller")
+
+	// Critical: LastNudgeAt must be advanced even though we never sent the
+	// user-facing nudge. Otherwise a corporate-NAT setup that's blown the
+	// unauthenticated GitHub API budget would hit the server every CLI run.
+	st, loadErr := LoadState(home)
+	require.NoError(t, loadErr)
+	assert.Equal(t, now.UTC(), st.LastNudgeAt.UTC(),
+		"403/429 MUST advance LastNudgeAt to throttle subsequent runs")
+}
+
 func TestRun_networkErrorDoesNotFailRun(t *testing.T) {
 	home := t.TempDir()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
