@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/versioncheck"
 )
@@ -70,13 +71,22 @@ func RunVersionCheck(cmd *cobra.Command) {
 
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 
-	_, _ = versioncheck.RunOnce(ctx, versioncheck.Options{
+	res, _ := versioncheck.RunOnce(ctx, versioncheck.Options{
 		CurrentVersion: configcommon.GetCLIVersion(logger),
 		Home:           home,
 		NoUpdateCheck:  NoUpdateCheck,
 		Logger:         logger,
 		IsCI:           configcommon.DetectCIProvider(utils.AllEnvs()) != "",
 	})
+
+	if res.Drift.Kind == versioncheck.Bump {
+		_ = refresh.OnBump(refresh.Options{
+			Home:            home,
+			PreviousVersion: res.Drift.PreviousVersion,
+			CurrentVersion:  res.Drift.CurrentVersion,
+			Out:             os.Stderr,
+		})
+	}
 }
 
 func Execute() {

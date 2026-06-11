@@ -2,13 +2,17 @@ package ccache
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
@@ -40,6 +44,15 @@ This command will:
 			permhint.PrintIfApplicable(log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)), err)
 
 			return fmt.Errorf("activate C++ cache: %w", err)
+		}
+
+		// Register this activation so D1's bump detector can nudge on future
+		// CLI upgrades. Best-effort.
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			configFile := filepath.Join(home, ".bitrise", "cache", "ccache", "config.json")
+			if mErr := refresh.Mark(home, refresh.ToolCcache, configFile, configcommon.GetCLIVersion(log.NewLogger())); mErr != nil {
+				log.NewLogger().Debugf("refresh registry mark for ccache failed (non-fatal): %s", mErr)
+			}
 		}
 
 		return nil

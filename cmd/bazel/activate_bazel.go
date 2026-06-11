@@ -2,6 +2,7 @@ package bazel
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -13,6 +14,7 @@ import (
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -86,6 +88,13 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		permhint.PrintIfApplicable(logger, err)
 
 		return fmt.Errorf("activate Bazel Build Cache: %w", err)
+	}
+
+	// Best-effort: registry write failure must not fail the activate.
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		if mErr := refresh.Mark(home, refresh.ToolBazel, bazelrcPath, configcommon.GetCLIVersion(logger)); mErr != nil {
+			logger.Debugf("refresh registry mark for bazel failed (non-fatal): %s", mErr)
+		}
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")

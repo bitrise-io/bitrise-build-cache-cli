@@ -2,6 +2,8 @@ package gradle
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -11,6 +13,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -67,6 +70,16 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolGradle})
+
+		// Register this activation so D1's bump detector knows to nudge the
+		// user about refreshing the gradle config on future CLI upgrades.
+		// Best-effort: a registry write failure must not fail the activate.
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			initFile := filepath.Join(gradleHome, "init.d", "bitrise-build-cache.init.gradle.kts")
+			if err := refresh.Mark(home, refresh.ToolGradle, initFile, configcommon.GetCLIVersion(logger)); err != nil {
+				logger.Debugf("refresh registry mark for gradle failed (non-fatal): %s", err)
+			}
+		}
 
 		logger.TInfof("✅ Bitrise plugins activated")
 
