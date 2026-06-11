@@ -1076,6 +1076,71 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
 
+  e2e-daemon-install-macos:
+    description: |
+      Validate `daemon install` / `uninstall` register the helper services
+      as LaunchAgents and tear down cleanly. Registration-only — does not
+      verify real cache traffic.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.medium
+    steps:
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone: {}
+    - script:
+        title: Build CLI
+        inputs:
+        - content: |-
+            set -exo pipefail
+            go build -o bitrise-build-cache-cli
+    - script:
+        title: daemon install / uninstall e2e
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Best-effort cleanup if assertions abort mid-flight, so we never
+            # leak LaunchAgents on shared mac VMs.
+            cleanup_on_error() {
+              if [[ $? -ne 0 ]]; then
+                echo "[cleanup] aborting; force-uninstalling daemon"
+                ./bitrise-build-cache-cli daemon uninstall || true
+              fi
+            }
+            trap cleanup_on_error EXIT
+
+            uid="$(id -u)"
+
+            # ----- install + asserts -----
+            ./bitrise-build-cache-cli daemon install
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              plist="$HOME/Library/LaunchAgents/${label}.plist"
+              [[ -f "$plist" ]] || { echo "FAIL: plist missing: $plist"; exit 1; }
+              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
+                || { echo "FAIL: launchctl did not register ${label}"; exit 1; }
+              echo "OK: ${label} registered"
+            done
+
+            # ----- idempotency on install -----
+            ./bitrise-build-cache-cli daemon install
+            echo "OK: install is idempotent"
+
+            # ----- uninstall + asserts -----
+            ./bitrise-build-cache-cli daemon uninstall
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              plist="$HOME/Library/LaunchAgents/${label}.plist"
+              [[ ! -f "$plist" ]] || { echo "FAIL: plist still present: $plist"; exit 1; }
+              ! /bin/launchctl print "gui/${uid}/${label}" >/dev/null 2>&1 \
+                || { echo "FAIL: ${label} still registered"; exit 1; }
+              echo "OK: ${label} unregistered + plist removed"
+            done
+
+            # ----- idempotency on uninstall -----
+            ./bitrise-build-cache-cli daemon uninstall
+            echo "OK: uninstall is idempotent"
+
   e2e-mavencentral-mirror-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -1656,6 +1721,7 @@ pipelines:
         - gradle-configuration-e2e-linux-save
         parallel: 3
       e2e-xcode-comp-cache: {}
+      e2e-daemon-install-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
