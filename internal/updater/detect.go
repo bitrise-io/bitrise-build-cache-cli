@@ -8,6 +8,7 @@
 package updater
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -56,8 +57,10 @@ var brewSubstrings = []string{
 
 // DetectInstallMethod inspects the supplied executable path (typically
 // os.Executable() at the call site, optionally symlink-resolved by the
-// caller) and returns the best-guess install method. Pure function — no I/O —
-// so it's trivially testable without setting up a real install.
+// caller) and returns the best-guess install method. Reads $HOMEBREW_PREFIX
+// from the environment as a secondary signal — Homebrew exports this when
+// `brew shellenv` has been sourced, which covers unusual prefixes that
+// don't match any of the hard-coded brewSubstrings.
 func DetectInstallMethod(executable string) InstallMethod {
 	if executable == "" {
 		return InstallUnknown
@@ -67,6 +70,16 @@ func DetectInstallMethod(executable string) InstallMethod {
 
 	for _, frag := range brewSubstrings {
 		if strings.Contains(abs, frag) {
+			return InstallBrew
+		}
+	}
+
+	// HOMEBREW_PREFIX catches non-standard brew layouts (relocated prefix,
+	// custom `brew --prefix` overrides). Only consulted when the substring
+	// match misses, so the more specific Cellar/ classification still wins
+	// for stable installs.
+	if prefix := strings.TrimSpace(os.Getenv("HOMEBREW_PREFIX")); prefix != "" {
+		if strings.HasPrefix(abs, filepath.Clean(prefix)+string(filepath.Separator)) {
 			return InstallBrew
 		}
 	}

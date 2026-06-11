@@ -34,8 +34,9 @@ type ManualOptions struct {
 	// Bindir is the directory containing the running binary — passed to
 	// installer.sh via `-b`. Required.
 	Bindir string
-	// Out is where progress / completion messages go. Stderr in production
-	// (keeps stdout clean for JSON consumers).
+	// Out is where progress / completion messages go. The CLI's update
+	// subcommand passes cmd.OutOrStdout() so the user sees the upgrade
+	// log inline; tests inject a bytes.Buffer.
 	Out io.Writer
 	// InstallerURL overrides the canonical URL for tests. Empty = use
 	// InstallerURL constant.
@@ -80,6 +81,9 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	}
 
 	if opts.DryRun {
+		// Dry run intentionally leaves the script on disk — the printed
+		// "To upgrade manually" command references it, so removing it would
+		// break copy-paste. Caller / user cleans up when done.
 		fmt.Fprintf(opts.Out, "Dry run — installer downloaded to %s but NOT executed.\n", scriptPath)
 		fmt.Fprintf(opts.Out, "To upgrade manually: %s %s -b %s\n", opts.Shell, scriptPath, opts.Bindir)
 
@@ -93,7 +97,15 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	cmd.Stderr = opts.Out
 
 	if err := cmd.Run(); err != nil {
+		// Keep the script on disk on failure so the user can re-run it
+		// manually with the same args to debug what went wrong.
 		return scriptPath, fmt.Errorf("run installer.sh: %w", err)
+	}
+
+	// Success — drop the temp file. Best-effort; if removal fails the OS will
+	// clean it up on next reboot (os.TempDir).
+	if removeErr := os.Remove(scriptPath); removeErr != nil {
+		fmt.Fprintf(opts.Out, "warning: could not clean up installer temp file %s: %s\n", scriptPath, removeErr)
 	}
 
 	fmt.Fprintln(opts.Out, "Upgrade complete.")
