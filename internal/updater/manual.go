@@ -22,6 +22,12 @@ const InstallerURL = "https://raw.githubusercontent.com/bitrise-io/bitrise-build
 // (<10 KB); a short timeout makes a network blip surface as an error fast.
 const DownloadTimeout = 10 * time.Second
 
+// MaxInstallerBytes caps how much we'll read from the installer URL. The
+// real script is well under 100 KiB — 1 MiB is two orders of magnitude
+// safety margin while still bounding the worst case if a hostile / broken
+// origin streams gigabytes into os.TempDir.
+const MaxInstallerBytes = 1 << 20
+
 // ManualOptions bundles the inputs ManualUpgrade needs. Kept as a struct so
 // tests can override URL / HTTP client / shell / output writer.
 type ManualOptions struct {
@@ -114,7 +120,11 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode/100 != 2 {
+	// Use the strict 2xx range. Status / 100 == 2 (used previously) would
+	// silently accept e.g. a 3xx redirect Go's client failed to follow,
+	// which produces an HTML body that goes on to be exec'd as a shell
+	// script — a bad time.
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return "", fmt.Errorf("download installer.sh: server responded %d", resp.StatusCode)
 	}
 
@@ -123,11 +133,25 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 		return "", fmt.Errorf("create installer temp file: %w", err)
 	}
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	// LimitReader caps the body at MaxInstallerBytes so a hostile / broken
+	// origin can't stream gigabytes into os.TempDir. We additionally check
+	// whether the cap was actually hit (n == cap) by reading one extra byte
+	// — if anything's left, the body is over the limit.
+	limited := io.LimitReader(resp.Body, MaxInstallerBytes+1)
+
+	n, err := io.Copy(tmp, limited)
+	if err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmp.Name())
 
 		return "", fmt.Errorf("write installer to temp: %w", err)
+	}
+
+	if n > MaxInstallerBytes {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+
+		return "", fmt.Errorf("installer.sh exceeds %d bytes — refusing to execute oversized script", MaxInstallerBytes)
 	}
 
 	if err := tmp.Close(); err != nil {
