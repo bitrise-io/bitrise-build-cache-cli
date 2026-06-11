@@ -276,3 +276,47 @@ func TestDecoder_tolerantOfUnknownFields(t *testing.T) {
 	assert.True(t, ok.Alive)
 	assert.EqualValues(t, 1, ok.Hits)
 }
+
+func TestDecoder_tolerantOfUnknownTopLevelKeys(t *testing.T) {
+	// A v=2 server may add new top-level keys (e.g. `trace_id`, `flags`) that
+	// v=1 readers must ignore rather than fail on. Locks the envelope-level
+	// forward-compat contract called out in docs/daemon-ipc-protocol.md.
+	raw := []byte(`{"v":1,"id":"1","cmd":"status","trace_id":"abc","flags":{"experimental":true}}` + "\n")
+	dec := NewDecoder(bytes.NewReader(raw))
+
+	msg, err := dec.Read()
+	require.NoError(t, err)
+	assert.Equal(t, ProtocolV1, msg.V)
+	assert.Equal(t, "1", msg.ID)
+	assert.Equal(t, CmdStatus, msg.Cmd)
+	// The unknown keys are dropped on round-trip — v=1 readers MAY drop
+	// unknown top-level keys per the spec, and Go's default decoder does.
+}
+
+func TestGolden_errorWithSpecialChars(t *testing.T) {
+	// Lock Go's encoding/json HTML-escape behaviour: `<`, `>`, `&` become
+	// `<`, `>`, `&`; non-ASCII passes through as UTF-8.
+	// Non-Go consumers MUST accept both forms, but the wire format Go
+	// produces is fixed and asserted here.
+	msg := Message{
+		V: ProtocolV1,
+		ID: "1",
+		Error: &ErrorPayload{
+			Code:    CodeInvalidArgs,
+			Message: "policy `<a&b>` violated by user ❌ こんにちは",
+		},
+	}
+	golden(t, "error_special_chars.json", msg)
+
+	// And the raw bytes must contain Go's default HTML-safe \u00XX escapes
+	// (the literal 6-character sequence "<" etc), not the literal
+	// angle-brackets / ampersand. Non-ASCII passes through as UTF-8
+	// unescaped.
+	raw, err := os.ReadFile(filepath.Join("testdata", "v1", "error_special_chars.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "\\u003c")  // <
+	assert.Contains(t, string(raw), "\\u003e")  // >
+	assert.Contains(t, string(raw), "\\u0026")  // &
+	assert.NotContains(t, string(raw), "<a&b>") // raw chars must NOT appear
+	assert.Contains(t, string(raw), "こんにちは") // non-ASCII passes through
+}

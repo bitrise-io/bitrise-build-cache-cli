@@ -66,9 +66,13 @@ shape:
 
 - `v` (int, **required**) — wire-format version. This protocol is `v=1`.
   Future breaking changes bump this number.
-- `id` (string, optional) — correlation identifier echoed by the server in
-  every response / event for that request. Free-form (clients usually pick
-  monotonic counters or UUIDs). Omitted on server-initiated messages.
+- `id` (**JSON string**, optional) — correlation identifier echoed by the
+  server in every response / event for that request. Free-form (clients
+  typically pick monotonic counters formatted as strings, or UUIDs).
+  Omitted on server-initiated messages. **MUST** be encoded as a JSON
+  string — never as a number. Swift's `JSONEncoder` defaults `Int` to
+  number, which breaks Go's `string` decode; clients in Swift must
+  explicitly stringify the id before encoding.
 - `cmd` (string) — command name on requests, control verb on
   mid-stream client messages. Absent on response / event / error messages.
 - `args` (object) — command parameters. Shape is command-specific.
@@ -83,7 +87,19 @@ below) by replying with an `error` envelope of code `protocol_mismatch`,
 then closing the connection.
 
 Servers MUST tolerate unknown top-level keys for forward compatibility (so
-that adding a new optional field doesn't break older readers).
+that adding a new optional field doesn't break older readers). v=1 readers
+MAY drop unknown top-level keys on re-encode — round-trip preservation of
+forward-compat fields is NOT required at v=1. A future v=2 may strengthen
+this if a re-encode use case emerges.
+
+**String escape:** payload bodies serialise via Go's `encoding/json`, which
+HTML-safe-escapes `<`, `>`, and `&` to the JSON `<`, `>`,
+`&` forms by default. Non-Go consumers MUST accept either the
+escaped or raw forms when decoding (JSON itself allows both), and MUST
+NOT rely on which form appears on the wire. Non-ASCII codepoints pass
+through as raw UTF-8. The golden test
+`TestGolden_errorWithSpecialChars` locks the Go-produced form for the
+avoidance of doubt.
 
 ---
 
