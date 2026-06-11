@@ -2,6 +2,7 @@ package bazel
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -83,6 +85,14 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		},
 	); err != nil {
 		return fmt.Errorf("activate Bazel Build Cache: %w", err)
+	}
+
+	// Register this activation so D1's bump detector knows to nudge on
+	// future CLI upgrades. Best-effort.
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		if mErr := refresh.Mark(home, refresh.ToolBazel, bazelrcPath, configcommon.GetCLIVersion(logger)); mErr != nil {
+			logger.Debugf("refresh registry mark for bazel failed (non-fatal): %s", mErr)
+		}
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")
