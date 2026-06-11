@@ -11,10 +11,15 @@ const (
 	// CLI wrote state. Not a bump per se, but D3 may still want to refresh
 	// configs the first time.
 	FirstRun
-	// Bump — running binary version is different from the persisted one.
-	// Could be a forward upgrade or (rarely) a downgrade after a rollback;
-	// we treat both as "config-refresh worthy" because either direction can
-	// change generated config shape.
+	// Bump — running binary version differs from the persisted one. The
+	// classification is direction-agnostic on purpose: forward upgrade is
+	// the common case, but a homebrew downgrade or an installer.sh pin to
+	// an older tag changes the persisted-vs-running delta in the other
+	// direction and the generated config shape may still differ between
+	// versions either way. Treating both as "refresh-worthy" keeps the
+	// downstream nudge (refresh.OnBump in D3) trustworthy without forcing
+	// it to compare semver, which the CLI's `devel` and snapshot versions
+	// can't be parsed as.
 	Bump
 )
 

@@ -46,12 +46,7 @@ func TestOnBump_writesNudgeForRegisteredTools(t *testing.T) {
 	assert.NoError(t, Mark(home, ToolXcelerate, "/x", "2.8.4"))
 
 	var buf bytes.Buffer
-	err := OnBump(Options{
-		Home:            home,
-		PreviousVersion: "2.8.4",
-		CurrentVersion:  "2.8.5",
-		Out:             &buf,
-	})
+	err := OnBump(&buf, home, "2.8.4", "2.8.5")
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "activate gradle")
 	assert.Contains(t, buf.String(), "activate xcode")
@@ -59,12 +54,7 @@ func TestOnBump_writesNudgeForRegisteredTools(t *testing.T) {
 
 func TestOnBump_silentWhenRegistryEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	err := OnBump(Options{
-		Home:            t.TempDir(),
-		PreviousVersion: "2.8.4",
-		CurrentVersion:  "2.8.5",
-		Out:             &buf,
-	})
+	err := OnBump(&buf, t.TempDir(), "2.8.4", "2.8.5")
 	assert.NoError(t, err)
 	assert.Empty(t, buf.String(), "no registered tools = no nudge")
 }

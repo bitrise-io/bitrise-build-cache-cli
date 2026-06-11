@@ -118,12 +118,7 @@ func RunVersionCheck(cmd *cobra.Command) {
 	})
 
 	if res.Drift.Kind == versioncheck.Bump {
-		_ = refresh.OnBump(refresh.Options{
-			Home:            home,
-			PreviousVersion: res.Drift.PreviousVersion,
-			CurrentVersion:  res.Drift.CurrentVersion,
-			Out:             os.Stderr,
-		})
+		_ = refresh.OnBump(os.Stderr, home, res.Drift.PreviousVersion, res.Drift.CurrentVersion)
 	}
 }
 

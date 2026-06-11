@@ -58,6 +58,15 @@ type Registry struct {
 	Entries map[string]Entry `json:"entries"`
 }
 
+// NOTE on stale-entry pruning: an entry written by ACI-5034 (gradle) then
+// abandoned (user moved off Gradle, never reran `activate gradle`) lingers
+// forever in the registry, and `OnBump` will keep nudging them about
+// refreshing it. The fix is to prune entries whose ConfigPath no longer
+// exists on disk — cheap to do at Load() time. Tracked as follow-up; not
+// blocking M1 because the nudge is a one-line stderr write per CLI
+// invocation with a 24h cooldown elsewhere (see versioncheck.NudgeCooldown),
+// so the wrong-nudge cost is low.
+
 func registryPath(home string) string {
 	return filepath.Join(home, StateDirRelative, RegistryFile)
 }
