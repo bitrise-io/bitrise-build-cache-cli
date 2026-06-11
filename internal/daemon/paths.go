@@ -1,8 +1,8 @@
 // Package daemon installs the Bitrise Build Cache helper processes (xcelerate
-// proxy + ccache storage helper) as long-lived OS-supervised services. On
-// macOS this means per-user LaunchAgent plists under
-// ~/Library/LaunchAgents bootstrapped via launchctl. Linux support lives in
-// ACI-5031 and is intentionally not implemented here.
+// proxy + ccache storage helper) as long-lived OS-supervised services. macOS
+// uses per-user LaunchAgent plists under ~/Library/LaunchAgents bootstrapped
+// via launchctl. Linux uses per-user systemd units under
+// ~/.config/systemd/user managed via `systemctl --user`.
 package daemon
 
 import (
@@ -19,6 +19,9 @@ const LogDirRelative = ".local/state/bitrise-build-cache/logs"
 
 // LaunchAgentsDirRelative is the per-user LaunchAgents location on macOS.
 const LaunchAgentsDirRelative = "Library/LaunchAgents"
+
+// SystemdUserDirRelative is the per-user systemd unit directory on Linux.
+const SystemdUserDirRelative = ".config/systemd/user"
 
 // Paths resolves the install locations for a given home directory. Kept as a
 // struct so tests can construct it with t.TempDir() without touching the real
@@ -47,6 +50,11 @@ func (p Paths) LaunchAgentsDir() string {
 	return filepath.Join(p.Home, LaunchAgentsDirRelative)
 }
 
+// SystemdUserDir is the absolute path of ~/.config/systemd/user.
+func (p Paths) SystemdUserDir() string {
+	return filepath.Join(p.Home, SystemdUserDirRelative)
+}
+
 // LogDir is the absolute path of ~/.local/state/bitrise-build-cache/logs.
 func (p Paths) LogDir() string {
 	return filepath.Join(p.Home, LogDirRelative)
@@ -55,6 +63,11 @@ func (p Paths) LogDir() string {
 // PlistPath returns the .plist file path for a service label.
 func (p Paths) PlistPath(label string) string {
 	return filepath.Join(p.LaunchAgentsDir(), label+".plist")
+}
+
+// UnitPath returns the .service file path for a systemd unit name.
+func (p Paths) UnitPath(unitName string) string {
+	return filepath.Join(p.SystemdUserDir(), unitName+".service")
 }
 
 // StdoutPath returns the stdout log file path for a service.

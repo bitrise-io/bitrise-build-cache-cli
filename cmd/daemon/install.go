@@ -12,12 +12,19 @@ import (
 
 //nolint:gochecknoglobals
 var installCmd = &cobra.Command{
-	Use:          "install",
-	Short:        "Register the Bitrise Build Cache services with the OS supervisor",
-	Long:         `install writes LaunchAgent plists for the xcelerate proxy and the ccache storage helper, then bootstraps them with launchctl. Safe to rerun after a CLI upgrade — the plists are rewritten and the services restarted.`,
+	Use:   "install",
+	Short: "Register the Bitrise Build Cache services with the OS supervisor",
+	Long: `install registers the xcelerate proxy and the ccache storage helper with the host OS's per-user supervisor: ` +
+		`LaunchAgents on macOS, systemd --user units on Linux. ` +
+		`Safe to rerun after a CLI upgrade — the supervisor configs are rewritten and the services restarted.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		out := cmd.OutOrStdout()
+
+		backend, err := daemonpkg.DefaultBackend()
+		if err != nil {
+			return err //nolint:wrapcheck // sentinel; preserve identity
+		}
 
 		paths, err := daemonpkg.NewPaths()
 		if err != nil {
@@ -29,24 +36,32 @@ var installCmd = &cobra.Command{
 			return fmt.Errorf("resolve CLI executable path: %w", err)
 		}
 
-		result, err := daemonpkg.Install(cmd.Context(), daemonpkg.ExecRunner{}, paths, daemonpkg.DefaultServices(), exe)
+		result, err := daemonpkg.Install(cmd.Context(), backend, paths, daemonpkg.DefaultServices(), exe)
 		if err != nil {
 			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) {
-				return err //nolint:wrapcheck // sentinel; preserve identity
+				return err //nolint:wrapcheck // sentinel
 			}
 
 			return fmt.Errorf("install daemon: %w", err)
 		}
 
 		for _, st := range result.Statuses {
-			fmt.Fprintf(out, "✓ %s — wrote %s and bootstrapped\n", st.Service.Label(), st.PlistPath)
+			fmt.Fprintf(out, "✓ %s — wrote %s (%s)\n", st.Service.Name, st.ConfigPath, result.BackendName)
 		}
 
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Services are now running. Logs:")
-		fmt.Fprintf(out, "  %s\n", paths.LogDir())
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Verify with: launchctl print gui/$UID/io.bitrise.build-cache.xcelerate-proxy")
+
+		switch result.BackendName {
+		case "launchd":
+			fmt.Fprintf(out, "  %s\n", paths.LogDir())
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "Verify with: launchctl print gui/$UID/io.bitrise.build-cache.xcelerate-proxy")
+		case "systemd":
+			fmt.Fprintln(out, "  journalctl --user -u bitrise-build-cache-xcelerate-proxy")
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "Verify with: systemctl --user status bitrise-build-cache-xcelerate-proxy")
+		}
 
 		return nil
 	},

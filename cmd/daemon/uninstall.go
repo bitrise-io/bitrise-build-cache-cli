@@ -11,19 +11,25 @@ import (
 
 //nolint:gochecknoglobals
 var uninstallCmd = &cobra.Command{
-	Use:          "uninstall",
-	Short:        "Unregister the Bitrise Build Cache services from the OS supervisor",
-	Long:         `uninstall boots out the LaunchAgents installed by ` + "`daemon install`" + ` and removes their plist files. Idempotent — missing services / files are not errors.`,
+	Use:   "uninstall",
+	Short: "Unregister the Bitrise Build Cache services from the OS supervisor",
+	Long: `uninstall stops and removes the LaunchAgents (macOS) or systemd --user units (Linux) installed by ` +
+		"`daemon install`" + `. Idempotent — missing services / files are not errors.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		out := cmd.OutOrStdout()
+
+		backend, err := daemonpkg.DefaultBackend()
+		if err != nil {
+			return err //nolint:wrapcheck // sentinel
+		}
 
 		paths, err := daemonpkg.NewPaths()
 		if err != nil {
 			return err //nolint:wrapcheck // already context-rich
 		}
 
-		result, err := daemonpkg.Uninstall(cmd.Context(), daemonpkg.ExecRunner{}, paths, daemonpkg.DefaultServices())
+		result, err := daemonpkg.Uninstall(cmd.Context(), backend, paths, daemonpkg.DefaultServices())
 		if err != nil {
 			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) {
 				return err //nolint:wrapcheck // sentinel
@@ -34,9 +40,9 @@ var uninstallCmd = &cobra.Command{
 
 		for _, st := range result.Statuses {
 			if st.Removed {
-				fmt.Fprintf(out, "✓ %s — booted out and removed %s\n", st.Service.Label(), st.PlistPath)
+				fmt.Fprintf(out, "✓ %s — stopped and removed %s\n", st.Service.Name, st.ConfigPath)
 			} else {
-				fmt.Fprintf(out, "  %s — nothing to remove (plist not present)\n", st.Service.Label())
+				fmt.Fprintf(out, "  %s — nothing to remove (config not present)\n", st.Service.Name)
 			}
 		}
 

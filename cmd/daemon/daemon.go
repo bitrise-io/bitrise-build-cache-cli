@@ -1,7 +1,7 @@
 // Package daemon exposes CLI subcommands that install the Bitrise Build Cache
 // helper processes (xcelerate proxy + ccache storage helper) as long-lived
-// OS-supervised services. macOS-only today (ACI-5030); Linux support tracked
-// in ACI-5031.
+// OS-supervised services. macOS uses LaunchAgents (ACI-5030); Linux uses
+// systemd --user units (ACI-5031).
 package daemon
 
 import (
@@ -16,8 +16,8 @@ var daemonCmd = &cobra.Command{
 	Short: "Install and control the Bitrise Build Cache background services",
 	Long: `daemon registers the Bitrise Build Cache helper processes (xcelerate proxy and ccache storage helper) ` +
 		`as long-lived OS-supervised services so they survive across builds and shells. ` +
-		`On macOS the services are managed via per-user LaunchAgents under ~/Library/LaunchAgents. ` +
-		`Linux (user systemd) support is tracked in ACI-5031.`,
+		`macOS uses per-user LaunchAgents under ~/Library/LaunchAgents. ` +
+		`Linux uses ` + "`systemctl --user`" + ` units under ~/.config/systemd/user.`,
 }
 
 func init() {
