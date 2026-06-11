@@ -35,6 +35,16 @@ func Up(ctx context.Context, backend Backend, paths Paths, services []Service) (
 
 	for _, svc := range services {
 		path := configPath(backend, paths, svc)
+
+		// Stat-then-Start has a TOCTOU window — if a parallel `daemon
+		// uninstall` deletes the supervisor config between the Stat and
+		// the Start, Start will fail with a supervisor error
+		// ("plist not found" / "Unit file ... does not exist") that the
+		// caller will surface. We accept that small window because the
+		// alternative (skip the Stat and let Start error verbosely) loses
+		// the friendly ErrNotInstalled hint, which is the common case
+		// (user ran `daemon up` before any `daemon install`). Race window
+		// is bounded by `daemon uninstall` runtime, which is small.
 		if _, err := os.Stat(path); err != nil {
 			if os.IsNotExist(err) {
 				return result, fmt.Errorf("%w (missing %s)", ErrNotInstalled, path)
