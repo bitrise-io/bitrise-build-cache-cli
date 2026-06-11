@@ -17,6 +17,8 @@ Bitrise Build Cache CLI - to enable/configure Gradle or Bazel build cache on the
 
 ## Install
 
+> **For a local-dev install one-pager (Homebrew, `installer.sh`, GAR fallback, post-install setup), see [`docs/install.md`](docs/install.md).** The snippet below is the minimal copy-paste form; the linked doc covers Homebrew, troubleshooting, daemon registration, and the interactive setup wizard.
+
 ```shell
 #!/usr/bin/env bash
 set -euxo pipefail
