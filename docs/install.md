@@ -93,7 +93,7 @@ If `github.com` or `raw.githubusercontent.com` is unreachable, `installer.sh`
 falls back to a Google Artifact Registry mirror that holds the same tarballs
 + checksums file + a copy of `installer.sh` itself:
 
-- Bucket: `build-cache-cli-releases`
+- Repo: `build-cache-cli-releases`
 - Project: `ip-build-cache-prod`
 - Region: `us-central1`
 - Public read.
@@ -137,7 +137,7 @@ Then configure the build tool(s) you use:
 bitrise-build-cache activate gradle  --cache
 bitrise-build-cache activate bazel   --cache
 bitrise-build-cache activate xcode   --cache
-bitrise-build-cache activate c++
+bitrise-build-cache activate 'c++'
 ```
 
 Pass `--help` to any of those for the full flag list.
