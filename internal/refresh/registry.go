@@ -132,7 +132,25 @@ func Save(home string, reg Registry) error {
 // subcommands so D1's bump detection knows what was previously configured.
 // Failures are returned but callers MUST treat them as advisory — failing
 // to write the registry should not fail an otherwise-successful activate.
+//
+// Concurrency: Mark is read-modify-write, so two parallel CLI invocations
+// activating different tools at the same time would otherwise race and one
+// entry would be lost on Save (last-write-wins under the rename). We take
+// an OS-level advisory lock on a sibling lockfile around the whole RMW so
+// the second invocation blocks briefly, sees the first's commit, and
+// merges its own delta on top.
+//
+// flock with LOCK_EX is portable across macOS + Linux (both POSIX) and
+// the only consumers of this registry are CLI processes on the same host,
+// so we don't need a cross-host coordinator.
 func Mark(home, tool, configPath, cliVersion string) error {
+	unlock, err := lockRegistry(home)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
+
 	reg, err := Load(home)
 	if err != nil {
 		return err

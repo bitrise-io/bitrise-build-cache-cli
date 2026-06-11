@@ -81,6 +81,35 @@ func TestSortedEntries_alphabetical(t *testing.T) {
 	assert.Equal(t, ToolXcelerate, got[3].Tool)
 }
 
+func TestMark_parallelMarksAllSurvive(t *testing.T) {
+	home := t.TempDir()
+
+	// Run Mark for every tool in parallel; without the flock guard one of
+	// the entries would be lost on Save because of the read-modify-write
+	// race (each goroutine Loads the same baseline, writes its own delta,
+	// rename last-wins).
+	tools := []string{ToolGradle, ToolBazel, ToolXcelerate, ToolCcache}
+
+	done := make(chan error, len(tools))
+	for _, tool := range tools {
+		go func(tn string) {
+			done <- Mark(home, tn, "/path/"+tn, "2.8.4")
+		}(tool)
+	}
+
+	for range tools {
+		require.NoError(t, <-done)
+	}
+
+	reg, err := Load(home)
+	require.NoError(t, err)
+	assert.Len(t, reg.Entries, len(tools), "every Mark call must be visible in the final registry")
+
+	for _, tool := range tools {
+		assert.Contains(t, reg.Entries, tool)
+	}
+}
+
 func TestLoad_corruptFileErrors(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, StateDirRelative)
