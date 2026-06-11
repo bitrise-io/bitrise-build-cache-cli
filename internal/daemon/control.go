@@ -76,14 +76,23 @@ func Down(ctx context.Context, backend Backend, paths Paths, services []Service)
 	return result, nil
 }
 
-// Restart stops then starts. If Up fails because the daemon was never
-// installed, the error propagates with full context.
+// Restart stops then starts. If Up fails after Down succeeded, the user is
+// left with stopped services — we wrap the Up error so the caller knows the
+// state isn't "as you found it" and includes the exact remediation command.
+//
+// If Down itself fails, the services are likely still running, so the error
+// surfaces as-is.
 func Restart(ctx context.Context, backend Backend, paths Paths, services []Service) (ControlResult, error) {
 	if _, err := Down(ctx, backend, paths, services); err != nil {
 		return ControlResult{}, err
 	}
 
-	return Up(ctx, backend, paths, services)
+	result, err := Up(ctx, backend, paths, services)
+	if err != nil {
+		return result, fmt.Errorf("restart left services stopped (Down succeeded, Up failed); run `bitrise-build-cache daemon up` after fixing: %w", err)
+	}
+
+	return result, nil
 }
 
 // configPath resolves the supervisor config file path for svc. The launchd
