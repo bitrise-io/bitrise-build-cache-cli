@@ -2,6 +2,7 @@ package versioncheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -122,8 +123,17 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	result.NetworkCalled = true
 
 	if err != nil {
-		// Best-effort: save state without bumping LastNudgeAt so we'll retry
-		// on the next run (network blips don't permanently stop us).
+		// Throttle response (GitHub 403/429): treat as "we already nudged"
+		// so the next NudgeCooldown window passes before we retry. Without
+		// this, a corporate NAT that's blown the unauthenticated API
+		// budget would hit GitHub on every single CLI invocation forever.
+		if errors.Is(err, ErrThrottled) {
+			newState.LastNudgeAt = opts.Now
+		}
+
+		// Best-effort: save state. On non-throttle errors LastNudgeAt isn't
+		// advanced, so we'll retry on the next run (network blips don't
+		// permanently stop us).
 		_ = SaveState(opts.Home, newState)
 
 		return result, err
