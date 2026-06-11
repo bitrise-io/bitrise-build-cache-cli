@@ -14,7 +14,7 @@ var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Start the Bitrise Build Cache background services",
 	Long: `up starts the daemon services that were registered by ` + "`daemon install`" + `. ` +
-		`Idempotent — running ` + "`up`" + ` against an already-running daemon is a no-op. ` +
+		`Safe to rerun, but not a true no-op against an already-running daemon: on macOS the underlying ` + "`launchctl bootstrap`" + ` is preceded by a ` + "`launchctl bootout`" + `, which briefly stops + restarts each service (so a CLI binary upgrade is picked up). On Linux ` + "`systemctl --user enable --now`" + ` is a real no-op on an already-running unit. ` +
 		`Errors with a "run install first" hint if the supervisor config files are missing from disk.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
