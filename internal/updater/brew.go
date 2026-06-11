@@ -5,10 +5,13 @@ import (
 	"io"
 )
 
-// BrewFormula is the Homebrew formula name shipped by the Bitrise tap. Kept
-// as a constant in one place so this and any future docs / nudge text stay
-// consistent.
-const BrewFormula = "bitrise-io/tools/bitrise-build-cache-cli"
+// BrewFormula is the Homebrew formula name shipped by the Bitrise tap.
+// Resolves to the formula at
+// github.com/bitrise-io/homebrew-bitrise-build-cache/Formula/bitrise-build-cache.rb
+// (see scripts/publish_homebrew_formula.sh: TAP_REMOTE_DEFAULT +
+// the rendered Formula/bitrise-build-cache.rb path). Kept as a single
+// constant so this string and the docs / nudge text never drift.
+const BrewFormula = "bitrise-io/bitrise-build-cache/bitrise-build-cache"
 
 // PrintBrewUpgrade writes the upgrade instruction for a brew-installed CLI
 // to w. We deliberately don't *run* the upgrade ourselves — invoking
