@@ -45,30 +45,54 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 		// invocation. Subcommands that don't represent a user-facing action
 		// (help, completion, the daemon up/down/restart imperatives that just
 		// poke launchctl) skip the check to keep their output deterministic.
-		if shouldSkipVersionCheck(cmd) {
+		if ShouldSkipVersionCheck(cmd) {
 			return
 		}
 
-		runVersionCheck(cmd)
+		RunVersionCheck(cmd)
 	},
 }
 
-// shouldSkipVersionCheck returns true for command names that shouldn't trigger
-// a version drift check / GitHub network lookup. Keep this list tight — the
-// check is supposed to fire on every real CLI invocation.
-func shouldSkipVersionCheck(cmd *cobra.Command) bool {
+// ShouldSkipVersionCheck returns true for command names that shouldn't trigger
+// a version drift check / GitHub network lookup. Exported so the activate
+// subtree (cmd/common/activate.go) and any other PersistentPreRun overrides
+// can share the same skip list.
+//
+// The skip list MUST include subcommands that fire many times per build —
+// the xcelerate xcodebuild wrapper, the proxy + storage-helper start/stop
+// verbs, and the per-invocation register / set-id calls. Each version-check
+// run does a mkdir + temp-file create + JSON marshal + atomic rename; doing
+// that hundreds of times per clean iOS build is real overhead. (Version
+// drift is detected on the next "real" CLI run instead.)
+func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	switch cmd.Name() {
 	case "version", "help", "completion":
+		return true
+	case
+		// xcelerate xcodebuild wrapper — invoked by every Xcode build phase.
+		"xcodebuild",
+		// xcelerate proxy lifecycle — daemon + activate paths both poke it.
+		"start-proxy", "stop-proxy",
+		// ccache storage helper lifecycle + per-invocation hooks.
+		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
+		// Child-stats register hooks fire per nested step / shell invocation.
+		"register-invocation", "register-child-invocation":
 		return true
 	default:
 		return false
 	}
 }
 
-// runVersionCheck performs the drift detect + nudge with a generous context
-// timeout (so a hung GitHub call can't slow a CI / dev run). Errors are
-// swallowed — the version check is advisory.
-func runVersionCheck(cmd *cobra.Command) {
+// RunVersionCheck performs the drift detect + nudge with a generous context
+// timeout (so a hung GitHub call can't slow a CI / dev run). Exported so
+// PersistentPreRun overrides in non-root cobra subtrees (e.g. ActivateCmd in
+// cmd/common/activate.go) can call into the same logic — cobra runs only
+// the closest ancestor's hook, so root's hook alone would never fire for
+// `activate gradle / xcode / c++ / bazel`, the primary entry point for
+// every Bitrise step.
+//
+// Callers MUST gate on ShouldSkipVersionCheck before invoking.
+func RunVersionCheck(cmd *cobra.Command) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return

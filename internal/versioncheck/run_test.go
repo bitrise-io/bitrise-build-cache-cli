@@ -7,6 +7,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -129,6 +131,67 @@ func TestRun_noUpdateCheckSkipsNetwork(t *testing.T) {
 	assert.False(t, res.NetworkCalled)
 	assert.Equal(t, 0, calls, "server must not be hit when --no-update-check is on")
 	assert.Empty(t, out.String())
+}
+
+// TestRun_noChangeWithSuppressedNudgeSkipsSaveState locks the hot-path
+// optimisation: when the running version matches the persisted version AND
+// the nudge is suppressed (CI / cooldown / --no-update-check), Run skips
+// the mkdir + temp-file + atomic rename SaveState does. The state file's
+// modification time must not advance.
+func TestRun_noChangeWithSuppressedNudgeSkipsSaveState(t *testing.T) {
+	home := t.TempDir()
+	now := time.Now()
+
+	// Seed state with the same version we'll run with.
+	require.NoError(t, SaveState(home, State{
+		LastVersion: "2.8.4",
+		LastSeenAt:  now.Add(-1 * time.Hour),
+	}))
+
+	statePath := filepath.Join(home, StateDirRelative, StateFile)
+	infoBefore, err := os.Stat(statePath)
+	require.NoError(t, err)
+
+	// CI=true suppresses the nudge → Run hits the early-return path. With
+	// NoChange drift, SaveState should NOT fire, so the file stays unchanged.
+	_, err = Run(context.Background(), Options{
+		CurrentVersion: "2.8.4",
+		Home:           home,
+		IsCI:           true,
+		Out:            &bytes.Buffer{},
+		Now:            now,
+	})
+	require.NoError(t, err)
+
+	infoAfter, err := os.Stat(statePath)
+	require.NoError(t, err)
+	assert.Equal(t, infoBefore.ModTime(), infoAfter.ModTime(),
+		"state file MUST NOT be rewritten when drift is NoChange and nudge is suppressed")
+}
+
+func TestRun_bumpStillSavesStateEvenWithSuppressedNudge(t *testing.T) {
+	home := t.TempDir()
+	now := time.Now()
+
+	require.NoError(t, SaveState(home, State{
+		LastVersion: "2.8.3", // earlier version → Bump on next Run
+		LastSeenAt:  now.Add(-1 * time.Hour),
+	}))
+
+	_, err := Run(context.Background(), Options{
+		CurrentVersion: "2.8.4",
+		Home:           home,
+		IsCI:           true, // suppress network nudge
+		Out:            &bytes.Buffer{},
+		Now:            now,
+	})
+	require.NoError(t, err)
+
+	// State MUST persist the new version even on the suppressed-nudge path
+	// — otherwise the next run wouldn't notice the bump either.
+	st, err := LoadState(home)
+	require.NoError(t, err)
+	assert.Equal(t, "2.8.4", st.LastVersion)
 }
 
 func TestRun_ciSkipsNetwork(t *testing.T) {
