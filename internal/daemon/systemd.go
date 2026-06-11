@@ -52,6 +52,23 @@ func (b SystemdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 	return path, nil
 }
 
+// Start enables and starts the unit. Same verb as Install minus the unit
+// file write — assumes the file is already on disk. Idempotent (enable --now
+// on a running unit is a no-op).
+func (b SystemdBackend) Start(ctx context.Context, _ Paths, svc Service) error {
+	if err := b.daemonReload(ctx); err != nil {
+		return err
+	}
+
+	return b.enableNow(ctx, svc.UnitName())
+}
+
+// Stop stops the unit without disabling it — the unit will come back on next
+// login. Use Uninstall for permanent removal.
+func (b SystemdBackend) Stop(ctx context.Context, _ Paths, svc Service) error {
+	return b.stop(ctx, svc.UnitName())
+}
+
 // Uninstall disables + stops the service and removes its unit file. Missing
 // unit / not-loaded service is success.
 func (b SystemdBackend) Uninstall(ctx context.Context, paths Paths, svc Service) (string, bool, error) {
@@ -103,6 +120,27 @@ func (b SystemdBackend) enableNow(ctx context.Context, unitName string) error {
 	}
 
 	return nil
+}
+
+// stop runs `systemctl --user stop <unit>`. A stop against a not-loaded unit
+// exits non-zero with "Unit ... not loaded" — treated as success so Stop is
+// idempotent. Unit stays enabled, so it will come back on next login.
+func (b SystemdBackend) stop(ctx context.Context, unitName string) error {
+	_, stderr, code, err := b.Runner.Run(ctx, systemctlBin, "--user", "stop", unitName+".service")
+	if err != nil {
+		return fmt.Errorf("systemctl --user stop %s: %w", unitName, err)
+	}
+
+	if code == 0 {
+		return nil
+	}
+
+	combined := strings.TrimSpace(stderr)
+	if strings.Contains(combined, "not loaded") || strings.Contains(combined, "does not exist") || strings.Contains(combined, "no such file") {
+		return nil
+	}
+
+	return fmt.Errorf("systemctl --user stop %s exited %d: %s", unitName, code, combined)
 }
 
 func (b SystemdBackend) disableNow(ctx context.Context, unitName string) error {

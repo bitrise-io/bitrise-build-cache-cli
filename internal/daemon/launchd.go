@@ -86,6 +86,22 @@ func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 	return path, nil
 }
 
+// Start ensures the plist is bootstrapped (registered + running). The plist
+// file must already exist on disk — callers should run Install first.
+func (b LaunchdBackend) Start(ctx context.Context, paths Paths, svc Service) error {
+	path := paths.PlistPath(svc.Label())
+
+	return b.bootstrap(ctx, path)
+}
+
+// Stop boots the service out. Plist file stays on disk so Start can bring it
+// back without rewriting.
+func (b LaunchdBackend) Stop(ctx context.Context, paths Paths, svc Service) error {
+	path := paths.PlistPath(svc.Label())
+
+	return b.bootout(ctx, path)
+}
+
 // Uninstall boots the service out and removes its plist. Missing plist /
 // not-loaded service is success.
 func (b LaunchdBackend) Uninstall(ctx context.Context, paths Paths, svc Service) (string, bool, error) {
