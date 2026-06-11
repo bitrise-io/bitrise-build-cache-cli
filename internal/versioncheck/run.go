@@ -101,9 +101,19 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		LastNudgeAt:       state.LastNudgeAt,
 	}); err != nil {
 		// ErrNudgeSuppressed is a "skip" signal, not a failure; the caller
-		// MUST see nil here so the CLI doesn't surface it as an error. Save
-		// state with the old LastNudgeAt and return cleanly.
-		_ = SaveState(opts.Home, newState)
+		// MUST see nil here so the CLI doesn't surface it as an error.
+		//
+		// Hot-path optimisation: when the drift is NoChange (running version
+		// matches persisted) and LastNudgeAt isn't moving, the on-disk file
+		// is already what we'd write. Skip the mkdir + temp-file +
+		// JSON-marshal + atomic-rename that SaveState does on every call.
+		// LastSeenAt drift is intentional — that field's only consumer is
+		// human debugging, and refreshing it on every call wastes I/O on
+		// hot paths. Bumps still persist (the next run needs the new
+		// version) and so does first-run (state file needs to exist).
+		if result.Drift.Kind != NoChange {
+			_ = SaveState(opts.Home, newState)
+		}
 
 		return result, nil //nolint:nilerr // ErrNudgeSuppressed is intentionally swallowed
 	}
