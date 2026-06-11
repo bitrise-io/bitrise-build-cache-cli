@@ -32,6 +32,13 @@ func NewEncoder(w io.Writer) *Encoder {
 // Write encodes msg and appends '\n'. The resulting bytes are validated
 // against MaxFrameBytes; oversize messages return ErrFrameTooLarge and are
 // NOT written.
+//
+// Newline-as-terminator is safe because JSON forbids raw control characters
+// (0x00–0x1F) inside string values per RFC 8259 §7 — a literal LF inside a
+// string MUST be encoded as `\n`. So `json.Marshal`'s output never contains
+// a bare 0x0A, and the framing terminator can never collide with payload
+// content. If a future codec swap (e.g. CBOR, msgpack) drops that guarantee
+// the framing layer needs to switch to length-prefixed too.
 func (e *Encoder) Write(msg Message) error {
 	body, err := json.Marshal(msg)
 	if err != nil {
