@@ -46,14 +46,9 @@ var installCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		backend, err := daemonpkg.DefaultBackend()
+		backend, paths, err := resolveBackendAndPaths()
 		if err != nil {
-			return err //nolint:wrapcheck // sentinel; preserve identity
-		}
-
-		paths, err := daemonpkg.NewPaths()
-		if err != nil {
-			return err //nolint:wrapcheck // already context-rich
+			return err
 		}
 
 		// Do NOT EvalSymlinks — embedding the symlinked path lets CLI upgrades land without rerunning install.

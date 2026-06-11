@@ -22,14 +22,9 @@ var uninstallCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		backend, err := daemonpkg.DefaultBackend()
+		backend, paths, err := resolveBackendAndPaths()
 		if err != nil {
-			return err //nolint:wrapcheck // sentinel
-		}
-
-		paths, err := daemonpkg.NewPaths()
-		if err != nil {
-			return err //nolint:wrapcheck // already context-rich
+			return err
 		}
 
 		result, err := daemonpkg.Uninstall(cmd.Context(), backend, paths, daemonpkg.DefaultServices())

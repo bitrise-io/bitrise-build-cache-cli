@@ -10,9 +10,12 @@ import (
 
 var ErrUnsupportedPlatform = errors.New("daemon install is only supported on macOS (launchd) and Linux (systemd)")
 
+// Backend.Stop semantics: launchd unloads (service won't auto-restart until Start); systemd leaves it enabled (comes back on login).
 type Backend interface {
 	Install(ctx context.Context, paths Paths, svc Service, executable string) (configPath string, err error)
 	Uninstall(ctx context.Context, paths Paths, svc Service) (configPath string, removed bool, err error)
+	Start(ctx context.Context, paths Paths, svc Service) error
+	Stop(ctx context.Context, paths Paths, svc Service) error
 	Name() string
 }
 

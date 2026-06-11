@@ -42,6 +42,18 @@ func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 	return path, nil
 }
 
+func (b LaunchdBackend) Start(ctx context.Context, paths Paths, svc Service) error {
+	path := paths.PlistPath(svc.Label())
+
+	return b.bootstrap(ctx, path)
+}
+
+func (b LaunchdBackend) Stop(ctx context.Context, paths Paths, svc Service) error {
+	path := paths.PlistPath(svc.Label())
+
+	return b.bootout(ctx, path)
+}
+
 func (b LaunchdBackend) Uninstall(ctx context.Context, paths Paths, svc Service) (string, bool, error) {
 	path := paths.PlistPath(svc.Label())
 
