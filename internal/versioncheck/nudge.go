@@ -22,7 +22,19 @@ const NudgeCooldown = 24 * time.Hour
 
 // FetchTimeout caps the HTTP call so a flaky network doesn't slow every CLI
 // run. The version check is best-effort by design.
-const FetchTimeout = 2 * time.Second
+//
+// Aligned with the context timeout the root cobra hook attaches in
+// cmd/common/root.go (see RunVersionCheck). Keep them in sync — diverging
+// values create a confusing window where http.Client times out one way
+// and ctx the other.
+const FetchTimeout = 3 * time.Second
+
+// ErrThrottled is returned by FetchLatestVersion when GitHub responds with
+// 403 / 429 (rate-limit, common on corporate-NAT shared IPs). Callers MUST
+// advance LastNudgeAt anyway to avoid hammering GitHub every invocation —
+// the throttle response is a signal that the cooldown should kick in, not
+// a "retry me" error.
+var ErrThrottled = errors.New("github rate-limited the release lookup (403/429)")
 
 // ErrNudgeSuppressed is returned by ShouldNudge when the user has opted out
 // (--no-update-check, CI=true) or when we've already nudged inside the
@@ -94,6 +106,15 @@ func FetchLatestVersion(ctx context.Context, client *http.Client, url string) (s
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden {
+		// 403 + 429 are GitHub's rate-limit signals (unauth API allows ~60
+		// req/h per IP — corporate NAT shares the budget across the office,
+		// so we see this in the wild). Return ErrThrottled so Run advances
+		// LastNudgeAt; without that, every CLI invocation would hammer
+		// GitHub forever once the budget was blown.
+		return "", ErrThrottled
+	}
 
 	if resp.StatusCode/100 != 2 {
 		return "", fmt.Errorf("github responded %d for latest release", resp.StatusCode)

@@ -63,6 +63,28 @@ func TestFetchLatestVersion_propagatesHTTPError(t *testing.T) {
 	assert.Contains(t, err.Error(), "503")
 }
 
+func TestFetchLatestVersion_returnsThrottledOn429(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, err := FetchLatestVersion(context.Background(), server.Client(), server.URL)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrThrottled)
+}
+
+func TestFetchLatestVersion_returnsThrottledOn403(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	_, err := FetchLatestVersion(context.Background(), server.Client(), server.URL)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrThrottled)
+}
+
 func TestFetchLatestVersion_emptyTagErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"tag_name":""}`))
