@@ -4,7 +4,7 @@ A one-page guide for getting the CLI running on a developer machine. For
 CI / Bitrise stack provisioning the CLI is already installed and updated by
 the platform — you don't need anything below.
 
-This page covers the two supported install paths plus the GAR fallback the
+This page covers the two supported install paths, the GAR fallback the
 installer uses when github.com is unreachable, and the post-install steps to
 get going.
 
@@ -13,7 +13,7 @@ get going.
 ## TL;DR
 
 ```sh
-brew install bitrise-io/tools/bitrise-build-cache-cli
+brew install bitrise-io/bitrise-build-cache/bitrise-build-cache
 bitrise-build-cache --version
 ```
 
@@ -26,23 +26,23 @@ curl --retry 5 -sSfL \
 bitrise-build-cache --version
 ```
 
-Then run `bitrise-build-cache activate --interactive` (see [post-install](#post-install)).
+Then set credentials + run an activate command — see [post-install](#post-install).
 
 ---
 
 ## Option 1 — Homebrew (macOS + Linuxbrew)
 
-The Bitrise-maintained tap (`bitrise-io/tools`) ships a formula that follows
-every CLI release within ~minutes of publication.
+The Bitrise-maintained tap (`bitrise-io/homebrew-bitrise-build-cache`) ships
+a formula that follows every CLI release within ~minutes of publication.
 
 ```sh
-brew install bitrise-io/tools/bitrise-build-cache-cli
+brew install bitrise-io/bitrise-build-cache/bitrise-build-cache
 ```
 
 Upgrade later with:
 
 ```sh
-brew update && brew upgrade bitrise-io/tools/bitrise-build-cache-cli
+brew update && brew upgrade bitrise-io/bitrise-build-cache/bitrise-build-cache
 ```
 
 The CLI's `bitrise-build-cache update` subcommand detects a Homebrew install
@@ -108,28 +108,30 @@ showing which URLs were attempted.
 
 ## Post-install
 
-The CLI is configured per-shell with two pieces of information:
+The CLI needs two pieces of information to talk to the Bitrise Build Cache
+backend. Set them as environment variables in your shell rc file (`.zshrc`,
+`.bashrc`, etc.):
+
+```sh
+export BITRISE_BUILD_CACHE_AUTH_TOKEN="<your bitrise PAT>"
+export BITRISE_BUILD_CACHE_WORKSPACE_ID="<your workspace slug>"
+```
+
+Where:
 
 1. **Bitrise Personal Access Token** (PAT) — generated at
    [bitrise.io](https://bitrise.io) → user settings → Security → Personal
    access tokens. See the
    [DevCenter guide](https://devcenter.bitrise.io/en/accounts/personal-access-tokens.html).
 2. **Workspace ID** — the slug in the URL when you're on your Bitrise
-   workspace page.
+   workspace page. See the
+   [DevCenter slug guide](https://devcenter.bitrise.io/en/api/identifying-workspaces-and-apps-with-their-slugs.html).
 
-Run the interactive wizard to wire those up plus pick which build tool(s)
-to configure (Gradle / Bazel / Xcode / ccache):
+> **Shortcut:** the easiest way to get both values is
+> [bitrise.io/build-cache](https://app.bitrise.io/build-cache) → **Add new
+> connection** — that page generates and displays both for you.
 
-```sh
-bitrise-build-cache activate --interactive
-```
-
-The wizard masks the PAT entry and writes the resolved credentials to the
-OS keychain so you don't have to leave them in your shell rc files. (See
-the keychain section of [`activate --interactive`](#) for opt-out / migration
-notes.)
-
-If you'd rather configure a single tool directly:
+Then configure the build tool(s) you use:
 
 ```sh
 bitrise-build-cache activate gradle  --cache
@@ -138,22 +140,23 @@ bitrise-build-cache activate xcode   --cache
 bitrise-build-cache activate c++
 ```
 
+Pass `--help` to any of those for the full flag list.
+
 ---
 
 ## Verifying the install
 
 ```sh
 bitrise-build-cache --version
-bitrise-build-cache doctor          # full health check (auth, proxy, ccache, log dirs)
-bitrise-build-cache status          # one-shot "is it working right now?"
 ```
 
-`doctor` includes a `--fix` flag for the repairs it knows are safe — handy
-after a partial install or a stale config.
+Run a build with `-d` (debug logging) the first time to confirm the cache
+is being hit — for Gradle that's `gradle build -d`, for Bazel
+`bazel build //... --verbose_failures`.
 
 ---
 
-## Long-lived helpers (optional)
+## Long-lived helper services (optional)
 
 By default each `bitrise-build-cache activate` brings the helper processes
 up in foreground / per-build mode. For local development where you build
@@ -161,10 +164,11 @@ repeatedly, registering the helpers as OS-supervised services keeps them
 warm across shells:
 
 ```sh
-bitrise-build-cache daemon install   # macOS LaunchAgent / Linux user systemd unit
-bitrise-build-cache daemon status    # check
-bitrise-build-cache daemon restart   # after a CLI upgrade
-bitrise-build-cache daemon uninstall # tear down
+bitrise-build-cache daemon install    # macOS LaunchAgent / Linux user systemd unit
+bitrise-build-cache daemon up         # start the registered services
+bitrise-build-cache daemon down       # stop without uninstalling
+bitrise-build-cache daemon restart    # after a CLI upgrade
+bitrise-build-cache daemon uninstall  # tear down
 ```
 
 The daemon services are user-scoped (no root / sudo) and log to
@@ -175,14 +179,15 @@ The daemon services are user-scoped (no root / sudo) and log to
 
 ## Troubleshooting
 
-| Symptom                                       | First thing to try                                       |
-| --------------------------------------------- | -------------------------------------------------------- |
-| `command not found: bitrise-build-cache`      | Confirm `~/.local/bin` (or wherever you installed) is on `$PATH`. |
-| Stale config after a CLI upgrade              | `bitrise-build-cache activate <tool>` (or follow the auto-nudge after the next run). |
-| Auth errors / 401 from the cache backend      | `bitrise-build-cache auth set` to re-enter the PAT, then `doctor`. |
-| Network errors / GitHub unreachable           | The GAR fallback should kick in automatically; if not, see the URLs `installer.sh` printed. |
-| Daemon services not running                   | `bitrise-build-cache daemon status` → `daemon up` if registered, `daemon install` if not. |
+| Symptom                                  | First thing to try                                       |
+| ---------------------------------------- | -------------------------------------------------------- |
+| `command not found: bitrise-build-cache` | Confirm the bindir is on your `$PATH`. |
+| Stale config after a CLI upgrade         | Re-run the relevant `bitrise-build-cache activate <tool>` (the CLI nudges you with the exact command on the next run after a version bump). |
+| Auth errors / 401 from the cache backend | Re-check `BITRISE_BUILD_CACHE_AUTH_TOKEN` is exported and the PAT hasn't expired. |
+| Network errors / GitHub unreachable      | The GAR fallback should kick in automatically; if not, see the URLs `installer.sh` printed. |
+| Daemon services not running              | `bitrise-build-cache daemon up` (or `daemon install` if you never registered). |
 
-If `doctor` doesn't surface the root cause, capture the run with
-`bitrise-build-cache -d doctor --json` and open an issue on
+For deeper logging on any command, prepend `-d`
+(`bitrise-build-cache -d activate gradle ...`). If that doesn't surface
+the root cause, open an issue on
 [github.com/bitrise-io/bitrise-build-cache-cli](https://github.com/bitrise-io/bitrise-build-cache-cli/issues).
