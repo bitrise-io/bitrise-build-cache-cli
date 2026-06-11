@@ -96,7 +96,8 @@ func TestGolden_helloServer(t *testing.T) {
 }
 
 func TestGolden_helloMismatchError(t *testing.T) {
-	// Mismatch error: typed details body packed via marshalRaw.
+	// Build the mismatch error via the exported MarshalDetails helper so the
+	// test exercises the same surface external consumers do.
 	msg := Message{
 		V: ProtocolV1,
 		Error: &ErrorPayload{
@@ -104,8 +105,24 @@ func TestGolden_helloMismatchError(t *testing.T) {
 			Message: "client did not accept any protocol the server speaks",
 		},
 	}
-	require.NoError(t, marshalRaw("details", &msg.Error.Details, HelloMismatchError{Supported: []int{ProtocolV1}}))
+	require.NoError(t, MarshalDetails(msg.Error, HelloMismatchError{Supported: []int{ProtocolV1}}))
 	golden(t, "hello_mismatch_error.json", msg)
+
+	// Round-trip: typed details body decodes back to the same struct via the
+	// exported UnmarshalDetails helper.
+	var got HelloMismatchError
+	require.NoError(t, UnmarshalDetails(msg.Error, &got))
+	assert.Equal(t, []int{ProtocolV1}, got.Supported)
+}
+
+func TestMarshalDetails_nilErrorPayloadFails(t *testing.T) {
+	require.Error(t, MarshalDetails(nil, HelloMismatchError{Supported: []int{1}}))
+}
+
+func TestUnmarshalDetails_nilErrorPayloadIsNoOp(t *testing.T) {
+	var dst HelloMismatchError
+	require.NoError(t, UnmarshalDetails(nil, &dst))
+	assert.Empty(t, dst.Supported)
 }
 
 func TestGolden_statusRequest(t *testing.T) {
@@ -174,6 +191,34 @@ func TestGolden_hitrateEvent(t *testing.T) {
 
 func TestGolden_unsubscribeRequest(t *testing.T) {
 	golden(t, "unsubscribe_request.json", Message{V: ProtocolV1, ID: "3", Cmd: CmdUnsubscribe})
+}
+
+// TestSubscribeHitrate_ackVsEventInvariant locks the rule documented in
+// docs/daemon-ipc-protocol.md: the ack frame carries Ok and never Event;
+// every sample frame carries Event and never Ok. Clients dispatch on
+// presence — violating this invariant breaks them.
+func TestSubscribeHitrate_ackVsEventInvariant(t *testing.T) {
+	ackBytes, err := os.ReadFile(filepath.Join("testdata", "v1", "subscribe_hitrate_ack.json"))
+	require.NoError(t, err)
+	ack, err := NewDecoder(bytes.NewReader(ackBytes)).Read()
+	require.NoError(t, err)
+	assert.NotNil(t, ack.Ok, "ack MUST carry Ok")
+	assert.Nil(t, ack.Event, "ack MUST NOT carry Event")
+
+	evtBytes, err := os.ReadFile(filepath.Join("testdata", "v1", "hitrate_event.json"))
+	require.NoError(t, err)
+	evt, err := NewDecoder(bytes.NewReader(evtBytes)).Read()
+	require.NoError(t, err)
+	assert.NotNil(t, evt.Event, "sample frame MUST carry Event")
+	assert.Nil(t, evt.Ok, "sample frame MUST NOT carry Ok")
+
+	// Unsubscribe response also carries Ok (final reply terminates the stream).
+	unsubBytes, err := os.ReadFile(filepath.Join("testdata", "v1", "unsubscribe_response.json"))
+	require.NoError(t, err)
+	unsub, err := NewDecoder(bytes.NewReader(unsubBytes)).Read()
+	require.NoError(t, err)
+	assert.NotNil(t, unsub.Ok, "unsubscribe response MUST carry Ok")
+	assert.Nil(t, unsub.Event, "unsubscribe response MUST NOT carry Event")
 }
 
 func TestGolden_unsubscribeResponse(t *testing.T) {

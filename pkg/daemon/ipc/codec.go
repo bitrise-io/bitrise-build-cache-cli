@@ -147,6 +147,29 @@ func MarshalEvent(msg *Message, src any) error {
 	return marshalRaw("event", &msg.Event, src)
 }
 
+// MarshalDetails sets err.Details from src. Pass nil to clear. Exported so
+// external consumers (e.g. the Native Mac app) can attach typed details to
+// an ErrorPayload without re-importing encoding/json or reaching into
+// internal helpers.
+func MarshalDetails(err *ErrorPayload, src any) error {
+	if err == nil {
+		return errors.New("ipc: MarshalDetails called with nil ErrorPayload")
+	}
+
+	return marshalRaw("details", &err.Details, src)
+}
+
+// UnmarshalDetails decodes err.Details into dst. Returns nil if Details is
+// absent or the ErrorPayload itself is nil — both are valid "no details"
+// cases. Use this to read HelloMismatchError / future typed detail bodies.
+func UnmarshalDetails(err *ErrorPayload, dst any) error {
+	if err == nil {
+		return nil
+	}
+
+	return unmarshalRaw("details", err.Details, dst)
+}
+
 func unmarshalRaw(field string, raw *json.RawMessage, dst any) error {
 	if raw == nil {
 		return nil

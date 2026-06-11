@@ -249,6 +249,15 @@ Initial response (acknowledgement):
 { "v": 1, "id": "3", "ok": { "subscribed": true, "interval_ms": 1000 } }
 ```
 
+**Ack vs event invariant (MUST).** The subscription acknowledgement and the
+final unsubscribe reply MUST carry `ok` only (no `event`). Every stream
+sample MUST carry `event` only (no `ok`). Clients dispatch by inspecting
+which field is present, not by `id` alone — `id` correlates the whole
+subscription, not individual frames within it. Servers that violate this
+break clients that can't disambiguate "subscription confirmed" from
+"first sample". The golden test `TestSubscribeHitrate_ackVsEventInvariant`
+asserts both directions.
+
 Subsequent events (delta-since-last-sample, not absolute counters):
 
 ```json
