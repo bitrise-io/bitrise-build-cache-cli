@@ -1,10 +1,10 @@
 package updater
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // DaemonInstalled reports whether the user has any daemon supervisor config
@@ -44,9 +44,12 @@ func DaemonInstalled(home string) bool {
 }
 
 // PrintDaemonRestartHint emits a one-line "you should restart the daemon"
-// nudge. Caller is responsible for gating on DaemonInstalled(home).
-func PrintDaemonRestartHint(w io.Writer) {
-	_, _ = fmt.Fprintln(w,
-		"You have the Bitrise Build Cache daemon installed. Run `bitrise-build-cache daemon restart` to pick up the new binary.",
-	)
+// nudge via logger.Infof. Caller is responsible for gating on
+// DaemonInstalled(home).
+func PrintDaemonRestartHint(logger log.Logger) {
+	if logger == nil {
+		return
+	}
+
+	logger.Infof("You have the Bitrise Build Cache daemon installed. Run `bitrise-build-cache daemon restart` to pick up the new binary.")
 }

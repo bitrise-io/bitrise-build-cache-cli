@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
@@ -28,7 +29,7 @@ var updateCmd = &cobra.Command{
 After a successful manual upgrade, prints a hint to restart the daemon (` + "`bitrise-build-cache daemon restart`" + `) when one is installed.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		out := cmd.OutOrStdout()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		exe, err := os.Executable()
 		if err != nil {
@@ -36,16 +37,16 @@ After a successful manual upgrade, prints a hint to restart the daemon (` + "`bi
 		}
 
 		method := updater.DetectInstallMethod(exe)
-		fmt.Fprintf(out, "Detected install method: %s (binary at %s)\n", method, exe)
+		logger.Infof("Detected install method: %s (binary at %s)", method, exe)
 
 		switch method {
 		case updater.InstallBrew:
-			updater.PrintBrewUpgrade(out)
+			updater.PrintBrewUpgrade(logger)
 		case updater.InstallManual:
 			bindir := updater.BindirOf(exe)
 			if _, err := updater.ManualUpgrade(cmd.Context(), updater.ManualOptions{
 				Bindir: bindir,
-				Out:    out,
+				Logger: logger,
 				DryRun: dryRunFlag,
 			}); err != nil {
 				return fmt.Errorf("manual upgrade: %w", err)
@@ -56,11 +57,11 @@ After a successful manual upgrade, prints a hint to restart the daemon (` + "`bi
 			}
 
 			if home, homeErr := os.UserHomeDir(); homeErr == nil && updater.DaemonInstalled(home) {
-				updater.PrintDaemonRestartHint(out)
+				updater.PrintDaemonRestartHint(logger)
 			}
 		case updater.InstallUnknown:
-			fmt.Fprintln(out, "Could not classify the install method. Reinstall manually:")
-			fmt.Fprintln(out, "  curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b <your-bindir>")
+			logger.Warnf("Could not classify the install method. Reinstall manually:")
+			logger.Warnf("  curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b <your-bindir>")
 		}
 
 		return nil

@@ -36,6 +36,6 @@ func TestDaemonInstalled_detectsSystemdUnit(t *testing.T) {
 
 func TestPrintDaemonRestartHint_mentionsRestartCommand(t *testing.T) {
 	var buf bytes.Buffer
-	PrintDaemonRestartHint(&buf)
+	PrintDaemonRestartHint(loggerWithBuffer(&buf))
 	assert.Contains(t, buf.String(), "daemon restart")
 }
