@@ -12,9 +12,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// loggerWithBuffer builds a project logger that writes into the supplied
+// buffer — the standard test seam for asserting on log output from the
+// versioncheck Run helper.
+func loggerWithBuffer(buf *bytes.Buffer) log.Logger {
+	return log.NewLogger(log.WithOutput(buf))
+}
 
 // helper: server returning a fixed tag.
 func releaseServer(t *testing.T, tag string) *httptest.Server {
@@ -36,7 +44,7 @@ func TestRun_firstRunPersistsCurrentVersion(t *testing.T) {
 	res, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &out,
+		Logger:         loggerWithBuffer(&out),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
@@ -47,7 +55,6 @@ func TestRun_firstRunPersistsCurrentVersion(t *testing.T) {
 	assert.True(t, res.Behind)
 	assert.Contains(t, out.String(), "2.8.5 is available")
 
-	// State must be persisted.
 	st, err := LoadState(home)
 	require.NoError(t, err)
 	assert.Equal(t, "2.8.4", st.LastVersion)
@@ -64,13 +71,13 @@ func TestRun_noChangeWhenVersionsMatch(t *testing.T) {
 	res, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &out,
+		Logger:         loggerWithBuffer(&out),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, FirstRun, res.Drift.Kind) // first time we've seen any version
+	assert.Equal(t, FirstRun, res.Drift.Kind)
 	assert.False(t, res.Behind, "running matches latest, nothing to nudge about")
 	assert.Empty(t, out.String())
 }
@@ -80,27 +87,24 @@ func TestRun_secondInvocationDetectsBump(t *testing.T) {
 	srv := releaseServer(t, "v2.8.5")
 	defer srv.Close()
 
-	// First invocation seeds state at 2.8.4.
 	_, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
 	})
 	require.NoError(t, err)
 
-	// Second invocation with a different running binary should report Bump,
-	// even with the cooldown active.
 	res, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.5",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
-		NoUpdateCheck:  true, // suppress network so we don't depend on cooldown
+		NoUpdateCheck:  true,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, Bump, res.Drift.Kind)
@@ -122,7 +126,7 @@ func TestRun_noUpdateCheckSkipsNetwork(t *testing.T) {
 		CurrentVersion: "2.8.4",
 		Home:           home,
 		NoUpdateCheck:  true,
-		Out:            &out,
+		Logger:         loggerWithBuffer(&out),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
@@ -142,7 +146,6 @@ func TestRun_noChangeWithSuppressedNudgeSkipsSaveState(t *testing.T) {
 	home := t.TempDir()
 	now := time.Now()
 
-	// Seed state with the same version we'll run with.
 	require.NoError(t, SaveState(home, State{
 		LastVersion: "2.8.4",
 		LastSeenAt:  now.Add(-1 * time.Hour),
@@ -152,13 +155,11 @@ func TestRun_noChangeWithSuppressedNudgeSkipsSaveState(t *testing.T) {
 	infoBefore, err := os.Stat(statePath)
 	require.NoError(t, err)
 
-	// CI=true suppresses the nudge → Run hits the early-return path. With
-	// NoChange drift, SaveState should NOT fire, so the file stays unchanged.
 	_, err = Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
 		IsCI:           true,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            now,
 	})
 	require.NoError(t, err)
@@ -174,21 +175,19 @@ func TestRun_bumpStillSavesStateEvenWithSuppressedNudge(t *testing.T) {
 	now := time.Now()
 
 	require.NoError(t, SaveState(home, State{
-		LastVersion: "2.8.3", // earlier version → Bump on next Run
+		LastVersion: "2.8.3",
 		LastSeenAt:  now.Add(-1 * time.Hour),
 	}))
 
 	_, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		IsCI:           true, // suppress network nudge
-		Out:            &bytes.Buffer{},
+		IsCI:           true,
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            now,
 	})
 	require.NoError(t, err)
 
-	// State MUST persist the new version even on the suppressed-nudge path
-	// — otherwise the next run wouldn't notice the bump either.
 	st, err := LoadState(home)
 	require.NoError(t, err)
 	assert.Equal(t, "2.8.4", st.LastVersion)
@@ -206,7 +205,7 @@ func TestRun_ciSkipsNetwork(t *testing.T) {
 		CurrentVersion: "2.8.4",
 		Home:           home,
 		IsCI:           true,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
@@ -226,11 +225,10 @@ func TestRun_cooldownSuppressesSecondNetworkCall(t *testing.T) {
 
 	now := time.Now()
 
-	// First run: hits network, sets LastNudgeAt.
 	_, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            now,
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
@@ -238,11 +236,10 @@ func TestRun_cooldownSuppressesSecondNetworkCall(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 
-	// Second run, 1 hour later — must NOT call network.
 	_, err = Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            now.Add(1 * time.Hour),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
@@ -250,11 +247,10 @@ func TestRun_cooldownSuppressesSecondNetworkCall(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, calls, "second run inside cooldown must not call GitHub")
 
-	// Third run, well past cooldown — calls again.
 	_, err = Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            now.Add(NudgeCooldown + time.Minute),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
@@ -275,16 +271,13 @@ func TestRun_throttleResponseAdvancesLastNudgeAt(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            now,
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
 	})
 	require.Error(t, err, "throttle is still surfaced as an error to the caller")
 
-	// Critical: LastNudgeAt must be advanced even though we never sent the
-	// user-facing nudge. Otherwise a corporate-NAT setup that's blown the
-	// unauthenticated GitHub API budget would hit the server every CLI run.
 	st, loadErr := LoadState(home)
 	require.NoError(t, loadErr)
 	assert.Equal(t, now.UTC(), st.LastNudgeAt.UTC(),
@@ -301,14 +294,11 @@ func TestRun_networkErrorDoesNotFailRun(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		CurrentVersion: "2.8.4",
 		Home:           home,
-		Out:            &bytes.Buffer{},
+		Logger:         loggerWithBuffer(&bytes.Buffer{}),
 		Now:            time.Now(),
 		HTTPClient:     srv.Client(),
 		FetchURL:       srv.URL,
 	})
-	// The caller treats errors as advisory, but Run returns them. The key
-	// guarantee: state was still persisted, and LastNudgeAt was NOT advanced
-	// so we retry next run.
 	require.Error(t, err)
 
 	st, loadErr := LoadState(home)
