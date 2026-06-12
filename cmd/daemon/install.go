@@ -51,6 +51,11 @@ var installCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
+			// Surface the actionable hint before returning the raw error so
+			// the user sees the chown / remove-and-retry remediation
+			// alongside the offending path.
+			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+
 			return fmt.Errorf("install daemon: %w", err)
 		}
 

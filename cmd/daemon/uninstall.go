@@ -35,6 +35,8 @@ var uninstallCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
+			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+
 			return fmt.Errorf("uninstall daemon: %w", err)
 		}
 
