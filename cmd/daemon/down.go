@@ -34,6 +34,8 @@ Cross-platform note: on macOS down boots the service out (it won't auto-restart 
 				return err //nolint:wrapcheck // sentinel
 			}
 
+			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+
 			return fmt.Errorf("daemon down: %w", err)
 		}
 

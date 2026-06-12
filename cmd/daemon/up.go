@@ -31,6 +31,8 @@ var upCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
+			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+
 			return fmt.Errorf("daemon up: %w", err)
 		}
 
