@@ -1,0 +1,1 @@
+{"v":1,"error":{"code":"protocol_mismatch","message":"client did not accept any protocol the server speaks","details":{"supported":[1]}}}
