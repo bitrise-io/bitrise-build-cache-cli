@@ -3,12 +3,11 @@ package versioncheck
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"sync"
 	"time"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // Options bundles the inputs the high-level Run helper needs. Kept as a
@@ -22,16 +21,18 @@ type Options struct {
 	Home string
 	// NoUpdateCheck is true when the user passed --no-update-check.
 	NoUpdateCheck bool
-	// Out is where the nudge message is written when a behind-latest release
-	// is detected. Typically os.Stderr (so JSON-parsing stdout consumers like
-	// react-native CLI wrappers aren't disturbed).
-	Out io.Writer
+	// Logger receives the user-facing nudge when a behind-latest release is
+	// detected. Production callers pass a logger writing to stderr (so
+	// JSON-parsing stdout consumers like react-native CLI wrappers aren't
+	// disturbed); tests pass log.NewLogger(log.WithOutput(&buf)). MUST be
+	// non-nil.
+	Logger log.Logger
 	// Now is the wall-clock used for cooldown comparisons; tests inject a
 	// fixed time. Defaults to time.Now() when zero.
 	Now time.Time
 	// HTTPClient is the network client used for the GitHub release lookup.
 	// Tests inject a client pointed at a test server; production uses a
-	// 2-second-timeout client.
+	// 3-second-timeout client.
 	HTTPClient *http.Client
 	// FetchURL is the GitHub release endpoint. Tests override to point at a
 	// test server. Defaults to GitHubReleasesURL when empty.
@@ -68,7 +69,7 @@ type Result struct {
 //   - Detects drift; persists the running version so the next run sees it.
 //   - When network nudging is allowed (not --no-update-check, not CI,
 //     cooldown elapsed), fetches the latest release tag from GitHub and
-//     writes a one-line nudge to Out when behind.
+//     logs a one-line nudge when behind.
 func Run(ctx context.Context, opts Options) (Result, error) {
 	var result Result
 
@@ -78,10 +79,6 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 
 	if opts.FetchURL == "" {
 		opts.FetchURL = GitHubReleasesURL
-	}
-
-	if opts.Out == nil {
-		opts.Out = os.Stderr
 	}
 
 	state, _ := LoadState(opts.Home) // first-run absent file is fine
@@ -108,10 +105,6 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		// matches persisted) and LastNudgeAt isn't moving, the on-disk file
 		// is already what we'd write. Skip the mkdir + temp-file +
 		// JSON-marshal + atomic-rename that SaveState does on every call.
-		// LastSeenAt drift is intentional — that field's only consumer is
-		// human debugging, and refreshing it on every call wastes I/O on
-		// hot paths. Bumps still persist (the next run needs the new
-		// version) and so does first-run (state file needs to exist).
 		if result.Drift.Kind != NoChange {
 			_ = SaveState(opts.Home, newState)
 		}
@@ -131,9 +124,6 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 			newState.LastNudgeAt = opts.Now
 		}
 
-		// Best-effort: save state. On non-throttle errors LastNudgeAt isn't
-		// advanced, so we'll retry on the next run (network blips don't
-		// permanently stop us).
 		_ = SaveState(opts.Home, newState)
 
 		return result, err
@@ -143,7 +133,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	result.Behind = IsBehind(opts.CurrentVersion, latest)
 
 	if result.Behind {
-		writeNudge(opts.Out, opts.CurrentVersion, latest)
+		writeNudge(opts.Logger, opts.CurrentVersion, latest)
 		newState.LastNudgeAt = opts.Now
 	}
 
@@ -169,11 +159,16 @@ func RunOnce(ctx context.Context, opts Options) (Result, error) {
 	return res, err
 }
 
-// writeNudge emits the user-facing message. One line, written to Out
-// (stderr in production) so JSON-parsing stdout consumers aren't disturbed.
-func writeNudge(w io.Writer, current, latest string) {
-	_, _ = fmt.Fprintf(w,
-		"Bitrise Build Cache CLI %s is available (you're running %s). Run `bitrise-build-cache update` or `brew upgrade bitrise-build-cache-cli` to upgrade. Pass --no-update-check to silence.\n",
+// writeNudge emits the user-facing "newer release available" message. Uses
+// Warnf because the nudge is informational-but-actionable: not an error
+// (the CLI still runs), but the user should consider upgrading.
+func writeNudge(logger log.Logger, current, latest string) {
+	if logger == nil {
+		return
+	}
+
+	logger.Warnf(
+		"Bitrise Build Cache CLI %s is available (you're running %s). Run `bitrise-build-cache update` or `brew upgrade bitrise-io/bitrise-build-cache/bitrise-build-cache` to upgrade. Pass --no-update-check to silence.",
 		latest, current,
 	)
 }

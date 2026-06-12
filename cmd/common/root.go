@@ -101,11 +101,13 @@ func RunVersionCheck(cmd *cobra.Command) {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
 	defer cancel()
 
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+
 	_, _ = versioncheck.RunOnce(ctx, versioncheck.Options{
-		CurrentVersion: configcommon.GetCLIVersion(log.NewLogger()),
+		CurrentVersion: configcommon.GetCLIVersion(logger),
 		Home:           home,
 		NoUpdateCheck:  NoUpdateCheck,
-		Out:            os.Stderr,
+		Logger:         logger,
 		IsCI:           isRunningOnCI(),
 	})
 }
