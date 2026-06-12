@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
@@ -21,7 +23,7 @@ Cross-platform note: on macOS down boots the service out (it won't auto-restart 
 		`On Linux down stops the unit but leaves it enabled, so it will come back on next login.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		out := cmd.OutOrStdout()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		backend, paths, err := resolveBackendAndPaths()
 		if err != nil {
@@ -34,13 +36,13 @@ Cross-platform note: on macOS down boots the service out (it won't auto-restart 
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+			printPermissionHintIfApplicable(logger, err)
 
 			return fmt.Errorf("daemon down: %w", err)
 		}
 
 		for _, st := range result.Statuses {
-			fmt.Fprintf(out, "✓ %s — stopped (%s)\n", st.Service.Name, result.BackendName)
+			logger.Donef("%s — stopped (%s)", st.Service.Name, result.BackendName)
 		}
 
 		return nil

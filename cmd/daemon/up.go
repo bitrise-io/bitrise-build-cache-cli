@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
@@ -18,7 +20,7 @@ var upCmd = &cobra.Command{
 		`Errors with a "run install first" hint if the supervisor config files are missing from disk.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		out := cmd.OutOrStdout()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		backend, paths, err := resolveBackendAndPaths()
 		if err != nil {
@@ -31,13 +33,13 @@ var upCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+			printPermissionHintIfApplicable(logger, err)
 
 			return fmt.Errorf("daemon up: %w", err)
 		}
 
 		for _, st := range result.Statuses {
-			fmt.Fprintf(out, "✓ %s — started (%s)\n", st.Service.Name, result.BackendName)
+			logger.Donef("%s — started (%s)", st.Service.Name, result.BackendName)
 		}
 
 		return nil
