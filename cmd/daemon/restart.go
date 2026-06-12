@@ -29,6 +29,8 @@ var restartCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
+			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+
 			return fmt.Errorf("daemon restart: %w", err)
 		}
 
