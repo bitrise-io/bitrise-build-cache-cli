@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
 )
 
@@ -69,10 +72,16 @@ func runStatus(out, errOut io.Writer, checker *status.Checker) error {
 
 	s := checker.Status()
 	if statusJSONOutput {
+		// The --json shape is a stable contract for step integrations
+		// ({feature: bool}); auth is shown only in the human output.
 		return writeJSON(out, s)
 	}
 
-	return writeTable(out, s)
+	if err := writeTable(out, s); err != nil {
+		return err
+	}
+
+	return writeAuthLine(out, currentAuthStatus())
 }
 
 // runStatusFeature handles --feature queries. Precedence when combined:
@@ -107,6 +116,70 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 		fmt.Fprintln(out, "enabled")
 	} else {
 		fmt.Fprintln(out, "disabled")
+	}
+
+	return nil
+}
+
+// authStatusInfo summarizes the credential the build cache will use, for the
+// `status` output. Read-only: it inspects env vars and the stored OAuth login
+// without refreshing or mutating anything. No token material is included.
+type authStatusInfo struct {
+	Configured  bool
+	Source      string
+	WorkspaceID string
+	TokenExpiry string
+	Expired     bool
+}
+
+// currentAuthStatus reports which credential build-cache commands would use, in
+// the same precedence as hydrateStoredAuth: a manual env token, then the CI
+// service token, then a stored OAuth login. It never refreshes or writes.
+func currentAuthStatus() authStatusInfo {
+	if os.Getenv("BITRISE_BUILD_CACHE_AUTH_TOKEN") != "" {
+		return authStatusInfo{
+			Configured:  true,
+			Source:      "env (BITRISE_BUILD_CACHE_AUTH_TOKEN)",
+			WorkspaceID: os.Getenv("BITRISE_BUILD_CACHE_WORKSPACE_ID"),
+		}
+	}
+	if os.Getenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN") != "" {
+		return authStatusInfo{Configured: true, Source: "CI service token (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)"}
+	}
+	if creds, err := oauth.Load(); err == nil && creds.IsOAuthManaged() {
+		info := authStatusInfo{Configured: true, Source: "oauth login", WorkspaceID: creds.WorkspaceID}
+		if !creds.PATExpiry.IsZero() {
+			info.TokenExpiry = creds.PATExpiry.Format(time.RFC3339)
+			info.Expired = time.Now().After(creds.PATExpiry)
+		}
+
+		return info
+	}
+
+	return authStatusInfo{Source: "none"}
+}
+
+// writeAuthLine appends a one-line auth summary to the text status output.
+func writeAuthLine(out io.Writer, a authStatusInfo) error {
+	line := "Auth: "
+	switch {
+	case !a.Configured:
+		line += "not configured (run 'bitrise-build-cache login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)"
+	default:
+		line += a.Source
+		if a.WorkspaceID != "" {
+			line += fmt.Sprintf(" (workspace %s)", a.WorkspaceID)
+		}
+		switch {
+		case a.TokenExpiry == "":
+		case a.Expired:
+			line += ", token expired — refreshes on next use"
+		default:
+			line += ", token valid until " + a.TokenExpiry
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\n"+line); err != nil {
+		return fmt.Errorf("write auth status: %w", err)
 	}
 
 	return nil
