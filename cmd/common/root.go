@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/versioncheck"
 )
 
@@ -91,6 +92,11 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 // `activate gradle / xcode / c++ / bazel`, the primary entry point for
 // every Bitrise step.
 //
+// On Bump (versioncheck detected a CLI version change since the last run)
+// this also emits the per-tool refresh-needed nudge from internal/refresh
+// (D3, ACI-5039). The two packages stay decoupled — versioncheck reports
+// drift, this hook composes the response.
+//
 // Callers MUST gate on ShouldSkipVersionCheck before invoking.
 func RunVersionCheck(cmd *cobra.Command) {
 	home, err := os.UserHomeDir()
@@ -103,13 +109,17 @@ func RunVersionCheck(cmd *cobra.Command) {
 
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 
-	_, _ = versioncheck.RunOnce(ctx, versioncheck.Options{
+	res, _ := versioncheck.RunOnce(ctx, versioncheck.Options{
 		CurrentVersion: configcommon.GetCLIVersion(logger),
 		Home:           home,
 		NoUpdateCheck:  NoUpdateCheck,
 		Logger:         logger,
 		IsCI:           isRunningOnCI(),
 	})
+
+	if res.Drift.Kind == versioncheck.Bump {
+		_ = refresh.OnBump(logger, home, res.Drift.PreviousVersion, res.Drift.CurrentVersion)
+	}
 }
 
 // isRunningOnCI is the heuristic we use to suppress the nudge on CI. Matches
