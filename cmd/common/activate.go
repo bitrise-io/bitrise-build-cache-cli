@@ -14,7 +14,7 @@ var ActivateCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Short: "Activate various bitrise plugins",
 	Long: `Activate Gradle, Bazel, etc. plugins
 Call the subcommands with the name of the tool you want to activate plugins for.`,
-	PersistentPreRun: func(_ *cobra.Command, _ []string) {
+	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 		// Cobra runs only the closest ancestor PersistentPreRun, so this overrides
 		// RootCmd's CLI-version log line — re-emit it here.
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
@@ -22,6 +22,13 @@ Call the subcommands with the name of the tool you want to activate plugins for.
 		// Opportunistic sweep of stale child-invocation ledger dirs.
 		// Best-effort: failures must not block activation.
 		_ = childstats.Sweep(childstats.DefaultSweepTTL)
+
+		// Mirror the root version-drift check (ACI-5037). Without this call
+		// `activate gradle / xcode / c++ / bazel` would skip the check — and
+		// those are the primary entry point for every Bitrise step.
+		if !ShouldSkipVersionCheck(cmd) {
+			RunVersionCheck(cmd)
+		}
 	},
 }
 
