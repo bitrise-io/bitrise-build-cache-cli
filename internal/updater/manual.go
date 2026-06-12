@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // InstallerURL is the canonical location of installer.sh. The file at this
@@ -29,15 +32,16 @@ const DownloadTimeout = 10 * time.Second
 const MaxInstallerBytes = 1 << 20
 
 // ManualOptions bundles the inputs ManualUpgrade needs. Kept as a struct so
-// tests can override URL / HTTP client / shell / output writer.
+// tests can override URL / HTTP client / shell / logger.
 type ManualOptions struct {
 	// Bindir is the directory containing the running binary — passed to
 	// installer.sh via `-b`. Required.
 	Bindir string
-	// Out is where progress / completion messages go. The CLI's update
-	// subcommand passes cmd.OutOrStdout() so the user sees the upgrade
-	// log inline; tests inject a bytes.Buffer.
-	Out io.Writer
+	// Logger receives our own progress / completion messages AND the
+	// subprocess stdout/stderr (line-buffered via the loggerWriter adapter
+	// below). Tests pass log.NewLogger(log.WithOutput(&buf)); production
+	// passes a stderr-backed logger.
+	Logger log.Logger
 	// InstallerURL overrides the canonical URL for tests. Empty = use
 	// InstallerURL constant.
 	InstallerURL string
@@ -56,15 +60,14 @@ type ManualOptions struct {
 // drive it.
 //
 // Returns the local path of the downloaded installer (useful for diagnostics
-// and the DryRun case). The file is left on disk under os.TempDir() so a
-// later debug pass can re-run it; it's tiny.
+// and the DryRun case).
 func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	if opts.Bindir == "" {
 		return "", errors.New("bindir is required for manual upgrade")
 	}
 
-	if opts.Out == nil {
-		opts.Out = os.Stderr
+	if opts.Logger == nil {
+		return "", errors.New("logger is required for manual upgrade")
 	}
 
 	if opts.InstallerURL == "" {
@@ -84,17 +87,23 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 		// Dry run intentionally leaves the script on disk — the printed
 		// "To upgrade manually" command references it, so removing it would
 		// break copy-paste. Caller / user cleans up when done.
-		fmt.Fprintf(opts.Out, "Dry run — installer downloaded to %s but NOT executed.\n", scriptPath)
-		fmt.Fprintf(opts.Out, "To upgrade manually: %s %s -b %s\n", opts.Shell, scriptPath, opts.Bindir)
+		opts.Logger.Infof("Dry run — installer downloaded to %s but NOT executed.", scriptPath)
+		opts.Logger.Infof("To upgrade manually: %s %s -b %s", opts.Shell, scriptPath, opts.Bindir)
 
 		return scriptPath, nil
 	}
 
-	fmt.Fprintf(opts.Out, "Running installer to upgrade CLI in %s ...\n", opts.Bindir)
+	opts.Logger.Infof("Running installer to upgrade CLI in %s ...", opts.Bindir)
+
+	// loggerWriter buffers subprocess output until newlines so logger.Printf
+	// emits one line per installer.sh log entry, preserving the user-visible
+	// progress stream while flowing through the same logger.
+	pipe := newLoggerWriter(opts.Logger)
+	defer pipe.Flush()
 
 	cmd := exec.CommandContext(ctx, opts.Shell, scriptPath, "-b", opts.Bindir) //nolint:gosec // scriptPath is our temp file we just wrote
-	cmd.Stdout = opts.Out
-	cmd.Stderr = opts.Out
+	cmd.Stdout = pipe
+	cmd.Stderr = pipe
 
 	if err := cmd.Run(); err != nil {
 		// Keep the script on disk on failure so the user can re-run it
@@ -105,10 +114,10 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	// Success — drop the temp file. Best-effort; if removal fails the OS will
 	// clean it up on next reboot (os.TempDir).
 	if removeErr := os.Remove(scriptPath); removeErr != nil {
-		fmt.Fprintf(opts.Out, "warning: could not clean up installer temp file %s: %s\n", scriptPath, removeErr)
+		opts.Logger.Warnf("could not clean up installer temp file %s: %s", scriptPath, removeErr)
 	}
 
-	fmt.Fprintln(opts.Out, "Upgrade complete.")
+	opts.Logger.Donef("Upgrade complete.")
 
 	return scriptPath, nil
 }
@@ -132,10 +141,9 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 
 	defer func() { _ = resp.Body.Close() }()
 
-	// Use the strict 2xx range. Status / 100 == 2 (used previously) would
-	// silently accept e.g. a 3xx redirect Go's client failed to follow,
-	// which produces an HTML body that goes on to be exec'd as a shell
-	// script — a bad time.
+	// Strict 2xx range. Status / 100 == 2 (used previously) would silently
+	// accept a 3xx redirect Go's client failed to follow — that produces an
+	// HTML body that would go on to be exec'd as a shell script.
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return "", fmt.Errorf("download installer.sh: server responded %d", resp.StatusCode)
 	}
@@ -147,8 +155,7 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 
 	// LimitReader caps the body at MaxInstallerBytes so a hostile / broken
 	// origin can't stream gigabytes into os.TempDir. We additionally check
-	// whether the cap was actually hit (n == cap) by reading one extra byte
-	// — if anything's left, the body is over the limit.
+	// whether the cap was actually hit (n == cap+1) by reading one extra byte.
 	limited := io.LimitReader(resp.Body, MaxInstallerBytes+1)
 
 	n, err := io.Copy(tmp, limited)
@@ -172,9 +179,6 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 		return "", fmt.Errorf("close installer temp file: %w", err)
 	}
 
-	// installer.sh is sh-piped in production; making the file executable
-	// keeps the local invocation form available too if a future caller wants
-	// to skip the explicit shell.
 	if err := os.Chmod(tmp.Name(), 0o700); err != nil { //nolint:gosec // intentional: script must be readable + executable
 		return "", fmt.Errorf("chmod installer temp: %w", err)
 	}
@@ -186,4 +190,57 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 // to pass installer.sh's -b flag so the upgrade lands in the same spot.
 func BindirOf(executable string) string {
 	return filepath.Dir(executable)
+}
+
+// loggerWriter is an io.Writer that line-buffers its input and emits each
+// complete line via logger.Printf. Used to plumb subprocess stdout/stderr
+// through the project logger — exec.Cmd needs an io.Writer but the rest of
+// the package uses log.Logger.
+type loggerWriter struct {
+	logger log.Logger
+	buf    bytes.Buffer
+}
+
+func newLoggerWriter(logger log.Logger) *loggerWriter {
+	return &loggerWriter{logger: logger}
+}
+
+func (w *loggerWriter) Write(p []byte) (int, error) {
+	w.buf.Write(p)
+
+	for {
+		line, err := w.buf.ReadString('\n')
+		if errors.Is(err, io.EOF) {
+			// Incomplete trailing line — buffer it and wait for more.
+			w.buf.WriteString(line)
+
+			break
+		}
+
+		// Strip trailing newline; logger.Printf adds its own.
+		w.logger.Printf("%s", trimNewline(line))
+	}
+
+	return len(p), nil
+}
+
+// Flush emits any remaining buffered partial line. Call after the
+// subprocess exits to avoid losing a no-trailing-newline final line.
+func (w *loggerWriter) Flush() {
+	if w.buf.Len() == 0 {
+		return
+	}
+
+	w.logger.Printf("%s", trimNewline(w.buf.String()))
+	w.buf.Reset()
+}
+
+// trimNewline drops one trailing \n if present. Avoids importing strings
+// for a single-char trim on the line buffer hot path.
+func trimNewline(s string) string {
+	if len(s) > 0 && s[len(s)-1] == '\n' {
+		return s[:len(s)-1]
+	}
+
+	return s
 }

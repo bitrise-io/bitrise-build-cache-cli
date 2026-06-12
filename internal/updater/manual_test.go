@@ -25,7 +25,7 @@ func TestManualUpgrade_dryRunDownloadsButDoesntExecute(t *testing.T) {
 	var buf bytes.Buffer
 	path, err := ManualUpgrade(context.Background(), ManualOptions{
 		Bindir:       t.TempDir(),
-		Out:          &buf,
+		Logger:       loggerWithBuffer(&buf),
 		InstallerURL: srv.URL,
 		HTTPClient:   srv.Client(),
 		DryRun:       true,
@@ -53,7 +53,7 @@ func TestManualUpgrade_executesInstallerAgainstBindir(t *testing.T) {
 	var buf bytes.Buffer
 	_, err := ManualUpgrade(context.Background(), ManualOptions{
 		Bindir:       bindir,
-		Out:          &buf,
+		Logger:       loggerWithBuffer(&buf),
 		InstallerURL: srv.URL,
 		HTTPClient:   srv.Client(),
 	})
@@ -78,7 +78,7 @@ func TestManualUpgrade_propagatesHTTPError(t *testing.T) {
 
 	_, err := ManualUpgrade(context.Background(), ManualOptions{
 		Bindir:       t.TempDir(),
-		Out:          &bytes.Buffer{},
+		Logger:       loggerWithBuffer(&bytes.Buffer{}),
 		InstallerURL: srv.URL,
 		HTTPClient:   srv.Client(),
 	})
@@ -94,7 +94,7 @@ func TestManualUpgrade_failingInstallerSurfaces(t *testing.T) {
 
 	_, err := ManualUpgrade(context.Background(), ManualOptions{
 		Bindir:       t.TempDir(),
-		Out:          &bytes.Buffer{},
+		Logger:       loggerWithBuffer(&bytes.Buffer{}),
 		InstallerURL: srv.URL,
 		HTTPClient:   srv.Client(),
 	})
@@ -111,7 +111,7 @@ func TestManualUpgrade_rejectsOversizeInstaller(t *testing.T) {
 
 	_, err := ManualUpgrade(context.Background(), ManualOptions{
 		Bindir:       t.TempDir(),
-		Out:          &bytes.Buffer{},
+		Logger:       loggerWithBuffer(&bytes.Buffer{}),
 		InstallerURL: srv.URL,
 		HTTPClient:   srv.Client(),
 	})
@@ -139,7 +139,7 @@ func TestManualUpgrade_rejectsNon2xxStatusIncludingRedirect(t *testing.T) {
 
 	_, err := ManualUpgrade(context.Background(), ManualOptions{
 		Bindir:       t.TempDir(),
-		Out:          &bytes.Buffer{},
+		Logger:       loggerWithBuffer(&bytes.Buffer{}),
 		InstallerURL: srv.URL,
 		HTTPClient:   noRedirect,
 	})
