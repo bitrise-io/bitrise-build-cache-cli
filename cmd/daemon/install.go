@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
@@ -19,7 +21,7 @@ var installCmd = &cobra.Command{
 		`Safe to rerun after a CLI upgrade — the supervisor configs are rewritten and the services restarted.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		out := cmd.OutOrStdout()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		backend, err := daemonpkg.DefaultBackend()
 		if err != nil {
@@ -54,27 +56,27 @@ var installCmd = &cobra.Command{
 			// Surface the actionable hint before returning the raw error so
 			// the user sees the chown / remove-and-retry remediation
 			// alongside the offending path.
-			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+			printPermissionHintIfApplicable(logger, err)
 
 			return fmt.Errorf("install daemon: %w", err)
 		}
 
 		for _, st := range result.Statuses {
-			fmt.Fprintf(out, "✓ %s — wrote %s (%s)\n", st.Service.Name, st.ConfigPath, result.BackendName)
+			logger.Donef("%s — wrote %s (%s)", st.Service.Name, st.ConfigPath, result.BackendName)
 		}
 
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Services are now running. Logs:")
+		logger.Println()
+		logger.Infof("Services are now running. Logs:")
 
 		switch result.BackendName {
 		case "launchd":
-			fmt.Fprintf(out, "  %s\n", paths.LogDir())
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "Verify with: launchctl print gui/$UID/io.bitrise.build-cache.xcelerate-proxy")
+			logger.Infof("  %s", paths.LogDir())
+			logger.Println()
+			logger.Infof("Verify with: launchctl print gui/$UID/io.bitrise.build-cache.xcelerate-proxy")
 		case "systemd":
-			fmt.Fprintln(out, "  journalctl --user -u bitrise-build-cache-xcelerate-proxy")
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "Verify with: systemctl --user status bitrise-build-cache-xcelerate-proxy")
+			logger.Infof("  journalctl --user -u bitrise-build-cache-xcelerate-proxy")
+			logger.Println()
+			logger.Infof("Verify with: systemctl --user status bitrise-build-cache-xcelerate-proxy")
 		}
 
 		return nil

@@ -10,8 +10,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 )
+
+// loggerWithBuffer builds a project logger that writes into the supplied
+// buffer — the standard test seam for asserting on log output from
+// cmd/daemon helpers.
+func loggerWithBuffer(buf *bytes.Buffer) log.Logger {
+	return log.NewLogger(log.WithOutput(buf))
+}
 
 func TestPrintPermissionHintIfApplicable_permissionErrorPrintsRemediation(t *testing.T) {
 	// Mimic the wrap chain produced by internal/daemon when mkdir fails:
@@ -24,7 +32,7 @@ func TestPrintPermissionHintIfApplicable_permissionErrorPrintsRemediation(t *tes
 	wrapped := fmt.Errorf("create log dir: %w", pathErr)
 
 	var buf bytes.Buffer
-	printPermissionHintIfApplicable(&buf, wrapped)
+	printPermissionHintIfApplicable(loggerWithBuffer(&buf), wrapped)
 
 	out := buf.String()
 	assert.NotEmpty(t, out)
@@ -35,13 +43,13 @@ func TestPrintPermissionHintIfApplicable_permissionErrorPrintsRemediation(t *tes
 
 func TestPrintPermissionHintIfApplicable_nonPermissionErrorIsNoop(t *testing.T) {
 	var buf bytes.Buffer
-	printPermissionHintIfApplicable(&buf, errors.New("something else went wrong"))
+	printPermissionHintIfApplicable(loggerWithBuffer(&buf), errors.New("something else went wrong"))
 	assert.Empty(t, buf.String())
 }
 
 func TestPrintPermissionHintIfApplicable_nilErrorIsNoop(t *testing.T) {
 	var buf bytes.Buffer
-	printPermissionHintIfApplicable(&buf, nil)
+	printPermissionHintIfApplicable(loggerWithBuffer(&buf), nil)
 	assert.Empty(t, buf.String())
 }
 

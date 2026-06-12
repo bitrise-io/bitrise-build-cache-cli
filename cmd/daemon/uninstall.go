@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
@@ -17,7 +19,7 @@ var uninstallCmd = &cobra.Command{
 		"`daemon install`" + `. Idempotent — missing services / files are not errors.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		out := cmd.OutOrStdout()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		backend, err := daemonpkg.DefaultBackend()
 		if err != nil {
@@ -35,16 +37,16 @@ var uninstallCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			printPermissionHintIfApplicable(cmd.ErrOrStderr(), err)
+			printPermissionHintIfApplicable(logger, err)
 
 			return fmt.Errorf("uninstall daemon: %w", err)
 		}
 
 		for _, st := range result.Statuses {
 			if st.Removed {
-				fmt.Fprintf(out, "✓ %s — stopped and removed %s\n", st.Service.Name, st.ConfigPath)
+				logger.Donef("%s — stopped and removed %s", st.Service.Name, st.ConfigPath)
 			} else {
-				fmt.Fprintf(out, "  %s — nothing to remove (config not present)\n", st.Service.Name)
+				logger.Infof("  %s — nothing to remove (config not present)", st.Service.Name)
 			}
 		}
 

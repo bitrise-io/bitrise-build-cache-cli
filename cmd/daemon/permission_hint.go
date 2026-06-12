@@ -2,16 +2,16 @@ package daemon
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"syscall"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // printPermissionHintIfApplicable inspects err for a wrapped *fs.PathError
 // with a permission-denied root cause and, if found, writes an actionable
-// remediation block to w. No-op for any other error.
+// remediation block via the logger. No-op for any other error.
 //
 // The remediation focuses on the common case: ~/.local/state was created
 // by `sudo` somewhere along the line and is now owned by root, so mkdir of
@@ -19,39 +19,44 @@ import (
 // can stat the path's nearest existing ancestor, and offers a `chown` /
 // remove-and-retry fix.
 //
+// Output goes through logger.Printf (raw, no level prefix) so the box
+// dividers stay aligned — Donef / Warnf would prefix each line and break
+// the visual banner. The hint itself reads as a "warning" semantically;
+// the upstream caller's raw error still surfaces separately.
+//
 // Library-level errors are not changed — this stays at the cmd layer so
 // the internal/daemon contract (return os/exec errors verbatim) is
 // preserved for callers that compose it differently.
-func printPermissionHintIfApplicable(w io.Writer, err error) {
+func printPermissionHintIfApplicable(logger log.Logger, err error) {
 	if !isPermissionError(err) {
 		return
 	}
 
 	path := pathErrorPath(err)
 
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "─────────────────────────────────────────────────────────────────")
-	fmt.Fprintln(w, "Permission denied creating CLI state directory.")
+	logger.Println()
+	logger.Printf("─────────────────────────────────────────────────────────────────")
+	logger.Printf("Permission denied creating CLI state directory.")
 
 	if path != "" {
-		fmt.Fprintf(w, "Failed path: %s\n", path)
+		logger.Printf("Failed path: %s", path)
 
 		if culprit, uid, ok := ownerOfNearestAncestor(path); ok {
-			fmt.Fprintf(w, "Nearest existing ancestor %s is owned by uid %d (you are uid %d).\n",
+			logger.Printf("Nearest existing ancestor %s is owned by uid %d (you are uid %d).",
 				culprit, uid, os.Geteuid())
 		}
 	}
 
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Most likely cause: ~/.local/state or one of its parents was created by `sudo` at some point and is now owned by root.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Fix (recommended — preserves anything else under that tree):")
-	fmt.Fprintln(w, "  sudo chown -R \"$USER\" ~/.local/state")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Or, if nothing else lives there yet, remove + retry:")
-	fmt.Fprintln(w, "  sudo rm -rf ~/.local/state/bitrise-build-cache")
-	fmt.Fprintln(w, "─────────────────────────────────────────────────────────────────")
-	fmt.Fprintln(w)
+	logger.Println()
+	logger.Printf("Most likely cause: ~/.local/state or one of its parents was created by `sudo` at some point and is now owned by root.")
+	logger.Println()
+	logger.Printf("Fix (recommended — preserves anything else under that tree):")
+	logger.Printf("  sudo chown -R \"$USER\" ~/.local/state")
+	logger.Println()
+	logger.Printf("Or, if nothing else lives there yet, remove + retry:")
+	logger.Printf("  sudo rm -rf ~/.local/state/bitrise-build-cache")
+	logger.Printf("─────────────────────────────────────────────────────────────────")
+	logger.Println()
 }
 
 // isPermissionError returns true if err's chain contains an
@@ -103,7 +108,7 @@ func ownerOfNearestAncestor(path string) (string, int, bool) {
 }
 
 // pathDir is filepath.Dir without the path/filepath import — kept tiny so
-// the hint file has no transitive deps beyond stdlib.
+// the hint file has no transitive deps beyond stdlib + the project logger.
 func pathDir(p string) string {
 	for i := len(p) - 1; i >= 0; i-- {
 		if p[i] == '/' {
