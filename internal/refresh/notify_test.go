@@ -7,12 +7,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 )
 
+// loggerWithBuffer builds a project logger that writes into the supplied
+// buffer — the standard test seam for asserting on refresh-package output.
+func loggerWithBuffer(buf *bytes.Buffer) log.Logger {
+	return log.NewLogger(log.WithOutput(buf))
+}
+
 func TestNotify_silentWhenNoEntries(t *testing.T) {
 	var buf bytes.Buffer
-	Notify(&buf, "2.8.4", "2.8.5", nil)
+	Notify(loggerWithBuffer(&buf), "2.8.4", "2.8.5", nil)
 	assert.Empty(t, buf.String())
 }
 
@@ -23,7 +30,7 @@ func TestNotify_listsAllTools(t *testing.T) {
 		{Tool: ToolGradle, ConfigPath: "/home/u/.gradle/init.d/x.kts", CLIVersion: "2.8.4", RegisteredAt: time.Now()},
 	}
 
-	Notify(&buf, "2.8.4", "2.8.5", entries)
+	Notify(loggerWithBuffer(&buf), "2.8.4", "2.8.5", entries)
 
 	out := buf.String()
 	assert.Contains(t, out, "bumped from 2.8.4 to 2.8.5")
@@ -46,7 +53,7 @@ func TestOnBump_writesNudgeForRegisteredTools(t *testing.T) {
 	assert.NoError(t, Mark(home, ToolXcelerate, "/x", "2.8.4"))
 
 	var buf bytes.Buffer
-	err := OnBump(&buf, home, "2.8.4", "2.8.5")
+	err := OnBump(loggerWithBuffer(&buf), home, "2.8.4", "2.8.5")
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "activate gradle")
 	assert.Contains(t, buf.String(), "activate xcode")
@@ -54,7 +61,7 @@ func TestOnBump_writesNudgeForRegisteredTools(t *testing.T) {
 
 func TestOnBump_silentWhenRegistryEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	err := OnBump(&buf, t.TempDir(), "2.8.4", "2.8.5")
+	err := OnBump(loggerWithBuffer(&buf), t.TempDir(), "2.8.4", "2.8.5")
 	assert.NoError(t, err)
 	assert.Empty(t, buf.String(), "no registered tools = no nudge")
 }

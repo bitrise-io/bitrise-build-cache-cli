@@ -1,8 +1,7 @@
 package refresh
 
 import (
-	"fmt"
-	"io"
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
 // activateCommand returns the exact CLI command a user should run to refresh
@@ -23,26 +22,28 @@ func activateCommand(tool string) string {
 	}
 }
 
-// Notify writes a multi-line refresh-needed message to w. Listing each tool
-// plus its exact rerun command keeps the user one copy-paste away from a fix.
+// Notify writes a multi-line refresh-needed message via logger.Warnf —
+// informational-but-actionable, the user should re-run the listed commands.
+// Listing each tool plus its exact rerun command keeps the user one
+// copy-paste away from a fix.
 //
-// Returns silently when entries is empty — no tools previously configured
-// means nothing to nudge about.
-func Notify(w io.Writer, previousVersion, currentVersion string, entries []Entry) {
-	if len(entries) == 0 {
+// Returns silently when entries is empty (no tools previously configured)
+// or when logger is nil.
+func Notify(logger log.Logger, previousVersion, currentVersion string, entries []Entry) {
+	if logger == nil || len(entries) == 0 {
 		return
 	}
 
-	_, _ = fmt.Fprintf(w,
-		"Bitrise Build Cache CLI bumped from %s to %s. Your previously-configured build-tool configs may be out of date. Re-run the matching command(s) below to refresh:\n",
+	logger.Warnf(
+		"Bitrise Build Cache CLI bumped from %s to %s. Your previously-configured build-tool configs may be out of date. Re-run the matching command(s) below to refresh:",
 		previousVersion, currentVersion,
 	)
 
 	for _, e := range entries {
 		if e.ConfigPath != "" {
-			_, _ = fmt.Fprintf(w, "  • %s   # last wrote %s with CLI %s\n", activateCommand(e.Tool), e.ConfigPath, e.CLIVersion)
+			logger.Warnf("  • %s   # last wrote %s with CLI %s", activateCommand(e.Tool), e.ConfigPath, e.CLIVersion)
 		} else {
-			_, _ = fmt.Fprintf(w, "  • %s   # last activated with CLI %s\n", activateCommand(e.Tool), e.CLIVersion)
+			logger.Warnf("  • %s   # last activated with CLI %s", activateCommand(e.Tool), e.CLIVersion)
 		}
 	}
 }
