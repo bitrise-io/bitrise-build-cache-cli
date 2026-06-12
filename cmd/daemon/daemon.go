@@ -8,7 +8,25 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
+
+// resolveBackendAndPaths is the shared lookup used by the install / uninstall
+// / up / down / restart subcommands. Keeps each cobra RunE focused on its own
+// logic.
+func resolveBackendAndPaths() (daemonpkg.Backend, daemonpkg.Paths, error) {
+	backend, err := daemonpkg.DefaultBackend()
+	if err != nil {
+		return nil, daemonpkg.Paths{}, err //nolint:wrapcheck // sentinel
+	}
+
+	paths, err := daemonpkg.NewPaths()
+	if err != nil {
+		return nil, daemonpkg.Paths{}, err //nolint:wrapcheck // already context-rich
+	}
+
+	return backend, paths, nil
+}
 
 //nolint:gochecknoglobals
 var daemonCmd = &cobra.Command{

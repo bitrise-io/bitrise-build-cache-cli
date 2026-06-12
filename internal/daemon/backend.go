@@ -11,9 +11,9 @@ import (
 // callers can surface a friendly message rather than a generic error.
 var ErrUnsupportedPlatform = errors.New("daemon install is only supported on macOS (launchd) and Linux (systemd)")
 
-// Backend installs / uninstalls one service with the host OS's user-level
-// supervisor (launchd on macOS, systemd --user on Linux). Implementations are
-// stateless aside from the runner they hold.
+// Backend installs / uninstalls / controls one service with the host OS's
+// user-level supervisor (launchd on macOS, systemd --user on Linux).
+// Implementations are stateless aside from the runner they hold.
 type Backend interface {
 	// Install writes the supervisor config for svc and starts it. Returns the
 	// path of the written config file (for reporting).
@@ -22,6 +22,19 @@ type Backend interface {
 	// the config path and whether a file was actually removed (false = already
 	// absent, which is treated as success).
 	Uninstall(ctx context.Context, paths Paths, svc Service) (configPath string, removed bool, err error)
+	// Start registers the service with the supervisor (if not already) and
+	// starts it. Assumes the supervisor config file is already on disk —
+	// callers must call Install (or check presence) first. Idempotent.
+	Start(ctx context.Context, paths Paths, svc Service) error
+	// Stop stops the service. Does NOT remove the supervisor config file —
+	// that's Uninstall's job. Idempotent against not-loaded / never-started
+	// services.
+	//
+	// Cross-platform semantics: launchd "stop" is bootout — the service won't
+	// auto-restart on next login until Start is called again. systemd "stop"
+	// leaves the unit enabled, so it comes back on next login. Each platform's
+	// natural verb; documented at the CLI surface.
+	Stop(ctx context.Context, paths Paths, svc Service) error
 	// Name is the supervisor's short name ("launchd" / "systemd"). Used in
 	// human-readable output.
 	Name() string
