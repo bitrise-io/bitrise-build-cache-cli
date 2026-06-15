@@ -17,12 +17,11 @@ brew install bitrise-io/bitrise-build-cache/bitrise-build-cache
 export BITRISE_BUILD_CACHE_AUTH_TOKEN="<PAT>"
 export BITRISE_BUILD_CACHE_WORKSPACE_ID="<workspace-slug>"
 
-# 2) configure the Xcode compile cache + start the proxy daemon
+# 2) configure the Xcode compile cache (writes ~/.bitrise-xcelerate/config.json)
 bitrise-build-cache activate xcode
-bitrise-build-cache daemon install
-bitrise-build-cache daemon up
 
 # 3) enable the override for Xcode.app GUI builds
+#    (also installs + starts the xcelerate-proxy daemon for you)
 bitrise-build-cache xcode-app enable
 
 # 4) relaunch Xcode, then build any target
@@ -64,9 +63,8 @@ socket to dial.
 | `bitrise-build-cache --version` works            | Confirms the CLI is on `$PATH`. See [`docs/install.md`](install.md).                                       |
 | Auth env vars exported                           | `BITRISE_BUILD_CACHE_AUTH_TOKEN` + `BITRISE_BUILD_CACHE_WORKSPACE_ID`. See [post-install](install.md#post-install). |
 | `bitrise-build-cache activate xcode` has run     | Writes `~/.bitrise-xcelerate/config.json` containing the proxy socket path that `xcode-app enable` reads.  |
-| `bitrise-build-cache daemon install && daemon up` | Registers + starts the xcelerate-proxy service via launchd so Xcode.app finds it on first dial.            |
 
-`xcode-app enable` errors with a clear hint if any of these are missing.
+`xcode-app enable` installs + starts the xcelerate-proxy service itself (filtered subset of `daemon install + up`), so you don't need to run those separately. If you've already registered the daemon for other tools (ccache etc.), the proxy install is a no-op. `xcode-app enable` errors with a clear hint if the CLI / auth / `activate xcode` prerequisite is missing.
 
 ---
 
@@ -85,6 +83,16 @@ Output looks like:
 ! Xcode is currently running (pid [1234]). Quit and relaunch Xcode to pick up the cache override.
 ```
 
+If you already had `XCODE_XCCONFIG_FILE` pointing at a project xcconfig, you'll see an extra line above the LaunchAgent confirmation:
+
+```
+Chained previous XCODE_XCCONFIG_FILE: /Users/<you>/path/to/your/Base.xcconfig
+```
+
+See [Chaining an existing `XCODE_XCCONFIG_FILE`](#chaining-an-existing-xcode_xcconfig_file) for what that means.
+
+Re-running `enable` after a successful `enable` is safe — the activator detects the self-loop (`launchctl getenv XCODE_XCCONFIG_FILE` now points at our own override) and preserves the original prior-path state on disk, so `disable` later still restores the right xcconfig.
+
 > **Relaunch Xcode after enable.** `launchctl setenv` only reaches processes
 > launched *after* it ran. Already-open Xcode windows pick up the override
 > only on the next launch. Use ⌘Q (not just close the window).
@@ -96,20 +104,29 @@ Output looks like:
 After relaunching Xcode, three quick checks:
 
 ```sh
-# 1. The env is set in the GUI session:
+# 1. The env is set in the current GUI session:
 launchctl getenv XCODE_XCCONFIG_FILE
+#  → should print ~/.bitrise-xcelerate/xcode-app.xcconfig
 
-# 2. The proxy is running:
-bitrise-build-cache doctor
+# 2. The setenv LaunchAgent is loaded (re-applies the env on every login):
+launchctl list | grep io.bitrise.build-cache
+#  → should list io.bitrise.build-cache.xcode-app-setenv (and the proxy)
 
-# 3. Build any target. The doctor output should show the proxy has been
-#    dialled at least once (logs under ~/.local/state/xcelerate/logs/).
+# 3. The proxy socket exists and is listening:
+socket_path=$(jq -r .proxySocketPath ~/.bitrise-xcelerate/config.json)
+test -S "$socket_path" && echo "proxy socket present at $socket_path"
+
+# 4. Build any target in Xcode. New entries should appear under
+#    ~/.local/state/xcelerate/logs/ — that's the proxy log directory.
+ls -lt ~/.local/state/xcelerate/logs/ | head
 ```
 
-If `launchctl getenv` prints nothing, the LaunchAgent didn't bootstrap —
-re-run `xcode-app enable` and check the output for the LaunchAgent error.
+If `launchctl getenv` prints nothing, either the initial `launchctl setenv`
+or the LaunchAgent bootstrap failed during `enable` — re-run
+`bitrise-build-cache xcode-app enable` and read the error in its output.
 
-If `doctor` reports the proxy is not running, run
+If the socket isn't there, the xcelerate-proxy service didn't start. Re-run
+`enable` (which calls daemon install + up internally) or, equivalently,
 `bitrise-build-cache daemon up`. The override expects the proxy to be
 listening — Xcode silently skips the cache if the socket isn't there.
 
@@ -200,10 +217,10 @@ all that's needed.
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | `enable` errors with `xcelerate config not found`                  | Run `bitrise-build-cache activate xcode` first — that writes the proxy socket path enable depends on. |
 | `enable` succeeds but builds aren't using the cache                | Relaunched Xcode? `launchctl setenv` only reaches processes launched after `enable` ran.            |
-| `launchctl getenv XCODE_XCCONFIG_FILE` prints nothing              | The LaunchAgent failed to bootstrap. Re-run `enable` and read the error.                            |
-| `bitrise-build-cache doctor` says the proxy is down                | `bitrise-build-cache daemon up`. Override expects the proxy listening.                              |
+| `launchctl getenv XCODE_XCCONFIG_FILE` prints nothing              | Either the initial `launchctl setenv` failed or the LaunchAgent bootstrap did. Re-run `enable` and read the error in its output. |
+| Proxy socket missing (`test -S` fails on the path in `config.json`) | Re-run `bitrise-build-cache xcode-app enable` (it ensures the daemon service is installed + up), or `bitrise-build-cache daemon up`. Override expects the proxy listening. |
 | Your project's existing `XCODE_XCCONFIG_FILE` was overwritten      | `disable` restores it. If state got out of sync, manually `launchctl setenv` to the prior path.     |
-| Want to skip the cache for a single build                          | Hold ⌥ when clicking Run / pass `XCODE_XCCONFIG_FILE=""` to a one-off `xcodebuild` invocation.      |
+| Want to skip the cache for a single CLI build                      | Pass `XCODE_XCCONFIG_FILE=""` to a one-off `xcodebuild` invocation (CLI args win over the override slot). For GUI builds, edit the scheme → Build → Pre-actions and add `unset XCODE_XCCONFIG_FILE` in a "New Run Script Action" — ⌥-clicking Run only opens the scheme editor, it does not bypass the env. |
 | Multiple Xcode installs (Xcode-beta etc.)                          | The override applies to every Xcode launched after `setenv`. Only the GA `Xcode` process gets the relaunch nudge — beta users should quit-and-relaunch manually. |
 
 For deeper logging, prepend `-d`
