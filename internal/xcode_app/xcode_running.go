@@ -9,12 +9,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
-// pgrepBin is the macOS pgrep binary. Exported as a var (not const) so the
-// rare test that needs to inject a stub can swap it; production code does
-// not mutate it.
-//
-//nolint:gochecknoglobals
-var pgrepBin = "/usr/bin/pgrep"
+// pgrepBin is the macOS pgrep binary. Tests inject a stub via the Runner
+// field on DefaultXcodeChecker rather than mutating this constant.
+const pgrepBin = "/usr/bin/pgrep"
 
 // XcodeProcessName is the executable name `pgrep -x` matches against. The
 // GUI app's main process is literally `Xcode`; `Xcode-beta` would have a

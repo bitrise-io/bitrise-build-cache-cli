@@ -51,3 +51,9 @@ func TestRenderOverride_includePathWithSpacesIsQuoted(t *testing.T) {
 
 	assert.Contains(t, got, `#include "/Users/me/With Space/Base.xcconfig"`)
 }
+
+func TestRenderOverride_rejectsIncludePathWithQuote(t *testing.T) {
+	_, err := RenderOverride("/tmp/p.sock", `/Users/me/"weird".xcconfig`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "quote")
+}

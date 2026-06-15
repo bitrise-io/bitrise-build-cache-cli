@@ -33,6 +33,16 @@ func RenderOverride(proxySocketPath, previousIncludePath string) (string, error)
 		return "", fmt.Errorf("proxy socket path is empty")
 	}
 
+	// xcconfig's `#include "<path>"` form has no documented escape for
+	// embedded quotes, so reject paths that contain one rather than emit a
+	// malformed override that Xcode would silently ignore. Practically
+	// unreachable on macOS (HFS+ / APFS allow quote chars in filenames but
+	// they're vanishingly rare), but the cheap upfront check beats the
+	// silent-broken-build failure mode.
+	if strings.ContainsRune(previousIncludePath, '"') {
+		return "", fmt.Errorf("previous XCODE_XCCONFIG_FILE path contains a quote character — cannot safely #include")
+	}
+
 	var b strings.Builder
 
 	b.WriteString("// Bitrise Build Cache — Xcode.app override\n")

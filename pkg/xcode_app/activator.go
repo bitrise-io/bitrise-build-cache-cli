@@ -99,6 +99,11 @@ type DisableResult struct {
 
 // Enable applies the Xcode.app build-cache override. See package doc for the
 // mechanism overview.
+//
+// Recovery: if Enable fails partway through (Launchctl.Setenv succeeded but
+// a later step failed), running Disable cleans up the partial state — every
+// teardown step swallows the "already gone / not loaded / not set" case, so
+// repeated runs converge on a clean state.
 func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	if runtime.GOOS != "darwin" {
 		return EnableResult{}, ErrUnsupportedPlatform
@@ -116,14 +121,33 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		return EnableResult{}, fmt.Errorf("xcelerate config has empty proxy socket path — re-run `activate xcode`")
 	}
 
-	previous := a.Envs["XCODE_XCCONFIG_FILE"]
+	xcconfigPath := xa.OverrideXCConfigPath(osProxy)
+	statePath := xa.StateFilePath(osProxy)
+
+	// Self-loop guard. After a successful enable, launchctl exports our
+	// override path into the GUI session; any shell spawned from that
+	// session inherits XCODE_XCCONFIG_FILE pointing at our own xcconfig.
+	// A second enable would then read its own xcconfig path as the
+	// "previous" override and clobber the state file, losing the original
+	// user-supplied prior path forever (and disable would later "restore"
+	// to our own subsequently-deleted xcconfig). When we see the self-loop,
+	// fall back to the PreviousXCConfigPath already on disk so re-enabling
+	// is idempotent.
+	previous := a.Envs[xa.XCConfigEnvVar]
+	if previous == xcconfigPath {
+		if existing, found, loadErr := xa.LoadState(statePath); loadErr == nil && found {
+			previous = existing.PreviousXCConfigPath
+		} else {
+			// Existing state unreadable or absent — treat the env value as
+			// noise rather than a real prior override.
+			previous = ""
+		}
+	}
 
 	body, err := xa.RenderOverride(cfg.ProxySocketPath, previous)
 	if err != nil {
 		return EnableResult{}, fmt.Errorf("render override xcconfig: %w", err)
 	}
-
-	xcconfigPath := xa.OverrideXCConfigPath(osProxy)
 
 	if err := osProxy.MkdirAll(xcelerate.DirPath(osProxy), 0o755); err != nil {
 		return EnableResult{}, fmt.Errorf("mkdir xcelerate dir: %w", err)
@@ -133,7 +157,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		return EnableResult{}, fmt.Errorf("write %s: %w", xcconfigPath, err)
 	}
 
-	if err := xa.SaveState(xa.StateFilePath(osProxy), xa.State{PreviousXCConfigPath: previous}); err != nil {
+	if err := xa.SaveState(statePath, xa.State{PreviousXCConfigPath: previous}); err != nil {
 		return EnableResult{}, fmt.Errorf("save state: %w", err)
 	}
 
@@ -253,7 +277,10 @@ func (a *Activator) installAndStartProxy(ctx context.Context) error {
 		return err
 	}
 
-	svc := xcelerateProxyService()
+	svc, err := xcelerateProxyService()
+	if err != nil {
+		return err
+	}
 
 	if _, err := daemon.Install(ctx, backend, paths, []daemon.Service{svc}, executable); err != nil {
 		return fmt.Errorf("daemon install: %w", err)
@@ -270,17 +297,19 @@ func (a *Activator) installAndStartProxy(ctx context.Context) error {
 // daemon's DefaultServices set. We deliberately don't drive ccache-helper
 // from here — Xcode.app builds don't use ccache, and bundling the two would
 // surprise C/C++-only users.
-func xcelerateProxyService() daemon.Service {
+//
+// Returns an error rather than a hardcoded fallback if the daemon package
+// ever drops xcelerate-proxy — silent divergence between this caller and
+// daemon's canonical definition would mean shipping a different supervisor
+// config than the rest of the CLI thinks is current.
+func xcelerateProxyService() (daemon.Service, error) {
 	for _, s := range daemon.DefaultServices() {
 		if s.Name == "xcelerate-proxy" {
-			return s
+			return s, nil
 		}
 	}
 
-	// Defensive — the only way to reach this is if someone removes
-	// xcelerate-proxy from daemon.DefaultServices, which would break a
-	// lot more than this code path.
-	return daemon.Service{Name: "xcelerate-proxy", Args: []string{"xcelerate", "start-proxy"}}
+	return daemon.Service{}, fmt.Errorf("daemon.DefaultServices() no longer includes 'xcelerate-proxy' — refusing to fall back to a stale hardcoded service definition")
 }
 
 // ───── Private ─ DI fallbacks ─────

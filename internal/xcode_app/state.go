@@ -49,6 +49,11 @@ func SaveState(path string, s State) error {
 	}
 
 	tmp := path + ".tmp"
+	// 0o600 (not 0o644 like the xcconfig itself) because the state file is
+	// purely an internal handoff between enable and disable — Xcode never
+	// reads it, so there's no reason to expose it to other users on the
+	// host. Tighter mode reduces the surface in case a future field is more
+	// sensitive than today's prior-path string.
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
