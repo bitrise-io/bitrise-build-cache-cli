@@ -70,3 +70,16 @@ func TestBuildURL_badBaseURLIsError(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestBuildURL_pathEscapesSegments(t *testing.T) {
+	got, err := BuildURL(BuildURLParams{
+		WorkspaceID:  "ws/abc",
+		InvocationID: "inv with space",
+		BaseURL:      "https://app.bitrise.io",
+	})
+	require.NoError(t, err)
+
+	// Slash in workspace must not split into another path segment;
+	// space in invocation must be percent-encoded.
+	assert.Equal(t, "https://app.bitrise.io/build-cache/ws%2Fabc/invocations/inv%20with%20space", got)
+}

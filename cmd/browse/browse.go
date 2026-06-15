@@ -14,13 +14,10 @@ import (
 	browsepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/browse"
 )
 
-// browseParams collects flag-mapped inputs for the subcommand. Kept in a
-// struct so additional flags can land without expanding the RunE
-// signature. Exported field-by-field for inspection in tests.
-//
-//nolint:gochecknoglobals // mirrors the pattern in cmd/xcode, cmd/gradle, …
+//nolint:gochecknoglobals
 var browseParams struct {
-	printOnly bool
+	workspaceID string
+	printOnly   bool
 }
 
 //nolint:gochecknoglobals
@@ -37,8 +34,9 @@ var browseCmd = &cobra.Command{
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		params := browsepkg.Params{
-			Envs:      utils.AllEnvs(),
-			PrintOnly: browseParams.printOnly,
+			WorkspaceID: browseParams.workspaceID,
+			Envs:        utils.AllEnvs(),
+			PrintOnly:   browseParams.printOnly,
 		}
 		if len(args) == 1 {
 			params.InvocationID = args[0]
@@ -58,11 +56,17 @@ var browseCmd = &cobra.Command{
 }
 
 func init() {
+	browseCmd.Flags().StringVar(
+		&browseParams.workspaceID,
+		"workspace",
+		"",
+		"Workspace slug. Falls back to BITRISE_BUILD_CACHE_WORKSPACE_ID env var when empty.",
+	)
 	browseCmd.Flags().BoolVar(
 		&browseParams.printOnly,
 		"print",
 		false,
-		"Print the dashboard URL instead of launching a browser. Useful in headless or CI sessions where no GUI is available.",
+		"Skip launching the default browser. The dashboard URL is always logged at Info level; this flag only suppresses the auto-open step. Useful in headless or CI sessions.",
 	)
 
 	common.RootCmd.AddCommand(browseCmd)

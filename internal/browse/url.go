@@ -7,36 +7,21 @@ package browse
 import (
 	"fmt"
 	"net/url"
-	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 )
 
-// BuildURLParams controls what BuildURL emits. WorkspaceID is required;
-// everything else is optional.
+// BuildURLParams controls what BuildURL emits.
 type BuildURLParams struct {
-	// WorkspaceID is the Bitrise workspace slug — required for any
-	// per-workspace dashboard URL. Empty workspace falls back to the
-	// generic /build-cache landing page, useful as a graceful-degrade
-	// behaviour when the user hasn't configured auth yet.
-	WorkspaceID string
-
-	// InvocationID, when non-empty, deep-links to the specific invocation
-	// page. Combined with WorkspaceID it produces a /build-cache/<ws>/
-	// invocations/<id> URL. Without an InvocationID the URL points at the
-	// per-workspace invocations list.
+	WorkspaceID  string
 	InvocationID string
-
-	// SourceFilter is the value of the dashboard's `source` query param,
-	// today either "local" or "ci". Empty omits the param. The dashboard
-	// currently ignores unknown values gracefully — sending it now is
-	// harmless and forward-compatible with F4 / ACI-5047 (BE accepts the
+	// SourceFilter sets the dashboard's `source` query param ("local" /
+	// "ci"). Empty omits the param. The dashboard currently ignores it —
+	// sending it is forward-compatible with F4 (ACI-5047, BE accepts the
 	// field).
 	SourceFilter string
-
-	// BaseURL overrides the dashboard host. Tests use this to assert URLs
-	// against a fixture host without touching the production constant.
-	// Empty falls back to consts.BitriseWebsiteBaseURL.
+	// BaseURL overrides consts.BitriseWebsiteBaseURL. Set in tests; empty
+	// falls back to the production constant.
 	BaseURL string
 }
 
@@ -52,6 +37,9 @@ type BuildURLParams struct {
 //
 //	BuildURL(WorkspaceID="")
 //	 → https://app.bitrise.io/build-cache
+//
+// Workspace + invocation IDs are PathEscape'd defensively — they're slugs
+// today, but escape keeps a stray `/` or `#` from breaking the URL.
 func BuildURL(p BuildURLParams) (string, error) {
 	base := p.BaseURL
 	if base == "" {
@@ -63,15 +51,24 @@ func BuildURL(p BuildURLParams) (string, error) {
 		return "", fmt.Errorf("parse base URL %q: %w", base, err)
 	}
 
+	// Set Path (decoded) + RawPath (encoded) so URL.String uses RawPath
+	// verbatim. PathEscape on each segment keeps a stray `/` or `#` in a
+	// workspace / invocation slug from splitting or fragmenting the URL.
+	ws := url.PathEscape(p.WorkspaceID)
+	inv := url.PathEscape(p.InvocationID)
+
 	switch {
 	case p.WorkspaceID == "":
 		u.Path = "/build-cache"
+		u.RawPath = ""
 
 	case p.InvocationID != "":
 		u.Path = "/build-cache/" + p.WorkspaceID + "/invocations/" + p.InvocationID
+		u.RawPath = "/build-cache/" + ws + "/invocations/" + inv
 
 	default:
 		u.Path = "/build-cache/" + p.WorkspaceID + "/invocations"
+		u.RawPath = "/build-cache/" + ws + "/invocations"
 		if p.SourceFilter != "" {
 			q := u.Query()
 			q.Set("source", p.SourceFilter)
@@ -79,5 +76,5 @@ func BuildURL(p BuildURLParams) (string, error) {
 		}
 	}
 
-	return strings.TrimSuffix(u.String(), "?"), nil
+	return u.String(), nil
 }

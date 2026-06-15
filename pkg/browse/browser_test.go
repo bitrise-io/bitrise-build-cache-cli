@@ -5,12 +5,23 @@ package browse
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/browse"
 )
+
+// browse_ErrNoOpener returns the internal sentinel so the public-API
+// test can drive the warn-path branch without importing the internal
+// package in line.
+func browse_ErrNoOpener() error { return browse.ErrNoOpener }
+
+//nolint:gochecknoglobals
+var errSimulatedExecFailure = errors.New("simulated exec failure")
 
 func newLogger() log.Logger {
 	return log.NewLogger(log.WithOutput(&bytes.Buffer{}))
@@ -77,4 +88,39 @@ func TestBrowse_missingWorkspaceReturnsSentinel(t *testing.T) {
 	_, err := b.Open(context.Background(), Params{Envs: map[string]string{}})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrWorkspaceNotConfigured)
+}
+
+func TestBrowse_openerErrNoOpener_emitsNoSupportedLauncherWarn(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&buf))
+
+	op := &stubOpener{err: browse_ErrNoOpener()}
+	b := &Browser{Logger: logger, Opener: op}
+
+	got, err := b.Open(context.Background(), Params{
+		WorkspaceID: "ws_abc",
+		BaseURL:     "https://app.bitrise.io",
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, got)
+	assert.Contains(t, buf.String(), "No default browser launcher for this OS")
+}
+
+func TestBrowse_openerGenericError_emitsCouldNotAutoLaunchWarn(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&buf))
+
+	op := &stubOpener{err: errSimulatedExecFailure}
+	b := &Browser{Logger: logger, Opener: op}
+
+	got, err := b.Open(context.Background(), Params{
+		WorkspaceID: "ws_abc",
+		BaseURL:     "https://app.bitrise.io",
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, got)
+	assert.Contains(t, buf.String(), "Could not auto-launch the browser")
+	// Generic-error message should include the underlying error text so
+	// post-mortem isn't blind.
+	assert.Contains(t, buf.String(), "simulated exec failure")
 }
