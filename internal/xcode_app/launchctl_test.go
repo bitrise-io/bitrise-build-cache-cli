@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeRunner records the exact launchctl invocations and returns canned
-// stdout/stderr/exit codes per call.
 type fakeRunner struct {
 	calls  []runnerCall
 	stdout string
@@ -56,7 +54,6 @@ func TestLaunchctl_Unsetenv_swallowsNonZero(t *testing.T) {
 	r := &fakeRunner{exit: 113}
 	c := LaunchctlClient{Runner: r}
 
-	// Idempotent — non-zero exit is fine (variable already unset).
 	require.NoError(t, c.Unsetenv(context.Background(), "K"))
 }
 

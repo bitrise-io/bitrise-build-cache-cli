@@ -8,17 +8,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
 )
 
-// RemoteServicePathKey is the xcconfig key Xcode reads to discover the xcelerate-proxy unix socket.
 const RemoteServicePathKey = "COMPILATION_CACHE_REMOTE_SERVICE_PATH"
 
-// RenderOverride returns the xcconfig content for ~/.bitrise-xcelerate/xcode-app.xcconfig.
-// When non-empty, previousIncludePath is chained via `#include` so the user's prior xcconfig still applies.
 func RenderOverride(proxySocketPath, previousIncludePath string) (string, error) {
 	if strings.TrimSpace(proxySocketPath) == "" {
 		return "", fmt.Errorf("proxy socket path is empty")
 	}
 
-	// xcconfig's `#include "<path>"` has no documented quote-escape — reject embedded quotes rather than emit a silently malformed file.
+	// xcconfig `#include "<path>"` has no documented quote-escape — reject quotes rather than emit a silently malformed file.
 	if strings.ContainsRune(previousIncludePath, '"') {
 		return "", fmt.Errorf("previous XCODE_XCCONFIG_FILE path contains a quote character — cannot safely #include")
 	}

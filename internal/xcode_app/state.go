@@ -8,13 +8,11 @@ import (
 	"os"
 )
 
-// State captures what `xcode-app enable` did so `xcode-app disable` can undo it cleanly.
 type State struct {
-	// PreviousXCConfigPath is the value of XCODE_XCCONFIG_FILE captured before enable overwrote it.
 	PreviousXCConfigPath string `json:"previousXCConfigPath,omitempty"`
 }
 
-// LoadState reads the state file; missing file returns zero + false + nil (treat as never enabled).
+// LoadState returns zero + false + nil for a missing file (caller treats as never enabled).
 func LoadState(path string) (State, bool, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // we control the path
 	if err != nil {
@@ -33,7 +31,7 @@ func LoadState(path string) (State, bool, error) {
 	return s, true, nil
 }
 
-// SaveState writes the state file atomically (write-temp + rename).
+// SaveState writes atomically (write-temp + rename).
 func SaveState(path string, s State) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -41,7 +39,6 @@ func SaveState(path string, s State) error {
 	}
 
 	tmp := path + ".tmp"
-	// 0o600: internal enable/disable handoff, Xcode never reads it.
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
@@ -55,7 +52,6 @@ func SaveState(path string, s State) error {
 	return nil
 }
 
-// RemoveState deletes the state file idempotently.
 func RemoveState(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("remove state file %s: %w", path, err)

@@ -1,8 +1,3 @@
-// Package xcode_app exposes CLI subcommands that enable / disable the
-// Bitrise Build Cache override for Xcode.app (GUI) builds.
-//
-// The implementation lives in pkg/xcode_app and internal/xcode_app. This
-// package is a thin cobra wrapper.
 package xcode_app
 
 import (

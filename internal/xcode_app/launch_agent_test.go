@@ -33,9 +33,7 @@ func TestRenderSetenvAgent_escapesXMLSpecialChars(t *testing.T) {
 	got, err := RenderSetenvAgent("/Users/me/With <> & quote.xcconfig")
 	require.NoError(t, err)
 
-	// Raw special characters should not appear in the rendered body.
 	assert.NotContains(t, got, "/Users/me/With <> & quote.xcconfig")
-	// XML-escaped form should appear instead.
 	assert.Contains(t, got, "&lt;")
 	assert.Contains(t, got, "&gt;")
 	assert.Contains(t, got, "&amp;")

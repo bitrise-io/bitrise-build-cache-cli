@@ -10,18 +10,13 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
-// LaunchctlBin is the absolute path of the launchctl binary on macOS.
 const LaunchctlBin = "/bin/launchctl"
 
-// XCConfigEnvVar is the env var Xcode reads for an override xcconfig path.
 const XCConfigEnvVar = "XCODE_XCCONFIG_FILE"
 
-// LaunchctlClient wraps the `launchctl` verbs needed to drive an XCODE_XCCONFIG_FILE override.
 type LaunchctlClient struct {
-	// Runner executes launchctl. nil = daemon.ExecRunner (shared locale pinning + exit propagation).
 	Runner daemon.CommandRunner
-	// Bin overrides the launchctl binary path; empty = LaunchctlBin.
-	Bin string
+	Bin    string
 }
 
 func (c LaunchctlClient) runner() daemon.CommandRunner {
@@ -40,8 +35,7 @@ func (c LaunchctlClient) bin() string {
 	return LaunchctlBin
 }
 
-// Setenv runs `launchctl setenv <key> <value>` so GUI-launched processes inherit it.
-// Lasts only until the user logs out — pair with the LaunchAgent to survive logout.
+// Setenv lasts only until logout — pair with the LaunchAgent to survive logout.
 func (c LaunchctlClient) Setenv(ctx context.Context, key, value string) error {
 	_, stderr, code, err := c.runner().Run(ctx, c.bin(), "setenv", key, value)
 	if err != nil {
@@ -55,7 +49,7 @@ func (c LaunchctlClient) Setenv(ctx context.Context, key, value string) error {
 	return nil
 }
 
-// Unsetenv runs `launchctl unsetenv <key>` idempotently — launchctl returns 113 when already unset.
+// Unsetenv treats launchctl exit 113 ("already unset") as success.
 func (c LaunchctlClient) Unsetenv(ctx context.Context, key string) error {
 	if _, _, _, err := c.runner().Run(ctx, c.bin(), "unsetenv", key); err != nil { //nolint:dogsled // matches the runner contract; we intentionally ignore stdout/stderr/exit
 		return fmt.Errorf("launchctl unsetenv: %w", err)
@@ -64,12 +58,10 @@ func (c LaunchctlClient) Unsetenv(ctx context.Context, key string) error {
 	return nil
 }
 
-// Bootstrap loads a LaunchAgent plist into the user's GUI session.
-// Idempotent: pre-boots out any prior load so a stale plist is replaced.
+// Bootstrap pre-boots out any prior load so a stale plist is replaced.
 func (c LaunchctlClient) Bootstrap(ctx context.Context, plistPath string) error {
 	target := guiTarget()
 
-	// Best-effort pre-bootout: "not loaded" is fine, but a runner-side failure means launchctl itself couldn't run.
 	if _, _, _, runErr := c.runner().Run(ctx, c.bin(), "bootout", target, plistPath); runErr != nil { //nolint:dogsled // runner returns stdout/stderr/exit/err — we only care about err here
 		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
 	}
@@ -86,8 +78,7 @@ func (c LaunchctlClient) Bootstrap(ctx context.Context, plistPath string) error 
 	return nil
 }
 
-// Bootout removes a LaunchAgent plist from the user's GUI session.
-// Idempotent: "not loaded" is treated as success.
+// Bootout treats "not loaded" stderr as success.
 func (c LaunchctlClient) Bootout(ctx context.Context, plistPath string) error {
 	_, stderr, code, err := c.runner().Run(ctx, c.bin(), "bootout", guiTarget(), plistPath)
 	if err != nil {

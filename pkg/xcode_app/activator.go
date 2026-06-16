@@ -16,35 +16,23 @@ import (
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcode_app"
 )
 
-// ErrUnsupportedPlatform is returned by Enable/Disable on non-macOS hosts.
 var ErrUnsupportedPlatform = errors.New("xcode-app is only supported on macOS")
 
-// ErrXcelerateNotConfigured is returned when the xcelerate config file is not on disk.
 var ErrXcelerateNotConfigured = errors.New("xcelerate config not found — run `bitrise-build-cache activate xcode` first")
 
-// Activator drives `xcode-app enable` / `disable`. Nil fields fall back to production defaults.
+// Activator nil fields fall back to production defaults.
 type Activator struct {
-	// Logger is required.
-	Logger log.Logger
-	// Envs snapshots XCODE_XCCONFIG_FILE at enable time; production passes utils.AllEnvs().
-	Envs map[string]string
-	// OsProxy gates filesystem reads; nil = utils.DefaultOsProxy.
-	OsProxy utils.OsProxy
-	// DecoderFactory builds the JSON decoder; nil = utils.DefaultDecoderFactory.
+	Logger         log.Logger
+	Envs           map[string]string
+	OsProxy        utils.OsProxy
 	DecoderFactory utils.DecoderFactory
-	// Launchctl handles setenv/unsetenv/bootstrap/bootout; nil = xa.LaunchctlClient{}.
-	Launchctl xa.LaunchctlClient
-	// XcodeChecker reports whether Xcode is running; nil = xa.DefaultXcodeChecker{}.
-	XcodeChecker xa.XcodeProcessChecker
-	// DaemonBackend supervises the xcelerate-proxy service; nil = daemon.DefaultBackend().
-	DaemonBackend daemon.Backend
-	// DaemonPaths is the supervisor paths struct; nil = daemon.NewPaths().
-	DaemonPaths *daemon.Paths
-	// Executable is the supervisor's ProgramArguments[0]; empty = os.Executable().
-	Executable string
+	Launchctl      xa.LaunchctlClient
+	XcodeChecker   xa.XcodeProcessChecker
+	DaemonBackend  daemon.Backend
+	DaemonPaths    *daemon.Paths
+	Executable     string
 }
 
-// EnableResult describes what Enable did.
 type EnableResult struct {
 	XCConfigPath         string
 	LaunchAgentPlistPath string
@@ -53,7 +41,6 @@ type EnableResult struct {
 	RunningXcodePIDs     []int
 }
 
-// DisableResult describes what Disable did.
 type DisableResult struct {
 	XCConfigRemoved      bool
 	LaunchAgentRemoved   bool
@@ -61,8 +48,7 @@ type DisableResult struct {
 	RestoredXCConfigPath string
 }
 
-// Enable applies the Xcode.app build-cache override.
-// Partial failure recovery: a follow-up Disable cleans up — each teardown step swallows the already-gone case.
+// Enable: on partial failure, follow-up Disable cleans up — each teardown step swallows already-gone.
 func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	if runtime.GOOS != "darwin" {
 		return EnableResult{}, ErrUnsupportedPlatform
@@ -83,15 +69,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	xcconfigPath := xa.OverrideXCConfigPath(osProxy)
 	statePath := xa.StateFilePath(osProxy)
 
-	// Self-loop guard. After a successful enable, launchctl exports our
-	// override path into the GUI session; any shell spawned from that
-	// session inherits XCODE_XCCONFIG_FILE pointing at our own xcconfig.
-	// A second enable would then read its own xcconfig path as the
-	// "previous" override and clobber the state file, losing the original
-	// user-supplied prior path forever (and disable would later "restore"
-	// to our own subsequently-deleted xcconfig). When we see the self-loop,
-	// fall back to the PreviousXCConfigPath already on disk so re-enabling
-	// is idempotent.
+	// Self-loop guard: a second enable inheriting our own override path would clobber the state file and lose the original prior path.
 	previous := a.Envs[xa.XCConfigEnvVar]
 	if previous == xcconfigPath {
 		if existing, found, loadErr := xa.LoadState(statePath); loadErr == nil && found {
@@ -156,8 +134,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	}, nil
 }
 
-// Disable reverses what Enable did. Safe to run repeatedly — every step is
-// idempotent against "never enabled" / "already disabled".
+// Disable is idempotent against "never enabled" / "already disabled".
 func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 	if runtime.GOOS != "darwin" {
 		return DisableResult{}, ErrUnsupportedPlatform
@@ -252,15 +229,8 @@ func (a *Activator) installAndStartProxy(ctx context.Context) error {
 	return nil
 }
 
-// xcelerateProxyService picks the xcelerate-proxy service out of the
-// daemon's DefaultServices set. We deliberately don't drive ccache-helper
-// from here — Xcode.app builds don't use ccache, and bundling the two would
-// surprise C/C++-only users.
-//
-// Returns an error rather than a hardcoded fallback if the daemon package
-// ever drops xcelerate-proxy — silent divergence between this caller and
-// daemon's canonical definition would mean shipping a different supervisor
-// config than the rest of the CLI thinks is current.
+// xcelerateProxyService excludes ccache-helper intentionally — Xcode.app builds don't use ccache.
+// Errors rather than falling back so this caller and daemon's canonical service set can't silently diverge.
 func xcelerateProxyService() (daemon.Service, error) {
 	for _, s := range daemon.DefaultServices() {
 		if s.Name == "xcelerate-proxy" {

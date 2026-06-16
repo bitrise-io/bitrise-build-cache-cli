@@ -9,18 +9,15 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
-// pgrepBin is the macOS pgrep binary.
 const pgrepBin = "/usr/bin/pgrep"
 
-// XcodeProcessName is the GUI app's main executable name. Xcode-beta is intentionally not covered.
+// XcodeProcessName intentionally omits Xcode-beta.
 const XcodeProcessName = "Xcode"
 
-// XcodeProcessChecker reports whether Xcode is currently running.
 type XcodeProcessChecker interface {
 	RunningPIDs(ctx context.Context) ([]int, error)
 }
 
-// DefaultXcodeChecker shells out to /usr/bin/pgrep -x Xcode.
 type DefaultXcodeChecker struct {
 	Runner daemon.CommandRunner
 }
@@ -33,7 +30,7 @@ func (d DefaultXcodeChecker) runner() daemon.CommandRunner {
 	return daemon.ExecRunner{}
 }
 
-// RunningPIDs returns the PIDs of running Xcode processes; empty slice = not running (pgrep exit 1).
+// RunningPIDs returns empty slice when pgrep exit 1 (no match).
 func (d DefaultXcodeChecker) RunningPIDs(ctx context.Context) ([]int, error) {
 	stdout, _, code, err := d.runner().Run(ctx, pgrepBin, "-x", XcodeProcessName)
 	if err != nil {
