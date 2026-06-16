@@ -12,14 +12,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/versioncheck"
 )
 
-// NoUpdateCheck is set by the global --no-update-check flag. Read from the
-// root PersistentPreRun to gate the GitHub release lookup. Exported so other
-// subcommands can short-circuit additional network calls if needed.
-//
 //nolint:gochecknoglobals
 var NoUpdateCheck bool
 
-// rootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:     "bitrise-build-cache-cli",
 	Version: configcommon.GetCLIVersion(log.NewLogger()),
@@ -34,14 +29,12 @@ In case of Gradle it's done via creating or modifying the following two files: $
 
 In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-		// `version` already prints the CLI version itself; skip the duplicate log line.
 		if cmd.Name() == "version" {
 			return
 		}
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
-		// Best-effort drift detection: skip helpers/daemon-control verbs to keep their output deterministic.
 		if ShouldSkipVersionCheck(cmd) {
 			return
 		}
@@ -50,29 +43,15 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 	},
 }
 
-// ShouldSkipVersionCheck returns true for command names that shouldn't trigger
-// a version drift check / GitHub network lookup. Exported so the activate
-// subtree (cmd/common/activate.go) and any other PersistentPreRun overrides
-// can share the same skip list.
-//
-// The skip list MUST include subcommands that fire many times per build —
-// the xcelerate xcodebuild wrapper, the proxy + storage-helper start/stop
-// verbs, and the per-invocation register / set-id calls. Each version-check
-// run does a mkdir + temp-file create + JSON marshal + atomic rename; doing
-// that hundreds of times per clean iOS build is real overhead. (Version
-// drift is detected on the next "real" CLI run instead.)
+// ShouldSkipVersionCheck excludes subcommands that fire many times per build (each version check is mkdir + tmpfile + marshal + rename).
 func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	switch cmd.Name() {
 	case "version", "help", "completion":
 		return true
 	case
-		// xcelerate xcodebuild wrapper — invoked by every Xcode build phase.
 		"xcodebuild",
-		// xcelerate proxy lifecycle — daemon + activate paths both poke it.
 		"start-proxy", "stop-proxy",
-		// ccache storage helper lifecycle + per-invocation hooks.
 		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
-		// Child-stats register hooks fire per nested step / shell invocation.
 		"register-invocation", "register-child-invocation":
 		return true
 	default:
@@ -80,11 +59,7 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	}
 }
 
-// RunVersionCheck performs the drift detect + nudge with a generous context
-// timeout. Exported so non-root cobra subtree PersistentPreRun overrides can
-// share the logic — cobra runs only the closest ancestor's hook.
-//
-// Callers MUST gate on ShouldSkipVersionCheck before invoking.
+// RunVersionCheck must be gated on ShouldSkipVersionCheck. Cobra runs only the closest ancestor's PersistentPreRun.
 func RunVersionCheck(cmd *cobra.Command) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -105,9 +80,6 @@ func RunVersionCheck(cmd *cobra.Command) {
 	})
 }
 
-// isRunningOnCI is the heuristic we use to suppress the nudge on CI. Matches
-// what most CI providers set: CI=true (Bitrise, GitHub Actions, CircleCI),
-// or the presence of a Bitrise-specific env var.
 func isRunningOnCI() bool {
 	if v, ok := os.LookupEnv("CI"); ok && v != "" && v != "0" && v != "false" {
 		return true
@@ -120,8 +92,6 @@ func isRunningOnCI() bool {
 	return false
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	err := RootCmd.Execute()
 	if err != nil {
