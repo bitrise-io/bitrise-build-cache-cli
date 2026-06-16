@@ -7,12 +7,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
-)
 
-const StateDirRelative = ".local/state/bitrise-build-cache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+)
 
 const RegistryFile = "refresh-registry.json"
 
@@ -36,7 +35,7 @@ type Registry struct {
 }
 
 func registryPath(home string) string {
-	return filepath.Join(home, StateDirRelative, RegistryFile)
+	return paths.FromHome(home).StateFile(RegistryFile)
 }
 
 func Load(home string) (Registry, error) {
@@ -65,7 +64,7 @@ func Load(home string) (Registry, error) {
 
 // Save writes atomically (write-temp + rename).
 func Save(home string, reg Registry) error {
-	dir := filepath.Join(home, StateDirRelative)
+	dir := paths.FromHome(home).StateDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}

@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
 func TestLoad_missingReturnsEmpty(t *testing.T) {
@@ -112,7 +114,7 @@ func TestMark_parallelMarksAllSurvive(t *testing.T) {
 
 func TestLoad_corruptFileErrors(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, StateDirRelative)
+	dir := paths.FromHome(home).StateDir()
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, RegistryFile), []byte("not json"), 0o644))
 
