@@ -31,36 +31,24 @@ const DownloadTimeout = 10 * time.Second
 // origin streams gigabytes into os.TempDir.
 const MaxInstallerBytes = 1 << 20
 
-// ManualOptions bundles the inputs ManualUpgrade needs. Kept as a struct so
-// tests can override URL / HTTP client / shell / logger.
+// ManualOptions bundles the inputs ManualUpgrade needs.
 type ManualOptions struct {
-	// Bindir is the directory containing the running binary — passed to
-	// installer.sh via `-b`. Required.
+	// Bindir passed to installer.sh via `-b`. Required.
 	Bindir string
-	// Logger receives our own progress / completion messages AND the
-	// subprocess stdout/stderr (line-buffered via the loggerWriter adapter
-	// below). Tests pass log.NewLogger(log.WithOutput(&buf)); production
-	// passes a stderr-backed logger.
+	// Logger receives progress messages and line-buffered subprocess output.
 	Logger log.Logger
-	// InstallerURL overrides the canonical URL for tests. Empty = use
-	// InstallerURL constant.
+	// InstallerURL overrides the canonical URL for tests.
 	InstallerURL string
-	// HTTPClient is the network client. Empty = default 10s-timeout client.
+	// HTTPClient overrides the default 10s-timeout client.
 	HTTPClient *http.Client
 	// Shell is the program to invoke installer.sh with. Empty = "/bin/sh".
 	Shell string
-	// DryRun, when true, downloads the installer but doesn't execute it.
-	// Returns the path of the downloaded script so the caller can show it.
+	// DryRun downloads the installer but doesn't execute it.
 	DryRun bool
 }
 
-// ManualUpgrade downloads installer.sh and runs it against the bindir of the
-// running binary. installer.sh handles tarball download, checksum
-// verification, and atomic replacement of the binary internally — we just
-// drive it.
-//
-// Returns the local path of the downloaded installer (useful for diagnostics
-// and the DryRun case).
+// ManualUpgrade downloads installer.sh and runs it against the bindir of the running binary.
+// Returns the local path of the downloaded installer.
 func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	if opts.Bindir == "" {
 		return "", errors.New("bindir is required for manual upgrade")
@@ -84,9 +72,7 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	}
 
 	if opts.DryRun {
-		// Dry run intentionally leaves the script on disk — the printed
-		// "To upgrade manually" command references it, so removing it would
-		// break copy-paste. Caller / user cleans up when done.
+		// Leave the script on disk — the printed manual-upgrade command references it.
 		opts.Logger.Infof("Dry run — installer downloaded to %s but NOT executed.", scriptPath)
 		opts.Logger.Infof("To upgrade manually: %s %s -b %s", opts.Shell, scriptPath, opts.Bindir)
 
@@ -95,9 +81,6 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 
 	opts.Logger.Infof("Running installer to upgrade CLI in %s ...", opts.Bindir)
 
-	// loggerWriter buffers subprocess output until newlines so logger.Printf
-	// emits one line per installer.sh log entry, preserving the user-visible
-	// progress stream while flowing through the same logger.
 	pipe := newLoggerWriter(opts.Logger)
 	defer pipe.Flush()
 
@@ -106,13 +89,10 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	cmd.Stderr = pipe
 
 	if err := cmd.Run(); err != nil {
-		// Keep the script on disk on failure so the user can re-run it
-		// manually with the same args to debug what went wrong.
+		// Keep the script on disk on failure so the user can re-run it manually to debug.
 		return scriptPath, fmt.Errorf("run installer.sh: %w", err)
 	}
 
-	// Success — drop the temp file. Best-effort; if removal fails the OS will
-	// clean it up on next reboot (os.TempDir).
 	if removeErr := os.Remove(scriptPath); removeErr != nil {
 		opts.Logger.Warnf("could not clean up installer temp file %s: %s", scriptPath, removeErr)
 	}
@@ -192,10 +172,7 @@ func BindirOf(executable string) string {
 	return filepath.Dir(executable)
 }
 
-// loggerWriter is an io.Writer that line-buffers its input and emits each
-// complete line via logger.Printf. Used to plumb subprocess stdout/stderr
-// through the project logger — exec.Cmd needs an io.Writer but the rest of
-// the package uses log.Logger.
+// loggerWriter line-buffers its input and emits each complete line via logger.Printf.
 type loggerWriter struct {
 	logger log.Logger
 	buf    bytes.Buffer
@@ -224,8 +201,7 @@ func (w *loggerWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Flush emits any remaining buffered partial line. Call after the
-// subprocess exits to avoid losing a no-trailing-newline final line.
+// Flush emits any remaining buffered partial line. Call after the subprocess exits.
 func (w *loggerWriter) Flush() {
 	if w.buf.Len() == 0 {
 		return
@@ -235,8 +211,6 @@ func (w *loggerWriter) Flush() {
 	w.buf.Reset()
 }
 
-// trimNewline drops one trailing \n if present. Avoids importing strings
-// for a single-char trim on the line buffer hot path.
 func trimNewline(s string) string {
 	if len(s) > 0 && s[len(s)-1] == '\n' {
 		return s[:len(s)-1]

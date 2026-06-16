@@ -13,19 +13,15 @@ import (
 	"strings"
 )
 
-// InstallMethod classifies how the running binary got onto disk. Used to pick
-// the right upgrade flow.
+// InstallMethod classifies how the running binary got onto disk.
 type InstallMethod int
 
 const (
-	// InstallUnknown is the safe default when path inspection didn't yield a
-	// confident classification. Callers print a generic guidance message and
-	// don't attempt an automated upgrade.
+	// InstallUnknown is the safe default; callers print generic guidance and skip the automated upgrade.
 	InstallUnknown InstallMethod = iota
 	// InstallBrew means the running binary is under a Homebrew Cellar prefix.
 	InstallBrew
-	// InstallManual means the running binary lives outside any brew prefix —
-	// typically dropped by `installer.sh -b <bindir>`.
+	// InstallManual means the running binary was dropped by `installer.sh -b <bindir>`.
 	InstallManual
 )
 
@@ -55,12 +51,8 @@ var brewSubstrings = []string{
 	".linuxbrew/Cellar/",          // per-user Linuxbrew
 }
 
-// DetectInstallMethod inspects the supplied executable path (typically
-// os.Executable() at the call site, optionally symlink-resolved by the
-// caller) and returns the best-guess install method. Reads $HOMEBREW_PREFIX
-// from the environment as a secondary signal — Homebrew exports this when
-// `brew shellenv` has been sourced, which covers unusual prefixes that
-// don't match any of the hard-coded brewSubstrings.
+// DetectInstallMethod returns the best-guess install method for the supplied executable path.
+// Falls back to $HOMEBREW_PREFIX to catch relocated/custom brew prefixes.
 func DetectInstallMethod(executable string) InstallMethod {
 	if executable == "" {
 		return InstallUnknown
@@ -74,18 +66,14 @@ func DetectInstallMethod(executable string) InstallMethod {
 		}
 	}
 
-	// HOMEBREW_PREFIX catches non-standard brew layouts (relocated prefix,
-	// custom `brew --prefix` overrides). Only consulted when the substring
-	// match misses, so the more specific Cellar/ classification still wins
-	// for stable installs.
+	// HOMEBREW_PREFIX catches non-standard brew layouts (relocated prefix, custom `brew --prefix`).
 	if prefix := strings.TrimSpace(os.Getenv("HOMEBREW_PREFIX")); prefix != "" {
 		if strings.HasPrefix(abs, filepath.Clean(prefix)+string(filepath.Separator)) {
 			return InstallBrew
 		}
 	}
 
-	// Empty / unparseable basename is a hard "unknown" signal — defensive
-	// against future os.Executable() return shapes.
+	// Defensive against future os.Executable() return shapes.
 	if filepath.Base(abs) == "" || filepath.Base(abs) == "." {
 		return InstallUnknown
 	}

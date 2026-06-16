@@ -1,6 +1,4 @@
-// Package update exposes the `bitrise-build-cache update` subcommand. Thin
-// cobra wrapper over internal/updater; the package itself owns no business
-// logic.
+// Package update exposes the `bitrise-build-cache update` subcommand.
 package update
 
 import (
