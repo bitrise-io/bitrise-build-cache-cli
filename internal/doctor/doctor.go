@@ -101,16 +101,14 @@ type authLoader interface {
 	Load() (keychain.Credentials, error)
 }
 
-// keyringBackend is the low-level go-keyring slice we use for the keychain
-// smoke test. Tests inject an in-memory implementation.
+// keyringBackend is the slice of go-keyring used by the smoke test. DI for tests.
 type keyringBackend interface {
 	Set(service, account, secret string) error
 	Get(service, account string) (string, error)
 	Delete(service, account string) error
 }
 
-// Runner aggregates all checks. Each field is injectable for hermetic tests;
-// nil means "use the default".
+// Runner aggregates all checks. Fields are injectable for tests; nil = default.
 type Runner struct {
 	OsProxy            utils.OsProxy
 	Envs               map[string]string
