@@ -1,6 +1,4 @@
-// Package refresh tracks which build-tool configs the CLI has generated
-// (gradle / bazel / xcelerate / ccache) and surfaces a refresh-needed nudge
-// when the running CLI version drifts from the version that wrote the config.
+// Package refresh tracks which build-tool configs the CLI has generated and surfaces a refresh nudge when CLI version drifts.
 package refresh
 
 import (
@@ -14,14 +12,11 @@ import (
 	"time"
 )
 
-// StateDirRelative is the path beneath the user's home where refresh state lives.
 const StateDirRelative = ".local/state/bitrise-build-cache"
 
-// RegistryFile is the basename of the on-disk registry.
 const RegistryFile = "refresh-registry.json"
 
-// Tool identifiers. Constants instead of free-form strings so accidental
-// typos at Mark() sites fail to compile.
+// Tool identifiers — constants so typos at Mark() sites fail to compile.
 const (
 	ToolGradle    = "gradle"
 	ToolBazel     = "bazel"
@@ -29,21 +24,13 @@ const (
 	ToolCcache    = "ccache"
 )
 
-// Entry is one tool's registration record.
 type Entry struct {
-	// Tool is one of the Tool* constants.
-	Tool string `json:"tool"`
-	// ConfigPath is the file the activate command produced — included in the
-	// nudge text so the user can see what would be refreshed.
-	ConfigPath string `json:"config_path,omitempty"`
-	// CLIVersion is the CLI version that wrote the entry.
-	CLIVersion string `json:"cli_version"`
-	// RegisteredAt is when the entry was written. Updated on every activate
-	// rerun so stale entries surface in observability.
+	Tool         string    `json:"tool"`
+	ConfigPath   string    `json:"config_path,omitempty"`
+	CLIVersion   string    `json:"cli_version"`
 	RegisteredAt time.Time `json:"registered_at"`
 }
 
-// Registry is the on-disk shape.
 type Registry struct {
 	Entries map[string]Entry `json:"entries"`
 }
@@ -52,8 +39,6 @@ func registryPath(home string) string {
 	return filepath.Join(home, StateDirRelative, RegistryFile)
 }
 
-// Load reads the registry. Missing file is the "no tools registered yet"
-// case and returns an empty Registry without error.
 func Load(home string) (Registry, error) {
 	path := registryPath(home)
 
@@ -78,8 +63,7 @@ func Load(home string) (Registry, error) {
 	return reg, nil
 }
 
-// Save writes the registry atomically (write-temp + rename) so a crash
-// mid-write can't corrupt the JSON.
+// Save writes atomically (write-temp + rename).
 func Save(home string, reg Registry) error {
 	dir := filepath.Join(home, StateDirRelative)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -118,21 +102,7 @@ func Save(home string, reg Registry) error {
 	return nil
 }
 
-// Mark records (or updates) the entry for one tool. Used by the activate
-// subcommands so D1's bump detection knows what was previously configured.
-// Failures are returned but callers MUST treat them as advisory — failing
-// to write the registry should not fail an otherwise-successful activate.
-//
-// Concurrency: Mark is read-modify-write, so two parallel CLI invocations
-// activating different tools at the same time would otherwise race and one
-// entry would be lost on Save (last-write-wins under the rename). We take
-// an OS-level advisory lock on a sibling lockfile around the whole RMW so
-// the second invocation blocks briefly, sees the first's commit, and
-// merges its own delta on top.
-//
-// flock with LOCK_EX is portable across macOS + Linux (both POSIX) and
-// the only consumers of this registry are CLI processes on the same host,
-// so we don't need a cross-host coordinator.
+// Mark is RMW under an advisory flock so parallel activates don't race on Save's last-write-wins rename.
 func Mark(home, tool, configPath, cliVersion string) error {
 	unlock, err := lockRegistry(home)
 	if err != nil {
@@ -156,9 +126,7 @@ func Mark(home, tool, configPath, cliVersion string) error {
 	return Save(home, reg)
 }
 
-// SortedEntries returns the registry entries in stable, alphabetical order
-// for human-readable output. Map iteration order isn't deterministic; this
-// keeps the notify text reproducible (good for tests too).
+// SortedEntries returns alphabetical order so notify text is reproducible.
 func (r Registry) SortedEntries() []Entry {
 	out := make([]Entry, 0, len(r.Entries))
 	for _, e := range r.Entries {
