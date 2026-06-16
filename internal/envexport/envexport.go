@@ -2,13 +2,14 @@ package envexport
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/stringmerge"
 )
 
@@ -40,12 +41,9 @@ func (e *EnvExporter) Export(key, value string) {
 }
 
 func (e *EnvExporter) exportViaEnvman(key, value string) {
-	output, err := exec.Command("envman", "add", //nolint:noctx
-		"--key", key,
-		"--value", value,
-	).CombinedOutput()
+	stdout, stderr, _, err := (exec.ExecRunner{}).Run(context.Background(), "envman", "add", "--key", key, "--value", value)
 	if err != nil {
-		e.logger.Debugf("Failed to export %s via envman: %s (%v)", key, string(output), err)
+		e.logger.Debugf("Failed to export %s via envman: %s (%v)", key, stdout+stderr, err)
 	}
 }
 

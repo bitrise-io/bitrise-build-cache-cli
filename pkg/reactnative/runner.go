@@ -3,7 +3,7 @@ package reactnative
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	osexec "os/exec"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -14,6 +14,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -258,12 +259,12 @@ func (r *Runner) maybeInjectEASWorkingDir(envs map[string]string, name string, c
 }
 
 func (r *Runner) zeroCcacheStats(ctx context.Context) {
-	path, err := exec.LookPath("ccache")
+	path, err := osexec.LookPath("ccache")
 	if err != nil {
 		return
 	}
 
-	if err := exec.CommandContext(ctx, path, "-z").Run(); err != nil { //nolint:gosec
+	if _, _, _, err := (exec.ExecRunner{}).Run(ctx, path, "-z"); err != nil {
 		r.logger.TWarnf("Failed to reset ccache stats: %v", err)
 	}
 }

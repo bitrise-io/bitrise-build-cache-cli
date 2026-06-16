@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"runtime"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 )
 
 var ErrUnsupportedPlatform = errors.New("daemon install is only supported on macOS (launchd) and Linux (systemd)")
@@ -14,17 +16,20 @@ type Backend interface {
 	Name() string
 }
 
-// CommandRunner: exitCode -1 is reserved for "command not started".
-type CommandRunner interface {
-	Run(ctx context.Context, bin string, args ...string) (stdout string, stderr string, exitCode int, err error)
-}
+// CommandRunner aliases the shared exec.Runner for backwards compatibility.
+type CommandRunner = exec.Runner
+
+// daemonRunner pins LC_ALL=C/LANG=C so supervisor error strings stay English — substring matches in systemd.go depend on it.
+//
+//nolint:gochecknoglobals
+var daemonRunner = exec.ExecRunner{PinLocale: true}
 
 func DefaultBackend() (Backend, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		return LaunchdBackend{Runner: ExecRunner{}}, nil
+		return LaunchdBackend{Runner: daemonRunner}, nil
 	case "linux":
-		return SystemdBackend{Runner: ExecRunner{}}, nil
+		return SystemdBackend{Runner: daemonRunner}, nil
 	default:
 		return nil, ErrUnsupportedPlatform
 	}

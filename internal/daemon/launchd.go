@@ -2,38 +2,13 @@ package daemon
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
 
 const launchctlBin = "/bin/launchctl"
-
-type ExecRunner struct{}
-
-// Run pins LC_ALL=C / LANG=C so supervisor error strings stay English — our substring matches in systemd.go depend on it.
-func (ExecRunner) Run(ctx context.Context, bin string, args ...string) (string, string, int, error) {
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
-
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return stdout.String(), stderr.String(), exitErr.ExitCode(), nil
-		}
-
-		return stdout.String(), stderr.String(), -1, fmt.Errorf("run %s: %w", bin, err)
-	}
-
-	return stdout.String(), stderr.String(), 0, nil
-}
 
 type LaunchdBackend struct {
 	Runner CommandRunner

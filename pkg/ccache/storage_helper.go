@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
+	osexec "os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -22,6 +22,7 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
@@ -436,17 +437,17 @@ func (h *StorageHelper) loadSessionInfo(ctx context.Context, invocationIDOverrid
 }
 
 func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.CcacheStats, error) {
-	ccachePath, err := exec.LookPath("ccache")
+	ccachePath, err := osexec.LookPath("ccache")
 	if err != nil {
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("ccache binary not found: %w", err)
 	}
 
-	statsData, err := exec.CommandContext(ctx, ccachePath, "-v", "-v", "-s").Output() //nolint:gosec
+	statsData, _, _, err := (exec.ExecRunner{}).Run(ctx, ccachePath, "-v", "-v", "-s")
 	if err != nil {
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache -v -v -s: %w", err)
 	}
 
-	stats, err := ccacheanalytics.ParseCcacheStats(statsData)
+	stats, err := ccacheanalytics.ParseCcacheStats([]byte(statsData))
 	if err != nil {
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("parse ccache stats: %w", err)
 	}
@@ -455,26 +456,26 @@ func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.C
 }
 
 func (h *StorageHelper) parseCcacheConfig(ctx context.Context) ([]ccacheanalytics.CcacheConfigEntry, error) {
-	ccachePath, err := exec.LookPath("ccache")
+	ccachePath, err := osexec.LookPath("ccache")
 	if err != nil {
 		return nil, fmt.Errorf("ccache binary not found: %w", err)
 	}
 
-	configData, err := exec.CommandContext(ctx, ccachePath, "--show-config").Output() //nolint:gosec
+	configData, _, _, err := (exec.ExecRunner{}).Run(ctx, ccachePath, "--show-config")
 	if err != nil {
 		return nil, fmt.Errorf("run ccache --show-config: %w", err)
 	}
 
-	return ccacheanalytics.ParseCcacheConfig(configData), nil
+	return ccacheanalytics.ParseCcacheConfig([]byte(configData)), nil
 }
 
 func (h *StorageHelper) zeroCcacheStats(ctx context.Context, logger log.Logger) {
-	ccachePath, err := exec.LookPath("ccache")
+	ccachePath, err := osexec.LookPath("ccache")
 	if err != nil {
 		return
 	}
 
-	if err := exec.CommandContext(ctx, ccachePath, "-z").Run(); err != nil { //nolint:gosec
+	if _, _, _, err := (exec.ExecRunner{}).Run(ctx, ccachePath, "-z"); err != nil {
 		logger.TErrorf("Failed to reset ccache stats: %v", err)
 	}
 }
@@ -551,8 +552,8 @@ func createKVClient(
 
 func newCommandFunc(ctx context.Context) configcommon.CommandFunc {
 	return func(name string, args ...string) (string, error) {
-		output, err := exec.CommandContext(ctx, name, args...).Output() //nolint:gosec
+		stdout, _, _, err := (exec.ExecRunner{}).Run(ctx, name, args...)
 
-		return string(output), err
+		return stdout, err
 	}
 }
