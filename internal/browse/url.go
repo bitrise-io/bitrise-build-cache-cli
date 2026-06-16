@@ -15,13 +15,9 @@ import (
 type BuildURLParams struct {
 	WorkspaceID  string
 	InvocationID string
-	// SourceFilter sets the dashboard's `source` query param ("local" /
-	// "ci"). Empty omits the param. The dashboard currently ignores it —
-	// sending it is forward-compatible with F4 (ACI-5047, BE accepts the
-	// field).
+	// SourceFilter sets the dashboard's `source` query param ("local" / "ci"). Empty omits.
 	SourceFilter string
-	// BaseURL overrides consts.BitriseWebsiteBaseURL. Set in tests; empty
-	// falls back to the production constant.
+	// BaseURL overrides consts.BitriseWebsiteBaseURL; empty falls back to the production constant.
 	BaseURL string
 }
 

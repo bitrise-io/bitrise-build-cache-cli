@@ -43,10 +43,7 @@ func (o DefaultOpener) Open(ctx context.Context, url string) error {
 	return nil
 }
 
-// launcherForOS picks the binary for the host. Linux + BSDs ship
-// `xdg-open` (freedesktop standard); macOS uses `open`. Other platforms
-// return ok=false so the caller picks the print-URL fallback rather than
-// us guessing.
+// launcherForOS returns ok=false on unknown platforms so the caller falls back to printing rather than guessing a binary.
 func launcherForOS(goos, url string) (string, []string, bool) {
 	switch goos {
 	case "darwin":

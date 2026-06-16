@@ -15,11 +15,7 @@ import (
 
 const WorkspaceIDEnvVar = "BITRISE_BUILD_CACHE_WORKSPACE_ID"
 
-// ErrWorkspaceNotConfigured is returned when no workspace ID is supplied
-// either explicitly (Params.WorkspaceID) or via the env-var fallback.
-// Browse doesn't need an auth token (the URL is opened in the user's
-// browser, which handles its own session), so this is distinct from
-// common.ErrWorkspaceIDNotProvided which couples workspace + token.
+// ErrWorkspaceNotConfigured is returned when no workspace ID is supplied via Params or env-var.
 var ErrWorkspaceNotConfigured = errors.New(WorkspaceIDEnvVar + " not set — pass --workspace or export the env var to open the dashboard for a specific workspace")
 
 // Params controls Browse behaviour.
@@ -27,11 +23,9 @@ type Params struct {
 	WorkspaceID  string
 	InvocationID string
 	Envs         map[string]string
-	// BaseURL overrides consts.BitriseWebsiteBaseURL. Set in tests / when
-	// pointing at a staging dashboard. Empty falls back to production.
+	// BaseURL overrides consts.BitriseWebsiteBaseURL; empty falls back to production.
 	BaseURL string
-	// PrintOnly suppresses the auto-open step. The URL is still logged at
-	// Info level either way.
+	// PrintOnly suppresses the auto-open step (URL is still logged).
 	PrintOnly bool
 }
 
@@ -40,9 +34,7 @@ type Browser struct {
 	Opener browse.Opener
 }
 
-// Open builds the dashboard URL and launches the user's default browser.
-// The URL is always logged at Info level, so PrintOnly + launcher errors +
-// no-recognised-launcher all degrade to "URL is in the log; copy it".
+// Open builds the dashboard URL, logs it, and launches the user's default browser.
 func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 	workspaceID := p.WorkspaceID
 	if workspaceID == "" {
@@ -55,11 +47,7 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 
 	source := ""
 	if p.InvocationID == "" {
-		// Source filter applies to the list page only; deep links to a
-		// specific invocation don't need it. Hard-coded to "local" today
-		// because `browse` is positioned as the "open my local
-		// invocations" command. Once F4 (BE accepts the field) lands the
-		// dashboard will honour this filter.
+		// `browse` opens the user's local invocations — pin the dashboard filter to match.
 		source = "local"
 	}
 
@@ -87,9 +75,7 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 	}
 
 	if err := opener.Open(ctx, dashboardURL); err != nil {
-		// Print-fallback rather than hard error — having no GUI browser
-		// shouldn't make the command fail. The URL has already been
-		// logged above; we just emit a hint.
+		// No GUI browser shouldn't fail the command — URL is already logged.
 		if b.Logger != nil {
 			switch {
 			case errors.Is(err, browse.ErrNoOpener):
