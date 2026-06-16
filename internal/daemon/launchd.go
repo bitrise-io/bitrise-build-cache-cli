@@ -12,22 +12,9 @@ import (
 
 const launchctlBin = "/bin/launchctl"
 
-// ExecRunner is the production CommandRunner — runs the supplied binary via
-// os/exec. Returns the process exit code for non-zero exits as `exitCode`
-// (with err==nil) so callers can distinguish "command failed" from "command
-// couldn't start".
 type ExecRunner struct{}
 
-// Run executes bin with args. See CommandRunner contract for return semantics.
-//
-// LC_ALL=C / LANG=C are forced into the child environment so supervisor
-// error messages (systemctl's "Unit ... not loaded" / "does not exist", etc.)
-// stay in English regardless of the user's shell locale. Without this, a
-// dev box with LC_ALL=de_DE.UTF-8 would translate those strings and our
-// substring matches in systemd.go would silently fall through to the
-// generic-error path, breaking the idempotent uninstall contract.
-// launchctl's exit-code-based logic doesn't care about the locale, but the
-// pinning is harmless there.
+// Run pins LC_ALL=C / LANG=C so supervisor error strings stay English — our substring matches in systemd.go depend on it.
 func (ExecRunner) Run(ctx context.Context, bin string, args ...string) (string, string, int, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
@@ -48,18 +35,12 @@ func (ExecRunner) Run(ctx context.Context, bin string, args ...string) (string, 
 	return stdout.String(), stderr.String(), 0, nil
 }
 
-// LaunchdBackend installs services as per-user macOS LaunchAgents.
 type LaunchdBackend struct {
 	Runner CommandRunner
 }
 
-// Name implements Backend.
 func (LaunchdBackend) Name() string { return "launchd" }
 
-// Install writes a plist for svc under ~/Library/LaunchAgents and bootstraps
-// it with `launchctl bootstrap gui/$UID`. Rerun is safe — boots out the
-// previous registration before bootstrapping the fresh plist, which lets the
-// command pick up CLI binary upgrades.
 func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, executable string) (string, error) {
 	if err := os.MkdirAll(paths.LaunchAgentsDir(), 0o755); err != nil {
 		return "", fmt.Errorf("create LaunchAgents dir: %w", err)
@@ -86,8 +67,6 @@ func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 	return path, nil
 }
 
-// Uninstall boots the service out and removes its plist. Missing plist /
-// not-loaded service is success.
 func (b LaunchdBackend) Uninstall(ctx context.Context, paths Paths, svc Service) (string, bool, error) {
 	path := paths.PlistPath(svc.Label())
 
@@ -106,20 +85,12 @@ func (b LaunchdBackend) Uninstall(ctx context.Context, paths Paths, svc Service)
 	return path, true, nil
 }
 
-// guiTarget builds the launchctl service target for the current user. Since
-// macOS 10.10 launchctl prefers `gui/<uid>` over the deprecated `load -w` form.
 func guiTarget() string {
 	return "gui/" + strconv.Itoa(os.Getuid())
 }
 
-// bootstrap registers the plist with launchd. Boots out first so a rerun
-// picks up the new executable path on CLI upgrades.
+// bootstrap pre-boots out so a rerun picks up the new executable path on CLI upgrades.
 func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath string) error {
-	// First bootout is best-effort against exit code (typical 5 = "service
-	// not loaded" is fine), but a runner-side error means launchctl
-	// couldn't even start — binary missing, ctx canceled, fork failure.
-	// Surface that now instead of letting the bootstrap below mask it with
-	// a confusingly-identical error.
 	if _, _, _, runErr := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath); runErr != nil {
 		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
 	}
@@ -136,8 +107,7 @@ func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath string) error {
 	return nil
 }
 
-// bootout unloads the service if registered. Exit 5 = "no such service" is
-// treated as success.
+// bootout treats exit 5 ("no such service") as success.
 func (b LaunchdBackend) bootout(ctx context.Context, plistPath string) error {
 	_, stderr, code, err := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath)
 	if err != nil {

@@ -33,15 +33,7 @@ var installCmd = &cobra.Command{
 			return err //nolint:wrapcheck // already context-rich
 		}
 
-		// os.Executable returns the path used to start the process, NOT a
-		// symlink-resolved canonical path. We embed exactly what's returned
-		// into the supervisor config (LaunchAgent plist / systemd ExecStart)
-		// so an `installer.sh -b ~/.local/bin` install that symlinks the
-		// binary will be re-invoked through the same symlink on every
-		// launchd / systemd start. That's the right behaviour: a CLI upgrade
-		// that swaps the symlink target lands automatically without needing
-		// `daemon install` to re-write the plist. If we EvalSymlinks'd here,
-		// upgrades would only land after rerunning install.
+		// Do NOT EvalSymlinks — embedding the symlinked path lets CLI upgrades land without rerunning install.
 		exe, err := os.Executable()
 		if err != nil {
 			return fmt.Errorf("resolve CLI executable path: %w", err)
@@ -53,9 +45,6 @@ var installCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			// Surface the actionable hint before returning the raw error so
-			// the user sees the chown / remove-and-retry remediation
-			// alongside the offending path.
 			printPermissionHintIfApplicable(logger, err)
 
 			return fmt.Errorf("install daemon: %w", err)

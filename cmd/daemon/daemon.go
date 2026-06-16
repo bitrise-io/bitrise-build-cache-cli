@@ -1,7 +1,3 @@
-// Package daemon exposes CLI subcommands that install the Bitrise Build Cache
-// helper processes (xcelerate proxy + ccache storage helper) as long-lived
-// OS-supervised services. macOS uses LaunchAgents (ACI-5030); Linux uses
-// systemd --user units (ACI-5031).
 package daemon
 
 import (
