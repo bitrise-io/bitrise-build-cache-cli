@@ -1,14 +1,3 @@
-// Package doctor implements the diagnostic + repair flow that backs the
-// `bitrise-build-cache doctor` subcommand.
-//
-// Doctor merges what used to be two separate commands (`health` for a fast
-// status view, `doctor` for smoke tests). The team's view was that the split
-// added user-mental-load without saving meaningful runtime — most checks are
-// sub-millisecond. The single doctor:
-//
-//   - Runs every check on each invocation.
-//   - Applies safe repairs when --fix is set.
-//   - Skips the only slow probe (GitHub release lookup) with --no-update-check.
 package doctor
 
 import (
@@ -37,7 +26,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
-// State is the severity of a single Check result.
 type State string
 
 const (
@@ -46,27 +34,23 @@ const (
 	StateError State = "error"
 )
 
-// Result is the outcome of a single Diagnose call.
 type Result struct {
 	State   State  `json:"state"`
 	Detail  string `json:"detail"`
 	Fixable bool   `json:"fixable"`
 }
 
-// Check is one diagnostic + optional repair.
 type Check struct {
 	Name     string                               `json:"name"`
 	Diagnose func(context.Context) Result         `json:"-"`
 	Fix      func() (fixDetail string, err error) `json:"-"`
 }
 
-// Report is the full doctor output.
 type Report struct {
 	Items   []ReportItem `json:"items"`
 	Version string       `json:"cli_version"`
 }
 
-// ReportItem is the outcome for one check, after optional fix attempt.
 type ReportItem struct {
 	Name      string  `json:"name"`
 	Result    Result  `json:"result"`
@@ -74,7 +58,6 @@ type ReportItem struct {
 	FixError  string  `json:"fix_error,omitempty"`
 }
 
-// Overall returns the worst state across the report.
 func (r Report) Overall() State {
 	worst := StateOK
 	for _, it := range r.Items {
@@ -90,25 +73,21 @@ func (r Report) Overall() State {
 	return worst
 }
 
-// Options controls doctor's behaviour.
 type Options struct {
 	ApplyFixes      bool
 	SkipUpdateCheck bool
 }
 
-// authLoader matches *keychain.Keychain. DI for tests.
 type authLoader interface {
 	Load() (keychain.Credentials, error)
 }
 
-// keyringBackend is the slice of go-keyring used by the smoke test. DI for tests.
 type keyringBackend interface {
 	Set(service, account, secret string) error
 	Get(service, account string) (string, error)
 	Delete(service, account string) error
 }
 
-// Runner aggregates all checks. Fields are injectable for tests; nil = default.
 type Runner struct {
 	OsProxy            utils.OsProxy
 	Envs               map[string]string
@@ -122,7 +101,6 @@ type Runner struct {
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 }
 
-// NewRunner returns a Runner with production defaults.
 func NewRunner() *Runner {
 	osProxy := utils.DefaultOsProxy{}
 
@@ -154,7 +132,6 @@ func (realKeyringBackend) Delete(service, account string) error {
 	return keyring.Delete(service, account) //nolint:wrapcheck
 }
 
-// Run runs every check + optionally applies fixes for fixable items.
 func (r *Runner) Run(ctx context.Context, opts Options) Report {
 	checks := r.checks(opts.SkipUpdateCheck)
 	items := make([]ReportItem, 0, len(checks))
@@ -195,8 +172,6 @@ func (r *Runner) checks(skipUpdateCheck bool) []Check {
 	return checks
 }
 
-// ──────────────────────────── auth + keychain ────────────────────────────
-
 func (r *Runner) authCheck() Check {
 	return Check{
 		Name: "auth",
@@ -224,14 +199,10 @@ const (
 	smokeAccountName = "smoketest"
 )
 
-// newSmokeSecret returns a per-run nonce so a leftover entry from a previous
-// run (whose Delete failed) can't masquerade as a successful round-trip and
-// hide a backend bug.
+// newSmokeSecret is a per-run nonce so a stale entry from a previous failed Delete can't masquerade as a hit.
 func newSmokeSecret() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// rand.Read should never fail in practice; fall back to a deterministic
-		// value so we still produce *some* secret rather than crash.
 		return "smoketest-fallback"
 	}
 
@@ -269,8 +240,6 @@ func (r *Runner) keychainSmokeCheck() Check {
 		},
 	}
 }
-
-// ──────────────────────────── proxy + helper ────────────────────────────
 
 func (r *Runner) xcelerateProxyCheck() Check {
 	pidPath := filepath.Join(r.XcelerateProxyDir(), "proxy.pid")
@@ -381,12 +350,10 @@ func (r *Runner) ccacheBinaryCheck() Check {
 	}
 }
 
-// ──────────────────────────── filesystem ────────────────────────────
-
 type logDirOutcome struct {
 	Missing     string
-	NotWritable string // "non-fatal" permission failure we can describe to the user
-	WrongOwner  string // owned by a different uid (root, usually) — needs sudo chown
+	NotWritable string
+	WrongOwner  string
 	Fatal       error
 }
 
@@ -406,8 +373,6 @@ func checkLogDir(path string) logDirOutcome {
 
 	probe := filepath.Join(path, ".doctor-probe")
 	if werr := os.WriteFile(probe, []byte{}, 0o600); werr != nil {
-		// Distinguish "owned by another user" from generic write failures so the
-		// hint we surface is actionable.
 		if statT, ok := info.Sys().(*syscall.Stat_t); ok {
 			if int(statT.Uid) != os.Geteuid() {
 				return logDirOutcome{WrongOwner: path}
@@ -457,8 +422,6 @@ func resultFromLogDirsSummary(s logDirsSummary) Result {
 		return Result{State: StateError, Detail: s.Fatal.Error()}
 	}
 	if len(s.WrongOwner) > 0 {
-		// Don't pretend doctor can fix root-owned files without elevation —
-		// surface the exact command instead.
 		return Result{
 			State: StateError,
 			Detail: fmt.Sprintf(
@@ -514,8 +477,6 @@ func (r *Runner) logDirsCheck() Check {
 	}
 }
 
-// ──────────────────────────── version ────────────────────────────
-
 func (r *Runner) cliVersionCheck() Check {
 	return Check{
 		Name: "cli-version",
@@ -555,8 +516,6 @@ func isLocalBuild(version string) bool {
 		strings.Contains(version, "dirty")
 }
 
-// fetchLatestGitHubRelease returns the tag_name of the most recent CLI release.
-// Network errors are returned to the caller — they render as warn.
 func fetchLatestGitHubRelease(ctx context.Context, client *http.Client) (string, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 3 * time.Second}
