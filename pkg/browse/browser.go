@@ -1,6 +1,3 @@
-// Package browse exposes the public API for the `bitrise-build-cache
-// browse` subcommand. External Go consumers (Bitrise steps, custom
-// tooling) construct a Browser and call Open without depending on cobra.
 package browse
 
 import (
@@ -15,18 +12,14 @@ import (
 
 const WorkspaceIDEnvVar = "BITRISE_BUILD_CACHE_WORKSPACE_ID"
 
-// ErrWorkspaceNotConfigured is returned when no workspace ID is supplied via Params or env-var.
 var ErrWorkspaceNotConfigured = errors.New(WorkspaceIDEnvVar + " not set — pass --workspace or export the env var to open the dashboard for a specific workspace")
 
-// Params controls Browse behaviour.
 type Params struct {
 	WorkspaceID  string
 	InvocationID string
 	Envs         map[string]string
-	// BaseURL overrides consts.BitriseWebsiteBaseURL; empty falls back to production.
-	BaseURL string
-	// PrintOnly suppresses the auto-open step (URL is still logged).
-	PrintOnly bool
+	BaseURL      string
+	PrintOnly    bool
 }
 
 type Browser struct {
@@ -34,7 +27,6 @@ type Browser struct {
 	Opener browse.Opener
 }
 
-// Open builds the dashboard URL, logs it, and launches the user's default browser.
 func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 	workspaceID := p.WorkspaceID
 	if workspaceID == "" {
@@ -47,7 +39,6 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 
 	source := ""
 	if p.InvocationID == "" {
-		// `browse` opens the user's local invocations — pin the dashboard filter to match.
 		source = "local"
 	}
 
@@ -75,7 +66,6 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 	}
 
 	if err := opener.Open(ctx, dashboardURL); err != nil {
-		// No GUI browser shouldn't fail the command — URL is already logged.
 		if b.Logger != nil {
 			switch {
 			case errors.Is(err, browse.ErrNoOpener):

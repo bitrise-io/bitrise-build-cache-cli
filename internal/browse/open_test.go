@@ -46,8 +46,6 @@ func TestDefaultOpener_invokesRunnerWithLauncher(t *testing.T) {
 	err := opener.Open(context.Background(), "https://example.com")
 	require.NoError(t, err)
 
-	// We can't assert the exact binary cross-platform, but we can assert
-	// the URL made it through to the runner intact.
 	assert.NotEmpty(t, seenBin)
 	require.Len(t, seenArgs, 1)
 	assert.Equal(t, "https://example.com", seenArgs[0])

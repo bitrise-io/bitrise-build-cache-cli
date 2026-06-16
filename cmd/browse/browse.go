@@ -1,5 +1,3 @@
-// Package browse exposes the `bitrise-build-cache browse` cobra subcommand.
-// Thin wrapper that maps flags into pkg/browse and prints the dashboard URL.
 package browse
 
 import (

@@ -30,8 +30,6 @@ func TestBuildURL_workspacePlusInvocationID_deepLinks(t *testing.T) {
 }
 
 func TestBuildURL_invocationIDIgnoresSourceFilter(t *testing.T) {
-	// Source filter is a list-page concern; a deep link to a specific
-	// invocation page doesn't need it. Confirm the param doesn't leak in.
 	got, err := BuildURL(BuildURLParams{
 		WorkspaceID:  "ws_abc",
 		InvocationID: "inv_xyz",
@@ -79,7 +77,5 @@ func TestBuildURL_pathEscapesSegments(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Slash in workspace must not split into another path segment;
-	// space in invocation must be percent-encoded.
 	assert.Equal(t, "https://app.bitrise.io/build-cache/ws%2Fabc/invocations/inv%20with%20space", got)
 }
