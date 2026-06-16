@@ -23,9 +23,7 @@ Call the subcommands with the name of the tool you want to activate plugins for.
 		// Best-effort: failures must not block activation.
 		_ = childstats.Sweep(childstats.DefaultSweepTTL)
 
-		// Mirror the root version-drift check (ACI-5037). Without this call
-		// `activate gradle / xcode / c++ / bazel` would skip the check — and
-		// those are the primary entry point for every Bitrise step.
+		// Mirror the root version-drift check — activate subcommands are the primary entry point for Bitrise steps.
 		if !ShouldSkipVersionCheck(cmd) {
 			RunVersionCheck(cmd)
 		}
