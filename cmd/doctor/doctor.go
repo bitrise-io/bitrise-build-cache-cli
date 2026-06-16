@@ -56,9 +56,7 @@ var doctorCmd = &cobra.Command{
 	},
 }
 
-// colorEnabled reports whether ANSI colour codes should be written to w.
-// Honours NO_COLOR (https://no-color.org) and falls back to TTY detection
-// when the writer is an *os.File so piped/CI output stays clean.
+// colorEnabled honours NO_COLOR (https://no-color.org) and falls back to TTY detection.
 func colorEnabled(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -68,7 +66,6 @@ func colorEnabled(w io.Writer) bool {
 		return term.IsTerminal(int(f.Fd()))
 	}
 
-	// Not a real file (e.g. a *bytes.Buffer in tests) — no colour.
 	return false
 }
 
