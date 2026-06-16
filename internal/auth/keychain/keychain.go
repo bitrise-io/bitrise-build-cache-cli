@@ -1,9 +1,3 @@
-// Package keychain stores the Bitrise Build Cache auth credentials in the OS
-// secret store (macOS Keychain, Linux secret-service) instead of forcing the
-// user to keep BITRISE_BUILD_CACHE_AUTH_TOKEN in shell rc files.
-//
-// Credentials are JSON-encoded into a single keychain item under
-// service="bitrise-build-cache", account="default".
 package keychain
 
 import (
@@ -19,17 +13,13 @@ const (
 	accountName = "default"
 )
 
-// ErrNotFound is returned by Load when no credentials are stored yet.
 var ErrNotFound = errors.New("no Bitrise Build Cache credentials in keychain")
 
-// Credentials are the auth fields stored in the keychain.
 type Credentials struct {
 	AuthToken   string `json:"auth_token"`
 	WorkspaceID string `json:"workspace_id"`
 }
 
-// Backend is the slice of zalando/go-keyring the Keychain depends on. Exported
-// so tests can inject an in-memory implementation.
 type Backend interface {
 	Get(service, account string) (string, error)
 	Set(service, account, secret string) error
@@ -50,17 +40,14 @@ func (defaultBackend) Delete(service, account string) error {
 	return keyring.Delete(service, account) //nolint:wrapcheck
 }
 
-// Keychain reads + writes Credentials via a Backend.
 type Keychain struct {
 	Backend Backend
 }
 
-// New returns a Keychain backed by the real OS secret store.
 func New() *Keychain {
 	return &Keychain{Backend: defaultBackend{}}
 }
 
-// Load returns the stored credentials, or ErrNotFound if nothing was stored.
 func (k *Keychain) Load() (Credentials, error) {
 	raw, err := k.Backend.Get(serviceName, accountName)
 	if err != nil {
@@ -79,7 +66,6 @@ func (k *Keychain) Load() (Credentials, error) {
 	return c, nil
 }
 
-// Save persists the credentials, replacing whatever was there before.
 func (k *Keychain) Save(c Credentials) error {
 	raw, err := json.Marshal(c)
 	if err != nil {
@@ -93,7 +79,6 @@ func (k *Keychain) Save(c Credentials) error {
 	return nil
 }
 
-// Clear removes the stored credentials. No-op when nothing is stored.
 func (k *Keychain) Clear() error {
 	err := k.Backend.Delete(serviceName, accountName)
 	if err == nil {

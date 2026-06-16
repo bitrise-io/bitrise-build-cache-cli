@@ -93,8 +93,6 @@ var authClearCmd = &cobra.Command{
 	},
 }
 
-// maskToken returns a short hint preserving only the last 4 characters, so
-// `auth get` can confirm presence without leaking the secret to terminal scrollback.
 func maskToken(token string) string {
 	const tailLen = 4
 	if len(token) <= tailLen {
