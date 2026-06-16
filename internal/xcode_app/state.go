@@ -8,20 +8,13 @@ import (
 	"os"
 )
 
-// State captures what `xcode-app enable` did to the user's environment so
-// `xcode-app disable` can undo it cleanly. Persisted as JSON next to the
-// override xcconfig.
+// State captures what `xcode-app enable` did so `xcode-app disable` can undo it cleanly.
 type State struct {
-	// PreviousXCConfigPath is the value of XCODE_XCCONFIG_FILE at enable
-	// time, captured BEFORE we overwrote it via `launchctl setenv`. On
-	// disable we re-`setenv` to this value if non-empty, or `unsetenv` if
-	// empty.
+	// PreviousXCConfigPath is the value of XCODE_XCCONFIG_FILE captured before enable overwrote it.
 	PreviousXCConfigPath string `json:"previousXCConfigPath,omitempty"`
 }
 
-// LoadState reads the state file. Missing file returns the zero value + false
-// + nil error so the caller can treat "never enabled" as a normal disable
-// no-op rather than a hard failure.
+// LoadState reads the state file; missing file returns zero + false + nil (treat as never enabled).
 func LoadState(path string) (State, bool, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // we control the path
 	if err != nil {
@@ -40,8 +33,7 @@ func LoadState(path string) (State, bool, error) {
 	return s, true, nil
 }
 
-// SaveState writes the state file atomically (write-temp + rename) so a
-// crash mid-write never leaves a half-written JSON behind.
+// SaveState writes the state file atomically (write-temp + rename).
 func SaveState(path string, s State) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -49,11 +41,7 @@ func SaveState(path string, s State) error {
 	}
 
 	tmp := path + ".tmp"
-	// 0o600 (not 0o644 like the xcconfig itself) because the state file is
-	// purely an internal handoff between enable and disable — Xcode never
-	// reads it, so there's no reason to expose it to other users on the
-	// host. Tighter mode reduces the surface in case a future field is more
-	// sensitive than today's prior-path string.
+	// 0o600: internal enable/disable handoff, Xcode never reads it.
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
@@ -67,8 +55,7 @@ func SaveState(path string, s State) error {
 	return nil
 }
 
-// RemoveState deletes the state file. Missing file is not an error — disable
-// is idempotent.
+// RemoveState deletes the state file idempotently.
 func RemoveState(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("remove state file %s: %w", path, err)

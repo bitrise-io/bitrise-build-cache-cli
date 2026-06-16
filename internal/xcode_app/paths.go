@@ -17,23 +17,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
-// OverrideXCConfigFileName is the basename of the xcconfig we drop into
-// ~/.bitrise-xcelerate/. Kept distinct from `config.json` (the xcelerate CLI
-// config) so the two files never collide.
+// OverrideXCConfigFileName is the basename of the override xcconfig under ~/.bitrise-xcelerate/.
 const OverrideXCConfigFileName = "xcode-app.xcconfig"
 
-// StateFileName captures the previous XCODE_XCCONFIG_FILE value at enable
-// time so disable can restore it. Lives next to the xcconfig.
+// StateFileName holds the previous XCODE_XCCONFIG_FILE so disable can restore it.
 const StateFileName = "xcode-app-state.json"
 
-// OverrideXCConfigPath returns the absolute path of the override xcconfig
-// we manage under ~/.bitrise-xcelerate/.
+// OverrideXCConfigPath returns the absolute path of the override xcconfig.
 func OverrideXCConfigPath(osProxy utils.OsProxy) string {
 	return filepath.Join(xcelerate.DirPath(osProxy), OverrideXCConfigFileName)
 }
 
-// StateFilePath returns the absolute path of the disable-restore state file
-// under ~/.bitrise-xcelerate/.
+// StateFilePath returns the absolute path of the disable-restore state file.
 func StateFilePath(osProxy utils.OsProxy) string {
 	return filepath.Join(xcelerate.DirPath(osProxy), StateFileName)
 }

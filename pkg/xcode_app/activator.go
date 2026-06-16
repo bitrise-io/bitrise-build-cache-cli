@@ -1,14 +1,4 @@
-// Package xcode_app exposes the public API for the `bitrise-build-cache
-// xcode-app enable / disable` flows.
-//
-// The Activator wires together the building blocks under
-// internal/xcode_app and the daemon package so external Go consumers
-// (Bitrise steps, custom tooling) can drive Xcode.app cache enablement
-// without depending on cobra.
-//
-// Design follows the project's exported-struct-no-interface convention:
-// consumers define their own interfaces for mocking via Go's implicit
-// satisfaction.
+// Package xcode_app exposes the public API for the `bitrise-build-cache xcode-app enable / disable` flows.
 package xcode_app
 
 import (
@@ -26,61 +16,35 @@ import (
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcode_app"
 )
 
-// ErrUnsupportedPlatform is returned by Enable / Disable on non-macOS hosts.
-// Xcode.app + launchctl only exist on Darwin.
+// ErrUnsupportedPlatform is returned by Enable/Disable on non-macOS hosts.
 var ErrUnsupportedPlatform = errors.New("xcode-app is only supported on macOS")
 
-// ErrXcelerateNotConfigured is returned when the xcelerate config file is
-// not on disk. enable depends on it for the proxy socket path; the user is
-// expected to run `bitrise-build-cache activate xcode` first.
+// ErrXcelerateNotConfigured is returned when the xcelerate config file is not on disk.
 var ErrXcelerateNotConfigured = errors.New("xcelerate config not found — run `bitrise-build-cache activate xcode` first")
 
-// Activator drives `xcode-app enable` / `disable`. All collaborator fields
-// are injectable; nil means "use the production default".
+// Activator drives `xcode-app enable` / `disable`. Nil fields fall back to production defaults.
 type Activator struct {
-	// Logger is the user-facing log surface. Required.
+	// Logger is required.
 	Logger log.Logger
-
-	// Envs is the environment snapshot used to detect a pre-existing
-	// XCODE_XCCONFIG_FILE override at enable time. Production callers
-	// pass utils.AllEnvs().
+	// Envs snapshots XCODE_XCCONFIG_FILE at enable time; production passes utils.AllEnvs().
 	Envs map[string]string
-
-	// OsProxy gates filesystem reads (xcelerate config). nil falls back to
-	// utils.DefaultOsProxy.
+	// OsProxy gates filesystem reads; nil = utils.DefaultOsProxy.
 	OsProxy utils.OsProxy
-
-	// DecoderFactory builds the JSON decoder for the xcelerate config.
-	// nil falls back to utils.DefaultDecoderFactory.
+	// DecoderFactory builds the JSON decoder; nil = utils.DefaultDecoderFactory.
 	DecoderFactory utils.DecoderFactory
-
-	// Launchctl handles setenv / unsetenv / bootstrap / bootout. Nil falls
-	// back to xa.LaunchctlClient{} (real `/bin/launchctl`).
+	// Launchctl handles setenv/unsetenv/bootstrap/bootout; nil = xa.LaunchctlClient{}.
 	Launchctl xa.LaunchctlClient
-
-	// XcodeChecker reports whether Xcode is currently running so we can
-	// nudge the user to relaunch. Nil falls back to
-	// xa.DefaultXcodeChecker{}.
+	// XcodeChecker reports whether Xcode is running; nil = xa.DefaultXcodeChecker{}.
 	XcodeChecker xa.XcodeProcessChecker
-
-	// DaemonBackend supervises the xcelerate-proxy service. Nil falls
-	// back to daemon.DefaultBackend(). Enable runs Install + Up filtered
-	// to the xcelerate-proxy service so the proxy is alive when Xcode.app
-	// next dials it.
+	// DaemonBackend supervises the xcelerate-proxy service; nil = daemon.DefaultBackend().
 	DaemonBackend daemon.Backend
-
-	// DaemonPaths is the supervisor paths struct. Nil falls back to
-	// daemon.NewPaths() at call time.
+	// DaemonPaths is the supervisor paths struct; nil = daemon.NewPaths().
 	DaemonPaths *daemon.Paths
-
-	// Executable is the path of this CLI binary, used as the supervisor's
-	// ProgramArguments[0]. Empty falls back to os.Executable() at call
-	// time.
+	// Executable is the supervisor's ProgramArguments[0]; empty = os.Executable().
 	Executable string
 }
 
-// EnableResult describes what Enable did. Used by the CLI command to surface
-// concrete next-step prompts (e.g. relaunch Xcode).
+// EnableResult describes what Enable did.
 type EnableResult struct {
 	XCConfigPath         string
 	LaunchAgentPlistPath string
@@ -97,13 +61,8 @@ type DisableResult struct {
 	RestoredXCConfigPath string
 }
 
-// Enable applies the Xcode.app build-cache override. See package doc for the
-// mechanism overview.
-//
-// Recovery: if Enable fails partway through (Launchctl.Setenv succeeded but
-// a later step failed), running Disable cleans up the partial state — every
-// teardown step swallows the "already gone / not loaded / not set" case, so
-// repeated runs converge on a clean state.
+// Enable applies the Xcode.app build-cache override.
+// Partial failure recovery: a follow-up Disable cleans up — each teardown step swallows the already-gone case.
 func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	if runtime.GOOS != "darwin" {
 		return EnableResult{}, ErrUnsupportedPlatform

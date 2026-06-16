@@ -8,37 +8,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
 )
 
-// RemoteServicePathKey is the xcconfig key Xcode reads to discover the
-// xcelerate-proxy unix socket. Mirrors the additional[] entry that
-// cmd/xcode/xcodebuild.go injects via `xcodebuild` CLI args.
+// RemoteServicePathKey is the xcconfig key Xcode reads to discover the xcelerate-proxy unix socket.
 const RemoteServicePathKey = "COMPILATION_CACHE_REMOTE_SERVICE_PATH"
 
-// RenderOverride returns the xcconfig content we write to
-// ~/.bitrise-xcelerate/xcode-app.xcconfig.
-//
-// previousIncludePath is the prior `XCODE_XCCONFIG_FILE` value captured at
-// enable time. When non-empty, the rendered file leads with
-//
-//	#include "<previousIncludePath>"
-//
-// so the user's existing xcconfig keys take effect except where our cache
-// keys override (the override slot has higher precedence than per-target/base
-// xcconfigs but lower than `xcodebuild` CLI args — see the E1 spike doc).
-//
-// proxySocketPath is the absolute path of the xcelerate-proxy unix socket.
-// Must be non-empty; an empty path is a programmer error (caller should have
-// validated the xcelerate config exists).
+// RenderOverride returns the xcconfig content for ~/.bitrise-xcelerate/xcode-app.xcconfig.
+// When non-empty, previousIncludePath is chained via `#include` so the user's prior xcconfig still applies.
 func RenderOverride(proxySocketPath, previousIncludePath string) (string, error) {
 	if strings.TrimSpace(proxySocketPath) == "" {
 		return "", fmt.Errorf("proxy socket path is empty")
 	}
 
-	// xcconfig's `#include "<path>"` form has no documented escape for
-	// embedded quotes, so reject paths that contain one rather than emit a
-	// malformed override that Xcode would silently ignore. Practically
-	// unreachable on macOS (HFS+ / APFS allow quote chars in filenames but
-	// they're vanishingly rare), but the cheap upfront check beats the
-	// silent-broken-build failure mode.
+	// xcconfig's `#include "<path>"` has no documented quote-escape — reject embedded quotes rather than emit a silently malformed file.
 	if strings.ContainsRune(previousIncludePath, '"') {
 		return "", fmt.Errorf("previous XCODE_XCCONFIG_FILE path contains a quote character — cannot safely #include")
 	}
@@ -51,8 +31,7 @@ func RenderOverride(proxySocketPath, previousIncludePath string) (string, error)
 	b.WriteString("// Do not edit by hand.\n\n")
 
 	if previousIncludePath != "" {
-		// Chain the prior override so we don't clobber the user's setup
-		// (E3 — ACI-5042). Quoted form supports paths with spaces.
+		// Chain the prior override so we don't clobber the user's setup. Quoted form supports paths with spaces.
 		fmt.Fprintf(&b, "#include \"%s\"\n\n", previousIncludePath)
 	}
 

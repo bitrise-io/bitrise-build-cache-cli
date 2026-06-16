@@ -11,24 +11,16 @@ import (
 )
 
 // LaunchctlBin is the absolute path of the launchctl binary on macOS.
-// Exported so tests can inject a stub via the LaunchctlClient.Bin field.
 const LaunchctlBin = "/bin/launchctl"
 
-// XCConfigEnvVar is the environment variable Xcode reads to discover an
-// override xcconfig. We set it via `launchctl setenv` so processes launched
-// from the current GUI session (including Xcode.app) inherit it.
+// XCConfigEnvVar is the env var Xcode reads for an override xcconfig path.
 const XCConfigEnvVar = "XCODE_XCCONFIG_FILE"
 
-// LaunchctlClient wraps the few `launchctl` verbs we need to drive an
-// XCODE_XCCONFIG_FILE override. The underlying Runner contract is shared
-// with the daemon package — reusing daemon.ExecRunner gives us identical
-// LC_ALL=C / LANG=C locale pinning + exit-code propagation.
+// LaunchctlClient wraps the `launchctl` verbs needed to drive an XCODE_XCCONFIG_FILE override.
 type LaunchctlClient struct {
-	// Runner executes the launchctl process. nil falls back to
-	// daemon.ExecRunner.
+	// Runner executes launchctl. nil = daemon.ExecRunner (shared locale pinning + exit propagation).
 	Runner daemon.CommandRunner
-	// Bin overrides the launchctl binary path. nil falls back to
-	// LaunchctlBin.
+	// Bin overrides the launchctl binary path; empty = LaunchctlBin.
 	Bin string
 }
 
@@ -48,10 +40,8 @@ func (c LaunchctlClient) bin() string {
 	return LaunchctlBin
 }
 
-// Setenv runs `launchctl setenv <key> <value>` so future GUI-launched
-// processes inherit the variable. Affects the user's current bootstrap
-// session only; survives only until the user logs out. Pair with the
-// LaunchAgent in launch_agent.go to make it survive logout.
+// Setenv runs `launchctl setenv <key> <value>` so GUI-launched processes inherit it.
+// Lasts only until the user logs out — pair with the LaunchAgent to survive logout.
 func (c LaunchctlClient) Setenv(ctx context.Context, key, value string) error {
 	_, stderr, code, err := c.runner().Run(ctx, c.bin(), "setenv", key, value)
 	if err != nil {
@@ -65,9 +55,7 @@ func (c LaunchctlClient) Setenv(ctx context.Context, key, value string) error {
 	return nil
 }
 
-// Unsetenv runs `launchctl unsetenv <key>`. A non-zero exit is treated as
-// success because launchctl returns 113 when the variable is already
-// unset — we want disable to be idempotent.
+// Unsetenv runs `launchctl unsetenv <key>` idempotently — launchctl returns 113 when already unset.
 func (c LaunchctlClient) Unsetenv(ctx context.Context, key string) error {
 	if _, _, _, err := c.runner().Run(ctx, c.bin(), "unsetenv", key); err != nil { //nolint:dogsled // matches the runner contract; we intentionally ignore stdout/stderr/exit
 		return fmt.Errorf("launchctl unsetenv: %w", err)
@@ -76,15 +64,12 @@ func (c LaunchctlClient) Unsetenv(ctx context.Context, key string) error {
 	return nil
 }
 
-// Bootstrap loads a LaunchAgent plist into the user's GUI session via
-// `launchctl bootstrap gui/$UID <plist>`. The bootout-then-bootstrap pre-step
-// (mirroring daemon.LaunchdBackend) is what makes Bootstrap idempotent — if
-// the plist is already loaded, the prior version is unloaded first.
+// Bootstrap loads a LaunchAgent plist into the user's GUI session.
+// Idempotent: pre-boots out any prior load so a stale plist is replaced.
 func (c LaunchctlClient) Bootstrap(ctx context.Context, plistPath string) error {
 	target := guiTarget()
 
-	// Best-effort pre-bootout: a "not loaded" exit is fine, but a runner-side
-	// error means launchctl itself couldn't run, which we surface.
+	// Best-effort pre-bootout: "not loaded" is fine, but a runner-side failure means launchctl itself couldn't run.
 	if _, _, _, runErr := c.runner().Run(ctx, c.bin(), "bootout", target, plistPath); runErr != nil { //nolint:dogsled // runner returns stdout/stderr/exit/err — we only care about err here
 		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
 	}
@@ -101,17 +86,14 @@ func (c LaunchctlClient) Bootstrap(ctx context.Context, plistPath string) error 
 	return nil
 }
 
-// Bootout removes a LaunchAgent plist from the user's GUI session via
-// `launchctl bootout gui/$UID <plist>`. A "not loaded" exit is treated as
-// success so disable is idempotent.
+// Bootout removes a LaunchAgent plist from the user's GUI session.
+// Idempotent: "not loaded" is treated as success.
 func (c LaunchctlClient) Bootout(ctx context.Context, plistPath string) error {
 	_, stderr, code, err := c.runner().Run(ctx, c.bin(), "bootout", guiTarget(), plistPath)
 	if err != nil {
 		return fmt.Errorf("launchctl bootout: %w", err)
 	}
 
-	// 113 / "service not loaded" is fine — that's the disable-after-disable
-	// case. Anything else is a real error.
 	if code != 0 && !isNotLoaded(stderr) {
 		return fmt.Errorf("launchctl bootout %s exited %d: %s", plistPath, code, strings.TrimSpace(stderr))
 	}

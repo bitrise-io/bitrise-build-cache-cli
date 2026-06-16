@@ -9,27 +9,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
-// pgrepBin is the macOS pgrep binary. Tests inject a stub via the Runner
-// field on DefaultXcodeChecker rather than mutating this constant.
+// pgrepBin is the macOS pgrep binary.
 const pgrepBin = "/usr/bin/pgrep"
 
-// XcodeProcessName is the executable name `pgrep -x` matches against. The
-// GUI app's main process is literally `Xcode`; `Xcode-beta` would have a
-// different process name and isn't covered here intentionally — beta users
-// can re-run enable themselves.
+// XcodeProcessName is the GUI app's main executable name. Xcode-beta is intentionally not covered.
 const XcodeProcessName = "Xcode"
 
-// XcodeProcessChecker reports whether Xcode is currently running. It is a
-// no-arg function on purpose so the activator only needs to inject a
-// concrete checker (real or fake) without threading context through extra
-// indirection.
+// XcodeProcessChecker reports whether Xcode is currently running.
 type XcodeProcessChecker interface {
 	RunningPIDs(ctx context.Context) ([]int, error)
 }
 
-// DefaultXcodeChecker shells out to /usr/bin/pgrep -x Xcode. Reuses the
-// daemon package's CommandRunner contract so tests can drive deterministic
-// pgrep replies without forking real processes.
+// DefaultXcodeChecker shells out to /usr/bin/pgrep -x Xcode.
 type DefaultXcodeChecker struct {
 	Runner daemon.CommandRunner
 }
@@ -42,21 +33,13 @@ func (d DefaultXcodeChecker) runner() daemon.CommandRunner {
 	return daemon.ExecRunner{}
 }
 
-// RunningPIDs returns the PIDs of running Xcode processes. pgrep exits 1
-// with no output when no process matches — we treat that as "not running"
-// (empty slice, no error), matching the spec'd pgrep contract.
+// RunningPIDs returns the PIDs of running Xcode processes; empty slice = not running (pgrep exit 1).
 func (d DefaultXcodeChecker) RunningPIDs(ctx context.Context) ([]int, error) {
 	stdout, _, code, err := d.runner().Run(ctx, pgrepBin, "-x", XcodeProcessName)
 	if err != nil {
-		// "pgrep not found" or another exec-side error. Surface as "we
-		// couldn't tell"; the caller's policy decides whether to abort
-		// enable or just skip the relaunch nudge.
 		return nil, fmt.Errorf("pgrep -x %s: %w", XcodeProcessName, err)
 	}
 
-	// pgrep exit code 1 == no match. Anything else above 1 == operational
-	// error (bad arg, etc.); we don't try to differentiate further because
-	// the only thing we'd do is log it.
 	if code == 1 {
 		return nil, nil
 	}
@@ -64,8 +47,6 @@ func (d DefaultXcodeChecker) RunningPIDs(ctx context.Context) ([]int, error) {
 	return parsePIDs(stdout), nil
 }
 
-// parsePIDs splits pgrep's stdout into a slice of PIDs, dropping anything
-// that isn't a positive integer. Defensive against trailing newlines.
 func parsePIDs(stdout string) []int {
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	pids := make([]int, 0, len(lines))
