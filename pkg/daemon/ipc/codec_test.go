@@ -14,17 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// golden runs the "decode the file, re-encode, byte-equal" loop that locks
-// the wire format. If UPDATE_GOLDEN=1 is set, the encoded bytes are written
-// back to the file instead — for the initial seeding and intentional spec
-// updates. CI never sets that flag, so unintentional drift fails the test.
+// UPDATE_GOLDEN=1 re-seeds the file. CI never sets it so unintentional drift fails the test.
 func golden(t *testing.T, name string, expected Message) {
 	t.Helper()
 
 	path := filepath.Join("testdata", "v1", name)
 
-	// Encode the expected message first — that's what we'll compare against
-	// (or write to disk in UPDATE_GOLDEN mode).
 	var encoded bytes.Buffer
 	enc := NewEncoder(&encoded)
 	require.NoError(t, enc.Write(expected))
@@ -40,11 +35,8 @@ func golden(t *testing.T, name string, expected Message) {
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err, "golden file %s missing; run UPDATE_GOLDEN=1 go test to seed", path)
 
-	// Byte-equal check first: catches any drift in field order / escape forms.
 	assert.Equal(t, string(raw), encoded.String(), "encoded form differs from golden %s", name)
 
-	// Decode the golden bytes via our Decoder. The decoded Message must round-
-	// trip back to the same bytes — proves the decoder doesn't lose detail.
 	dec := NewDecoder(bytes.NewReader(raw))
 	got, err := dec.Read()
 	require.NoError(t, err)
@@ -96,8 +88,6 @@ func TestGolden_helloServer(t *testing.T) {
 }
 
 func TestGolden_helloMismatchError(t *testing.T) {
-	// Build the mismatch error via the exported MarshalDetails helper so the
-	// test exercises the same surface external consumers do.
 	msg := Message{
 		V: ProtocolV1,
 		Error: &ErrorPayload{
@@ -108,8 +98,6 @@ func TestGolden_helloMismatchError(t *testing.T) {
 	require.NoError(t, MarshalDetails(msg.Error, HelloMismatchError{Supported: []int{ProtocolV1}}))
 	golden(t, "hello_mismatch_error.json", msg)
 
-	// Round-trip: typed details body decodes back to the same struct via the
-	// exported UnmarshalDetails helper.
 	var got HelloMismatchError
 	require.NoError(t, UnmarshalDetails(msg.Error, &got))
 	assert.Equal(t, []int{ProtocolV1}, got.Supported)
@@ -193,10 +181,6 @@ func TestGolden_unsubscribeRequest(t *testing.T) {
 	golden(t, "unsubscribe_request.json", Message{V: ProtocolV1, ID: "3", Cmd: CmdUnsubscribe})
 }
 
-// TestSubscribeHitrate_ackVsEventInvariant locks the rule documented in
-// docs/daemon-ipc-protocol.md: the ack frame carries Ok and never Event;
-// every sample frame carries Event and never Ok. Clients dispatch on
-// presence — violating this invariant breaks them.
 func TestSubscribeHitrate_ackVsEventInvariant(t *testing.T) {
 	ackBytes, err := os.ReadFile(filepath.Join("testdata", "v1", "subscribe_hitrate_ack.json"))
 	require.NoError(t, err)
@@ -212,7 +196,6 @@ func TestSubscribeHitrate_ackVsEventInvariant(t *testing.T) {
 	assert.NotNil(t, evt.Event, "sample frame MUST carry Event")
 	assert.Nil(t, evt.Ok, "sample frame MUST NOT carry Ok")
 
-	// Unsubscribe response also carries Ok (final reply terminates the stream).
 	unsubBytes, err := os.ReadFile(filepath.Join("testdata", "v1", "unsubscribe_response.json"))
 	require.NoError(t, err)
 	unsub, err := NewDecoder(bytes.NewReader(unsubBytes)).Read()
@@ -230,7 +213,6 @@ func TestEncoder_rejectsOversizeFrame(t *testing.T) {
 	var buf bytes.Buffer
 	enc := NewEncoder(&buf)
 
-	// Build a string longer than MaxFrameBytes by stuffing the BuildSHA field.
 	huge := strings.Repeat("x", MaxFrameBytes)
 	msg := mustOk(t, &Message{V: ProtocolV1, ID: "x"}, StatusOk{BuildSHA: huge})
 
@@ -240,8 +222,6 @@ func TestEncoder_rejectsOversizeFrame(t *testing.T) {
 }
 
 func TestDecoder_rejectsOversizeFrame(t *testing.T) {
-	// A single line longer than MaxFrameBytes (no newline) — Decoder must
-	// surface ErrFrameTooLarge before allocating arbitrary memory.
 	oversize := bytes.Repeat([]byte("a"), MaxFrameBytes+128)
 	dec := NewDecoder(bytes.NewReader(oversize))
 
@@ -263,8 +243,6 @@ func TestDecoder_errorsOnTrailingPartialFrame(t *testing.T) {
 }
 
 func TestDecoder_tolerantOfUnknownFields(t *testing.T) {
-	// Forward-compatibility: a server using a future-but-compatible additive
-	// field must not break clients running v=1.
 	raw := []byte(`{"v":1,"id":"1","ok":{"alive":true,"hits":1,"misses":0,"uptime_sec":1,"version":"x","bytes_in":0,"bytes_out":0,"future_field":42}}` + "\n")
 	dec := NewDecoder(bytes.NewReader(raw))
 
@@ -278,9 +256,6 @@ func TestDecoder_tolerantOfUnknownFields(t *testing.T) {
 }
 
 func TestDecoder_tolerantOfUnknownTopLevelKeys(t *testing.T) {
-	// A v=2 server may add new top-level keys (e.g. `trace_id`, `flags`) that
-	// v=1 readers must ignore rather than fail on. Locks the envelope-level
-	// forward-compat contract called out in docs/daemon-ipc-protocol.md.
 	raw := []byte(`{"v":1,"id":"1","cmd":"status","trace_id":"abc","flags":{"experimental":true}}` + "\n")
 	dec := NewDecoder(bytes.NewReader(raw))
 
@@ -289,15 +264,10 @@ func TestDecoder_tolerantOfUnknownTopLevelKeys(t *testing.T) {
 	assert.Equal(t, ProtocolV1, msg.V)
 	assert.Equal(t, "1", msg.ID)
 	assert.Equal(t, CmdStatus, msg.Cmd)
-	// The unknown keys are dropped on round-trip — v=1 readers MAY drop
-	// unknown top-level keys per the spec, and Go's default decoder does.
 }
 
 func TestGolden_errorWithSpecialChars(t *testing.T) {
-	// Lock Go's encoding/json HTML-escape behaviour: `<`, `>`, `&` become
-	// `<`, `>`, `&`; non-ASCII passes through as UTF-8.
-	// Non-Go consumers MUST accept both forms, but the wire format Go
-	// produces is fixed and asserted here.
+	// Locks Go's encoding/json HTML-escape behaviour (`<`, `>`, `&` → \u escapes); non-Go consumers MUST accept both forms.
 	msg := Message{
 		V: ProtocolV1,
 		ID: "1",
@@ -308,10 +278,6 @@ func TestGolden_errorWithSpecialChars(t *testing.T) {
 	}
 	golden(t, "error_special_chars.json", msg)
 
-	// And the raw bytes must contain Go's default HTML-safe \u00XX escapes
-	// (the literal 6-character sequence "<" etc), not the literal
-	// angle-brackets / ampersand. Non-ASCII passes through as UTF-8
-	// unescaped.
 	raw, err := os.ReadFile(filepath.Join("testdata", "v1", "error_special_chars.json"))
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "\\u003c")  // <
