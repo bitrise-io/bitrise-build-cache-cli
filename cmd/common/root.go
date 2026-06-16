@@ -41,10 +41,7 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
-		// Version-drift detection (ACI-5037). Best-effort: never block the
-		// invocation. Subcommands that don't represent a user-facing action
-		// (help, completion, the daemon up/down/restart imperatives that just
-		// poke launchctl) skip the check to keep their output deterministic.
+		// Best-effort drift detection: skip helpers/daemon-control verbs to keep their output deterministic.
 		if ShouldSkipVersionCheck(cmd) {
 			return
 		}
@@ -84,12 +81,8 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 }
 
 // RunVersionCheck performs the drift detect + nudge with a generous context
-// timeout (so a hung GitHub call can't slow a CI / dev run). Exported so
-// PersistentPreRun overrides in non-root cobra subtrees (e.g. ActivateCmd in
-// cmd/common/activate.go) can call into the same logic — cobra runs only
-// the closest ancestor's hook, so root's hook alone would never fire for
-// `activate gradle / xcode / c++ / bazel`, the primary entry point for
-// every Bitrise step.
+// timeout. Exported so non-root cobra subtree PersistentPreRun overrides can
+// share the logic — cobra runs only the closest ancestor's hook.
 //
 // Callers MUST gate on ShouldSkipVersionCheck before invoking.
 func RunVersionCheck(cmd *cobra.Command) {

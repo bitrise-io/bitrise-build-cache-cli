@@ -2,9 +2,6 @@
 // fetches the latest release tag from GitHub to nudge the user when their
 // installed CLI is behind. State is persisted under
 // ~/.local/state/bitrise-build-cache/ so it survives invocations.
-//
-// See ACI-5037 in the M1 plan. D3 (config auto-refresh on bump) consumes the
-// bump signal this package emits.
 package versioncheck
 
 import (
@@ -17,9 +14,7 @@ import (
 	"time"
 )
 
-// StateDirRelative is the path beneath the user's home where the version
-// state file lives. Aligned with the daemon log dir (ACI-5030) so a single
-// `~/.local/state/bitrise-build-cache/` tree owns all CLI-managed state.
+// StateDirRelative is the path beneath the user's home where the version state file lives.
 const StateDirRelative = ".local/state/bitrise-build-cache"
 
 // StateFile is the basename of the persisted version state.
