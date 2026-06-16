@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 )
 
 //nolint:gochecknoglobals
@@ -36,7 +37,7 @@ Cross-platform note: on macOS down boots the service out (it won't auto-restart 
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			printPermissionHintIfApplicable(logger, err)
+			permhint.PrintIfApplicable(logger, err)
 
 			return fmt.Errorf("daemon down: %w", err)
 		}
