@@ -28,7 +28,6 @@ func Up(ctx context.Context, backend Backend, paths Paths, services []Service) (
 	for _, svc := range services {
 		path := configPath(backend, paths, svc)
 
-		// Stat-then-Start has a small TOCTOU window with `daemon uninstall`; accepted to keep the friendly ErrNotInstalled.
 		if _, err := os.Stat(path); err != nil {
 			if os.IsNotExist(err) {
 				return result, fmt.Errorf("%w (missing %s)", ErrNotInstalled, path)

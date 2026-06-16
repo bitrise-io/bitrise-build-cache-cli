@@ -54,7 +54,6 @@ func (b SystemdBackend) Start(ctx context.Context, _ Paths, svc Service) error {
 	return b.enableNow(ctx, svc.UnitName())
 }
 
-// Stop leaves the unit enabled — Uninstall is for permanent removal.
 func (b SystemdBackend) Stop(ctx context.Context, _ Paths, svc Service) error {
 	return b.stop(ctx, svc.UnitName())
 }

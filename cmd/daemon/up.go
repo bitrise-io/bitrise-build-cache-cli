@@ -30,7 +30,7 @@ var upCmd = &cobra.Command{
 
 		result, err := daemonpkg.Up(cmd.Context(), backend, paths, daemonpkg.DefaultServices())
 		if err != nil {
-			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) || errors.Is(err, daemonpkg.ErrNotInstalled) {
+			if errors.Is(err, daemonpkg.ErrNotInstalled) {
 				return err //nolint:wrapcheck // sentinel
 			}
 

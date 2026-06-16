@@ -1207,6 +1207,31 @@ workflows:
               echo "OK: ${label} stopped (plist retained)"
             done
 
+            # ----- proxy socket must be gone after down -----
+            if [[ -S "$PROXY_SOCKET" ]]; then
+              echo "FAIL: proxy socket still listening after daemon down: $PROXY_SOCKET"
+              exit 1
+            fi
+            echo "OK: proxy socket gone after down"
+
+            # ----- xcodebuild against the gone socket must NOT emit cache metrics -----
+            xcb="/usr/bin/xcodebuild"
+            [[ -x "$xcb" ]] || xcb="$(/usr/bin/xcrun --find xcodebuild)"
+            "$xcb" build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation \
+              COMPILATION_CACHE_ENABLE_COMPILER=YES \
+              COMPILATION_CACHE_REMOTE_SERVICE_PATH="$PROXY_SOCKET" \
+              2> xcodebuild-postdown.err.log | tee xcodebuild-postdown.log | xcpretty || true
+            cp xcodebuild-postdown.log xcodebuild-postdown.err.log "$BITRISE_DEPLOY_DIR/"
+            if grep -q 'CompilationCacheMetrics' xcodebuild-postdown.log; then
+              echo "FAIL: cache metrics found in post-down xcodebuild — proxy should be unreachable"
+              exit 1
+            fi
+            echo "OK: no cache metrics after down"
+
             # ----- idempotency on down (already stopped) -----
             ../bitrise-build-cache-cli daemon down
             echo "OK: down is idempotent"
