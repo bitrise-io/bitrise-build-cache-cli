@@ -1,14 +1,6 @@
 // Package refresh tracks which build-tool configs the CLI has generated
 // (gradle / bazel / xcelerate / ccache) and surfaces a refresh-needed nudge
 // when the running CLI version drifts from the version that wrote the config.
-//
-// Phase 1 (this PR, ACI-5039): detection + notify only. On Bump the user
-// sees the exact `bitrise-build-cache activate <tool>` commands to rerun.
-//
-// Phase 2 (deferred): replay activate programmatically from registered
-// state so the user doesn't have to run anything. Requires per-tool replay
-// handlers that can reconstruct activate args from persisted config /
-// keychain / env — non-trivial and intentionally out of scope here.
 package refresh
 
 import (
@@ -22,9 +14,7 @@ import (
 	"time"
 )
 
-// StateDirRelative is the path beneath the user's home where refresh state
-// lives. Same root as versioncheck (ACI-5037) so all CLI-managed local state
-// sits under one tree.
+// StateDirRelative is the path beneath the user's home where refresh state lives.
 const StateDirRelative = ".local/state/bitrise-build-cache"
 
 // RegistryFile is the basename of the on-disk registry.
@@ -57,15 +47,6 @@ type Entry struct {
 type Registry struct {
 	Entries map[string]Entry `json:"entries"`
 }
-
-// NOTE on stale-entry pruning: an entry written by ACI-5034 (gradle) then
-// abandoned (user moved off Gradle, never reran `activate gradle`) lingers
-// forever in the registry, and `OnBump` will keep nudging them about
-// refreshing it. The fix is to prune entries whose ConfigPath no longer
-// exists on disk — cheap to do at Load() time. Tracked as follow-up; not
-// blocking M1 because the nudge is a one-line stderr write per CLI
-// invocation with a 24h cooldown elsewhere (see versioncheck.NudgeCooldown),
-// so the wrong-nudge cost is low.
 
 func registryPath(home string) string {
 	return filepath.Join(home, StateDirRelative, RegistryFile)

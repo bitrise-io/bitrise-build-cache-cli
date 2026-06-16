@@ -49,8 +49,7 @@ This command will:
 			return fmt.Errorf("activate C++ cache: %w", err)
 		}
 
-		// Register this activation so D1's bump detector can nudge on future
-		// CLI upgrades. Best-effort.
+		// Best-effort: registry write failure must not fail the activate.
 		if home, homeErr := os.UserHomeDir(); homeErr == nil {
 			configFile := filepath.Join(home, ".bitrise", "cache", "ccache", "config.json")
 			if mErr := refresh.Mark(home, refresh.ToolCcache, configFile, configcommon.GetCLIVersion(logger)); mErr != nil {

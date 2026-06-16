@@ -69,9 +69,7 @@ This command will:
 
 		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolXcode})
 
-		// Register this activation so D1's bump detector can nudge the user
-		// about refreshing the Xcelerate config on future CLI upgrades.
-		// Best-effort.
+		// Best-effort: registry write failure must not fail the activate.
 		if home, homeErr := os.UserHomeDir(); homeErr == nil {
 			configFile := filepath.Join(home, ".bitrise-xcelerate", "config.json")
 			if mErr := refresh.Mark(home, refresh.ToolXcelerate, configFile, configcommon.GetCLIVersion(logger)); mErr != nil {

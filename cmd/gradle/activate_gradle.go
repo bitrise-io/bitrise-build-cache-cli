@@ -71,9 +71,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolGradle})
 
-		// Register this activation so D1's bump detector knows to nudge the
-		// user about refreshing the gradle config on future CLI upgrades.
-		// Best-effort: a registry write failure must not fail the activate.
+		// Best-effort: registry write failure must not fail the activate.
 		if home, homeErr := os.UserHomeDir(); homeErr == nil {
 			initFile := filepath.Join(gradleHome, "init.d", "bitrise-build-cache.init.gradle.kts")
 			if err := refresh.Mark(home, refresh.ToolGradle, initFile, configcommon.GetCLIVersion(logger)); err != nil {
