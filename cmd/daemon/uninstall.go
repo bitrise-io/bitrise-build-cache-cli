@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 )
 
 //nolint:gochecknoglobals
@@ -37,7 +38,7 @@ var uninstallCmd = &cobra.Command{
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			printPermissionHintIfApplicable(logger, err)
+			permhint.PrintIfApplicable(logger, err)
 
 			return fmt.Errorf("uninstall daemon: %w", err)
 		}

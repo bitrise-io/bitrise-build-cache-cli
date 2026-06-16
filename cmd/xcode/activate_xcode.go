@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -58,6 +59,8 @@ This command will:
 			activateXcodeParams,
 			utils.AllEnvs(),
 		); err != nil {
+			permhint.PrintIfApplicable(logger, err)
+
 			return err //nolint:wrapcheck // xcelerate.Activate already returns wrapped errors
 		}
 

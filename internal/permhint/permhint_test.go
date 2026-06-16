@@ -1,6 +1,6 @@
 //go:build unit
 
-package daemon
+package permhint
 
 import (
 	"bytes"
@@ -14,16 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// loggerWithBuffer builds a project logger that writes into the supplied
-// buffer — the standard test seam for asserting on log output from
-// cmd/daemon helpers.
 func loggerWithBuffer(buf *bytes.Buffer) log.Logger {
 	return log.NewLogger(log.WithOutput(buf))
 }
 
-func TestPrintPermissionHintIfApplicable_permissionErrorPrintsRemediation(t *testing.T) {
-	// Mimic the wrap chain produced by internal/daemon when mkdir fails:
-	// fmt.Errorf-wrapped *fs.PathError with EACCES.
+func TestPrintIfApplicable_permissionErrorPrintsRemediation(t *testing.T) {
 	pathErr := &fs.PathError{
 		Op:   "mkdir",
 		Path: "/Users/alice/.local/state/bitrise-build-cache",
@@ -32,7 +27,7 @@ func TestPrintPermissionHintIfApplicable_permissionErrorPrintsRemediation(t *tes
 	wrapped := fmt.Errorf("create log dir: %w", pathErr)
 
 	var buf bytes.Buffer
-	printPermissionHintIfApplicable(loggerWithBuffer(&buf), wrapped)
+	PrintIfApplicable(loggerWithBuffer(&buf), wrapped)
 
 	out := buf.String()
 	assert.NotEmpty(t, out)
@@ -41,15 +36,15 @@ func TestPrintPermissionHintIfApplicable_permissionErrorPrintsRemediation(t *tes
 	assert.Contains(t, out, "~/.local/state")
 }
 
-func TestPrintPermissionHintIfApplicable_nonPermissionErrorIsNoop(t *testing.T) {
+func TestPrintIfApplicable_nonPermissionErrorIsNoop(t *testing.T) {
 	var buf bytes.Buffer
-	printPermissionHintIfApplicable(loggerWithBuffer(&buf), errors.New("something else went wrong"))
+	PrintIfApplicable(loggerWithBuffer(&buf), errors.New("something else went wrong"))
 	assert.Empty(t, buf.String())
 }
 
-func TestPrintPermissionHintIfApplicable_nilErrorIsNoop(t *testing.T) {
+func TestPrintIfApplicable_nilErrorIsNoop(t *testing.T) {
 	var buf bytes.Buffer
-	printPermissionHintIfApplicable(loggerWithBuffer(&buf), nil)
+	PrintIfApplicable(loggerWithBuffer(&buf), nil)
 	assert.Empty(t, buf.String())
 }
 
@@ -72,8 +67,6 @@ func TestPathErrorPath_returnsEmptyForNonPathError(t *testing.T) {
 }
 
 func TestOwnerOfNearestAncestor_returnsExistingAncestor(t *testing.T) {
-	// /tmp always exists on POSIX hosts → ancestor walk should resolve to
-	// it (or its parent) and return ok=true.
 	missing := "/tmp/this-directory-should-not-exist-bitrise-test-" + strings.Repeat("x", 16)
 	parent, _, ok := ownerOfNearestAncestor(missing)
 	assert.True(t, ok)

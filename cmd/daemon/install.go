@@ -4,13 +4,44 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 )
+
+// transientBinPrefixes mark filesystem locations whose contents the OS may prune between logins;
+// embedding such a path in a LaunchAgent/systemd unit would leave the supervisor pointing at a missing binary.
+//
+//nolint:gochecknoglobals
+var transientBinPrefixes = []string{
+	"/tmp/",
+	"/var/folders/",
+	"/private/var/folders/",
+	"/private/tmp/",
+}
+
+func errTransientBinaryPath(exe string) error {
+	return fmt.Errorf(
+		"refusing to register daemon services with a CLI binary under a transient path (%s) — "+
+			"reinstall via `brew install` or `installer.sh -b <stable-dir>` (e.g. ~/.local/bin) and rerun",
+		exe,
+	)
+}
+
+func isTransientBinaryPath(exe string) bool {
+	for _, prefix := range transientBinPrefixes {
+		if strings.HasPrefix(exe, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
 
 //nolint:gochecknoglobals
 var installCmd = &cobra.Command{
@@ -39,13 +70,17 @@ var installCmd = &cobra.Command{
 			return fmt.Errorf("resolve CLI executable path: %w", err)
 		}
 
+		if isTransientBinaryPath(exe) {
+			return errTransientBinaryPath(exe)
+		}
+
 		result, err := daemonpkg.Install(cmd.Context(), backend, paths, daemonpkg.DefaultServices(), exe)
 		if err != nil {
 			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) {
 				return err //nolint:wrapcheck // sentinel
 			}
 
-			printPermissionHintIfApplicable(logger, err)
+			permhint.PrintIfApplicable(logger, err)
 
 			return fmt.Errorf("install daemon: %w", err)
 		}
@@ -55,18 +90,21 @@ var installCmd = &cobra.Command{
 		}
 
 		logger.Println()
-		logger.Infof("Services are now running. Logs:")
+		logger.Infof("Services are now running.")
 
 		switch result.BackendName {
 		case "launchd":
-			logger.Infof("  %s", paths.LogDir())
+			logger.Infof("Supervisor stdout/stderr log dir: %s", paths.LogDir())
 			logger.Println()
 			logger.Infof("Verify with: launchctl print gui/$UID/io.bitrise.build-cache.xcelerate-proxy")
 		case "systemd":
-			logger.Infof("  journalctl --user -u bitrise-build-cache-xcelerate-proxy")
+			logger.Infof("Supervisor log stream: journalctl --user -u bitrise-build-cache-xcelerate-proxy")
 			logger.Println()
 			logger.Infof("Verify with: systemctl --user status bitrise-build-cache-xcelerate-proxy")
 		}
+
+		logger.Println()
+		logger.Infof("Socket paths (for IDE configuration): bitrise-build-cache daemon info")
 
 		return nil
 	},

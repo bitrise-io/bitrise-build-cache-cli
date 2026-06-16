@@ -1,4 +1,6 @@
-package daemon
+// Package permhint surfaces a chown remediation block when a CLI subcommand
+// hits an EACCES / EPERM while writing under ~/.local/state.
+package permhint
 
 import (
 	"errors"
@@ -9,9 +11,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// printPermissionHintIfApplicable writes a chown remediation block when err is a permission-denied PathError.
+// PrintIfApplicable inspects err and emits a chown remediation hint when err is a permission-denied PathError.
 // logger.Printf is intentional — Donef/Warnf would prefix each line and break the banner.
-func printPermissionHintIfApplicable(logger log.Logger, err error) {
+func PrintIfApplicable(logger log.Logger, err error) {
 	if !isPermissionError(err) {
 		return
 	}

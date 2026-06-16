@@ -3,10 +3,12 @@ package ccache
 import (
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
 )
 
@@ -35,6 +37,8 @@ This command will:
 		})
 
 		if err := activator.Activate(cmd.Context()); err != nil {
+			permhint.PrintIfApplicable(log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)), err)
+
 			return fmt.Errorf("activate C++ cache: %w", err)
 		}
 
