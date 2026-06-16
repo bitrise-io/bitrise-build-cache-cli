@@ -28,7 +28,6 @@ func TestUp_launchd_startsAllInstalledServices(t *testing.T) {
 	require.Len(t, result.Statuses, 2)
 	assert.Equal(t, "launchd", result.BackendName)
 
-	// Up == backend.Start == bootstrap helper (bootout + bootstrap). 2 services * 2 calls.
 	assert.Len(t, upRunner.calls, 4)
 	assert.Equal(t, "bootout", upRunner.calls[0][1])
 	assert.Equal(t, "bootstrap", upRunner.calls[1][1])
@@ -58,7 +57,6 @@ func TestDown_launchd_stopsWithoutRemovingConfig(t *testing.T) {
 	_, err = Down(context.Background(), LaunchdBackend{Runner: downRunner}, paths, DefaultServices())
 	require.NoError(t, err)
 
-	// Down should only bootout — 1 call per service.
 	require.Len(t, downRunner.calls, 2)
 	assert.Equal(t, "bootout", downRunner.calls[0][1])
 	assert.Equal(t, "bootout", downRunner.calls[1][1])
@@ -98,11 +96,9 @@ func TestRestart_launchd_callsDownThenUp(t *testing.T) {
 	_, err = Restart(context.Background(), LaunchdBackend{Runner: restartRunner}, paths, DefaultServices())
 	require.NoError(t, err)
 
-	// Down = 2 bootouts. Up = 2 (bootout + bootstrap) per service. 2 + 4 = 6 total.
 	require.Len(t, restartRunner.calls, 6)
 	assert.Equal(t, "bootout", restartRunner.calls[0][1])
 	assert.Equal(t, "bootout", restartRunner.calls[1][1])
-	// Up half of the restart: bootout-then-bootstrap per service.
 	assert.Equal(t, "bootout", restartRunner.calls[2][1])
 	assert.Equal(t, "bootstrap", restartRunner.calls[3][1])
 	assert.Equal(t, "bootout", restartRunner.calls[4][1])
@@ -123,7 +119,6 @@ func TestUp_systemd_startsAllInstalledServices(t *testing.T) {
 	require.Len(t, result.Statuses, 2)
 	assert.Equal(t, "systemd", result.BackendName)
 
-	// Up = daemon-reload + enable --now. 2 services * 2 calls.
 	require.Len(t, upRunner.calls, 4)
 	assert.Equal(t, "daemon-reload", upRunner.calls[0][2])
 	assert.Equal(t, "enable", upRunner.calls[1][2])
@@ -152,7 +147,6 @@ func TestDown_systemd_stopsButKeepsUnitFile(t *testing.T) {
 	_, err = Down(context.Background(), SystemdBackend{Runner: downRunner}, paths, DefaultServices())
 	require.NoError(t, err)
 
-	// Down = stop per service. 2 calls.
 	require.Len(t, downRunner.calls, 2)
 	assert.Equal(t, "stop", downRunner.calls[0][2])
 
@@ -190,8 +184,6 @@ func TestRestart_systemd_callsDownThenUp(t *testing.T) {
 	_, err = Restart(context.Background(), SystemdBackend{Runner: restartRunner}, paths, DefaultServices())
 	require.NoError(t, err)
 
-	// Down: 1 systemctl stop per service. Up: daemon-reload + enable --now
-	// per service = 2 calls each. 2 + 4 = 6 total. Assert the verb sequence.
 	require.Len(t, restartRunner.calls, 6)
 	assert.Equal(t, "stop", restartRunner.calls[0][2])
 	assert.Equal(t, "stop", restartRunner.calls[1][2])
