@@ -106,7 +106,7 @@ func (b SystemdBackend) enableNow(ctx context.Context, unitName string) error {
 	return nil
 }
 
-// stop treats "Unit ... not loaded" stderr as success so Stop is idempotent.
+// stop treats "Unit ... not loaded" as success so Stop is idempotent.
 func (b SystemdBackend) stop(ctx context.Context, unitName string) error {
 	_, stderr, code, err := b.Runner.Run(ctx, systemctlBin, "--user", "stop", unitName+".service")
 	if err != nil {
