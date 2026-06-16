@@ -4,11 +4,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// BrewFormula is the Homebrew formula name shipped by the Bitrise tap.
 const BrewFormula = "bitrise-io/bitrise-build-cache/bitrise-build-cache"
 
-// PrintBrewUpgrade emits the upgrade instruction for a brew-installed CLI.
-// Running `brew upgrade` from the cellar-resident binary itself clashes with brew's file locking — let the user invoke it.
+// PrintBrewUpgrade prints rather than execs because brew upgrade run from inside the cellar binary clashes with brew's file locking.
 func PrintBrewUpgrade(logger log.Logger) {
 	if logger == nil {
 		return

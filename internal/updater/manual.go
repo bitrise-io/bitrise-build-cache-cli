@@ -15,40 +15,22 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// InstallerURL is the canonical location of installer.sh. The file at this
-// URL is the same one shipped at install/installer.sh in this repo —
-// reusing it instead of duplicating download / GAR-fallback / checksum logic
-// keeps the update flow in lockstep with the install flow.
 const InstallerURL = "https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh"
 
-// DownloadTimeout caps the installer.sh fetch. The script itself is small
-// (<10 KB); a short timeout makes a network blip surface as an error fast.
 const DownloadTimeout = 10 * time.Second
 
-// MaxInstallerBytes caps how much we'll read from the installer URL. The
-// real script is well under 100 KiB — 1 MiB is two orders of magnitude
-// safety margin while still bounding the worst case if a hostile / broken
-// origin streams gigabytes into os.TempDir.
+// MaxInstallerBytes — the real script is <100 KiB; 1 MiB is a wide safety margin against hostile origins.
 const MaxInstallerBytes = 1 << 20
 
-// ManualOptions bundles the inputs ManualUpgrade needs.
 type ManualOptions struct {
-	// Bindir passed to installer.sh via `-b`. Required.
-	Bindir string
-	// Logger receives progress messages and line-buffered subprocess output.
-	Logger log.Logger
-	// InstallerURL overrides the canonical URL for tests.
+	Bindir       string
+	Logger       log.Logger
 	InstallerURL string
-	// HTTPClient overrides the default 10s-timeout client.
-	HTTPClient *http.Client
-	// Shell is the program to invoke installer.sh with. Empty = "/bin/sh".
-	Shell string
-	// DryRun downloads the installer but doesn't execute it.
-	DryRun bool
+	HTTPClient   *http.Client
+	Shell        string
+	DryRun       bool
 }
 
-// ManualUpgrade downloads installer.sh and runs it against the bindir of the running binary.
-// Returns the local path of the downloaded installer.
 func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	if opts.Bindir == "" {
 		return "", errors.New("bindir is required for manual upgrade")
@@ -72,7 +54,6 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	}
 
 	if opts.DryRun {
-		// Leave the script on disk — the printed manual-upgrade command references it.
 		opts.Logger.Infof("Dry run — installer downloaded to %s but NOT executed.", scriptPath)
 		opts.Logger.Infof("To upgrade manually: %s %s -b %s", opts.Shell, scriptPath, opts.Bindir)
 
@@ -89,7 +70,7 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	cmd.Stderr = pipe
 
 	if err := cmd.Run(); err != nil {
-		// Keep the script on disk on failure so the user can re-run it manually to debug.
+		// Script stays on disk on failure so the user can re-run it manually to debug.
 		return scriptPath, fmt.Errorf("run installer.sh: %w", err)
 	}
 
@@ -121,9 +102,7 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 
 	defer func() { _ = resp.Body.Close() }()
 
-	// Strict 2xx range. Status / 100 == 2 (used previously) would silently
-	// accept a 3xx redirect Go's client failed to follow — that produces an
-	// HTML body that would go on to be exec'd as a shell script.
+	// Strict 2xx — a 3xx HTML body that Go's client failed to follow would otherwise be exec'd as a shell script.
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return "", fmt.Errorf("download installer.sh: server responded %d", resp.StatusCode)
 	}
@@ -133,9 +112,7 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 		return "", fmt.Errorf("create installer temp file: %w", err)
 	}
 
-	// LimitReader caps the body at MaxInstallerBytes so a hostile / broken
-	// origin can't stream gigabytes into os.TempDir. We additionally check
-	// whether the cap was actually hit (n == cap+1) by reading one extra byte.
+	// Cap+1 byte lets us detect cap-hit via n > MaxInstallerBytes below.
 	limited := io.LimitReader(resp.Body, MaxInstallerBytes+1)
 
 	n, err := io.Copy(tmp, limited)
@@ -166,13 +143,10 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 	return tmp.Name(), nil
 }
 
-// BindirOf returns the directory of the supplied executable path — the value
-// to pass installer.sh's -b flag so the upgrade lands in the same spot.
 func BindirOf(executable string) string {
 	return filepath.Dir(executable)
 }
 
-// loggerWriter line-buffers its input and emits each complete line via logger.Printf.
 type loggerWriter struct {
 	logger log.Logger
 	buf    bytes.Buffer
@@ -188,20 +162,17 @@ func (w *loggerWriter) Write(p []byte) (int, error) {
 	for {
 		line, err := w.buf.ReadString('\n')
 		if errors.Is(err, io.EOF) {
-			// Incomplete trailing line — buffer it and wait for more.
 			w.buf.WriteString(line)
 
 			break
 		}
 
-		// Strip trailing newline; logger.Printf adds its own.
 		w.logger.Printf("%s", trimNewline(line))
 	}
 
 	return len(p), nil
 }
 
-// Flush emits any remaining buffered partial line. Call after the subprocess exits.
 func (w *loggerWriter) Flush() {
 	if w.buf.Len() == 0 {
 		return

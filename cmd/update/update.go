@@ -1,4 +1,3 @@
-// Package update exposes the `bitrise-build-cache update` subcommand.
 package update
 
 import (

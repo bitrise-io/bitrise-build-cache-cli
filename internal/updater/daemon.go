@@ -7,10 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// DaemonInstalled reports whether the user has any daemon supervisor config on disk.
-//
-// File-presence check only — a stale plist/unit file from a partial uninstall yields
-// a benign false-positive (the resulting `daemon restart` is a no-op against a not-loaded service).
+// DaemonInstalled is a file-presence check — a stale plist/unit from a partial uninstall yields a benign false-positive.
 func DaemonInstalled(home string) bool {
 	candidates := []string{
 		filepath.Join(home, "Library", "LaunchAgents", "io.bitrise.build-cache.xcelerate-proxy.plist"),
@@ -28,7 +25,6 @@ func DaemonInstalled(home string) bool {
 	return false
 }
 
-// PrintDaemonRestartHint emits the restart nudge. Caller gates on DaemonInstalled(home).
 func PrintDaemonRestartHint(logger log.Logger) {
 	if logger == nil {
 		return
