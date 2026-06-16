@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 )
 
 const LaunchctlBin = "/bin/launchctl"
@@ -24,7 +25,7 @@ func (c LaunchctlClient) runner() daemon.CommandRunner {
 		return c.Runner
 	}
 
-	return daemon.ExecRunner{}
+	return exec.ExecRunner{PinLocale: true}
 }
 
 func (c LaunchctlClient) bin() string {

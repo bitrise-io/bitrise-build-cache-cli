@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 )
 
 const pgrepBin = "/usr/bin/pgrep"
@@ -27,7 +28,7 @@ func (d DefaultXcodeChecker) runner() daemon.CommandRunner {
 		return d.Runner
 	}
 
-	return daemon.ExecRunner{}
+	return exec.ExecRunner{}
 }
 
 // RunningPIDs returns empty slice when pgrep exit 1 (no match).
