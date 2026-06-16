@@ -149,7 +149,6 @@ func TestResolveCredentials_keychainPopulated_reusesSilently(t *testing.T) {
 		hasStore: true,
 		stored:   keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"},
 	}
-	// Empty input — no prompts should fire because keychain has data.
 	p, out := newTestPrompter("")
 
 	ws, tok, err := resolveCredentials(p, kc)
@@ -164,7 +163,7 @@ func TestResolveCredentials_envPresent_importsToKeychain(t *testing.T) {
 	t.Setenv(envAuthToken, "env-tok")
 	t.Setenv(envWorkspaceID, "env-ws")
 
-	kc := &fakeKeychain{} // not stored
+	kc := &fakeKeychain{}
 	p, out := newTestPrompter("")
 
 	ws, tok, err := resolveCredentials(p, kc)

@@ -29,8 +29,6 @@ import (
 //nolint:gochecknoglobals
 var interactiveFlag bool
 
-// envWorkspaceID and envAuthToken are the env var keys the interactive
-// wizard injects into the synthesized envs map for downstream activation.
 const (
 	envWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID"
 	envAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN" //nolint:gosec // env-var key, not a credential
@@ -45,9 +43,7 @@ const (
 	toolCcache interactiveTool = "ccache"
 )
 
-// prompter abstracts user input/output so the wizard is testable.
-// A single bufio.Reader is reused across prompts — creating a new one per
-// prompt would buffer ahead and drop subsequent piped input.
+// prompter shares one bufio.Reader across prompts — separate readers would buffer ahead and drop piped input.
 type prompter struct {
 	reader       *bufio.Reader
 	out          io.Writer
@@ -63,8 +59,6 @@ func newDefaultPrompter() *prompter {
 		readPassword: func() (string, error) {
 			fd := int(os.Stdin.Fd())
 			if !term.IsTerminal(fd) {
-				// Not a TTY (piped input / tests): fall back to plain line read
-				// using the shared reader so we don't drop already-buffered bytes.
 				line, err := stdinReader.ReadString('\n')
 				if err != nil && !errors.Is(err, io.EOF) {
 					return "", fmt.Errorf("read auth token: %w", err)
@@ -100,8 +94,6 @@ func init() { //nolint:gochecknoinits
 	}
 }
 
-// runInteractiveSetupHuh is the TTY-only multi-select form path. Non-TTY
-// callers (piped stdin, tests) hit runInteractiveSetup instead.
 func runInteractiveSetupHuh(ctx context.Context) error {
 	logger := log.NewLogger()
 	logger.EnableDebugLog(IsDebugLogMode)
@@ -109,8 +101,6 @@ func runInteractiveSetupHuh(ctx context.Context) error {
 
 	kc := keychain.New()
 
-	// Pre-populate workspace + token from keychain or env so the form can skip
-	// those fields when we already have credentials.
 	startWS, startToken, source := loadStartingCredentials(kc, os.Getenv(envWorkspaceID), os.Getenv(envAuthToken))
 
 	var (
@@ -175,14 +165,13 @@ func runInteractiveSetupHuh(ctx context.Context) error {
 		return fmt.Errorf("interactive wizard: %w", err)
 	}
 
-	// Surface the keychain / env source after the form so the user knows where creds came from.
 	switch source {
 	case credsSourceKeychain:
 		logger.TInfof("Using credentials from the OS keychain.")
 	case credsSourceEnv:
 		logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
 		logger.Infof("You can now remove them from your shell rc files.")
-		_ = persistCredentials(kc, workspaceID, authToken) // best-effort; non-fatal
+		_ = persistCredentials(kc, workspaceID, authToken)
 	case credsSourceNone:
 		_ = persistCredentials(kc, workspaceID, authToken)
 		logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
@@ -236,9 +225,6 @@ const (
 	credsSourceEnv
 )
 
-// loadStartingCredentials returns the credentials we already have (if any) +
-// where they came from. Caller decides whether to prompt the user or skip
-// the credential form group based on `source`.
 func loadStartingCredentials(kc keychainStore, envWS, envToken string) (string, string, credsSource) {
 	if creds, err := kc.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
 		return creds.WorkspaceID, creds.AuthToken, credsSourceKeychain
@@ -251,9 +237,6 @@ func loadStartingCredentials(kc keychainStore, envWS, envToken string) (string, 
 	return "", "", credsSourceNone
 }
 
-// persistCredentials writes credentials to the keychain. Save failures are
-// intentionally non-fatal — common on headless boxes — so the caller logs and
-// continues with the in-memory values for the current run.
 func persistCredentials(kc keychainStore, workspaceID, authToken string) error {
 	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
 		return fmt.Errorf("save credentials to keychain: %w", err)
@@ -305,18 +288,11 @@ func runInteractiveSetup(ctx context.Context, p *prompter) error {
 	}
 }
 
-// keychainStore is the slice of *keychain.Keychain the wizard depends on.
-// Exists so tests can inject a fake without touching the OS keychain.
 type keychainStore interface {
 	Load() (keychain.Credentials, error)
 	Save(creds keychain.Credentials) error
 }
 
-// resolveCredentials walks the user through getting workspace + auth token.
-// Three paths:
-//  1. Keychain already populated → confirm + reuse silently (no re-prompt).
-//  2. Env vars set but keychain empty → offer migration to keychain.
-//  3. Nothing set → prompt the user, then persist to keychain.
 func resolveCredentials(p *prompter, kc keychainStore) (string, string, error) {
 	creds, err := kc.Load()
 	if err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
@@ -364,10 +340,6 @@ func resolveCredentials(p *prompter, kc keychainStore) (string, string, error) {
 	return workspaceID, authToken, nil
 }
 
-// promptPushEnabled asks whether to enable cache push.
-// Defaults to false (pull-only): the recommended setting for local dev — most
-// build tools advise against uploading from developer machines so a flaky local
-// build can't poison the shared cache.
 func promptPushEnabled(p *prompter) (bool, error) {
 	fmt.Fprintln(p.out)
 	fmt.Fprintln(p.out, "Cache access mode:")
