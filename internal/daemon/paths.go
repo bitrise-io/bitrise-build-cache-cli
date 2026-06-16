@@ -2,57 +2,25 @@ package daemon
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
-const LogDirRelative = ".local/state/bitrise-build-cache/logs"
+// Paths is an alias of the shared internal/paths.Paths so external callers
+// don't have to import two packages when they're already in the daemon API.
+type Paths = paths.Paths
 
-const LaunchAgentsDirRelative = "Library/LaunchAgents"
-
-const SystemdUserDirRelative = ".config/systemd/user"
-
-type Paths struct {
-	Home string
-}
-
+// NewPathsFromHome returns Paths rooted at the supplied home dir.
 func NewPathsFromHome(home string) Paths {
-	return Paths{Home: home}
+	return paths.FromHome(home)
 }
 
+// NewPaths returns Paths rooted at the current user's home dir.
 func NewPaths() (Paths, error) {
-	home, err := os.UserHomeDir()
+	p, err := paths.Default()
 	if err != nil {
-		return Paths{}, fmt.Errorf("resolve user home dir: %w", err)
+		return p, fmt.Errorf("resolve default paths: %w", err)
 	}
 
-	return Paths{Home: home}, nil
-}
-
-func (p Paths) LaunchAgentsDir() string {
-	return filepath.Join(p.Home, LaunchAgentsDirRelative)
-}
-
-func (p Paths) SystemdUserDir() string {
-	return filepath.Join(p.Home, SystemdUserDirRelative)
-}
-
-func (p Paths) LogDir() string {
-	return filepath.Join(p.Home, LogDirRelative)
-}
-
-func (p Paths) PlistPath(label string) string {
-	return filepath.Join(p.LaunchAgentsDir(), label+".plist")
-}
-
-func (p Paths) UnitPath(unitName string) string {
-	return filepath.Join(p.SystemdUserDir(), unitName+".service")
-}
-
-func (p Paths) StdoutPath(service string) string {
-	return filepath.Join(p.LogDir(), service+".out.log")
-}
-
-func (p Paths) StderrPath(service string) string {
-	return filepath.Join(p.LogDir(), service+".err.log")
+	return p, nil
 }

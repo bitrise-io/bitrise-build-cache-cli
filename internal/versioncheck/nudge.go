@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 const GitHubReleasesURL = "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/releases/latest"
 
-const NudgeCooldown = 24 * time.Hour
+const NudgeCooldown = 4 * time.Hour
 
 // FetchTimeout must stay in sync with the ctx timeout in cmd/common/root.go to avoid mismatched timeout windows.
 const FetchTimeout = 3 * time.Second
@@ -49,7 +51,6 @@ type releaseResponse struct {
 	TagName string `json:"tag_name"`
 }
 
-// FetchLatestVersion strips the Goreleaser-style leading `v` (our internal version is `X.Y.Z`).
 func FetchLatestVersion(ctx context.Context, client *http.Client, url string) (string, error) {
 	if client == nil {
 		client = &http.Client{Timeout: FetchTimeout}
@@ -76,7 +77,7 @@ func FetchLatestVersion(ctx context.Context, client *http.Client, url string) (s
 		return "", ErrThrottled
 	}
 
-	if resp.StatusCode/100 != 2 {
+	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github responded %d for latest release", resp.StatusCode)
 	}
 
@@ -93,7 +94,7 @@ func FetchLatestVersion(ctx context.Context, client *http.Client, url string) (s
 	return strings.TrimPrefix(tag, "v"), nil
 }
 
-// IsBehind: textual compare, not semver — CLI's `devel` and snapshot versions don't follow strict semver.
+// IsBehind suppresses the nudge for local builds and invalid-semver inputs.
 func IsBehind(current, latest string) bool {
 	current = strings.TrimSpace(current)
 	latest = strings.TrimSpace(latest)
@@ -102,13 +103,27 @@ func IsBehind(current, latest string) bool {
 		return false
 	}
 
-	if current == "devel" {
+	if isLocalBuild(current) {
 		return false
 	}
 
-	if strings.TrimPrefix(current, "v") == strings.TrimPrefix(latest, "v") {
+	curV := ensureSemverPrefix(current)
+	latestV := ensureSemverPrefix(latest)
+	if !semver.IsValid(curV) || !semver.IsValid(latestV) {
 		return false
 	}
 
-	return true
+	return semver.Compare(curV, latestV) < 0
+}
+
+func isLocalBuild(v string) bool {
+	return v == "devel" || strings.Contains(v, "+") || strings.Contains(v, "dirty")
+}
+
+func ensureSemverPrefix(v string) string {
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+
+	return "v" + v
 }

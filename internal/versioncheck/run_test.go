@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"testing"
 	"time"
 
@@ -151,7 +153,7 @@ func TestRun_noChangeWithSuppressedNudgeSkipsSaveState(t *testing.T) {
 		LastSeenAt:  now.Add(-1 * time.Hour),
 	}))
 
-	statePath := filepath.Join(home, StateDirRelative, StateFile)
+	statePath := filepath.Join(home, paths.StateDirRelative, StateFile)
 	infoBefore, err := os.Stat(statePath)
 	require.NoError(t, err)
 

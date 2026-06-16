@@ -5,6 +5,8 @@ package versioncheck
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"testing"
 	"time"
 
@@ -42,14 +44,14 @@ func TestSaveState_createsStateDir(t *testing.T) {
 
 	require.NoError(t, SaveState(home, State{LastVersion: "2.8.4", LastSeenAt: time.Now()}))
 
-	info, err := os.Stat(filepath.Join(home, StateDirRelative))
+	info, err := os.Stat(filepath.Join(home, paths.StateDirRelative))
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 }
 
 func TestLoadState_corruptFileErrors(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, StateDirRelative)
+	dir := filepath.Join(home, paths.StateDirRelative)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, StateFile), []byte("not json"), 0o644))
 

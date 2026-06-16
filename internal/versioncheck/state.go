@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"time"
-)
 
-const StateDirRelative = ".local/state/bitrise-build-cache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+)
 
 const StateFile = "version-state.json"
 
@@ -21,7 +20,7 @@ type State struct {
 }
 
 func statePath(home string) string {
-	return filepath.Join(home, StateDirRelative, StateFile)
+	return paths.FromHome(home).StateFile(StateFile)
 }
 
 // LoadState returns zero State + nil when the file is missing (first-run case).
@@ -47,7 +46,7 @@ func LoadState(home string) (State, error) {
 
 // SaveState writes atomically (write-temp + rename). Last-write-wins on parallel invocations.
 func SaveState(home string, st State) error {
-	dir := filepath.Join(home, StateDirRelative)
+	dir := paths.FromHome(home).StateDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}

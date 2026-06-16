@@ -56,8 +56,8 @@ func GeneratePlist(svc Service, executable string, paths Paths) (string, error) 
 	data := plistData{
 		Label:            svc.Label(),
 		ProgramArguments: args,
-		StdoutPath:       paths.StdoutPath(svc.Name),
-		StderrPath:       paths.StderrPath(svc.Name),
+		StdoutPath:       paths.DaemonStdoutPath(svc.Name),
+		StderrPath:       paths.DaemonStderrPath(svc.Name),
 	}
 
 	var buf bytes.Buffer
