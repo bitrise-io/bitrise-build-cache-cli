@@ -46,8 +46,6 @@ func TestResolveAuthConfig_keychainNotFound_fallsBackToEnv(t *testing.T) {
 }
 
 func TestResolveAuthConfig_keychainError_fallsBackToEnv(t *testing.T) {
-	// Any keychain error (e.g. no D-Bus on a headless box) should fall through,
-	// not propagate up. Env path is the back-compat safety net.
 	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
@@ -60,7 +58,6 @@ func TestResolveAuthConfig_keychainError_fallsBackToEnv(t *testing.T) {
 }
 
 func TestResolveAuthConfig_keychainEmpty_fallsBackToEnv(t *testing.T) {
-	// Stored zero-value creds → not usable, fall through to env.
 	loader := fakeAuthLoader{creds: keychain.Credentials{}}
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
@@ -73,7 +70,6 @@ func TestResolveAuthConfig_keychainEmpty_fallsBackToEnv(t *testing.T) {
 }
 
 func TestResolveAuthConfig_keychainPartial_fallsBackToEnv(t *testing.T) {
-	// Stored token but no workspace ID (or vice versa) → incomplete, fall through.
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
