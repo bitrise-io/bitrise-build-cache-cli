@@ -62,7 +62,6 @@ func TestInstall_addsPreActionToFreshScheme(t *testing.T) {
 	assert.Contains(t, got, "bitrise-build-cache doctor --no-update-check", "doctor invocation should be in script")
 	assert.Contains(t, got, "<BuildActionEntries>", "original BuildActionEntries should still be there")
 
-	// PreActions must come *before* BuildActionEntries (Apple's expected order).
 	preIdx := strings.Index(got, "<PreActions>")
 	entriesIdx := strings.Index(got, "<BuildActionEntries>")
 	assert.Less(t, preIdx, entriesIdx, "<PreActions> must precede <BuildActionEntries>")
@@ -123,9 +122,6 @@ func TestUninstall_isIdempotentWhenNotInstalled(t *testing.T) {
 }
 
 func TestUninstall_preservesUnrelatedPreActions(t *testing.T) {
-	// Customer already had a PreActions block of their own; uninstall must only
-	// remove ours, not theirs. (We detect ours via the marker — a foreign
-	// PreActions block has no marker, so the rePreActionsBlock regex skips it.)
 	customerScheme := strings.Replace(sampleScheme,
 		`      <BuildActionEntries>`,
 		`      <PreActions>
@@ -142,17 +138,14 @@ func TestUninstall_preservesUnrelatedPreActions(t *testing.T) {
 	)
 	path := writeTempScheme(t, customerScheme)
 
-	// Install ours alongside the customer's block.
 	_, err := Install(path)
 	require.NoError(t, err)
 
-	// Sanity: both PreActions blocks should be present (or one merged — TBD by impl).
 	mid, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Contains(t, string(mid), "echo hello", "customer's PreActions must survive install")
 	assert.Contains(t, string(mid), Marker, "our marker must be present")
 
-	// Uninstall — must remove ours, keep customer's.
 	_, err = Uninstall(path)
 	require.NoError(t, err)
 

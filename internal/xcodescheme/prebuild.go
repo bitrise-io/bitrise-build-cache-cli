@@ -1,15 +1,5 @@
-// Package xcodescheme installs / removes a Bitrise Build Cache pre-build
-// scheme action inside an Xcode .xcscheme XML file.
-//
-// The injected action is a shell-script `<ExecutionAction>` under
-// `<BuildAction>/<PreActions>` that runs `bitrise-build-cache doctor` before
-// each Xcode build. Operations are idempotent: re-running install on a scheme
-// that already has the action is a no-op.
-//
-// We deliberately use targeted regex / text manipulation instead of
-// `encoding/xml`. Apple's xcscheme files use a specific indent style + ordering
-// the Go XML encoder doesn't preserve; running everything through a marshal
-// round-trip would produce a noisy git diff for customers.
+// Package xcodescheme installs/removes a pre-build scheme action in an Xcode .xcscheme XML file.
+// Targeted regex (not encoding/xml) — a marshal round-trip would change Apple's indent style and noise up the customer's git diff.
 package xcodescheme
 
 import (
@@ -20,16 +10,9 @@ import (
 	"strings"
 )
 
-// Marker is embedded as a comment line inside the injected script so re-runs
-// detect a prior install without parsing the whole XML. Version-suffixed so
-// future migrations can find + replace v1 with v2 cleanly.
+// Marker is embedded in the injected script so re-runs detect a prior install. Version-suffixed for future v1→v2 migration.
 const Marker = "bitrise-build-cache-prebuild-marker-v1"
 
-// PreActionBlock is what we inject. The leading newline is intentional —
-// it sits right after `<BuildAction ...>` and before `<BuildActionEntries>`.
-//
-// scriptText must escape XML chars. Our content uses only safe chars, so we
-// embed it verbatim in CDATA-free form. (Apple's UI writes it the same way.)
 const PreActionBlock = `      <PreActions>
          <ExecutionAction
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
@@ -42,31 +25,19 @@ const PreActionBlock = `      <PreActions>
 `
 
 var (
-	// reBuildActionOpen matches the BuildAction opening tag (single-line or
-	// multi-line attribute form Apple emits). We append PreActions right after
-	// the closing `>` of this tag.
 	reBuildActionOpen = regexp.MustCompile(`(?s)(<BuildAction\b[^>]*>)`)
-
-	// rePreActionsBlock matches any existing PreActions block whose body
-	// contains our marker. Used for idempotency + uninstall.
 	rePreActionsBlock = regexp.MustCompile(`(?s)\s*<PreActions>.*?` + regexp.QuoteMeta(Marker) + `.*?</PreActions>\n?`)
 )
 
-// Status describes what install / uninstall did.
 type Status int
 
 const (
-	// StatusInstalled — the file was modified and our action is now present.
 	StatusInstalled Status = iota
-	// StatusAlreadyInstalled — file unchanged, our marker was already there.
 	StatusAlreadyInstalled
-	// StatusUninstalled — file was modified, our action removed.
 	StatusUninstalled
-	// StatusNotInstalled — no marker found; nothing to uninstall.
 	StatusNotInstalled
 )
 
-// Install injects the pre-action into the xcscheme at path. Idempotent.
 func Install(path string) (Status, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path comes from a CLI flag
 	if err != nil {
@@ -82,10 +53,8 @@ func Install(path string) (Status, error) {
 		return 0, errors.New("xcscheme has no <BuildAction> element — is this a valid .xcscheme file?")
 	}
 
-	// Insert right after the closing `>` of <BuildAction ...>.
 	insertAt := loc[1]
 	if !strings.HasPrefix(string(data[insertAt:]), "\n") {
-		// Defensive: Apple always writes a newline after the tag, but pad anyway.
 		insertAt += 0
 	}
 
@@ -93,8 +62,6 @@ func Install(path string) (Status, error) {
 	out = append(out, data[:insertAt]...)
 	out = append(out, '\n')
 	out = append(out, []byte(PreActionBlock)...)
-	// Reattach the remainder, skipping the leading newline (if any) so we don't
-	// add a blank line in Apple's pre-existing layout.
 	rest := data[insertAt:]
 	if len(rest) > 0 && rest[0] == '\n' {
 		rest = rest[1:]
@@ -108,7 +75,6 @@ func Install(path string) (Status, error) {
 	return StatusInstalled, nil
 }
 
-// Uninstall removes our injected pre-action. Idempotent.
 func Uninstall(path string) (Status, error) {
 	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
@@ -128,8 +94,6 @@ func Uninstall(path string) (Status, error) {
 	return StatusUninstalled, nil
 }
 
-// ResolveSchemePath returns the absolute path to a scheme XML file inside an
-// .xcodeproj (or .xcworkspace) bundle. Looks under xcshareddata/xcschemes.
 func ResolveSchemePath(projectOrWorkspacePath, scheme string) (string, error) {
 	candidates := []string{
 		projectOrWorkspacePath + "/xcshareddata/xcschemes/" + scheme + ".xcscheme",
