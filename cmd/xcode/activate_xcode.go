@@ -2,8 +2,6 @@ package xcode
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -12,7 +10,6 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -68,14 +65,6 @@ This command will:
 		}
 
 		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolXcode})
-
-		// Best-effort: registry write failure must not fail the activate.
-		if home, homeErr := os.UserHomeDir(); homeErr == nil {
-			configFile := filepath.Join(home, ".bitrise-xcelerate", "config.json")
-			if mErr := refresh.Mark(home, refresh.ToolXcelerate, configFile, configcommon.GetCLIVersion(logger)); mErr != nil {
-				logger.Debugf("refresh registry mark for xcelerate failed (non-fatal): %s", mErr)
-			}
-		}
 
 		return nil
 	},

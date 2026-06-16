@@ -13,7 +13,6 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -71,11 +70,16 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolGradle})
 
-		// Best-effort: registry write failure must not fail the activate.
+		// Best-effort: sidecar write failure must not fail the activate.
 		if home, homeErr := os.UserHomeDir(); homeErr == nil {
 			initFile := filepath.Join(gradleHome, "init.d", "bitrise-build-cache.init.gradle.kts")
-			if err := refresh.Mark(home, refresh.ToolGradle, initFile, configcommon.GetCLIVersion(logger)); err != nil {
-				logger.Debugf("refresh registry mark for gradle failed (non-fatal): %s", err)
+			if err := gradleconfig.WriteSidecar(home, gradleconfig.Sidecar{
+				InitScriptPath:   initFile,
+				CacheEnabled:     activateGradleParams.Cache.Enabled,
+				CachePushEnabled: activateGradleParams.Cache.PushEnabled,
+				AnalyticsEnabled: activateGradleParams.Analytics.Enabled,
+			}); err != nil {
+				logger.Debugf("gradle sidecar write failed (non-fatal): %s", err)
 			}
 		}
 

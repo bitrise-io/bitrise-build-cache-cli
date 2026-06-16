@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -311,6 +312,10 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 		require.Len(t, cmdMock.CombinedOutputCalls(), 2)
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
 		assert.Equal(t, expected, actual)
 	})
 
@@ -363,6 +368,10 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 		require.Len(t, cmdMock.CombinedOutputCalls(), 2)
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
 		assert.Equal(t, expected, actual)
 	})
 
@@ -412,6 +421,10 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
 		assert.Equal(t, expected, actual)
 	})
 
@@ -457,6 +470,10 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
 		assert.Equal(t, expected, actual)
 	})
 
@@ -503,6 +520,10 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
 		assert.Equal(t, expected, actual)
 	})
 
@@ -550,6 +571,10 @@ func TestConfig_NewConfig(t *testing.T) {
 			},
 		}
 
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
+		actual.ConfigVersion = ""
+		actual.WrittenAt = time.Time{}
 		assert.Equal(t, expected, actual)
 	})
 

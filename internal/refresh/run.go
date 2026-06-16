@@ -4,13 +4,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-func OnBump(logger log.Logger, home, previousVersion, currentVersion string) error {
-	reg, err := Load(home)
-	if err != nil {
-		return err
-	}
-
-	Notify(logger, previousVersion, currentVersion, reg.SortedEntries())
-
-	return nil
+// OnBump scans the per-tool configs and writes a re-activate nudge for any
+// tool whose persisted config schema major-version trails the CLI's current
+// version. Called from the version-check PersistentPreRun on a CLI bump.
+func OnBump(logger log.Logger, home string) {
+	Notify(logger, Scan(home))
 }
