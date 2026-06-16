@@ -21,7 +21,7 @@ func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 		return "", fmt.Errorf("create LaunchAgents dir: %w", err)
 	}
 
-	if err := os.MkdirAll(paths.LogDir(), 0o755); err != nil {
+	if err := os.MkdirAll(paths.DaemonLogDir(), 0o755); err != nil {
 		return "", fmt.Errorf("create log dir: %w", err)
 	}
 

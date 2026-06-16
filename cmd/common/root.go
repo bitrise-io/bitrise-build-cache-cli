@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/versioncheck"
 )
 
@@ -43,7 +44,6 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 	},
 }
 
-// ShouldSkipVersionCheck excludes subcommands that fire many times per build (each version check is mkdir + tmpfile + marshal + rename).
 func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	switch cmd.Name() {
 	case "version", "help", "completion":
@@ -59,7 +59,6 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	}
 }
 
-// RunVersionCheck must be gated on ShouldSkipVersionCheck. Cobra runs only the closest ancestor's PersistentPreRun.
 func RunVersionCheck(cmd *cobra.Command) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -76,20 +75,8 @@ func RunVersionCheck(cmd *cobra.Command) {
 		Home:           home,
 		NoUpdateCheck:  NoUpdateCheck,
 		Logger:         logger,
-		IsCI:           isRunningOnCI(),
+		IsCI:           configcommon.DetectCIProvider(utils.AllEnvs()) != "",
 	})
-}
-
-func isRunningOnCI() bool {
-	if v, ok := os.LookupEnv("CI"); ok && v != "" && v != "0" && v != "false" {
-		return true
-	}
-
-	if _, ok := os.LookupEnv("BITRISE_BUILD_NUMBER"); ok {
-		return true
-	}
-
-	return false
 }
 
 func Execute() {
@@ -106,5 +93,5 @@ func Execute() {
 func init() {
 	RootCmd.PersistentFlags().BoolVarP(&IsDebugLogMode, "debug", "d", false, "Enable debug logging mode")
 	RootCmd.PersistentFlags().BoolVar(&NoUpdateCheck, "no-update-check", false,
-		"Skip the GitHub release lookup that nudges when a newer CLI version is available")
+		"Suppress the new-release nudge")
 }

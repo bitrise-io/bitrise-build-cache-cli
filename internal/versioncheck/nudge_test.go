@@ -108,7 +108,9 @@ func TestIsBehind_truthTable(t *testing.T) {
 		{"devel", "2.8.5", false}, // local dev builds never nudge
 		{"", "2.8.5", false},      // safety: empty current
 		{"2.8.5", "", false},      // safety: empty latest
-		{"2.9.0", "2.8.5", true},  // downgrades count as "behind" for nudge purposes
+		{"2.9.0", "2.8.5", false}, // rolled-back/local-ahead binary must NOT nudge
+		{"2.8.4-rc1", "2.8.4", true},
+		{"not-a-version", "2.8.5", false}, // invalid semver: nudge suppressed
 	}
 
 	for _, tc := range cases {

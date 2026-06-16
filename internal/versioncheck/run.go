@@ -96,7 +96,6 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	return result, nil
 }
 
-// RunOnce fires at most once per process.
 func RunOnce(ctx context.Context, opts Options) (Result, error) {
 	var (
 		res Result
