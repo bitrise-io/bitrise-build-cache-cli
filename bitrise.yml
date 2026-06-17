@@ -1092,13 +1092,6 @@ workflows:
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
-        title: Build CLI
-        inputs:
-        - content: |-
-            set -exo pipefail
-            go build -o bitrise-build-cache-cli
-            cp bitrise-build-cache-cli "$BITRISE_DEPLOY_DIR/bitrise-build-cache-cli-host"
-    - script:
         title: daemon install + register asserts
         inputs:
         - content: |-
