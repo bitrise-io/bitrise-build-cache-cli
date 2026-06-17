@@ -442,7 +442,7 @@ func (h *StorageHelper) parseCcacheStats(ctx context.Context) (ccacheanalytics.C
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("ccache binary not found: %w", err)
 	}
 
-	statsData, _, _, err := (exec.ExecRunner{}).Run(ctx, ccachePath, "-v", "-v", "-s")
+	statsData, _, err := (exec.ExecRunner{}).RunCheck(ctx, ccachePath, "-v", "-v", "-s")
 	if err != nil {
 		return ccacheanalytics.CcacheStats{}, fmt.Errorf("run ccache -v -v -s: %w", err)
 	}
@@ -461,7 +461,7 @@ func (h *StorageHelper) parseCcacheConfig(ctx context.Context) ([]ccacheanalytic
 		return nil, fmt.Errorf("ccache binary not found: %w", err)
 	}
 
-	configData, _, _, err := (exec.ExecRunner{}).Run(ctx, ccachePath, "--show-config")
+	configData, _, err := (exec.ExecRunner{}).RunCheck(ctx, ccachePath, "--show-config")
 	if err != nil {
 		return nil, fmt.Errorf("run ccache --show-config: %w", err)
 	}
@@ -552,7 +552,7 @@ func createKVClient(
 
 func newCommandFunc(ctx context.Context) configcommon.CommandFunc {
 	return func(name string, args ...string) (string, error) {
-		stdout, _, _, err := (exec.ExecRunner{}).Run(ctx, name, args...)
+		stdout, _, err := (exec.ExecRunner{}).RunCheck(ctx, name, args...)
 		if err != nil {
 			return stdout, fmt.Errorf("run %s: %w", name, err)
 		}

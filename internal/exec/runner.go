@@ -16,6 +16,7 @@ import (
 // Runner runs a binary with arguments and returns stdout, stderr, exit code, and err.
 // ExitCode is -1 when the command never started; for non-zero exits err is nil and
 // ExitCode carries the value so callers can branch on supervisor-specific codes.
+// Callers that want "any non-zero is a failure" should use RunCheck instead.
 type Runner interface {
 	Run(ctx context.Context, bin string, args ...string) (stdout string, stderr string, exitCode int, err error)
 }
@@ -27,6 +28,20 @@ type ExecRunner struct {
 	// PinLocale forces LC_ALL=C / LANG=C so external command error strings stay English.
 	// Off by default; opt in when callers substring-match supervisor output.
 	PinLocale bool
+}
+
+// RunCheck wraps Run and folds any non-zero exit into err.
+func (r ExecRunner) RunCheck(ctx context.Context, bin string, args ...string) (string, string, error) {
+	stdout, stderr, code, err := r.Run(ctx, bin, args...)
+	if err != nil {
+		return stdout, stderr, err
+	}
+
+	if code != 0 {
+		return stdout, stderr, fmt.Errorf("%s exited %d: %s", bin, code, strings.TrimSpace(stderr))
+	}
+
+	return stdout, stderr, nil
 }
 
 // Run executes bin with args. See Runner contract for return semantics.

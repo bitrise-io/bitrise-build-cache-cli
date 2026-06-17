@@ -41,7 +41,7 @@ func (e *EnvExporter) Export(key, value string) {
 }
 
 func (e *EnvExporter) exportViaEnvman(key, value string) {
-	stdout, stderr, _, err := (exec.ExecRunner{}).Run(context.Background(), "envman", "add", "--key", key, "--value", value)
+	stdout, stderr, err := (exec.ExecRunner{}).RunCheck(context.Background(), "envman", "add", "--key", key, "--value", value)
 	if err != nil {
 		e.logger.Debugf("Failed to export %s via envman: %s (%v)", key, stdout+stderr, err)
 	}

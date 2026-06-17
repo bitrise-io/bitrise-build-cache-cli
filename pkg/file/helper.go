@@ -204,7 +204,7 @@ func validateArgs(key, filePath string) error {
 }
 
 func defaultCommandFunc(name string, v ...string) (string, error) {
-	stdout, _, _, err := (exec.ExecRunner{}).Run(context.Background(), name, v...)
+	stdout, _, err := (exec.ExecRunner{}).RunCheck(context.Background(), name, v...)
 	if err != nil {
 		return stdout, fmt.Errorf("run %s: %w", name, err)
 	}

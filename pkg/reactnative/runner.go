@@ -264,7 +264,7 @@ func (r *Runner) zeroCcacheStats(ctx context.Context) {
 		return
 	}
 
-	if _, _, _, err := (exec.ExecRunner{}).Run(ctx, path, "-z"); err != nil {
+	if _, _, err := (exec.ExecRunner{}).RunCheck(ctx, path, "-z"); err != nil {
 		r.logger.TWarnf("Failed to reset ccache stats: %v", err)
 	}
 }

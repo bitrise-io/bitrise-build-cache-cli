@@ -64,10 +64,17 @@ func guiTarget() string {
 	return "gui/" + strconv.Itoa(os.Getuid())
 }
 
+const launchctlBootoutNotLoaded = 5
+
 // bootstrap pre-boots out so a rerun picks up the new executable path on CLI upgrades.
 func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath string) error {
-	if _, _, _, runErr := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath); runErr != nil {
+	_, stderr, code, runErr := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath)
+	if runErr != nil {
 		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
+	}
+
+	if code != 0 && code != launchctlBootoutNotLoaded {
+		return fmt.Errorf("launchctl bootout (pre-bootstrap) exited %d: %s", code, strings.TrimSpace(stderr))
 	}
 
 	_, stderr, code, err := b.Runner.Run(ctx, launchctlBin, "bootstrap", guiTarget(), plistPath)
