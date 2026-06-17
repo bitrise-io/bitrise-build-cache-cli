@@ -47,7 +47,7 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	switch cmd.Name() {
-	case "version", "help", "completion":
+	case "version", "help", "completion", "update":
 		return true
 	case
 		"xcodebuild",
