@@ -84,7 +84,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	authConfig, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {
-		return fmt.Errorf(FmtErrorEnableForGradle, err)
+		return fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, err))
 	}
 
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
