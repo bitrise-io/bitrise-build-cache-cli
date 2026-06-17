@@ -137,6 +137,8 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 	}
 
 	if err := os.Chmod(tmp.Name(), 0o700); err != nil { //nolint:gosec // intentional: script must be readable + executable
+		_ = os.Remove(tmp.Name())
+
 		return "", fmt.Errorf("chmod installer temp: %w", err)
 	}
 
