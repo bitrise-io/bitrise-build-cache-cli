@@ -68,16 +68,14 @@ func Notify(logger log.Logger, samples []toolconfig.Sample) {
 	}
 }
 
-// needsNudge reports whether stored MAJOR < current MAJOR.
-// Empty stored is treated as `v0.0.0` so the very first major bump (1.0.0 →
-// 2.0.0) leaves pre-versioned configs alone but a future 2.0.0 nudges them.
+// needsNudge reports whether stored MAJOR < current MAJOR. Configs that
+// predate ConfigVersion are treated as v1.0.0 so the first bump above 1.x
+// nudges them; the 1.x → 1.y transition leaves them alone.
 func needsNudge(stored, current string) bool {
 	storedV := ensureSemverPrefix(stored)
 	currentV := ensureSemverPrefix(current)
 
 	if !semver.IsValid(storedV) {
-		// Older configs predate ConfigVersion; treat as the baseline (v1.0.0
-		// equivalent) so the first MAJOR bump above 1 nudges them.
 		storedV = "v1.0.0"
 	}
 
