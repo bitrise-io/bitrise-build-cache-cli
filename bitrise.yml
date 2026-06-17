@@ -1174,6 +1174,13 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
+            # Benchmark "baseline" phase disables cache → no CompilationCacheMetrics
+            # is emitted by xcodebuild. Skip the assert in that case so the e2e
+            # workflow tracks the daemon-install flow, not BE phase rotation.
+            if [[ "$BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE" == "baseline" ]]; then
+              echo "OK: baseline benchmark phase — skipping CompilationCacheMetrics assert"
+              exit 0
+            fi
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - script:
         title: daemon uninstall + cleanup asserts
