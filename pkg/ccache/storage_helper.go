@@ -553,7 +553,10 @@ func createKVClient(
 func newCommandFunc(ctx context.Context) configcommon.CommandFunc {
 	return func(name string, args ...string) (string, error) {
 		stdout, _, _, err := (exec.ExecRunner{}).Run(ctx, name, args...)
+		if err != nil {
+			return stdout, fmt.Errorf("run %s: %w", name, err)
+		}
 
-		return stdout, err
+		return stdout, nil
 	}
 }
