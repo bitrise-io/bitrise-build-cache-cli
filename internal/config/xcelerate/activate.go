@@ -99,7 +99,7 @@ func Activate(
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
 
-	if err := addXcelerateCommandToPathWithScriptWrapper(config, osProxy, logger, envs); err != nil {
+	if err := addXcelerateCommandToPathWithScriptWrapper(config, osProxy, logger, envs); err != nil { //nolint:contextcheck // envman export inside is fire-and-forget; ctx propagation would cascade through TemplateInventory/ApplyBenchmarkPhase for no operational gain
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 

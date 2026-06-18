@@ -1,0 +1,83 @@
+package daemon
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"text/template"
+)
+
+const unitTemplate = `[Unit]
+Description=Bitrise Build Cache — {{.Description}}
+After=default.target
+
+[Service]
+Type=simple
+ExecStart={{.ExecStart}}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`
+
+type unitData struct {
+	Description string
+	ExecStart   string
+}
+
+func GenerateUnit(svc Service, executable string) (string, error) {
+	if executable == "" {
+		return "", fmt.Errorf("executable path is empty")
+	}
+
+	args := append([]string{executable}, svc.Args...)
+
+	escaped := make([]string, 0, len(args))
+	for _, a := range args {
+		escaped = append(escaped, escapeForUnit(a))
+	}
+
+	tmpl, err := template.New("unit").Parse(unitTemplate)
+	if err != nil {
+		return "", fmt.Errorf("parse unit template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, unitData{
+		Description: svc.Name,
+		ExecStart:   strings.Join(escaped, " "),
+	}); err != nil {
+		return "", fmt.Errorf("render unit template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+func escapeForUnit(s string) string {
+	if s == "" {
+		return `""`
+	}
+
+	if !needsUnitQuoting(s) {
+		return s
+	}
+
+	return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
+}
+
+func needsUnitQuoting(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '/' || r == '-' || r == '_' || r == '.' || r == '=' || r == ':':
+			continue
+		default:
+			return true
+		}
+	}
+
+	return false
+}

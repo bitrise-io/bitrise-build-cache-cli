@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -204,8 +204,10 @@ func validateArgs(key, filePath string) error {
 }
 
 func defaultCommandFunc(name string, v ...string) (string, error) {
-	//nolint:noctx // configcommon.CommandFunc has no context parameter; callers can inject their own.
-	output, err := exec.Command(name, v...).Output()
+	stdout, _, err := (exec.ExecRunner{}).RunCheck(context.Background(), name, v...)
+	if err != nil {
+		return stdout, fmt.Errorf("run %s: %w", name, err)
+	}
 
-	return string(output), err
+	return stdout, nil
 }

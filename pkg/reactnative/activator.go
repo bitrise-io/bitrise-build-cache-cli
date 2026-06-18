@@ -97,7 +97,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return fmt.Errorf("install dependencies: %w", err)
 	}
 
-	exportInstallDirToPath(a.logger)
+	exportInstallDirToPath(a.logger) //nolint:contextcheck // envman export inside is fire-and-forget
 
 	if a.gradle != nil {
 		a.logger.TInfof("Activating Gradle build cache...")
@@ -119,7 +119,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
-	a.exportEASWorkingDirIfCI()
+	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
 
 	if err := saveMultiplatformConfig(a.debugLogging); err != nil {
 		return err
