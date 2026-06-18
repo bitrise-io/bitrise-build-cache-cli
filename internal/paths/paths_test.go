@@ -37,6 +37,7 @@ func TestPaths_bitriseRoot(t *testing.T) {
 
 	assert.Equal(t, "/h/.bitrise", p.BitriseRoot())
 	assert.Equal(t, "/h/.bitrise/bin", p.BitriseBinDir())
+	assert.Equal(t, "/h/.bitrise/bin/bitrise-build-cache", p.BitriseBinFile("bitrise-build-cache"))
 	assert.Equal(t, "/h/.bitrise/cache/ccache", p.BitriseCacheDir("ccache"))
 	assert.Equal(t, "/h/.bitrise/cache/reactnative/config.json", p.BitriseCacheFile("reactnative", "config.json"))
 }
