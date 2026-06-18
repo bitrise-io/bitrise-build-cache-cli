@@ -11,12 +11,13 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 const (
-	reactNativePath = ".bitrise/cache/reactnative/"
-	ConfigFileName  = "config.json"
+	reactNativeToolName = "reactnative"
+	ConfigFileName      = "config.json"
 
 	ErrFmtOpenConfigFile   = "open react-native config file (%s): %w"
 	ErrFmtDecodeConfigFile = "decode react-native config file (%s): %w"
@@ -32,22 +33,26 @@ type Config struct {
 	Enabled bool `json:"enabled"`
 }
 
+func relReactNativeDir() string {
+	return filepath.Join(paths.BitriseRootRelative, "cache", reactNativeToolName)
+}
+
 func DirPath(osProxy utils.OsProxy) string {
 	if home, err := osProxy.UserHomeDir(); err == nil {
-		return filepath.Join(home, reactNativePath)
+		return paths.FromHome(home).BitriseCacheDir(reactNativeToolName)
 	}
 
 	if wd, err := osProxy.Getwd(); err == nil {
-		return filepath.Join(wd, reactNativePath)
+		return filepath.Join(wd, relReactNativeDir())
 	}
 
 	if exe, err := osProxy.Executable(); err == nil {
 		if dir := filepath.Dir(exe); dir != "" {
-			return filepath.Join(dir, reactNativePath)
+			return filepath.Join(dir, relReactNativeDir())
 		}
 	}
 
-	return filepath.Join(".", reactNativePath)
+	return filepath.Join(".", relReactNativeDir())
 }
 
 func PathFor(osProxy utils.OsProxy, subpath string) string {

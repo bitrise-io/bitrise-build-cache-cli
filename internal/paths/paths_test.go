@@ -31,3 +31,27 @@ func TestPaths_supervisorArtifacts(t *testing.T) {
 	assert.Equal(t, filepath.Join("/h", ".local/state/bitrise-build-cache/logs", "ccache-helper.err.log"),
 		p.DaemonStderrPath("ccache-helper"))
 }
+
+func TestPaths_bitriseRoot(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.bitrise", p.BitriseRoot())
+	assert.Equal(t, "/h/.bitrise/bin", p.BitriseBinDir())
+	assert.Equal(t, "/h/.bitrise/cache/ccache", p.BitriseCacheDir("ccache"))
+	assert.Equal(t, "/h/.bitrise/cache/reactnative/config.json", p.BitriseCacheFile("reactnative", "config.json"))
+}
+
+func TestPaths_xcelerate(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.bitrise-xcelerate", p.XcelerateRoot())
+	assert.Equal(t, "/h/.bitrise-xcelerate/config.json", p.XcelerateConfigFile())
+	assert.Equal(t, "/h/.bitrise-xcelerate/bin", p.XcelerateBinDir())
+	assert.Equal(t, "/h/.bitrise-xcelerate/bin/xcodebuild", p.XcelerateBinFile("xcodebuild"))
+}
+
+func TestPaths_proxySocket(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/tmp/xcelerate-proxy.sock", p.ProxySocketPath("/tmp"))
+}
