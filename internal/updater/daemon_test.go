@@ -3,7 +3,6 @@
 package updater
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,10 +31,4 @@ func TestDaemonInstalled_detectsSystemdUnit(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(unitDir, "bitrise-build-cache-ccache-helper.service"), []byte("[Unit]\n"), 0o644))
 
 	assert.True(t, DaemonInstalled(home))
-}
-
-func TestPrintDaemonRestartHint_mentionsRestartCommand(t *testing.T) {
-	var buf bytes.Buffer
-	PrintDaemonRestartHint(loggerWithBuffer(&buf))
-	assert.Contains(t, buf.String(), "daemon restart")
 }

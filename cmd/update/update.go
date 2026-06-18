@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/updater"
 )
 
@@ -54,7 +55,12 @@ After a successful manual upgrade, prints a hint to restart the daemon (` + "`bi
 			}
 
 			if home, homeErr := os.UserHomeDir(); homeErr == nil && updater.DaemonInstalled(home) {
-				updater.PrintDaemonRestartHint(logger)
+				logger.Infof("Restarting daemon to pick up the new binary")
+				if _, stderr, runErr := (exec.ExecRunner{}).RunCheck(cmd.Context(), exe, "daemon", "restart"); runErr != nil {
+					logger.Warnf("Daemon restart failed: %v — run `bitrise-build-cache daemon restart` manually. %s", runErr, stderr)
+				} else {
+					logger.Donef("Daemon restarted")
+				}
 			}
 		case updater.InstallUnknown:
 			logger.Warnf("Could not classify the install method. Reinstall manually:")
