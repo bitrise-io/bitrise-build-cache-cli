@@ -121,6 +121,11 @@ func (p Paths) BitriseBinDir() string {
 	return filepath.Join(p.BitriseRoot(), bitriseBinSubdir)
 }
 
+// BitriseBinFile returns a file path under BitriseBinDir.
+func (p Paths) BitriseBinFile(name string) string {
+	return filepath.Join(p.BitriseBinDir(), name)
+}
+
 // BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.
 func (p Paths) BitriseCacheDir(tool string) string {
 	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir, tool)
