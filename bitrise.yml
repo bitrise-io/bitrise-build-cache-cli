@@ -1127,12 +1127,19 @@ workflows:
             ../bitrise-build-cache-cli daemon install
             echo "OK: install is idempotent"
 
-            # ----- daemon info smoke test + socket capture -----
+            # ----- daemon info smoke test + socket capture (human + JSON, must agree) -----
             info_out="$(../bitrise-build-cache-cli daemon info)"
             echo "$info_out"
             proxy_socket="$(echo "$info_out" | awk -F': *' '/xcelerate-proxy/ {print $2}')"
             [[ -n "$proxy_socket" ]] || { echo "FAIL: daemon info did not print xcelerate-proxy socket"; exit 1; }
             [[ "$proxy_socket" != "<not configured"* ]] || { echo "FAIL: socket reported as not configured"; exit 1; }
+
+            info_json="$(../bitrise-build-cache-cli daemon info --json)"
+            echo "$info_json"
+            proxy_socket_json="$(echo "$info_json" | jq -er '.xcelerateProxy')"
+            [[ "$proxy_socket" == "$proxy_socket_json" ]] || { echo "FAIL: daemon info JSON ($proxy_socket_json) disagrees with text ($proxy_socket)"; exit 1; }
+            echo "$info_json" | jq -er '.ccacheHelper' >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelper field"; exit 1; }
+
             envman add --key PROXY_SOCKET --value "$proxy_socket"
 
             # ----- wait for the supervised proxy to bind the socket (up to 30s) -----

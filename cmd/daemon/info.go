@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,6 +12,9 @@ import (
 	xcelerateconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
+
+//nolint:gochecknoglobals
+var infoJSON bool
 
 //nolint:gochecknoglobals
 var infoCmd = &cobra.Command{
@@ -29,6 +33,19 @@ var infoCmd = &cobra.Command{
 
 		proxyPath := readXcelerateSocketPath(osProxy, decoder)
 		ccachePath := readCcacheSocketPath(osProxy, decoder)
+
+		if infoJSON {
+			payload := struct {
+				XcelerateProxy string `json:"xcelerateProxy"`
+				CcacheHelper   string `json:"ccacheHelper"`
+			}{XcelerateProxy: proxyPath, CcacheHelper: ccachePath}
+
+			if err := json.NewEncoder(out).Encode(payload); err != nil {
+				return fmt.Errorf("encode info json: %w", err)
+			}
+
+			return nil
+		}
 
 		fmt.Fprintf(out, "xcelerate-proxy: %s\n", proxyPath)
 		fmt.Fprintf(out, "ccache-helper:   %s\n", ccachePath)
@@ -62,5 +79,6 @@ func readCcacheSocketPath(osProxy utils.OsProxy, decoder utils.DecoderFactory) s
 }
 
 func init() {
+	infoCmd.Flags().BoolVar(&infoJSON, "json", false, "Emit socket paths as JSON (xcelerateProxy / ccacheHelper) instead of human-readable text.")
 	daemonCmd.AddCommand(infoCmd)
 }
