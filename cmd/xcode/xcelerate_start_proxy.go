@@ -7,7 +7,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
@@ -92,14 +94,22 @@ var (
 
 			initialLogger.TInfof("socketPath: %s", config.ProxySocketPath)
 
-			listener, err := (&net.ListenConfig{}).Listen(cmd.Context(), "unix", config.ProxySocketPath)
+			signalCtx, stopSignals := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
+			defer stopSignals()
+
+			listener, err := (&net.ListenConfig{}).Listen(signalCtx, "unix", config.ProxySocketPath)
 			if err != nil {
 				return fmt.Errorf("failed to listen on unix socket: %w", err)
 			}
 			defer listener.Close()
 
+			go func() {
+				<-signalCtx.Done()
+				_ = listener.Close()
+			}()
+
 			return StartXcodeCacheProxy(
-				cmd.Context(),
+				signalCtx,
 				config,
 				allEnvs,
 				func(name string, v ...string) (string, error) {

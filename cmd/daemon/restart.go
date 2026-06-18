@@ -13,11 +13,10 @@ import (
 )
 
 //nolint:gochecknoglobals
-var uninstallCmd = &cobra.Command{
-	Use:   "uninstall",
-	Short: "Unregister the Bitrise Build Cache services from the OS supervisor",
-	Long: `uninstall stops and removes the LaunchAgents (macOS) or systemd --user units (Linux) installed by ` +
-		"`daemon install`" + `. Idempotent — missing services / files are not errors.`,
+var restartCmd = &cobra.Command{
+	Use:          "restart",
+	Short:        "Stop and start the Bitrise Build Cache background services",
+	Long:         `restart is shorthand for ` + "`daemon down`" + ` followed by ` + "`daemon up`" + `. Errors with a "run install first" hint if the supervisor config files are missing from disk.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -27,23 +26,19 @@ var uninstallCmd = &cobra.Command{
 			return err
 		}
 
-		result, err := daemonpkg.Uninstall(cmd.Context(), backend, paths, daemonpkg.DefaultServices())
+		result, err := daemonpkg.Restart(cmd.Context(), backend, paths, daemonpkg.DefaultServices())
 		if err != nil {
-			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) {
+			if errors.Is(err, daemonpkg.ErrNotInstalled) {
 				return err //nolint:wrapcheck // sentinel
 			}
 
 			permhint.PrintIfApplicable(logger, err)
 
-			return fmt.Errorf("uninstall daemon: %w", err)
+			return fmt.Errorf("daemon restart: %w", err)
 		}
 
 		for _, st := range result.Statuses {
-			if st.Removed {
-				logger.Donef("%s — stopped and removed %s", st.Service.Name, st.ConfigPath)
-			} else {
-				logger.Infof("  %s — nothing to remove (config not present)", st.Service.Name)
-			}
+			logger.Donef("%s — restarted (%s)", st.Service.Name, result.BackendName)
 		}
 
 		return nil
@@ -51,5 +46,5 @@ var uninstallCmd = &cobra.Command{
 }
 
 func init() {
-	daemonCmd.AddCommand(uninstallCmd)
+	daemonCmd.AddCommand(restartCmd)
 }

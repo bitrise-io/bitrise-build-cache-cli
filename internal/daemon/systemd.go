@@ -46,6 +46,18 @@ func (b SystemdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 	return path, nil
 }
 
+func (b SystemdBackend) Start(ctx context.Context, _ Paths, svc Service) error {
+	if err := b.daemonReload(ctx); err != nil {
+		return err
+	}
+
+	return b.enableNow(ctx, svc.UnitName())
+}
+
+func (b SystemdBackend) Stop(ctx context.Context, _ Paths, svc Service) error {
+	return b.stop(ctx, svc.UnitName())
+}
+
 func (b SystemdBackend) Uninstall(ctx context.Context, paths Paths, svc Service) (string, bool, error) {
 	path := paths.UnitPath(svc.UnitName())
 
@@ -91,6 +103,25 @@ func (b SystemdBackend) enableNow(ctx context.Context, unitName string) error {
 	}
 
 	return nil
+}
+
+// stop treats "Unit ... not loaded" as success so Stop is idempotent.
+func (b SystemdBackend) stop(ctx context.Context, unitName string) error {
+	_, stderr, code, err := b.Runner.Run(ctx, systemctlBin, "--user", "stop", unitName+".service")
+	if err != nil {
+		return fmt.Errorf("systemctl --user stop %s: %w", unitName, err)
+	}
+
+	if code == 0 {
+		return nil
+	}
+
+	combined := strings.TrimSpace(stderr)
+	if strings.Contains(combined, "not loaded") || strings.Contains(combined, "does not exist") || strings.Contains(combined, "no such file") {
+		return nil
+	}
+
+	return fmt.Errorf("systemctl --user stop %s exited %d: %s", unitName, code, combined)
 }
 
 // disableNow treats "does not exist" stderr as success so uninstall is idempotent.

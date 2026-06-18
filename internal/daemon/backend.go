@@ -13,6 +13,8 @@ var ErrUnsupportedPlatform = errors.New("daemon install is only supported on mac
 type Backend interface {
 	Install(ctx context.Context, paths Paths, svc Service, executable string) (configPath string, err error)
 	Uninstall(ctx context.Context, paths Paths, svc Service) (configPath string, removed bool, err error)
+	Start(ctx context.Context, paths Paths, svc Service) error
+	Stop(ctx context.Context, paths Paths, svc Service) error
 	Name() string
 }
 
