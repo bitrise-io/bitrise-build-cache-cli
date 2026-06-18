@@ -41,7 +41,7 @@ func (s *stubOpener) Open(_ context.Context, url string) error {
 	return s.err
 }
 
-func TestBrowse_workspaceFromEnv_buildsListURLWithSourceLocal(t *testing.T) {
+func TestBrowse_workspaceFromEnv_buildsListURLWithCIProviderUnknown(t *testing.T) {
 	op := &stubOpener{}
 	b := &Browser{Logger: newLogger(), Opener: op}
 
@@ -50,11 +50,11 @@ func TestBrowse_workspaceFromEnv_buildsListURLWithSourceLocal(t *testing.T) {
 		BaseURL: "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations?source=local", got)
+	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations?ci_provider=unknown", got)
 	assert.Equal(t, got, op.seenURL)
 }
 
-func TestBrowse_invocationID_deepLinks_noSourceFilter(t *testing.T) {
+func TestBrowse_invocationID_deepLinks_noFilter(t *testing.T) {
 	op := &stubOpener{}
 	b := &Browser{Logger: newLogger(), Opener: op}
 
@@ -65,7 +65,38 @@ func TestBrowse_invocationID_deepLinks_noSourceFilter(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations/inv_xyz", got)
-	assert.NotContains(t, got, "source=")
+	assert.NotContains(t, got, "ci_provider=")
+}
+
+func TestBrowse_authConfigFallback_resolvesWorkspaceID(t *testing.T) {
+	op := &stubOpener{}
+	b := &Browser{
+		Logger: newLogger(),
+		Opener: op,
+		WorkspaceFromAuth: func(_ map[string]string) (string, error) {
+			return "ws_from_auth", nil
+		},
+	}
+
+	got, err := b.Open(context.Background(), Params{
+		Envs:    map[string]string{},
+		BaseURL: "https://app.bitrise.io",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_from_auth/invocations?ci_provider=unknown", got)
+}
+
+func TestBrowse_authConfigFallback_errorFallsThroughToSentinel(t *testing.T) {
+	b := &Browser{
+		Logger: newLogger(),
+		Opener: &stubOpener{},
+		WorkspaceFromAuth: func(_ map[string]string) (string, error) {
+			return "", errors.New("no config on disk")
+		},
+	}
+
+	_, err := b.Open(context.Background(), Params{Envs: map[string]string{}})
+	require.ErrorIs(t, err, ErrWorkspaceNotConfigured)
 }
 
 func TestBrowse_printOnlySkipsOpener(t *testing.T) {
@@ -83,7 +114,13 @@ func TestBrowse_printOnlySkipsOpener(t *testing.T) {
 }
 
 func TestBrowse_missingWorkspaceReturnsSentinel(t *testing.T) {
-	b := &Browser{Logger: newLogger(), Opener: &stubOpener{}}
+	b := &Browser{
+		Logger: newLogger(),
+		Opener: &stubOpener{},
+		WorkspaceFromAuth: func(_ map[string]string) (string, error) {
+			return "", nil
+		},
+	}
 
 	_, err := b.Open(context.Background(), Params{Envs: map[string]string{}})
 	require.Error(t, err)
