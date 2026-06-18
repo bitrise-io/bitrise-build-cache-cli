@@ -21,8 +21,29 @@ const (
 	// SystemdUserDirRelative is Linux's per-user systemd unit dir.
 	SystemdUserDirRelative = ".config/systemd/user"
 
+	// BitriseRootRelative is the shared per-user dir under $HOME holding the cache root + stable CLI binary.
+	BitriseRootRelative = ".bitrise"
+
+	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
+	XcelerateRootRelative = ".bitrise-xcelerate"
+
+	// ProxySocketName is the xcelerate proxy unix-socket filename (lives under the OS temp dir).
+	ProxySocketName = "xcelerate-proxy.sock"
+
 	// daemonLogsSubdir is the daemon supervisor stdout/stderr log dir.
 	daemonLogsSubdir = "logs"
+
+	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
+	bitriseBinSubdir = "bin"
+
+	// bitriseCacheSubdir is the per-tool cache/marker root used by activate, refresh, and child-stats.
+	bitriseCacheSubdir = "cache"
+
+	// xcelerateBinSubdir holds the xcelerate wrapper scripts (xcodebuild / xcrun) and CLI copy.
+	xcelerateBinSubdir = "bin"
+
+	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
+	xcelerateConfigFile = "config.json"
 )
 
 // Paths resolves on-disk locations rooted at a single home directory.
@@ -88,4 +109,49 @@ func (p Paths) DaemonStdoutPath(service string) string {
 // DaemonStderrPath returns the supervisor stderr log file path for a service.
 func (p Paths) DaemonStderrPath(service string) string {
 	return filepath.Join(p.DaemonLogDir(), service+".err.log")
+}
+
+// BitriseRoot is the absolute path of the per-user ~/.bitrise dir.
+func (p Paths) BitriseRoot() string {
+	return filepath.Join(p.Home, BitriseRootRelative)
+}
+
+// BitriseBinDir is the absolute path of ~/.bitrise/bin (stable CLI copy).
+func (p Paths) BitriseBinDir() string {
+	return filepath.Join(p.BitriseRoot(), bitriseBinSubdir)
+}
+
+// BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.
+func (p Paths) BitriseCacheDir(tool string) string {
+	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir, tool)
+}
+
+// BitriseCacheFile returns a file path under BitriseCacheDir(tool).
+func (p Paths) BitriseCacheFile(tool, name string) string {
+	return filepath.Join(p.BitriseCacheDir(tool), name)
+}
+
+// XcelerateRoot is the absolute path of ~/.bitrise-xcelerate.
+func (p Paths) XcelerateRoot() string {
+	return filepath.Join(p.Home, XcelerateRootRelative)
+}
+
+// XcelerateConfigFile returns ~/.bitrise-xcelerate/config.json.
+func (p Paths) XcelerateConfigFile() string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateConfigFile)
+}
+
+// XcelerateBinDir returns ~/.bitrise-xcelerate/bin.
+func (p Paths) XcelerateBinDir() string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateBinSubdir)
+}
+
+// XcelerateBinFile returns a file path under XcelerateBinDir.
+func (p Paths) XcelerateBinFile(name string) string {
+	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
+func (p Paths) ProxySocketPath(tempDir string) string {
+	return filepath.Join(tempDir, ProxySocketName)
 }
