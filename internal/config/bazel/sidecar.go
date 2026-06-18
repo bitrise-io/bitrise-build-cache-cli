@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"time"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
 
@@ -30,18 +30,18 @@ type Sidecar struct {
 }
 
 const (
-	sidecarDirRelative = ".bitrise/cache/bazel"
-	sidecarFileName    = "config.json"
+	bazelToolName   = "bazel"
+	sidecarFileName = "config.json"
 )
 
 // SidecarDirPath returns the directory the sidecar lives in.
 func SidecarDirPath(home string) string {
-	return filepath.Join(home, sidecarDirRelative)
+	return paths.FromHome(home).BitriseCacheDir(bazelToolName)
 }
 
 // SidecarFilePath returns the absolute path of the bazel sidecar.
 func SidecarFilePath(home string) string {
-	return filepath.Join(SidecarDirPath(home), sidecarFileName)
+	return paths.FromHome(home).BitriseCacheFile(bazelToolName, sidecarFileName)
 }
 
 // WriteSidecar persists the bazel sidecar for the given home.
