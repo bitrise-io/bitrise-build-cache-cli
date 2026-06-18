@@ -25,8 +25,3 @@ func TestIsTransientBinaryPath(t *testing.T) {
 	}
 }
 
-func TestErrTransientBinaryPath_mentionsPath(t *testing.T) {
-	err := errTransientBinaryPath("/tmp/bitrise-build-cache")
-	assert.ErrorContains(t, err, "/tmp/bitrise-build-cache")
-	assert.ErrorContains(t, err, "transient path")
-}

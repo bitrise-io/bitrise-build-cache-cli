@@ -25,14 +25,6 @@ var transientBinPrefixes = []string{
 	"/private/tmp/",
 }
 
-func errTransientBinaryPath(exe string) error {
-	return fmt.Errorf(
-		"refusing to register daemon services with a CLI binary under a transient path (%s) — "+
-			"reinstall via `brew install` or `installer.sh -b <stable-dir>` (e.g. ~/.local/bin) and rerun",
-		exe,
-	)
-}
-
 func isTransientBinaryPath(exe string) bool {
 	for _, prefix := range transientBinPrefixes {
 		if strings.HasPrefix(exe, prefix) {
@@ -71,7 +63,13 @@ var installCmd = &cobra.Command{
 		}
 
 		if isTransientBinaryPath(exe) {
-			return errTransientBinaryPath(exe)
+			stable, copyErr := daemonpkg.CopyCLIToStableBin(exe)
+			if copyErr != nil {
+				return fmt.Errorf("copy CLI to stable dir before daemon install: %w", copyErr)
+			}
+
+			logger.Donef("Copied CLI binary to %s (was on a transient path: %s)", stable, exe)
+			exe = stable
 		}
 
 		result, err := daemonpkg.Install(cmd.Context(), backend, paths, daemonpkg.DefaultServices(), exe)
