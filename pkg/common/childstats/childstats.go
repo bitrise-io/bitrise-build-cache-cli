@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
 const (
@@ -384,7 +386,7 @@ func Sweep(ttl time.Duration) error {
 }
 
 func ledgerRoot() string {
-	return filepath.Join(os.Getenv("HOME"), ".bitrise", "cache", "invocations")
+	return paths.FromHome(os.Getenv("HOME")).BitriseCacheDir("invocations")
 }
 
 func readEntry(path string) (Entry, error) {

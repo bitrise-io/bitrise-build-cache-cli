@@ -87,7 +87,7 @@ var installCmd = &cobra.Command{
 
 		switch result.BackendName {
 		case "launchd":
-			logger.Infof("Supervisor stdout/stderr log dir: %s", paths.LogDir())
+			logger.Infof("Supervisor stdout/stderr log dir: %s", paths.DaemonLogDir())
 			logger.Println()
 			logger.Infof("Verify with: launchctl print gui/$UID/io.bitrise.build-cache.xcelerate-proxy")
 		case "systemd":

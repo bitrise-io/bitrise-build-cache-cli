@@ -5,18 +5,20 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
 const stableBinName = "bitrise-build-cache"
 
 // StableBinPath returns ~/.bitrise/bin/bitrise-build-cache.
 func StableBinPath() (string, error) {
-	home, err := os.UserHomeDir()
+	p, err := paths.Default()
 	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
+		return "", fmt.Errorf("resolve stable bin path: %w", err)
 	}
 
-	return filepath.Join(home, ".bitrise", "bin", stableBinName), nil
+	return p.BitriseBinFile(stableBinName), nil
 }
 
 // CopyCLIToStableBin copies src to StableBinPath() with 0o755 perms,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -169,7 +170,7 @@ func NewConfig(ctx context.Context,
 	if proxySocketPath == "" {
 		proxySocketPath = envs["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
 		if proxySocketPath == "" {
-			proxySocketPath = filepath.Join(osProxy.TempDir(), "xcelerate-proxy.sock")
+			proxySocketPath = filepath.Join(osProxy.TempDir(), paths.ProxySocketName)
 			logger.Infof("Using new proxy socket path: %s", proxySocketPath)
 		} else {
 			logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
