@@ -25,6 +25,9 @@ var CacheArgs = map[string]string{
 	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
+	// Need these to have relative paths for cache keys; pulling into a tmp folder would invalidate cache on every build.
+	"CLANG_ENABLE_PREFIX_MAPPING": "YES",
+	"SWIFT_ENABLE_PREFIX_MAPPING": "YES",
 }
 
 var actions = []string{
