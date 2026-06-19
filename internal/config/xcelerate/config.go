@@ -6,12 +6,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -44,19 +46,22 @@ type Params struct {
 // the BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var and written to
 // ~/.local/state/xcelerate/benchmark/benchmark-phase.json during activation.
 type Config struct {
-	ProxyVersion           string `json:"proxyVersion"`
-	ProxySocketPath        string `json:"proxySocketPath"`
-	CLIVersion             string `json:"cliVersion"`
-	WrapperVersion         string `json:"wrapperVersion"`
-	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
-	OriginalXcrunPath      string `json:"originalXcrunPath"`
-	BuildCacheEnabled      bool   `json:"buildCacheEnabled"`
-	BuildCacheSkipFlags    bool   `json:"buildCacheSkipFlags"`
-	BuildCacheEndpoint     string `json:"buildCacheEndpoint"`
-	PushEnabled            bool   `json:"pushEnabled"`
-	DebugLogging           bool   `json:"debugLogging,omitempty"`
-	Silent                 bool   `json:"silent,omitempty"`
-	XcodebuildTimestamps   bool   `json:"xcodebuildTimestamps,omitempty"`
+	ProxyVersion    string `json:"proxyVersion"`
+	ProxySocketPath string `json:"proxySocketPath"`
+	// ConfigVersion is the semver of this config's schema. Refresh nudges only when this bumps.
+	ConfigVersion string `json:"configVersion,omitempty"`
+	// WrittenAt records when the config was last (re-)written by activate.
+	WrittenAt              time.Time `json:"writtenAt,omitzero"`
+	WrapperVersion         string    `json:"wrapperVersion"`
+	OriginalXcodebuildPath string    `json:"originalXcodebuildPath"`
+	OriginalXcrunPath      string    `json:"originalXcrunPath"`
+	BuildCacheEnabled      bool      `json:"buildCacheEnabled"`
+	BuildCacheSkipFlags    bool      `json:"buildCacheSkipFlags"`
+	BuildCacheEndpoint     string    `json:"buildCacheEndpoint"`
+	PushEnabled            bool      `json:"pushEnabled"`
+	DebugLogging           bool      `json:"debugLogging,omitempty"`
+	Silent                 bool      `json:"silent,omitempty"`
+	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
 	// (single canonical source for auth credentials on disk). The JSON tag is
 	// preserved for read-side backwards compatibility with older xcelerate
@@ -195,7 +200,8 @@ func NewConfig(ctx context.Context,
 		ProxyVersion:           envs["BITRISE_XCELERATE_PROXY_VERSION"],
 		ProxySocketPath:        proxySocketPath,
 		WrapperVersion:         envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
-		CLIVersion:             common.GetCLIVersion(logger),
+		ConfigVersion:          toolconfig.XcelerateConfigVersion,
+		WrittenAt:              time.Now().UTC(),
 		OriginalXcodebuildPath: xcodePath,
 		OriginalXcrunPath:      xcrunPath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
