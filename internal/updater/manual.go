@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +11,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/logio"
 )
 
 const InstallerURL = "https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh"
@@ -61,7 +62,7 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 
 	opts.Logger.Infof("Running installer to upgrade CLI in %s ...", opts.Bindir)
 
-	pipe := newLoggerWriter(opts.Logger)
+	pipe := logio.NewWriter(opts.Logger)
 	defer pipe.Flush()
 
 	cmd := exec.CommandContext(ctx, opts.Shell, scriptPath, "-b", opts.Bindir) //nolint:gosec // scriptPath is our temp file we just wrote
@@ -142,47 +143,4 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 	}
 
 	return tmp.Name(), nil
-}
-
-type loggerWriter struct {
-	logger log.Logger
-	buf    bytes.Buffer
-}
-
-func newLoggerWriter(logger log.Logger) *loggerWriter {
-	return &loggerWriter{logger: logger}
-}
-
-func (w *loggerWriter) Write(p []byte) (int, error) {
-	w.buf.Write(p)
-
-	for {
-		line, err := w.buf.ReadString('\n')
-		if errors.Is(err, io.EOF) {
-			w.buf.WriteString(line)
-
-			break
-		}
-
-		w.logger.Printf("%s", trimNewline(line))
-	}
-
-	return len(p), nil
-}
-
-func (w *loggerWriter) Flush() {
-	if w.buf.Len() == 0 {
-		return
-	}
-
-	w.logger.Printf("%s", trimNewline(w.buf.String()))
-	w.buf.Reset()
-}
-
-func trimNewline(s string) string {
-	if len(s) > 0 && s[len(s)-1] == '\n' {
-		return s[:len(s)-1]
-	}
-
-	return s
 }
