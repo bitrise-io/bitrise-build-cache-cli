@@ -119,10 +119,12 @@ export BITRISE_BUILD_CACHE_WORKSPACE_ID="<your workspace slug>"
 
 Where:
 
-1. **Bitrise Personal Access Token** (PAT) — generated at
-   [bitrise.io](https://bitrise.io) → user settings → Security → Personal
-   access tokens. See the
-   [DevCenter guide](https://devcenter.bitrise.io/en/accounts/personal-access-tokens.html).
+1. **Bitrise authentication token** — either a
+   [Personal Access Token (PAT)](https://devcenter.bitrise.io/en/accounts/personal-access-tokens.html)
+   generated at [bitrise.io](https://bitrise.io) → user settings → Security
+   → Personal access tokens, or a
+   [Workspace API Token (WAT)](https://docs.bitrise.io/en/bitrise-platform/workspaces/workspace-api-token)
+   if you'd rather use a workspace-scoped token than a personal one.
 2. **Workspace ID** — the slug in the URL when you're on your Bitrise
    workspace page. See the
    [DevCenter slug guide](https://devcenter.bitrise.io/en/api/identifying-workspaces-and-apps-with-their-slugs.html).
@@ -130,6 +132,12 @@ Where:
 > **Shortcut:** the easiest way to get both values is
 > [bitrise.io/build-cache](https://app.bitrise.io/build-cache) → **Add new
 > connection** — that page generates and displays both for you.
+
+> **Bitrise CI:** the build VMs already expose these via
+> [`BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN`](https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/configuring-the-build-cache-for-gradle-in-the-bitrise-ci-environment)
+> so the CLI picks them up without further config. Set the two env vars above
+> only when you're activating the cache outside Bitrise CI (local dev or a
+> third-party CI provider).
 
 Then configure the build tool(s) you use:
 
@@ -148,7 +156,12 @@ Pass `--help` to any of those for the full flag list.
 
 ```sh
 bitrise-build-cache --version
+bitrise-build-cache status
 ```
+
+`status` reports which build tools (gradle / bazel / xcode / c++ /
+react-native) are activated — run it after each `activate <tool>` to confirm
+the activation took.
 
 Run a build with `-d` (debug logging) the first time to confirm the cache
 is being hit — for Gradle that's `gradle build -d`, for Bazel
