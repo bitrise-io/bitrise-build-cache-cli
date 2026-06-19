@@ -54,10 +54,14 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 	}
 
 	if opts.DryRun {
-		opts.Logger.Infof("Dry run — installer downloaded to %s but NOT executed.", scriptPath)
-		opts.Logger.Infof("To upgrade manually: %s %s -b %s", opts.Shell, scriptPath, opts.Bindir)
+		opts.Logger.Infof("Dry run — would run: %s %s -b %s", opts.Shell, scriptPath, opts.Bindir)
+		opts.Logger.Infof("Rerun without --dry-run to apply.")
 
-		return scriptPath, nil
+		if removeErr := os.Remove(scriptPath); removeErr != nil {
+			opts.Logger.Warnf("could not clean up dry-run installer temp file %s: %s", scriptPath, removeErr)
+		}
+
+		return "", nil
 	}
 
 	opts.Logger.Infof("Running installer to upgrade CLI in %s ...", opts.Bindir)

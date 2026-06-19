@@ -14,9 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestManualUpgrade_dryRunDownloadsButDoesntExecute(t *testing.T) {
-	// Fake "installer" — just enough to look like a shell script. Body is a
-	// `true` so a tester executing it later would see exit 0.
+func TestManualUpgrade_dryRunCleansUpAndDoesntExecute(t *testing.T) {
+	tempDirBefore, err := os.ReadDir(os.TempDir())
+	require.NoError(t, err)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("#!/bin/sh\ntrue\n"))
 	}))
@@ -31,13 +32,25 @@ func TestManualUpgrade_dryRunDownloadsButDoesntExecute(t *testing.T) {
 		DryRun:       true,
 	})
 	require.NoError(t, err)
-	require.FileExists(t, path)
-	defer func() { _ = os.Remove(path) }()
-
-	body, err := os.ReadFile(path) //nolint:gosec // test temp file
-	require.NoError(t, err)
-	assert.Contains(t, string(body), "true")
+	assert.Empty(t, path, "dry run returns no path — temp file is cleaned up")
 	assert.Contains(t, buf.String(), "Dry run")
+
+	tempDirAfter, err := os.ReadDir(os.TempDir())
+	require.NoError(t, err)
+	assert.Equal(t, countMatching(tempDirBefore, "bitrise-build-cache-installer-"),
+		countMatching(tempDirAfter, "bitrise-build-cache-installer-"),
+		"dry run must not leave installer temp files behind")
+}
+
+func countMatching(entries []os.DirEntry, prefix string) int {
+	n := 0
+	for _, e := range entries {
+		if len(e.Name()) >= len(prefix) && e.Name()[:len(prefix)] == prefix {
+			n++
+		}
+	}
+
+	return n
 }
 
 func TestManualUpgrade_executesInstallerAgainstBindir(t *testing.T) {
