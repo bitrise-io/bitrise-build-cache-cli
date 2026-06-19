@@ -84,7 +84,7 @@ func ManualUpgrade(ctx context.Context, opts ManualOptions) (string, error) {
 
 	opts.Logger.Donef("Upgrade complete.")
 
-	return scriptPath, nil
+	return "", nil
 }
 
 func downloadInstaller(ctx context.Context, client *http.Client, url string) (string, error) {
