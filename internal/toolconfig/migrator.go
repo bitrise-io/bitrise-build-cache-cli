@@ -6,8 +6,8 @@ package toolconfig
 // for stamping new defaults / fields onto the existing config.
 //
 // Migrate returns nil when the config is missing (nothing to migrate) and is
-// expected to overwrite CLIVersion / ConfigVersion / WrittenAt so the next
-// scan sees the current schema version.
+// expected to overwrite ConfigVersion / WrittenAt so the next scan sees the
+// current schema version.
 type Migrator interface {
 	Tool() Tool
 	Migrate(home string) error

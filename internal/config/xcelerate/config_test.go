@@ -298,7 +298,6 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxyVersion:           "proxy-version-1.0.0",
 			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			WrapperVersion:         "wrapper-version-1.0.0",
-			CLIVersion:             common.GetCLIVersion(mockLogger),
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
 			OriginalXcrunPath:      "/usr/bin/xcodebuild2",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
@@ -354,7 +353,6 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxyVersion:           "proxy-version-1.0.0",
 			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			WrapperVersion:         "wrapper-version-1.0.0",
-			CLIVersion:             common.GetCLIVersion(mockLogger),
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
 			OriginalXcrunPath:      "/usr/bin/xcodebuild2",
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
@@ -408,7 +406,6 @@ func TestConfig_NewConfig(t *testing.T) {
 		expected := xcelerate.Config{
 			ProxyVersion:           "",
 			WrapperVersion:         "",
-			CLIVersion:             common.GetCLIVersion(mockLogger),
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild-override",
 			OriginalXcrunPath:      "/usr/bin/xcrun-override",
@@ -458,7 +455,6 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxyVersion:           "",
 			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			WrapperVersion:         "",
-			CLIVersion:             common.GetCLIVersion(mockLogger),
 			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
 			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,
@@ -507,7 +503,6 @@ func TestConfig_NewConfig(t *testing.T) {
 		expected := xcelerate.Config{
 			ProxyVersion:           "",
 			WrapperVersion:         "",
-			CLIVersion:             common.GetCLIVersion(mockLogger),
 			BuildCacheEndpoint:     "grpc://localhost:6666",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
 			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,
@@ -558,7 +553,6 @@ func TestConfig_NewConfig(t *testing.T) {
 		expected := xcelerate.Config{
 			ProxyVersion:           "",
 			WrapperVersion:         "",
-			CLIVersion:             common.GetCLIVersion(mockLogger),
 			BuildCacheEndpoint:     "grpc://localhost:6666",
 			OriginalXcodebuildPath: xcelerate.DefaultXcodePath,
 			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,

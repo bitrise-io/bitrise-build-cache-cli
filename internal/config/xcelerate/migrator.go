@@ -8,7 +8,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -32,7 +31,6 @@ func (m ConfigMigrator) Migrate(_ string) error {
 		return fmt.Errorf("read xcelerate config: %w", err)
 	}
 
-	cfg.CLIVersion = common.GetCLIVersion(m.Logger)
 	cfg.ConfigVersion = toolconfig.XcelerateConfigVersion
 	cfg.WrittenAt = time.Now().UTC()
 

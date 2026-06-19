@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
@@ -17,7 +16,6 @@ import (
 // Drives the refresh nudge — the bazelrc itself is shared with the user's
 // hand-written config so a sidecar is the only safe version source.
 type Sidecar struct {
-	CLIVersion    string    `json:"cliVersion,omitempty"`
 	ConfigVersion string    `json:"configVersion,omitempty"`
 	WrittenAt     time.Time `json:"writtenAt,omitzero"`
 
@@ -46,7 +44,6 @@ func SidecarFilePath(home string) string {
 
 // WriteSidecar persists the bazel sidecar for the given home.
 func WriteSidecar(home string, s Sidecar) error {
-	s.CLIVersion = configcommon.GetCLIVersion(nil)
 	s.ConfigVersion = toolconfig.BazelConfigVersion
 	s.WrittenAt = time.Now().UTC()
 

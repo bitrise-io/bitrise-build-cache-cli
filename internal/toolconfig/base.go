@@ -28,7 +28,6 @@ const (
 // Sample is the subset of a tool's config that refresh cares about.
 type Sample struct {
 	Tool          Tool
-	CLIVersion    string
 	ConfigVersion string
 	WrittenAt     time.Time
 	ConfigPath    string

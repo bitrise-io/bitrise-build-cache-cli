@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
@@ -17,7 +16,6 @@ import (
 // generated init.d script. Drives the refresh nudge — the init.d script
 // itself is not JSON, so this sidecar is the canonical version source.
 type Sidecar struct {
-	CLIVersion    string    `json:"cliVersion,omitempty"`
 	ConfigVersion string    `json:"configVersion,omitempty"`
 	WrittenAt     time.Time `json:"writtenAt,omitzero"`
 
@@ -48,7 +46,6 @@ func SidecarFilePath(home string) string {
 
 // WriteSidecar persists the gradle sidecar for the given home.
 func WriteSidecar(home string, s Sidecar) error {
-	s.CLIVersion = configcommon.GetCLIVersion(nil)
 	s.ConfigVersion = toolconfig.GradleConfigVersion
 	s.WrittenAt = time.Now().UTC()
 

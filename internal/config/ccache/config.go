@@ -41,7 +41,6 @@ type Params struct {
 }
 
 type Config struct {
-	CLIVersion         string        `json:"cliVersion,omitempty"`
 	ConfigVersion      string        `json:"configVersion,omitempty"`
 	WrittenAt          time.Time     `json:"writtenAt,omitzero"`
 	LogFile            string        `json:"logFile,omitempty"`
@@ -111,7 +110,6 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 
 	return Config{
 		AuthConfig:         authConfig,
-		CLIVersion:         common.GetCLIVersion(nil),
 		ConfigVersion:      toolconfig.CcacheConfigVersion,
 		WrittenAt:          time.Now().UTC(),
 		IPCEndpoint:        ipcEndpoint,

@@ -48,7 +48,6 @@ type Params struct {
 type Config struct {
 	ProxyVersion    string `json:"proxyVersion"`
 	ProxySocketPath string `json:"proxySocketPath"`
-	CLIVersion      string `json:"cliVersion"`
 	// ConfigVersion is the semver of this config's schema. Refresh nudges only when this bumps.
 	ConfigVersion string `json:"configVersion,omitempty"`
 	// WrittenAt records when the config was last (re-)written by activate.
@@ -201,7 +200,6 @@ func NewConfig(ctx context.Context,
 		ProxyVersion:           envs["BITRISE_XCELERATE_PROXY_VERSION"],
 		ProxySocketPath:        proxySocketPath,
 		WrapperVersion:         envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
-		CLIVersion:             common.GetCLIVersion(logger),
 		ConfigVersion:          toolconfig.XcelerateConfigVersion,
 		WrittenAt:              time.Now().UTC(),
 		OriginalXcodebuildPath: xcodePath,

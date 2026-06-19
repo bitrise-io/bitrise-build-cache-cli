@@ -40,7 +40,6 @@ func scanGradle(home string) (toolconfig.Sample, bool) {
 
 	return toolconfig.Sample{
 		Tool:          toolconfig.Gradle,
-		CLIVersion:    s.CLIVersion,
 		ConfigVersion: s.ConfigVersion,
 		WrittenAt:     s.WrittenAt,
 		ConfigPath:    gradleconfig.SidecarFilePath(home),
@@ -55,7 +54,6 @@ func scanBazel(home string) (toolconfig.Sample, bool) {
 
 	return toolconfig.Sample{
 		Tool:          toolconfig.Bazel,
-		CLIVersion:    s.CLIVersion,
 		ConfigVersion: s.ConfigVersion,
 		WrittenAt:     s.WrittenAt,
 		ConfigPath:    bazelconfig.SidecarFilePath(home),
@@ -71,7 +69,6 @@ func scanXcelerate(home string) (toolconfig.Sample, bool) {
 
 	return toolconfig.Sample{
 		Tool:          toolconfig.Xcelerate,
-		CLIVersion:    cfg.CLIVersion,
 		ConfigVersion: cfg.ConfigVersion,
 		WrittenAt:     cfg.WrittenAt,
 		ConfigPath:    xcelerateconfig.PathFor(osProxy, "config.json"),
@@ -87,7 +84,6 @@ func scanCcache(home string) (toolconfig.Sample, bool) {
 
 	return toolconfig.Sample{
 		Tool:          toolconfig.Ccache,
-		CLIVersion:    cfg.CLIVersion,
 		ConfigVersion: cfg.ConfigVersion,
 		WrittenAt:     cfg.WrittenAt,
 		ConfigPath:    ccacheconfig.PathFor(osProxy, "config.json"),
