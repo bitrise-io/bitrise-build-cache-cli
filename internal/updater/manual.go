@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -143,10 +142,6 @@ func downloadInstaller(ctx context.Context, client *http.Client, url string) (st
 	}
 
 	return tmp.Name(), nil
-}
-
-func BindirOf(executable string) string {
-	return filepath.Dir(executable)
 }
 
 type loggerWriter struct {

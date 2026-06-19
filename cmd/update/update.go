@@ -3,6 +3,7 @@ package update
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -41,9 +42,8 @@ After a successful manual upgrade, prints a hint to restart the daemon (` + "`bi
 		case updater.InstallBrew:
 			updater.PrintBrewUpgrade(logger)
 		case updater.InstallManual:
-			bindir := updater.BindirOf(exe)
 			if _, err := updater.ManualUpgrade(cmd.Context(), updater.ManualOptions{
-				Bindir: bindir,
+				Bindir: filepath.Dir(exe),
 				Logger: logger,
 				DryRun: dryRunFlag,
 			}); err != nil {
