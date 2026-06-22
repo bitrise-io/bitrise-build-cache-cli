@@ -50,6 +50,9 @@ type prompter struct {
 	readPassword func() (string, error)
 }
 
+// newDefaultPrompter builds the non-TTY prompter. selectWizard already gated on
+// !term.IsTerminal before reaching this code path, so readPassword never tries
+// to mask — there's no terminal to mask against.
 func newDefaultPrompter() *prompter {
 	stdinReader := bufio.NewReader(os.Stdin)
 
@@ -57,24 +60,34 @@ func newDefaultPrompter() *prompter {
 		reader: stdinReader,
 		out:    os.Stdout,
 		readPassword: func() (string, error) {
-			fd := int(os.Stdin.Fd())
-			if !term.IsTerminal(fd) {
-				line, err := stdinReader.ReadString('\n')
-				if err != nil && !errors.Is(err, io.EOF) {
-					return "", fmt.Errorf("read auth token: %w", err)
-				}
-
-				return strings.TrimRight(line, "\r\n"), nil
+			line, err := stdinReader.ReadString('\n')
+			if err != nil && !errors.Is(err, io.EOF) {
+				return "", fmt.Errorf("read auth token: %w", err)
 			}
 
-			b, err := term.ReadPassword(fd)
-			if err != nil {
-				return "", fmt.Errorf("read masked input: %w", err)
-			}
-
-			return string(b), nil
+			return strings.TrimRight(line, "\r\n"), nil
 		},
 	}
+}
+
+// wizard is the abstract setup flow. selectWizard chooses huh on a TTY,
+// the plain prompter elsewhere — one TTY probe, then no further branching.
+type wizard interface {
+	Run(ctx context.Context) error
+}
+
+type huhWizard struct{}
+
+type plainWizard struct {
+	prompter *prompter
+}
+
+func selectWizard() wizard {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return &huhWizard{}
+	}
+
+	return &plainWizard{prompter: newDefaultPrompter()}
 }
 
 func init() { //nolint:gochecknoinits
@@ -86,17 +99,12 @@ func init() { //nolint:gochecknoinits
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
 		}
 
-		if term.IsTerminal(int(os.Stdin.Fd())) {
-			return runInteractiveSetupHuh(cmd.Context())
-		}
-
-		return runInteractiveSetup(cmd.Context(), newDefaultPrompter())
+		return selectWizard().Run(cmd.Context())
 	}
 }
 
-func runInteractiveSetupHuh(ctx context.Context) error {
-	logger := log.NewLogger()
-	logger.EnableDebugLog(IsDebugLogMode)
+func (*huhWizard) Run(ctx context.Context) error {
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 	logger.TInfof("Bitrise Build Cache - interactive local setup")
 
 	kc := keychain.New()
@@ -245,9 +253,9 @@ func persistCredentials(kc keychainStore, workspaceID, authToken string) error {
 	return nil
 }
 
-func runInteractiveSetup(ctx context.Context, p *prompter) error {
-	logger := log.NewLogger()
-	logger.EnableDebugLog(IsDebugLogMode)
+func (w *plainWizard) Run(ctx context.Context) error {
+	p := w.prompter
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 	logger.TInfof("Bitrise Build Cache - interactive local setup")
 
 	fmt.Fprintln(p.out)
