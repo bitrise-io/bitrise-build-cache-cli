@@ -19,7 +19,7 @@ type fakeAuthLoader struct {
 
 func (f fakeAuthLoader) Load() (keychain.Credentials, error) { return f.creds, f.err }
 
-func TestResolveAuthConfig_keychainHit(t *testing.T) {
+func TestResolveAuthConfig_envVarsWinOverKeychain(t *testing.T) {
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
@@ -28,58 +28,62 @@ func TestResolveAuthConfig_keychainHit(t *testing.T) {
 
 	got, err := resolveAuthConfig(envs, loader)
 	require.NoError(t, err)
-	assert.Equal(t, "kc-tok", got.AuthToken, "keychain wins over env")
+	assert.Equal(t, "env-tok", got.AuthToken, "env vars take precedence over stored creds")
+	assert.Equal(t, "env-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_jwtEnvWinsOverKeychain(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	envs := map[string]string{
+		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeUMAJWT("ci-ws"),
+	}
+
+	got, err := resolveAuthConfig(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "ci-ws", got.WorkspaceID, "CI JWT env var overrides stored creds")
+	assert.True(t, got.IsJWT)
+}
+
+func TestResolveAuthConfig_noEnv_keychainHit(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+
+	got, err := resolveAuthConfig(map[string]string{}, loader)
+	require.NoError(t, err)
+	assert.Equal(t, "kc-tok", got.AuthToken)
 	assert.Equal(t, "kc-ws", got.WorkspaceID)
 }
 
-func TestResolveAuthConfig_keychainNotFound_fallsBackToEnv(t *testing.T) {
+func TestResolveAuthConfig_noEnv_keychainNotFound_returnsEnvNotSetError(t *testing.T) {
 	loader := fakeAuthLoader{err: keychain.ErrNotFound}
-	envs := map[string]string{
-		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
-		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
-	}
 
-	got, err := resolveAuthConfig(envs, loader)
-	require.NoError(t, err)
-	assert.Equal(t, "env-tok", got.AuthToken)
-	assert.Equal(t, "env-ws", got.WorkspaceID)
+	_, err := resolveAuthConfig(map[string]string{}, loader)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
-func TestResolveAuthConfig_keychainError_fallsBackToEnv(t *testing.T) {
+func TestResolveAuthConfig_noEnv_keychainError_returnsEnvNotSetError(t *testing.T) {
 	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
-	envs := map[string]string{
-		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
-		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
-	}
 
-	got, err := resolveAuthConfig(envs, loader)
-	require.NoError(t, err)
-	assert.Equal(t, "env-tok", got.AuthToken)
+	_, err := resolveAuthConfig(map[string]string{}, loader)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
-func TestResolveAuthConfig_keychainEmpty_fallsBackToEnv(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{}}
-	envs := map[string]string{
-		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
-		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
-	}
-
-	got, err := resolveAuthConfig(envs, loader)
-	require.NoError(t, err)
-	assert.Equal(t, "env-tok", got.AuthToken)
-}
-
-func TestResolveAuthConfig_keychainPartial_fallsBackToEnv(t *testing.T) {
+func TestResolveAuthConfig_noEnv_keychainPartial_returnsEnvNotSetError(t *testing.T) {
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+
+	_, err := resolveAuthConfig(map[string]string{}, loader)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
+}
+
+func TestResolveAuthConfig_partialEnv_fallsBackToKeychain(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 	envs := map[string]string{
-		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
-		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN": "env-tok",
 	}
 
 	got, err := resolveAuthConfig(envs, loader)
 	require.NoError(t, err)
-	assert.Equal(t, "env-tok", got.AuthToken)
-	assert.Equal(t, "env-ws", got.WorkspaceID)
+	assert.Equal(t, "kc-tok", got.AuthToken, "incomplete env vars should not silently mix with keychain")
+	assert.Equal(t, "kc-ws", got.WorkspaceID)
 }
 
 func makeJWT(payload map[string]any) string {

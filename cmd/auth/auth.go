@@ -15,7 +15,7 @@ import (
 var authCmd = &cobra.Command{
 	Use:          "auth",
 	Short:        "Manage Bitrise Build Cache credentials stored in the OS keychain",
-	Long:         `Manage Bitrise Build Cache credentials stored in the OS keychain (macOS Keychain, Linux secret-service). Credentials persisted here are used in preference to the BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID env vars.`,
+	Long:         `Manage Bitrise Build Cache credentials stored in the OS keychain (macOS Keychain, Linux secret-service). Stored credentials are used when BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID (or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN on Bitrise CI) are not set — env vars take precedence so you can override the stored credentials for a single run.`,
 	SilenceUsage: true,
 }
 
@@ -32,6 +32,15 @@ var authSetCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+
+		switch {
+		case setToken == "" && setWorkspaceID == "":
+			return errors.New("--token and --workspace-id are required and must not be empty")
+		case setToken == "":
+			return errors.New("--token is required and must not be empty")
+		case setWorkspaceID == "":
+			return errors.New("--workspace-id is required and must not be empty")
+		}
 
 		kc := keychain.New()
 		if err := kc.Save(keychain.Credentials{
@@ -57,14 +66,13 @@ var authGetCmd = &cobra.Command{
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		creds, err := keychain.New().Load()
-		if err != nil {
-			if errors.Is(err, keychain.ErrNotFound) {
-				logger.Warnf("No Bitrise Build Cache credentials stored in the OS keychain.")
-				logger.Infof("Run `bitrise-build-cache auth set --token <token> --workspace-id <id>` to store them, or rely on env vars.")
+		switch {
+		case errors.Is(err, keychain.ErrNotFound):
+			logger.Warnf("No Bitrise Build Cache credentials stored in the OS keychain.")
+			logger.Infof("Run `bitrise-build-cache auth set --token <token> --workspace-id <id>` to store them, or rely on env vars.")
 
-				return nil
-			}
-
+			return nil
+		case err != nil:
 			return fmt.Errorf("read credentials from keychain: %w", err)
 		}
 

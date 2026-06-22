@@ -137,11 +137,10 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 	}
 
 	h.logger.TInfof("Downloading %s for key %s", filePath, key)
-	if err := kvClient.DownloadFileFromBuildCache(ctx, filePath, key); err != nil {
-		if errors.Is(err, kv.ErrCacheNotFound) {
-			return fmt.Errorf("no cache item found for key %q: %w", key, err)
-		}
-
+	switch err := kvClient.DownloadFileFromBuildCache(ctx, filePath, key); {
+	case errors.Is(err, kv.ErrCacheNotFound):
+		return fmt.Errorf("no cache item found for key %q: %w", key, err)
+	case err != nil:
 		return fmt.Errorf("download file from build cache: %w", err)
 	}
 

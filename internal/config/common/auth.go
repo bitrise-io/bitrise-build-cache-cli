@@ -42,6 +42,10 @@ func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, error) {
 }
 
 func resolveAuthConfig(envs map[string]string, loader authLoader) (CacheAuthConfig, error) {
+	if hasAuthEnvVars(envs) {
+		return ReadAuthConfigFromEnvironments(envs)
+	}
+
 	creds, err := loader.Load()
 	if err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
 		return CacheAuthConfig{
@@ -51,6 +55,14 @@ func resolveAuthConfig(envs map[string]string, loader authLoader) (CacheAuthConf
 	}
 
 	return ReadAuthConfigFromEnvironments(envs)
+}
+
+func hasAuthEnvVars(envs map[string]string) bool {
+	if envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"] != "" {
+		return true
+	}
+
+	return envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"] != "" && envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"] != ""
 }
 
 // ReadAuthConfigFromEnvironments reads auth information from the environment variables

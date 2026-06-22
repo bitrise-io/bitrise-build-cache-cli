@@ -50,11 +50,10 @@ func New() *Keychain {
 
 func (k *Keychain) Load() (Credentials, error) {
 	raw, err := k.Backend.Get(serviceName, accountName)
-	if err != nil {
-		if errors.Is(err, keyring.ErrNotFound) {
-			return Credentials{}, ErrNotFound
-		}
-
+	switch {
+	case errors.Is(err, keyring.ErrNotFound):
+		return Credentials{}, ErrNotFound
+	case err != nil:
 		return Credentials{}, fmt.Errorf("keychain read: %w", err)
 	}
 
@@ -80,13 +79,10 @@ func (k *Keychain) Save(c Credentials) error {
 }
 
 func (k *Keychain) Clear() error {
-	err := k.Backend.Delete(serviceName, accountName)
-	if err == nil {
+	switch err := k.Backend.Delete(serviceName, accountName); {
+	case err == nil, errors.Is(err, keyring.ErrNotFound):
 		return nil
+	default:
+		return fmt.Errorf("keychain delete: %w", err)
 	}
-	if errors.Is(err, keyring.ErrNotFound) {
-		return nil
-	}
-
-	return fmt.Errorf("keychain delete: %w", err)
 }
