@@ -64,7 +64,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "Activated plugins gets values from inventory",
+			name: "Activated plugins gets values from inventory (CI bakes auth token literal)",
 			inventory: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken:  "AuthTokenValue",
@@ -100,7 +100,47 @@ func Test_GenerateInitGradle(t *testing.T) {
 					TestSearchDepth: 3,
 				},
 			},
-			want:    expectedAllPlugins,
+			want:    expectedAllPluginsCI,
+			wantErr: "",
+		},
+		{
+			name: "Activated plugins on local dev (empty CIProvider) shells out to CLI for auth token",
+			inventory: TemplateInventory{
+				Common: PluginCommonTemplateInventory{
+					AuthToken:  "AuthTokenValue",
+					Debug:      true,
+					AppSlug:    "AppSlugValue",
+					CIProvider: "",
+					Version:    "CommonVersionValue",
+					CLIPath:    "CLIPathValue",
+				},
+				Cache: CacheTemplateInventory{
+					Usage:               UsageLevelEnabled,
+					Version:             "CacheVersionValue",
+					EndpointURLWithPort: "CacheEndpointURLValue",
+					IsPushEnabled:       true,
+					ValidationLevel:     "ValidationLevelValue",
+				},
+				Analytics: AnalyticsTemplateInventory{
+					Usage:        UsageLevelEnabled,
+					Version:      "AnalyticsVersionValue",
+					Endpoint:     "AnalyticsEndpointURLValue",
+					Port:         123,
+					HTTPEndpoint: "AnalyticsHttpEndpointValue",
+					GRPCEndpoint: "AnalyticsGRPCEndpointValue",
+				},
+				TestDistro: TestDistroTemplateInventory{
+					Usage:           UsageLevelEnabled,
+					Version:         "TestDistroVersionValue",
+					Endpoint:        "TestDistroEndpointValue",
+					KvEndpoint:      "TestDistroKvEndpointValue",
+					Port:            321,
+					LogLevel:        "TestDistroLogLevelValue",
+					ShardSize:       50,
+					TestSearchDepth: 3,
+				},
+			},
+			want:    expectedAllPluginsLocal,
 			wantErr: "",
 		},
 	}
@@ -147,14 +187,11 @@ const expectedNoPluginActivated = "initscript {\n" + expectedRepositories + "\n}
 const expectedDepOnlyPlugins = "initscript {\n" + expectedRepositories + "\n" + expectedDependencies + "\n}"
 
 //nolint:gosec // expected snippet of generated kotlin script for test assertion, not credentials
-const expectedAuthTokenResolver = `// Resolve the Bitrise auth token at build time via the bitrise-build-cache CLI
-// so credentials never live in plain text inside this init script. The CLI
-// consults env vars → OS keychain → multiplatform analytics config.
-// Wrapped in a ValueSource so it's safe under Gradle's configuration cache
-// (which forbids ad-hoc external processes during configuration). Any failure
-// (non-zero exit, missing binary) yields an empty token + stderr warning
-// rather than hard-failing; the cache plugin self-disables when it hits the
-// network with no token.
+const expectedAuthTokenResolver = `// Local-dev only: resolve the auth token at build time via the bitrise-build-cache
+// CLI so credentials never live in plain text on disk. CI runs (CIProvider set)
+// bake the token literal instead — the same token is already in env vars on the
+// CI VM, and embedding it keeps the init.kts byte-stable across configuration-cache
+// save/restore VMs.
 abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
     @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
     override fun obtain(): String {
@@ -174,13 +211,74 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
     }
 }
 
-// Init-script scope does not expose ProviderFactory; resolve per-block where it is
-// available (Settings.providers inside settingsEvaluated, Project.providers inside rootProject).
 fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
     of(BitriseAuthTokenSource::class.java) {}.get()
 `
 
-const expectedAllPlugins = expectedImports + "\n" +
+//nolint:gosec // expected snippet of generated kotlin script for test assertion, not credentials
+const expectedAllPluginsCI = expectedImports + "\n" +
+	"initscript {\n" +
+	expectedRepositories + "\n" +
+	expectedDependencies + "\n}" +
+	`
+settingsEvaluated {
+    buildCache {
+        local {
+            isEnabled = false
+        }
+
+        registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
+        remote(BitriseBuildCache::class.java) {
+            endpoint = "CacheEndpointURLValue"
+            authToken = "AuthTokenValue"
+            isPush = true
+            debug = true
+            blobValidationLevel = "ValidationLevelValue"
+            cacheGradleVersion = gradle.gradleVersion
+            collectMetadata = false
+        }
+    }
+    rootProject {
+        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    }
+    rootProject {
+        extensions.create("analytics", AnalyticsPluginExtension::class.java)
+        extensions.configure(AnalyticsPluginExtension::class.java) {
+            endpoint.set("AnalyticsEndpointURLValue:123")
+            httpEndpoint.set("AnalyticsHttpEndpointValue")
+            grpcEndpoint.set("AnalyticsGRPCEndpointValue")
+            authToken.set("AuthTokenValue")
+            dumpEventsToFiles.set(true)
+            debug.set(true)
+            enabled.set(true)
+
+            providerName.set("CIProviderValue")
+
+            bitrise {
+                appSlug.set("AppSlugValue")
+            }
+        }
+        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
+    }
+}
+rootProject {
+    extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
+        endpoint.set("TestDistroEndpointValue")
+        kvEndpoint.set("TestDistroKvEndpointValue")
+        authToken.set("AuthTokenValue")
+        logLevel.set("TestDistroLogLevelValue")
+        shardSize.set(50)
+        testSearchDepth.set(3)
+        bitrise {
+            appSlug.set("AppSlugValue")
+        }
+    }
+
+    apply<io.bitrise.gradle.rbe.RBEPlugin>()
+}`
+
+//nolint:gosec // expected snippet of generated kotlin script for test assertion, not credentials
+const expectedAllPluginsLocal = expectedImports + "\n" +
 	expectedAuthTokenResolver +
 	"initscript {\n" +
 	expectedRepositories + "\n" +
@@ -217,7 +315,7 @@ settingsEvaluated {
             debug.set(true)
             enabled.set(true)
 
-            providerName.set("CIProviderValue")
+            providerName.set("")
 
             bitrise {
                 appSlug.set("AppSlugValue")
