@@ -72,6 +72,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
 					Version:    "CommonVersionValue",
+					CLIPath:    "CLIPathValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -145,8 +146,38 @@ const expectedNoPluginActivated = "initscript {\n" + expectedRepositories + "\n}
 
 const expectedDepOnlyPlugins = "initscript {\n" + expectedRepositories + "\n" + expectedDependencies + "\n}"
 
-const expectedAllPlugins = expectedImports +
-	"\ninitscript {\n" +
+//nolint:gosec // expected snippet of generated kotlin script for test assertion, not credentials
+const expectedAuthTokenResolver = `// Resolve the Bitrise auth token at build time via the bitrise-build-cache CLI
+// so credentials never live in plain text inside this init script. The CLI
+// consults env vars → OS keychain → multiplatform analytics config.
+// On any failure (CLI hang, missing binary, missing token) the lookup returns
+// an empty string and Gradle init continues; the cache plugin self-disables
+// when it hits the network with no token rather than hard-failing the build.
+val bitriseBuildCacheAuthToken: String = run {
+    try {
+        val proc = ProcessBuilder("CLIPathValue", "auth", "token").redirectErrorStream(false).start()
+        val outText = proc.inputStream.bufferedReader().readText().trim()
+        val errText = proc.errorStream.bufferedReader().readText().trim()
+        if (!proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+            proc.destroyForcibly()
+            System.err.println("bitrise-build-cache auth token timed out after 30s; continuing with empty token")
+            return@run ""
+        }
+        if (proc.exitValue() != 0) {
+            System.err.println("bitrise-build-cache auth token exited ${proc.exitValue()}: $errText")
+            return@run ""
+        }
+        outText
+    } catch (e: Exception) {
+        System.err.println("bitrise-build-cache auth token failed: ${e.message}; continuing with empty token")
+        ""
+    }
+}
+`
+
+const expectedAllPlugins = expectedImports + "\n" +
+	expectedAuthTokenResolver +
+	"initscript {\n" +
 	expectedRepositories + "\n" +
 	expectedDependencies + "\n}" +
 	`
@@ -159,7 +190,7 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = "AuthTokenValue"
+            authToken = bitriseBuildCacheAuthToken
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -176,7 +207,7 @@ settingsEvaluated {
             endpoint.set("AnalyticsEndpointURLValue:123")
             httpEndpoint.set("AnalyticsHttpEndpointValue")
             grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-            authToken.set("AuthTokenValue")
+            authToken.set(bitriseBuildCacheAuthToken)
             dumpEventsToFiles.set(true)
             debug.set(true)
             enabled.set(true)
@@ -194,7 +225,7 @@ rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
         endpoint.set("TestDistroEndpointValue")
         kvEndpoint.set("TestDistroKvEndpointValue")
-        authToken.set("AuthTokenValue")
+        authToken.set(bitriseBuildCacheAuthToken)
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
         testSearchDepth.set(3)

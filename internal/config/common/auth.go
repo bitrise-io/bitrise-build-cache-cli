@@ -37,11 +37,20 @@ type authLoader interface {
 	Load() (keychain.Credentials, error)
 }
 
-func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, error) {
-	return resolveAuthConfig(envs, keychain.New())
+// Wired via RegisterMultiplatformReader to avoid a multiplatform→common import cycle.
+//
+//nolint:gochecknoglobals
+var multiplatformConfigReader func() (CacheAuthConfig, error)
+
+func RegisterMultiplatformReader(fn func() (CacheAuthConfig, error)) {
+	multiplatformConfigReader = fn
 }
 
-func resolveAuthConfig(envs map[string]string, loader authLoader) (CacheAuthConfig, error) {
+func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, error) {
+	return resolveAuthConfig(envs, keychain.New(), multiplatformConfigReader)
+}
+
+func resolveAuthConfig(envs map[string]string, loader authLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, error) {
 	if hasAuthEnvVars(envs) {
 		return ReadAuthConfigFromEnvironments(envs)
 	}
@@ -52,6 +61,12 @@ func resolveAuthConfig(envs map[string]string, loader authLoader) (CacheAuthConf
 			AuthToken:   creds.AuthToken,
 			WorkspaceID: creds.WorkspaceID,
 		}, nil
+	}
+
+	if readMultiplatform != nil {
+		if mpCfg, mpErr := readMultiplatform(); mpErr == nil && mpCfg.AuthToken != "" && mpCfg.WorkspaceID != "" {
+			return mpCfg, nil
+		}
 	}
 
 	return ReadAuthConfigFromEnvironments(envs)

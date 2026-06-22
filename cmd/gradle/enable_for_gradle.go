@@ -2,6 +2,7 @@ package gradle
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -81,6 +82,10 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	activateGradleParams.Cache.Endpoint = paramRemoteCacheEndpoint
 	activateGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
 	activateGradleParams.TestDistro.Enabled = false
+
+	if cliPath, exeErr := os.Executable(); exeErr == nil {
+		activateGradleParams.CLIPath = cliPath
+	}
 
 	authConfig, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {

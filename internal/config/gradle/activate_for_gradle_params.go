@@ -45,6 +45,8 @@ type ActivateGradleParams struct {
 	Cache      CacheParams
 	Analytics  AnalyticsParams
 	TestDistro TestDistroParams
+
+	CLIPath string
 }
 
 func DefaultActivateGradleParams() ActivateGradleParams {
@@ -123,12 +125,18 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	metadata common.CacheConfigMetadata,
 	isDebug bool,
 ) PluginCommonTemplateInventory {
+	cliPath := params.CLIPath
+	if cliPath == "" {
+		cliPath = "bitrise-build-cache"
+	}
+
 	return PluginCommonTemplateInventory{
 		AuthToken:  authConfig.TokenInGradleFormat(),
 		Debug:      isDebug,
 		AppSlug:    metadata.BitriseAppID,
 		CIProvider: metadata.CIProvider,
 		Version:    consts.GradleCommonPluginDepVersion,
+		CLIPath:    cliPath,
 	}
 }
 

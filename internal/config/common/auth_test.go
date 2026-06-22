@@ -26,7 +26,7 @@ func TestResolveAuthConfig_envVarsWinOverKeychain(t *testing.T) {
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
 	}
 
-	got, err := resolveAuthConfig(envs, loader)
+	got, err := resolveAuthConfig(envs, loader, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "env-tok", got.AuthToken, "env vars take precedence over stored creds")
 	assert.Equal(t, "env-ws", got.WorkspaceID)
@@ -38,7 +38,7 @@ func TestResolveAuthConfig_jwtEnvWinsOverKeychain(t *testing.T) {
 		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeUMAJWT("ci-ws"),
 	}
 
-	got, err := resolveAuthConfig(envs, loader)
+	got, err := resolveAuthConfig(envs, loader, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "ci-ws", got.WorkspaceID, "CI JWT env var overrides stored creds")
 	assert.True(t, got.IsJWT)
@@ -47,7 +47,7 @@ func TestResolveAuthConfig_jwtEnvWinsOverKeychain(t *testing.T) {
 func TestResolveAuthConfig_noEnv_keychainHit(t *testing.T) {
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 
-	got, err := resolveAuthConfig(map[string]string{}, loader)
+	got, err := resolveAuthConfig(map[string]string{}, loader, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "kc-tok", got.AuthToken)
 	assert.Equal(t, "kc-ws", got.WorkspaceID)
@@ -56,21 +56,21 @@ func TestResolveAuthConfig_noEnv_keychainHit(t *testing.T) {
 func TestResolveAuthConfig_noEnv_keychainNotFound_returnsEnvNotSetError(t *testing.T) {
 	loader := fakeAuthLoader{err: keychain.ErrNotFound}
 
-	_, err := resolveAuthConfig(map[string]string{}, loader)
+	_, err := resolveAuthConfig(map[string]string{}, loader, nil)
 	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
 func TestResolveAuthConfig_noEnv_keychainError_returnsEnvNotSetError(t *testing.T) {
 	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
 
-	_, err := resolveAuthConfig(map[string]string{}, loader)
+	_, err := resolveAuthConfig(map[string]string{}, loader, nil)
 	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
 func TestResolveAuthConfig_noEnv_keychainPartial_returnsEnvNotSetError(t *testing.T) {
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
 
-	_, err := resolveAuthConfig(map[string]string{}, loader)
+	_, err := resolveAuthConfig(map[string]string{}, loader, nil)
 	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
@@ -80,10 +80,70 @@ func TestResolveAuthConfig_partialEnv_fallsBackToKeychain(t *testing.T) {
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN": "env-tok",
 	}
 
-	got, err := resolveAuthConfig(envs, loader)
+	got, err := resolveAuthConfig(envs, loader, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "kc-tok", got.AuthToken, "incomplete env vars should not silently mix with keychain")
 	assert.Equal(t, "kc-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_noEnv_noKeychain_fallsBackToMultiplatformConfig(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
+	}
+
+	got, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.NoError(t, err)
+	assert.Equal(t, "mp-tok", got.AuthToken)
+	assert.Equal(t, "mp-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_keychainWinsOverMultiplatformConfig(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
+	}
+
+	got, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.NoError(t, err)
+	assert.Equal(t, "kc-tok", got.AuthToken, "keychain takes precedence over multiplatform config")
+	assert.Equal(t, "kc-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_envWinsOverMultiplatformConfig(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
+	}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, err := resolveAuthConfig(envs, loader, readMp)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken, "env vars take precedence over multiplatform config")
+	assert.Equal(t, "env-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_multiplatformReaderErrorIsSwallowed(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{}, errors.New("disk read failed")
+	}
+
+	_, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided, "multiplatform read error falls through to env-not-set canonical error")
+}
+
+func TestResolveAuthConfig_multiplatformPartial_fallsThroughToEnvError(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok"}, nil
+	}
+
+	_, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
 func makeJWT(payload map[string]any) string {
