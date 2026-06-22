@@ -30,9 +30,9 @@ const (
 	DefaultClientID     = "https://app.bitrise.io/.well-known/oauth-client/cli"
 	DefaultOIDCEndpoint = "https://app.bitrise.io/oidc/token"
 	// DefaultResource is the audience/resource indicator pinned into the JWT;
-	// it must be registered as a Resource Indicator in WorkOS (it already is,
-	// for bitrise-cli). The monolith accepts any *.bitrise.io audience.
-	DefaultResource = "https://cli.bitrise.io"
+	// it must be registered as a Resource Indicator in WorkOS. The monolith
+	// accepts any *.bitrise.io audience.
+	DefaultResource = "https://app.bitrise.io"
 )
 
 // defaultTimeout bounds each token HTTP call. defaultPATLifetime is the
