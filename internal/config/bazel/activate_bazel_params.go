@@ -85,7 +85,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	authConfig, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return CommonTemplateInventory{},
-			fmt.Errorf("read auth config from environment variables: %w", err)
+			fmt.Errorf("resolve auth config: %w", err)
 	}
 
 	cacheConfig := common.NewMetadata(envs,

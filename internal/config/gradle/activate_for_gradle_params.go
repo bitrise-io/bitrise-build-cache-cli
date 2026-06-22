@@ -15,7 +15,7 @@ import (
 const (
 	errFmtInvalidCacheLevel        = "invalid cache validation level, valid options: none, warning, error"
 	errFmtTestDistroAppSlug        = "test distribution plugin was enabled but no BITRISE_APP_SLUG was specified"
-	ErrFmtReadAuthConfig           = "read auth config from environment variables: %w"
+	ErrFmtReadAuthConfig           = "resolve auth config: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
 	errFmtInvalidValidationLevel   = "invalid validation level: '%s'"

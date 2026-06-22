@@ -55,7 +55,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
 
 		// then
-		require.EqualError(t, err, "template inventory error: read auth config from environment variables: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
+		require.EqualError(t, err, "template inventory error: resolve auth config: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
 	})
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN specified", func(t *testing.T) {
