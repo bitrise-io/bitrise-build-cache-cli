@@ -150,29 +150,31 @@ const expectedDepOnlyPlugins = "initscript {\n" + expectedRepositories + "\n" + 
 const expectedAuthTokenResolver = `// Resolve the Bitrise auth token at build time via the bitrise-build-cache CLI
 // so credentials never live in plain text inside this init script. The CLI
 // consults env vars → OS keychain → multiplatform analytics config.
-// On any failure (CLI hang, missing binary, missing token) the lookup returns
-// an empty string and Gradle init continues; the cache plugin self-disables
-// when it hits the network with no token rather than hard-failing the build.
-val bitriseBuildCacheAuthToken: String = run {
-    try {
-        val proc = ProcessBuilder("CLIPathValue", "auth", "token").redirectErrorStream(false).start()
-        val outText = proc.inputStream.bufferedReader().readText().trim()
-        val errText = proc.errorStream.bufferedReader().readText().trim()
-        if (!proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
-            proc.destroyForcibly()
-            System.err.println("bitrise-build-cache auth token timed out after 30s; continuing with empty token")
-            return@run ""
+// Wrapped in a ValueSource so it's safe under Gradle's configuration cache
+// (which forbids ad-hoc external processes during configuration). Any failure
+// (timeout, non-zero exit, missing binary) yields an empty token + stderr
+// warning rather than hard-failing; the cache plugin self-disables when it
+// hits the network with no token.
+abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
+    @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
+    override fun obtain(): String {
+        val out = java.io.ByteArrayOutputStream()
+        val err = java.io.ByteArrayOutputStream()
+        val result = execOps.exec {
+            commandLine("CLIPathValue", "auth", "token")
+            standardOutput = out
+            errorOutput = err
+            isIgnoreExitValue = true
         }
-        if (proc.exitValue() != 0) {
-            System.err.println("bitrise-build-cache auth token exited ${proc.exitValue()}: $errText")
-            return@run ""
+        if (result.exitValue != 0) {
+            System.err.println("bitrise-build-cache auth token exited ${result.exitValue}: ${err.toString().trim()}")
+            return ""
         }
-        outText
-    } catch (e: Exception) {
-        System.err.println("bitrise-build-cache auth token failed: ${e.message}; continuing with empty token")
-        ""
+        return out.toString().trim()
     }
 }
+
+val bitriseBuildCacheAuthToken: String = gradle.providers.of(BitriseAuthTokenSource::class.java) {}.get()
 `
 
 const expectedAllPlugins = expectedImports + "\n" +

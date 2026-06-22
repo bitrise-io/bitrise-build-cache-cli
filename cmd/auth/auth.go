@@ -41,6 +41,9 @@ var authSetCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
+		setToken = strings.TrimSpace(setToken)
+		setWorkspaceID = strings.TrimSpace(setWorkspaceID)
+
 		switch {
 		case setToken == "" && setWorkspaceID == "":
 			return errors.New("--token and --workspace-id are required and must not be empty")

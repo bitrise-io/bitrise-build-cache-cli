@@ -29,7 +29,7 @@ const (
 	ErrFmtCreateConfigFile = "failed to create ccache config file: %w"
 	ErrFmtEncodeConfigFile = "failed to encode ccache config file: %w"
 	ErrFmtCreateFolder     = "failed to create .bitrise/cache/ccache folder (%s): %w"
-	ErrNoAuthConfig        = "read auth config: %w"
+	ErrNoAuthConfig        = "resolve auth config: %w"
 )
 
 // Params holds the parameters for creating a ccache activate config.

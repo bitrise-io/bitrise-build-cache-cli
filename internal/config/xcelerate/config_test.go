@@ -250,7 +250,11 @@ func TestConfig_AuthBackwardsCompat(t *testing.T) {
 }
 
 func TestConfig_NewConfig(t *testing.T) {
-	t.Run("When auth env vars are not set, returns error", func(t *testing.T) {
+	t.Run("When no auth source is configured, returns error", func(t *testing.T) {
+		// Isolate from the dev machine's real keychain + multiplatform config
+		// so ResolveAuthConfig's fallback chain finds nothing.
+		t.Setenv("HOME", t.TempDir())
+
 		osProxyMock := &utilsMocks.OsProxyMock{}
 
 		_, err := xcelerate.NewConfig(context.Background(), nil, xcelerate.Params{}, map[string]string{}, osProxyMock, nil, nil, nil)
