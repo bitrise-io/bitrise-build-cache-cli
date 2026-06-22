@@ -152,9 +152,9 @@ const expectedAuthTokenResolver = `// Resolve the Bitrise auth token at build ti
 // consults env vars → OS keychain → multiplatform analytics config.
 // Wrapped in a ValueSource so it's safe under Gradle's configuration cache
 // (which forbids ad-hoc external processes during configuration). Any failure
-// (timeout, non-zero exit, missing binary) yields an empty token + stderr
-// warning rather than hard-failing; the cache plugin self-disables when it
-// hits the network with no token.
+// (non-zero exit, missing binary) yields an empty token + stderr warning
+// rather than hard-failing; the cache plugin self-disables when it hits the
+// network with no token.
 abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
     @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
     override fun obtain(): String {
@@ -174,7 +174,10 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
     }
 }
 
-val bitriseBuildCacheAuthToken: String = gradle.providers.of(BitriseAuthTokenSource::class.java) {}.get()
+// Init-script scope does not expose ProviderFactory; resolve per-block where it is
+// available (Settings.providers inside settingsEvaluated, Project.providers inside rootProject).
+fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
+    of(BitriseAuthTokenSource::class.java) {}.get()
 `
 
 const expectedAllPlugins = expectedImports + "\n" +
@@ -192,7 +195,7 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = bitriseBuildCacheAuthToken
+            authToken = providers.bitriseAuthToken()
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -209,7 +212,7 @@ settingsEvaluated {
             endpoint.set("AnalyticsEndpointURLValue:123")
             httpEndpoint.set("AnalyticsHttpEndpointValue")
             grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-            authToken.set(bitriseBuildCacheAuthToken)
+            authToken.set(providers.bitriseAuthToken())
             dumpEventsToFiles.set(true)
             debug.set(true)
             enabled.set(true)
@@ -227,7 +230,7 @@ rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
         endpoint.set("TestDistroEndpointValue")
         kvEndpoint.set("TestDistroKvEndpointValue")
-        authToken.set(bitriseBuildCacheAuthToken)
+        authToken.set(providers.bitriseAuthToken())
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
         testSearchDepth.set(3)
