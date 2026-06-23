@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -54,7 +55,7 @@ func newTestPrompter(input string, secrets ...string) (*prompter, *bytes.Buffer)
 		out:    out,
 		readPassword: func() (string, error) {
 			if secretIdx >= len(secretsCopy) {
-				return "", nil
+				return "", io.EOF
 			}
 
 			s := secretsCopy[secretIdx]
@@ -114,6 +115,14 @@ func TestPromptRequiredSecret(t *testing.T) {
 		got, err := promptRequiredSecret(p, "Auth token")
 		require.NoError(t, err)
 		assert.Equal(t, "secret-token", got)
+	})
+
+	t.Run("errors on closed stdin with no value", func(t *testing.T) {
+		p, _ := newTestPrompter("")
+
+		_, err := promptRequiredSecret(p, "Auth token")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Auth token")
 	})
 }
 
