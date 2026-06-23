@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/charmbracelet/huh"
@@ -102,4 +103,42 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[envAuthToken] = authToken
 
 	return runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled)
+}
+
+func nonEmpty(label string) func(string) error {
+	return func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return errors.New(label + " cannot be empty")
+		}
+
+		return nil
+	}
+}
+
+type credsSource int
+
+const (
+	credsSourceNone credsSource = iota
+	credsSourceKeychain
+	credsSourceEnv
+)
+
+func loadStartingCredentials(kc keychainStore, envWS, envToken string) (string, string, credsSource) {
+	if creds, err := kc.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+		return creds.WorkspaceID, creds.AuthToken, credsSourceKeychain
+	}
+
+	if envToken != "" && envWS != "" {
+		return envWS, envToken, credsSourceEnv
+	}
+
+	return "", "", credsSourceNone
+}
+
+func persistCredentials(kc keychainStore, workspaceID, authToken string) error {
+	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
+		return fmt.Errorf("save credentials to keychain: %w", err)
+	}
+
+	return nil
 }
