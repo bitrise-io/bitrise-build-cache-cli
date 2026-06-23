@@ -45,6 +45,42 @@ type authLoader interface {
 	Load() (keychain.Credentials, error)
 }
 
+// AuthSource identifies where a credential resolved from.
+type AuthSource int
+
+const (
+	AuthSourceNone AuthSource = iota
+	AuthSourceKeychain
+	AuthSourceEnvVars
+)
+
+// ResolveStoredCredentials returns the canonical stored credentials with their
+// source. Order: keychain → env vars → none. Use this when the caller needs to
+// know WHERE the creds came from (e.g. an import-and-migrate wizard) rather
+// than just resolving for an HTTP request (use ResolveAuthConfig for that —
+// it prefers env so a single run can override stored creds).
+func ResolveStoredCredentials(envs map[string]string) (CacheAuthConfig, AuthSource, error) {
+	return resolveStoredCredentials(envs, keychain.New())
+}
+
+func resolveStoredCredentials(envs map[string]string, loader authLoader) (CacheAuthConfig, AuthSource, error) {
+	if creds, err := loader.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+		return CacheAuthConfig{
+			AuthToken:   creds.AuthToken,
+			WorkspaceID: creds.WorkspaceID,
+		}, AuthSourceKeychain, nil
+	}
+
+	if envs[EnvAuthToken] != "" && envs[EnvWorkspaceID] != "" {
+		return CacheAuthConfig{
+			AuthToken:   envs[EnvAuthToken],
+			WorkspaceID: envs[EnvWorkspaceID],
+		}, AuthSourceEnvVars, nil
+	}
+
+	return CacheAuthConfig{}, AuthSourceNone, nil
+}
+
 // Wired via RegisterMultiplatformReader to avoid a multiplatform→common import cycle.
 //
 //nolint:gochecknoglobals

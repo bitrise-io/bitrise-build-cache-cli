@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -22,13 +21,14 @@ func (*huhWizard) Run(ctx context.Context) error {
 	logger.TInfof("Bitrise Build Cache - interactive local setup")
 
 	kc := keychain.New()
+	envs := utils.AllEnvs()
 
-	startWS, startToken, source := loadStartingCredentials(kc, os.Getenv(configcommon.EnvWorkspaceID), os.Getenv(configcommon.EnvAuthToken))
+	stored, source, _ := configcommon.ResolveStoredCredentials(envs)
 
 	var (
 		selectedTools []string
-		workspaceID   = startWS
-		authToken     = startToken
+		workspaceID   = stored.WorkspaceID
+		authToken     = stored.AuthToken
 		pushEnabled   bool
 	)
 
@@ -54,7 +54,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		),
 	}
 
-	if source == credsSourceNone {
+	if source == configcommon.AuthSourceNone {
 		groups = append(groups,
 			huh.NewGroup(
 				huh.NewInput().
@@ -88,16 +88,16 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	switch source {
-	case credsSourceKeychain:
+	case configcommon.AuthSourceKeychain:
 		logger.TInfof("Using credentials from the OS keychain.")
-	case credsSourceEnv:
+	case configcommon.AuthSourceEnvVars:
 		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
 		} else {
 			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
 			logger.Infof("You can now remove them from your shell rc files.")
 		}
-	case credsSourceNone:
+	case configcommon.AuthSourceNone:
 		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
 		} else {
@@ -105,7 +105,6 @@ func (*huhWizard) Run(ctx context.Context) error {
 		}
 	}
 
-	envs := utils.AllEnvs()
 	envs[configcommon.EnvWorkspaceID] = workspaceID
 	envs[configcommon.EnvAuthToken] = authToken
 
@@ -120,26 +119,6 @@ func nonEmpty(label string) func(string) error {
 
 		return nil
 	}
-}
-
-type credsSource int
-
-const (
-	credsSourceNone credsSource = iota
-	credsSourceKeychain
-	credsSourceEnv
-)
-
-func loadStartingCredentials(kc keychainStore, envWS, envToken string) (string, string, credsSource) {
-	if creds, err := kc.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
-		return creds.WorkspaceID, creds.AuthToken, credsSourceKeychain
-	}
-
-	if envToken != "" && envWS != "" {
-		return envWS, envToken, credsSourceEnv
-	}
-
-	return "", "", credsSourceNone
 }
 
 func persistCredentials(kc keychainStore, workspaceID, authToken string) error {

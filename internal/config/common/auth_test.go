@@ -425,3 +425,54 @@ func TestExtractWorkspaceIDFromJWT(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveStoredCredentials_keychainWins(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	cfg, source, err := resolveStoredCredentials(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, AuthSourceKeychain, source)
+	assert.Equal(t, "kc-tok", cfg.AuthToken)
+	assert.Equal(t, "kc-ws", cfg.WorkspaceID)
+}
+
+func TestResolveStoredCredentials_envWhenKeychainEmpty(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	cfg, source, err := resolveStoredCredentials(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, AuthSourceEnvVars, source)
+	assert.Equal(t, "env-tok", cfg.AuthToken)
+	assert.Equal(t, "env-ws", cfg.WorkspaceID)
+}
+
+func TestResolveStoredCredentials_noneWhenNothingSet(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+
+	cfg, source, err := resolveStoredCredentials(map[string]string{}, loader)
+	require.NoError(t, err)
+	assert.Equal(t, AuthSourceNone, source)
+	assert.Empty(t, cfg.AuthToken)
+	assert.Empty(t, cfg.WorkspaceID)
+}
+
+func TestResolveStoredCredentials_partialKeychainFallsThroughToEnv(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	cfg, source, err := resolveStoredCredentials(envs, loader)
+	require.NoError(t, err)
+	assert.Equal(t, AuthSourceEnvVars, source)
+	assert.Equal(t, "env-tok", cfg.AuthToken)
+}
