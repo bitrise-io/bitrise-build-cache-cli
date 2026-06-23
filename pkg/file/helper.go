@@ -152,7 +152,7 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 // ---------------------------------------------------------------------------
 
 func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
-	authConfig, err := configcommon.ResolveAuthConfig(h.envs)
+	authConfig, _, err := configcommon.ResolveAuthConfig(h.envs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve auth config: %w", err)
 	}

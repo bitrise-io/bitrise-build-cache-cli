@@ -492,7 +492,7 @@ var authTokenCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cfg, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+		cfg, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 		if err != nil {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 

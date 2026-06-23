@@ -23,7 +23,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	kc := keychain.New()
 	envs := utils.AllEnvs()
 
-	stored, source, _ := configcommon.ResolveStoredCredentials(envs)
+	stored, source := wizardStartingCreds(envs)
 
 	var (
 		selectedTools []string
@@ -97,6 +97,9 @@ func (*huhWizard) Run(ctx context.Context) error {
 			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
 			logger.Infof("You can now remove them from your shell rc files.")
 		}
+	case configcommon.AuthSourceJWT, configcommon.AuthSourceMultiplatform:
+		// JWT is per-build, multiplatform is already on disk — neither warrants persisting again.
+		logger.TInfof("Using credentials resolved by the CLI.")
 	case configcommon.AuthSourceNone:
 		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
@@ -119,6 +122,23 @@ func nonEmpty(label string) func(string) error {
 
 		return nil
 	}
+}
+
+// wizardStartingCreds enforces keychain-first precedence for the wizard:
+// keychain wins over env vars (so a populated keychain isn't silently overridden
+// by stale shell-rc env vars), then we fall back to ResolveAuthConfig for the
+// env / JWT / multiplatform sources, returning AuthSourceNone if none are set.
+func wizardStartingCreds(envs map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource) {
+	if cfg, ok := configcommon.GetKeychainCredentials(); ok {
+		return cfg, configcommon.AuthSourceKeychain
+	}
+
+	cfg, src, err := configcommon.ResolveAuthConfig(envs)
+	if err != nil {
+		return configcommon.CacheAuthConfig{}, configcommon.AuthSourceNone
+	}
+
+	return cfg, src
 }
 
 func persistCredentials(kc keychainStore, workspaceID, authToken string) error {

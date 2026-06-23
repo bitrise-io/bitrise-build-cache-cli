@@ -63,7 +63,7 @@ func Activate(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
-	authConfig, err := configcommon.ResolveAuthConfig(envs)
+	authConfig, _, err := configcommon.ResolveAuthConfig(envs)
 	if err != nil {
 		return fmt.Errorf("resolve auth config: %w", err)
 	}
