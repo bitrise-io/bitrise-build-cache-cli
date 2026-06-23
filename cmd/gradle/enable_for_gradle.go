@@ -2,6 +2,7 @@ package gradle
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -82,7 +83,15 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	activateGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
 	activateGradleParams.TestDistro.Enabled = false
 
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envProvider)
+	if cliPath, exeErr := os.Executable(); exeErr == nil {
+		activateGradleParams.CLIPath = cliPath
+	}
+
+	authConfig, err := configcommon.ResolveAuthConfig(envProvider)
+	if err != nil {
+		return fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, err))
+	}
+
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
 	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, benchmarkClient)

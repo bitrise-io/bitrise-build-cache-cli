@@ -137,11 +137,10 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 	}
 
 	h.logger.TInfof("Downloading %s for key %s", filePath, key)
-	if err := kvClient.DownloadFileFromBuildCache(ctx, filePath, key); err != nil {
-		if errors.Is(err, kv.ErrCacheNotFound) {
-			return fmt.Errorf("no cache item found for key %q: %w", key, err)
-		}
-
+	switch err := kvClient.DownloadFileFromBuildCache(ctx, filePath, key); {
+	case errors.Is(err, kv.ErrCacheNotFound):
+		return fmt.Errorf("no cache item found for key %q: %w", key, err)
+	case err != nil:
 		return fmt.Errorf("download file from build cache: %w", err)
 	}
 
@@ -153,9 +152,9 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 // ---------------------------------------------------------------------------
 
 func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
-	authConfig, err := configcommon.ReadAuthConfigFromEnvironments(h.envs)
+	authConfig, err := configcommon.ResolveAuthConfig(h.envs)
 	if err != nil {
-		return nil, fmt.Errorf("read auth config from environments: %w", err)
+		return nil, fmt.Errorf("resolve auth config: %w", err)
 	}
 
 	endpointURL := configcommon.SelectCacheEndpointURL(h.endpointURL, h.envs)

@@ -25,7 +25,7 @@ const (
 	ErrFmtCreateConfigFile = `failed to create xcelerate config file: %w`
 	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
-	ErrNoAuthConfig        = "read auth config: %w"
+	ErrNoAuthConfig        = "resolve auth config: %w"
 )
 
 type Params struct {
@@ -126,7 +126,7 @@ func NewConfig(ctx context.Context,
 	exporter EnvExporter,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (Config, error) {
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+	authConfig, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

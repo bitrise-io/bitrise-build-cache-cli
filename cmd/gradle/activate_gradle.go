@@ -43,6 +43,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		allEnvs := utils.AllEnvs()
 
+		if cliPath, exeErr := os.Executable(); exeErr == nil {
+			activateGradleParams.CLIPath = cliPath
+		}
+
 		if err := gradleconfig.Activate(
 			logger,
 			gradleHome,

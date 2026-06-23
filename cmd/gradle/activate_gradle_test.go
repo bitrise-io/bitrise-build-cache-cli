@@ -40,7 +40,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := gradle.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			map[string]string{},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
@@ -81,7 +81,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := gradle.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			map[string]string{},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
@@ -117,7 +117,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := gradle.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			map[string]string{},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
@@ -153,7 +153,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 		err := gradle.ActivateGradleCmdFn(
 			mockLogger,
 			"~/.gradle",
-			map[string]string{},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},

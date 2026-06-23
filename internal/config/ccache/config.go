@@ -29,7 +29,7 @@ const (
 	ErrFmtCreateConfigFile = "failed to create ccache config file: %w"
 	ErrFmtEncodeConfigFile = "failed to encode ccache config file: %w"
 	ErrFmtCreateFolder     = "failed to create .bitrise/cache/ccache folder (%s): %w"
-	ErrNoAuthConfig        = "read auth config: %w"
+	ErrNoAuthConfig        = "resolve auth config: %w"
 )
 
 // Params holds the parameters for creating a ccache activate config.
@@ -85,6 +85,11 @@ func PathFor(osProxy utils.OsProxy, subpath string) string {
 	return filepath.Join(DirPath(osProxy), subpath)
 }
 
+// ConfigFile returns the absolute path of the ccache config.json.
+func ConfigFile(osProxy utils.OsProxy) string {
+	return PathFor(osProxy, ccacheConfigFile)
+}
+
 func DefaultParams() Params {
 	return Params{
 		PushEnabled: true,
@@ -92,7 +97,7 @@ func DefaultParams() Params {
 }
 
 func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+	authConfig, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

@@ -15,7 +15,7 @@ import (
 const (
 	errFmtInvalidCacheLevel        = "invalid cache validation level, valid options: none, warning, error"
 	errFmtTestDistroAppSlug        = "test distribution plugin was enabled but no BITRISE_APP_SLUG was specified"
-	ErrFmtReadAuthConfig           = "read auth config from environment variables: %w"
+	ErrFmtReadAuthConfig           = "resolve auth config: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
 	errFmtInvalidValidationLevel   = "invalid validation level: '%s'"
@@ -45,6 +45,8 @@ type ActivateGradleParams struct {
 	Cache      CacheParams
 	Analytics  AnalyticsParams
 	TestDistro TestDistroParams
+
+	CLIPath string
 }
 
 func DefaultActivateGradleParams() ActivateGradleParams {
@@ -78,7 +80,7 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	// Read auth config and metadata upfront
 	logger.Infof("(i) Check Auth Config")
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+	authConfig, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
@@ -123,12 +125,18 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	metadata common.CacheConfigMetadata,
 	isDebug bool,
 ) PluginCommonTemplateInventory {
+	cliPath := params.CLIPath
+	if cliPath == "" {
+		cliPath = "bitrise-build-cache"
+	}
+
 	return PluginCommonTemplateInventory{
 		AuthToken:  authConfig.TokenInGradleFormat(),
 		Debug:      isDebug,
 		AppSlug:    metadata.BitriseAppID,
 		CIProvider: metadata.CIProvider,
 		Version:    consts.GradleCommonPluginDepVersion,
+		CLIPath:    cliPath,
 	}
 }
 

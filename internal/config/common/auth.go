@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
 var (
@@ -29,6 +31,53 @@ func (cac CacheAuthConfig) TokenInGradleFormat() string {
 	}
 
 	return cac.WorkspaceID + ":" + cac.AuthToken
+}
+
+type authLoader interface {
+	Load() (keychain.Credentials, error)
+}
+
+// Wired via RegisterMultiplatformReader to avoid a multiplatform→common import cycle.
+//
+//nolint:gochecknoglobals
+var multiplatformConfigReader func() (CacheAuthConfig, error)
+
+func RegisterMultiplatformReader(fn func() (CacheAuthConfig, error)) {
+	multiplatformConfigReader = fn
+}
+
+func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, error) {
+	return resolveAuthConfig(envs, keychain.New(), multiplatformConfigReader)
+}
+
+func resolveAuthConfig(envs map[string]string, loader authLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, error) {
+	if hasAuthEnvVars(envs) {
+		return ReadAuthConfigFromEnvironments(envs)
+	}
+
+	creds, err := loader.Load()
+	if err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+		return CacheAuthConfig{
+			AuthToken:   creds.AuthToken,
+			WorkspaceID: creds.WorkspaceID,
+		}, nil
+	}
+
+	if readMultiplatform != nil {
+		if mpCfg, mpErr := readMultiplatform(); mpErr == nil && mpCfg.AuthToken != "" && mpCfg.WorkspaceID != "" {
+			return mpCfg, nil
+		}
+	}
+
+	return ReadAuthConfigFromEnvironments(envs)
+}
+
+func hasAuthEnvVars(envs map[string]string) bool {
+	if envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"] != "" {
+		return true
+	}
+
+	return envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"] != "" && envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"] != ""
 }
 
 // ReadAuthConfigFromEnvironments reads auth information from the environment variables
