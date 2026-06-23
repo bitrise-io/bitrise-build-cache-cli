@@ -182,7 +182,7 @@ func TestResolveCredentials_envPresent_importsToKeychain(t *testing.T) {
 	require.NotNil(t, kc.saved, "env creds should be imported into keychain")
 	assert.Equal(t, "env-tok", kc.saved.AuthToken)
 	assert.Equal(t, "env-ws", kc.saved.WorkspaceID)
-	assert.Contains(t, out.String(), "Importing")
+	assert.Contains(t, out.String(), "Imported credentials into the OS keychain")
 }
 
 func TestResolveCredentials_envPresent_saveErrorContinues(t *testing.T) {

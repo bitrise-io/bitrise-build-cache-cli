@@ -104,15 +104,14 @@ func resolveCredentials(p *prompter, kc keychainStore) (string, string, error) {
 	if envToken != "" && envWS != "" {
 		fmt.Fprintln(p.out)
 		fmt.Fprintln(p.out, "Found BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID in env.")
-		fmt.Fprintln(p.out, "Importing them into the OS keychain so you can remove them from your shell rc files.")
 
 		if err := kc.Save(keychain.Credentials{AuthToken: envToken, WorkspaceID: envWS}); err != nil {
-			fmt.Fprintf(p.out, "Could not save to keychain (%v). Continuing with env values for this run only.\n", err)
+			fmt.Fprintf(p.out, "Could not save to the OS keychain (%v). Continuing with env values for this run only.\n", err)
 
 			return envWS, envToken, nil
 		}
 
-		fmt.Fprintln(p.out, "✅ Credentials saved to the OS keychain.")
+		fmt.Fprintln(p.out, "✅ Imported credentials into the OS keychain.")
 		fmt.Fprintln(p.out, "You can now remove BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID from your shell rc files.")
 
 		return envWS, envToken, nil
