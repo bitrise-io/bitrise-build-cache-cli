@@ -85,6 +85,11 @@ func PathFor(osProxy utils.OsProxy, subpath string) string {
 	return filepath.Join(DirPath(osProxy), subpath)
 }
 
+// ConfigFile returns the absolute path of the ccache config.json.
+func ConfigFile(osProxy utils.OsProxy) string {
+	return PathFor(osProxy, ccacheConfigFile)
+}
+
 func DefaultParams() Params {
 	return Params{
 		PushEnabled: true,

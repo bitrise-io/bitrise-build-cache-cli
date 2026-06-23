@@ -15,8 +15,11 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
+	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -95,11 +98,11 @@ func scrubDiskCredentials() ([]string, error) {
 		scrubbed = append(scrubbed, path)
 	}
 
-	for _, displayPath := range []string{
-		"~/.bitrise-xcelerate/config.json",
-		"~/.bitrise/cache/ccache/config.json",
+	for _, fullPath := range []string{
+		xceleratconfig.ConfigFile(osProxy),
+		ccacheconfig.ConfigFile(osProxy),
 	} {
-		path, err := scrubRawConfigAuthToken(osProxy, displayPath)
+		path, err := scrubRawConfigAuthToken(osProxy, fullPath)
 		if err != nil {
 			return scrubbed, err
 		}
@@ -135,19 +138,14 @@ func scrubMultiplatform(osProxy utils.OsProxy) (string, error) {
 		return "", fmt.Errorf("save scrubbed multiplatform config: %w", err)
 	}
 
-	return "~/.bitrise/analytics/multiplatform/config.json", nil
+	return displayHomePath(osProxy, multiplatformconfig.FilePath(osProxy)), nil
 }
 
 // Legacy files from older CLI versions still carry authConfig on disk; current activate path no longer writes it.
-func scrubRawConfigAuthToken(osProxy utils.OsProxy, displayPath string) (string, error) {
-	home, err := osProxy.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
-	}
+func scrubRawConfigAuthToken(osProxy utils.OsProxy, fullPath string) (string, error) {
+	displayPath := displayHomePath(osProxy, fullPath)
 
-	fullPath := filepath.Join(home, strings.TrimPrefix(displayPath, "~/"))
-
-	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed from home + constant
+	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed via the typed paths helpers
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return "", nil
@@ -197,10 +195,9 @@ func scrubGradleInitKts(osProxy utils.OsProxy) (string, error) {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
 
-	const relPath = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
-	fullPath := filepath.Join(home, relPath)
+	fullPath := paths.FromHome(home).GradleInitScriptFile()
 
-	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed from home + constant
+	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed via the typed paths helpers
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return "", nil
@@ -220,7 +217,22 @@ func scrubGradleInitKts(osProxy utils.OsProxy) (string, error) {
 		return "", fmt.Errorf("write scrubbed gradle init.kts: %w", err)
 	}
 
-	return "~/" + relPath, nil
+	return displayHomePath(osProxy, fullPath), nil
+}
+
+// displayHomePath returns the absolute path with the user's home dir replaced by `~`.
+func displayHomePath(osProxy utils.OsProxy, full string) string {
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return full
+	}
+
+	rel, err := filepath.Rel(home, full)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return full
+	}
+
+	return "~/" + filepath.ToSlash(rel)
 }
 
 //nolint:gochecknoglobals
@@ -246,13 +258,23 @@ var authListCmd = &cobra.Command{
 
 		target, migrationSources := credSources(utils.AllEnvs())
 
-		keychainPopulated := printSource(logger, target)
+		keychainPopulated := renderSource(logger, target, target.probe())
 
-		var foundElsewhere bool
+		var foundElsewhere, suppressed bool
 		for _, s := range migrationSources {
-			if printSource(logger, s) {
+			audit := s.probe()
+			if audit.state == sourceAbsent && !common.IsDebugLogMode {
+				suppressed = true
+
+				continue
+			}
+			if renderSource(logger, s, audit) {
 				foundElsewhere = true
 			}
+		}
+
+		if suppressed {
+			logger.Infof("(absent sources hidden — re-run with --debug to see the full audit)")
 		}
 
 		if !keychainPopulated && foundElsewhere {
@@ -293,11 +315,17 @@ type credSource struct {
 // Returns (target, migrationSources). The target is the canonical home for credentials (OS keychain);
 // migrationSources are inspected to nudge the user toward `auth set` when creds live elsewhere.
 func credSources(envs map[string]string) (credSource, []credSource) {
+	osProxy := utils.DefaultOsProxy{}
+
+	xcelerateConfigPath := xceleratconfig.ConfigFile(osProxy)
+	ccacheConfigPath := ccacheconfig.ConfigFile(osProxy)
+	multiplatformConfigPath := multiplatformconfig.FilePath(osProxy)
+
 	target := credSource{"OS keychain", "<system keychain>", probeKeychain}
 	migrationSources := []credSource{
-		{"Multiplatform config", "~/.bitrise/analytics/multiplatform/config.json", probeMultiplatform},
-		{"Xcelerate config", "~/.bitrise-xcelerate/config.json", probeRawConfig("~/.bitrise-xcelerate/config.json")},
-		{"Ccache config", "~/.bitrise/cache/ccache/config.json", probeRawConfig("~/.bitrise/cache/ccache/config.json")},
+		{"Multiplatform config", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
+		{"Xcelerate config", displayHomePath(osProxy, xcelerateConfigPath), probeRawConfig(xcelerateConfigPath)},
+		{"Ccache config", displayHomePath(osProxy, ccacheConfigPath), probeRawConfig(ccacheConfigPath)},
 		{"Env vars (BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)", "process env", func() credAudit { return probeEnvVars(envs) }},
 		{"CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)", "process env", func() credAudit { return probeJWT(envs) }},
 	}
@@ -305,14 +333,13 @@ func credSources(envs map[string]string) (credSource, []credSource) {
 	return target, migrationSources
 }
 
-func printSource(logger log.Logger, s credSource) bool {
+func renderSource(logger log.Logger, s credSource, a credAudit) bool {
 	if s.location != "" {
 		logger.TInfof("%s (%s):", s.label, s.location)
 	} else {
 		logger.TInfof("%s:", s.label)
 	}
 
-	a := s.probe()
 	switch a.state {
 	case sourceAbsent:
 		if a.note != "" {
@@ -371,16 +398,9 @@ func probeMultiplatform() credAudit {
 }
 
 // probeRawConfig reads the file directly — the per-tool ReadConfig overlays multiplatform credentials, which would mask the actual on-disk content this audit needs to see.
-func probeRawConfig(displayPath string) func() credAudit {
+func probeRawConfig(fullPath string) func() credAudit {
 	return func() credAudit {
-		home, err := utils.DefaultOsProxy{}.UserHomeDir()
-		if err != nil {
-			return credAudit{state: sourceReadError, err: fmt.Errorf("resolve home dir: %w", err)}
-		}
-
-		fullPath := filepath.Join(home, strings.TrimPrefix(displayPath, "~/"))
-
-		body, err := os.ReadFile(fullPath) //nolint:gosec // path composed from home + constant
+		body, err := os.ReadFile(fullPath) //nolint:gosec // path composed via the typed paths helpers
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			return credAudit{state: sourceAbsent, note: "not present"}

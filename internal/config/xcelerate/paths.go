@@ -35,3 +35,8 @@ func DirPath(osProxy utils.OsProxy) string {
 func PathFor(osProxy utils.OsProxy, subpath string) string {
 	return filepath.Join(DirPath(osProxy), subpath)
 }
+
+// ConfigFile returns the absolute path of the xcelerate config.json.
+func ConfigFile(osProxy utils.OsProxy) string {
+	return PathFor(osProxy, xcelerateConfigFileName)
+}

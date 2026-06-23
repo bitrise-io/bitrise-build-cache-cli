@@ -44,6 +44,9 @@ const (
 
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
+
+	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
+	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 )
 
 // Paths resolves on-disk locations rooted at a single home directory.
@@ -159,4 +162,9 @@ func (p Paths) XcelerateBinFile(name string) string {
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
 func (p Paths) ProxySocketPath(tempDir string) string {
 	return filepath.Join(tempDir, ProxySocketName)
+}
+
+// GradleInitScriptFile returns the absolute path of the generated gradle init script.
+func (p Paths) GradleInitScriptFile() string {
+	return filepath.Join(p.Home, gradleInitScriptRelative)
 }

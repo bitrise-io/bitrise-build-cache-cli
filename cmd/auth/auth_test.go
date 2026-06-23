@@ -57,7 +57,7 @@ func TestScrubRawConfigAuthToken_stripsAuthAndKeepsRest(t *testing.T) {
 }`
 	require.NoError(t, os.WriteFile(configPath, []byte(body), 0o600))
 
-	scrubbed, err := scrubRawConfigAuthToken(utils.DefaultOsProxy{}, "~/.bitrise-xcelerate/config.json")
+	scrubbed, err := scrubRawConfigAuthToken(utils.DefaultOsProxy{}, configPath)
 	require.NoError(t, err)
 	assert.Equal(t, "~/.bitrise-xcelerate/config.json", scrubbed)
 
@@ -83,7 +83,7 @@ func TestScrubRawConfigAuthToken_noopWhenAlreadyClean(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(configPath, []byte(`{"proxyVersion":"1"}`), 0o600))
 
-	scrubbed, err := scrubRawConfigAuthToken(utils.DefaultOsProxy{}, "~/.bitrise-xcelerate/config.json")
+	scrubbed, err := scrubRawConfigAuthToken(utils.DefaultOsProxy{}, configPath)
 	require.NoError(t, err)
 	assert.Empty(t, scrubbed)
 }
