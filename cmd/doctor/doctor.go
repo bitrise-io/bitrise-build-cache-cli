@@ -43,10 +43,12 @@ var doctorCmd = &cobra.Command{
 		})
 
 		if jsonOutput {
-			return writeJSON(out, report)
+			if err := writeJSON(out, report); err != nil {
+				return err
+			}
+		} else {
+			writeHuman(out, report, fixFlag, colorEnabled(out))
 		}
-
-		writeHuman(out, report, fixFlag, colorEnabled(out))
 
 		if report.Overall() == doctorpkg.StateError {
 			return errors.New("doctor reported errors")
