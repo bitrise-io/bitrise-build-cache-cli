@@ -72,10 +72,15 @@ var authSetCmd = &cobra.Command{
 			logger.Warnf("Saved to keychain, but could not strip plain-text credentials from disk: %v", err)
 			logger.Warnf("Run `bitrise-build-cache auth list` to audit remaining sources.")
 		case len(scrubbed) > 0:
-			logger.TInfof("Scrubbed plain-text credentials from %s", strings.Join(scrubbed, ", "))
-			for _, p := range scrubbed {
-				if hint, ok := reactivateHints[p]; ok {
-					logger.Infof("  → %s", hint)
+			scrubbedPaths := make([]string, len(scrubbed))
+			for i, item := range scrubbed {
+				scrubbedPaths[i] = item.path
+			}
+
+			logger.TInfof("Scrubbed plain-text credentials from %s", strings.Join(scrubbedPaths, ", "))
+			for _, item := range scrubbed {
+				if item.hint != "" {
+					logger.Infof("  → %s", item.hint)
 				}
 			}
 		}
@@ -87,58 +92,73 @@ var authSetCmd = &cobra.Command{
 	},
 }
 
-func scrubDiskCredentials() ([]string, error) {
+// scrubbedItem pairs a scrubbed file path with the reactivate command the user
+// should run to regenerate a clean config (empty hint = no follow-up needed).
+type scrubbedItem struct {
+	path string
+	hint string
+}
+
+func scrubDiskCredentials() ([]scrubbedItem, error) {
 	osProxy := utils.DefaultOsProxy{}
 
-	var scrubbed []string
+	var scrubbed []scrubbedItem
 
-	if path, err := scrubMultiplatform(osProxy); err != nil {
-		return scrubbed, err
-	} else if path != "" {
-		scrubbed = append(scrubbed, path)
-	}
-
-	for _, fullPath := range []string{
-		xceleratconfig.ConfigFile(osProxy),
-		ccacheconfig.ConfigFile(osProxy),
+	for _, scrub := range []func(utils.OsProxy) (scrubbedItem, error){
+		scrubMultiplatform,
+		scrubXcelerate,
+		scrubCcache,
+		scrubGradleInitKts,
 	} {
-		path, err := scrubRawConfigAuthToken(osProxy, fullPath)
+		item, err := scrub(osProxy)
 		if err != nil {
 			return scrubbed, err
 		}
-		if path != "" {
-			scrubbed = append(scrubbed, path)
+		if item.path != "" {
+			scrubbed = append(scrubbed, item)
 		}
-	}
-
-	if path, err := scrubGradleInitKts(osProxy); err != nil {
-		return scrubbed, err
-	} else if path != "" {
-		scrubbed = append(scrubbed, path)
 	}
 
 	return scrubbed, nil
 }
 
-func scrubMultiplatform(osProxy utils.OsProxy) (string, error) {
+func scrubMultiplatform(osProxy utils.OsProxy) (scrubbedItem, error) {
 	cfg, err := multiplatformconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return "", nil
+		return scrubbedItem{}, nil
 	case err != nil:
-		return "", fmt.Errorf("read multiplatform config: %w", err)
+		return scrubbedItem{}, fmt.Errorf("read multiplatform config: %w", err)
 	}
 
 	if cfg.AuthConfig.AuthToken == "" && cfg.AuthConfig.WorkspaceID == "" {
-		return "", nil
+		return scrubbedItem{}, nil
 	}
 
 	cfg.AuthConfig = configcommon.CacheAuthConfig{}
 	if err := cfg.Save(osProxy, utils.DefaultEncoderFactory{}); err != nil {
-		return "", fmt.Errorf("save scrubbed multiplatform config: %w", err)
+		return scrubbedItem{}, fmt.Errorf("save scrubbed multiplatform config: %w", err)
 	}
 
-	return displayHomePath(osProxy, multiplatformconfig.FilePath(osProxy)), nil
+	return scrubbedItem{path: displayHomePath(osProxy, multiplatformconfig.FilePath(osProxy))}, nil
+}
+
+func scrubXcelerate(osProxy utils.OsProxy) (scrubbedItem, error) {
+	path, err := scrubRawConfigAuthToken(osProxy, xceleratconfig.ConfigFile(osProxy))
+	if err != nil || path == "" {
+		return scrubbedItem{}, err
+	}
+
+	return scrubbedItem{path: path, hint: "Run `bitrise-build-cache activate xcode` to regenerate a clean config"}, nil
+}
+
+func scrubCcache(osProxy utils.OsProxy) (scrubbedItem, error) {
+	path, err := scrubRawConfigAuthToken(osProxy, ccacheconfig.ConfigFile(osProxy))
+	if err != nil || path == "" {
+		return scrubbedItem{}, err
+	}
+
+	return scrubbedItem{path: path, hint: "Run `bitrise-build-cache activate c++` to regenerate a clean config"}, nil
 }
 
 // Legacy files from older CLI versions still carry authConfig on disk; current activate path no longer writes it.
@@ -189,10 +209,10 @@ func scrubRawConfigAuthToken(osProxy utils.OsProxy, fullPath string) (string, er
 }
 
 // Older templates and CI activates bake the token as a literal in init.kts; ValueSource activates leave nothing to scrub.
-func scrubGradleInitKts(osProxy utils.OsProxy) (string, error) {
+func scrubGradleInitKts(osProxy utils.OsProxy) (scrubbedItem, error) {
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
+		return scrubbedItem{}, fmt.Errorf("resolve home dir: %w", err)
 	}
 
 	fullPath := paths.FromHome(home).GradleInitScriptFile()
@@ -200,9 +220,9 @@ func scrubGradleInitKts(osProxy utils.OsProxy) (string, error) {
 	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed via the typed paths helpers
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return "", nil
+		return scrubbedItem{}, nil
 	case err != nil:
-		return "", fmt.Errorf("read gradle init.kts: %w", err)
+		return scrubbedItem{}, fmt.Errorf("read gradle init.kts: %w", err)
 	}
 
 	scrubbed := authTokenLiteralRE.ReplaceAllStringFunc(string(body), func(match string) string {
@@ -210,14 +230,17 @@ func scrubGradleInitKts(osProxy utils.OsProxy) (string, error) {
 	})
 
 	if scrubbed == string(body) {
-		return "", nil
+		return scrubbedItem{}, nil
 	}
 
 	if err := os.WriteFile(fullPath, []byte(scrubbed), 0o600); err != nil {
-		return "", fmt.Errorf("write scrubbed gradle init.kts: %w", err)
+		return scrubbedItem{}, fmt.Errorf("write scrubbed gradle init.kts: %w", err)
 	}
 
-	return displayHomePath(osProxy, fullPath), nil
+	return scrubbedItem{
+		path: displayHomePath(osProxy, fullPath),
+		hint: "Run `bitrise-build-cache activate gradle` to regenerate the init script with the ValueSource resolver",
+	}, nil
 }
 
 // displayHomePath returns the absolute path with the user's home dir replaced by `~`.
@@ -239,12 +262,6 @@ func displayHomePath(osProxy utils.OsProxy, full string) string {
 var (
 	authTokenLiteralRE = regexp.MustCompile(`authToken(?:\s*=\s*|\.set\()"[^"]+"`)
 	quotedStringRE     = regexp.MustCompile(`"[^"]+"`)
-
-	reactivateHints = map[string]string{
-		"~/.bitrise-xcelerate/config.json":                     "Run `bitrise-build-cache activate xcode` to regenerate a clean config",
-		"~/.bitrise/cache/ccache/config.json":                  "Run `bitrise-build-cache activate c++` to regenerate a clean config",
-		"~/.gradle/init.d/bitrise-build-cache.init.gradle.kts": "Run `bitrise-build-cache activate gradle` to regenerate the init script with the ValueSource resolver",
-	}
 )
 
 // nolint:gochecknoglobals

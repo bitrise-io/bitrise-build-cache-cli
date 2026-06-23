@@ -119,7 +119,8 @@ rootProject {
 
 	scrubbed, err := scrubGradleInitKts(utils.DefaultOsProxy{})
 	require.NoError(t, err)
-	assert.Equal(t, "~/.gradle/init.d/bitrise-build-cache.init.gradle.kts", scrubbed)
+	assert.Equal(t, "~/.gradle/init.d/bitrise-build-cache.init.gradle.kts", scrubbed.path)
+	assert.Contains(t, scrubbed.hint, "activate gradle")
 
 	rewritten, err := os.ReadFile(initFile)
 	require.NoError(t, err)
@@ -148,5 +149,5 @@ authToken.set(providers.bitriseAuthToken())
 
 	scrubbed, err := scrubGradleInitKts(utils.DefaultOsProxy{})
 	require.NoError(t, err)
-	assert.Empty(t, scrubbed, "value-source form has no literal to scrub")
+	assert.Empty(t, scrubbed.path, "value-source form has no literal to scrub")
 }
