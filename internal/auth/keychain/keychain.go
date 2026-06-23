@@ -48,6 +48,13 @@ func New() *Keychain {
 	return &Keychain{Backend: defaultBackend{}}
 }
 
+// NewBackend returns the OS keychain backend used by Keychain — exposed for
+// callers that need raw Set/Get/Delete against a non-default service/account
+// (e.g. the doctor smoke-test).
+func NewBackend() Backend {
+	return defaultBackend{}
+}
+
 func (k *Keychain) Load() (Credentials, error) {
 	raw, err := k.Backend.Get(serviceName, accountName)
 	switch {
