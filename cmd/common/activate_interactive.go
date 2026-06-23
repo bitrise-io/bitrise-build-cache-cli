@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,20 +38,6 @@ const (
 	toolCcache interactiveTool = "ccache"
 )
 
-// wizard is the abstract setup flow. selectWizard chooses huh on a TTY,
-// the plain prompter elsewhere — one TTY probe, then no further branching.
-type wizard interface {
-	Run(ctx context.Context) error
-}
-
-func selectWizard() wizard {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		return &huhWizard{}
-	}
-
-	return &plainWizard{prompter: newDefaultPrompter()}
-}
-
 func init() { //nolint:gochecknoinits
 	ActivateCmd.Flags().BoolVar(&interactiveFlag, "interactive", false,
 		"Launch an interactive guided local setup. Prompts for the tool and credentials instead of reading them from environment variables.")
@@ -60,7 +47,13 @@ func init() { //nolint:gochecknoinits
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
 		}
 
-		return selectWizard().Run(cmd.Context())
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return errors.New(`interactive setup requires a terminal. For scripted use:
+  bitrise-build-cache auth set --token <token> --workspace-id <workspace-id>
+  bitrise-build-cache activate gradle   # or bazel / xcode / c++`)
+		}
+
+		return (&huhWizard{}).Run(cmd.Context())
 	}
 }
 
