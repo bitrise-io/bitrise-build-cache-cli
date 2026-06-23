@@ -90,12 +90,18 @@ func (*huhWizard) Run(ctx context.Context) error {
 	case credsSourceKeychain:
 		logger.TInfof("Using credentials from the OS keychain.")
 	case credsSourceEnv:
-		logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
-		logger.Infof("You can now remove them from your shell rc files.")
-		_ = persistCredentials(kc, workspaceID, authToken)
+		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
+			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
+		} else {
+			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
+			logger.Infof("You can now remove them from your shell rc files.")
+		}
 	case credsSourceNone:
-		_ = persistCredentials(kc, workspaceID, authToken)
-		logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
+		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
+			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
+		} else {
+			logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
+		}
 	}
 
 	envs := utils.AllEnvs()
