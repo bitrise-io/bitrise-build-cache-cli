@@ -194,3 +194,8 @@ The deployments repo has **no CI on PRs** (no GitHub Actions workflows; the Bitr
 After sed-bumping the constants, the script asserts the working tree shows **exactly** `+2/-2` per startup script and no other files modified — defensive check against a loose regex matching unintended lines.
 
 Required Bitrise secret: `PREBOOTING_BOT_TOKEN` (GH PAT for `Bitrise Infrabot`, scoped to `bitrise-io/build-prebooting-deployments`: `contents:write` + `pull_requests:write`). Slack-alerts on failure; safe to retry the workflow without re-cutting the tag.
+
+## Comments in code
+
+Avoid commenting obvious code flows. Avoid adding long comments, be precise and include only what's not obvious from the surrounding context. Avoid bloating existing code with new comments.
+Do not describe code flows that can be read from the code itself. Do not document messages (or error strings), they would be duplications. Do not include ticket numbers unless it was a non-trivial production bug. Do not include caller sources, those are discoverable.
