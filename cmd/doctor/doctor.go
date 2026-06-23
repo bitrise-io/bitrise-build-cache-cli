@@ -37,7 +37,7 @@ var doctorCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		out := cmd.OutOrStdout()
 
-		report := doctorpkg.NewRunner().Run(cmd.Context(), doctorpkg.Options{
+		report := doctorpkg.NewDoctor().Run(cmd.Context(), doctorpkg.Options{
 			ApplyFixes:      fixFlag,
 			SkipUpdateCheck: skipUpdateCheckFlag,
 		})

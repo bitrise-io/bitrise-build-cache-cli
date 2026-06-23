@@ -88,7 +88,7 @@ type keyringBackend interface {
 	Delete(service, account string) error
 }
 
-type Runner struct {
+type Doctor struct {
 	OsProxy            utils.OsProxy
 	Envs               map[string]string
 	CLIVersion         string
@@ -101,10 +101,10 @@ type Runner struct {
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 }
 
-func NewRunner() *Runner {
+func NewDoctor() *Doctor {
 	osProxy := utils.DefaultOsProxy{}
 
-	return &Runner{
+	return &Doctor{
 		OsProxy:            osProxy,
 		Envs:               utils.AllEnvs(),
 		CLIVersion:         common.GetCLIVersion(nil),
@@ -132,8 +132,8 @@ func (realKeyringBackend) Delete(service, account string) error {
 	return keyring.Delete(service, account) //nolint:wrapcheck
 }
 
-func (r *Runner) Run(ctx context.Context, opts Options) Report {
-	checks := r.checks(opts.SkipUpdateCheck)
+func (d *Doctor) Run(ctx context.Context, opts Options) Report {
+	checks := d.checks(opts.SkipUpdateCheck)
 	items := make([]ReportItem, 0, len(checks))
 
 	for _, c := range checks {
@@ -152,37 +152,37 @@ func (r *Runner) Run(ctx context.Context, opts Options) Report {
 		items = append(items, item)
 	}
 
-	return Report{Items: items, Version: r.CLIVersion}
+	return Report{Items: items, Version: d.CLIVersion}
 }
 
-func (r *Runner) checks(skipUpdateCheck bool) []Check {
+func (d *Doctor) checks(skipUpdateCheck bool) []Check {
 	checks := []Check{
-		r.authCheck(),
-		r.keychainSmokeCheck(),
-		r.xcelerateProxyCheck(),
-		r.ccacheHelperCheck(),
-		r.ccacheBinaryCheck(),
-		r.logDirsCheck(),
+		d.authCheck(),
+		d.keychainSmokeCheck(),
+		d.xcelerateProxyCheck(),
+		d.ccacheHelperCheck(),
+		d.ccacheBinaryCheck(),
+		d.logDirsCheck(),
 	}
 
 	if !skipUpdateCheck {
-		checks = append(checks, r.cliVersionCheck())
+		checks = append(checks, d.cliVersionCheck())
 	}
 
 	return checks
 }
 
-func (r *Runner) authCheck() Check {
+func (d *Doctor) authCheck() Check {
 	return Check{
 		Name: "auth",
 		Diagnose: func(_ context.Context) Result {
-			if r.AuthLoader != nil {
-				if creds, err := r.AuthLoader.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
+			if d.AuthLoader != nil {
+				if creds, err := d.AuthLoader.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
 					return Result{State: StateOK, Detail: "OS keychain, workspace=" + creds.WorkspaceID}
 				}
 			}
 
-			if cfg, err := common.ReadAuthConfigFromEnvironments(r.Envs); err == nil {
+			if cfg, err := common.ReadAuthConfigFromEnvironments(d.Envs); err == nil {
 				return Result{State: StateOK, Detail: "environment variables, workspace=" + cfg.WorkspaceID}
 			}
 
@@ -209,22 +209,22 @@ func newSmokeSecret() string {
 	return "smoketest-" + hex.EncodeToString(b[:])
 }
 
-func (r *Runner) keychainSmokeCheck() Check {
+func (d *Doctor) keychainSmokeCheck() Check {
 	return Check{
 		Name: "keychain-smoke",
 		Diagnose: func(_ context.Context) Result {
 			secret := newSmokeSecret()
 
-			if err := r.Keyring.Set(smokeServiceName, smokeAccountName, secret); err != nil {
+			if err := d.Keyring.Set(smokeServiceName, smokeAccountName, secret); err != nil {
 				return Result{
 					State:  StateError,
 					Detail: "keychain Set failed: " + err.Error() + ". On Linux check that a secret-service backend (e.g. gnome-keyring, KeePassXC) is running.",
 				}
 			}
 
-			got, err := r.Keyring.Get(smokeServiceName, smokeAccountName)
+			got, err := d.Keyring.Get(smokeServiceName, smokeAccountName)
 			if err != nil || got != secret {
-				_ = r.Keyring.Delete(smokeServiceName, smokeAccountName)
+				_ = d.Keyring.Delete(smokeServiceName, smokeAccountName)
 				if err != nil {
 					return Result{State: StateError, Detail: "keychain Get failed: " + err.Error()}
 				}
@@ -232,7 +232,7 @@ func (r *Runner) keychainSmokeCheck() Check {
 				return Result{State: StateError, Detail: "keychain Get returned mismatched value (stale entry from a previous run with a failed Delete?)"}
 			}
 
-			if err := r.Keyring.Delete(smokeServiceName, smokeAccountName); err != nil {
+			if err := d.Keyring.Delete(smokeServiceName, smokeAccountName); err != nil {
 				return Result{State: StateWarn, Detail: "keychain Delete failed: " + err.Error() + ". Set + Get worked; the test entry stays behind."}
 			}
 
@@ -241,8 +241,8 @@ func (r *Runner) keychainSmokeCheck() Check {
 	}
 }
 
-func (r *Runner) xcelerateProxyCheck() Check {
-	pidPath := filepath.Join(r.XcelerateProxyDir(), "proxy.pid")
+func (d *Doctor) xcelerateProxyCheck() Check {
+	pidPath := filepath.Join(d.XcelerateProxyDir(), "proxy.pid")
 
 	return Check{
 		Name: "xcelerate-proxy",
@@ -285,11 +285,11 @@ func (r *Runner) xcelerateProxyCheck() Check {
 	}
 }
 
-func (r *Runner) ccacheHelperCheck() Check {
+func (d *Doctor) ccacheHelperCheck() Check {
 	return Check{
 		Name: "ccache-helper",
 		Diagnose: func(ctx context.Context) Result {
-			socketPath := r.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
+			socketPath := d.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
 			if socketPath == "" {
 				socketPath = filepath.Join(os.TempDir(), "ccache-ipc.sock")
 			}
@@ -318,7 +318,7 @@ func (r *Runner) ccacheHelperCheck() Check {
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
 		},
 		Fix: func() (string, error) {
-			socketPath := r.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
+			socketPath := d.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
 			if socketPath == "" {
 				socketPath = filepath.Join(os.TempDir(), "ccache-ipc.sock")
 			}
@@ -336,11 +336,11 @@ func (r *Runner) ccacheHelperCheck() Check {
 	}
 }
 
-func (r *Runner) ccacheBinaryCheck() Check {
+func (d *Doctor) ccacheBinaryCheck() Check {
 	return Check{
 		Name: "ccache-binary",
 		Diagnose: func(_ context.Context) Result {
-			path, err := r.LookPath("ccache")
+			path, err := d.LookPath("ccache")
 			if err != nil {
 				return Result{State: StateWarn, Detail: "ccache binary not found in PATH. Install via `brew install ccache` if you build C/C++."}
 			}
@@ -441,7 +441,7 @@ func resultFromLogDirsSummary(s logDirsSummary) Result {
 	return Result{State: StateOK, Detail: "all log dirs present + writable"}
 }
 
-func (r *Runner) logDirsCheck() Check {
+func (d *Doctor) logDirsCheck() Check {
 	return Check{
 		Name: "log-dirs",
 		Diagnose: func(_ context.Context) Result {
@@ -450,7 +450,7 @@ func (r *Runner) logDirsCheck() Check {
 				return Result{State: StateError, Detail: "could not determine home dir: " + err.Error()}
 			}
 
-			return resultFromLogDirsSummary(collectLogDirState(home, r.StateDirCandidates))
+			return resultFromLogDirsSummary(collectLogDirState(home, d.StateDirCandidates))
 		},
 		Fix: func() (string, error) {
 			home, err := os.UserHomeDir()
@@ -459,7 +459,7 @@ func (r *Runner) logDirsCheck() Check {
 			}
 
 			created := []string{}
-			for _, candidate := range r.StateDirCandidates {
+			for _, candidate := range d.StateDirCandidates {
 				path := strings.Replace(candidate, "~", home, 1)
 				if _, err := os.Stat(path); err == nil {
 					continue
@@ -477,11 +477,11 @@ func (r *Runner) logDirsCheck() Check {
 	}
 }
 
-func (r *Runner) cliVersionCheck() Check {
+func (d *Doctor) cliVersionCheck() Check {
 	return Check{
 		Name: "cli-version",
 		Diagnose: func(ctx context.Context) Result {
-			current := r.CLIVersion
+			current := d.CLIVersion
 			if current == "" {
 				current = "devel"
 			}
@@ -490,7 +490,7 @@ func (r *Runner) cliVersionCheck() Check {
 				return Result{State: StateOK, Detail: "current=" + current + " (local build)"}
 			}
 
-			latest, err := r.LatestReleaseTag(ctx, r.HTTPClient)
+			latest, err := d.LatestReleaseTag(ctx, d.HTTPClient)
 			if err != nil {
 				return Result{State: StateWarn, Detail: fmt.Sprintf("current=%s; could not check latest (%v)", current, err)}
 			}

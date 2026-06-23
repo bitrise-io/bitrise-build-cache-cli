@@ -112,10 +112,10 @@ func TestIsLocalBuild(t *testing.T) {
 
 // ──────────────────────────── auth ────────────────────────────
 
-func newMinimalRunner(t *testing.T) *Runner {
+func newMinimalDoctor(t *testing.T) *Doctor {
 	t.Helper()
 
-	return &Runner{
+	return &Doctor{
 		Envs:               map[string]string{},
 		AuthLoader:         fakeAuthLoader{creds: keychain.Credentials{AuthToken: "t", WorkspaceID: "w"}},
 		Keyring:            newFakeKeyring(),
@@ -129,7 +129,7 @@ func newMinimalRunner(t *testing.T) *Runner {
 }
 
 func TestAuthCheck_keychainWins(t *testing.T) {
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 	r.AuthLoader = fakeAuthLoader{creds: keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws-kc"}}
 
 	res := r.authCheck().Diagnose(context.Background())
@@ -139,7 +139,7 @@ func TestAuthCheck_keychainWins(t *testing.T) {
 }
 
 func TestAuthCheck_envFallback(t *testing.T) {
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
 	r.Envs = map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
@@ -153,7 +153,7 @@ func TestAuthCheck_envFallback(t *testing.T) {
 }
 
 func TestAuthCheck_missingIsError(t *testing.T) {
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
 
 	res := r.authCheck().Diagnose(context.Background())
@@ -163,26 +163,26 @@ func TestAuthCheck_missingIsError(t *testing.T) {
 // ──────────────────────────── keychain smoke ────────────────────────────
 
 func TestKeychainSmokeCheck_happy(t *testing.T) {
-	r := &Runner{Keyring: newFakeKeyring()}
+	r := &Doctor{Keyring: newFakeKeyring()}
 	res := r.keychainSmokeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 }
 
 func TestKeychainSmokeCheck_setFails(t *testing.T) {
-	r := &Runner{Keyring: &fakeKeyring{store: map[string]string{}, setErr: errors.New("dbus down")}}
+	r := &Doctor{Keyring: &fakeKeyring{store: map[string]string{}, setErr: errors.New("dbus down")}}
 	res := r.keychainSmokeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 }
 
 func TestKeychainSmokeCheck_getMismatch(t *testing.T) {
-	r := &Runner{Keyring: &fakeKeyring{store: map[string]string{}, getReturns: "wrong"}}
+	r := &Doctor{Keyring: &fakeKeyring{store: map[string]string{}, getReturns: "wrong"}}
 	res := r.keychainSmokeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "mismatched")
 }
 
 func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
-	r := &Runner{Keyring: &fakeKeyring{store: map[string]string{}, deleteErr: errors.New("denied")}}
+	r := &Doctor{Keyring: &fakeKeyring{store: map[string]string{}, deleteErr: errors.New("denied")}}
 	res := r.keychainSmokeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 }
@@ -190,7 +190,7 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
 func TestXcelerateProxyCheck_noPidIsWarn(t *testing.T) {
-	r := &Runner{XcelerateProxyDir: func() string { return t.TempDir() }}
+	r := &Doctor{XcelerateProxyDir: func() string { return t.TempDir() }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.False(t, res.Fixable)
@@ -200,7 +200,7 @@ func TestXcelerateProxyCheck_stalePidIsFixable(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "proxy.pid"), []byte(strconv.Itoa(99999999)), 0o600))
 
-	r := &Runner{XcelerateProxyDir: func() string { return dir }}
+	r := &Doctor{XcelerateProxyDir: func() string { return dir }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.True(t, res.Fixable)
@@ -211,7 +211,7 @@ func TestXcelerateProxyCheck_fixRemovesStaleFile(t *testing.T) {
 	pidPath := filepath.Join(dir, "proxy.pid")
 	require.NoError(t, os.WriteFile(pidPath, []byte("99999999"), 0o600))
 
-	r := &Runner{XcelerateProxyDir: func() string { return dir }}
+	r := &Doctor{XcelerateProxyDir: func() string { return dir }}
 	detail, err := r.xcelerateProxyCheck().Fix()
 	require.NoError(t, err)
 	assert.Contains(t, detail, "removed")
@@ -224,7 +224,7 @@ func TestXcelerateProxyCheck_corruptPidIsFixable(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "proxy.pid"), []byte("not-a-number"), 0o600))
 
-	r := &Runner{XcelerateProxyDir: func() string { return dir }}
+	r := &Doctor{XcelerateProxyDir: func() string { return dir }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.True(t, res.Fixable)
@@ -233,19 +233,19 @@ func TestXcelerateProxyCheck_corruptPidIsFixable(t *testing.T) {
 // ──────────────────────────── ccache ────────────────────────────
 
 func TestCcacheHelperCheck_noSocketIsWarn(t *testing.T) {
-	r := &Runner{Envs: map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")}}
+	r := &Doctor{Envs: map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")}}
 	res := r.ccacheHelperCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 }
 
 func TestCcacheBinaryCheck_present(t *testing.T) {
-	r := &Runner{LookPath: func(string) (string, error) { return "/usr/local/bin/ccache", nil }}
+	r := &Doctor{LookPath: func(string) (string, error) { return "/usr/local/bin/ccache", nil }}
 	res := r.ccacheBinaryCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 }
 
 func TestCcacheBinaryCheck_missingIsWarn(t *testing.T) {
-	r := &Runner{LookPath: func(string) (string, error) { return "", errors.New("not found") }}
+	r := &Doctor{LookPath: func(string) (string, error) { return "", errors.New("not found") }}
 	res := r.ccacheBinaryCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 }
@@ -256,7 +256,7 @@ func TestLogDirsCheck_missingIsFixable(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 
-	r := &Runner{StateDirCandidates: []string{filepath.Join(tmp, "a"), filepath.Join(tmp, "b")}}
+	r := &Doctor{StateDirCandidates: []string{filepath.Join(tmp, "a"), filepath.Join(tmp, "b")}}
 	res := r.logDirsCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.True(t, res.Fixable)
@@ -266,7 +266,7 @@ func TestLogDirsCheck_FixCreatesMissing(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 
-	r := &Runner{StateDirCandidates: []string{filepath.Join(tmp, "new-a")}}
+	r := &Doctor{StateDirCandidates: []string{filepath.Join(tmp, "new-a")}}
 	_, err := r.logDirsCheck().Fix()
 	require.NoError(t, err)
 	_, statErr := os.Stat(filepath.Join(tmp, "new-a"))
@@ -276,7 +276,7 @@ func TestLogDirsCheck_FixCreatesMissing(t *testing.T) {
 // ──────────────────────────── version ────────────────────────────
 
 func TestCLIVersionCheck_localBuildSkipsNetwork(t *testing.T) {
-	r := &Runner{
+	r := &Doctor{
 		CLIVersion: "v2.8.4-0.xxx+dirty",
 		HTTPClient: &http.Client{},
 		LatestReleaseTag: func(context.Context, *http.Client) (string, error) {
@@ -292,7 +292,7 @@ func TestCLIVersionCheck_localBuildSkipsNetwork(t *testing.T) {
 }
 
 func TestCLIVersionCheck_behindWarns(t *testing.T) {
-	r := &Runner{
+	r := &Doctor{
 		CLIVersion:       "v2.8.0",
 		HTTPClient:       &http.Client{},
 		LatestReleaseTag: func(context.Context, *http.Client) (string, error) { return "v2.8.3", nil },
@@ -303,7 +303,7 @@ func TestCLIVersionCheck_behindWarns(t *testing.T) {
 }
 
 func TestCLIVersionCheck_networkErrorWarns(t *testing.T) {
-	r := &Runner{
+	r := &Doctor{
 		CLIVersion:       "v2.8.3",
 		HTTPClient:       &http.Client{},
 		LatestReleaseTag: func(context.Context, *http.Client) (string, error) { return "", errors.New("offline") },
@@ -319,7 +319,7 @@ func TestRun_appliesFixesWhenAsked(t *testing.T) {
 	tmp := t.TempDir()
 	missing := filepath.Join(tmp, "logs")
 
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 	r.StateDirCandidates = []string{missing}
 
 	report := r.Run(context.Background(), Options{ApplyFixes: true, SkipUpdateCheck: true})
@@ -339,7 +339,7 @@ func TestRun_skipsFixesWhenNotAsked(t *testing.T) {
 	tmp := t.TempDir()
 	missing := filepath.Join(tmp, "logs")
 
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 	r.StateDirCandidates = []string{missing}
 
 	report := r.Run(context.Background(), Options{ApplyFixes: false, SkipUpdateCheck: true})
@@ -352,7 +352,7 @@ func TestRun_skipsFixesWhenNotAsked(t *testing.T) {
 }
 
 func TestRun_skipUpdateCheckOmitsVersionItem(t *testing.T) {
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 
 	report := r.Run(context.Background(), Options{SkipUpdateCheck: true})
 
@@ -362,7 +362,7 @@ func TestRun_skipUpdateCheckOmitsVersionItem(t *testing.T) {
 }
 
 func TestRun_includesVersionByDefault(t *testing.T) {
-	r := newMinimalRunner(t)
+	r := newMinimalDoctor(t)
 
 	report := r.Run(context.Background(), Options{})
 
