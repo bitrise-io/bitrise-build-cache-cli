@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -66,9 +67,14 @@ var authSetCmd = &cobra.Command{
 		switch scrubbed, err := scrubDiskCredentials(); {
 		case err != nil:
 			logger.Warnf("Saved to keychain, but could not strip plain-text credentials from disk: %v", err)
-			logger.Warnf("Run `bitrise-build-cache auth get` to audit remaining sources.")
+			logger.Warnf("Run `bitrise-build-cache auth list` to audit remaining sources.")
 		case len(scrubbed) > 0:
 			logger.TInfof("Scrubbed plain-text credentials from %s", strings.Join(scrubbed, ", "))
+			for _, p := range scrubbed {
+				if hint, ok := reactivateHints[p]; ok {
+					logger.Infof("  → %s", hint)
+				}
+			}
 		}
 
 		logger.Infof("You can now remove BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID from your shell rc files.")
@@ -81,44 +87,170 @@ var authSetCmd = &cobra.Command{
 func scrubDiskCredentials() ([]string, error) {
 	osProxy := utils.DefaultOsProxy{}
 
+	var scrubbed []string
+
+	if path, err := scrubMultiplatform(osProxy); err != nil {
+		return scrubbed, err
+	} else if path != "" {
+		scrubbed = append(scrubbed, path)
+	}
+
+	for _, displayPath := range []string{
+		"~/.bitrise-xcelerate/config.json",
+		"~/.bitrise/cache/ccache/config.json",
+	} {
+		path, err := scrubRawConfigAuthToken(osProxy, displayPath)
+		if err != nil {
+			return scrubbed, err
+		}
+		if path != "" {
+			scrubbed = append(scrubbed, path)
+		}
+	}
+
+	if path, err := scrubGradleInitKts(osProxy); err != nil {
+		return scrubbed, err
+	} else if path != "" {
+		scrubbed = append(scrubbed, path)
+	}
+
+	return scrubbed, nil
+}
+
+func scrubMultiplatform(osProxy utils.OsProxy) (string, error) {
 	cfg, err := multiplatformconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return nil, nil
+		return "", nil
 	case err != nil:
-		return nil, fmt.Errorf("read multiplatform config: %w", err)
+		return "", fmt.Errorf("read multiplatform config: %w", err)
 	}
 
 	if cfg.AuthConfig.AuthToken == "" && cfg.AuthConfig.WorkspaceID == "" {
-		return nil, nil
+		return "", nil
 	}
 
 	cfg.AuthConfig = configcommon.CacheAuthConfig{}
 	if err := cfg.Save(osProxy, utils.DefaultEncoderFactory{}); err != nil {
-		return nil, fmt.Errorf("save scrubbed multiplatform config: %w", err)
+		return "", fmt.Errorf("save scrubbed multiplatform config: %w", err)
 	}
 
-	return []string{"~/.bitrise/analytics/multiplatform/config.json"}, nil
+	return "~/.bitrise/analytics/multiplatform/config.json", nil
 }
 
+// Legacy files from older CLI versions still carry authConfig on disk; current activate path no longer writes it.
+func scrubRawConfigAuthToken(osProxy utils.OsProxy, displayPath string) (string, error) {
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+
+	fullPath := filepath.Join(home, strings.TrimPrefix(displayPath, "~/"))
+
+	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed from home + constant
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("read %s: %w", displayPath, err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return "", fmt.Errorf("decode %s: %w", displayPath, err)
+	}
+
+	ac, hasAuth := raw["authConfig"]
+	if !hasAuth {
+		return "", nil
+	}
+
+	var auth struct {
+		AuthToken   string `json:"authToken"`
+		WorkspaceID string `json:"workspaceID"`
+	}
+	if err := json.Unmarshal(ac, &auth); err != nil {
+		return "", fmt.Errorf("decode authConfig in %s: %w", displayPath, err)
+	}
+	if auth.AuthToken == "" && auth.WorkspaceID == "" {
+		return "", nil
+	}
+
+	delete(raw, "authConfig")
+
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("re-encode %s: %w", displayPath, err)
+	}
+
+	if err := os.WriteFile(fullPath, append(out, '\n'), 0o600); err != nil {
+		return "", fmt.Errorf("write scrubbed %s: %w", displayPath, err)
+	}
+
+	return displayPath, nil
+}
+
+// Older templates and CI activates bake the token as a literal in init.kts; ValueSource activates leave nothing to scrub.
+func scrubGradleInitKts(osProxy utils.OsProxy) (string, error) {
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+
+	const relPath = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
+	fullPath := filepath.Join(home, relPath)
+
+	body, err := os.ReadFile(fullPath) //nolint:gosec // path composed from home + constant
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("read gradle init.kts: %w", err)
+	}
+
+	scrubbed := authTokenLiteralRE.ReplaceAllStringFunc(string(body), func(match string) string {
+		return quotedStringRE.ReplaceAllString(match, `""`)
+	})
+
+	if scrubbed == string(body) {
+		return "", nil
+	}
+
+	if err := os.WriteFile(fullPath, []byte(scrubbed), 0o600); err != nil {
+		return "", fmt.Errorf("write scrubbed gradle init.kts: %w", err)
+	}
+
+	return "~/" + relPath, nil
+}
+
+//nolint:gochecknoglobals
+var (
+	authTokenLiteralRE = regexp.MustCompile(`authToken(?:\s*=\s*|\.set\()"[^"]+"`)
+	quotedStringRE     = regexp.MustCompile(`"[^"]+"`)
+
+	reactivateHints = map[string]string{
+		"~/.bitrise-xcelerate/config.json":                     "Run `bitrise-build-cache activate xcode` to regenerate a clean config",
+		"~/.bitrise/cache/ccache/config.json":                  "Run `bitrise-build-cache activate c++` to regenerate a clean config",
+		"~/.gradle/init.d/bitrise-build-cache.init.gradle.kts": "Run `bitrise-build-cache activate gradle` to regenerate the init script with the ValueSource resolver",
+	}
+)
+
 // nolint:gochecknoglobals
-var authGetCmd = &cobra.Command{
-	Use:          "get",
+var authListCmd = &cobra.Command{
+	Use:          "list",
 	Short:        "Show Bitrise Build Cache credentials discovered across all known sources",
 	Long:         "Lists credentials found in the OS keychain, the multiplatform analytics config on disk, and the BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID / BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		sources := credSources(utils.AllEnvs())
+		target, migrationSources := credSources(utils.AllEnvs())
 
-		var keychainPopulated, foundElsewhere bool
-		for i, s := range sources {
-			populated := printSource(logger, s)
-			switch {
-			case i == 0:
-				keychainPopulated = populated
-			case populated:
+		keychainPopulated := printSource(logger, target)
+
+		var foundElsewhere bool
+		for _, s := range migrationSources {
+			if printSource(logger, s) {
 				foundElsewhere = true
 			}
 		}
@@ -158,16 +290,19 @@ type credSource struct {
 	probe    func() credAudit
 }
 
-// First entry MUST be the keychain — RunE treats sources[0] as the target.
-func credSources(envs map[string]string) []credSource {
-	return []credSource{
-		{"OS keychain", "<system keychain>", probeKeychain},
+// Returns (target, migrationSources). The target is the canonical home for credentials (OS keychain);
+// migrationSources are inspected to nudge the user toward `auth set` when creds live elsewhere.
+func credSources(envs map[string]string) (credSource, []credSource) {
+	target := credSource{"OS keychain", "<system keychain>", probeKeychain}
+	migrationSources := []credSource{
 		{"Multiplatform config", "~/.bitrise/analytics/multiplatform/config.json", probeMultiplatform},
 		{"Xcelerate config", "~/.bitrise-xcelerate/config.json", probeRawConfig("~/.bitrise-xcelerate/config.json")},
 		{"Ccache config", "~/.bitrise/cache/ccache/config.json", probeRawConfig("~/.bitrise/cache/ccache/config.json")},
 		{"Env vars (BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)", "process env", func() credAudit { return probeEnvVars(envs) }},
 		{"CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)", "process env", func() credAudit { return probeJWT(envs) }},
 	}
+
+	return target, migrationSources
 }
 
 func printSource(logger log.Logger, s credSource) bool {
@@ -351,7 +486,7 @@ func init() {
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
 
 	authCmd.AddCommand(authSetCmd)
-	authCmd.AddCommand(authGetCmd)
+	authCmd.AddCommand(authListCmd)
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
 
