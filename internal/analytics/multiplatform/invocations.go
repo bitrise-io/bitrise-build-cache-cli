@@ -42,6 +42,18 @@ type Invocation struct {
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
 	BuildTool            string            `json:"buildTool"`
 	Wrapper              string            `json:"wrapper,omitempty"`
+	// Children lists the child invocations that ran under this invocation
+	// (e.g. the gradle/xcode/ccache sub-builds of a react-native wrapper).
+	// Reported inline so the backend has the full parent→child lineage
+	// without a separate relation call per child.
+	Children []InvocationRef `json:"children,omitempty"`
+}
+
+// InvocationRef is a reference to a child invocation, carried inline in a
+// parent Invocation's Children list.
+type InvocationRef struct {
+	InvocationID string `json:"invocationId"`
+	BuildTool    string `json:"buildTool"`
 }
 
 // InvocationRelation records a parent→child relationship between two invocations.
@@ -64,6 +76,7 @@ type InvocationRunStats struct {
 	Error          error
 	BuildTool      string
 	Wrapper        string
+	Children       []InvocationRef
 }
 
 // NewInvocation assembles an Invocation from run stats, auth config, and system metadata.
@@ -107,6 +120,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthCon
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
 		BuildTool:            runStats.BuildTool,
 		Wrapper:              runStats.Wrapper,
+		Children:             runStats.Children,
 	}
 }
 
