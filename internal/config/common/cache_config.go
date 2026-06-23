@@ -171,7 +171,7 @@ func redactBitriseEnvs(envs map[string]string) {
 		}
 	}
 
-	key := "BITRISE_BUILD_CACHE_AUTH_TOKEN"
+	key := EnvAuthToken
 	if envValue, ok := envs[key]; ok {
 		envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, envValue)[:4])
 	}

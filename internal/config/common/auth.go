@@ -10,9 +10,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
+// Env-var keys read by ResolveAuthConfig and surfaced to user-facing copy.
+// Defined here so the rest of the CLI doesn't sprinkle string literals.
+const (
+	EnvAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN"   //nolint:gosec // env-var key, not a credential
+	EnvWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID" //nolint:gosec // env-var key, not a credential
+	EnvJWT         = "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"
+)
+
 var (
-	ErrAuthTokenNotProvided   = errors.New("BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
-	ErrWorkspaceIDNotProvided = errors.New("BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
+	ErrAuthTokenNotProvided   = errors.New(EnvAuthToken + " or " + EnvJWT + " environment variable not set")
+	ErrWorkspaceIDNotProvided = errors.New(EnvWorkspaceID + " environment variable not set")
 )
 
 // CacheAuthConfig holds the auth config for the cache.
@@ -73,17 +81,17 @@ func resolveAuthConfig(envs map[string]string, loader authLoader, readMultiplatf
 }
 
 func hasAuthEnvVars(envs map[string]string) bool {
-	if envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"] != "" {
+	if envs[EnvJWT] != "" {
 		return true
 	}
 
-	return envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"] != "" && envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"] != ""
+	return envs[EnvAuthToken] != "" && envs[EnvWorkspaceID] != ""
 }
 
 // ReadAuthConfigFromEnvironments reads auth information from the environment variables
 func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, error) {
-	authTokenEnv := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]
-	workspaceIDEnv := envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"]
+	authTokenEnv := envs[EnvAuthToken]
+	workspaceIDEnv := envs[EnvWorkspaceID]
 
 	if len(authTokenEnv) > 0 && len(workspaceIDEnv) > 0 {
 		return CacheAuthConfig{
@@ -94,7 +102,7 @@ func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, er
 
 	// Try to fall back to JWT which is always available on Bitrise.
 	// It's a JWT token which already includes the workspace ID.
-	if serviceToken := envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"]; len(serviceToken) > 0 {
+	if serviceToken := envs[EnvJWT]; len(serviceToken) > 0 {
 		workspaceID, err := extractWorkspaceIDFromJWT(serviceToken)
 		if err != nil {
 			return CacheAuthConfig{}, fmt.Errorf("extract workspace ID from JWT: %w", err)

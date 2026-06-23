@@ -24,11 +24,6 @@ import (
 //nolint:gochecknoglobals
 var interactiveFlag bool
 
-const (
-	envWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID"
-	envAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN" //nolint:gosec // env-var key, not a credential
-)
-
 type interactiveTool string
 
 const (

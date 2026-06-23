@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -22,7 +23,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 
 	kc := keychain.New()
 
-	startWS, startToken, source := loadStartingCredentials(kc, os.Getenv(envWorkspaceID), os.Getenv(envAuthToken))
+	startWS, startToken, source := loadStartingCredentials(kc, os.Getenv(configcommon.EnvWorkspaceID), os.Getenv(configcommon.EnvAuthToken))
 
 	var (
 		selectedTools []string
@@ -105,8 +106,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	envs := utils.AllEnvs()
-	envs[envWorkspaceID] = workspaceID
-	envs[envAuthToken] = authToken
+	envs[configcommon.EnvWorkspaceID] = workspaceID
+	envs[configcommon.EnvAuthToken] = authToken
 
 	return runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled)
 }
