@@ -239,7 +239,7 @@ build --remote_header=x-flare-builduser=CIProviderValue
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_header=authorization="Bearer AuthTokenValue"
-build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
+build --bes_results_url=https://app-staging.bitrise.io/build-cache/invocations/bazel/
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
 build --build_event_publish_all_actions
