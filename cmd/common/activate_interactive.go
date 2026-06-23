@@ -14,7 +14,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
-	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -65,7 +64,7 @@ func newDefaultPrompter() *prompter {
 				return "", fmt.Errorf("read auth token: %w", err)
 			}
 
-			return strings.TrimRight(line, "\r\n"), nil
+			return strings.TrimRight(line, "\r\n"), err
 		},
 	}
 }
@@ -74,12 +73,6 @@ func newDefaultPrompter() *prompter {
 // the plain prompter elsewhere — one TTY probe, then no further branching.
 type wizard interface {
 	Run(ctx context.Context) error
-}
-
-type huhWizard struct{}
-
-type plainWizard struct {
-	prompter *prompter
 }
 
 func selectWizard() wizard {
@@ -101,95 +94,6 @@ func init() { //nolint:gochecknoinits
 
 		return selectWizard().Run(cmd.Context())
 	}
-}
-
-func (*huhWizard) Run(ctx context.Context) error {
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
-	logger.TInfof("Bitrise Build Cache - interactive local setup")
-
-	kc := keychain.New()
-
-	startWS, startToken, source := loadStartingCredentials(kc, os.Getenv(envWorkspaceID), os.Getenv(envAuthToken))
-
-	var (
-		selectedTools []string
-		workspaceID   = startWS
-		authToken     = startToken
-		pushEnabled   bool
-	)
-
-	groups := []*huh.Group{
-		huh.NewGroup(
-			huh.NewMultiSelect[string]().
-				Title("Which build tools should I set up?").
-				Description("Use space to toggle, enter to confirm.").
-				Options(
-					huh.NewOption("Gradle", string(toolGradle)),
-					huh.NewOption("Bazel", string(toolBazel)),
-					huh.NewOption("Xcode", string(toolXcode)),
-					huh.NewOption("ccache (C/C++)", string(toolCcache)),
-				).
-				Validate(func(s []string) error {
-					if len(s) == 0 {
-						return errors.New("pick at least one tool")
-					}
-
-					return nil
-				}).
-				Value(&selectedTools),
-		),
-	}
-
-	if source == credsSourceNone {
-		groups = append(groups,
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Workspace ID").
-					Description("Find it at https://app.bitrise.io").
-					Validate(nonEmpty("Workspace ID")).
-					Value(&workspaceID),
-				huh.NewInput().
-					Title("Auth token").
-					Description("Personal access token. Input is hidden.").
-					EchoMode(huh.EchoModePassword).
-					Validate(nonEmpty("Auth token")).
-					Value(&authToken),
-			),
-		)
-	}
-
-	groups = append(groups,
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Enable cache push?").
-				Description("Default off — recommended for local dev (so a flaky local build can't poison the shared cache).").
-				Affirmative("Yes, push too").
-				Negative("No, pull only").
-				Value(&pushEnabled),
-		),
-	)
-
-	if err := huh.NewForm(groups...).Run(); err != nil {
-		return fmt.Errorf("interactive wizard: %w", err)
-	}
-
-	switch source {
-	case credsSourceKeychain:
-		logger.TInfof("Using credentials from the OS keychain.")
-	case credsSourceEnv:
-		logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
-		logger.Infof("You can now remove them from your shell rc files.")
-		_ = persistCredentials(kc, workspaceID, authToken)
-	case credsSourceNone:
-		_ = persistCredentials(kc, workspaceID, authToken)
-		logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
-	}
-
-	envs := utils.AllEnvs()
-	envs[envWorkspaceID] = workspaceID
-	envs[envAuthToken] = authToken
-
-	return runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled)
 }
 
 func nonEmpty(label string) func(string) error {
@@ -251,49 +155,6 @@ func persistCredentials(kc keychainStore, workspaceID, authToken string) error {
 	}
 
 	return nil
-}
-
-func (w *plainWizard) Run(ctx context.Context) error {
-	p := w.prompter
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
-	logger.TInfof("Bitrise Build Cache - interactive local setup")
-
-	fmt.Fprintln(p.out)
-	fmt.Fprintln(p.out, "This wizard will configure Bitrise Build Cache for a build tool on this machine.")
-	fmt.Fprintln(p.out, "You can find your workspace ID and a personal access token at: https://app.bitrise.io")
-	fmt.Fprintln(p.out)
-
-	tool, err := promptTool(p)
-	if err != nil {
-		return err
-	}
-
-	workspaceID, authToken, err := resolveCredentials(p, keychain.New())
-	if err != nil {
-		return err
-	}
-
-	pushEnabled, err := promptPushEnabled(p)
-	if err != nil {
-		return err
-	}
-
-	envs := utils.AllEnvs()
-	envs[envWorkspaceID] = workspaceID
-	envs[envAuthToken] = authToken
-
-	switch tool {
-	case toolGradle:
-		return runInteractiveGradle(logger, envs, pushEnabled)
-	case toolBazel:
-		return runInteractiveBazel(logger, envs, pushEnabled)
-	case toolXcode:
-		return runInteractiveXcode(ctx, logger, envs, pushEnabled)
-	case toolCcache:
-		return runInteractiveCcache(ctx, logger, envs, pushEnabled)
-	default:
-		return fmt.Errorf("unsupported tool: %s", tool)
-	}
 }
 
 type keychainStore interface {
@@ -440,7 +301,7 @@ func promptRequiredSecret(p *prompter, label string) (string, error) {
 		value, err := p.readPassword()
 		fmt.Fprintln(p.out)
 
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return "", err
 		}
 
@@ -450,6 +311,10 @@ func promptRequiredSecret(p *prompter, label string) (string, error) {
 		}
 
 		fmt.Fprintf(p.out, "%s cannot be empty.\n", label)
+
+		if errors.Is(err, io.EOF) {
+			return "", fmt.Errorf("%s not provided (stdin closed)", label)
+		}
 	}
 }
 
