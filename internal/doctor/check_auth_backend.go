@@ -19,12 +19,12 @@ import (
 
 const (
 	backendProbeTimeout  = 5 * time.Second
-	backendProbeKeyBytes = 8
+	backendProbeKeyBytes = 4 // 4 bytes → 8 hex chars in the sentinel key
 )
 
 // BackendProbeFunc performs the network round-trip the auth-backend check uses.
 // Returns the round-trip latency (always populated, even on error so callers can
-// surface "took N ms then failed") and the gRPC-shaped error.
+// surface "took N ms then failed") and the wrapped error.
 type BackendProbeFunc func(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error)
 
 func (d *Doctor) authBackendCheck() Check {
@@ -33,7 +33,7 @@ func (d *Doctor) authBackendCheck() Check {
 		Diagnose: func(ctx context.Context) Result {
 			cfg, source, err := common.ResolveAuthConfig(d.Envs)
 			if err != nil {
-				return Result{State: StateOK, Detail: "skipped (no credentials resolvable)"}
+				return Result{State: StateOK, Detail: "skipped (source=none, no credentials resolvable: " + err.Error() + ")"}
 			}
 
 			probe := d.BackendProbe
@@ -64,10 +64,11 @@ func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs m
 		return 0, fmt.Errorf("parse endpoint %q: %w", endpoint, err)
 	}
 
+	// kv.NewClient ignores DialTimeout — grpc.NewClient is lazy. The probeCtx
+	// deadline on the caller is the real budget for dial + handshake + RPC.
 	client, err := kv.NewClient(kv.NewClientParams{
 		UseInsecure: insecureGRPC,
 		Host:        host,
-		DialTimeout: backendProbeTimeout,
 		ClientName:  "doctor",
 		AuthConfig:  cfg,
 		Logger:      log.NewLogger(),
@@ -76,24 +77,43 @@ func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs m
 		return 0, fmt.Errorf("dial %s: %w", host, err)
 	}
 
+	key, err := probeKey()
+	if err != nil {
+		return 0, err
+	}
+
 	payload := []byte{0}
 
 	start := time.Now()
-	uploadErr := client.UploadStreamToBuildCache(ctx, bytes.NewReader(payload), probeKey(), int64(len(payload)))
+	uploadErr := client.UploadStreamToBuildCache(ctx, bytes.NewReader(payload), key, int64(len(payload)))
+	latency := time.Since(start)
 
-	return time.Since(start), uploadErr //nolint:wrapcheck // caller classifies via status.FromError
-}
-
-func probeKey() string {
-	var b [backendProbeKeyBytes]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "doctor-probe-fallback"
+	if uploadErr != nil {
+		return latency, uploadErr //nolint:wrapcheck // caller classifies via kv sentinel + status.FromError.
 	}
 
-	return "doctor-probe-" + hex.EncodeToString(b[:])
+	// Best-effort cleanup so the probe stays a drop in the ocean even if the BE
+	// doesn't TTL-evict by-prefix. Smoke-tests DELETE auth as a bonus. Failure
+	// here doesn't taint the OK verdict — auth + workspace already passed.
+	_ = client.Delete(ctx, key)
+
+	return latency, nil
+}
+
+func probeKey() (string, error) {
+	var b [backendProbeKeyBytes]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("read random bytes for probe key: %w", err)
+	}
+
+	return "doctor-probe-" + hex.EncodeToString(b[:]), nil
 }
 
 func backendErrorState(err error) State {
+	if errors.Is(err, kv.ErrCacheUnauthenticated) {
+		return StateError
+	}
+
 	if s, ok := status.FromError(err); ok {
 		switch s.Code() { //nolint:exhaustive // only auth + transport-class codes have specific handling; all others fall through.
 		case codes.Unauthenticated, codes.PermissionDenied:
@@ -111,6 +131,12 @@ func backendErrorState(err error) State {
 
 func backendErrorDetail(err error, cfg common.CacheAuthConfig, source common.AuthSource, latency time.Duration) string {
 	prefix := fmt.Sprintf("latency %dms, source=%s, workspace=%s — ", latency.Milliseconds(), sourceLabel(source), cfg.WorkspaceID)
+
+	// The kv client converts gRPC Unauthenticated into a plain sentinel error
+	// before returning, so status.FromError can't see it. Check the sentinel first.
+	if errors.Is(err, kv.ErrCacheUnauthenticated) {
+		return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)"
+	}
 
 	if s, ok := status.FromError(err); ok {
 		switch s.Code() { //nolint:exhaustive // only auth + transport-class codes have specific handling; all others fall through.

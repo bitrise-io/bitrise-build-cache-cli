@@ -33,7 +33,7 @@ var (
 var doctorCmd = &cobra.Command{
 	Use:          "doctor",
 	Short:        "Diagnose + optionally repair the local Bitrise Build Cache setup",
-	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, CLI version — and optionally repairs the safe ones with --fix. The only network call (GitHub release lookup) can be skipped with --no-update-check.`,
+	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, CLI version — and optionally repairs the safe ones with --fix. Network calls (GitHub release lookup, Build Cache backend probe) can be skipped with --no-update-check / --no-backend-probe.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		out := cmd.OutOrStdout()

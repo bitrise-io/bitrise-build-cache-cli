@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
@@ -411,15 +413,17 @@ func TestRun_includesVersionByDefault(t *testing.T) {
 // ──────────────────────────── auth-backend ────────────────────────────
 
 func TestAuthBackendCheck_skippedWhenNoCreds(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv(common.EnvAuthToken, "")
-	t.Setenv(common.EnvWorkspaceID, "")
-	t.Setenv(common.EnvJWT, "")
+	common.RegisterMultiplatformReader(nil) // keep test hermetic
+	if _, ok := common.GetKeychainCredentials(); ok {
+		t.Skip("dev keychain has creds — ResolveAuthConfig would succeed; can't exercise the skip branch here")
+	}
 
 	r := &Doctor{Envs: map[string]string{}}
 	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "skipped")
+	assert.Contains(t, res.Detail, "source=none", "skip detail must surface the source for parity with non-skip output")
+	assert.Contains(t, res.Detail, "BITRISE_BUILD_CACHE_AUTH_TOKEN", "skip detail must surface the underlying resolver error")
 }
 
 func TestAuthBackendCheck_okOnSuccessfulProbe(t *testing.T) {
@@ -503,4 +507,26 @@ func TestRun_skipBackendProbeOmitsItem(t *testing.T) {
 	for _, it := range report.Items {
 		assert.NotEqual(t, "auth-backend", it.Name, "auth-backend should be omitted when SkipBackendProbe=true")
 	}
+}
+
+// Covers the seam between the kv client and the classifier: kv upload/download
+// converts gRPC codes.Unauthenticated into a plain sentinel error before
+// returning, so a status.FromError check alone misses it.
+func TestBackendErrorState_kvSentinelUnauthenticated(t *testing.T) {
+	assert.Equal(t, StateError, backendErrorState(kv.ErrCacheUnauthenticated))
+}
+
+func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
+	cfg := common.CacheAuthConfig{WorkspaceID: "ws-1"}
+	got := backendErrorDetail(kv.ErrCacheUnauthenticated, cfg, common.AuthSourceKeychain, 30*time.Millisecond)
+	assert.Contains(t, got, "auth-failed")
+	assert.Contains(t, got, "source=keychain")
+	assert.Contains(t, got, "ws-1")
+}
+
+func TestProbeKey_lengthAndPrefix(t *testing.T) {
+	k, err := probeKey()
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(k, "doctor-probe-"), "got %q", k)
+	assert.Len(t, k, len("doctor-probe-")+2*backendProbeKeyBytes, "8 hex chars expected for 4 random bytes")
 }
