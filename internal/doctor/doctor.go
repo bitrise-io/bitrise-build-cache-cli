@@ -132,10 +132,10 @@ func (d *Doctor) checks(skipUpdateCheck bool) []Check {
 		d.authCheck(),
 		d.keychainSmokeCheck(),
 		d.xcelerateProxyCheck(),
-		d.xcelerateXcconfigCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
 		d.logDirsCheck(),
+		d.xcelerateXcconfigCheck(),
 	}
 
 	if !skipUpdateCheck {
