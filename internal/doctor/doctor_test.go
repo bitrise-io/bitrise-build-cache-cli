@@ -10,11 +10,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
 
@@ -125,6 +129,10 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		LatestReleaseTag:   func(context.Context, *http.Client) (string, error) { return "", nil },
 		LookPath:           func(string) (string, error) { return "/usr/local/bin/ccache", nil },
 		StateDirCandidates: []string{},
+		// Inert stub so Run tests don't reach the real BC backend.
+		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
+			return time.Millisecond, nil
+		},
 	}
 }
 
@@ -398,4 +406,101 @@ func TestRun_includesVersionByDefault(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "cli-version check should run by default")
+}
+
+// ──────────────────────────── auth-backend ────────────────────────────
+
+func TestAuthBackendCheck_skippedWhenNoCreds(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(common.EnvAuthToken, "")
+	t.Setenv(common.EnvWorkspaceID, "")
+	t.Setenv(common.EnvJWT, "")
+
+	r := &Doctor{Envs: map[string]string{}}
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "skipped")
+}
+
+func TestAuthBackendCheck_okOnSuccessfulProbe(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 47 * time.Millisecond, nil
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "latency 47ms")
+	assert.Contains(t, res.Detail, "ws-1")
+}
+
+func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 30 * time.Millisecond, status.Error(codes.Unauthenticated, "bad token")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "auth-failed")
+}
+
+func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 30 * time.Millisecond, status.Error(codes.PermissionDenied, "no access")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "workspace-misconfig")
+}
+
+func TestAuthBackendCheck_unavailableIsWarn(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 5 * time.Second, status.Error(codes.Unavailable, "connection refused")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "network")
+}
+
+func TestRun_skipBackendProbeOmitsItem(t *testing.T) {
+	r := newMinimalDoctor(t)
+
+	report := r.Run(context.Background(), Options{SkipUpdateCheck: true, SkipBackendProbe: true})
+
+	for _, it := range report.Items {
+		assert.NotEqual(t, "auth-backend", it.Name, "auth-backend should be omitted when SkipBackendProbe=true")
+	}
 }

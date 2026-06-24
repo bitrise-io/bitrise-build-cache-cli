@@ -63,8 +63,9 @@ func (r Report) Overall() State {
 }
 
 type Options struct {
-	ApplyFixes      bool
-	SkipUpdateCheck bool
+	ApplyFixes       bool
+	SkipUpdateCheck  bool
+	SkipBackendProbe bool
 }
 
 type Doctor struct {
@@ -78,6 +79,7 @@ type Doctor struct {
 	StateDirCandidates []string
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 	ActivatedTools     func() map[toolconfig.Tool]bool
+	BackendProbe       BackendProbeFunc
 }
 
 func NewDoctor() *Doctor {
@@ -131,7 +133,7 @@ func defaultStateDirCandidates() []string {
 }
 
 func (d *Doctor) Run(ctx context.Context, opts Options) Report {
-	checks := d.checks(opts.SkipUpdateCheck)
+	checks := d.checks(opts)
 	items := make([]ReportItem, 0, len(checks))
 
 	for _, c := range checks {
@@ -153,18 +155,25 @@ func (d *Doctor) Run(ctx context.Context, opts Options) Report {
 	return Report{Items: items, Version: d.CLIVersion}
 }
 
-func (d *Doctor) checks(skipUpdateCheck bool) []Check {
+func (d *Doctor) checks(opts Options) []Check {
 	checks := []Check{
 		d.authCheck(),
 		d.keychainSmokeCheck(),
+	}
+
+	if !opts.SkipBackendProbe {
+		checks = append(checks, d.authBackendCheck())
+	}
+
+	checks = append(checks,
 		d.xcelerateProxyCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
 		d.logDirsCheck(),
 		d.xcelerateXcconfigCheck(),
-	}
+	)
 
-	if !skipUpdateCheck {
+	if !opts.SkipUpdateCheck {
 		checks = append(checks, d.cliVersionCheck())
 	}
 
