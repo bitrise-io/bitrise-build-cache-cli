@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -171,15 +169,13 @@ func NewConfig(ctx context.Context,
 	}
 	logger.Infof("Using xcrun path: %s. You can always override this by supplying --xcrun-path.", xcrunPath)
 
-	proxySocketPath := params.ProxySocketPathOverride
-	if proxySocketPath == "" {
-		proxySocketPath = envs["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
-		if proxySocketPath == "" {
-			proxySocketPath = filepath.Join(osProxy.TempDir(), paths.ProxySocketName)
-			logger.Infof("Using new proxy socket path: %s", proxySocketPath)
-		} else {
-			logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
-		}
+	proxySocketPath := ResolveProxySocketPath(params.ProxySocketPathOverride, envs, osProxy)
+	switch {
+	case params.ProxySocketPathOverride != "":
+	case envs[EnvProxySocketPath] != "":
+		logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
+	default:
+		logger.Infof("Using new proxy socket path: %s", proxySocketPath)
 	}
 
 	if params.BuildCacheEndpoint == "" {

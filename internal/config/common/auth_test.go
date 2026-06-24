@@ -429,7 +429,7 @@ func TestExtractWorkspaceIDFromJWT(t *testing.T) {
 func TestGetKeychainCredentials_populated(t *testing.T) {
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 
-	cfg, ok := getKeychainCredentials(loader)
+	cfg, ok := GetKeychainCredentialsWith(loader)
 	require.True(t, ok)
 	assert.Equal(t, "kc-tok", cfg.AuthToken)
 	assert.Equal(t, "kc-ws", cfg.WorkspaceID)
@@ -438,7 +438,7 @@ func TestGetKeychainCredentials_populated(t *testing.T) {
 func TestGetKeychainCredentials_notFound(t *testing.T) {
 	loader := fakeAuthLoader{err: keychain.ErrNotFound}
 
-	cfg, ok := getKeychainCredentials(loader)
+	cfg, ok := GetKeychainCredentialsWith(loader)
 	assert.False(t, ok)
 	assert.Empty(t, cfg.AuthToken)
 }
@@ -446,13 +446,13 @@ func TestGetKeychainCredentials_notFound(t *testing.T) {
 func TestGetKeychainCredentials_partialTreatedAsEmpty(t *testing.T) {
 	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
 
-	_, ok := getKeychainCredentials(loader)
+	_, ok := GetKeychainCredentialsWith(loader)
 	assert.False(t, ok, "token without workspace ID is incomplete; treat as not present")
 }
 
 func TestGetKeychainCredentials_loadErrorTreatedAsEmpty(t *testing.T) {
 	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
 
-	_, ok := getKeychainCredentials(loader)
+	_, ok := GetKeychainCredentialsWith(loader)
 	assert.False(t, ok)
 }
