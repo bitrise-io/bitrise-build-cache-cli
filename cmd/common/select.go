@@ -14,10 +14,8 @@ import (
 )
 
 var (
-	// errSelectCancelled is returned when the user aborts the picker (Esc / Ctrl-C / q).
 	errSelectCancelled = errors.New("selection cancelled")
-	// errRawUnsupported means the terminal can't enter raw mode; the caller
-	// should fall back to the plain numbered prompt.
+	// errRawUnsupported signals the caller to fall back to the numbered prompt.
 	errRawUnsupported = errors.New("interactive selection not supported on this terminal")
 )
 
@@ -96,6 +94,11 @@ func decodeKeys(b []byte) []keyEvent {
 					continue
 				case 'B':
 					out = append(out, keyEvent{kind: keyDown})
+					i += 2
+
+					continue
+				default:
+					out = append(out, keyEvent{kind: keyOther})
 					i += 2
 
 					continue

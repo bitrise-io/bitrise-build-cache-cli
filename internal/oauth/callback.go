@@ -10,11 +10,9 @@ import (
 	"time"
 )
 
-// callbackServer is the loopback HTTP server the browser is redirected back to
-// at the end of the authorization step. It binds 127.0.0.1 on an OS-assigned
-// port (loopback so macOS shows no "accept incoming connections" prompt) and
-// delivers the captured authorization code — or an error — over a buffered
-// channel.
+// callbackServer is the loopback (127.0.0.1, OS-assigned port) HTTP server the
+// browser is redirected to; loopback avoids the macOS firewall prompt. It
+// delivers the captured code or error over a buffered channel.
 type callbackServer struct {
 	listener net.Listener
 	server   *http.Server
@@ -27,9 +25,7 @@ type callbackResult struct {
 	err  error
 }
 
-// newCallbackServer binds the loopback listener. The caller must call start()
-// to begin serving and close() when done. state is the value the callback's
-// `state` query parameter is checked against.
+// newCallbackServer binds the loopback listener; caller calls start() then close().
 func newCallbackServer(ctx context.Context, state string) (*callbackServer, error) {
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")

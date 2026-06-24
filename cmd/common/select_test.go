@@ -12,6 +12,7 @@ func TestDecodeKeys(t *testing.T) {
 	}{
 		{"up arrow", []byte{0x1b, '[', 'A'}, []keyKind{keyUp}},
 		{"down arrow", []byte{0x1b, '[', 'B'}, []keyKind{keyDown}},
+		{"unknown esc seq", []byte{0x1b, '[', 'C'}, []keyKind{keyOther}},
 		{"enter cr", []byte{'\r'}, []keyKind{keyEnter}},
 		{"ctrl-c", []byte{0x03}, []keyKind{keyCancel}},
 		{"lone esc", []byte{0x1b}, []keyKind{keyCancel}},

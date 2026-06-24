@@ -1,43 +1,30 @@
-// Package oauth implements the browser-based OAuth login for the Bitrise Build
-// Cache CLI and the transparent token refresh that keeps it working, plus the
-// on-disk store for the resulting credential.
-//
-// The CLI is a public OAuth client (no client secret — PKCE replaces it). The
-// login is the standard authorization-code + PKCE flow against Bitrise's WorkOS
-// AuthKit environment over a loopback redirect (RFC 8252): authorize → exchange
-// the code for a JWT at <issuer>/oauth2/token → exchange that JWT for a Bitrise
-// PAT at the monolith's OIDC token endpoint (RFC 8693). The PAT is the working
-// credential the cache backend already accepts (same as a manually-set
-// BITRISE_BUILD_CACHE_AUTH_TOKEN); the JWT + refresh token + expiries are stored
-// alongside it so the PAT can be refreshed without a browser.
-//
-// This is a port of bitrise-cli's internal/oauth, adapted for this CLI's
-// local-login use-case (the credential is stored here, with a workspace ID).
-// None of the identity inputs are secret, so they ship in the binary.
+// Package oauth implements the browser OAuth login (authorization-code + PKCE
+// over a loopback redirect) that mints a Bitrise PAT, the transparent PAT
+// refresh, and the on-disk credential store. Ported from bitrise-cli; none of
+// the identity inputs are secret.
 package oauth
 
 import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// Identity defaults (production). All overridable per environment via the
-// matching env vars in NewConfigFromEnv; none is a secret. They reuse the
-// bitrise-cli WorkOS client identity, so no new WorkOS/monolith setup is needed.
+// Identity defaults (production), each overridable per environment via the env
+// vars in NewConfigFromEnv; none is a secret.
 const (
 	DefaultIssuer       = "https://oauth.bitrise.io"
 	DefaultClientID     = "https://app.bitrise.io/.well-known/oauth-client/cli"
 	DefaultOIDCEndpoint = "https://app.bitrise.io/oidc/token"
-	// DefaultResource is the audience/resource indicator pinned into the JWT;
-	// it must be registered as a Resource Indicator in WorkOS. The monolith
-	// accepts any *.bitrise.io audience.
+	// Must be registered as a WorkOS Resource Indicator; within the monolith's
+	// *.bitrise.io audience allowlist.
 	DefaultResource = "https://app.bitrise.io"
 )
 
-// defaultTimeout bounds each token HTTP call. defaultPATLifetime is the
-// fallback PAT lifetime when the exchange omits expires_in. refreshSkew
-// re-mints slightly before expiry so a token never goes stale mid-request.
+// refreshSkew re-mints a PAT slightly before expiry; defaultPATLifetime is the
+// fallback when the exchange omits expires_in.
 const (
 	defaultTimeout     = 30 * time.Second
 	defaultPATLifetime = time.Hour
@@ -52,6 +39,25 @@ type Config struct {
 	ClientID          string // CIMD URL identifying this client
 	Resource          string // audience/resource indicator pinned into the JWT
 	HTTPClient        *http.Client
+	Logger            log.Logger // optional; nil disables logging
+}
+
+func (c Config) debugf(format string, args ...any) { //nolint:unparam // variadic for symmetry with infof/warnf and future callers
+	if c.Logger != nil {
+		c.Logger.Debugf(format, args...)
+	}
+}
+
+func (c Config) infof(format string, args ...any) {
+	if c.Logger != nil {
+		c.Logger.Infof(format, args...)
+	}
+}
+
+func (c Config) warnf(format string, args ...any) {
+	if c.Logger != nil {
+		c.Logger.Warnf(format, args...)
+	}
 }
 
 // NewConfigFromEnv builds a Config from the compile-time defaults, each

@@ -232,7 +232,7 @@ func TestLogin_HappyPath(t *testing.T) {
 	m := newOAuthMock()
 	defer m.close()
 
-	creds, err := m.config().Login(context.Background(), callbackOpener("auth-code", ""), io.Discard)
+	creds, err := m.config().Login(context.Background(), callbackOpener("auth-code", ""))
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -257,17 +257,17 @@ func TestLogin_StateMismatch(t *testing.T) {
 	m := newOAuthMock()
 	defer m.close()
 
-	_, err := m.config().Login(context.Background(), callbackOpener("auth-code", "WRONG-STATE"), io.Discard)
+	_, err := m.config().Login(context.Background(), callbackOpener("auth-code", "WRONG-STATE"))
 	if err == nil || !strings.Contains(err.Error(), "state mismatch") {
 		t.Fatalf("expected state-mismatch error, got %v", err)
 	}
 }
 
 func TestLogin_GuardsMissingConfig(t *testing.T) {
-	if _, err := (Config{ClientID: "x"}).Login(context.Background(), nil, io.Discard); err == nil || !strings.Contains(err.Error(), "issuer") {
+	if _, err := (Config{ClientID: "x"}).Login(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "issuer") {
 		t.Fatalf("expected missing-issuer error, got %v", err)
 	}
-	if _, err := (Config{Issuer: "https://x"}).Login(context.Background(), nil, io.Discard); err == nil || !strings.Contains(err.Error(), "client_id") {
+	if _, err := (Config{Issuer: "https://x"}).Login(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "client_id") {
 		t.Fatalf("expected missing-client_id error, got %v", err)
 	}
 }

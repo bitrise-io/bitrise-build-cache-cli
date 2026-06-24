@@ -10,11 +10,9 @@ import (
 	"time"
 )
 
-// Credentials is the on-disk shape of the OAuth credential file
-// (~/.bitrise/build-cache/auth.json, 0600). It is written only by the browser
-// login flow. WorkspaceID is the extra field vs bitrise-cli — the cache is
-// workspace-scoped (sent as x-org-id), and OAuth login is user-scoped, so the
-// chosen workspace is persisted alongside the token.
+// Credentials is the on-disk OAuth credential file
+// (~/.bitrise/build-cache/auth.json, 0600). WorkspaceID is stored because the
+// cache is workspace-scoped while OAuth login is user-scoped.
 type Credentials struct {
 	PAT                string    `json:"pat,omitempty"`
 	PATExpiry          time.Time `json:"pat_expiry,omitempty"`
@@ -25,8 +23,7 @@ type Credentials struct {
 	WorkspaceID        string    `json:"workspace_id,omitempty"`
 }
 
-// IsOAuthManaged reports whether a stored credential came from the OAuth flow
-// (and can be refreshed). The refresh token is the marker.
+// IsOAuthManaged reports whether the credential came from OAuth (has a refresh token).
 func (c Credentials) IsOAuthManaged() bool {
 	return c.RefreshToken != ""
 }

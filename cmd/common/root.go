@@ -36,15 +36,12 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
-		// For cache commands, make a prior `bitrise-build-cache login` take
-		// effect: refresh the stored OAuth PAT and export it as the auth env
-		// vars when none are already set. No-op for login/logout themselves,
-		// and never overrides manual/CI credentials. Runs before the version
-		// check so it still happens for commands that skip the check.
+		// Apply a stored OAuth login: refresh its PAT into the auth env vars
+		// (no-op when env/CI creds are set). Before the version check so it
+		// still runs for check-skipped commands.
 		switch cmd.Name() {
 		case "login", "logout", "completion", "help", "status":
-			// status is read-only and reports the auth source itself, so it
-			// must not trigger a refresh that would also mask the source.
+			// status reports the auth source, so it must not refresh and mask it.
 		default:
 			hydrateStoredAuth(cmd.Context())
 		}

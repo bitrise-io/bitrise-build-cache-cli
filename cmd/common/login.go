@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/bitriseapi"
@@ -39,11 +40,11 @@ keep using BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID.`,
 var LogoutCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "logout",
 	Short: "Remove the stored Bitrise build-cache login",
-	RunE: func(cmd *cobra.Command, _ []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if err := oauth.Clear(); err != nil {
 			return fmt.Errorf("clear stored login: %w", err)
 		}
-		fmt.Fprintln(cmd.ErrOrStderr(), "Signed out.")
+		log.NewLogger(log.WithDebugLog(IsDebugLogMode)).Infof("Signed out.")
 
 		return nil
 	},
@@ -58,13 +59,15 @@ func init() { //nolint:gochecknoinits
 func runLogin(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	envs := utils.AllEnvs()
-	stderr := cmd.ErrOrStderr()
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 
 	if loginWorkspace == "" && !isInteractiveStdin() {
 		return fmt.Errorf("not an interactive terminal: pass --workspace <slug> to sign in non-interactively")
 	}
 
-	creds, err := oauth.NewConfigFromEnv(envs).Login(ctx, oauth.OpenBrowser, stderr)
+	cfg := oauth.NewConfigFromEnv(envs)
+	cfg.Logger = logger
+	creds, err := cfg.Login(ctx, oauth.OpenBrowser)
 	if err != nil {
 		return fmt.Errorf("sign in: %w", err)
 	}
@@ -82,22 +85,19 @@ func runLogin(cmd *cobra.Command) error {
 		return fmt.Errorf("save credentials: %w", err)
 	}
 
-	fmt.Fprintf(stderr, "\n✓ Signed in. Using workspace %q for the build cache.\n", workspace)
+	logger.Infof("Signed in. Using workspace %q for the build cache.", workspace)
 
 	if shadow := shadowingAuthEnv(); shadow != "" {
-		fmt.Fprintf(stderr, "\n⚠ %s is set and takes precedence over the login just saved.\n", shadow)
-		fmt.Fprintf(stderr, "  Build-cache commands will use it, not this login — unset it to use the stored login.\n")
+		logger.Warnf("%s is set and takes precedence over the login just saved.", shadow)
+		logger.Warnf("Build-cache commands will use it, not this login — unset it to use the stored login.")
 	}
 
 	return nil
 }
 
-// shadowingAuthEnv returns the name of an environment credential that takes
-// precedence over the stored OAuth login, or "" if none is set. These are
-// resolved before the stored login (see hydrateStoredAuth), so when one is set
-// the login has no effect on later commands — a common, confusing failure mode,
-// hence the warning at login time. BITRISE_BUILD_CACHE_AUTH_TOKEN is checked
-// first because it's the one a local user is likely to have set by hand.
+// shadowingAuthEnv returns the env credential that takes precedence over the
+// stored OAuth login (resolved first in hydrateStoredAuth), or "". Used to warn
+// at login that the saved login won't take effect.
 func shadowingAuthEnv() string {
 	if os.Getenv("BITRISE_BUILD_CACHE_AUTH_TOKEN") != "" {
 		return "BITRISE_BUILD_CACHE_AUTH_TOKEN"
@@ -135,29 +135,32 @@ func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]stri
 	return workspaces[idx].Slug, nil
 }
 
-// hydrateStoredAuth makes a prior `login` take effect for every cache command:
-// when neither a manual BITRISE_BUILD_CACHE_AUTH_TOKEN nor the CI service JWT is
-// present, it refreshes the stored OAuth PAT and exports it (plus the chosen
-// workspace) into the environment, so the existing env-based auth resolution
-// (common.ReadAuthConfigFromEnvironments) picks it up unchanged. Best-effort:
-// any error — including "not logged in" — is ignored, leaving the command to
-// surface its own "no auth configured" error. Never overrides env/CI creds, and
-// only the local-login fallback ever does a network refresh.
+// hydrateStoredAuth refreshes a stored OAuth login and exports its PAT +
+// workspace as the auth env vars when no manual/CI credential is set, so the
+// existing env-based resolution picks it up. Best-effort; never overrides
+// env/CI creds, and only this fallback ever does a network refresh.
 func hydrateStoredAuth(ctx context.Context) {
 	if os.Getenv("BITRISE_BUILD_CACHE_AUTH_TOKEN") != "" ||
 		os.Getenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN") != "" {
 		return
 	}
-	creds, err := oauth.NewConfigFromEnv(utils.AllEnvs()).EnsureFresh(ctx)
-	if err != nil || creds.PAT == "" || creds.WorkspaceID == "" {
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+	cfg := oauth.NewConfigFromEnv(utils.AllEnvs())
+	cfg.Logger = logger
+	creds, err := cfg.EnsureFresh(ctx)
+	if err != nil {
+		logger.Debugf("OAuth login not applied: %s", err)
+
+		return
+	}
+	if creds.PAT == "" || creds.WorkspaceID == "" {
 		return
 	}
 	_ = os.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", creds.PAT)
 	_ = os.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", creds.WorkspaceID)
 }
 
-// isInteractiveStdin reports whether stdin is a terminal (a char device), so
-// the workspace picker can read a choice. Pipes/files/CI are not interactive.
+// isInteractiveStdin reports whether stdin is a terminal (not a pipe/file/CI).
 func isInteractiveStdin() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {

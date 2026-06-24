@@ -28,7 +28,7 @@ func TestCurrentAuthStatus(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	a := currentAuthStatus()
-	if !a.Configured || a.Source != "oauth login" || a.WorkspaceID != "acme" {
+	if !a.Configured || a.Source != "OAuth login" || a.WorkspaceID != "acme" {
 		t.Fatalf("expected oauth login, got %+v", a)
 	}
 	if a.Expired || a.TokenExpiry == "" {
@@ -39,7 +39,7 @@ func TestCurrentAuthStatus(t *testing.T) {
 	// as env-sourced (this is also what shadows the login at resolution time).
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "tok")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-env")
-	if a := currentAuthStatus(); a.Source != "env (BITRISE_BUILD_CACHE_AUTH_TOKEN)" || a.WorkspaceID != "ws-env" {
+	if a := currentAuthStatus(); a.Source != "PAT + workspace ID (env)" || a.WorkspaceID != "ws-env" {
 		t.Fatalf("expected env source winning over stored login, got %+v", a)
 	}
 }

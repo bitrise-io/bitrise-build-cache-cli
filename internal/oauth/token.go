@@ -46,9 +46,7 @@ func (c Config) refreshJWT(ctx context.Context, refreshToken string) (tokenRespo
 }
 
 // exchangeJWTForPAT trades a WorkOS JWT for a Bitrise PAT at the monolith OIDC
-// token endpoint (RFC 8693). The request wire shape mirrors the MCP server's
-// callExchangeEndpoint exactly: form-encoded, no client_id/resource (the
-// audience rides inside the JWT). Returns the PAT and its absolute expiry.
+// endpoint (RFC 8693). No client_id/resource — the audience rides in the JWT.
 func (c Config) exchangeJWTForPAT(ctx context.Context, jwt string) (string, time.Time, error) {
 	resp, err := c.postForm(ctx, c.OIDCTokenEndpoint, url.Values{
 		"grant_type":         {"urn:ietf:params:oauth:grant-type:token-exchange"},

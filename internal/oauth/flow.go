@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"time"
 )
@@ -13,20 +12,14 @@ import (
 const loginTimeout = 5 * time.Minute
 
 var (
-	// ErrNotLoggedIn is returned by EnsureFresh when there is no stored OAuth
-	// credential (the user hasn't run `login`).
-	ErrNotLoggedIn = errors.New("not logged in (run 'bitrise-build-cache login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)")
-	// ErrLoginRequired is returned when an OAuth credential can no longer be
-	// refreshed and the user must sign in again.
+	ErrNotLoggedIn   = errors.New("not logged in (run 'bitrise-build-cache login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)")
 	ErrLoginRequired = errors.New("OAuth session expired — run 'bitrise-build-cache login' to sign in again")
 )
 
-// Login runs the full browser authorization + token exchange and returns
-// Credentials populated with the PAT, JWT, refresh token, and expiries — but
-// NOT WorkspaceID (the caller picks a workspace, sets it, then Save). It does
-// not persist anything. openBrowser opens the authorize URL (nil to skip
-// auto-open); progress + the URL are written to stderr for manual fallback.
-func (c Config) Login(ctx context.Context, openBrowser func(string) error, stderr io.Writer) (Credentials, error) {
+// Login runs the browser authorization + token exchange and returns Credentials
+// (PAT/JWT/refresh/expiries) without WorkspaceID — the caller sets that and
+// persists. openBrowser may be nil; the URL is also logged for manual fallback.
+func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Credentials, error) {
 	if c.Issuer == "" {
 		return Credentials{}, errors.New("OAuth login is not configured: no issuer (set BITRISE_OAUTH_ISSUER)")
 	}
@@ -51,17 +44,15 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error, stder
 	cs.start()
 
 	authURL := c.authorizeURL(challenge, state, cs.redirectURI())
-	if _, err := fmt.Fprintf(stderr, "Opening your browser to sign in to Bitrise.\nIf it doesn't open automatically, visit:\n\n  %s\n\n", authURL); err != nil {
-		return Credentials{}, fmt.Errorf("write sign-in prompt: %w", err)
-	}
+	c.infof("Opening your browser to sign in to Bitrise.")
+	c.infof("If it doesn't open automatically, visit:\n\n  %s\n", authURL)
 	if openBrowser != nil {
 		if err := openBrowser(authURL); err != nil {
-			if _, werr := fmt.Fprintf(stderr, "(couldn't open the browser automatically: %v)\n", err); werr != nil {
-				return Credentials{}, fmt.Errorf("write browser-open notice: %w", werr)
-			}
+			c.warnf("Couldn't open the browser automatically: %s", err)
 		}
 	}
 
+	c.debugf("Waiting for the browser sign-in to complete")
 	waitCtx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
 	code, err := cs.wait(waitCtx)
@@ -69,14 +60,17 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error, stder
 		return Credentials{}, err
 	}
 
+	c.debugf("Exchanging authorization code for a token")
 	jwtResp, err := c.exchangeCodeForJWT(ctx, code, verifier, cs.redirectURI())
 	if err != nil {
 		return Credentials{}, fmt.Errorf("exchange authorization code: %w", err)
 	}
+	c.debugf("Exchanging token for a Bitrise access token")
 	pat, patExpiry, err := c.exchangeJWTForPAT(ctx, jwtResp.AccessToken)
 	if err != nil {
 		return Credentials{}, fmt.Errorf("exchange token for a Bitrise PAT: %w", err)
 	}
+	c.infof("Signed in to Bitrise.")
 
 	now := time.Now()
 
@@ -129,6 +123,8 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 
 	now := time.Now()
 	if creds.PAT != "" && now.Add(refreshSkew).Before(creds.PATExpiry) {
+		c.debugf("Stored Bitrise token still valid")
+
 		return creds, nil
 	}
 
@@ -139,6 +135,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 			if err := Save(creds); err != nil {
 				return Credentials{}, err
 			}
+			c.infof("Refreshed Bitrise access token.")
 
 			return creds, nil
 		}
@@ -148,6 +145,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	if creds.RefreshToken == "" {
 		return Credentials{}, ErrLoginRequired
 	}
+	c.debugf("Refreshing the OAuth session")
 	refreshed, err := c.refreshJWT(ctx, creds.RefreshToken)
 	if err != nil {
 		return Credentials{}, fmt.Errorf("%w (refresh failed: %w)", ErrLoginRequired, err)
@@ -166,6 +164,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	if err := Save(creds); err != nil {
 		return Credentials{}, err
 	}
+	c.infof("Refreshed Bitrise access token.")
 
 	return creds, nil
 }

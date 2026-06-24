@@ -17,8 +17,6 @@ func OpenBrowser(url string) error {
 		cmd = exec.CommandContext(context.Background(), "open", url) //nolint:gosec // G204: fixed command, URL from our own authorize endpoint
 	case "linux":
 		cmd = exec.CommandContext(context.Background(), "xdg-open", url) //nolint:gosec // G204: fixed command, URL from our own authorize endpoint
-	case "windows":
-		cmd = exec.CommandContext(context.Background(), "rundll32", "url.dll,FileProtocolHandler", url) //nolint:gosec // G204: fixed command, URL from our own authorize endpoint
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}

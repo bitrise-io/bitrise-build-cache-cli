@@ -114,19 +114,32 @@ func TestStatus_TextTable(t *testing.T) {
 func TestStatus_JSON_Shape(t *testing.T) {
 	home := t.TempDir()
 	writeRNFixture(t, home, true)
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
 
 	stdout, _, err := runStatusCmd(t, home, "--json")
 	require.NoError(t, err)
 
-	var got map[string]bool
+	var got struct {
+		Gradle      bool  `json:"gradle"`
+		Xcode       bool  `json:"xcode"`
+		Cpp         bool  `json:"cpp"`
+		ReactNative bool  `json:"reactNative"`
+		Bazel       *bool `json:"bazel"`
+		Auth        struct {
+			Configured bool   `json:"configured"`
+			Source     string `json:"source"`
+		} `json:"auth"`
+	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
 
-	assert.False(t, got["gradle"])
-	assert.False(t, got["xcode"])
-	assert.False(t, got["cpp"])
-	assert.True(t, got["reactNative"])
-	_, hasBazel := got["bazel"]
-	assert.False(t, hasBazel)
+	assert.False(t, got.Gradle)
+	assert.False(t, got.Xcode)
+	assert.False(t, got.Cpp)
+	assert.True(t, got.ReactNative)
+	assert.Nil(t, got.Bazel)
+	assert.False(t, got.Auth.Configured)
+	assert.Equal(t, "none", got.Auth.Source)
 }
 
 func TestStatus_FeatureBazel_ExitTwo(t *testing.T) {
