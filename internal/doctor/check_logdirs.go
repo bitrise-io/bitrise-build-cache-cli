@@ -54,10 +54,9 @@ type logDirsSummary struct {
 	Fatal       error
 }
 
-func collectLogDirState(home string, candidates []string) logDirsSummary {
+func collectLogDirState(candidates []string) logDirsSummary {
 	var s logDirsSummary
-	for _, candidate := range candidates {
-		path := strings.Replace(candidate, "~", home, 1)
+	for _, path := range candidates {
 		out := checkLogDir(path)
 		if out.Fatal != nil {
 			s.Fatal = out.Fatal
@@ -106,22 +105,11 @@ func (d *Doctor) logDirsCheck() Check {
 	return Check{
 		Name: "log-dirs",
 		Diagnose: func(_ context.Context) Result {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return Result{State: StateError, Detail: "could not determine home dir: " + err.Error()}
-			}
-
-			return resultFromLogDirsSummary(collectLogDirState(home, d.StateDirCandidates))
+			return resultFromLogDirsSummary(collectLogDirState(d.StateDirCandidates))
 		},
 		Fix: func() (string, error) {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", fmt.Errorf("home dir: %w", err)
-			}
-
 			created := []string{}
-			for _, candidate := range d.StateDirCandidates {
-				path := strings.Replace(candidate, "~", home, 1)
+			for _, path := range d.StateDirCandidates {
 				if _, err := os.Stat(path); err == nil {
 					continue
 				}

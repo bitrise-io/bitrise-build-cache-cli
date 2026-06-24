@@ -90,6 +90,23 @@ func ConfigFile(osProxy utils.OsProxy) string {
 	return PathFor(osProxy, ccacheConfigFile)
 }
 
+// EnvIPCSocketPath overrides the default IPC socket location when set.
+const EnvIPCSocketPath = "BITRISE_CCACHE_IPC_SOCKET_PATH"
+
+// ResolveIPCSocketPath returns the storage helper's IPC socket path in the same
+// order the activator uses: an explicit override → BITRISE_CCACHE_IPC_SOCKET_PATH
+// env var → <temp-dir>/ccache-ipc.sock.
+func ResolveIPCSocketPath(override string, envs map[string]string, osProxy utils.OsProxy) string {
+	if override != "" {
+		return override
+	}
+	if env := envs[EnvIPCSocketPath]; env != "" {
+		return env
+	}
+
+	return paths.FromHome("").CcacheSocketPath(osProxy.TempDir())
+}
+
 func DefaultParams() Params {
 	return Params{
 		PushEnabled: true,

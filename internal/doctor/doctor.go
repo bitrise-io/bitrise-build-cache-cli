@@ -3,12 +3,13 @@ package doctor
 import (
 	"context"
 	"net/http"
+	"os"
 	"os/exec"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -75,7 +76,6 @@ type Doctor struct {
 	HTTPClient         *http.Client
 	AuthLoader         authLoader
 	Keyring            keychain.Backend
-	XcelerateProxyDir  func() string
 	LookPath           func(string) (string, error)
 	StateDirCandidates []string
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
@@ -91,11 +91,21 @@ func NewDoctor() *Doctor {
 		HTTPClient:         &http.Client{Timeout: 3 * time.Second},
 		AuthLoader:         keychain.New(),
 		Keyring:            keychain.NewBackend(),
-		XcelerateProxyDir:  func() string { return xcelerate.DirPath(osProxy) },
 		LookPath:           exec.LookPath,
-		StateDirCandidates: []string{"~/.local/state/xcelerate/logs", "~/.local/state/ccache/logs"},
+		StateDirCandidates: defaultStateDirCandidates(),
 		LatestReleaseTag:   fetchLatestGitHubRelease,
 	}
+}
+
+func defaultStateDirCandidates() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	p := paths.FromHome(home)
+
+	return []string{p.XcelerateLogDir(), p.CcacheLogDir()}
 }
 
 func (d *Doctor) Run(ctx context.Context, opts Options) Report {

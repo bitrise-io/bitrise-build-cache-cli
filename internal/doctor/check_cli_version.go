@@ -21,7 +21,10 @@ func (d *Doctor) cliVersionCheck() Check {
 			}
 
 			if isLocalBuild(current) {
-				return Result{State: StateOK, Detail: "current=" + current + " (local build)"}
+				return Result{
+					State:  StateWarn,
+					Detail: "current=" + current + " — local build, not a tagged release. Install a release via the installer script or `brew install bitrise-io/bitrise-build-cache/bitrise-build-cache` unless you're hotfixing.",
+				}
 			}
 
 			latest, err := d.LatestReleaseTag(ctx, d.HTTPClient)
@@ -38,7 +41,7 @@ func (d *Doctor) cliVersionCheck() Check {
 
 			return Result{
 				State:  StateWarn,
-				Detail: fmt.Sprintf("current=%s, latest=%s — run `bitrise-build-cache update` or `brew upgrade`", current, latest),
+				Detail: fmt.Sprintf("current=%s, latest=%s — run `bitrise-build-cache update` (detects brew vs installer.sh and runs the right flow)", current, latest),
 			}
 		},
 	}

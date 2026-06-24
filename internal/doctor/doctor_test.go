@@ -122,7 +122,6 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		CLIVersion:         "devel",
 		HTTPClient:         &http.Client{},
 		LatestReleaseTag:   func(context.Context, *http.Client) (string, error) { return "", nil },
-		XcelerateProxyDir:  func() string { return t.TempDir() },
 		LookPath:           func(string) (string, error) { return "/usr/local/bin/ccache", nil },
 		StateDirCandidates: []string{},
 	}
@@ -189,29 +188,43 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
+// xcelerateProxyPidPath returns the proxy.pid path resolved through paths
+// against the per-test HOME override.
+func xcelerateProxyPidPath(t *testing.T, home string) string {
+	t.Helper()
+	t.Setenv("HOME", home)
+
+	return filepath.Join(home, ".bitrise-xcelerate", "proxy.pid")
+}
+
 func TestXcelerateProxyCheck_noPidIsWarn(t *testing.T) {
-	r := &Doctor{XcelerateProxyDir: func() string { return t.TempDir() }}
+	t.Setenv("HOME", t.TempDir())
+
+	r := &Doctor{}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.False(t, res.Fixable)
 }
 
 func TestXcelerateProxyCheck_stalePidIsFixable(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "proxy.pid"), []byte(strconv.Itoa(99999999)), 0o600))
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
+	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(99999999)), 0o600))
 
-	r := &Doctor{XcelerateProxyDir: func() string { return dir }}
+	r := &Doctor{}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.True(t, res.Fixable)
 }
 
 func TestXcelerateProxyCheck_fixRemovesStaleFile(t *testing.T) {
-	dir := t.TempDir()
-	pidPath := filepath.Join(dir, "proxy.pid")
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
 	require.NoError(t, os.WriteFile(pidPath, []byte("99999999"), 0o600))
 
-	r := &Doctor{XcelerateProxyDir: func() string { return dir }}
+	r := &Doctor{}
 	detail, err := r.xcelerateProxyCheck().Fix()
 	require.NoError(t, err)
 	assert.Contains(t, detail, "removed")
@@ -221,10 +234,12 @@ func TestXcelerateProxyCheck_fixRemovesStaleFile(t *testing.T) {
 }
 
 func TestXcelerateProxyCheck_corruptPidIsFixable(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "proxy.pid"), []byte("not-a-number"), 0o600))
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
+	require.NoError(t, os.WriteFile(pidPath, []byte("not-a-number"), 0o600))
 
-	r := &Doctor{XcelerateProxyDir: func() string { return dir }}
+	r := &Doctor{}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.True(t, res.Fixable)
@@ -287,7 +302,7 @@ func TestCLIVersionCheck_localBuildSkipsNetwork(t *testing.T) {
 	}
 
 	res := r.cliVersionCheck().Diagnose(context.Background())
-	assert.Equal(t, StateOK, res.State)
+	assert.Equal(t, StateWarn, res.State, "local builds should warn — customers shouldn't run self-built CLIs")
 	assert.Contains(t, res.Detail, "local build")
 }
 

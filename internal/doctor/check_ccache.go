@@ -7,19 +7,18 @@ import (
 	"io/fs"
 	"net"
 	"os"
-	"path/filepath"
 	"time"
+
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 func (d *Doctor) ccacheHelperCheck() Check {
+	socketPath := ccacheconfig.ResolveIPCSocketPath("", d.Envs, utils.DefaultOsProxy{})
+
 	return Check{
 		Name: "ccache-helper",
 		Diagnose: func(ctx context.Context) Result {
-			socketPath := d.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
-			if socketPath == "" {
-				socketPath = filepath.Join(os.TempDir(), "ccache-ipc.sock")
-			}
-
 			if _, err := os.Stat(socketPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					return Result{State: StateWarn, Detail: "not running (no socket file). Run `bitrise-build-cache ccache start-storage-helper` if you build C/C++."}
@@ -44,11 +43,6 @@ func (d *Doctor) ccacheHelperCheck() Check {
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
 		},
 		Fix: func() (string, error) {
-			socketPath := d.Envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
-			if socketPath == "" {
-				socketPath = filepath.Join(os.TempDir(), "ccache-ipc.sock")
-			}
-
 			if err := os.Remove(socketPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					return "already gone: " + socketPath, nil

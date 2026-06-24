@@ -40,3 +40,29 @@ func PathFor(osProxy utils.OsProxy, subpath string) string {
 func ConfigFile(osProxy utils.OsProxy) string {
 	return PathFor(osProxy, xcelerateConfigFileName)
 }
+
+// EnvProxySocketPath overrides the default xcelerate proxy socket location when set.
+const EnvProxySocketPath = "BITRISE_XCELERATE_PROXY_SOCKET_PATH"
+
+// ResolveProxySocketPath returns the proxy unix socket path in the same order
+// activate uses: explicit override → BITRISE_XCELERATE_PROXY_SOCKET_PATH env var
+// → <temp-dir>/xcelerate-proxy.sock.
+func ResolveProxySocketPath(override string, envs map[string]string, osProxy utils.OsProxy) string {
+	if override != "" {
+		return override
+	}
+	if env := envs[EnvProxySocketPath]; env != "" {
+		return env
+	}
+
+	return paths.FromHome("").ProxySocketPath(osProxy.TempDir())
+}
+
+// ProxyPidFile returns the absolute path of the xcelerate proxy pid file.
+func ProxyPidFile(osProxy utils.OsProxy) string {
+	if home, err := osProxy.UserHomeDir(); err == nil {
+		return paths.FromHome(home).ProxyPidFile()
+	}
+
+	return filepath.Join(DirPath(osProxy), paths.ProxyPidFileName)
+}
