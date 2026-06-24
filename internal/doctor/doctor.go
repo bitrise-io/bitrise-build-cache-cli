@@ -10,6 +10,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -75,6 +77,7 @@ type Doctor struct {
 	LookPath           func(string) (string, error)
 	StateDirCandidates []string
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
+	ActivatedTools     func() map[toolconfig.Tool]bool
 }
 
 func NewDoctor() *Doctor {
@@ -90,7 +93,30 @@ func NewDoctor() *Doctor {
 		LookPath:           exec.LookPath,
 		StateDirCandidates: defaultStateDirCandidates(),
 		LatestReleaseTag:   fetchLatestGitHubRelease,
+		ActivatedTools:     defaultActivatedTools,
 	}
+}
+
+func (d *Doctor) toolActivated(t toolconfig.Tool) bool {
+	if d.ActivatedTools == nil {
+		return true
+	}
+
+	return d.ActivatedTools()[t]
+}
+
+func defaultActivatedTools() map[toolconfig.Tool]bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	out := map[toolconfig.Tool]bool{}
+	for _, s := range refresh.Scan(home) {
+		out[s.Tool] = true
+	}
+
+	return out
 }
 
 func defaultStateDirCandidates() []string {

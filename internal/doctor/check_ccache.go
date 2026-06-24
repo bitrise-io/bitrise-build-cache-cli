@@ -10,6 +10,7 @@ import (
 	"time"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -19,6 +20,10 @@ func (d *Doctor) ccacheHelperCheck() Check {
 	return Check{
 		Name: "ccache-helper",
 		Diagnose: func(ctx context.Context) Result {
+			if !d.toolActivated(toolconfig.Ccache) {
+				return Result{State: StateOK, Detail: "skipped (c++ not activated)"}
+			}
+
 			if _, err := os.Stat(socketPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					return Result{State: StateWarn, Detail: "not running (no socket file). Run `bitrise-build-cache ccache start-storage-helper` if you build C/C++."}

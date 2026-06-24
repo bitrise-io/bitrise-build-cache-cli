@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
 
 // ──────────────────────────── fakes ────────────────────────────
@@ -200,10 +201,19 @@ func xcelerateProxyPidPath(t *testing.T, home string) string {
 func TestXcelerateProxyCheck_noPidIsWarn(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	r := &Doctor{}
+	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.False(t, res.Fixable)
+}
+
+func TestXcelerateProxyCheck_skippedWhenNotActivated(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return nil }}
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "skipped")
 }
 
 func TestXcelerateProxyCheck_stalePidIsFixable(t *testing.T) {
@@ -212,7 +222,7 @@ func TestXcelerateProxyCheck_stalePidIsFixable(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
 	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(99999999)), 0o600))
 
-	r := &Doctor{}
+	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.True(t, res.Fixable)

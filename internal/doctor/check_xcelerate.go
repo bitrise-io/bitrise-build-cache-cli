@@ -13,6 +13,7 @@ import (
 	"time"
 
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -24,6 +25,10 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 	return Check{
 		Name: "xcelerate-proxy",
 		Diagnose: func(ctx context.Context) Result {
+			if !d.toolActivated(toolconfig.Xcelerate) {
+				return Result{State: StateOK, Detail: "skipped (xcode not activated)"}
+			}
+
 			content, err := os.ReadFile(pidPath) //nolint:gosec // path resolved via xceleratconfig helper
 			if err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
