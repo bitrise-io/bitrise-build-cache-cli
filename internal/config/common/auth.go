@@ -10,12 +10,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
-var (
-	ErrAuthTokenNotProvided   = errors.New("BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
-	ErrWorkspaceIDNotProvided = errors.New("BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
+const (
+	EnvAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN"   //nolint:gosec // env-var key, not a credential
+	EnvWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID" //nolint:gosec // env-var key, not a credential
+	EnvJWT         = "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"
 )
 
-// CacheAuthConfig holds the auth config for the cache.
+var (
+	ErrAuthTokenNotProvided   = errors.New(EnvAuthToken + " or " + EnvJWT + " environment variable not set")
+	ErrWorkspaceIDNotProvided = errors.New(EnvWorkspaceID + " environment variable not set")
+)
+
 type CacheAuthConfig struct {
 	AuthToken   string
 	WorkspaceID string
@@ -37,6 +42,37 @@ type authLoader interface {
 	Load() (keychain.Credentials, error)
 }
 
+// AuthSource identifies where a credential resolved from.
+type AuthSource int
+
+const (
+	AuthSourceNone AuthSource = iota
+	AuthSourceEnvVars
+	AuthSourceJWT
+	AuthSourceKeychain
+	AuthSourceMultiplatform
+)
+
+// GetKeychainCredentials returns the credentials stored in the OS keychain.
+// The bool is true only when both AuthToken and WorkspaceID are populated.
+// Callers that want keychain-first precedence should call this first and
+// fall back to ResolveAuthConfig when the bool is false.
+func GetKeychainCredentials() (CacheAuthConfig, bool) {
+	return getKeychainCredentials(keychain.New())
+}
+
+func getKeychainCredentials(loader authLoader) (CacheAuthConfig, bool) {
+	creds, err := loader.Load()
+	if err != nil || creds.AuthToken == "" || creds.WorkspaceID == "" {
+		return CacheAuthConfig{}, false
+	}
+
+	return CacheAuthConfig{
+		AuthToken:   creds.AuthToken,
+		WorkspaceID: creds.WorkspaceID,
+	}, true
+}
+
 // Wired via RegisterMultiplatformReader to avoid a multiplatform→common import cycle.
 //
 //nolint:gochecknoglobals
@@ -46,100 +82,91 @@ func RegisterMultiplatformReader(fn func() (CacheAuthConfig, error)) {
 	multiplatformConfigReader = fn
 }
 
-func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, error) {
+// ResolveAuthConfig resolves credentials in priority order: env vars → keychain
+// → multiplatform config → env-vars error. The returned AuthSource identifies
+// which source actually populated the result.
+func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, AuthSource, error) {
 	return resolveAuthConfig(envs, keychain.New(), multiplatformConfigReader)
 }
 
-func resolveAuthConfig(envs map[string]string, loader authLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, error) {
+func resolveAuthConfig(envs map[string]string, loader authLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
 	if hasAuthEnvVars(envs) {
-		return ReadAuthConfigFromEnvironments(envs)
+		return readAuthConfigFromEnvironments(envs)
 	}
 
-	creds, err := loader.Load()
-	if err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
-		return CacheAuthConfig{
-			AuthToken:   creds.AuthToken,
-			WorkspaceID: creds.WorkspaceID,
-		}, nil
+	if cfg, ok := getKeychainCredentials(loader); ok {
+		return cfg, AuthSourceKeychain, nil
 	}
 
 	if readMultiplatform != nil {
 		if mpCfg, mpErr := readMultiplatform(); mpErr == nil && mpCfg.AuthToken != "" && mpCfg.WorkspaceID != "" {
-			return mpCfg, nil
+			return mpCfg, AuthSourceMultiplatform, nil
 		}
 	}
 
-	return ReadAuthConfigFromEnvironments(envs)
+	return readAuthConfigFromEnvironments(envs)
 }
 
 func hasAuthEnvVars(envs map[string]string) bool {
-	if envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"] != "" {
+	if envs[EnvJWT] != "" {
 		return true
 	}
 
-	return envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"] != "" && envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"] != ""
+	return envs[EnvAuthToken] != "" && envs[EnvWorkspaceID] != ""
 }
 
-// ReadAuthConfigFromEnvironments reads auth information from the environment variables
-func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, error) {
-	authTokenEnv := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]
-	workspaceIDEnv := envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"]
+func readAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, AuthSource, error) {
+	authTokenEnv := envs[EnvAuthToken]
+	workspaceIDEnv := envs[EnvWorkspaceID]
 
 	if len(authTokenEnv) > 0 && len(workspaceIDEnv) > 0 {
 		return CacheAuthConfig{
 			AuthToken:   authTokenEnv,
 			WorkspaceID: workspaceIDEnv,
-		}, nil
+		}, AuthSourceEnvVars, nil
 	}
 
 	// Try to fall back to JWT which is always available on Bitrise.
 	// It's a JWT token which already includes the workspace ID.
-	if serviceToken := envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"]; len(serviceToken) > 0 {
+	if serviceToken := envs[EnvJWT]; len(serviceToken) > 0 {
 		workspaceID, err := extractWorkspaceIDFromJWT(serviceToken)
 		if err != nil {
-			return CacheAuthConfig{}, fmt.Errorf("extract workspace ID from JWT: %w", err)
+			return CacheAuthConfig{}, AuthSourceNone, fmt.Errorf("extract workspace ID from JWT: %w", err)
 		}
 
 		return CacheAuthConfig{
 			AuthToken:   serviceToken,
 			WorkspaceID: workspaceID,
 			IsJWT:       true,
-		}, nil
+		}, AuthSourceJWT, nil
 	}
 
-	// Write specific errors for each case.
 	if len(authTokenEnv) < 1 {
-		return CacheAuthConfig{}, ErrAuthTokenNotProvided
+		return CacheAuthConfig{}, AuthSourceNone, ErrAuthTokenNotProvided
 	}
 
-	return CacheAuthConfig{}, ErrWorkspaceIDNotProvided
+	return CacheAuthConfig{}, AuthSourceNone, ErrWorkspaceIDNotProvided
 }
 
-// jwtPermissionClaims represents the claims within a UMA permission entry.
 type jwtPermissionClaims struct {
 	OrgID []string `json:"org_id"`
 }
 
-// jwtPermission represents a single permission entry in the authorization block.
 type jwtPermission struct {
 	Rsname string              `json:"rsname"`
 	Claims jwtPermissionClaims `json:"claims"`
 }
 
-// jwtAuthorization represents the authorization block in the JWT payload.
 type jwtAuthorization struct {
 	Permissions []jwtPermission `json:"permissions"`
 }
 
-// jwtPayload represents the JWT payload structure with UMA authorization permissions.
 type jwtPayload struct {
 	Authorization jwtAuthorization `json:"authorization"`
 }
 
-// extractWorkspaceIDFromJWT extracts the workspace ID (org_id) from a Bitrise JWT token
-// without validating the token signature.
-// The JWT uses UMA-style authorization permissions where org_id is a claim
-// inside the "default" resource permission.
+// Extracts org_id from a Bitrise UMA-style JWT without verifying the signature
+// (we trust the issuer — Bitrise mints these per build).
 func extractWorkspaceIDFromJWT(token string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 { //nolint:mnd

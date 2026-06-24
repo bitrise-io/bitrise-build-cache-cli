@@ -87,7 +87,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 		activateGradleParams.CLIPath = cliPath
 	}
 
-	authConfig, err := configcommon.ResolveAuthConfig(envProvider)
+	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, err))
 	}

@@ -444,8 +444,8 @@ func probeRawConfig(fullPath string) func() credAudit {
 }
 
 func probeEnvVars(envs map[string]string) credAudit {
-	tok := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]
-	ws := envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"]
+	tok := envs[configcommon.EnvAuthToken]
+	ws := envs[configcommon.EnvWorkspaceID]
 
 	switch {
 	case tok != "" && ws != "":
@@ -458,7 +458,7 @@ func probeEnvVars(envs map[string]string) credAudit {
 }
 
 func probeJWT(envs map[string]string) credAudit {
-	jwt := envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"]
+	jwt := envs[configcommon.EnvJWT]
 	if jwt == "" {
 		return credAudit{state: sourceAbsent, note: "not set"}
 	}
@@ -492,7 +492,7 @@ var authTokenCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cfg, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+		cfg, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 		if err != nil {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 

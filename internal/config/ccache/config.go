@@ -97,7 +97,7 @@ func DefaultParams() Params {
 }
 
 func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
-	authConfig, err := common.ResolveAuthConfig(envs)
+	authConfig, _, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

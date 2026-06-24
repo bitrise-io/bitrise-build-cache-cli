@@ -126,7 +126,7 @@ func NewConfig(ctx context.Context,
 	exporter EnvExporter,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (Config, error) {
-	authConfig, err := common.ResolveAuthConfig(envs)
+	authConfig, _, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

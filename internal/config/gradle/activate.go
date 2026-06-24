@@ -25,7 +25,7 @@ func Activate(
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
 ) error {
-	authConfig, err := configcommon.ResolveAuthConfig(envProvider)
+	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}

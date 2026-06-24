@@ -348,7 +348,7 @@ func (s *storageHelperStarter) start() error {
 }
 
 func saveMultiplatformConfig(debugLogging bool) error {
-	authConfig, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+	authConfig, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 	if err != nil {
 		return fmt.Errorf("resolve auth config for multiplatform analytics: %w", err)
 	}

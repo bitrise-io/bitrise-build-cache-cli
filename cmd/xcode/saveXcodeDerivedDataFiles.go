@@ -51,7 +51,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, err := configcommon.ResolveAuthConfig(allEnvs)
+		authConfig, _, err := configcommon.ResolveAuthConfig(allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
