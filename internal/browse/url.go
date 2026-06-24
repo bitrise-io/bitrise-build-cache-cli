@@ -8,9 +8,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 )
 
-// ErrMissingWorkspace is returned by BuildURL when WorkspaceID is empty.
-// Callers should resolve the workspace upstream — `pkg/browse` does so via
-// the --workspace flag, the env var, and the configured auth config.
 var ErrMissingWorkspace = errors.New("BuildURL: WorkspaceID is required")
 
 type BuildURLParams struct {
