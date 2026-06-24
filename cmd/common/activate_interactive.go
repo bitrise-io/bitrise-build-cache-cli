@@ -87,6 +87,7 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 	}
 
 	params := gradleconfig.DefaultActivateGradleParams()
+	params.Cache.Enabled = true
 	params.Cache.PushEnabled = pushEnabled
 
 	if cliPath, exeErr := os.Executable(); exeErr == nil {
