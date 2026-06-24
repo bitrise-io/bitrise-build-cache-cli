@@ -74,6 +74,7 @@ func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs m
 	if err != nil {
 		return 0, fmt.Errorf("dial %s: %w", host, err)
 	}
+	defer func() { _ = client.Close() }()
 
 	key, err := probeKey()
 	if err != nil {

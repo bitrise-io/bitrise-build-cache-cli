@@ -23,6 +23,7 @@ import (
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../../proto/kv_storage KVStorageClient
 
 type Client struct {
+	conn                *grpc.ClientConn // nil when test-injected via BitriseKVClient / CapabilitiesClient.
 	bitriseKVClient     kv_storage.KVStorageClient
 	capabilitiesClient  remoteexecution.CapabilitiesClient
 	casClient           remoteexecution.ContentAddressableStorageClient
@@ -91,6 +92,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 	}
 
 	return &Client{
+		conn:                conn,
 		bitriseKVClient:     bitriseKVClient,
 		capabilitiesClient:  capabilitiesClient,
 		casClient:           remoteexecution.NewContentAddressableStorageClient(conn),
@@ -109,6 +111,20 @@ func NewClient(p NewClientParams) (*Client, error) {
 
 func (c *Client) SetLogger(logger log.Logger) {
 	c.logger = logger
+}
+
+// Close releases the gRPC connection. Safe to call when the client was built
+// with injected stubs (no conn) — returns nil in that case.
+func (c *Client) Close() error {
+	if c.conn == nil {
+		return nil
+	}
+
+	if err := c.conn.Close(); err != nil {
+		return fmt.Errorf("close kv grpc conn: %w", err)
+	}
+
+	return nil
 }
 
 type writer struct {
