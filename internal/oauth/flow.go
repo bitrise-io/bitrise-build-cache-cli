@@ -151,8 +151,8 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 		return Credentials{}, fmt.Errorf("%w (refresh failed: %w)", ErrLoginRequired, err)
 	}
 	creds.JWT = refreshed.AccessToken
-	creds.JWTExpiry = jwtExpiry(refreshed, now)
-	if refreshed.RefreshToken != "" { // WorkOS may rotate the refresh token
+	creds.JWTExpiry = jwtExpiry(refreshed, time.Now()) // relative to the exchange, not EnsureFresh entry
+	if refreshed.RefreshToken != "" {                  // WorkOS may rotate the refresh token
 		creds.RefreshToken = refreshed.RefreshToken
 	}
 
