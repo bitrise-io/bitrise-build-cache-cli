@@ -39,7 +39,8 @@ func dirPath(osProxy utils.OsProxy) string {
 	return filepath.Join(".", configPath)
 }
 
-func filePath(osProxy utils.OsProxy) string {
+// FilePath returns the absolute path of the multiplatform analytics config file.
+func FilePath(osProxy utils.OsProxy) string {
 	return filepath.Join(dirPath(osProxy), configFile)
 }
 
@@ -50,7 +51,7 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 		return fmt.Errorf(ErrFmtCreateFolder, dir, err)
 	}
 
-	path := filePath(osProxy)
+	path := FilePath(osProxy)
 	f, err := osProxy.Create(path)
 	if err != nil {
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)
@@ -73,7 +74,7 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 
 // ReadConfig loads the config from disk.
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
-	path := filePath(osProxy)
+	path := FilePath(osProxy)
 
 	f, err := osProxy.OpenFile(path, 0, 0)
 	if err != nil {

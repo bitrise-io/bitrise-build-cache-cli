@@ -2,6 +2,8 @@ package gradle
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -41,6 +43,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		allEnvs := utils.AllEnvs()
 
+		if cliPath, exeErr := os.Executable(); exeErr == nil {
+			activateGradleParams.CLIPath = cliPath
+		}
+
 		if err := gradleconfig.Activate(
 			logger,
 			gradleHome,
@@ -67,6 +73,19 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		configcommon.LogBenchmarkSummary(logger, []string{configcommon.BuildToolGradle})
+
+		// Best-effort: sidecar write failure must not fail the activate.
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			initFile := filepath.Join(gradleHome, "init.d", "bitrise-build-cache.init.gradle.kts")
+			if err := gradleconfig.WriteSidecar(home, gradleconfig.Sidecar{
+				InitScriptPath:   initFile,
+				CacheEnabled:     activateGradleParams.Cache.Enabled,
+				CachePushEnabled: activateGradleParams.Cache.PushEnabled,
+				AnalyticsEnabled: activateGradleParams.Analytics.Enabled,
+			}); err != nil {
+				logger.Debugf("gradle sidecar write failed (non-fatal): %s", err)
+			}
+		}
 
 		logger.TInfof("✅ Bitrise plugins activated")
 

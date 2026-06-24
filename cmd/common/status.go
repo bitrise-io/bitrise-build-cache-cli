@@ -146,17 +146,22 @@ type statusOutput struct {
 	Auth        authStatusInfo `json:"auth"`
 }
 
-// currentAuthStatus reports which credential build-cache commands would use, in
-// the same precedence as hydrateStoredAuth: an env credential (manual PAT or CI
-// service JWT, resolved by config common), then a stored OAuth login. It never
-// refreshes or writes.
+// currentAuthStatus reports which credential build-cache commands would use,
+// resolved by config common in its canonical precedence (env vars → keychain →
+// multiplatform config), then a stored OAuth login. It never refreshes or writes.
 func currentAuthStatus() authStatusInfo {
-	if cfg, err := configcommon.ReadAuthConfigFromEnvironments(utils.AllEnvs()); err == nil && cfg.AuthToken != "" {
-		if cfg.IsJWT {
+	if cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs()); err == nil && cfg.AuthToken != "" {
+		switch source {
+		case configcommon.AuthSourceJWT:
 			return authStatusInfo{Configured: true, Source: "JWT (CI service token)"}
+		case configcommon.AuthSourceKeychain:
+			return authStatusInfo{Configured: true, Source: "OS keychain", WorkspaceID: cfg.WorkspaceID}
+		case configcommon.AuthSourceMultiplatform:
+			return authStatusInfo{Configured: true, Source: "multiplatform config", WorkspaceID: cfg.WorkspaceID}
+		case configcommon.AuthSourceEnvVars:
+			return authStatusInfo{Configured: true, Source: "PAT + workspace ID (env)", WorkspaceID: cfg.WorkspaceID}
+		case configcommon.AuthSourceNone:
 		}
-
-		return authStatusInfo{Configured: true, Source: "PAT + workspace ID (env)", WorkspaceID: cfg.WorkspaceID}
 	}
 	if creds, err := oauth.Load(); err == nil && creds.IsOAuthManaged() {
 		info := authStatusInfo{Configured: true, Source: "OAuth login", WorkspaceID: creds.WorkspaceID}

@@ -63,7 +63,11 @@ func Activate(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envs)
+	authConfig, _, err := configcommon.ResolveAuthConfig(envs)
+	if err != nil {
+		return fmt.Errorf("resolve auth config: %w", err)
+	}
+
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
 	config, err := NewConfig(

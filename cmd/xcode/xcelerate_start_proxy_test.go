@@ -51,11 +51,11 @@ func Test_XcelerateProxy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envVars)
-	require.NoError(t, err)
-
 	config := xcelerate.Config{
-		AuthConfig: authConfig,
+		AuthConfig: common.CacheAuthConfig{
+			AuthToken:   envVars[common.EnvAuthToken],
+			WorkspaceID: envVars[common.EnvWorkspaceID],
+		},
 	}
 
 	go func() {

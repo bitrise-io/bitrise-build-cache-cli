@@ -35,17 +35,17 @@ func makeTestUMAJWT(orgID string) string {
 	return header + "." + body + "." + sig
 }
 
-func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
+func Test_ReadAuthConfigFromEnvs(t *testing.T) {
 	serviceJWT := makeTestUMAJWT("jwt-org-id")
 
 	t.Run("No envs provided", func(t *testing.T) {
-		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{})
+		authToken, _, err := readAuthConfigFromEnvironments(map[string]string{})
 		require.EqualError(t, err, "BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
 		assert.Equal(t, CacheAuthConfig{}, authToken)
 	})
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", func(t *testing.T) {
-		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{
+		authToken, _, err := readAuthConfigFromEnvironments(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": serviceJWT,
 		})
 		require.NoError(t, err)
@@ -57,7 +57,7 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 	})
 
 	t.Run("BITRISE_BUILD_CACHE_AUTH_TOKEN", func(t *testing.T) {
-		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{
+		authToken, _, err := readAuthConfigFromEnvironments(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN": "BuildCacheAuthTokenValue",
 		})
 		require.EqualError(t, err, "BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
@@ -65,7 +65,7 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 	})
 
 	t.Run("BITRISE_BUILD_CACHE_AUTH_TOKEN & BITRISE_BUILD_CACHE_WORKSPACE_ID", func(t *testing.T) {
-		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{
+		authToken, _, err := readAuthConfigFromEnvironments(map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		})
@@ -77,7 +77,7 @@ func Test_ReadAuthConfigFromEnvironments(t *testing.T) {
 	})
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN & BITRISE_BUILD_CACHE_AUTH_TOKEN & BITRISE_BUILD_CACHE_WORKSPACE_ID", func(t *testing.T) {
-		authToken, err := ReadAuthConfigFromEnvironments(map[string]string{
+		authToken, _, err := readAuthConfigFromEnvironments(map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": serviceJWT,
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":          "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID":        "WorkspaceIDValue",

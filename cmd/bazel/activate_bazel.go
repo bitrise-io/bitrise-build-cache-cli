@@ -2,6 +2,7 @@ package bazel
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -86,6 +87,20 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 		permhint.PrintIfApplicable(logger, err)
 
 		return fmt.Errorf("activate Bazel Build Cache: %w", err)
+	}
+
+	// Best-effort: sidecar write failure must not fail the activate.
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		if mErr := bazelconfig.WriteSidecar(home, bazelconfig.Sidecar{
+			BazelrcPath:       bazelrcPath,
+			CacheEnabled:      activateBazelParams.Cache.Enabled,
+			CachePushEnabled:  activateBazelParams.Cache.PushEnabled,
+			BESEnabled:        activateBazelParams.BES.Enabled,
+			RBEEnabled:        activateBazelParams.RBE.Enabled,
+			TimestampsEnabled: activateBazelParams.Timestamps,
+		}); mErr != nil {
+			logger.Debugf("bazel sidecar write failed (non-fatal): %s", mErr)
+		}
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")

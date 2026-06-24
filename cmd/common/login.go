@@ -103,8 +103,8 @@ func shadowingAuthEnv() string {
 	if os.Getenv(configcommon.EnvAuthToken) != "" {
 		return configcommon.EnvAuthToken
 	}
-	if os.Getenv(configcommon.EnvServiceJWT) != "" {
-		return configcommon.EnvServiceJWT
+	if os.Getenv(configcommon.EnvJWT) != "" {
+		return configcommon.EnvJWT
 	}
 
 	return ""
@@ -142,7 +142,7 @@ func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]stri
 // env/CI creds, and only this fallback ever does a network refresh.
 func hydrateStoredAuth(ctx context.Context) {
 	if os.Getenv(configcommon.EnvAuthToken) != "" ||
-		os.Getenv(configcommon.EnvServiceJWT) != "" {
+		os.Getenv(configcommon.EnvJWT) != "" {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))

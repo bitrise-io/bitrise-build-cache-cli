@@ -28,6 +28,9 @@ This command will:
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		logger := log.NewLogger()
+		logger.EnableDebugLog(common.IsDebugLogMode)
+
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,
 			PushEnabled:           activateCppParams.PushEnabled,

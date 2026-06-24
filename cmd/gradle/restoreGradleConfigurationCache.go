@@ -45,9 +45,9 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, err := configcommon.ReadAuthConfigFromEnvironments(allEnvs)
+		authConfig, _, err := configcommon.ResolveAuthConfig(allEnvs)
 		if err != nil {
-			return fmt.Errorf("read auth config from environments: %w", err)
+			return fmt.Errorf("resolve auth config: %w", err)
 		}
 
 		err = restoreGradleConfigCacheCmdFn(cmd.Context(),

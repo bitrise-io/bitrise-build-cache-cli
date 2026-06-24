@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -28,7 +29,7 @@ const (
 	ErrFmtCreateConfigFile = "failed to create ccache config file: %w"
 	ErrFmtEncodeConfigFile = "failed to encode ccache config file: %w"
 	ErrFmtCreateFolder     = "failed to create .bitrise/cache/ccache folder (%s): %w"
-	ErrNoAuthConfig        = "read auth config: %w"
+	ErrNoAuthConfig        = "resolve auth config: %w"
 )
 
 // Params holds the parameters for creating a ccache activate config.
@@ -40,6 +41,8 @@ type Params struct {
 }
 
 type Config struct {
+	ConfigVersion      string        `json:"configVersion,omitempty"`
+	WrittenAt          time.Time     `json:"writtenAt,omitzero"`
 	LogFile            string        `json:"logFile,omitempty"`
 	ErrLogFile         string        `json:"errLogFile,omitempty"`
 	IPCEndpoint        string        `json:"ipcEndpoint,omitempty"`
@@ -82,6 +85,28 @@ func PathFor(osProxy utils.OsProxy, subpath string) string {
 	return filepath.Join(DirPath(osProxy), subpath)
 }
 
+// ConfigFile returns the absolute path of the ccache config.json.
+func ConfigFile(osProxy utils.OsProxy) string {
+	return PathFor(osProxy, ccacheConfigFile)
+}
+
+// EnvIPCSocketPath overrides the default IPC socket location when set.
+const EnvIPCSocketPath = "BITRISE_CCACHE_IPC_SOCKET_PATH"
+
+// ResolveIPCSocketPath returns the storage helper's IPC socket path in the same
+// order the activator uses: an explicit override → BITRISE_CCACHE_IPC_SOCKET_PATH
+// env var → <temp-dir>/ccache-ipc.sock.
+func ResolveIPCSocketPath(override string, envs map[string]string, osProxy utils.OsProxy) string {
+	if override != "" {
+		return override
+	}
+	if env := envs[EnvIPCSocketPath]; env != "" {
+		return env
+	}
+
+	return paths.FromHome("").CcacheSocketPath(osProxy.TempDir())
+}
+
 func DefaultParams() Params {
 	return Params{
 		PushEnabled: true,
@@ -89,24 +114,20 @@ func DefaultParams() Params {
 }
 
 func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+	authConfig, _, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
-	ipcEndpoint := params.IPCSocketPathOverride
-	if ipcEndpoint == "" {
-		ipcEndpoint = envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
-		if ipcEndpoint == "" {
-			ipcEndpoint = filepath.Join(osProxy.TempDir(), "ccache-ipc.sock")
-		}
-	}
+	ipcEndpoint := ResolveIPCSocketPath(params.IPCSocketPathOverride, envs, osProxy)
 
 	buildCacheEndpoint := common.SelectCacheEndpointURL(params.BuildCacheEndpoint, envs)
 	idleTimeout, _ := time.ParseDuration(defaultIdleTimeout)
 
 	return Config{
 		AuthConfig:         authConfig,
+		ConfigVersion:      toolconfig.CcacheConfigVersion,
+		WrittenAt:          time.Now().UTC(),
 		IPCEndpoint:        ipcEndpoint,
 		LogFile:            defaultLogFile,
 		ErrLogFile:         defaultErrLogFile,

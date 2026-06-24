@@ -101,7 +101,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}, false)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf("read auth config from environment variables: %w", common.ErrAuthTokenNotProvided).Error())
+		require.EqualError(t, err, fmt.Errorf("resolve auth config: %w", common.ErrAuthTokenNotProvided).Error())
 	})
 
 	t.Run("TemplateInventory with cache enabled and custom endpoint", func(t *testing.T) {

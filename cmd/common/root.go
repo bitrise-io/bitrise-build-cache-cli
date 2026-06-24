@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/versioncheck"
 )
@@ -56,7 +57,7 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 	switch cmd.Name() {
-	case "version", "help", "completion":
+	case "version", "help", "completion", "update":
 		return true
 	case
 		"xcodebuild",
@@ -80,13 +81,17 @@ func RunVersionCheck(cmd *cobra.Command) {
 
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 
-	_, _ = versioncheck.RunOnce(ctx, versioncheck.Options{
+	res, _ := versioncheck.RunOnce(ctx, versioncheck.Options{
 		CurrentVersion: configcommon.GetCLIVersion(logger),
 		Home:           home,
 		NoUpdateCheck:  NoUpdateCheck,
 		Logger:         logger,
 		IsCI:           configcommon.DetectCIProvider(utils.AllEnvs()) != "",
 	})
+
+	if res.Drift.Kind == versioncheck.Bump {
+		refresh.OnBump(logger, home)
+	}
 }
 
 func Execute() {
