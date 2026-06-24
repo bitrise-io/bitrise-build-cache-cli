@@ -14,14 +14,59 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
 const (
 	cliBinaryName = "bitrise-build-cache"
 	cliModulePath = "github.com/bitrise-io/bitrise-build-cache-cli/v2"
-	// InstallDir is the directory where dependency binaries (CLI, ccache) are installed.
-	InstallDir = "/usr/local/bin"
+	// preferredInstallDir is the system-wide location used when the current
+	// user can write to it (Bitrise macOS stacks own it and it is already on
+	// the default PATH).
+	preferredInstallDir = "/usr/local/bin"
 )
+
+// InstallDir returns the directory where dependency binaries (CLI, ccache) are
+// installed and onto which the React Native activator extends PATH.
+//
+// It prefers preferredInstallDir (/usr/local/bin) when that directory is
+// writable by the current user — the case on Bitrise macOS stacks. When it is
+// not writable it falls back to the per-user ~/.bitrise/bin, which is always
+// writable. The Linux 2026 stack runs builds as a non-root user that cannot
+// write to /usr/local/bin, so without this fallback the self-install fails
+// with "permission denied". The fallback is the same stable bin dir the
+// daemon installer uses.
+func InstallDir() string {
+	if dirIsWritable(preferredInstallDir) {
+		return preferredInstallDir
+	}
+
+	p, err := paths.Default()
+	if err != nil {
+		// No home dir to fall back to — keep the preferred default and let
+		// the eventual write surface a clear permission error.
+		return preferredInstallDir
+	}
+
+	return p.BitriseBinDir()
+}
+
+// dirIsWritable reports whether the current user can create files in dir.
+// A non-existent or read-only dir reports false; callers MkdirAll their
+// chosen directory before writing.
+func dirIsWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".bitrise-build-cache-write-check-*")
+	if err != nil {
+		return false
+	}
+
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+
+	return true
+}
 
 // CLITool returns a Tool that installs the bitrise-build-cache binary
 // matching the version embedded in the current binary's module dependencies.
@@ -68,7 +113,7 @@ func isMainCLIBinary() bool {
 	return info.Main.Path == cliModulePath
 }
 
-// selfInstall copies the running executable to InstallDir.
+// selfInstall copies the running executable into InstallDir.
 // Used when the CLI is already running but not on PATH (e.g. `go run` dev builds).
 func selfInstall(logger log.Logger) error {
 	exePath, err := os.Executable()
@@ -81,7 +126,12 @@ func selfInstall(logger log.Logger) error {
 		return fmt.Errorf("resolve executable symlinks: %w", err)
 	}
 
-	destPath := filepath.Join(InstallDir, cliBinaryName)
+	installDir := InstallDir()
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		return fmt.Errorf("create install dir %s: %w", installDir, err)
+	}
+
+	destPath := filepath.Join(installDir, cliBinaryName)
 	logger.Debugf("Self-installing: copying %s to %s", exePath, destPath)
 
 	src, err := os.Open(exePath)
@@ -181,7 +231,12 @@ func downloadAndExtract(ctx context.Context, url, binaryName string) error {
 	}
 	defer resp.Close()
 
-	destPath := filepath.Join(InstallDir, binaryName)
+	installDir := InstallDir()
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		return fmt.Errorf("create install dir %s: %w", installDir, err)
+	}
+
+	destPath := filepath.Join(installDir, binaryName)
 	if err := extractBinaryFromTarGz(resp, binaryName, destPath); err != nil {
 		return fmt.Errorf("extract binary: %w", err)
 	}

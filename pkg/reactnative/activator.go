@@ -223,7 +223,7 @@ func (a *Activator) saveReactNativeMarker() error {
 // ---------------------------------------------------------------------------
 
 func exportInstallDirToPath(logger log.Logger) {
-	dir := dependencies.InstallDir
+	dir := dependencies.InstallDir()
 	envs := utils.AllEnvs()
 
 	currentPath := envs["PATH"]
