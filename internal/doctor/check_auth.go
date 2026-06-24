@@ -16,8 +16,12 @@ func (d *Doctor) authCheck() Check {
 				}
 			}
 
-			if cfg, err := common.ReadAuthConfigFromEnvironments(d.Envs); err == nil {
-				return Result{State: StateOK, Detail: "environment variables, workspace=" + cfg.WorkspaceID}
+			if ws, tok := d.Envs[common.EnvWorkspaceID], d.Envs[common.EnvAuthToken]; ws != "" && tok != "" {
+				return Result{State: StateOK, Detail: "environment variables, workspace=" + ws}
+			}
+
+			if d.Envs[common.EnvJWT] != "" {
+				return Result{State: StateOK, Detail: "CI JWT env (" + common.EnvJWT + ")"}
 			}
 
 			return Result{
