@@ -42,10 +42,21 @@ var LogoutCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "logout",
 	Short: "Remove the stored Bitrise build-cache login",
 	RunE: func(_ *cobra.Command, _ []string) error {
+		logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+
+		creds, err := oauth.Load()
+		if err != nil {
+			return fmt.Errorf("read stored login: %w", err)
+		}
+		if !creds.IsOAuthManaged() {
+			logger.Infof("No stored login to remove. (A manual 'auth set' credential, if any, is left untouched — use 'auth clear' for that.)")
+
+			return nil
+		}
 		if err := oauth.Clear(); err != nil {
 			return fmt.Errorf("clear stored login: %w", err)
 		}
-		log.NewLogger(log.WithDebugLog(IsDebugLogMode)).Infof("Signed out.")
+		logger.Infof("Signed out.")
 
 		return nil
 	},
@@ -136,10 +147,11 @@ func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]stri
 	return workspaces[idx].Slug, nil
 }
 
-// hydrateStoredAuth refreshes a stored OAuth login and exports its PAT +
-// workspace as the auth env vars when no manual/CI credential is set, so the
-// existing env-based resolution picks it up. Best-effort; never overrides
-// env/CI creds, and only this fallback ever does a network refresh.
+// hydrateStoredAuth refreshes a stored OAuth login (in the keychain) when its
+// PAT is stale, so the keychain tier of ResolveAuthConfig serves a live PAT to
+// the command about to run. Best-effort and local-only: it's the sole path that
+// does a network refresh, and it's skipped when an env credential is set (env
+// wins, and CI must never trigger a refresh).
 func hydrateStoredAuth(ctx context.Context) {
 	if os.Getenv(configcommon.EnvAuthToken) != "" ||
 		os.Getenv(configcommon.EnvJWT) != "" {
@@ -148,17 +160,9 @@ func hydrateStoredAuth(ctx context.Context) {
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 	cfg := oauth.NewConfigFromEnv(utils.AllEnvs())
 	cfg.Logger = logger
-	creds, err := cfg.EnsureFresh(ctx)
-	if err != nil {
+	if _, err := cfg.EnsureFresh(ctx); err != nil {
 		logger.Debugf("OAuth login not applied: %s", err)
-
-		return
 	}
-	if creds.PAT == "" || creds.WorkspaceID == "" {
-		return
-	}
-	_ = os.Setenv(configcommon.EnvAuthToken, creds.PAT)
-	_ = os.Setenv(configcommon.EnvWorkspaceID, creds.WorkspaceID)
 }
 
 // isInteractiveStdin reports whether stdin is a terminal (not a pipe/file/CI).

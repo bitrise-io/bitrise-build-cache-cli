@@ -6,10 +6,13 @@ import (
 	"testing"
 	"time"
 
+	keyring "github.com/zalando/go-keyring"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/oauth"
 )
 
 func TestCurrentAuthStatus(t *testing.T) {
+	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
@@ -28,7 +31,7 @@ func TestCurrentAuthStatus(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	a := currentAuthStatus()
-	if !a.Configured || a.Source != "OAuth login" || a.WorkspaceID != "acme" {
+	if !a.Configured || a.Source != "OAuth login (keychain)" || a.WorkspaceID != "acme" {
 		t.Fatalf("expected oauth login, got %+v", a)
 	}
 	if a.Expired || a.TokenExpiry == "" {

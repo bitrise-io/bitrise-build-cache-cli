@@ -5,10 +5,19 @@ package oauth
 import (
 	"testing"
 	"time"
+
+	keyring "github.com/zalando/go-keyring"
 )
 
+// resetKeychain swaps in a fresh in-memory keychain so each test starts with no
+// stored credential and never touches the real OS keychain.
+func resetKeychain(t *testing.T) {
+	t.Helper()
+	keyring.MockInit()
+}
+
 func TestCredentialsStore_RoundTrip(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 
 	want := Credentials{
 		PAT:          "bitpat_x",
@@ -37,7 +46,7 @@ func TestCredentialsStore_RoundTrip(t *testing.T) {
 }
 
 func TestCredentialsStore_MissingFileIsZero(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 
 	got, err := Load()
 	if err != nil {
@@ -49,7 +58,7 @@ func TestCredentialsStore_MissingFileIsZero(t *testing.T) {
 }
 
 func TestCredentialsStore_SaveRejectsEmptyPAT(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 
 	if err := Save(Credentials{WorkspaceID: "x"}); err == nil {
 		t.Fatal("Save with empty PAT should fail")
@@ -57,7 +66,7 @@ func TestCredentialsStore_SaveRejectsEmptyPAT(t *testing.T) {
 }
 
 func TestCredentialsStore_Clear(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 
 	if err := Save(Credentials{PAT: "p", RefreshToken: "r", WorkspaceID: "w"}); err != nil {
 		t.Fatalf("seed: %v", err)

@@ -1,28 +1,26 @@
 package oauth
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
-// Credentials is the on-disk OAuth credential file
-// (~/.bitrise/build-cache/auth.json, 0600). WorkspaceID is stored because the
-// cache is workspace-scoped while OAuth login is user-scoped.
+// Credentials is the OAuth login credential. It is persisted in the OS keychain
+// (the CLI's canonical auth store) as a keychain.Credentials, so a stored login
+// is resolved by the same env→keychain→config chain as a manual `auth set`.
+// WorkspaceID is stored because the cache is workspace-scoped while OAuth login
+// is user-scoped.
 type Credentials struct {
-	PAT                string    `json:"pat,omitempty"`
-	PATExpiry          time.Time `json:"pat_expiry,omitempty"`
-	JWT                string    `json:"jwt,omitempty"`
-	JWTExpiry          time.Time `json:"jwt_expiry,omitempty"`
-	RefreshToken       string    `json:"refresh_token,omitempty"`
-	RefreshTokenExpiry time.Time `json:"refresh_token_expiry,omitempty"`
-	WorkspaceID        string    `json:"workspace_id,omitempty"`
+	PAT                string
+	PATExpiry          time.Time
+	JWT                string
+	JWTExpiry          time.Time
+	RefreshToken       string
+	RefreshTokenExpiry time.Time
+	WorkspaceID        string
 }
 
 // IsOAuthManaged reports whether the credential came from OAuth (has a refresh token).
@@ -30,74 +28,60 @@ func (c Credentials) IsOAuthManaged() bool {
 	return c.RefreshToken != ""
 }
 
-// CredentialsPath returns the absolute path to the OAuth credential file.
-func CredentialsPath() (string, error) {
-	p, err := paths.Default()
-	if err != nil {
-		return "", fmt.Errorf("resolve paths: %w", err)
+func (c Credentials) toKeychain() keychain.Credentials {
+	return keychain.Credentials{
+		AuthToken:          c.PAT,
+		WorkspaceID:        c.WorkspaceID,
+		PATExpiry:          c.PATExpiry,
+		JWT:                c.JWT,
+		JWTExpiry:          c.JWTExpiry,
+		RefreshToken:       c.RefreshToken,
+		RefreshTokenExpiry: c.RefreshTokenExpiry,
 	}
-
-	return p.BuildCacheAuthFile(), nil
 }
 
-// Load reads the credential file. A missing file returns the zero Credentials
-// so a not-logged-in user doesn't see an error.
-func Load() (Credentials, error) {
-	p, err := CredentialsPath()
-	if err != nil {
-		return Credentials{}, err
+func fromKeychain(kc keychain.Credentials) Credentials {
+	return Credentials{
+		PAT:                kc.AuthToken,
+		PATExpiry:          kc.PATExpiry,
+		JWT:                kc.JWT,
+		JWTExpiry:          kc.JWTExpiry,
+		RefreshToken:       kc.RefreshToken,
+		RefreshTokenExpiry: kc.RefreshTokenExpiry,
+		WorkspaceID:        kc.WorkspaceID,
 	}
-	data, err := os.ReadFile(p) //nolint:gosec // p is derived from the user home dir, not user input
-	if errors.Is(err, fs.ErrNotExist) {
+}
+
+// Load reads the stored credential from the keychain. A missing item returns the
+// zero Credentials so a not-logged-in user doesn't see an error.
+func Load() (Credentials, error) {
+	kc, err := keychain.New().Load()
+	if errors.Is(err, keychain.ErrNotFound) {
 		return Credentials{}, nil
 	}
 	if err != nil {
-		return Credentials{}, fmt.Errorf("read %s: %w", p, err)
-	}
-	var c Credentials
-	if err := json.Unmarshal(data, &c); err != nil {
-		return Credentials{}, fmt.Errorf("parse %s: %w", p, err)
+		return Credentials{}, fmt.Errorf("load credentials: %w", err)
 	}
 
-	return c, nil
+	return fromKeychain(kc), nil
 }
 
-// Save atomically writes c to disk with 0600 permissions, creating the parent
-// directory (0700) if needed.
+// Save writes c to the keychain.
 func Save(c Credentials) error {
 	if c.PAT == "" {
 		return errors.New("refusing to save credentials with empty PAT")
 	}
-	p, err := CredentialsPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	data, err := json.MarshalIndent(&c, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal credentials: %w", err)
-	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, p); err != nil {
-		return fmt.Errorf("install %s: %w", p, err)
+	if err := keychain.New().Save(c.toKeychain()); err != nil {
+		return fmt.Errorf("save credentials: %w", err)
 	}
 
 	return nil
 }
 
-// Clear removes the credential file. A non-existent file is not an error.
+// Clear removes the stored credential from the keychain.
 func Clear() error {
-	p, err := CredentialsPath()
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("remove %s: %w", p, err)
+	if err := keychain.New().Clear(); err != nil {
+		return fmt.Errorf("clear credentials: %w", err)
 	}
 
 	return nil

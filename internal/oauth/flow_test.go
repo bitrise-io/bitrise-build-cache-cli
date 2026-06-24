@@ -95,7 +95,7 @@ func (m *oauthMock) counts() (tokenCalls, exchangeCalls int) {
 }
 
 func TestEnsureFresh_NotLoggedIn(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 	m := newOAuthMock()
 	defer m.close()
 
@@ -105,7 +105,7 @@ func TestEnsureFresh_NotLoggedIn(t *testing.T) {
 }
 
 func TestEnsureFresh_ValidPAT(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 	if err := Save(Credentials{
 		PAT: "still-good", PATExpiry: time.Now().Add(time.Hour),
 		JWT: "j", JWTExpiry: time.Now().Add(time.Hour),
@@ -129,7 +129,7 @@ func TestEnsureFresh_ValidPAT(t *testing.T) {
 }
 
 func TestEnsureFresh_ExpiredPAT_ValidJWT(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 	if err := Save(Credentials{
 		PAT: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "good-jwt", JWTExpiry: time.Now().Add(time.Hour),
@@ -156,7 +156,7 @@ func TestEnsureFresh_ExpiredPAT_ValidJWT(t *testing.T) {
 }
 
 func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 	if err := Save(Credentials{
 		PAT: "old", PATExpiry: time.Now().Add(-time.Hour),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
@@ -188,7 +188,7 @@ func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 }
 
 func TestEnsureFresh_RefreshRejected(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	resetKeychain(t)
 	if err := Save(Credentials{
 		PAT: "old", PATExpiry: time.Now().Add(-time.Hour),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Hour),

@@ -148,29 +148,33 @@ type statusOutput struct {
 
 // currentAuthStatus reports which credential build-cache commands would use,
 // resolved by config common in its canonical precedence (env vars → keychain →
-// multiplatform config), then a stored OAuth login. It never refreshes or writes.
+// multiplatform config). A keychain credential is further distinguished as an
+// OAuth login (with PAT expiry) vs a manual `auth set`. It never refreshes or writes.
 func currentAuthStatus() authStatusInfo {
-	if cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs()); err == nil && cfg.AuthToken != "" {
-		switch source {
-		case configcommon.AuthSourceJWT:
-			return authStatusInfo{Configured: true, Source: "JWT (CI service token)"}
-		case configcommon.AuthSourceKeychain:
-			return authStatusInfo{Configured: true, Source: "OS keychain", WorkspaceID: cfg.WorkspaceID}
-		case configcommon.AuthSourceMultiplatform:
-			return authStatusInfo{Configured: true, Source: "multiplatform config", WorkspaceID: cfg.WorkspaceID}
-		case configcommon.AuthSourceEnvVars:
-			return authStatusInfo{Configured: true, Source: "PAT + workspace ID (env)", WorkspaceID: cfg.WorkspaceID}
-		case configcommon.AuthSourceNone:
-		}
+	cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+	if err != nil || cfg.AuthToken == "" {
+		return authStatusInfo{Source: "none"}
 	}
-	if creds, err := oauth.Load(); err == nil && creds.IsOAuthManaged() {
-		info := authStatusInfo{Configured: true, Source: "OAuth login", WorkspaceID: creds.WorkspaceID}
-		if !creds.PATExpiry.IsZero() {
-			info.TokenExpiry = creds.PATExpiry.Format(time.RFC3339)
-			info.Expired = time.Now().After(creds.PATExpiry)
+
+	switch source {
+	case configcommon.AuthSourceJWT:
+		return authStatusInfo{Configured: true, Source: "JWT (CI service token)"}
+	case configcommon.AuthSourceEnvVars:
+		return authStatusInfo{Configured: true, Source: "PAT + workspace ID (env)", WorkspaceID: cfg.WorkspaceID}
+	case configcommon.AuthSourceMultiplatform:
+		return authStatusInfo{Configured: true, Source: "multiplatform config", WorkspaceID: cfg.WorkspaceID}
+	case configcommon.AuthSourceKeychain:
+		info := authStatusInfo{Configured: true, Source: "OS keychain", WorkspaceID: cfg.WorkspaceID}
+		if creds, lerr := oauth.Load(); lerr == nil && creds.IsOAuthManaged() {
+			info.Source = "OAuth login (keychain)"
+			if !creds.PATExpiry.IsZero() {
+				info.TokenExpiry = creds.PATExpiry.Format(time.RFC3339)
+				info.Expired = time.Now().After(creds.PATExpiry)
+			}
 		}
 
 		return info
+	case configcommon.AuthSourceNone:
 	}
 
 	return authStatusInfo{Source: "none"}

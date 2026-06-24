@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
@@ -29,6 +30,7 @@ func runStatusCmd(t *testing.T, home string, args ...string) (string, string, er
 	t.Helper()
 
 	t.Setenv("HOME", home)
+	keyring.MockInit() // clean in-memory keychain so auth status doesn't read the dev's real one
 
 	cmd, _, err := common.RootCmd.Find([]string{"status"})
 	require.NoError(t, err)
