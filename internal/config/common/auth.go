@@ -38,7 +38,7 @@ func (cac CacheAuthConfig) TokenInGradleFormat() string {
 	return cac.WorkspaceID + ":" + cac.AuthToken
 }
 
-type authLoader interface {
+type AuthLoader interface {
 	Load() (keychain.Credentials, error)
 }
 
@@ -54,14 +54,12 @@ const (
 )
 
 // GetKeychainCredentials returns the credentials stored in the OS keychain.
-// The bool is true only when both AuthToken and WorkspaceID are populated.
-// Callers that want keychain-first precedence should call this first and
-// fall back to ResolveAuthConfig when the bool is false.
+// Bool is true only when both AuthToken and WorkspaceID are populated.
 func GetKeychainCredentials() (CacheAuthConfig, bool) {
-	return getKeychainCredentials(keychain.New())
+	return GetKeychainCredentialsWith(keychain.New())
 }
 
-func getKeychainCredentials(loader authLoader) (CacheAuthConfig, bool) {
+func GetKeychainCredentialsWith(loader AuthLoader) (CacheAuthConfig, bool) {
 	creds, err := loader.Load()
 	if err != nil || creds.AuthToken == "" || creds.WorkspaceID == "" {
 		return CacheAuthConfig{}, false
@@ -89,12 +87,12 @@ func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, AuthSource, err
 	return resolveAuthConfig(envs, keychain.New(), multiplatformConfigReader)
 }
 
-func resolveAuthConfig(envs map[string]string, loader authLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
+func resolveAuthConfig(envs map[string]string, loader AuthLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
 	if hasAuthEnvVars(envs) {
 		return readAuthConfigFromEnvironments(envs)
 	}
 
-	if cfg, ok := getKeychainCredentials(loader); ok {
+	if cfg, ok := GetKeychainCredentialsWith(loader); ok {
 		return cfg, AuthSourceKeychain, nil
 	}
 

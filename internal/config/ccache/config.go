@@ -119,13 +119,7 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
-	ipcEndpoint := params.IPCSocketPathOverride
-	if ipcEndpoint == "" {
-		ipcEndpoint = envs["BITRISE_CCACHE_IPC_SOCKET_PATH"]
-		if ipcEndpoint == "" {
-			ipcEndpoint = filepath.Join(osProxy.TempDir(), "ccache-ipc.sock")
-		}
-	}
+	ipcEndpoint := ResolveIPCSocketPath(params.IPCSocketPathOverride, envs, osProxy)
 
 	buildCacheEndpoint := common.SelectCacheEndpointURL(params.BuildCacheEndpoint, envs)
 	idleTimeout, _ := time.ParseDuration(defaultIdleTimeout)

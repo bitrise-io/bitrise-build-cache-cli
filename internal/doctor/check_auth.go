@@ -11,8 +11,8 @@ func (d *Doctor) authCheck() Check {
 		Name: "auth",
 		Diagnose: func(_ context.Context) Result {
 			if d.AuthLoader != nil {
-				if creds, err := d.AuthLoader.Load(); err == nil && creds.AuthToken != "" && creds.WorkspaceID != "" {
-					return Result{State: StateOK, Detail: "OS keychain, workspace=" + creds.WorkspaceID}
+				if cfg, ok := common.GetKeychainCredentialsWith(d.AuthLoader); ok {
+					return Result{State: StateOK, Detail: "OS keychain, workspace=" + cfg.WorkspaceID}
 				}
 			}
 

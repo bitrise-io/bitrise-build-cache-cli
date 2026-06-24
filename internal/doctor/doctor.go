@@ -65,16 +65,12 @@ type Options struct {
 	SkipUpdateCheck bool
 }
 
-type authLoader interface {
-	Load() (keychain.Credentials, error)
-}
-
 type Doctor struct {
 	OsProxy            utils.OsProxy
 	Envs               map[string]string
 	CLIVersion         string
 	HTTPClient         *http.Client
-	AuthLoader         authLoader
+	AuthLoader         common.AuthLoader
 	Keyring            keychain.Backend
 	LookPath           func(string) (string, error)
 	StateDirCandidates []string
@@ -136,6 +132,7 @@ func (d *Doctor) checks(skipUpdateCheck bool) []Check {
 		d.authCheck(),
 		d.keychainSmokeCheck(),
 		d.xcelerateProxyCheck(),
+		d.xcelerateXcconfigCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
 		d.logDirsCheck(),
