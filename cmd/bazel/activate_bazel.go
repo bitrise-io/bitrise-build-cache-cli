@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -82,6 +83,8 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 			return inventory.WriteToBazelrc(logger, path, utils.DefaultOsProxy{}, utils.DefaultTemplateProxy())
 		},
 	); err != nil {
+		permhint.PrintIfApplicable(logger, err)
+
 		return fmt.Errorf("activate Bazel Build Cache: %w", err)
 	}
 

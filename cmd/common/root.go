@@ -1,15 +1,21 @@
 package common
 
 import (
+	"context"
 	"os"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/versioncheck"
 )
 
-// rootCmd represents the base command when called without any subcommands
+//nolint:gochecknoglobals
+var NoUpdateCheck bool
+
 var RootCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:     "bitrise-build-cache-cli",
 	Version: configcommon.GetCLIVersion(log.NewLogger()),
@@ -24,7 +30,6 @@ In case of Gradle it's done via creating or modifying the following two files: $
 
 In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-		// `version` already prints the CLI version itself; skip the duplicate log line.
 		if cmd.Name() == "version" {
 			return
 		}
@@ -34,7 +39,8 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 		// For cache commands, make a prior `bitrise-build-cache login` take
 		// effect: refresh the stored OAuth PAT and export it as the auth env
 		// vars when none are already set. No-op for login/logout themselves,
-		// and never overrides manual/CI credentials.
+		// and never overrides manual/CI credentials. Runs before the version
+		// check so it still happens for commands that skip the check.
 		switch cmd.Name() {
 		case "login", "logout", "completion", "help", "status":
 			// status is read-only and reports the auth source itself, so it
@@ -42,11 +48,50 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 		default:
 			hydrateStoredAuth(cmd.Context())
 		}
+
+		if ShouldSkipVersionCheck(cmd) {
+			return
+		}
+
+		RunVersionCheck(cmd)
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
+func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "version", "help", "completion":
+		return true
+	case
+		"xcodebuild",
+		"start-proxy", "stop-proxy",
+		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
+		"register-invocation", "register-child-invocation":
+		return true
+	default:
+		return false
+	}
+}
+
+func RunVersionCheck(cmd *cobra.Command) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
+	defer cancel()
+
+	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+
+	_, _ = versioncheck.RunOnce(ctx, versioncheck.Options{
+		CurrentVersion: configcommon.GetCLIVersion(logger),
+		Home:           home,
+		NoUpdateCheck:  NoUpdateCheck,
+		Logger:         logger,
+		IsCI:           configcommon.DetectCIProvider(utils.AllEnvs()) != "",
+	})
+}
+
 func Execute() {
 	err := RootCmd.Execute()
 	if err != nil {
@@ -60,4 +105,6 @@ func Execute() {
 
 func init() {
 	RootCmd.PersistentFlags().BoolVarP(&IsDebugLogMode, "debug", "d", false, "Enable debug logging mode")
+	RootCmd.PersistentFlags().BoolVar(&NoUpdateCheck, "no-update-check", false,
+		"Suppress the new-release nudge")
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/permhint"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -60,6 +61,8 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			gradleconfig.DefaultGradlePropertiesUpdater(),
 			activateGradleParams,
 		); err != nil {
+			permhint.PrintIfApplicable(logger, err)
+
 			return fmt.Errorf("activate plugins for Gradle: %w", err)
 		}
 

@@ -1076,6 +1076,216 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
     - deploy-to-bitrise-io: {}
 
+  e2e-daemon-install-macos:
+    description: |
+      Validate `daemon install` / `up` / `down` / `restart` / `uninstall`
+      register the helper services as LaunchAgents and control them via
+      launchctl. Also verifies `daemon info` prints the proxy socket path
+      and that an unwrapped xcodebuild against that socket produces cache
+      metrics.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: daemon install + register asserts
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Best-effort cleanup if assertions abort mid-flight, so we never
+            # leak LaunchAgents on shared mac VMs.
+            cleanup_on_error() {
+              if [[ $? -ne 0 ]]; then
+                echo "[cleanup] aborting; force-uninstalling daemon"
+                ../bitrise-build-cache-cli daemon uninstall || true
+              fi
+            }
+            trap cleanup_on_error EXIT
+
+            uid="$(id -u)"
+            envman add --key DAEMON_UID --value "$uid"
+
+            # ----- activate xcode so the proxy has a socket path to bind on -----
+            ../bitrise-build-cache-cli activate xcode --cache
+
+            # ----- install + LaunchAgent presence asserts -----
+            ../bitrise-build-cache-cli daemon install
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              plist="$HOME/Library/LaunchAgents/${label}.plist"
+              [[ -f "$plist" ]] || { echo "FAIL: plist missing: $plist"; exit 1; }
+              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
+                || { echo "FAIL: launchctl did not register ${label}"; exit 1; }
+              echo "OK: ${label} registered"
+            done
+
+            # ----- idempotency on install -----
+            ../bitrise-build-cache-cli daemon install
+            echo "OK: install is idempotent"
+
+            # ----- daemon info smoke test + socket capture (human + JSON, must agree) -----
+            info_out="$(../bitrise-build-cache-cli daemon info)"
+            echo "$info_out"
+            proxy_socket="$(echo "$info_out" | awk -F': *' '/xcelerate-proxy/ {print $2}')"
+            [[ -n "$proxy_socket" ]] || { echo "FAIL: daemon info did not print xcelerate-proxy socket"; exit 1; }
+            [[ "$proxy_socket" != "<not configured"* ]] || { echo "FAIL: socket reported as not configured"; exit 1; }
+
+            info_json="$(../bitrise-build-cache-cli daemon info --json)"
+            echo "$info_json"
+            proxy_socket_json="$(echo "$info_json" | jq -er '.xcelerateProxy')"
+            [[ "$proxy_socket" == "$proxy_socket_json" ]] || { echo "FAIL: daemon info JSON ($proxy_socket_json) disagrees with text ($proxy_socket)"; exit 1; }
+            echo "$info_json" | jq -er '.ccacheHelper' >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelper field"; exit 1; }
+
+            envman add --key PROXY_SOCKET --value "$proxy_socket"
+
+            # ----- wait for the supervised proxy to bind the socket (up to 30s) -----
+            for i in $(seq 1 30); do
+              if [[ -S "$proxy_socket" ]]; then
+                echo "OK: proxy socket live at $proxy_socket after ${i}s"
+                break
+              fi
+              sleep 1
+            done
+            [[ -S "$proxy_socket" ]] || { echo "FAIL: proxy socket never appeared at $proxy_socket"; exit 1; }
+    - script:
+        title: build app via unwrapped xcodebuild against daemon socket
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Resolve the system xcodebuild (NOT the activate-installed wrapper)
+            # so we exercise the daemon-managed long-running proxy directly via
+            # COMPILATION_CACHE_REMOTE_SERVICE_PATH.
+            xcb="/usr/bin/xcodebuild"
+            [[ -x "$xcb" ]] || xcb="$(/usr/bin/xcrun --find xcodebuild)"
+
+            echo "Using xcodebuild: $xcb"
+            echo "Proxy socket: $PROXY_SOCKET"
+
+            "$xcb" build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation \
+              COMPILATION_CACHE_ENABLE_COMPILER=YES \
+              COMPILATION_CACHE_REMOTE_SERVICE_PATH="$PROXY_SOCKET" \
+              2> wrapper.log | tee xcodebuild.log | xcpretty
+
+            cp xcodebuild.log wrapper.log "$BITRISE_DEPLOY_DIR/"
+    - script:
+        title: assert cache metrics emitted
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Benchmark "baseline" phase disables cache → no CompilationCacheMetrics
+            # is emitted by xcodebuild. Skip the assert in that case so the e2e
+            # workflow tracks the daemon-install flow, not BE phase rotation.
+            if [[ "$BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE" == "baseline" ]]; then
+              echo "OK: baseline benchmark phase — skipping CompilationCacheMetrics assert"
+              exit 0
+            fi
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - script:
+        title: daemon down / up / restart asserts
+        inputs:
+        - content: |-
+            set -exo pipefail
+            uid="$DAEMON_UID"
+
+            # ----- down: services stop, plist files stay -----
+            ../bitrise-build-cache-cli daemon down
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              plist="$HOME/Library/LaunchAgents/${label}.plist"
+              [[ -f "$plist" ]] || { echo "FAIL: plist removed by down: $plist"; exit 1; }
+              ! /bin/launchctl print "gui/${uid}/${label}" >/dev/null 2>&1 \
+                || { echo "FAIL: ${label} still registered after down"; exit 1; }
+              echo "OK: ${label} stopped (plist retained)"
+            done
+
+            # ----- proxy socket must be gone after down -----
+            if [[ -S "$PROXY_SOCKET" ]]; then
+              echo "FAIL: proxy socket still listening after daemon down: $PROXY_SOCKET"
+              exit 1
+            fi
+            echo "OK: proxy socket gone after down"
+
+            # ----- xcodebuild against the gone socket must NOT emit cache metrics -----
+            xcb="/usr/bin/xcodebuild"
+            [[ -x "$xcb" ]] || xcb="$(/usr/bin/xcrun --find xcodebuild)"
+            "$xcb" build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation \
+              COMPILATION_CACHE_ENABLE_COMPILER=YES \
+              COMPILATION_CACHE_REMOTE_SERVICE_PATH="$PROXY_SOCKET" \
+              2> xcodebuild-postdown.err.log | tee xcodebuild-postdown.log | xcpretty || true
+            cp xcodebuild-postdown.log xcodebuild-postdown.err.log "$BITRISE_DEPLOY_DIR/"
+            if grep -q 'CompilationCacheMetrics' xcodebuild-postdown.log; then
+              echo "FAIL: cache metrics found in post-down xcodebuild — proxy should be unreachable"
+              exit 1
+            fi
+            echo "OK: no cache metrics after down"
+
+            # ----- idempotency on down (already stopped) -----
+            ../bitrise-build-cache-cli daemon down
+            echo "OK: down is idempotent"
+
+            # ----- up: bring services back from existing plist files -----
+            ../bitrise-build-cache-cli daemon up
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
+                || { echo "FAIL: ${label} not running after up"; exit 1; }
+              echo "OK: ${label} started by up"
+            done
+
+            # ----- restart: stop + start in one shot -----
+            ../bitrise-build-cache-cli daemon restart
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
+                || { echo "FAIL: ${label} not running after restart"; exit 1; }
+              echo "OK: ${label} running after restart"
+            done
+
+            # ----- up without prior install errors with ErrNotInstalled -----
+            ../bitrise-build-cache-cli daemon uninstall >/dev/null
+            if ../bitrise-build-cache-cli daemon up 2>up_err.log; then
+              echo "FAIL: up should error when daemon is not installed"
+              cat up_err.log
+              exit 1
+            fi
+            grep -q "not installed" up_err.log \
+              || { echo "FAIL: expected 'not installed' hint in error output"; cat up_err.log; exit 1; }
+            echo "OK: up errors with hint when daemon is not installed"
+
+            # Reinstall so the uninstall step below has something to remove.
+            ../bitrise-build-cache-cli daemon install
+    - script:
+        title: daemon uninstall + cleanup asserts
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # ----- uninstall + asserts -----
+            ../bitrise-build-cache-cli daemon uninstall
+            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
+              plist="$HOME/Library/LaunchAgents/${label}.plist"
+              [[ ! -f "$plist" ]] || { echo "FAIL: plist still present: $plist"; exit 1; }
+              ! /bin/launchctl print "gui/${DAEMON_UID}/${label}" >/dev/null 2>&1 \
+                || { echo "FAIL: ${label} still registered"; exit 1; }
+              echo "OK: ${label} unregistered + plist removed"
+            done
+
+            # ----- idempotency on uninstall -----
+            ../bitrise-build-cache-cli daemon uninstall
+            echo "OK: uninstall is idempotent"
+    - deploy-to-bitrise-io: {}
+
   e2e-mavencentral-mirror-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -1656,6 +1866,7 @@ pipelines:
         - gradle-configuration-e2e-linux-save
         parallel: 3
       e2e-xcode-comp-cache: {}
+      e2e-daemon-install-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
