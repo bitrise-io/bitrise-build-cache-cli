@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
 // Credentials is the on-disk OAuth credential file
@@ -30,12 +32,12 @@ func (c Credentials) IsOAuthManaged() bool {
 
 // CredentialsPath returns the absolute path to the OAuth credential file.
 func CredentialsPath() (string, error) {
-	home, err := os.UserHomeDir()
+	p, err := paths.Default()
 	if err != nil {
-		return "", fmt.Errorf("locate user home dir: %w", err)
+		return "", fmt.Errorf("resolve paths: %w", err)
 	}
 
-	return filepath.Join(home, ".bitrise", "build-cache", "auth.json"), nil
+	return p.BuildCacheAuthFile(), nil
 }
 
 // Load reads the credential file. A missing file returns the zero Credentials

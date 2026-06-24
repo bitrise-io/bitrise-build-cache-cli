@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
 )
 
@@ -146,18 +147,16 @@ type statusOutput struct {
 }
 
 // currentAuthStatus reports which credential build-cache commands would use, in
-// the same precedence as hydrateStoredAuth: a manual env token, then the CI
-// service token, then a stored OAuth login. It never refreshes or writes.
+// the same precedence as hydrateStoredAuth: an env credential (manual PAT or CI
+// service JWT, resolved by config common), then a stored OAuth login. It never
+// refreshes or writes.
 func currentAuthStatus() authStatusInfo {
-	if os.Getenv("BITRISE_BUILD_CACHE_AUTH_TOKEN") != "" {
-		return authStatusInfo{
-			Configured:  true,
-			Source:      "PAT + workspace ID (env)",
-			WorkspaceID: os.Getenv("BITRISE_BUILD_CACHE_WORKSPACE_ID"),
+	if cfg, err := configcommon.ReadAuthConfigFromEnvironments(utils.AllEnvs()); err == nil && cfg.AuthToken != "" {
+		if cfg.IsJWT {
+			return authStatusInfo{Configured: true, Source: "JWT (CI service token)"}
 		}
-	}
-	if os.Getenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN") != "" {
-		return authStatusInfo{Configured: true, Source: "JWT (CI service token)"}
+
+		return authStatusInfo{Configured: true, Source: "PAT + workspace ID (env)", WorkspaceID: cfg.WorkspaceID}
 	}
 	if creds, err := oauth.Load(); err == nil && creds.IsOAuthManaged() {
 		info := authStatusInfo{Configured: true, Source: "OAuth login", WorkspaceID: creds.WorkspaceID}

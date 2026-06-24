@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/bitriseapi"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -99,11 +100,11 @@ func runLogin(cmd *cobra.Command) error {
 // stored OAuth login (resolved first in hydrateStoredAuth), or "". Used to warn
 // at login that the saved login won't take effect.
 func shadowingAuthEnv() string {
-	if os.Getenv("BITRISE_BUILD_CACHE_AUTH_TOKEN") != "" {
-		return "BITRISE_BUILD_CACHE_AUTH_TOKEN"
+	if os.Getenv(configcommon.EnvAuthToken) != "" {
+		return configcommon.EnvAuthToken
 	}
-	if os.Getenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN") != "" {
-		return "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"
+	if os.Getenv(configcommon.EnvServiceJWT) != "" {
+		return configcommon.EnvServiceJWT
 	}
 
 	return ""
@@ -140,8 +141,8 @@ func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]stri
 // existing env-based resolution picks it up. Best-effort; never overrides
 // env/CI creds, and only this fallback ever does a network refresh.
 func hydrateStoredAuth(ctx context.Context) {
-	if os.Getenv("BITRISE_BUILD_CACHE_AUTH_TOKEN") != "" ||
-		os.Getenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN") != "" {
+	if os.Getenv(configcommon.EnvAuthToken) != "" ||
+		os.Getenv(configcommon.EnvServiceJWT) != "" {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
@@ -156,8 +157,8 @@ func hydrateStoredAuth(ctx context.Context) {
 	if creds.PAT == "" || creds.WorkspaceID == "" {
 		return
 	}
-	_ = os.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", creds.PAT)
-	_ = os.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", creds.WorkspaceID)
+	_ = os.Setenv(configcommon.EnvAuthToken, creds.PAT)
+	_ = os.Setenv(configcommon.EnvWorkspaceID, creds.WorkspaceID)
 }
 
 // isInteractiveStdin reports whether stdin is a terminal (not a pipe/file/CI).

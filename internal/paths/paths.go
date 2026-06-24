@@ -39,6 +39,12 @@ const (
 	// bitriseCacheSubdir is the per-tool cache/marker root used by activate, refresh, and child-stats.
 	bitriseCacheSubdir = "cache"
 
+	// buildCacheSubdir holds the build-cache config, including the OAuth login credential.
+	buildCacheSubdir = "build-cache"
+
+	// authFile is the OAuth credential file written by `login`.
+	authFile = "auth.json"
+
 	// xcelerateBinSubdir holds the xcelerate wrapper scripts (xcodebuild / xcrun) and CLI copy.
 	xcelerateBinSubdir = "bin"
 
@@ -134,6 +140,16 @@ func (p Paths) BitriseCacheDir(tool string) string {
 // BitriseCacheFile returns a file path under BitriseCacheDir(tool).
 func (p Paths) BitriseCacheFile(tool, name string) string {
 	return filepath.Join(p.BitriseCacheDir(tool), name)
+}
+
+// BuildCacheDir is the per-user build-cache config dir (~/.bitrise/build-cache).
+func (p Paths) BuildCacheDir() string {
+	return filepath.Join(p.BitriseRoot(), buildCacheSubdir)
+}
+
+// BuildCacheAuthFile returns the OAuth credential file path (~/.bitrise/build-cache/auth.json).
+func (p Paths) BuildCacheAuthFile() string {
+	return filepath.Join(p.BuildCacheDir(), authFile)
 }
 
 // XcelerateRoot is the absolute path of ~/.bitrise-xcelerate.

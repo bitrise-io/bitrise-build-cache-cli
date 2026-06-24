@@ -8,9 +8,17 @@ import (
 	"strings"
 )
 
+// Auth env var names. The single source of truth so they aren't re-typed
+// across the codebase (status, login, hydrate, gradle format, …).
+const (
+	EnvAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN" //nolint:gosec // env var name, not a credential
+	EnvWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID"
+	EnvServiceJWT  = "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN" //nolint:gosec // env var name, not a credential
+)
+
 var (
-	ErrAuthTokenNotProvided   = errors.New("BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
-	ErrWorkspaceIDNotProvided = errors.New("BITRISE_BUILD_CACHE_WORKSPACE_ID environment variable not set")
+	ErrAuthTokenNotProvided   = fmt.Errorf("%s or %s environment variable not set", EnvAuthToken, EnvServiceJWT)
+	ErrWorkspaceIDNotProvided = fmt.Errorf("%s environment variable not set", EnvWorkspaceID)
 )
 
 // CacheAuthConfig holds the auth config for the cache.
@@ -33,8 +41,8 @@ func (cac CacheAuthConfig) TokenInGradleFormat() string {
 
 // ReadAuthConfigFromEnvironments reads auth information from the environment variables
 func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, error) {
-	authTokenEnv := envs["BITRISE_BUILD_CACHE_AUTH_TOKEN"]
-	workspaceIDEnv := envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"]
+	authTokenEnv := envs[EnvAuthToken]
+	workspaceIDEnv := envs[EnvWorkspaceID]
 
 	if len(authTokenEnv) > 0 && len(workspaceIDEnv) > 0 {
 		return CacheAuthConfig{
@@ -45,7 +53,7 @@ func ReadAuthConfigFromEnvironments(envs map[string]string) (CacheAuthConfig, er
 
 	// Try to fall back to JWT which is always available on Bitrise.
 	// It's a JWT token which already includes the workspace ID.
-	if serviceToken := envs["BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"]; len(serviceToken) > 0 {
+	if serviceToken := envs[EnvServiceJWT]; len(serviceToken) > 0 {
 		workspaceID, err := extractWorkspaceIDFromJWT(serviceToken)
 		if err != nil {
 			return CacheAuthConfig{}, fmt.Errorf("extract workspace ID from JWT: %w", err)
