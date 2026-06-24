@@ -509,9 +509,6 @@ func TestRun_skipBackendProbeOmitsItem(t *testing.T) {
 	}
 }
 
-// Covers the seam between the kv client and the classifier: kv upload/download
-// converts gRPC codes.Unauthenticated into a plain sentinel error before
-// returning, so a status.FromError check alone misses it.
 func TestBackendErrorState_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Equal(t, StateError, backendErrorState(kv.ErrCacheUnauthenticated))
 }

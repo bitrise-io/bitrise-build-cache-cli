@@ -22,9 +22,7 @@ const (
 	backendProbeKeyBytes = 4 // 4 bytes → 8 hex chars in the sentinel key
 )
 
-// BackendProbeFunc performs the network round-trip the auth-backend check uses.
-// Returns the round-trip latency (always populated, even on error so callers can
-// surface "took N ms then failed") and the wrapped error.
+// BackendProbeFunc returns latency (always populated, even on error so callers can surface "took N ms then failed").
 type BackendProbeFunc func(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error)
 
 func (d *Doctor) authBackendCheck() Check {
@@ -92,9 +90,7 @@ func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs m
 		return latency, uploadErr //nolint:wrapcheck // caller classifies via kv sentinel + status.FromError.
 	}
 
-	// Best-effort cleanup so the probe stays a drop in the ocean even if the BE
-	// doesn't TTL-evict by-prefix. Smoke-tests DELETE auth as a bonus. Failure
-	// here doesn't taint the OK verdict — auth + workspace already passed.
+	// Best-effort cleanup.
 	_ = client.Delete(ctx, key)
 
 	return latency, nil
