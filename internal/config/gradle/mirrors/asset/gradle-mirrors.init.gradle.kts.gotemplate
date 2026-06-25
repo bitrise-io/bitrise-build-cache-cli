@@ -84,11 +84,46 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
         })
         {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
         gradle.afterProject(Action {
+            // android-all jar audit: a finalizer task (runs even when tests FAIL) logs the resolved jar's sha1; set BITRISE_ROBOLECTRIC_JAR_AUDIT=false to opt out. Wrapped so it never fails the build.
+            val auditTask{{ .ID }} = if (System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false") {
+                tasks.register("bitriseRobolectricJarAudit{{ .ID }}") {
+                    doLast {
+                        try {
+                            val gradleHome = System.getenv("GRADLE_USER_HOME") ?: (System.getProperty("user.home") + "/.gradle")
+                            val roboVer = java.io.File(gradleHome, "caches/modules-2/files-2.1/org.robolectric/robolectric")
+                                .listFiles()?.filter { it.isDirectory() }?.map { it.getName() }?.sorted()?.lastOrNull() ?: "unknown"
+                            java.io.File(System.getProperty("user.home"), ".m2/repository/org/robolectric")
+                                .walkTopDown()
+                                .filter { it.isFile() && it.getName().startsWith("android-all") && it.getName().endsWith(".jar") }
+                                .forEach { jar ->
+                                    val md = java.security.MessageDigest.getInstance("SHA-1")
+                                    jar.inputStream().use { ins ->
+                                        val buf = ByteArray(1 shl 16)
+                                        while (true) {
+                                            val n = ins.read(buf)
+                                            if (n < 0) break
+                                            md.update(buf, 0, n)
+                                        }
+                                    }
+                                    val sha1 = md.digest().joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
+                                    getLogger().lifecycle("[bitrise-robolectric-jar-audit] OK robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()}")
+                                }
+                        } catch (t: Throwable) {
+                            getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR ${t.javaClass.getName()}: ${t.message}")
+                        }
+                    }
+                }
+            } else {
+                null
+            }
             tasks.withType(Test::class.java).configureEach {
                 if (getProject().getParent() == null) {
                     log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on ${getPath()}")
                 }
                 systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
+                if (auditTask{{ .ID }} != null) {
+                    finalizedBy(auditTask{{ .ID }})
+                }
             }
         })
         {{- end }}{{ end }}

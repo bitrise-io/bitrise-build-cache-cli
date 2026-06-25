@@ -83,6 +83,11 @@ func TestActivate(t *testing.T) {
 				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
 				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
 				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on ${getPath()}")`,
+				`if (System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false") {`,
+				`tasks.register("bitriseRobolectricJarAuditCentral") {`,
+				`finalizedBy(auditTaskCentral)`,
+				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] OK robolectric=$roboVer name=`,
+				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR `,
 			},
 			expectNotContain: []string{
 				"https://repository-manager.services.bitrise.io:8090/maven/jitpack",

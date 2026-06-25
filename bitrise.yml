@@ -1329,6 +1329,8 @@ workflows:
         - content: |-
             set -exo pipefail
             ./gradlew debug --info --stacktrace > "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1
+            # Robolectric unit test to exercise the android-all jar audit (tolerate failure; append logs).
+            ./gradlew :ad-click-impl:testDebugUnitTest --info --stacktrace >> "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1 || true
     - script:
         title: Assert downloads from MavenCentral mirror
         inputs:
@@ -1365,6 +1367,22 @@ workflows:
             fi
 
             echo "SUCCESS: Verified $MATCH_COUNT downloads from the Google mirror."
+    - script:
+        title: Assert robolectric jar audit emitted
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            MATCH_COUNT=$(grep -cE '\[bitrise-robolectric-jar-audit\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+            echo "Found $MATCH_COUNT robolectric jar audit log lines:"
+            grep -E '\[bitrise-robolectric-jar-audit\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true
+
+            if [[ "$MATCH_COUNT" -eq 0 ]]; then
+              echo "ERROR: no [bitrise-robolectric-jar-audit] line found — the android-all jar audit did not emit."
+              exit 1
+            fi
+
+            echo "SUCCESS: robolectric jar audit emitted $MATCH_COUNT line(s)."
     - script:
         title: Check for cache invocations
         inputs:
