@@ -70,7 +70,7 @@ var authSetCmd = &cobra.Command{
 		switch scrubbed, err := scrubDiskCredentials(); {
 		case err != nil:
 			logger.Warnf("Saved to keychain, but could not strip plain-text credentials from disk: %v", err)
-			logger.Warnf("Run `bitrise-build-cache auth list` to audit remaining sources.")
+			logger.Warnf("Run `bitrise-build-cache auth status` to audit remaining sources.")
 		case len(scrubbed) > 0:
 			scrubbedPaths := make([]string, len(scrubbed))
 			for i, item := range scrubbed {
@@ -265,10 +265,10 @@ var (
 )
 
 // nolint:gochecknoglobals
-var authListCmd = &cobra.Command{
-	Use:          "list",
+var authStatusCmd = &cobra.Command{
+	Use:          "status",
 	Short:        "Show Bitrise Build Cache credentials discovered across all known sources",
-	Long:         "Lists credentials found in the OS keychain, the multiplatform analytics config on disk, and the BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID / BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
+	Long:         "Shows credentials found in the OS keychain, the multiplatform analytics config on disk, and the BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID / BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -531,7 +531,7 @@ func init() {
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
 
 	authCmd.AddCommand(authSetCmd)
-	authCmd.AddCommand(authListCmd)
+	authCmd.AddCommand(authStatusCmd)
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
 	authCmd.AddCommand(common.LoginCmd)

@@ -10,7 +10,7 @@ import (
 // AuthDescription is the shared, user-facing description of a resolved
 // credential: which source it came from, its workspace, and — for a keychain
 // credential minted by `login` — that it's OAuth-managed plus the PAT expiry.
-// status, doctor, and `auth list` all build their output from this so the
+// status, doctor, and `auth status` all build their output from this so the
 // source taxonomy and the OAuth/expiry knowledge live in one place.
 type AuthDescription struct {
 	Source       AuthSource

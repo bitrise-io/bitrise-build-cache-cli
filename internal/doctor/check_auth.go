@@ -12,7 +12,7 @@ func (d *Doctor) authCheck() Check {
 		Diagnose: func(_ context.Context) Result {
 			// Selection stays keychain-first (nudge users toward the keychain);
 			// the description comes from config common's shared layer, so the
-			// OAuth-login + expiry detail matches `status` and `auth list`.
+			// OAuth-login + expiry detail matches `status` and `auth status`.
 			if d.AuthLoader != nil {
 				if cfg, ok := common.GetKeychainCredentialsWith(d.AuthLoader); ok {
 					desc := common.DescribeResolvedWith(cfg, common.AuthSourceKeychain, d.AuthLoader)
