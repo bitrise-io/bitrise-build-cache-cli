@@ -69,17 +69,18 @@ type Options struct {
 }
 
 type Doctor struct {
-	OsProxy            utils.OsProxy
-	Envs               map[string]string
-	CLIVersion         string
-	HTTPClient         *http.Client
-	AuthLoader         common.AuthLoader
-	Keyring            keychain.Backend
-	LookPath           func(string) (string, error)
-	StateDirCandidates []string
-	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
-	ActivatedTools     func() map[toolconfig.Tool]bool
-	BackendProbe       BackendProbeFunc
+	OsProxy              utils.OsProxy
+	Envs                 map[string]string
+	CLIVersion           string
+	HTTPClient           *http.Client
+	AuthLoader           common.AuthLoader
+	Keyring              keychain.Backend
+	LookPath             func(string) (string, error)
+	StateDirCandidates   []string
+	LatestReleaseTag     func(ctx context.Context, c *http.Client) (string, error)
+	ActivatedTools       func() map[toolconfig.Tool]bool
+	BackendProbe         BackendProbeFunc
+	LaunchActivateWizard func() error
 }
 
 func NewDoctor() *Doctor {

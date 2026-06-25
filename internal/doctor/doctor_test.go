@@ -524,6 +524,71 @@ func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Contains(t, got, "activate --interactive")
 }
 
+func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
+	envs := map[string]string{common.EnvAuthToken: "tok", common.EnvWorkspaceID: "ws-1"}
+
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"kv sentinel Unauthenticated", kv.ErrCacheUnauthenticated},
+		{"status Unauthenticated", status.Error(codes.Unauthenticated, "bad token")},
+		{"status PermissionDenied", status.Error(codes.PermissionDenied, "no access")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Doctor{
+				Envs: envs,
+				BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+					return 10 * time.Millisecond, tc.err
+				},
+			}
+
+			res := r.authBackendCheck().Diagnose(context.Background())
+			assert.True(t, res.Fixable, "auth-class failures must be marked Fixable so doctor --fix can offer the wizard")
+		})
+	}
+}
+
+func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
+	envs := map[string]string{common.EnvAuthToken: "tok", common.EnvWorkspaceID: "ws-1"}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 5 * time.Second, status.Error(codes.Unavailable, "connection refused")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.False(t, res.Fixable, "transport blips must not trigger a wizard re-launch")
+}
+
+func TestActivateWizardFix_invokesInjectedLauncher(t *testing.T) {
+	called := false
+	r := &Doctor{LaunchActivateWizard: func() error {
+		called = true
+
+		return nil
+	}}
+
+	detail, err := r.activateWizardFix()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Contains(t, detail, "activate --interactive")
+}
+
+func TestActivateWizardFix_propagatesLauncherError(t *testing.T) {
+	r := &Doctor{LaunchActivateWizard: func() error {
+		return errors.New("user aborted")
+	}}
+
+	_, err := r.activateWizardFix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user aborted")
+}
+
 func TestProbeKey_lengthAndPrefix(t *testing.T) {
 	k, err := probeKey()
 	require.NoError(t, err)
