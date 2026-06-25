@@ -18,7 +18,7 @@ var ErrNotFound = errors.New("no Bitrise Build Cache credentials in keychain")
 
 // Credentials is the single keychain item. AuthToken + WorkspaceID are always
 // present (a manual `auth set` writes only those). The remaining fields are set
-// only for an OAuth login (`bitrise-build-cache login`), where AuthToken is the
+// only for an OAuth login (`bitrise-build-cache auth login`), where AuthToken is the
 // minted PAT and the refresh token + expiries drive transparent refresh.
 type Credentials struct {
 	AuthToken          string    `json:"auth_token"`

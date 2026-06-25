@@ -534,6 +534,8 @@ func init() {
 	authCmd.AddCommand(authListCmd)
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
+	authCmd.AddCommand(common.LoginCmd)
+	authCmd.AddCommand(common.LogoutCmd)
 
 	common.RootCmd.AddCommand(authCmd)
 }

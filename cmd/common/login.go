@@ -64,8 +64,7 @@ var LogoutCmd = &cobra.Command{ //nolint:gochecknoglobals
 
 func init() { //nolint:gochecknoinits
 	LoginCmd.Flags().StringVar(&loginWorkspace, "workspace", "", "workspace (organization) slug to use; skips the interactive picker")
-	RootCmd.AddCommand(LoginCmd)
-	RootCmd.AddCommand(LogoutCmd)
+	// LoginCmd / LogoutCmd are registered under the `auth` command (cmd/auth).
 }
 
 func runLogin(cmd *cobra.Command) error {

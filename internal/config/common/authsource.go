@@ -15,7 +15,7 @@ import (
 type AuthDescription struct {
 	Source       AuthSource
 	WorkspaceID  string
-	IsOAuthLogin bool      // keychain credential created by `bitrise-build-cache login`
+	IsOAuthLogin bool      // keychain credential created by `bitrise-build-cache auth login`
 	PATExpiry    time.Time // zero when unknown / not applicable
 }
 

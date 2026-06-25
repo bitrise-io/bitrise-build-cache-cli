@@ -12,8 +12,8 @@ import (
 const loginTimeout = 5 * time.Minute
 
 var (
-	ErrNotLoggedIn   = errors.New("not logged in (run 'bitrise-build-cache login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)")
-	ErrLoginRequired = errors.New("OAuth session expired — run 'bitrise-build-cache login' to sign in again")
+	ErrNotLoggedIn   = errors.New("not logged in (run 'bitrise-build-cache auth login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)")
+	ErrLoginRequired = errors.New("OAuth session expired — run 'bitrise-build-cache auth login' to sign in again")
 )
 
 // Login runs the browser authorization + token exchange and returns Credentials
