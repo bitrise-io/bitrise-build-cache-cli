@@ -23,23 +23,25 @@ const (
 
 //nolint:gochecknoglobals
 var (
-	fixFlag             bool
-	jsonOutput          bool
-	skipUpdateCheckFlag bool
+	fixFlag              bool
+	jsonOutput           bool
+	skipUpdateCheckFlag  bool
+	skipBackendProbeFlag bool
 )
 
 //nolint:gochecknoglobals
 var doctorCmd = &cobra.Command{
 	Use:          "doctor",
 	Short:        "Diagnose + optionally repair the local Bitrise Build Cache setup",
-	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, CLI version — and optionally repairs the safe ones with --fix. The only network call (GitHub release lookup) can be skipped with --no-update-check.`,
+	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, CLI version — and optionally repairs the safe ones with --fix. Network calls (GitHub release lookup, Build Cache backend probe) can be skipped with --no-update-check / --no-backend-probe.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		out := cmd.OutOrStdout()
 
 		report := doctorpkg.NewDoctor().Run(cmd.Context(), doctorpkg.Options{
-			ApplyFixes:      fixFlag,
-			SkipUpdateCheck: skipUpdateCheckFlag,
+			ApplyFixes:       fixFlag,
+			SkipUpdateCheck:  skipUpdateCheckFlag,
+			SkipBackendProbe: skipBackendProbeFlag,
 		})
 
 		if jsonOutput {
@@ -154,6 +156,7 @@ func (c colorPalette) forState(state doctorpkg.State) string {
 func init() {
 	doctorCmd.Flags().BoolVar(&fixFlag, "fix", false, "Apply safe repairs in addition to diagnosing")
 	doctorCmd.Flags().BoolVar(&jsonOutput, "json", false, "Emit report as JSON instead of human-readable text")
-	doctorCmd.Flags().BoolVar(&skipUpdateCheckFlag, "no-update-check", false, "Skip the GitHub release lookup (the only network call doctor makes)")
+	doctorCmd.Flags().BoolVar(&skipUpdateCheckFlag, "no-update-check", false, "Skip the GitHub release lookup")
+	doctorCmd.Flags().BoolVar(&skipBackendProbeFlag, "no-backend-probe", false, "Skip the Build Cache backend auth probe (sentinel KV PUT)")
 	common.RootCmd.AddCommand(doctorCmd)
 }

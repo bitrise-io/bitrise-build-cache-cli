@@ -9,12 +9,18 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 )
 
@@ -125,6 +131,10 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		LatestReleaseTag:   func(context.Context, *http.Client) (string, error) { return "", nil },
 		LookPath:           func(string) (string, error) { return "/usr/local/bin/ccache", nil },
 		StateDirCandidates: []string{},
+		// Inert stub so Run tests don't reach the real BC backend.
+		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
+			return time.Millisecond, nil
+		},
 	}
 }
 
@@ -398,4 +408,190 @@ func TestRun_includesVersionByDefault(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "cli-version check should run by default")
+}
+
+// ──────────────────────────── auth-backend ────────────────────────────
+
+func TestAuthBackendCheck_skippedWhenNoCreds(t *testing.T) {
+	common.RegisterMultiplatformReader(nil) // keep test hermetic
+	if _, ok := common.GetKeychainCredentials(); ok {
+		t.Skip("dev keychain has creds — ResolveAuthConfig would succeed; can't exercise the skip branch here")
+	}
+
+	r := &Doctor{Envs: map[string]string{}}
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "skipped")
+	assert.Contains(t, res.Detail, "source=none", "skip detail must surface the source for parity with non-skip output")
+	assert.Contains(t, res.Detail, "BITRISE_BUILD_CACHE_AUTH_TOKEN", "skip detail must surface the underlying resolver error")
+}
+
+func TestAuthBackendCheck_okOnSuccessfulProbe(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 47 * time.Millisecond, nil
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "latency 47ms")
+	assert.Contains(t, res.Detail, "ws-1")
+}
+
+func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 30 * time.Millisecond, status.Error(codes.Unauthenticated, "bad token")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "auth-failed")
+	assert.Contains(t, res.Detail, "activate --interactive")
+}
+
+func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 30 * time.Millisecond, status.Error(codes.PermissionDenied, "no access")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "workspace-misconfig")
+	assert.Contains(t, res.Detail, "activate --interactive")
+}
+
+func TestAuthBackendCheck_unavailableIsWarn(t *testing.T) {
+	envs := map[string]string{
+		common.EnvAuthToken:   "tok",
+		common.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 5 * time.Second, status.Error(codes.Unavailable, "connection refused")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "network")
+}
+
+func TestRun_skipBackendProbeOmitsItem(t *testing.T) {
+	r := newMinimalDoctor(t)
+
+	report := r.Run(context.Background(), Options{SkipUpdateCheck: true, SkipBackendProbe: true})
+
+	for _, it := range report.Items {
+		assert.NotEqual(t, "auth-backend", it.Name, "auth-backend should be omitted when SkipBackendProbe=true")
+	}
+}
+
+func TestBackendErrorState_kvSentinelUnauthenticated(t *testing.T) {
+	assert.Equal(t, StateError, backendErrorState(kv.ErrCacheUnauthenticated))
+}
+
+func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
+	cfg := common.CacheAuthConfig{WorkspaceID: "ws-1"}
+	got := backendErrorDetail(kv.ErrCacheUnauthenticated, cfg, common.AuthSourceKeychain, 30*time.Millisecond)
+	assert.Contains(t, got, "auth-failed")
+	assert.Contains(t, got, "source=keychain")
+	assert.Contains(t, got, "ws-1")
+	assert.Contains(t, got, "activate --interactive")
+}
+
+func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
+	envs := map[string]string{common.EnvAuthToken: "tok", common.EnvWorkspaceID: "ws-1"}
+
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"kv sentinel Unauthenticated", kv.ErrCacheUnauthenticated},
+		{"status Unauthenticated", status.Error(codes.Unauthenticated, "bad token")},
+		{"status PermissionDenied", status.Error(codes.PermissionDenied, "no access")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Doctor{
+				Envs: envs,
+				BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+					return 10 * time.Millisecond, tc.err
+				},
+			}
+
+			res := r.authBackendCheck().Diagnose(context.Background())
+			assert.True(t, res.Fixable, "auth-class failures must be marked Fixable so doctor --fix can offer the wizard")
+		})
+	}
+}
+
+func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
+	envs := map[string]string{common.EnvAuthToken: "tok", common.EnvWorkspaceID: "ws-1"}
+
+	r := &Doctor{
+		Envs: envs,
+		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+			return 5 * time.Second, status.Error(codes.Unavailable, "connection refused")
+		},
+	}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.False(t, res.Fixable, "transport blips must not trigger a wizard re-launch")
+}
+
+func TestActivateWizardFix_invokesInjectedLauncher(t *testing.T) {
+	called := false
+	r := &Doctor{LaunchActivateWizard: func() error {
+		called = true
+
+		return nil
+	}}
+
+	detail, err := r.activateWizardFix()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Contains(t, detail, "activate --interactive")
+}
+
+func TestActivateWizardFix_propagatesLauncherError(t *testing.T) {
+	r := &Doctor{LaunchActivateWizard: func() error {
+		return errors.New("user aborted")
+	}}
+
+	_, err := r.activateWizardFix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user aborted")
+}
+
+func TestProbeKey_lengthAndPrefix(t *testing.T) {
+	k, err := probeKey()
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(k, "doctor-probe-"), "got %q", k)
+	assert.Len(t, k, len("doctor-probe-")+2*backendProbeKeyBytes, "8 hex chars expected for 4 random bytes")
 }
