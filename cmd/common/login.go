@@ -108,14 +108,16 @@ func runLogin(cmd *cobra.Command) error {
 }
 
 // shadowingAuthEnv returns the env credential that takes precedence over the
-// stored OAuth login (resolved first in hydrateStoredAuth), or "". Used to warn
-// at login that the saved login won't take effect.
+// stored OAuth login, or "". The OAuth login lives in the keychain (below env
+// in ResolveAuthConfig's precedence), so whichever env source wins the
+// resolution is exactly what shadows the just-saved login.
 func shadowingAuthEnv() string {
-	if os.Getenv(configcommon.EnvAuthToken) != "" {
+	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
+	case configcommon.AuthSourceEnvVars:
 		return configcommon.EnvAuthToken
-	}
-	if os.Getenv(configcommon.EnvJWT) != "" {
+	case configcommon.AuthSourceJWT:
 		return configcommon.EnvJWT
+	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceMultiplatform:
 	}
 
 	return ""
@@ -150,12 +152,13 @@ func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]stri
 // hydrateStoredAuth refreshes a stored OAuth login (in the keychain) when its
 // PAT is stale, so the keychain tier of ResolveAuthConfig serves a live PAT to
 // the command about to run. Best-effort and local-only: it's the sole path that
-// does a network refresh, and it's skipped when an env credential is set (env
-// wins, and CI must never trigger a refresh).
+// does a network refresh, and it's skipped when an env credential wins (env
+// takes precedence, and CI must never trigger a refresh).
 func hydrateStoredAuth(ctx context.Context) {
-	if os.Getenv(configcommon.EnvAuthToken) != "" ||
-		os.Getenv(configcommon.EnvJWT) != "" {
+	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
+	case configcommon.AuthSourceEnvVars, configcommon.AuthSourceJWT:
 		return
+	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceMultiplatform:
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 	cfg := oauth.NewConfigFromEnv(utils.AllEnvs())
