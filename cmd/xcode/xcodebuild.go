@@ -543,20 +543,24 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []string {
 	additional := map[string]string{}
 
-	if config.BuildCacheEnabled {
-		additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = config.ProxySocketPath
-
-		if !config.BuildCacheSkipFlags {
-			maps.Copy(additional, xcodeargs.CacheArgs)
-			diagnosticRemarks := "NO"
-			if config.DebugLogging {
-				diagnosticRemarks = "YES"
-			}
-			maps.Copy(additional, map[string]string{
-				"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS": diagnosticRemarks,
-			})
-		}
+	if !config.BuildCacheEnabled {
+		return xcodeArgs.Args(additional)
 	}
+
+	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = config.ProxySocketPath
+	if config.BuildCacheSkipFlags {
+		return xcodeArgs.Args(additional)
+	}
+
+	maps.Copy(additional, xcodeargs.CacheArgs)
+	if !config.DisablePrefixMapping {
+		maps.Copy(additional, xcodeargs.PrefixMapArgs)
+	}
+	diagnosticRemarks := "NO"
+	if config.DebugLogging {
+		diagnosticRemarks = "YES"
+	}
+	additional["COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS"] = diagnosticRemarks
 
 	return xcodeArgs.Args(additional)
 }

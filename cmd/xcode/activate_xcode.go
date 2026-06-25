@@ -121,6 +121,10 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 		activateXcodeParams.BuildCacheSkipFlags,
 		`Skip passing cache flags to xcodebuild except the COMPILATION_CACHE_REMOTE_SERVICE_PATH.
 Cache will have to be enabled manually in the Xcode project settings.`)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.DisablePrefixMapping,
+		"disable-prefix-mapping",
+		activateXcodeParams.DisablePrefixMapping,
+		`Disable injecting Clang prefix-mapping flags into xcodebuild. Prefix mapping canonicalizes rotating source/DerivedData paths so compilation cache keys stay stable; disable only if it causes issues.`)
 }
 
 // ActivateXcodeCommandFn is a backward-compatible wrapper around xcelerate.Activate.

@@ -25,8 +25,13 @@ var CacheArgs = map[string]string{
 	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
-	// Need this to have relative paths for cache keys; pulling into a tmp folder would invalidate cache on every build.
+}
+
+// PrefixMapArgs canonicalize the rotating dir roots in clang cache keys so a non-stable
+// checkout/DerivedData path still reuses cache. Suppressed by --disable-prefix-mapping.
+var PrefixMapArgs = map[string]string{
 	"CLANG_ENABLE_PREFIX_MAPPING": "YES",
+	"OTHER_CFLAGS":                "$(inherited) -fdepscan-prefix-map=$(SRCROOT)=/^src -fdepscan-prefix-map=$(OBJROOT)=/^obj -fdepscan-prefix-map=$(SYMROOT)=/^sym -fdepscan-prefix-map=$(BUILT_PRODUCTS_DIR)=/^built -fdepscan-prefix-map=$(HOME)=/^home",
 }
 
 var actions = []string{

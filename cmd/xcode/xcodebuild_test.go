@@ -129,15 +129,18 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 
 	t.Run("xcodebuildCmdFn adds cache flags only if build cache is enabled and skip flag is not enabled", func(t *testing.T) {
 		testCases := []struct {
-			name                string
-			buildCacheEnabled   bool
-			buildCacheSkipFlags bool
-			expectCacheFlags    bool
+			name                 string
+			buildCacheEnabled    bool
+			buildCacheSkipFlags  bool
+			disablePrefixMapping bool
+			expectCacheFlags     bool
+			expectPrefixMaps     bool
 		}{
-			{"enabled & not skipped", true, false, true},
-			{"enabled & skipped", true, true, false},
-			{"disabled & not skipped", false, false, false},
-			{"disabled & skipped", false, true, false},
+			{"enabled & not skipped", true, false, false, true, true},
+			{"enabled & skipped", true, true, false, false, false},
+			{"enabled, prefix mapping disabled", true, false, true, true, false},
+			{"disabled & not skipped", false, false, false, false, false},
+			{"disabled & skipped", false, true, false, false, false},
 		}
 
 		for _, tc := range testCases {
@@ -161,9 +164,10 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 
 				SUT := &xcode.XcodebuildRunner{
 					Config: xcelerate.Config{
-						BuildCacheEnabled:   tc.buildCacheEnabled,
-						BuildCacheSkipFlags: tc.buildCacheSkipFlags,
-						ProxySocketPath:     "/tmp/proxy.sock",
+						BuildCacheEnabled:    tc.buildCacheEnabled,
+						BuildCacheSkipFlags:  tc.buildCacheSkipFlags,
+						DisablePrefixMapping: tc.disablePrefixMapping,
+						ProxySocketPath:      "/tmp/proxy.sock",
 					},
 					Metadata:           common.CacheConfigMetadata{},
 					InvocationID:       uuid.NewString(),
@@ -181,6 +185,13 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 						assert.Equal(t, v, receivedAdditional[k], "Expected cache flag %s to be present", k)
 					} else {
 						assert.NotContains(t, receivedAdditional, k, "Did not expect cache flag %s", k)
+					}
+				}
+				for k, v := range xcodeargs.PrefixMapArgs {
+					if tc.expectPrefixMaps {
+						assert.Equal(t, v, receivedAdditional[k], "Expected prefix-map flag %s to be present", k)
+					} else {
+						assert.NotContains(t, receivedAdditional, k, "Did not expect prefix-map flag %s", k)
 					}
 				}
 				if tc.buildCacheEnabled {
