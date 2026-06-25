@@ -174,7 +174,7 @@ func writeAuthLine(out io.Writer, a authStatusInfo) error {
 	line := "Auth: "
 	switch {
 	case !a.Configured:
-		line += "not configured (run 'bitrise-build-cache login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)"
+		line += "not configured (run 'bitrise-build-cache login' or 'bitrise-build-cache activate --interactive', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)"
 	default:
 		line += a.Source
 		if a.WorkspaceID != "" {
