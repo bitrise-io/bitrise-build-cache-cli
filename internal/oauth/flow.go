@@ -61,6 +61,7 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Cred
 	}
 
 	c.debugf("Exchanging authorization code for a token")
+	now := time.Now() // before the exchange, so the JWT expiry isn't pushed out by the round-trip
 	jwtResp, err := c.exchangeCodeForJWT(ctx, code, verifier, cs.redirectURI())
 	if err != nil {
 		return Credentials{}, fmt.Errorf("exchange authorization code: %w", err)
@@ -71,8 +72,6 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Cred
 		return Credentials{}, fmt.Errorf("exchange token for a Bitrise PAT: %w", err)
 	}
 	c.infof("Signed in to Bitrise.")
-
-	now := time.Now()
 
 	return Credentials{
 		PAT:          pat,
