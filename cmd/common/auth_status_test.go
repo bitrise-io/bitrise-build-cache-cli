@@ -42,7 +42,7 @@ func TestCurrentAuthStatus(t *testing.T) {
 	// as env-sourced (this is also what shadows the login at resolution time).
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "tok")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-env")
-	if a := currentAuthStatus(); a.Source != "PAT + workspace ID (env)" || a.WorkspaceID != "ws-env" {
+	if a := currentAuthStatus(); a.Source != "environment variables" || a.WorkspaceID != "ws-env" {
 		t.Fatalf("expected env source winning over stored login, got %+v", a)
 	}
 }

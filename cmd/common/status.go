@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
 )
@@ -148,36 +147,26 @@ type statusOutput struct {
 
 // currentAuthStatus reports which credential build-cache commands would use,
 // resolved by config common in its canonical precedence (env vars → keychain →
-// multiplatform config). A keychain credential is further distinguished as an
-// OAuth login (with PAT expiry) vs a manual `auth set`. It never refreshes or writes.
+// multiplatform config). Source detection + the OAuth-login/expiry distinction
+// come from config common's shared AuthDescription. It never refreshes or writes.
 func currentAuthStatus() authStatusInfo {
 	cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 	if err != nil || cfg.AuthToken == "" {
 		return authStatusInfo{Source: "none"}
 	}
 
-	switch source {
-	case configcommon.AuthSourceJWT:
-		return authStatusInfo{Configured: true, Source: "JWT (CI service token)"}
-	case configcommon.AuthSourceEnvVars:
-		return authStatusInfo{Configured: true, Source: "PAT + workspace ID (env)", WorkspaceID: cfg.WorkspaceID}
-	case configcommon.AuthSourceMultiplatform:
-		return authStatusInfo{Configured: true, Source: "multiplatform config", WorkspaceID: cfg.WorkspaceID}
-	case configcommon.AuthSourceKeychain:
-		info := authStatusInfo{Configured: true, Source: "OS keychain", WorkspaceID: cfg.WorkspaceID}
-		if creds, lerr := oauth.Load(); lerr == nil && creds.IsOAuthManaged() {
-			info.Source = "OAuth login (keychain)"
-			if !creds.PATExpiry.IsZero() {
-				info.TokenExpiry = creds.PATExpiry.Format(time.RFC3339)
-				info.Expired = time.Now().After(creds.PATExpiry)
-			}
-		}
-
-		return info
-	case configcommon.AuthSourceNone:
+	d := configcommon.DescribeResolved(cfg, source)
+	info := authStatusInfo{
+		Configured:  true,
+		Source:      d.Label(),
+		WorkspaceID: d.WorkspaceID,
+	}
+	if !d.PATExpiry.IsZero() {
+		info.TokenExpiry = d.PATExpiry.Format(time.RFC3339)
+		info.Expired = d.Expired()
 	}
 
-	return authStatusInfo{Source: "none"}
+	return info
 }
 
 // writeAuthLine appends a one-line auth summary to the text status output.

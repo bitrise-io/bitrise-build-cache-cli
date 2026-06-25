@@ -377,6 +377,9 @@ func renderSource(logger log.Logger, s credSource, a credAudit) bool {
 	case sourcePopulated:
 		logger.Infof("  Workspace ID: %s", a.workspaceID)
 		logger.Infof("  Auth token:   %s", maskToken(a.authToken))
+		if a.note != "" {
+			logger.Infof("  %s", a.note)
+		}
 
 		return true
 	case sourcePopulatedTokenOnly:
@@ -397,7 +400,12 @@ func probeKeychain() credAudit {
 		return credAudit{state: sourceReadError, err: err}
 	}
 
-	return credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken}
+	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken}
+	if desc := configcommon.DescribeKeychainCredentials(creds); desc.IsOAuthLogin {
+		audit.note = desc.Detail()
+	}
+
+	return audit
 }
 
 func probeMultiplatform() credAudit {
