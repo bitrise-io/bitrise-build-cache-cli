@@ -45,6 +45,9 @@ const (
 	// daemonLogsSubdir is the daemon supervisor stdout/stderr log dir.
 	daemonLogsSubdir = "logs"
 
+	// invocationsSubdir holds the per-day NDJSON invocation log files.
+	invocationsSubdir = "invocations"
+
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
 
@@ -104,6 +107,18 @@ func (p Paths) SystemdUserDir() string {
 // DaemonLogDir is the absolute path of the daemon supervisor stdout/stderr log dir.
 func (p Paths) DaemonLogDir() string {
 	return filepath.Join(p.StateDir(), daemonLogsSubdir)
+}
+
+// InvocationsDir is the absolute path of the per-day NDJSON invocation log dir
+// shared by the CLI, gradle plugin, and RN wrappers.
+func (p Paths) InvocationsDir() string {
+	return filepath.Join(p.StateDir(), invocationsSubdir)
+}
+
+// InvocationsFile returns the daily NDJSON file path for the supplied date.
+// Day boundary uses the caller's local date — appenders pass time.Now().Local().
+func (p Paths) InvocationsFile(day string) string {
+	return filepath.Join(p.InvocationsDir(), day+".ndjson")
 }
 
 // PlistPath returns the per-user LaunchAgent plist path for the given label.
