@@ -86,7 +86,7 @@ func runLogin(cmd *cobra.Command) error {
 
 	workspace := loginWorkspace
 	if workspace == "" {
-		workspace, err = pickWorkspace(ctx, cmd, envs, creds.PAT)
+		workspace, err = pickWorkspace(ctx, envs, creds.PAT)
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func shadowingAuthEnv() string {
 
 // pickWorkspace lists the workspaces the fresh PAT can access and lets the user
 // choose one (auto-selecting when there's exactly one).
-func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]string, pat string) (string, error) {
+func pickWorkspace(ctx context.Context, envs map[string]string, pat string) (string, error) {
 	workspaces, err := bitriseapi.ListWorkspaces(ctx, bitriseapi.ResolveAPIBaseURL(envs), pat)
 	if err != nil {
 		return "", fmt.Errorf("list workspaces: %w", err)
@@ -141,7 +141,7 @@ func pickWorkspace(ctx context.Context, cmd *cobra.Command, envs map[string]stri
 	for i, ws := range workspaces {
 		items[i] = fmt.Sprintf("%s (%s)", ws.Name, ws.Slug)
 	}
-	idx, err := selectFromList(cmd, "Select a workspace:", items)
+	idx, err := selectFromList("Select a workspace:", items)
 	if err != nil {
 		return "", err
 	}
