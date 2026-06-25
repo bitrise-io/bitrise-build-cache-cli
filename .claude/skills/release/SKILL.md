@@ -10,6 +10,21 @@ Releasing a new version is a multi-step process across several repositories.
 
 **IMPORTANT: Drive the ENTIRE process end-to-end in a single conversation.** Use the Bitrise MCP server to monitor build statuses (poll every 30s), check for triggered workflows in downstream repos, and move to the next step as soon as the previous one completes. Do not stop and wait for the user between steps.
 
+## ✅ Definition of done — a release ships through MULTIPLE channels
+
+**A release is NOT done until every channel below is MERGED and VERIFIED — not merely opened.** Reporting "released" / "the steps are out" off a PR that *exists* but hasn't merged is the exact failure this gate exists to prevent. A just-shipped feature that isn't appearing where you expect is most often a release that didn't actually finish a channel — suspect that before rollout-timing or usage explanations.
+
+When you report status, report it **per channel**, and state what you actually confirmed (merged/verified) vs. what is still open. "The bot will handle it" is not done — go look. The channels:
+
+1. **CLI GitHub release** — promoted out of prerelease, all expected assets present (Step 6).
+2. **`verify-release`** — green (Step 6).
+3. **`bump-prebooting` PR** (preboot VM image) — **merged** (Step 6b). This is how provision-injected features, e.g. the gradle-mirrors init script, reach the *default* fleet. The bypass-merge can stall and need a manual approval.
+4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
+5. **Step GitHub releases** — cut for the scoped steps (Step 8).
+6. **Steplib PRs** — merged (Step 9).
+
+Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–6). Confirming one says nothing about the other.
+
 ## ⚠ Critical path — read before doing anything
 
 The `install/installer.sh` script and the binaries attached to every CLI GitHub release are **on the critical path of every Bitrise build — not just builds that opt into the build cache**. The Bitrise default workflow runs the gradle-mirrors activation step (and other CLI-driven steps) unconditionally, and each of those pipes `installer.sh` to `sh` and fetches the platform tarball + checksum from the latest non-prerelease GitHub release. If any of these break — installer script, binaries, checksum file, the wrong release marked as latest — the CLI install fails, the mirror activation soft-fails, and Maven Central requests bypass the Bitrise proxy on the entire fleet.
@@ -52,6 +67,7 @@ A release can be triggered by:
 | Xcode step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` |
 | Gradle features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-features` |
 | React Native features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-react-native-features` |
+| Gradle mirrors step (pinned-version consumer) | _verify_ | `bitrise-steplib/bitrise-step-activate-gradle-mirrors` |
 | Steplib | — | `bitrise-io/bitrise-steplib` |
 
 ## Steps
@@ -98,14 +114,22 @@ Create a GitHub release in `bitrise-build-cache-cli`.
 - If this is a gradle-plugin-only update (no CLI code changes), the CLI version should be a **patch** bump because only a dependency was updated
 - Check the latest existing release tag to determine the next version
 
+### 6b. Verify the preboot bump (`bump-prebooting`)
+
+The `release-and-verify` pipeline chains a `bump-prebooting` workflow after `verify-release`. It opens an auto-merging PR in `bitrise-io/build-prebooting-deployments` bumping `BITRISE_BUILD_CACHE_CLI_VERSION` + the per-arch sha256 in the two startup-script extensions, and tries to bypass-merge it as `bitrise-infrabot`. This is the channel that delivers provision-injected features (e.g. the gradle-mirrors init script) to the **default fleet** — a release that skips it ships to nobody on the default path.
+
+- **Confirm the PR actually MERGED — don't assume the bot finished.** The bypass-merge can fail (`base branch policy prohibits the merge`) even when the CLI release is fully green.
+- `gh pr merge --admin` does **not** work there (admins can't bypass that repo's rule). Fix: approve the bump PR by hand — it's authored by the bot, so a maintainer approval satisfies the 1-approval rule — then `gh pr merge --squash --delete-branch`. Verify the diff is the version + the two sha256s from this release's `checksums.txt`. Do NOT re-cut the tag.
+
 ### 7. Wait for step auto-update PRs
 
-The CLI release triggers auto-update PRs in **four** step repos (all use unified CI app `48fa8fbee698622c`). The PR title will be "feat: Release new CLI". Monitor CI on all four, then approve and merge:
+The CLI release triggers auto-update PRs in **five** consumer repos. Monitor CI, then approve and merge each. The first four use unified CI app `48fa8fbee698622c` and the PR title "feat: Release new CLI":
 
 1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` — released for every CLI version.
 2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` — released for every CLI version.
 3. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` — released, but releases are **not 1:1 with CLI releases** (each step release usually catches up across several intervening CLI patch versions; release when CLI changes matter for RN, e.g. an Xcode or Gradle-side improvement that RN builds benefit from).
 4. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` — truly experimental, no GitHub release flow yet (only a single early steplib PR exists). Merge the auto-update PR but do not cut a GitHub release until that changes.
+5. **Gradle mirrors step:** `bitrise-steplib/bitrise-step-activate-gradle-mirrors` — used by customers who **pin a specific CLI version** (the default fleet gets the mirror init script via provisioning/preboot instead, so this step is the delivery channel only for pinned-version builds). ⚠ Do **not** assume its auto-update fires — it has lagged the CLI badly (stuck at v2.6.1 / release 0.2.1 while the CLI was at v2.8.x). If no auto-update PR appears, **open the bump PR manually**. Its bump PR title is `chore: bump bitrise-build-cache-cli to vX.Y.Z` (not "feat: Release new CLI"), and it uses 0.x step versioning.
 
 ```bash
 # For each step repo:
@@ -117,7 +141,7 @@ Always wait for CI to pass. Use `--squash` (merge commits are not allowed on the
 
 ### 8. Create step GitHub releases
 
-Create GitHub releases for whichever of the four step repos the user actually wants to release (default: **Gradle step** + **Xcode step**; **React Native features step** when the CLI change is RN-relevant). The **Gradle features step** does not have a GitHub release flow yet — skip it.
+Create GitHub releases for whichever of the five step repos the user actually wants to release (default: **Gradle step** + **Xcode step**; **React Native features step** when the CLI change is RN-relevant; **Gradle mirrors step** when its CLI bump matters for pinned-version users or it has fallen behind). The **Gradle features step** does not have a GitHub release flow yet — skip it. The **Gradle mirrors step** has its own 0.x release flow — cut a 0.x release after its bump PR merges.
 
 - These **can** be marked as "latest"
 - Follow the format of existing releases for release notes — only include "## What's Changed" with bullet points (changelog is added automatically)
