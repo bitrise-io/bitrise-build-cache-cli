@@ -55,9 +55,28 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
 		"register-invocation", "register-child-invocation":
 		return true
+	case "token":
+		// `auth token` is consumed by the Gradle init script (and the future Bazel
+		// workspace_status_command) via stdout. The nudge text would land on
+		// stdout via the go-utils logger default and poison the token payload.
+		// The stderr-routed logger below would prevent that already, but skip
+		// the check entirely to also save a GitHub-API round-trip per build.
+		return true
 	default:
 		return false
 	}
+}
+
+// newVersionCheckLogger builds the logger used by RunVersionCheck. The go-utils
+// default writer is os.Stdout, but the version-drift nudge is a user-facing
+// message — it MUST land on stderr so subcommands whose stdout is parsed by
+// downstream consumers (Gradle init script, xcodebuild JSON wrappers) are not
+// poisoned by it.
+func newVersionCheckLogger() log.Logger {
+	return log.NewLogger(
+		log.WithDebugLog(IsDebugLogMode),
+		log.WithOutput(os.Stderr),
+	)
 }
 
 func RunVersionCheck(cmd *cobra.Command) {
@@ -69,7 +88,7 @@ func RunVersionCheck(cmd *cobra.Command) {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
 	defer cancel()
 
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+	logger := newVersionCheckLogger()
 
 	res, _ := versioncheck.RunOnce(ctx, versioncheck.Options{
 		CurrentVersion: configcommon.GetCLIVersion(logger),
