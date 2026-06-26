@@ -1317,8 +1317,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            curl --retry 5 -sSfL https://raw.githubusercontent.com/bitrise-io/bitrise-cli/main/install/installer.sh \
-              | sh -s -- -b "$HOME/.local/bin"
+            curl --retry 5 -fsSL https://app.bitrise.io/cli/install.sh | bash
             envman add --key PATH --value "$HOME/.local/bin:$PATH"
     - script:
         title: create RDE session
