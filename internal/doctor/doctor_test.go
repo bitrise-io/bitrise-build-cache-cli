@@ -138,6 +138,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		LaunchActivateWizard: func() error { return nil },
 		RunSelf:              func(...string) error { return nil },
 		DaemonUp:             func(context.Context) ([]string, error) { return nil, nil },
+		DaemonRestart:        func(context.Context) ([]string, error) { return nil, nil },
 	}
 }
 
@@ -704,6 +705,45 @@ func TestCLIVersionCheck_fixRunsUpdate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"update"}, got)
 	assert.Contains(t, detail, "update")
+}
+
+func TestXcelerateProxyCheck_socketDeadIsFixableViaRestart(t *testing.T) {
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
+	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
+
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.True(t, res.Fixable)
+}
+
+func TestXcelerateProxyCheck_socketDeadFixCallsRestart(t *testing.T) {
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
+	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
+
+	called := false
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		DaemonRestart: func(context.Context) ([]string, error) {
+			called = true
+
+			return []string{"xcelerate-proxy"}, nil
+		},
+	}
+
+	detail, err := r.xcelerateProxyCheck().Fix()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Contains(t, detail, "xcelerate-proxy")
 }
 
 func TestDaemonUpFix_propagatesError(t *testing.T) {

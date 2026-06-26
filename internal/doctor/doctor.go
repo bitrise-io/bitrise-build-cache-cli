@@ -83,6 +83,7 @@ type Doctor struct {
 	LaunchActivateWizard func() error
 	RunSelf              func(args ...string) error
 	DaemonUp             func(ctx context.Context) ([]string, error)
+	DaemonRestart        func(ctx context.Context) ([]string, error)
 }
 
 func NewDoctor() *Doctor {

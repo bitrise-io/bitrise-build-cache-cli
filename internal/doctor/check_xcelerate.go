@@ -61,28 +61,47 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 			conn, dialErr := dialer.DialContext(probeCtx, "unix", socketPath)
 			if dialErr != nil {
 				return Result{
-					State:  StateWarn,
-					Detail: fmt.Sprintf("pid %d alive but socket %s not accepting connections (%v)", pid, socketPath, dialErr),
+					State:   StateWarn,
+					Detail:  fmt.Sprintf("pid %d alive but socket %s not accepting connections (%v) — fixable", pid, socketPath, dialErr),
+					Fixable: true,
 				}
 			}
 			_ = conn.Close()
 
 			return Result{State: StateOK, Detail: fmt.Sprintf("running (pid %d, %s)", pid, socketPath)}
 		},
-		Fix: func() (string, error) {
-			if _, err := os.Stat(pidPath); err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					return d.daemonUpFix()
-				}
+		Fix: d.xcelerateProxyFix(pidPath),
+	}
+}
 
-				return "", fmt.Errorf("stat %s: %w", pidPath, err)
+func (d *Doctor) xcelerateProxyFix(pidPath string) func() (string, error) {
+	return func() (string, error) {
+		content, err := os.ReadFile(pidPath) //nolint:gosec // path resolved via xceleratconfig helper
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return d.daemonUpFix()
 			}
 
+			return "", fmt.Errorf("read %s: %w", pidPath, err)
+		}
+
+		pid, perr := strconv.Atoi(strings.TrimSpace(string(content)))
+		if perr != nil {
+			if err := os.Remove(pidPath); err != nil {
+				return "", fmt.Errorf("remove %s: %w", pidPath, err)
+			}
+
+			return "removed corrupt " + pidPath, nil
+		}
+
+		if err := syscall.Kill(pid, 0); err != nil {
 			if err := os.Remove(pidPath); err != nil {
 				return "", fmt.Errorf("remove %s: %w", pidPath, err)
 			}
 
 			return "removed stale " + pidPath, nil
-		},
+		}
+
+		return d.daemonRestartFix()
 	}
 }
