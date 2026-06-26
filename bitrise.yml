@@ -1380,12 +1380,13 @@ workflows:
               if [[ -n "$FAIL" ]]; then
                 echo "=== DIAGNOSTICS ==="
                 for label in $FAIL; do
+                  short=${label#io.bitrise.build-cache.}
                   echo "--- launchctl print $label ---"
                   launchctl print "gui/$uid/$label" 2>&1 | head -60 || true
-                  echo "--- supervisor stderr ($label) ---"
-                  tail -40 "$HOME/.local/state/bitrise-build-cache/logs/$(basename $label io.bitrise.build-cache.).err.log" 2>&1 || true
-                  echo "--- supervisor stdout ($label) ---"
-                  tail -40 "$HOME/.local/state/bitrise-build-cache/logs/$(basename $label io.bitrise.build-cache.).out.log" 2>&1 || true
+                  echo "--- $short.err.log (last 60) ---"
+                  tail -60 "$HOME/.local/state/bitrise-build-cache/logs/$short.err.log" 2>&1 || true
+                  echo "--- $short.out.log (last 60) ---"
+                  tail -60 "$HOME/.local/state/bitrise-build-cache/logs/$short.out.log" 2>&1 || true
                 done
                 exit 1
               fi
