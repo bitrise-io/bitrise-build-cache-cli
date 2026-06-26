@@ -81,9 +81,7 @@ type Doctor struct {
 	ActivatedTools       func() map[toolconfig.Tool]bool
 	BackendProbe         BackendProbeFunc
 	LaunchActivateWizard func() error
-	// RunSelf re-execs the CLI with the supplied subcommand args (e.g. "daemon", "up"
-	// or "update"). Default impl uses os.Executable + exec.CommandContext.
-	RunSelf func(args ...string) error
+	RunSelf              func(args ...string) error
 }
 
 func NewDoctor() *Doctor {

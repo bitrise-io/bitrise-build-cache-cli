@@ -131,14 +131,10 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		LatestReleaseTag:   func(context.Context, *http.Client) (string, error) { return "", nil },
 		LookPath:           func(string) (string, error) { return "/usr/local/bin/ccache", nil },
 		StateDirCandidates: []string{},
-		// No tools activated by default → xcelerate-proxy / ccache-helper checks
-		// short-circuit to "skipped" and don't try to read pid / socket from disk.
-		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{} },
-		// Inert stub so Run tests don't reach the real BC backend.
+		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{} },
 		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
 			return time.Millisecond, nil
 		},
-		// Inert stubs so Fix dispatches don't re-exec real subcommands.
 		LaunchActivateWizard: func() error { return nil },
 		RunSelf:              func(...string) error { return nil },
 	}

@@ -63,9 +63,6 @@ func (d *Doctor) authBackendCheck() Check {
 	}
 }
 
-// backendErrorFixable returns true for errors a credential refresh can repair —
-// auth-failed (token rejected) and workspace-misconfig (no access). Transport
-// blips (Unavailable / DeadlineExceeded) are not fixable by re-running the wizard.
 func backendErrorFixable(err error) bool {
 	if errors.Is(err, kv.ErrCacheUnauthenticated) {
 		return true
