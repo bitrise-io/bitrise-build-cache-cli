@@ -45,4 +45,12 @@ func TestCurrentAuthStatus(t *testing.T) {
 	if a := currentAuthStatus(); a.Source != "environment variables" || a.WorkspaceID != "ws-env" {
 		t.Fatalf("expected env source winning over stored login, got %+v", a)
 	}
+
+	// A malformed service JWT is a real resolution error, surfaced (not "none").
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "not-a-jwt")
+	if a := currentAuthStatus(); a.Source != "error" || a.Error == "" {
+		t.Fatalf("expected surfaced resolution error, got %+v", a)
+	}
 }

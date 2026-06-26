@@ -134,6 +134,7 @@ type authStatusInfo struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	TokenExpiry string `json:"token_expiry,omitempty"`
 	Expired     bool   `json:"expired,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // statusOutput is the --json shape: feature flags plus auth.
@@ -149,7 +150,14 @@ type statusOutput struct {
 // common's resolution + shared AuthDescription. Never refreshes or writes.
 func currentAuthStatus() authStatusInfo {
 	cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
-	if err != nil || cfg.AuthToken == "" {
+	switch {
+	case errors.Is(err, configcommon.ErrAuthTokenNotProvided), errors.Is(err, configcommon.ErrWorkspaceIDNotProvided):
+		return authStatusInfo{Source: "none"}
+	case err != nil:
+		// A real resolution failure (e.g. a malformed service JWT) — surface it
+		// rather than mislabel it "not configured".
+		return authStatusInfo{Source: "error", Error: err.Error()}
+	case cfg.AuthToken == "":
 		return authStatusInfo{Source: "none"}
 	}
 
@@ -171,6 +179,8 @@ func currentAuthStatus() authStatusInfo {
 func writeAuthLine(out io.Writer, a authStatusInfo) error {
 	line := "Auth: "
 	switch {
+	case a.Error != "":
+		line += "could not resolve credentials: " + a.Error
 	case !a.Configured:
 		line += "not configured (run 'bitrise-build-cache auth login' or 'bitrise-build-cache activate --interactive', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)"
 	default:

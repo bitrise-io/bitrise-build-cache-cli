@@ -149,10 +149,10 @@ func pickWorkspace(ctx context.Context, envs map[string]string, pat string) (str
 // serves a live PAT. Skipped when an env credential wins (env precedence, and CI
 // must never refresh); this is the only path that does a network refresh.
 func hydrateStoredAuth(ctx context.Context) {
-	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
-	case configcommon.AuthSourceEnvVars, configcommon.AuthSourceJWT:
+	// A keychain OAuth login always wins over multiplatform, so only the
+	// keychain source can have one to refresh; env sources take precedence.
+	if _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source != configcommon.AuthSourceKeychain {
 		return
-	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceMultiplatform:
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 	cfg := oauth.NewConfigFromEnv(utils.AllEnvs())
