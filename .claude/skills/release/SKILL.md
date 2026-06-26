@@ -67,7 +67,7 @@ A release can be triggered by:
 | Xcode step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` |
 | Gradle features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-features` |
 | React Native features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-react-native-features` |
-| Gradle mirrors step (pinned-version consumer) | _verify_ | `bitrise-steplib/bitrise-step-activate-gradle-mirrors` |
+| Gradle mirrors step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-mirrors` |
 | Steplib | — | `bitrise-io/bitrise-steplib` |
 
 ## Steps
@@ -123,13 +123,13 @@ The `release-and-verify` pipeline chains a `bump-prebooting` workflow after `ver
 
 ### 7. Wait for step auto-update PRs
 
-The CLI release triggers auto-update PRs in **five** consumer repos. Monitor CI, then approve and merge each. The first four use unified CI app `48fa8fbee698622c` and the PR title "feat: Release new CLI":
+The CLI release triggers auto-update PRs in **five** consumer repos. Monitor CI, then approve and merge each. All five are bumped by `bundle::update-step` in the `release` workflow (push-based, after the binaries publish), use unified CI app `48fa8fbee698622c`, and the PR title "feat: Release new CLI":
 
 1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` — released for every CLI version.
 2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` — released for every CLI version.
 3. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` — released, but releases are **not 1:1 with CLI releases** (each step release usually catches up across several intervening CLI patch versions; release when CLI changes matter for RN, e.g. an Xcode or Gradle-side improvement that RN builds benefit from).
 4. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` — truly experimental, no GitHub release flow yet (only a single early steplib PR exists). Merge the auto-update PR but do not cut a GitHub release until that changes.
-5. **Gradle mirrors step:** `bitrise-steplib/bitrise-step-activate-gradle-mirrors` — used by customers who **pin a specific CLI version** (the default fleet gets the mirror init script via provisioning/preboot instead, so this step is the delivery channel only for pinned-version builds). ⚠ Do **not** assume its auto-update fires — it has lagged the CLI badly (stuck at v2.6.1 / release 0.2.1 while the CLI was at v2.8.x). If no auto-update PR appears, **open the bump PR manually**. Its bump PR title is `chore: bump bitrise-build-cache-cli to vX.Y.Z` (not "feat: Release new CLI"), and it uses 0.x step versioning.
+5. **Gradle mirrors step:** `bitrise-steplib/bitrise-step-activate-gradle-mirrors` — used by customers who **pin a specific CLI version** (the default fleet gets the mirror init script via provisioning/preboot instead, so this step is the delivery channel only for pinned-version builds). It's a Go-module consumer (bumped via `go get`/`go mod tidy`/`go mod vendor`, same as the gradle features step). Now push-bumped by the `release` workflow like the others — historically it lagged badly (stuck at v2.6.1 / release 0.2.1 while the CLI was at v2.8.x) because it relied only on Renovate polling; the `bundle::update-step` push removes that lag. It uses 0.x step versioning, so cut a `0.x` GitHub release when you ship it.
 
 ```bash
 # For each step repo:

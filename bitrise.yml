@@ -141,6 +141,10 @@ workflows:
         envs:
         - STEP_NAME: bitrise-step-activate-react-native-features
         - UPDATE_SCRIPT_PATH: ../scripts/update_activate_react_native_features.sh
+    - bundle::update-step:
+        envs:
+        - STEP_NAME: bitrise-step-activate-gradle-mirrors
+        - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -1453,6 +1457,10 @@ workflows:
           envs:
             - STEP_NAME: bitrise-step-activate-react-native-features
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_react_native_features.sh
+      - bundle::update-step:
+          envs:
+            - STEP_NAME: bitrise-step-activate-gradle-mirrors
+            - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
 
 step_bundles:
   release-flow-check:
