@@ -91,6 +91,8 @@ func TestActivate(t *testing.T) {
 				`displayMetrics=present(${e.getSize()}) entries=${zf.size()}`,
 				`java.util.zip.ZipFile(jar).use`,
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli=v0.0.0-test `,
+				`getLogger().lifecycle("[robolectric-classpath-probe] cli=v0.0.0-test ${getPath()} android/util/DisplayMetrics from: `,
+				`z.getEntry("android/util/DisplayMetrics.class") != null`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager.services.bitrise.io:8090/maven/jitpack",

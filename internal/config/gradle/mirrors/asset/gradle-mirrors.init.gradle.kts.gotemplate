@@ -115,14 +115,13 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         }
                                         val sha1 = md.digest().joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
                                         // Structural check: an intact-but-wrong jar (or a truncated one) shows up as MISSING/zip-error or an off DisplayMetrics size, distinguishing it from a correct jar that fails for classpath/version reasons.
-                                        var dm = "displayMetrics=?"
-                                        try {
+                                        val dm = try {
                                             java.util.zip.ZipFile(jar).use { zf ->
                                                 val e = zf.getEntry("android/util/DisplayMetrics.class")
-                                                dm = if (e != null) "displayMetrics=present(${e.getSize()}) entries=${zf.size()}" else "displayMetrics=MISSING entries=${zf.size()}"
+                                                if (e != null) "displayMetrics=present(${e.getSize()}) entries=${zf.size()}" else "displayMetrics=MISSING entries=${zf.size()}"
                                             }
                                         } catch (z: Throwable) {
-                                            dm = "displayMetrics=zip-error(${z.javaClass.getSimpleName()})"
+                                            "displayMetrics=zip-error(${z.javaClass.getSimpleName()})"
                                         }
                                         getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()} $dm")
                                     }
@@ -140,6 +139,22 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                         systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
                         if (auditTask{{ .ID }} != null) {
                             finalizedBy(auditTask{{ .ID }})
+                            // Classpath probe: lists the jars on the test runtime classpath that provide android/util/DisplayMetrics.class, in classpath order. >1 entry (e.g. a mockable-android/stub jar alongside android-all) names a shadow that produces NoSuchFieldError on an otherwise-correct jar. Runs before the test (so it's captured on failing builds), never fails the build.
+                            doFirst {
+                                try {
+                                    val dmSources = getClasspath().getFiles()
+                                        .filter { it.isFile() && it.getName().endsWith(".jar") }
+                                        .filter {
+                                            try { java.util.zip.ZipFile(it).use { z -> z.getEntry("android/util/DisplayMetrics.class") != null } } catch (e: Throwable) { false }
+                                        }
+                                        .map { "${it.getName()}(${it.length()})" }
+                                    if (dmSources.isNotEmpty()) {
+                                        getLogger().lifecycle("[robolectric-classpath-probe] cli={{ $.CLIVersion }} ${getPath()} android/util/DisplayMetrics from: ${dmSources.joinToString(", ")}")
+                                    }
+                                } catch (t: Throwable) {
+                                    getLogger().lifecycle("[robolectric-classpath-probe] ERROR cli={{ $.CLIVersion }} ${t.javaClass.getName()}: ${t.message}")
+                                }
+                            }
                         }
                     }
                 }

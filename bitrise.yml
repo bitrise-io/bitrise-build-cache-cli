@@ -1328,6 +1328,24 @@ workflows:
               echo "=== bitrise-gradle-mirrors.init.gradle.kts ==="
               cat ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts
     - script:
+        title: Guard - init script compiles clean under allWarningsAsErrors
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Some customers' Gradle promotes Kotlin DSL warnings to errors via
+            # org.gradle.kotlin.dsl.allWarningsAsErrors; under that setting an init-script
+            # warning fails compilation and thus every gradle build (the v2.8.10 regression).
+            # Compile our init script in an isolated GRADLE_USER_HOME + empty project so the
+            # property applies only to our script, not DuckDuckGo's build scripts.
+            GUARD_HOME=$(mktemp -d)
+            GUARD_PROJ=$(mktemp -d)
+            mkdir -p "$GUARD_HOME/init.d"
+            cp ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts "$GUARD_HOME/init.d/"
+            printf 'org.gradle.kotlin.dsl.allWarningsAsErrors=true\n' > "$GUARD_HOME/gradle.properties"
+            printf 'rootProject.name = "init-compile-guard"\n' > "$GUARD_PROJ/settings.gradle.kts"
+            GRADLE_USER_HOME="$GUARD_HOME" ./gradlew --project-dir "$GUARD_PROJ" help --stacktrace
+            echo "SUCCESS: init script compiles clean under allWarningsAsErrors"
+    - script:
         title: Build and capture logs
         inputs:
         - content: |-
