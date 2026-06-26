@@ -140,6 +140,22 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                         systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
                         if (auditTask{{ .ID }} != null) {
                             finalizedBy(auditTask{{ .ID }})
+                            // Classpath probe: lists the jars on the test runtime classpath that provide android/util/DisplayMetrics.class, in classpath order. >1 entry (e.g. a mockable-android/stub jar alongside android-all) names a shadow that produces NoSuchFieldError on an otherwise-correct jar. Runs before the test (so it's captured on failing builds), never fails the build.
+                            doFirst {
+                                try {
+                                    val dmSources = getClasspath().getFiles()
+                                        .filter { it.isFile() && it.getName().endsWith(".jar") }
+                                        .filter {
+                                            try { java.util.zip.ZipFile(it).use { z -> z.getEntry("android/util/DisplayMetrics.class") != null } } catch (e: Throwable) { false }
+                                        }
+                                        .map { "${it.getName()}(${it.length()})" }
+                                    if (dmSources.isNotEmpty()) {
+                                        getLogger().lifecycle("[robolectric-classpath-probe] cli={{ $.CLIVersion }} ${getPath()} android/util/DisplayMetrics from: ${dmSources.joinToString(", ")}")
+                                    }
+                                } catch (t: Throwable) {
+                                    getLogger().lifecycle("[robolectric-classpath-probe] ERROR cli={{ $.CLIVersion }} ${t.javaClass.getName()}: ${t.message}")
+                                }
+                            }
                         }
                     }
                 }
