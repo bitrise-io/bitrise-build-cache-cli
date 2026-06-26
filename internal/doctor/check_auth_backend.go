@@ -51,7 +51,7 @@ func (d *Doctor) authBackendCheck() Check {
 					Fixable: backendErrorFixable(err),
 				}
 				if res.Fixable {
-					res.Fixer = ActivateWizardFixer{Launch: d.LaunchActivateWizard}
+					res.Fixer = AuthPromptFixer{Prompt: d.AuthPrompt}
 				}
 
 				return res

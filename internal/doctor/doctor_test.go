@@ -135,7 +135,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
 			return time.Millisecond, nil
 		},
-		LaunchActivateWizard: func() error { return nil },
+		AuthPrompt:           func() (string, string, error) { return "ws", "tok", nil },
 		Update:               func(context.Context) error { return nil },
 		DaemonUp:             func(context.Context) ([]string, error) { return nil, nil },
 		DaemonRestart:        func(context.Context) ([]string, error) { return nil, nil },
@@ -175,14 +175,14 @@ func TestAuthCheck_missingIsError(t *testing.T) {
 	assert.True(t, res.Fixable, "missing creds → Fix re-launches the activate wizard")
 }
 
-func TestAuthCheck_fixInvokesWizardLauncher(t *testing.T) {
+func TestAuthCheck_fixInvokesAuthPrompt(t *testing.T) {
 	called := false
 	r := newMinimalDoctor(t)
 	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
-	r.LaunchActivateWizard = func() error {
+	r.AuthPrompt = func() (string, string, error) {
 		called = true
 
-		return nil
+		return "ws-1", "tok-1", nil
 	}
 
 	res := r.authCheck().Diagnose(context.Background())
@@ -191,7 +191,7 @@ func TestAuthCheck_fixInvokesWizardLauncher(t *testing.T) {
 	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
-	assert.Contains(t, detail, "activate --interactive")
+	assert.Contains(t, detail, "ws-1")
 }
 
 // ──────────────────────────── keychain smoke ────────────────────────────
@@ -594,22 +594,22 @@ func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
 	assert.False(t, res.Fixable, "transport blips must not trigger a wizard re-launch")
 }
 
-func TestActivateWizardFix_invokesInjectedLauncher(t *testing.T) {
+func TestAuthPromptFixer_invokesInjectedPrompt(t *testing.T) {
 	called := false
-	f := ActivateWizardFixer{Launch: func() error {
+	f := AuthPromptFixer{Prompt: func() (string, string, error) {
 		called = true
 
-		return nil
+		return "ws-x", "tok-x", nil
 	}}
 
 	detail, err := f.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
-	assert.Contains(t, detail, "activate --interactive")
+	assert.Contains(t, detail, "ws-x")
 }
 
-func TestActivateWizardFix_propagatesLauncherError(t *testing.T) {
-	f := ActivateWizardFixer{Launch: func() error { return errors.New("user aborted") }}
+func TestAuthPromptFixer_propagatesPromptError(t *testing.T) {
+	f := AuthPromptFixer{Prompt: func() (string, string, error) { return "", "", errors.New("user aborted") }}
 
 	_, err := f.Fix()
 	require.Error(t, err)
