@@ -91,8 +91,15 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                         doLast {
                             try {
                                 val gradleHome = System.getenv("GRADLE_USER_HOME") ?: (System.getProperty("user.home") + "/.gradle")
-                                val roboVer = java.io.File(gradleHome, "caches/modules-2/files-2.1/org.robolectric/robolectric")
+                                val roboRoot = java.io.File(gradleHome, "caches/modules-2/files-2.1/org.robolectric")
+                                val roboVer = java.io.File(roboRoot, "robolectric")
                                     .listFiles()?.filter { it.isDirectory() }?.map { it.getName() }?.sorted()?.lastOrNull() ?: "unknown"
+                                // Component inventory: catches Robolectric version skew (shadows-framework/nativeruntime/annotations resolving to a different version than the core).
+                                val components = roboRoot.listFiles()?.filter { it.isDirectory() }?.sortedBy { it.getName() }?.joinToString(" ") { comp ->
+                                    val v = comp.listFiles()?.filter { it.isDirectory() }?.map { it.getName() }?.sorted()?.lastOrNull() ?: "?"
+                                    "${comp.getName()}=$v"
+                                } ?: "none"
+                                getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} components $components")
                                 java.io.File(System.getProperty("user.home"), ".m2/repository/org/robolectric")
                                     .walkTopDown()
                                     .filter { it.isFile() && it.getName().startsWith("android-all") && it.getName().endsWith(".jar") }
@@ -107,7 +114,17 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                             }
                                         }
                                         val sha1 = md.digest().joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
-                                        getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()}")
+                                        // Structural check: an intact-but-wrong jar (or a truncated one) shows up as MISSING/zip-error or an off DisplayMetrics size, distinguishing it from a correct jar that fails for classpath/version reasons.
+                                        var dm = "displayMetrics=?"
+                                        try {
+                                            java.util.zip.ZipFile(jar).use { zf ->
+                                                val e = zf.getEntry("android/util/DisplayMetrics.class")
+                                                dm = if (e != null) "displayMetrics=present(${e.getSize()}) entries=${zf.size()}" else "displayMetrics=MISSING entries=${zf.size()}"
+                                            }
+                                        } catch (z: Throwable) {
+                                            dm = "displayMetrics=zip-error(${z.javaClass.getSimpleName()})"
+                                        }
+                                        getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()} $dm")
                                     }
                             } catch (t: Throwable) {
                                 getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli={{ $.CLIVersion }} ${t.javaClass.getName()}: ${t.message}")
