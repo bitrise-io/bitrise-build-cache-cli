@@ -1307,11 +1307,11 @@ workflows:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone: {}
     - script:
-        title: build CLI
+        title: build CLI (darwin/arm64 for RDE)
         inputs:
         - content: |-
             set -exo pipefail
-            go build -o bitrise-build-cache-cli
+            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o bitrise-build-cache-cli
     - script:
         title: install bitrise-cli
         inputs:
