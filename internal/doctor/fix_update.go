@@ -4,40 +4,41 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
+
+	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/updater"
 )
 
 type UpdateFixer struct {
-	RunSelf func(args ...string) error
-}
-
-func (f UpdateFixer) Fix() (string, error) {
-	runner := f.RunSelf
-	if runner == nil {
-		runner = defaultRunSelf
-	}
-
-	if err := runner("update"); err != nil {
-		return "", fmt.Errorf("update: %w", err)
-	}
-
-	return "ran `bitrise-build-cache update`", nil
+	Update func(ctx context.Context) error
 }
 
 //nolint:contextcheck // Fixer.Fix is ctx-less by design; Background is correct here.
-func defaultRunSelf(args ...string) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("locate cli executable: %w", err)
+func (f UpdateFixer) Fix() (string, error) {
+	run := f.Update
+	if run == nil {
+		run = defaultUpdate
 	}
 
-	cmd := exec.CommandContext(context.Background(), exe, args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if err := run(context.Background()); err != nil {
+		return "", fmt.Errorf("update: %w", err)
+	}
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("re-exec %v: %w", args, err)
+	return "ran update", nil
+}
+
+func defaultUpdate(ctx context.Context) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve cli executable: %w", err)
+	}
+
+	if err := updater.Update(ctx, updater.Options{
+		Executable: exe,
+		Logger:     log.NewLogger(),
+	}); err != nil {
+		return fmt.Errorf("updater: %w", err)
 	}
 
 	return nil

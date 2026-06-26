@@ -136,7 +136,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 			return time.Millisecond, nil
 		},
 		LaunchActivateWizard: func() error { return nil },
-		RunSelf:              func(...string) error { return nil },
+		Update:               func(context.Context) error { return nil },
 		DaemonUp:             func(context.Context) ([]string, error) { return nil, nil },
 		DaemonRestart:        func(context.Context) ([]string, error) { return nil, nil },
 	}
@@ -696,13 +696,13 @@ func TestCLIVersionCheck_localBuildIsNotFixable(t *testing.T) {
 }
 
 func TestCLIVersionCheck_fixRunsUpdate(t *testing.T) {
-	var got []string
+	called := false
 	r := &Doctor{
 		CLIVersion:       "v2.8.3",
 		HTTPClient:       &http.Client{},
 		LatestReleaseTag: func(context.Context, *http.Client) (string, error) { return "v2.9.0", nil },
-		RunSelf: func(args ...string) error {
-			got = args
+		Update: func(context.Context) error {
+			called = true
 
 			return nil
 		},
@@ -712,7 +712,7 @@ func TestCLIVersionCheck_fixRunsUpdate(t *testing.T) {
 	require.NotNil(t, res.Fixer)
 	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
-	assert.Equal(t, []string{"update"}, got)
+	assert.True(t, called)
 	assert.Contains(t, detail, "update")
 }
 

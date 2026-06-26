@@ -85,7 +85,7 @@ type Doctor struct {
 	ActivatedTools       func() map[toolconfig.Tool]bool
 	BackendProbe         BackendProbeFunc
 	LaunchActivateWizard func() error
-	RunSelf              func(args ...string) error
+	Update               func(ctx context.Context) error
 	DaemonUp             func(ctx context.Context) ([]string, error)
 	DaemonRestart        func(ctx context.Context) ([]string, error)
 }
