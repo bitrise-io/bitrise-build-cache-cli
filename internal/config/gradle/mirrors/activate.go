@@ -8,6 +8,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -37,6 +38,7 @@ type Params struct {
 	Enabled     bool         // when false, Activate is a no-op
 	ProjectRoot string       // project root scanned for scope-gap warnings; empty disables scanning
 	Exporter    Exporter     // when non-nil, exports BITRISE_MAVENCENTRAL_PROXY_URL_<ID> per activated mirror
+	CLIVersion  string       // CLI version stamped into the init script logs; empty resolves via configcommon.GetCLIVersion
 }
 
 type templateEntry struct {
@@ -48,7 +50,8 @@ type templateEntry struct {
 }
 
 type templateData struct {
-	Mirrors []templateEntry
+	Mirrors    []templateEntry
+	CLIVersion string
 }
 
 // Activate writes the Gradle init script when mirror activation is enabled and
@@ -98,8 +101,13 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 		return fmt.Errorf("parse gradle-mirrors init template: %w", err)
 	}
 
+	cliVersion := params.CLIVersion
+	if cliVersion == "" {
+		cliVersion = configcommon.GetCLIVersion(logger)
+	}
+
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, templateData{Mirrors: entries}); err != nil {
+	if err := tmpl.Execute(&buf, templateData{Mirrors: entries, CLIVersion: cliVersion}); err != nil {
 		return fmt.Errorf("execute gradle-mirrors init template: %w", err)
 	}
 
