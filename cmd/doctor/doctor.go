@@ -62,6 +62,14 @@ var doctorCmd = &cobra.Command{
 	},
 }
 
+func itemDisplay(it doctorpkg.ReportItem) (doctorpkg.State, string) {
+	if it.FixResult != nil {
+		return doctorpkg.StateOK, "fixed: " + *it.FixResult
+	}
+
+	return it.Result.State, it.Result.Detail
+}
+
 func effectiveOverall(r doctorpkg.Report) doctorpkg.State {
 	worst := doctorpkg.StateOK
 	for _, it := range r.Items {
@@ -116,16 +124,10 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, overall doctorpkg.S
 	fmt.Fprintf(w, "CLI version: %s\n\n", r.Version)
 
 	for _, it := range r.Items {
-		state := it.Result.State
-		if it.FixResult != nil {
-			state = doctorpkg.StateOK
-		}
-
-		fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(state), it.Name, it.Result.Detail)
+		state, detail := itemDisplay(it)
+		fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(state), it.Name, detail)
 
 		switch {
-		case it.FixResult != nil:
-			fmt.Fprintf(w, "      %s↳ fixed:%s %s\n", c.green, c.reset, *it.FixResult)
 		case it.FixError != "":
 			fmt.Fprintf(w, "      %s↳ fix failed:%s %s\n", c.red, c.reset, it.FixError)
 		case !fixed && it.Result.Fixable:
