@@ -1327,6 +1327,20 @@ workflows:
             bitrise-cli rde session create "$SESSION_NAME" \
               --stack "$RDE_STACK" --machine-type "$RDE_MACHINE_TYPE" --wait
     - script:
+        title: wait for SSH ready
+        inputs:
+        - content: |-
+            set -exo pipefail
+            for i in $(seq 1 60); do
+              if bitrise-cli rde session view "$SESSION_NAME" --output json | jq -e '.ssh_connection_open == true' >/dev/null; then
+                echo "OK: SSH ready after ${i}*5s"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "FAIL: SSH not ready after 5min"
+            exit 1
+    - script:
         title: upload patched CLI
         inputs:
         - content: |-
