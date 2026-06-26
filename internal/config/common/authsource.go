@@ -7,11 +7,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
-// AuthDescription is the shared, user-facing description of a resolved
-// credential: which source it came from, its workspace, and — for a keychain
-// credential minted by `login` — that it's OAuth-managed plus the PAT expiry.
-// status, doctor, and `auth status` all build their output from this so the
-// source taxonomy and the OAuth/expiry knowledge live in one place.
+// AuthDescription is the shared description of a resolved credential, consumed
+// by status, doctor, and `auth status` so the source taxonomy and the
+// OAuth-login/expiry knowledge live in one place.
 type AuthDescription struct {
 	Source       AuthSource
 	WorkspaceID  string
@@ -51,8 +49,7 @@ func (d AuthDescription) Expired() bool {
 	return !d.PATExpiry.IsZero() && time.Now().After(d.PATExpiry)
 }
 
-// Detail is the canonical one-line human description, e.g.
-// "OAuth login (keychain) (workspace acme), token valid until 2026-…".
+// Detail is the canonical one-line human description (label + workspace + expiry).
 func (d AuthDescription) Detail() string {
 	out := d.Label()
 	if d.WorkspaceID != "" {

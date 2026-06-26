@@ -145,10 +145,8 @@ type statusOutput struct {
 	Auth        authStatusInfo `json:"auth"`
 }
 
-// currentAuthStatus reports which credential build-cache commands would use,
-// resolved by config common in its canonical precedence (env vars → keychain →
-// multiplatform config). Source detection + the OAuth-login/expiry distinction
-// come from config common's shared AuthDescription. It never refreshes or writes.
+// currentAuthStatus reports the credential commands would use, via config
+// common's resolution + shared AuthDescription. Never refreshes or writes.
 func currentAuthStatus() authStatusInfo {
 	cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 	if err != nil || cfg.AuthToken == "" {

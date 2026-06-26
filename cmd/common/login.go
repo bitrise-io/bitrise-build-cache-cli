@@ -106,10 +106,7 @@ func runLogin(cmd *cobra.Command) error {
 	return nil
 }
 
-// shadowingAuthEnv returns the env credential that takes precedence over the
-// stored OAuth login, or "". The OAuth login lives in the keychain (below env
-// in ResolveAuthConfig's precedence), so whichever env source wins the
-// resolution is exactly what shadows the just-saved login.
+// shadowingAuthEnv returns the env var that shadows the stored login, or "".
 func shadowingAuthEnv() string {
 	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
 	case configcommon.AuthSourceEnvVars:
@@ -148,11 +145,9 @@ func pickWorkspace(ctx context.Context, envs map[string]string, pat string) (str
 	return workspaces[idx].Slug, nil
 }
 
-// hydrateStoredAuth refreshes a stored OAuth login (in the keychain) when its
-// PAT is stale, so the keychain tier of ResolveAuthConfig serves a live PAT to
-// the command about to run. Best-effort and local-only: it's the sole path that
-// does a network refresh, and it's skipped when an env credential wins (env
-// takes precedence, and CI must never trigger a refresh).
+// hydrateStoredAuth refreshes a stale keychain OAuth login so ResolveAuthConfig
+// serves a live PAT. Skipped when an env credential wins (env precedence, and CI
+// must never refresh); this is the only path that does a network refresh.
 func hydrateStoredAuth(ctx context.Context) {
 	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
 	case configcommon.AuthSourceEnvVars, configcommon.AuthSourceJWT:

@@ -8,11 +8,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
 
-// Credentials is the OAuth login credential. It is persisted in the OS keychain
-// (the CLI's canonical auth store) as a keychain.Credentials, so a stored login
-// is resolved by the same env→keychain→config chain as a manual `auth set`.
-// WorkspaceID is stored because the cache is workspace-scoped while OAuth login
-// is user-scoped.
+// Credentials is the OAuth login credential, persisted in the OS keychain as a
+// keychain.Credentials. WorkspaceID is stored because the cache is
+// workspace-scoped while the OAuth login is user-scoped.
 type Credentials struct {
 	PAT                string
 	PATExpiry          time.Time
