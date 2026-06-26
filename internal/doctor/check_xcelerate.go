@@ -36,6 +36,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 						State:   StateWarn,
 						Detail:  "not running (no pid file). Run `bitrise-build-cache daemon up` (or `xcelerate start-proxy` if no daemon is installed).",
 						Fixable: true,
+						Fixer:   DaemonUpFixer{Up: d.DaemonUp},
 					}
 				}
 
@@ -44,7 +45,12 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 
 			pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
 			if err != nil {
-				return Result{State: StateWarn, Detail: "pid file content invalid (" + err.Error() + ") — fixable", Fixable: true}
+				return Result{
+					State:   StateWarn,
+					Detail:  "pid file content invalid (" + err.Error() + ") — fixable",
+					Fixable: true,
+					Fixer:   RemoveFileFixer{Path: pidPath, Label: "corrupt pid file"},
+				}
 			}
 
 			if err := syscall.Kill(pid, 0); err != nil {
@@ -52,6 +58,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 					State:   StateWarn,
 					Detail:  fmt.Sprintf("stale pid file: pid %d not running — fixable", pid),
 					Fixable: true,
+					Fixer:   RemoveFileFixer{Path: pidPath, Label: "stale pid file"},
 				}
 			}
 
@@ -64,12 +71,12 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 					State:   StateWarn,
 					Detail:  fmt.Sprintf("pid %d alive but socket %s not accepting connections (%v) — fixable", pid, socketPath, dialErr),
 					Fixable: true,
+					Fixer:   DaemonRestartFixer{Restart: d.DaemonRestart},
 				}
 			}
 			_ = conn.Close()
 
 			return Result{State: StateOK, Detail: fmt.Sprintf("running (pid %d, %s)", pid, socketPath)}
 		},
-		Fix: d.xcelerateProxyFix(pidPath),
 	}
 }

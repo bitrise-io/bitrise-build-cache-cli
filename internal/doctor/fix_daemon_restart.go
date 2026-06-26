@@ -8,9 +8,13 @@ import (
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
-//nolint:contextcheck // Check.Fix is ctx-less by design; Background is correct here.
-func (d *Doctor) daemonRestartFix() (string, error) {
-	restart := d.DaemonRestart
+type DaemonRestartFixer struct {
+	Restart func(ctx context.Context) ([]string, error)
+}
+
+//nolint:contextcheck // Fixer.Fix is ctx-less by design; Background is correct here.
+func (f DaemonRestartFixer) Fix() (string, error) {
+	restart := f.Restart
 	if restart == nil {
 		restart = defaultDaemonRestart
 	}

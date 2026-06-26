@@ -45,11 +45,16 @@ func (d *Doctor) authBackendCheck() Check {
 
 			latency, err := probe(probeCtx, cfg, d.Envs)
 			if err != nil {
-				return Result{
+				res := Result{
 					State:   backendErrorState(err),
 					Detail:  backendErrorDetail(err, cfg, source, latency),
 					Fixable: backendErrorFixable(err),
 				}
+				if res.Fixable {
+					res.Fixer = ActivateWizardFixer{Launch: d.LaunchActivateWizard}
+				}
+
+				return res
 			}
 
 			return Result{
@@ -57,7 +62,6 @@ func (d *Doctor) authBackendCheck() Check {
 				Detail: fmt.Sprintf("latency %dms, source=%s, workspace=%s", latency.Milliseconds(), sourceLabel(source), cfg.WorkspaceID),
 			}
 		},
-		Fix: d.activateWizardFix,
 	}
 }
 

@@ -8,9 +8,13 @@ import (
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
-//nolint:contextcheck // Check.Fix is ctx-less by design; Background is correct here.
-func (d *Doctor) daemonUpFix() (string, error) {
-	up := d.DaemonUp
+type DaemonUpFixer struct {
+	Up func(ctx context.Context) ([]string, error)
+}
+
+//nolint:contextcheck // Fixer.Fix is ctx-less by design; Background is correct here.
+func (f DaemonUpFixer) Fix() (string, error) {
+	up := f.Up
 	if up == nil {
 		up = defaultDaemonUp
 	}

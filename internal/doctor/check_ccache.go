@@ -30,6 +30,7 @@ func (d *Doctor) ccacheHelperCheck() Check {
 						State:   StateWarn,
 						Detail:  "not running (no socket file). Run `bitrise-build-cache daemon up` (or `ccache start-storage-helper` if no daemon is installed).",
 						Fixable: true,
+						Fixer:   DaemonUpFixer{Up: d.DaemonUp},
 					}
 				}
 
@@ -45,13 +46,13 @@ func (d *Doctor) ccacheHelperCheck() Check {
 					State:   StateWarn,
 					Detail:  fmt.Sprintf("socket %s present but not accepting connections (%v) — fixable", socketPath, err),
 					Fixable: true,
+					Fixer:   RemoveFileFixer{Path: socketPath, Label: "orphan socket"},
 				}
 			}
 			_ = conn.Close()
 
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
 		},
-		Fix: d.ccacheHelperFix(socketPath),
 	}
 }
 

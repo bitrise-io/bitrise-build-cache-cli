@@ -6,9 +6,14 @@ import (
 	"strings"
 )
 
-func (d *Doctor) logDirsFix() (string, error) {
-	created := []string{}
-	for _, path := range d.StateDirCandidates {
+type LogDirsFixer struct {
+	Candidates []string
+}
+
+func (f LogDirsFixer) Fix() (string, error) {
+	created := make([]string, 0, len(f.Candidates))
+
+	for _, path := range f.Candidates {
 		if _, err := os.Stat(path); err == nil {
 			continue
 		}

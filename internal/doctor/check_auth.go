@@ -28,8 +28,8 @@ func (d *Doctor) authCheck() Check {
 				State:   StateError,
 				Detail:  "no credentials found. Run `bitrise-build-cache auth set --token … --workspace-id …` or `bitrise-build-cache activate --interactive`.",
 				Fixable: true,
+				Fixer:   ActivateWizardFixer{Launch: d.LaunchActivateWizard},
 			}
 		},
-		Fix: d.activateWizardFix,
 	}
 }

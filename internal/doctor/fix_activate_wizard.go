@@ -7,8 +7,12 @@ import (
 	"os/exec"
 )
 
-func (d *Doctor) activateWizardFix() (string, error) {
-	launcher := d.LaunchActivateWizard
+type ActivateWizardFixer struct {
+	Launch func() error
+}
+
+func (f ActivateWizardFixer) Fix() (string, error) {
+	launcher := f.Launch
 	if launcher == nil {
 		launcher = defaultLaunchActivateWizard
 	}
@@ -20,7 +24,7 @@ func (d *Doctor) activateWizardFix() (string, error) {
 	return "ran `bitrise-build-cache activate --interactive`", nil
 }
 
-//nolint:contextcheck // Check.Fix is ctx-less by design; Background is correct here.
+//nolint:contextcheck // Fixer.Fix is ctx-less by design; Background is correct here.
 func defaultLaunchActivateWizard() error {
 	exe, err := os.Executable()
 	if err != nil {

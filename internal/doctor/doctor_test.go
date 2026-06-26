@@ -185,10 +185,10 @@ func TestAuthCheck_fixInvokesWizardLauncher(t *testing.T) {
 		return nil
 	}
 
-	check := r.authCheck()
-	require.NotNil(t, check.Fix)
+	res := r.authCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
 
-	detail, err := check.Fix()
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Contains(t, detail, "activate --interactive")
@@ -268,8 +268,11 @@ func TestXcelerateProxyCheck_fixRemovesStaleFile(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
 	require.NoError(t, os.WriteFile(pidPath, []byte("99999999"), 0o600))
 
-	r := &Doctor{}
-	detail, err := r.xcelerateProxyCheck().Fix()
+	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.Contains(t, detail, "removed")
 
@@ -326,7 +329,9 @@ func TestLogDirsCheck_FixCreatesMissing(t *testing.T) {
 	t.Setenv("HOME", tmp)
 
 	r := &Doctor{StateDirCandidates: []string{filepath.Join(tmp, "new-a")}}
-	_, err := r.logDirsCheck().Fix()
+	res := r.logDirsCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+	_, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	_, statErr := os.Stat(filepath.Join(tmp, "new-a"))
 	assert.NoError(t, statErr)
@@ -591,24 +596,22 @@ func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
 
 func TestActivateWizardFix_invokesInjectedLauncher(t *testing.T) {
 	called := false
-	r := &Doctor{LaunchActivateWizard: func() error {
+	f := ActivateWizardFixer{Launch: func() error {
 		called = true
 
 		return nil
 	}}
 
-	detail, err := r.activateWizardFix()
+	detail, err := f.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Contains(t, detail, "activate --interactive")
 }
 
 func TestActivateWizardFix_propagatesLauncherError(t *testing.T) {
-	r := &Doctor{LaunchActivateWizard: func() error {
-		return errors.New("user aborted")
-	}}
+	f := ActivateWizardFixer{Launch: func() error { return errors.New("user aborted") }}
 
-	_, err := r.activateWizardFix()
+	_, err := f.Fix()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user aborted")
 }
@@ -634,7 +637,9 @@ func TestXcelerateProxyCheck_fixWithoutPidRunsDaemonUp(t *testing.T) {
 		},
 	}
 
-	detail, err := r.xcelerateProxyCheck().Fix()
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Contains(t, detail, "xcelerate-proxy")
@@ -662,7 +667,9 @@ func TestCcacheHelperCheck_fixWithoutSocketRunsDaemonUp(t *testing.T) {
 		},
 	}
 
-	detail, err := r.ccacheHelperCheck().Fix()
+	res := r.ccacheHelperCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Contains(t, detail, "ccache-helper")
@@ -701,7 +708,9 @@ func TestCLIVersionCheck_fixRunsUpdate(t *testing.T) {
 		},
 	}
 
-	detail, err := r.cliVersionCheck().Fix()
+	res := r.cliVersionCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"update"}, got)
 	assert.Contains(t, detail, "update")
@@ -740,16 +749,18 @@ func TestXcelerateProxyCheck_socketDeadFixCallsRestart(t *testing.T) {
 		},
 	}
 
-	detail, err := r.xcelerateProxyCheck().Fix()
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Contains(t, detail, "xcelerate-proxy")
 }
 
 func TestDaemonUpFix_propagatesError(t *testing.T) {
-	r := &Doctor{DaemonUp: func(context.Context) ([]string, error) { return nil, errors.New("exit status 1") }}
+	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) { return nil, errors.New("exit status 1") }}
 
-	_, err := r.daemonUpFix()
+	_, err := f.Fix()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exit status 1")
 }

@@ -95,7 +95,12 @@ func resultFromLogDirsSummary(s logDirsSummary) Result {
 		return Result{State: StateError, Detail: "not writable: " + strings.Join(s.NotWritable, ", ")}
 	}
 	if len(s.Missing) > 0 {
-		return Result{State: StateWarn, Detail: "missing: " + strings.Join(s.Missing, ", ") + " — fixable", Fixable: true}
+		return Result{
+			State:   StateWarn,
+			Detail:  "missing: " + strings.Join(s.Missing, ", ") + " — fixable",
+			Fixable: true,
+			Fixer:   LogDirsFixer{Candidates: s.Missing},
+		}
 	}
 
 	return Result{State: StateOK, Detail: "all log dirs present + writable"}
@@ -107,6 +112,5 @@ func (d *Doctor) logDirsCheck() Check {
 		Diagnose: func(_ context.Context) Result {
 			return resultFromLogDirsSummary(collectLogDirState(d.StateDirCandidates))
 		},
-		Fix: d.logDirsFix,
 	}
 }
