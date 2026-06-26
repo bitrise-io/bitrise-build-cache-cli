@@ -27,7 +27,7 @@ brew install bitrise-io/bitrise-build-cache/bitrise-build-cache
 curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b ~/.local/bin
 ```
 
-Authentication is via two env vars (PAT + workspace ID) — see the [post-install section](docs/install.md#post-install) for how to obtain them and where to set them.
+Authentication is via two env vars (PAT + workspace ID) — see the [post-install section](docs/install.md#post-install) for how to obtain them and where to set them. For local development you can instead run `bitrise-build-cache auth login` once: it signs you in through the browser, lets you pick a workspace, and stores an auto-refreshing token subsequent commands use automatically (`bitrise-build-cache auth logout` clears it). A manually-set `BITRISE_BUILD_CACHE_AUTH_TOKEN`, and the auto-provided token on Bitrise CI, both still take precedence.
 
 > The CLI configures the environment it's running in. If you're running commands in Docker containers, run the CLI inside the same container as Gradle/Bazel/Xcode/ccache.
 

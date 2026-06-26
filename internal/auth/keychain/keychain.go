@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	keyring "github.com/zalando/go-keyring"
 )
@@ -15,9 +16,24 @@ const (
 
 var ErrNotFound = errors.New("no Bitrise Build Cache credentials in keychain")
 
+// Credentials is the single keychain item. AuthToken + WorkspaceID are always
+// present (a manual `auth set` writes only those). The remaining fields are set
+// only for an OAuth login (`bitrise-build-cache auth login`), where AuthToken is the
+// minted PAT and the refresh token + expiries drive transparent refresh.
 type Credentials struct {
-	AuthToken   string `json:"auth_token"`
-	WorkspaceID string `json:"workspace_id"`
+	AuthToken          string    `json:"auth_token"`
+	WorkspaceID        string    `json:"workspace_id"`
+	PATExpiry          time.Time `json:"pat_expiry,omitempty"`
+	JWT                string    `json:"jwt,omitempty"`
+	JWTExpiry          time.Time `json:"jwt_expiry,omitempty"`
+	RefreshToken       string    `json:"refresh_token,omitempty"`
+	RefreshTokenExpiry time.Time `json:"refresh_token_expiry,omitempty"`
+}
+
+// IsOAuthManaged reports whether the credential came from an OAuth login (it
+// carries a refresh token), as opposed to a manual `auth set`.
+func (c Credentials) IsOAuthManaged() bool {
+	return c.RefreshToken != ""
 }
 
 type Backend interface {
