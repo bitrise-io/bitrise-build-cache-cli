@@ -51,21 +51,7 @@ func (d *Doctor) ccacheHelperCheck() Check {
 
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
 		},
-		Fix: func() (string, error) {
-			if _, err := os.Stat(socketPath); err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					return d.daemonUpFix()
-				}
-
-				return "", fmt.Errorf("stat %s: %w", socketPath, err)
-			}
-
-			if err := os.Remove(socketPath); err != nil {
-				return "", fmt.Errorf("remove %s: %w", socketPath, err)
-			}
-
-			return "removed orphan socket " + socketPath, nil
-		},
+		Fix: d.ccacheHelperFix(socketPath),
 	}
 }
 

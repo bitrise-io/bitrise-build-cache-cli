@@ -107,21 +107,6 @@ func (d *Doctor) logDirsCheck() Check {
 		Diagnose: func(_ context.Context) Result {
 			return resultFromLogDirsSummary(collectLogDirState(d.StateDirCandidates))
 		},
-		Fix: func() (string, error) {
-			created := []string{}
-			for _, path := range d.StateDirCandidates {
-				if _, err := os.Stat(path); err == nil {
-					continue
-				}
-
-				if err := os.MkdirAll(path, 0o755); err != nil { //nolint:gosec
-					return "", fmt.Errorf("mkdir %s: %w", path, err)
-				}
-
-				created = append(created, path)
-			}
-
-			return "created: " + strings.Join(created, ", "), nil
-		},
+		Fix: d.logDirsFix,
 	}
 }
