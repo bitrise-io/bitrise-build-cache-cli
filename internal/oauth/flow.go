@@ -145,14 +145,14 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 		return Credentials{}, ErrLoginRequired
 	}
 	c.debugf("Refreshing the OAuth session")
-	now := time.Now() // before the exchange, so the JWT expiry isn't pushed out by the round-trip
+	now = time.Now() // re-anchor to just before the refresh exchange
 	refreshed, err := c.refreshJWT(ctx, creds.RefreshToken)
 	if err != nil {
 		return Credentials{}, fmt.Errorf("%w (refresh failed: %w)", ErrLoginRequired, err)
 	}
 	creds.JWT = refreshed.AccessToken
 	creds.JWTExpiry = jwtExpiry(refreshed, now)
-	if refreshed.RefreshToken != "" {                  // WorkOS may rotate the refresh token
+	if refreshed.RefreshToken != "" { // WorkOS may rotate the refresh token
 		creds.RefreshToken = refreshed.RefreshToken
 	}
 
