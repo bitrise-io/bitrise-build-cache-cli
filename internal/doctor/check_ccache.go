@@ -26,7 +26,11 @@ func (d *Doctor) ccacheHelperCheck() Check {
 
 			if _, err := os.Stat(socketPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
-					return Result{State: StateWarn, Detail: "not running (no socket file). Run `bitrise-build-cache ccache start-storage-helper` if you build C/C++."}
+					return Result{
+						State:   StateWarn,
+						Detail:  "not running (no socket file). Run `bitrise-build-cache daemon up` (or `ccache start-storage-helper` if no daemon is installed).",
+						Fixable: true,
+					}
 				}
 
 				return Result{State: StateError, Detail: "stat ccache socket: " + err.Error()}
@@ -48,11 +52,15 @@ func (d *Doctor) ccacheHelperCheck() Check {
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
 		},
 		Fix: func() (string, error) {
-			if err := os.Remove(socketPath); err != nil {
+			if _, err := os.Stat(socketPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
-					return "already gone: " + socketPath, nil
+					return d.daemonUpFix()
 				}
 
+				return "", fmt.Errorf("stat %s: %w", socketPath, err)
+			}
+
+			if err := os.Remove(socketPath); err != nil {
 				return "", fmt.Errorf("remove %s: %w", socketPath, err)
 			}
 
