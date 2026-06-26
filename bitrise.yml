@@ -1324,25 +1324,21 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            SID=$(bitrise-cli rde session create "$SESSION_NAME" \
-              --stack "$RDE_STACK" --machine-type "$RDE_MACHINE_TYPE" \
-              --wait --output json | jq -r .id)
-            [[ -n "$SID" ]] || { echo "FAIL: session create returned no id"; exit 1; }
-            envman add --key RDE_SESSION_ID --value "$SID"
-            echo "RDE session: $SID"
+            bitrise-cli rde session create "$SESSION_NAME" \
+              --stack "$RDE_STACK" --machine-type "$RDE_MACHINE_TYPE" --wait
     - script:
         title: upload patched CLI
         inputs:
         - content: |-
             set -exo pipefail
-            bitrise-cli rde session upload "$RDE_SESSION_ID" \
+            bitrise-cli rde session upload "$SESSION_NAME" \
               ./bitrise-build-cache-cli /Users/vagrant/.local/bin
     - script:
         title: daemon lifecycle + keepalive asserts
         inputs:
         - content: |-
             set -exo pipefail
-            bitrise-cli rde session exec "$RDE_SESSION_ID" -- bash -c '
+            bitrise-cli rde session exec "$SESSION_NAME" -- bash -c '
               set -exo pipefail
               CLI=/Users/vagrant/.local/bin/bitrise-build-cache-cli
               "$CLI" auth set --workspace-id "'"$BITRISE_WORKSPACE_ID"'" --token "'"$BITRISE_TOKEN"'"
@@ -1366,12 +1362,11 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            [[ -n "$RDE_SESSION_ID" ]] || exit 0
             mkdir -p "$BITRISE_DEPLOY_DIR/rde-logs"
-            bitrise-cli rde session download "$RDE_SESSION_ID" \
+            bitrise-cli rde session download "$SESSION_NAME" \
               /Users/vagrant/.local/state/bitrise-build-cache/logs \
               "$BITRISE_DEPLOY_DIR/rde-logs" || true
-            bitrise-cli rde session terminate "$RDE_SESSION_ID" || true
+            bitrise-cli rde session terminate "$SESSION_NAME" || true
     - deploy-to-bitrise-io: {}
 
   e2e-mavencentral-mirror-duckduck:
