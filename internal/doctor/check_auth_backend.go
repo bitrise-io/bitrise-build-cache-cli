@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -76,42 +74,6 @@ func backendErrorFixable(err error) bool {
 	}
 
 	return false
-}
-
-func (d *Doctor) activateWizardFix() (string, error) {
-	launcher := d.LaunchActivateWizard
-	if launcher == nil {
-		launcher = defaultLaunchActivateWizard
-	}
-
-	if err := launcher(); err != nil {
-		return "", fmt.Errorf("launch activate --interactive: %w", err)
-	}
-
-	return "ran `bitrise-build-cache activate --interactive`", nil
-}
-
-// defaultLaunchActivateWizard re-execs the running CLI binary as a child process.
-// The wizard takes over stdin/stdout/stderr and runs to completion before returning.
-// context.Background is correct here: the wizard's lifetime is the user's interactive
-// session, not the parent's check timeout. Signals (SIGINT) reach the child via the
-// shared controlling terminal's process group.
-func defaultLaunchActivateWizard() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("locate cli executable: %w", err)
-	}
-
-	cmd := exec.CommandContext(context.Background(), exe, "activate", "--interactive")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("activate --interactive: %w", err)
-	}
-
-	return nil
 }
 
 func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error) {
