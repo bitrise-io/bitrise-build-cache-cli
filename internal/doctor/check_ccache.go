@@ -30,7 +30,7 @@ func (d *Doctor) ccacheHelperCheck() Check {
 						State:   StateWarn,
 						Detail:  "not running (no socket file). Run `bitrise-build-cache daemon up` (or `ccache start-storage-helper` if no daemon is installed).",
 						Fixable: true,
-						Fixer:   DaemonUpFixer{Up: d.DaemonUp},
+						Fixer:   DaemonUpFixer{},
 					}
 				}
 

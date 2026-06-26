@@ -84,10 +84,6 @@ type Doctor struct {
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 	ActivatedTools     func() map[toolconfig.Tool]bool
 	BackendProbe       BackendProbeFunc
-	AuthPrompt         func() (workspaceID, authToken string, err error)
-	Update             func(ctx context.Context) error
-	DaemonUp           func(ctx context.Context) ([]string, error)
-	DaemonRestart      func(ctx context.Context) ([]string, error)
 }
 
 func NewDoctor() *Doctor {

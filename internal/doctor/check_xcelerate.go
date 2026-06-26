@@ -36,7 +36,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 						State:   StateWarn,
 						Detail:  "not running (no pid file). Run `bitrise-build-cache daemon up` (or `xcelerate start-proxy` if no daemon is installed).",
 						Fixable: true,
-						Fixer:   DaemonUpFixer{Up: d.DaemonUp},
+						Fixer:   DaemonUpFixer{},
 					}
 				}
 
@@ -71,7 +71,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 					State:   StateWarn,
 					Detail:  fmt.Sprintf("pid %d alive but socket %s not accepting connections (%v) — fixable", pid, socketPath, dialErr),
 					Fixable: true,
-					Fixer:   DaemonRestartFixer{Restart: d.DaemonRestart},
+					Fixer:   DaemonRestartFixer{},
 				}
 			}
 			_ = conn.Close()

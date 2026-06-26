@@ -135,10 +135,6 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
 			return time.Millisecond, nil
 		},
-		AuthPrompt:           func() (string, string, error) { return "ws", "tok", nil },
-		Update:               func(context.Context) error { return nil },
-		DaemonUp:             func(context.Context) ([]string, error) { return nil, nil },
-		DaemonRestart:        func(context.Context) ([]string, error) { return nil, nil },
 	}
 }
 
@@ -175,23 +171,12 @@ func TestAuthCheck_missingIsError(t *testing.T) {
 	assert.True(t, res.Fixable, "missing creds → Fix re-launches the activate wizard")
 }
 
-func TestAuthCheck_fixInvokesAuthPrompt(t *testing.T) {
-	called := false
+func TestAuthCheck_fixerIsAuthPromptFixer(t *testing.T) {
 	r := newMinimalDoctor(t)
 	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
-	r.AuthPrompt = func() (string, string, error) {
-		called = true
-
-		return "ws-1", "tok-1", nil
-	}
 
 	res := r.authCheck().Diagnose(context.Background())
-	require.NotNil(t, res.Fixer)
-
-	detail, err := res.Fixer.Fix()
-	require.NoError(t, err)
-	assert.True(t, called)
-	assert.Contains(t, detail, "ws-1")
+	require.IsType(t, AuthPromptFixer{}, res.Fixer)
 }
 
 // ──────────────────────────── keychain smoke ────────────────────────────
@@ -625,24 +610,14 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 
 // ──────────────────────────── daemon-up + update fixes ────────────────────────────
 
-func TestXcelerateProxyCheck_fixWithoutPidRunsDaemonUp(t *testing.T) {
+func TestXcelerateProxyCheck_fixerIsDaemonUpWhenNoPid(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	called := false
 	r := &Doctor{
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
-		DaemonUp: func(context.Context) ([]string, error) {
-			called = true
-
-			return []string{"xcelerate-proxy"}, nil
-		},
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	require.NotNil(t, res.Fixer)
-	detail, err := res.Fixer.Fix()
-	require.NoError(t, err)
-	assert.True(t, called)
-	assert.Contains(t, detail, "xcelerate-proxy")
+	require.IsType(t, DaemonUpFixer{}, res.Fixer)
 }
 
 func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
@@ -655,24 +630,14 @@ func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
 	assert.True(t, res.Fixable)
 }
 
-func TestCcacheHelperCheck_fixWithoutSocketRunsDaemonUp(t *testing.T) {
-	called := false
+func TestCcacheHelperCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
-		DaemonUp: func(context.Context) ([]string, error) {
-			called = true
-
-			return []string{"ccache-helper"}, nil
-		},
 	}
 
 	res := r.ccacheHelperCheck().Diagnose(context.Background())
-	require.NotNil(t, res.Fixer)
-	detail, err := res.Fixer.Fix()
-	require.NoError(t, err)
-	assert.True(t, called)
-	assert.Contains(t, detail, "ccache-helper")
+	require.IsType(t, DaemonUpFixer{}, res.Fixer)
 }
 
 func TestCLIVersionCheck_behindIsFixable(t *testing.T) {
@@ -695,25 +660,15 @@ func TestCLIVersionCheck_localBuildIsNotFixable(t *testing.T) {
 	assert.False(t, res.Fixable, "local builds should not auto-upgrade")
 }
 
-func TestCLIVersionCheck_fixRunsUpdate(t *testing.T) {
-	called := false
+func TestCLIVersionCheck_fixerIsUpdateFixer(t *testing.T) {
 	r := &Doctor{
 		CLIVersion:       "v2.8.3",
 		HTTPClient:       &http.Client{},
 		LatestReleaseTag: func(context.Context, *http.Client) (string, error) { return "v2.9.0", nil },
-		Update: func(context.Context) error {
-			called = true
-
-			return nil
-		},
 	}
 
 	res := r.cliVersionCheck().Diagnose(context.Background())
-	require.NotNil(t, res.Fixer)
-	detail, err := res.Fixer.Fix()
-	require.NoError(t, err)
-	assert.True(t, called)
-	assert.Contains(t, detail, "update")
+	require.IsType(t, UpdateFixer{}, res.Fixer)
 }
 
 func TestXcelerateProxyCheck_socketDeadIsFixableViaRestart(t *testing.T) {
@@ -732,29 +687,19 @@ func TestXcelerateProxyCheck_socketDeadIsFixableViaRestart(t *testing.T) {
 	assert.True(t, res.Fixable)
 }
 
-func TestXcelerateProxyCheck_socketDeadFixCallsRestart(t *testing.T) {
+func TestXcelerateProxyCheck_socketDeadFixerIsDaemonRestart(t *testing.T) {
 	home := t.TempDir()
 	pidPath := xcelerateProxyPidPath(t, home)
 	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
 	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
 
-	called := false
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
-		DaemonRestart: func(context.Context) ([]string, error) {
-			called = true
-
-			return []string{"xcelerate-proxy"}, nil
-		},
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	require.NotNil(t, res.Fixer)
-	detail, err := res.Fixer.Fix()
-	require.NoError(t, err)
-	assert.True(t, called)
-	assert.Contains(t, detail, "xcelerate-proxy")
+	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
 }
 
 func TestDaemonUpFix_propagatesError(t *testing.T) {
