@@ -116,7 +116,12 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, overall doctorpkg.S
 	fmt.Fprintf(w, "CLI version: %s\n\n", r.Version)
 
 	for _, it := range r.Items {
-		fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(it.Result.State), it.Name, it.Result.Detail)
+		state := it.Result.State
+		if it.FixResult != nil {
+			state = doctorpkg.StateOK
+		}
+
+		fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(state), it.Name, it.Result.Detail)
 
 		switch {
 		case it.FixResult != nil:
