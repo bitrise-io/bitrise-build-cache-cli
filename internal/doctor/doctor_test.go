@@ -475,7 +475,6 @@ func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
 	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "auth-failed")
-	assert.Contains(t, res.Detail, "activate --interactive")
 }
 
 func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
@@ -494,7 +493,6 @@ func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
 	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "workspace-misconfig")
-	assert.Contains(t, res.Detail, "activate --interactive")
 }
 
 func TestAuthBackendCheck_unavailableIsWarn(t *testing.T) {
@@ -535,7 +533,6 @@ func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Contains(t, got, "auth-failed")
 	assert.Contains(t, got, "source=keychain")
 	assert.Contains(t, got, "ws-1")
-	assert.Contains(t, got, "activate --interactive")
 }
 
 func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {

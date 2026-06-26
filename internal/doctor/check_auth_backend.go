@@ -20,7 +20,6 @@ import (
 const (
 	backendProbeTimeout  = 5 * time.Second
 	backendProbeKeyBytes = 4 // 4 bytes → 8 hex chars in the sentinel key
-	backendProbeHint     = " — re-run `bitrise-build-cache activate --interactive` to refresh credentials"
 )
 
 // BackendProbeFunc returns latency (always populated, even on error so callers can surface "took N ms then failed").
@@ -157,15 +156,15 @@ func backendErrorDetail(err error, cfg common.CacheAuthConfig, source common.Aut
 	// The kv client converts gRPC Unauthenticated into a plain sentinel error
 	// before returning, so status.FromError can't see it. Check the sentinel first.
 	if errors.Is(err, kv.ErrCacheUnauthenticated) {
-		return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)" + backendProbeHint
+		return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)"
 	}
 
 	if s, ok := status.FromError(err); ok {
 		switch s.Code() { //nolint:exhaustive // only auth + transport-class codes have specific handling; all others fall through.
 		case codes.Unauthenticated:
-			return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)" + backendProbeHint
+			return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)"
 		case codes.PermissionDenied:
-			return prefix + "workspace-misconfig: token accepted but no access to this workspace" + backendProbeHint
+			return prefix + "workspace-misconfig: token accepted but no access to this workspace"
 		case codes.Unavailable, codes.DeadlineExceeded:
 			return prefix + "network: " + s.Message()
 		}

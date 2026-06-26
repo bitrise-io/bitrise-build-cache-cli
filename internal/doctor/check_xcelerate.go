@@ -34,7 +34,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 				if errors.Is(err, fs.ErrNotExist) {
 					return Result{
 						State:   StateWarn,
-						Detail:  "not running (no pid file). Run `bitrise-build-cache daemon up` (or `xcelerate start-proxy` if no daemon is installed).",
+						Detail:  "not running (no pid file)",
 						Fixable: true,
 						Fixer:   DaemonUpFixer{},
 					}
