@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
 )
 
 func defaultRunSelf(args ...string) error {
@@ -34,12 +37,47 @@ func (d *Doctor) runSelf(args ...string) error {
 	return runner(args...)
 }
 
+//nolint:contextcheck // Check.Fix is ctx-less by design; Background is correct here.
 func (d *Doctor) daemonUpFix() (string, error) {
-	if err := d.runSelf("daemon", "up"); err != nil {
-		return "", err
+	up := d.DaemonUp
+	if up == nil {
+		up = defaultDaemonUp
 	}
 
-	return "ran `bitrise-build-cache daemon up`", nil
+	started, err := up(context.Background())
+	if err != nil {
+		return "", fmt.Errorf("daemon up: %w", err)
+	}
+
+	if len(started) == 0 {
+		return "daemon up: no services to start", nil
+	}
+
+	return "started: " + strings.Join(started, ", "), nil
+}
+
+func defaultDaemonUp(ctx context.Context) ([]string, error) {
+	backend, err := daemonpkg.DefaultBackend()
+	if err != nil {
+		return nil, err //nolint:wrapcheck // sentinel error from internal/daemon
+	}
+
+	paths, err := daemonpkg.NewPaths()
+	if err != nil {
+		return nil, err //nolint:wrapcheck // already context-rich
+	}
+
+	result, err := daemonpkg.Up(ctx, backend, paths, daemonpkg.DefaultServices())
+	if err != nil {
+		return nil, err //nolint:wrapcheck // already context-rich
+	}
+
+	started := make([]string, 0, len(result.Statuses))
+	for _, st := range result.Statuses {
+		started = append(started, st.Service.Name)
+	}
+
+	return started, nil
 }
 
 func (d *Doctor) updateFix() (string, error) {

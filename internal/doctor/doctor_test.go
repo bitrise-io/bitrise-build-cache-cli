@@ -137,6 +137,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		},
 		LaunchActivateWizard: func() error { return nil },
 		RunSelf:              func(...string) error { return nil },
+		DaemonUp:             func(context.Context) ([]string, error) { return nil, nil },
 	}
 }
 
@@ -622,20 +623,20 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 
 func TestXcelerateProxyCheck_fixWithoutPidRunsDaemonUp(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	var got []string
+	called := false
 	r := &Doctor{
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
-		RunSelf: func(args ...string) error {
-			got = args
+		DaemonUp: func(context.Context) ([]string, error) {
+			called = true
 
-			return nil
+			return []string{"xcelerate-proxy"}, nil
 		},
 	}
 
 	detail, err := r.xcelerateProxyCheck().Fix()
 	require.NoError(t, err)
-	assert.Equal(t, []string{"daemon", "up"}, got)
-	assert.Contains(t, detail, "daemon up")
+	assert.True(t, called)
+	assert.Contains(t, detail, "xcelerate-proxy")
 }
 
 func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
@@ -649,21 +650,21 @@ func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
 }
 
 func TestCcacheHelperCheck_fixWithoutSocketRunsDaemonUp(t *testing.T) {
-	var got []string
+	called := false
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
-		RunSelf: func(args ...string) error {
-			got = args
+		DaemonUp: func(context.Context) ([]string, error) {
+			called = true
 
-			return nil
+			return []string{"ccache-helper"}, nil
 		},
 	}
 
 	detail, err := r.ccacheHelperCheck().Fix()
 	require.NoError(t, err)
-	assert.Equal(t, []string{"daemon", "up"}, got)
-	assert.Contains(t, detail, "daemon up")
+	assert.True(t, called)
+	assert.Contains(t, detail, "ccache-helper")
 }
 
 func TestCLIVersionCheck_behindIsFixable(t *testing.T) {
@@ -705,8 +706,8 @@ func TestCLIVersionCheck_fixRunsUpdate(t *testing.T) {
 	assert.Contains(t, detail, "update")
 }
 
-func TestRunSelf_propagatesError(t *testing.T) {
-	r := &Doctor{RunSelf: func(...string) error { return errors.New("exit status 1") }}
+func TestDaemonUpFix_propagatesError(t *testing.T) {
+	r := &Doctor{DaemonUp: func(context.Context) ([]string, error) { return nil, errors.New("exit status 1") }}
 
 	_, err := r.daemonUpFix()
 	require.Error(t, err)

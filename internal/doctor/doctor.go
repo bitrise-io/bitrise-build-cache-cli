@@ -82,6 +82,7 @@ type Doctor struct {
 	BackendProbe         BackendProbeFunc
 	LaunchActivateWizard func() error
 	RunSelf              func(args ...string) error
+	DaemonUp             func(ctx context.Context) ([]string, error)
 }
 
 func NewDoctor() *Doctor {
