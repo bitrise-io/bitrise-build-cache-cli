@@ -87,6 +87,9 @@ func TestActivate(t *testing.T) {
 				`allprojects {`,
 				`finalizedBy(auditTaskCentral)`,
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli=v0.0.0-test robolectric=$roboVer name=`,
+				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli=v0.0.0-test components $components")`,
+				`displayMetrics=present(${e.getSize()}) entries=${zf.size()}`,
+				`java.util.zip.ZipFile(jar).use`,
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli=v0.0.0-test `,
 			},
 			expectNotContain: []string{
