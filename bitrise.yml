@@ -1295,13 +1295,13 @@ workflows:
 
       Requires Bitrise app secrets:
         - RDE_BITRISE_PAT: PAT for codespaces-api.services.bitrise.io
-        - RDE_WORKSPACE_ID: workspace slug to host the RDE session
+        - WORKSPACE_SLUG: workspace slug to host the RDE session
     envs:
     - SESSION_NAME: bbc-keepalive-${BITRISE_BUILD_NUMBER}
     - RDE_STACK: osx-xcode-26.0.x-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
     - BITRISE_TOKEN: $RDE_BITRISE_PAT
-    - BITRISE_WORKSPACE_ID: $RDE_WORKSPACE_ID
+    - BITRISE_WORKSPACE_ID: $WORKSPACE_SLUG
     steps:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
