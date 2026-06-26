@@ -44,20 +44,42 @@ var doctorCmd = &cobra.Command{
 			SkipBackendProbe: skipBackendProbeFlag,
 		})
 
+		overall := effectiveOverall(report)
+
 		if jsonOutput {
 			if err := writeJSON(out, report); err != nil {
 				return err
 			}
 		} else {
-			writeHuman(out, report, fixFlag, colorEnabled(out))
+			writeHuman(out, report, fixFlag, overall, colorEnabled(out))
 		}
 
-		if report.Overall() == doctorpkg.StateError {
+		if overall == doctorpkg.StateError {
 			return errors.New("doctor reported errors")
 		}
 
 		return nil
 	},
+}
+
+func effectiveOverall(r doctorpkg.Report) doctorpkg.State {
+	worst := doctorpkg.StateOK
+	for _, it := range r.Items {
+		s := it.Result.State
+		if it.FixResult != nil {
+			s = doctorpkg.StateOK
+		}
+
+		switch s {
+		case doctorpkg.StateError:
+			return doctorpkg.StateError
+		case doctorpkg.StateWarn:
+			worst = doctorpkg.StateWarn
+		case doctorpkg.StateOK:
+		}
+	}
+
+	return worst
 }
 
 // colorEnabled honours NO_COLOR (https://no-color.org) and falls back to TTY detection.
@@ -83,7 +105,7 @@ func writeJSON(w io.Writer, r doctorpkg.Report) error {
 	return nil
 }
 
-func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, colored bool) {
+func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, overall doctorpkg.State, colored bool) {
 	c := palette(colored)
 
 	if fixed {
@@ -107,7 +129,7 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, colored bool) {
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Overall: %s%s%s\n", c.forState(r.Overall()), r.Overall(), c.reset)
+	fmt.Fprintf(w, "Overall: %s%s%s\n", c.forState(overall), overall, c.reset)
 }
 
 type colorPalette struct {
