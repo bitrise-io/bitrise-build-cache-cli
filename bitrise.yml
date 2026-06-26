@@ -1303,7 +1303,15 @@ workflows:
     - BITRISE_TOKEN: $RDE_BITRISE_PAT
     - BITRISE_WORKSPACE_ID: $RDE_WORKSPACE_ID
     steps:
-    - bundle::feature-e2e-setup: {}
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone: {}
+    - script:
+        title: build CLI
+        inputs:
+        - content: |-
+            set -exo pipefail
+            go build -o bitrise-build-cache-cli
     - script:
         title: install bitrise-cli
         inputs:
@@ -1329,7 +1337,7 @@ workflows:
         - content: |-
             set -exo pipefail
             bitrise-cli rde session upload "$RDE_SESSION_ID" \
-              ../bitrise-build-cache-cli /Users/vagrant/.local/bin
+              ./bitrise-build-cache-cli /Users/vagrant/.local/bin
     - script:
         title: daemon lifecycle + keepalive asserts
         inputs:
