@@ -55,9 +55,19 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
 		"register-invocation", "register-child-invocation":
 		return true
+	case "token":
+		return true
 	default:
 		return false
 	}
+}
+
+// newVersionCheckLogger pins the version-check output to stderr; go-utils default is stdout.
+func newVersionCheckLogger() log.Logger {
+	return log.NewLogger(
+		log.WithDebugLog(IsDebugLogMode),
+		log.WithOutput(os.Stderr),
+	)
 }
 
 func RunVersionCheck(cmd *cobra.Command) {
@@ -69,7 +79,7 @@ func RunVersionCheck(cmd *cobra.Command) {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
 	defer cancel()
 
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+	logger := newVersionCheckLogger()
 
 	res, _ := versioncheck.RunOnce(ctx, versioncheck.Options{
 		CurrentVersion: configcommon.GetCLIVersion(logger),

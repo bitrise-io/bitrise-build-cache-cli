@@ -499,7 +499,7 @@ var authTokenCmd = &cobra.Command{
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
 
-		if _, err := fmt.Fprintln(cmd.OutOrStdout(), cfg.AuthToken); err != nil {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), cfg.TokenInGradleFormat()); err != nil {
 			return fmt.Errorf("write auth token: %w", err)
 		}
 

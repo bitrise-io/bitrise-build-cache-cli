@@ -18,6 +18,21 @@ import (
 // 4096 < typical kernel pipe buffer (16-64KB); the Gradle init script reads stdout then stderr sequentially, a larger stderr could deadlock.
 const pipeBufferSafeBound = 4096
 
+func TestAuthTokenCmd_stdoutIsGradleFormat(t *testing.T) {
+	cmd := authTokenCmd
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "raw-token")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-123")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	assert.Equal(t, "ws-123:raw-token\n", stdout.String())
+}
+
 func TestAuthTokenCmd_stderrIsBoundedOnError(t *testing.T) {
 	cmd := authTokenCmd
 
