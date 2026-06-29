@@ -3,13 +3,11 @@ package update
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/updater"
 )
 
@@ -35,39 +33,11 @@ After a successful manual upgrade, prints a hint to restart the daemon (` + "`bi
 			return fmt.Errorf("resolve running executable path: %w", err)
 		}
 
-		method := updater.DetectInstallMethod(exe)
-		logger.Infof("Detected install method: %s (binary at %s)", method, exe)
-
-		switch method {
-		case updater.InstallBrew:
-			updater.PrintBrewUpgrade(logger)
-		case updater.InstallManual:
-			if _, err := updater.ManualUpgrade(cmd.Context(), updater.ManualOptions{
-				Bindir: filepath.Dir(exe),
-				Logger: logger,
-				DryRun: dryRunFlag,
-			}); err != nil {
-				return fmt.Errorf("manual upgrade: %w", err)
-			}
-
-			if dryRunFlag {
-				break
-			}
-
-			if home, homeErr := os.UserHomeDir(); homeErr == nil && updater.DaemonInstalled(home) {
-				logger.Infof("Restarting daemon to pick up the new binary")
-				if _, stderr, runErr := (exec.ExecRunner{}).RunCheck(cmd.Context(), exe, "daemon", "restart"); runErr != nil {
-					logger.Warnf("Daemon restart failed: %v — run `bitrise-build-cache daemon restart` manually. %s", runErr, stderr)
-				} else {
-					logger.Donef("Daemon restarted")
-				}
-			}
-		case updater.InstallUnknown:
-			logger.Warnf("Could not classify the install method. Reinstall manually:")
-			logger.Warnf("  curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b <your-bindir>")
-		}
-
-		return nil
+		return updater.Update(cmd.Context(), updater.Options{
+			Executable: exe,
+			Logger:     logger,
+			DryRun:     dryRunFlag,
+		})
 	},
 }
 

@@ -131,7 +131,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		LatestReleaseTag:   func(context.Context, *http.Client) (string, error) { return "", nil },
 		LookPath:           func(string) (string, error) { return "/usr/local/bin/ccache", nil },
 		StateDirCandidates: []string{},
-		// Inert stub so Run tests don't reach the real BC backend.
+		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{} },
 		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
 			return time.Millisecond, nil
 		},
@@ -168,6 +168,15 @@ func TestAuthCheck_missingIsError(t *testing.T) {
 
 	res := r.authCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
+	assert.True(t, res.Fixable, "missing creds → Fix re-launches the activate wizard")
+}
+
+func TestAuthCheck_fixerIsAuthPromptFixer(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
+
+	res := r.authCheck().Diagnose(context.Background())
+	require.IsType(t, AuthPromptFixer{}, res.Fixer)
 }
 
 // ──────────────────────────── keychain smoke ────────────────────────────
@@ -208,13 +217,13 @@ func xcelerateProxyPidPath(t *testing.T, home string) string {
 	return filepath.Join(home, ".bitrise-xcelerate", "proxy.pid")
 }
 
-func TestXcelerateProxyCheck_noPidIsWarn(t *testing.T) {
+func TestXcelerateProxyCheck_noPidIsFixableViaDaemonUp(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
-	assert.False(t, res.Fixable)
+	assert.True(t, res.Fixable, "no pid file → Fix runs `daemon up` to start the service")
 }
 
 func TestXcelerateProxyCheck_skippedWhenNotActivated(t *testing.T) {
@@ -244,8 +253,11 @@ func TestXcelerateProxyCheck_fixRemovesStaleFile(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
 	require.NoError(t, os.WriteFile(pidPath, []byte("99999999"), 0o600))
 
-	r := &Doctor{}
-	detail, err := r.xcelerateProxyCheck().Fix()
+	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+
+	detail, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	assert.Contains(t, detail, "removed")
 
@@ -302,7 +314,9 @@ func TestLogDirsCheck_FixCreatesMissing(t *testing.T) {
 	t.Setenv("HOME", tmp)
 
 	r := &Doctor{StateDirCandidates: []string{filepath.Join(tmp, "new-a")}}
-	_, err := r.logDirsCheck().Fix()
+	res := r.logDirsCheck().Diagnose(context.Background())
+	require.NotNil(t, res.Fixer)
+	_, err := res.Fixer.Fix()
 	require.NoError(t, err)
 	_, statErr := os.Stat(filepath.Join(tmp, "new-a"))
 	assert.NoError(t, statErr)
@@ -461,7 +475,6 @@ func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
 	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "auth-failed")
-	assert.Contains(t, res.Detail, "activate --interactive")
 }
 
 func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
@@ -480,7 +493,6 @@ func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
 	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "workspace-misconfig")
-	assert.Contains(t, res.Detail, "activate --interactive")
 }
 
 func TestAuthBackendCheck_unavailableIsWarn(t *testing.T) {
@@ -521,7 +533,6 @@ func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Contains(t, got, "auth-failed")
 	assert.Contains(t, got, "source=keychain")
 	assert.Contains(t, got, "ws-1")
-	assert.Contains(t, got, "activate --interactive")
 }
 
 func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
@@ -565,26 +576,24 @@ func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
 	assert.False(t, res.Fixable, "transport blips must not trigger a wizard re-launch")
 }
 
-func TestActivateWizardFix_invokesInjectedLauncher(t *testing.T) {
+func TestAuthPromptFixer_invokesInjectedPrompt(t *testing.T) {
 	called := false
-	r := &Doctor{LaunchActivateWizard: func() error {
+	f := AuthPromptFixer{Prompt: func() (string, string, error) {
 		called = true
 
-		return nil
+		return "ws-x", "tok-x", nil
 	}}
 
-	detail, err := r.activateWizardFix()
+	detail, err := f.Fix()
 	require.NoError(t, err)
 	assert.True(t, called)
-	assert.Contains(t, detail, "activate --interactive")
+	assert.Contains(t, detail, "ws-x")
 }
 
-func TestActivateWizardFix_propagatesLauncherError(t *testing.T) {
-	r := &Doctor{LaunchActivateWizard: func() error {
-		return errors.New("user aborted")
-	}}
+func TestAuthPromptFixer_propagatesPromptError(t *testing.T) {
+	f := AuthPromptFixer{Prompt: func() (string, string, error) { return "", "", errors.New("user aborted") }}
 
-	_, err := r.activateWizardFix()
+	_, err := f.Fix()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user aborted")
 }
@@ -594,4 +603,223 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(k, "doctor-probe-"), "got %q", k)
 	assert.Len(t, k, len("doctor-probe-")+2*backendProbeKeyBytes, "8 hex chars expected for 4 random bytes")
+}
+
+// ──────────────────────────── daemon-up + update fixes ────────────────────────────
+
+func TestXcelerateProxyCheck_fixerIsDaemonUpWhenNoPid(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := &Doctor{
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	require.IsType(t, DaemonUpFixer{}, res.Fixer)
+}
+
+func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
+	}
+	res := r.ccacheHelperCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.True(t, res.Fixable)
+}
+
+func TestCcacheHelperCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
+	}
+
+	res := r.ccacheHelperCheck().Diagnose(context.Background())
+	require.IsType(t, DaemonUpFixer{}, res.Fixer)
+}
+
+func TestCLIVersionCheck_behindIsFixable(t *testing.T) {
+	r := &Doctor{
+		CLIVersion:       "v2.8.3",
+		HTTPClient:       &http.Client{},
+		LatestReleaseTag: func(context.Context, *http.Client) (string, error) { return "v2.9.0", nil },
+	}
+
+	res := r.cliVersionCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.True(t, res.Fixable)
+}
+
+func TestCLIVersionCheck_localBuildIsNotFixable(t *testing.T) {
+	r := &Doctor{CLIVersion: "devel"}
+
+	res := r.cliVersionCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.False(t, res.Fixable, "local builds should not auto-upgrade")
+}
+
+func TestCLIVersionCheck_fixerIsUpdateFixer(t *testing.T) {
+	r := &Doctor{
+		CLIVersion:       "v2.8.3",
+		HTTPClient:       &http.Client{},
+		LatestReleaseTag: func(context.Context, *http.Client) (string, error) { return "v2.9.0", nil },
+	}
+
+	res := r.cliVersionCheck().Diagnose(context.Background())
+	require.IsType(t, UpdateFixer{}, res.Fixer)
+}
+
+func TestXcelerateProxyCheck_socketDeadIsFixableViaRestart(t *testing.T) {
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
+	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
+
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.True(t, res.Fixable)
+}
+
+func TestXcelerateProxyCheck_socketDeadFixerIsDaemonRestart(t *testing.T) {
+	home := t.TempDir()
+	pidPath := xcelerateProxyPidPath(t, home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
+	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
+
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
+}
+
+func TestDaemonUpFix_propagatesError(t *testing.T) {
+	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) { return nil, errors.New("exit status 1") }}
+
+	_, err := f.Fix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exit status 1")
+}
+
+func TestDaemonUpFixer_listsStartedServices(t *testing.T) {
+	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) {
+		return []string{"xcelerate-proxy", "ccache-helper"}, nil
+	}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "xcelerate-proxy")
+	assert.Contains(t, detail, "ccache-helper")
+}
+
+func TestDaemonUpFixer_noServicesIsNoop(t *testing.T) {
+	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) { return nil, nil }}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "no services")
+}
+
+func TestDaemonRestartFixer_listsRestartedServices(t *testing.T) {
+	f := DaemonRestartFixer{Restart: func(context.Context) ([]string, error) {
+		return []string{"xcelerate-proxy"}, nil
+	}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "xcelerate-proxy")
+}
+
+func TestDaemonRestartFixer_propagatesError(t *testing.T) {
+	f := DaemonRestartFixer{Restart: func(context.Context) ([]string, error) {
+		return nil, errors.New("Down failed")
+	}}
+
+	_, err := f.Fix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Down failed")
+}
+
+func TestUpdateFixer_invokesInjectedUpdate(t *testing.T) {
+	called := false
+	f := UpdateFixer{Update: func(context.Context) error {
+		called = true
+
+		return nil
+	}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Contains(t, detail, "update")
+}
+
+func TestUpdateFixer_propagatesError(t *testing.T) {
+	f := UpdateFixer{Update: func(context.Context) error { return errors.New("brew lock") }}
+
+	_, err := f.Fix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "brew lock")
+}
+
+func TestLogDirsFixer_createsMissingDirs(t *testing.T) {
+	tmp := t.TempDir()
+	a := filepath.Join(tmp, "a")
+	b := filepath.Join(tmp, "b")
+
+	f := LogDirsFixer{Candidates: []string{a, b}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, a)
+	assert.Contains(t, detail, b)
+
+	for _, p := range []string{a, b} {
+		info, statErr := os.Stat(p)
+		require.NoError(t, statErr)
+		assert.True(t, info.IsDir())
+	}
+}
+
+func TestLogDirsFixer_skipsExisting(t *testing.T) {
+	tmp := t.TempDir()
+	existing := filepath.Join(tmp, "exists")
+	missing := filepath.Join(tmp, "missing")
+	require.NoError(t, os.MkdirAll(existing, 0o755))
+
+	f := LogDirsFixer{Candidates: []string{existing, missing}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.NotContains(t, detail, existing)
+	assert.Contains(t, detail, missing)
+}
+
+func TestRemoveFileFixer_removesAndLabels(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "stale.pid")
+	require.NoError(t, os.WriteFile(target, []byte("99999"), 0o600))
+
+	f := RemoveFileFixer{Path: target, Label: "stale pid file"}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "stale pid file")
+	assert.Contains(t, detail, target)
+
+	_, statErr := os.Stat(target)
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestRemoveFileFixer_missingFileIsError(t *testing.T) {
+	f := RemoveFileFixer{Path: filepath.Join(t.TempDir(), "nope"), Label: "missing"}
+
+	_, err := f.Fix()
+	require.Error(t, err)
 }

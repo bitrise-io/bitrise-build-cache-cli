@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -22,7 +20,6 @@ import (
 const (
 	backendProbeTimeout  = 5 * time.Second
 	backendProbeKeyBytes = 4 // 4 bytes → 8 hex chars in the sentinel key
-	backendProbeHint     = " — re-run `bitrise-build-cache activate --interactive` to refresh credentials"
 )
 
 // BackendProbeFunc returns latency (always populated, even on error so callers can surface "took N ms then failed").
@@ -47,11 +44,16 @@ func (d *Doctor) authBackendCheck() Check {
 
 			latency, err := probe(probeCtx, cfg, d.Envs)
 			if err != nil {
-				return Result{
+				res := Result{
 					State:   backendErrorState(err),
 					Detail:  backendErrorDetail(err, cfg, source, latency),
 					Fixable: backendErrorFixable(err),
 				}
+				if res.Fixable {
+					res.Fixer = AuthPromptFixer{}
+				}
+
+				return res
 			}
 
 			return Result{
@@ -59,13 +61,9 @@ func (d *Doctor) authBackendCheck() Check {
 				Detail: fmt.Sprintf("latency %dms, source=%s, workspace=%s", latency.Milliseconds(), sourceLabel(source), cfg.WorkspaceID),
 			}
 		},
-		Fix: d.activateWizardFix,
 	}
 }
 
-// backendErrorFixable returns true for errors a credential refresh can repair —
-// auth-failed (token rejected) and workspace-misconfig (no access). Transport
-// blips (Unavailable / DeadlineExceeded) are not fixable by re-running the wizard.
 func backendErrorFixable(err error) bool {
 	if errors.Is(err, kv.ErrCacheUnauthenticated) {
 		return true
@@ -79,42 +77,6 @@ func backendErrorFixable(err error) bool {
 	}
 
 	return false
-}
-
-func (d *Doctor) activateWizardFix() (string, error) {
-	launcher := d.LaunchActivateWizard
-	if launcher == nil {
-		launcher = defaultLaunchActivateWizard
-	}
-
-	if err := launcher(); err != nil {
-		return "", fmt.Errorf("launch activate --interactive: %w", err)
-	}
-
-	return "ran `bitrise-build-cache activate --interactive`", nil
-}
-
-// defaultLaunchActivateWizard re-execs the running CLI binary as a child process.
-// The wizard takes over stdin/stdout/stderr and runs to completion before returning.
-// context.Background is correct here: the wizard's lifetime is the user's interactive
-// session, not the parent's check timeout. Signals (SIGINT) reach the child via the
-// shared controlling terminal's process group.
-func defaultLaunchActivateWizard() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("locate cli executable: %w", err)
-	}
-
-	cmd := exec.CommandContext(context.Background(), exe, "activate", "--interactive")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("activate --interactive: %w", err)
-	}
-
-	return nil
 }
 
 func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error) {
@@ -194,15 +156,15 @@ func backendErrorDetail(err error, cfg common.CacheAuthConfig, source common.Aut
 	// The kv client converts gRPC Unauthenticated into a plain sentinel error
 	// before returning, so status.FromError can't see it. Check the sentinel first.
 	if errors.Is(err, kv.ErrCacheUnauthenticated) {
-		return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)" + backendProbeHint
+		return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)"
 	}
 
 	if s, ok := status.FromError(err); ok {
 		switch s.Code() { //nolint:exhaustive // only auth + transport-class codes have specific handling; all others fall through.
 		case codes.Unauthenticated:
-			return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)" + backendProbeHint
+			return prefix + "auth-failed: token rejected by Build Cache (expired / revoked / wrong workspace)"
 		case codes.PermissionDenied:
-			return prefix + "workspace-misconfig: token accepted but no access to this workspace" + backendProbeHint
+			return prefix + "workspace-misconfig: token accepted but no access to this workspace"
 		case codes.Unavailable, codes.DeadlineExceeded:
 			return prefix + "network: " + s.Message()
 		}

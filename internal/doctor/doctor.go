@@ -23,16 +23,20 @@ const (
 	StateError State = "error"
 )
 
+type Fixer interface {
+	Fix() (detail string, err error)
+}
+
 type Result struct {
 	State   State  `json:"state"`
 	Detail  string `json:"detail"`
 	Fixable bool   `json:"fixable"`
+	Fixer   Fixer  `json:"-"`
 }
 
 type Check struct {
-	Name     string                               `json:"name"`
-	Diagnose func(context.Context) Result         `json:"-"`
-	Fix      func() (fixDetail string, err error) `json:"-"`
+	Name     string                       `json:"name"`
+	Diagnose func(context.Context) Result `json:"-"`
 }
 
 type Report struct {
@@ -69,18 +73,17 @@ type Options struct {
 }
 
 type Doctor struct {
-	OsProxy              utils.OsProxy
-	Envs                 map[string]string
-	CLIVersion           string
-	HTTPClient           *http.Client
-	AuthLoader           common.AuthLoader
-	Keyring              keychain.Backend
-	LookPath             func(string) (string, error)
-	StateDirCandidates   []string
-	LatestReleaseTag     func(ctx context.Context, c *http.Client) (string, error)
-	ActivatedTools       func() map[toolconfig.Tool]bool
-	BackendProbe         BackendProbeFunc
-	LaunchActivateWizard func() error
+	OsProxy            utils.OsProxy
+	Envs               map[string]string
+	CLIVersion         string
+	HTTPClient         *http.Client
+	AuthLoader         common.AuthLoader
+	Keyring            keychain.Backend
+	LookPath           func(string) (string, error)
+	StateDirCandidates []string
+	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
+	ActivatedTools     func() map[toolconfig.Tool]bool
+	BackendProbe       BackendProbeFunc
 }
 
 func NewDoctor() *Doctor {
@@ -141,8 +144,8 @@ func (d *Doctor) Run(ctx context.Context, opts Options) Report {
 		res := c.Diagnose(ctx)
 		item := ReportItem{Name: c.Name, Result: res}
 
-		if opts.ApplyFixes && res.Fixable && c.Fix != nil {
-			detail, fxerr := c.Fix()
+		if opts.ApplyFixes && res.Fixer != nil {
+			detail, fxerr := res.Fixer.Fix()
 			if fxerr != nil {
 				item.FixError = fxerr.Error()
 			} else {

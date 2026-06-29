@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/charmbracelet/huh"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/authprompt"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
@@ -55,21 +55,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	if source == configcommon.AuthSourceNone {
-		groups = append(groups,
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Workspace ID").
-					Description("Find it at https://app.bitrise.io").
-					Validate(nonEmpty("Workspace ID")).
-					Value(&workspaceID),
-				huh.NewInput().
-					Title("Auth token").
-					Description("Personal access token. Input is hidden.").
-					EchoMode(huh.EchoModePassword).
-					Validate(nonEmpty("Auth token")).
-					Value(&authToken),
-			),
-		)
+		groups = append(groups, authprompt.Group(&workspaceID, &authToken))
 	}
 
 	groups = append(groups,
@@ -112,16 +98,6 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[configcommon.EnvAuthToken] = authToken
 
 	return runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled)
-}
-
-func nonEmpty(label string) func(string) error {
-	return func(s string) error {
-		if strings.TrimSpace(s) == "" {
-			return errors.New(label + " cannot be empty")
-		}
-
-		return nil
-	}
 }
 
 // wizardStartingCreds enforces keychain-first precedence for the wizard:

@@ -95,7 +95,12 @@ func resultFromLogDirsSummary(s logDirsSummary) Result {
 		return Result{State: StateError, Detail: "not writable: " + strings.Join(s.NotWritable, ", ")}
 	}
 	if len(s.Missing) > 0 {
-		return Result{State: StateWarn, Detail: "missing: " + strings.Join(s.Missing, ", ") + " — fixable", Fixable: true}
+		return Result{
+			State:   StateWarn,
+			Detail:  "missing: " + strings.Join(s.Missing, ", ") + " — fixable",
+			Fixable: true,
+			Fixer:   LogDirsFixer{Candidates: s.Missing},
+		}
 	}
 
 	return Result{State: StateOK, Detail: "all log dirs present + writable"}
@@ -106,22 +111,6 @@ func (d *Doctor) logDirsCheck() Check {
 		Name: "log-dirs",
 		Diagnose: func(_ context.Context) Result {
 			return resultFromLogDirsSummary(collectLogDirState(d.StateDirCandidates))
-		},
-		Fix: func() (string, error) {
-			created := []string{}
-			for _, path := range d.StateDirCandidates {
-				if _, err := os.Stat(path); err == nil {
-					continue
-				}
-
-				if err := os.MkdirAll(path, 0o755); err != nil { //nolint:gosec
-					return "", fmt.Errorf("mkdir %s: %w", path, err)
-				}
-
-				created = append(created, path)
-			}
-
-			return "created: " + strings.Join(created, ", "), nil
 		},
 	}
 }

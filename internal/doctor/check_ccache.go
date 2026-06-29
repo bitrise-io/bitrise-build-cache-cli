@@ -26,7 +26,12 @@ func (d *Doctor) ccacheHelperCheck() Check {
 
 			if _, err := os.Stat(socketPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
-					return Result{State: StateWarn, Detail: "not running (no socket file). Run `bitrise-build-cache ccache start-storage-helper` if you build C/C++."}
+					return Result{
+						State:   StateWarn,
+						Detail:  "not running (no socket file)",
+						Fixable: true,
+						Fixer:   DaemonUpFixer{},
+					}
 				}
 
 				return Result{State: StateError, Detail: "stat ccache socket: " + err.Error()}
@@ -41,22 +46,12 @@ func (d *Doctor) ccacheHelperCheck() Check {
 					State:   StateWarn,
 					Detail:  fmt.Sprintf("socket %s present but not accepting connections (%v) — fixable", socketPath, err),
 					Fixable: true,
+					Fixer:   RemoveFileFixer{Path: socketPath, Label: "orphan socket"},
 				}
 			}
 			_ = conn.Close()
 
 			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
-		},
-		Fix: func() (string, error) {
-			if err := os.Remove(socketPath); err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					return "already gone: " + socketPath, nil
-				}
-
-				return "", fmt.Errorf("remove %s: %w", socketPath, err)
-			}
-
-			return "removed orphan socket " + socketPath, nil
 		},
 	}
 }

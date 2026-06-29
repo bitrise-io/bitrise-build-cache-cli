@@ -40,8 +40,10 @@ func (d *Doctor) cliVersionCheck() Check {
 			}
 
 			return Result{
-				State:  StateWarn,
-				Detail: fmt.Sprintf("current=%s, latest=%s — run `bitrise-build-cache update` (detects brew vs installer.sh and runs the right flow)", current, latest),
+				State:   StateWarn,
+				Detail:  fmt.Sprintf("current=%s, latest=%s", current, latest),
+				Fixable: true,
+				Fixer:   UpdateFixer{},
 			}
 		},
 	}
