@@ -11,11 +11,11 @@ Shared on-disk log of every build-tool invocation the user runs locally — read
   2026-06-25.ndjson   <- today, append-only
 ```
 
-One file per UTC date. Files older than 30 days are deleted on the next `Sweep` call from the CLI.
+One file per UTC date. Files older than 30 days are deleted by the next `Append` from the canonical Go writer (opportunistic sweep gated by a `.last-sweep` marker file, runs at most once every 24h per process).
 
 ## Schema
 
-One JSON object per line. UTF-8, LF-terminated. Each line must be ≤ 4 KiB so a single `O_APPEND` write stays atomic on POSIX (PIPE_BUF on Linux + macOS).
+One JSON object per line. UTF-8, LF-terminated. Each line must be ≤ 4 KiB so a single `O_APPEND` write stays atomic across concurrent writers. POSIX does not formally guarantee regular-file `O_APPEND` atomicity, but Linux and macOS deliver it in practice for writes ≤ PIPE_BUF — sticking to that bound is the simplest portable rule.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -25,7 +25,7 @@ One JSON object per line. UTF-8, LF-terminated. Each line must be ≤ 4 KiB so a
 | `tool_version` | string | no | Xcode version / Gradle version / etc. Omit if unknown. |
 | `cli_version` | string | yes | The bitrise-build-cache CLI semver that produced the record. |
 | `started_at` | RFC3339 timestamp | yes | When the tool invocation started. |
-| `finished_at` | RFC3339 timestamp | no | Omit for in-flight records. Equal to `started_at + duration` once known. |
+| `finished_at` | RFC3339 timestamp | no | Equal to `started_at + duration`. The canonical Go writer emits one record per completed invocation, so this is always set today; future streaming writers may omit it for in-flight records. |
 | `exit_code` | int | yes | Real exit code where available; 0 = success. |
 | `source` | string | yes | `local` or `ci`. CI iff the writer ran under a known CI provider. |
 
@@ -47,11 +47,11 @@ Each writer must:
 4. Write **the full line in one syscall**.
 5. Close the file.
 
-The 4 KiB / PIPE_BUF cap on the line size keeps the `O_APPEND` write atomic — concurrent writers never interleave half a line. Records that would exceed the cap must be rejected by the writer; the canonical Go writer (`internal/invocations.Writer`) does this.
+The 4 KiB cap on the line size matches PIPE_BUF on Linux / macOS, which is the threshold below which `write(2)` on a regular file under `O_APPEND` is observed to be atomic in practice. Records over the cap should be shrunk by truncating their `command` field (the canonical Go writer does this with a `… [truncated]` suffix) before falling back to outright rejection.
 
 ## Retention
 
-Daily files older than 30 days are removed by `invocations.Sweep`. Sweep is currently invoked opportunistically from CLI write paths; a periodic sweep timer or a `doctor --fix` action may be added later.
+Daily files older than 30 days are removed by `invocations.Sweep`. The canonical Go writer calls it from `Append` after every successful write, gated by a `.last-sweep` marker file (modtime within the last 24h ⇒ skip) so the cost is amortised. Non-Go writers do not need to implement Sweep themselves — any Go-writer invocation in the same workspace will catch up the cleanup.
 
 ## Reference implementation
 

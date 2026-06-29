@@ -22,18 +22,20 @@ const (
 	SourceCI    Source = "ci"
 )
 
+type Tool string
+
 const (
-	ToolXcode  = "xcode"
-	ToolGradle = "gradle"
-	ToolBazel  = "bazel"
-	ToolCcache = "ccache"
-	ToolRN     = "rn"
+	ToolXcode  Tool = "xcode"
+	ToolGradle Tool = "gradle"
+	ToolBazel  Tool = "bazel"
+	ToolCcache Tool = "ccache"
+	ToolRN     Tool = "rn"
 )
 
 type Record struct {
 	InvocationID string    `json:"invocation_id"`
 	Command      string    `json:"command"`
-	Tool         string    `json:"tool"`
+	Tool         Tool      `json:"tool"`
 	ToolVersion  string    `json:"tool_version,omitempty"`
 	CLIVersion   string    `json:"cli_version"`
 	StartedAt    time.Time `json:"started_at"`
@@ -42,10 +44,14 @@ type Record struct {
 	Source       Source    `json:"source"`
 }
 
-// PIPE_BUF on Linux + macOS — keeps O_APPEND atomic against concurrent writers.
-const recordSizeLimit = 4096
-
-const dayLayout = "2006-01-02"
+const (
+	dayLayout        = "2006-01-02"
+	recordSizeLimit  = 4096
+	truncSuffix      = "… [truncated]"
+	defaultRetention = 30 * 24 * time.Hour
+	sweepInterval    = 24 * time.Hour
+	sweepMarkerName  = ".last-sweep"
+)
 
 type Writer struct {
 	Paths paths.Paths
@@ -63,7 +69,10 @@ func (w *Writer) Append(rec Record) error {
 	}
 
 	if len(line) > recordSizeLimit {
-		return fmt.Errorf("invocation record %d bytes exceeds atomic-append limit %d", len(line), recordSizeLimit)
+		line, err = encodeWithTruncatedCommand(rec, len(line))
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := os.MkdirAll(w.Paths.InvocationsDir(), 0o755); err != nil {
@@ -82,6 +91,53 @@ func (w *Writer) Append(rec Record) error {
 	if _, err := f.Write(line); err != nil {
 		return fmt.Errorf("write invocation record: %w", err)
 	}
+
+	_ = w.maybeSweep()
+
+	return nil
+}
+
+func encodeWithTruncatedCommand(rec Record, encodedLen int) ([]byte, error) {
+	orig := rec.Command
+	overshoot := encodedLen - recordSizeLimit
+	room := len(orig) - overshoot - len(truncSuffix) - 16
+	if room < 0 {
+		return nil, fmt.Errorf("record %d bytes exceeds atomic-append limit %d even after truncating command", encodedLen, recordSizeLimit)
+	}
+
+	for range 3 {
+		rec.Command = orig[:room] + truncSuffix
+		line, err := encodeRecord(rec)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(line) <= recordSizeLimit {
+			return line, nil
+		}
+
+		room -= len(line) - recordSizeLimit
+		if room < 0 {
+			break
+		}
+	}
+
+	return nil, fmt.Errorf("record still exceeds atomic-append limit %d after 3 truncation attempts", recordSizeLimit)
+}
+
+func (w *Writer) maybeSweep() error {
+	marker := filepath.Join(w.Paths.InvocationsDir(), sweepMarkerName)
+	if info, err := os.Stat(marker); err == nil && w.now().Sub(info.ModTime()) < sweepInterval {
+		return nil
+	}
+
+	if _, err := Sweep(w.Paths, defaultRetention, w.now()); err != nil {
+		return err
+	}
+
+	now := w.now()
+	_ = os.Chtimes(marker, now, now)
+	_ = os.WriteFile(marker, nil, 0o600)
 
 	return nil
 }

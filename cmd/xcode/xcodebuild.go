@@ -277,6 +277,7 @@ type XcodebuildRunner struct {
 	invocationAPI invocationSaver
 	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
 	relationAPI relationSender
+	// localLogger appends to the local invocation log. If nil, paths.Default + invocations.NewWriter is used.
 	localLogger localInvocationLogger
 }
 
@@ -361,7 +362,8 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		src = invocations.SourceCI
 	}
 
-	finishedAt := inv.InvocationDate.Add(time.Duration(runStats.DurationMS) * time.Millisecond)
+	startedAt := runStats.StartTime
+	finishedAt := startedAt.Add(time.Duration(runStats.DurationMS) * time.Millisecond)
 
 	rec := invocations.Record{
 		InvocationID: inv.InvocationID,
@@ -369,7 +371,7 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		Tool:         invocations.ToolXcode,
 		ToolVersion:  inv.XcodeVersion,
 		CLIVersion:   inv.CLIVersion,
-		StartedAt:    inv.InvocationDate,
+		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 		ExitCode:     runStats.ExitCode,
 		Source:       src,

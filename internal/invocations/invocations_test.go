@@ -219,3 +219,76 @@ func TestRecord_finishedAtOmittedWhenZero(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), "finished_at", "zero FinishedAt should be omitted via omitzero")
 }
+
+func TestSweep_emptyDirIsNoop(t *testing.T) {
+	p := paths.FromHome(t.TempDir())
+
+	removed, err := Sweep(p, 30*24*time.Hour, time.Now().UTC())
+	require.NoError(t, err)
+	assert.Equal(t, 0, removed)
+}
+
+func TestWriter_Append_readOnlyDirSurfacesError(t *testing.T) {
+	home := t.TempDir()
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
+	require.NoError(t, os.Chmod(p.InvocationsDir(), 0o500))
+
+	t.Cleanup(func() { _ = os.Chmod(p.InvocationsDir(), 0o755) })
+
+	w := NewWriter(p)
+	w.Clock = func() time.Time { return time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC) }
+
+	err := w.Append(Record{InvocationID: "ro"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open invocation log")
+}
+
+func TestReader_Recent_malformedLineErrors(t *testing.T) {
+	p := paths.FromHome(t.TempDir())
+	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
+
+	day := p.InvocationsFile("2026-06-25")
+	require.NoError(t, os.WriteFile(day, []byte("{not json}\n"), 0o644))
+
+	r := NewReader(p)
+	_, err := r.Recent(10)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse line")
+}
+
+func TestWriter_Append_truncatesOversizedCommand(t *testing.T) {
+	w, p := newTestWriter(t, time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC))
+
+	rec := Record{
+		InvocationID: "trunc",
+		Command:      strings.Repeat("x", 5000),
+		Tool:         ToolXcode,
+		CLIVersion:   "v2.8.6",
+		StartedAt:    time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC),
+		Source:       SourceLocal,
+	}
+	require.NoError(t, w.Append(rec))
+
+	body, err := os.ReadFile(p.InvocationsFile("2026-06-25"))
+	require.NoError(t, err)
+
+	var got Record
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimRight(string(body), "\n")), &got))
+	assert.True(t, strings.HasSuffix(got.Command, truncSuffix))
+	assert.LessOrEqual(t, len(body), recordSizeLimit)
+}
+
+func TestWriter_Append_runsSweepAfterMarkerExpiry(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	w, p := newTestWriter(t, now)
+
+	stale := p.InvocationsFile("2026-04-01")
+	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
+	require.NoError(t, os.WriteFile(stale, []byte(`{"invocation_id":"old"}`+"\n"), 0o644))
+
+	require.NoError(t, w.Append(Record{InvocationID: "fresh"}))
+
+	_, err := os.Stat(stale)
+	assert.True(t, os.IsNotExist(err), "stale file should have been swept")
+}
