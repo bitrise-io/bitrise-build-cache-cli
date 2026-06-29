@@ -85,6 +85,9 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
             // Root-only: wire the Robolectric android-all redirect + jar audit across every Test task in the build, registered and logged once (avoids per-subproject flooding).
             if (getParent() == null) {
+                // Tier-2 sandbox probe (opt-in: BITRISE_ROBOLECTRIC_SANDBOX_PROBE=true). The Tier-1 classpath probe only sees the Gradle test runtime classpath; android.util.DisplayMetrics is actually loaded inside Robolectric's sandbox classloader. When enabled we add -Xlog:class+load to each Test JVM so the VM itself records the source jar / defining loader of every class it loads (to a per-fork file); the audit finalizer then greps the android.util.DisplayMetrics lines out and re-emits them — naming the loader/jar behind the NoSuchFieldError. No agent, no compile; never fails the build.
+                val sandboxProbe{{ .ID }} = System.getenv("BITRISE_ROBOLECTRIC_SANDBOX_PROBE") == "true"
+                val sandboxLogDir{{ .ID }} = java.io.File(System.getenv("GRADLE_USER_HOME") ?: (System.getProperty("user.home") + "/.gradle"), "bitrise-robolectric-sandbox-probe")
                 // Finalizer task (runs even when tests FAIL) logs the resolved android-all jar's sha1 once; set BITRISE_ROBOLECTRIC_JAR_AUDIT=false to opt out. Wrapped so it never fails the build.
                 val auditTask{{ .ID }} = if (System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false") {
                     tasks.register("bitriseRobolectricJarAudit{{ .ID }}") {
@@ -125,6 +128,16 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         }
                                         getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()} $dm")
                                     }
+                                // Tier-2: grep android.util.DisplayMetrics out of the per-fork -Xlog:class+load files (each line records the source jar / defining loader), re-emit, then delete (large, per-VM).
+                                sandboxLogDir{{ .ID }}.listFiles()?.filter { it.isFile() && it.getName().endsWith(".classload.log") }?.forEach { lf ->
+                                    try {
+                                        lf.readLines().filter { it.contains("android.util.DisplayMetrics") }.forEach { ln ->
+                                            getLogger().lifecycle("[robolectric-sandbox-probe] cli={{ $.CLIVersion }} ${ln.trim()}")
+                                        }
+                                        lf.delete()
+                                    } catch (e: Throwable) {
+                                    }
+                                }
                             } catch (t: Throwable) {
                                 getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli={{ $.CLIVersion }} ${t.javaClass.getName()}: ${t.message}")
                             }
@@ -133,10 +146,16 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                 } else {
                     null
                 }
-                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on all Test tasks (audit=${auditTask{{ .ID }} != null})")
+                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on all Test tasks (audit=${auditTask{{ .ID }} != null}, sandboxProbe=${sandboxProbe{{ .ID }}})")
                 allprojects {
                     tasks.withType(Test::class.java).configureEach {
                         systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
+                        if (sandboxProbe{{ .ID }}) {
+                            // -Xlog:class+load makes the test JVM record the source jar / defining loader of every class it loads (incl. Robolectric's sandbox loader) to a per-fork file (%p = pid). Requires JDK 9+; opt-in, so only enabled for targeted diagnosis.
+                            sandboxLogDir{{ .ID }}.mkdirs()
+                            val probeLog = java.io.File(sandboxLogDir{{ .ID }}, getPath().replace(':', '_').trim('_') + "-%p.classload.log")
+                            jvmArgs("-Xlog:class+load=info:file=${probeLog.getAbsolutePath()}")
+                        }
                         if (auditTask{{ .ID }} != null) {
                             finalizedBy(auditTask{{ .ID }})
                             // Classpath probe: lists the jars on the test runtime classpath that provide android/util/DisplayMetrics.class, in classpath order. >1 entry (e.g. a mockable-android/stub jar alongside android-all) names a shadow that produces NoSuchFieldError on an otherwise-correct jar. Runs before the test (so it's captured on failing builds), never fails the build.
