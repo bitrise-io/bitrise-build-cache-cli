@@ -70,15 +70,18 @@ func itemDisplay(it doctorpkg.ReportItem) (doctorpkg.State, string) {
 	return it.Result.State, it.Result.Detail
 }
 
+func effectiveState(it doctorpkg.ReportItem) doctorpkg.State {
+	if it.FixResult != nil {
+		return doctorpkg.StateOK
+	}
+
+	return it.Result.State
+}
+
 func effectiveOverall(r doctorpkg.Report) doctorpkg.State {
 	worst := doctorpkg.StateOK
 	for _, it := range r.Items {
-		s := it.Result.State
-		if it.FixResult != nil {
-			s = doctorpkg.StateOK
-		}
-
-		switch s {
+		switch effectiveState(it) {
 		case doctorpkg.StateError:
 			return doctorpkg.StateError
 		case doctorpkg.StateWarn:
@@ -123,20 +126,53 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, overall doctorpkg.S
 	}
 	fmt.Fprintf(w, "CLI version: %s\n\n", r.Version)
 
-	for _, it := range r.Items {
-		state, detail := itemDisplay(it)
-		fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(state), it.Name, detail)
+	issues, healthy := partitionItems(r.Items)
 
-		switch {
-		case it.FixError != "":
-			fmt.Fprintf(w, "      %s↳ fix failed:%s %s\n", c.red, c.reset, it.FixError)
-		case !fixed && it.Result.Fixable:
-			fmt.Fprintf(w, "      %s↳%s rerun with --fix to repair\n", c.yellow, c.reset)
+	if len(issues) > 0 {
+		fmt.Fprintln(w, "Issues:")
+		for _, it := range issues {
+			writeItem(w, c, it, fixed)
+		}
+
+		fmt.Fprintln(w)
+	}
+
+	if len(healthy) > 0 {
+		fmt.Fprintln(w, "Healthy:")
+		for _, it := range healthy {
+			writeItem(w, c, it, fixed)
+		}
+
+		fmt.Fprintln(w)
+	}
+
+	fmt.Fprintf(w, "Overall: %s%s%s\n", c.forState(overall), overall, c.reset)
+}
+
+func partitionItems(items []doctorpkg.ReportItem) ([]doctorpkg.ReportItem, []doctorpkg.ReportItem) {
+	var issues, healthy []doctorpkg.ReportItem
+
+	for _, it := range items {
+		if effectiveState(it) == doctorpkg.StateOK {
+			healthy = append(healthy, it)
+		} else {
+			issues = append(issues, it)
 		}
 	}
 
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Overall: %s%s%s\n", c.forState(overall), overall, c.reset)
+	return issues, healthy
+}
+
+func writeItem(w io.Writer, c colorPalette, it doctorpkg.ReportItem, fixed bool) {
+	state, detail := itemDisplay(it)
+	fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(state), it.Name, detail)
+
+	switch {
+	case it.FixError != "":
+		fmt.Fprintf(w, "      %s↳ fix failed:%s %s\n", c.red, c.reset, it.FixError)
+	case !fixed && it.Result.Fixable:
+		fmt.Fprintf(w, "      %s↳%s rerun with --fix to repair\n", c.yellow, c.reset)
+	}
 }
 
 type colorPalette struct {
