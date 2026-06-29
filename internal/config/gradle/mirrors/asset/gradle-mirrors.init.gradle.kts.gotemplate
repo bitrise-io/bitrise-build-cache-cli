@@ -85,6 +85,9 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
             {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
             // Root-only: wire the Robolectric android-all redirect + jar audit across every Test task in the build, registered and logged once (avoids per-subproject flooding).
             if (getParent() == null) {
+                // Tier-2 sandbox probe (opt-OUT: shares the BITRISE_ROBOLECTRIC_JAR_AUDIT=false kill-switch with the audit — no separate env). The Tier-1 classpath probe only sees the Gradle test runtime classpath; android.util.DisplayMetrics is actually loaded inside Robolectric's sandbox classloader. So — only on test tasks that actually carry android/util/DisplayMetrics (i.e. Robolectric/Android) and only on a JDK 9+ test JVM — we add -Xlog:class+load routed to a size-capped per-fork FILE (never stdout); the audit finalizer greps the android.util.DisplayMetrics lines out and re-emits them, naming the loader/jar behind the NoSuchFieldError.
+                // Safety (it is on by default, fleet-wide): file= output can't pollute test stdout; filesize/filecount caps disk; the JDK 9+ gate avoids the JDK 8 "unrecognized -Xlog" abort; and the launcher-version read, dir-writability check, jvmArgs attach (in doFirst, so it's outside up-to-date inputs) and finalizer re-emit are all wrapped — any failure just skips the probe, it can never fail the build.
+                val sandboxLogDir{{ .ID }} = java.io.File(System.getenv("GRADLE_USER_HOME") ?: (System.getProperty("user.home") + "/.gradle"), "bitrise-robolectric-sandbox-probe")
                 // Finalizer task (runs even when tests FAIL) logs the resolved android-all jar's sha1 once; set BITRISE_ROBOLECTRIC_JAR_AUDIT=false to opt out. Wrapped so it never fails the build.
                 val auditTask{{ .ID }} = if (System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false") {
                     tasks.register("bitriseRobolectricJarAudit{{ .ID }}") {
@@ -125,6 +128,18 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         }
                                         getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()} $dm")
                                     }
+                                // Tier-2: stream the per-fork -Xlog:class+load files (incl. rotated *.classload.log.N), grep the android.util.DisplayMetrics lines (each records the source jar / defining loader), re-emit, then delete (bounded, per-VM). useLines streams so a large log can't OOM the daemon.
+                                sandboxLogDir{{ .ID }}.listFiles()?.filter { it.isFile() && it.getName().contains("classload.log") }?.forEach { lf ->
+                                    try {
+                                        lf.useLines { seq ->
+                                            seq.filter { it.contains("android.util.DisplayMetrics") }.forEach { ln ->
+                                                getLogger().lifecycle("[robolectric-sandbox-probe] cli={{ $.CLIVersion }} ${ln.trim()}")
+                                            }
+                                        }
+                                        lf.delete()
+                                    } catch (e: Throwable) {
+                                    }
+                                }
                             } catch (t: Throwable) {
                                 getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli={{ $.CLIVersion }} ${t.javaClass.getName()}: ${t.message}")
                             }
@@ -133,7 +148,7 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                 } else {
                     null
                 }
-                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on all Test tasks (audit=${auditTask{{ .ID }} != null})")
+                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on all Test tasks (audit=${auditTask{{ .ID }} != null}, sandboxProbe=${auditTask{{ .ID }} != null})")
                 allprojects {
                     tasks.withType(Test::class.java).configureEach {
                         systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
@@ -150,6 +165,13 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         .map { "${it.getName()}(${it.length()})" }
                                     if (dmSources.isNotEmpty()) {
                                         getLogger().lifecycle("[robolectric-classpath-probe] cli={{ $.CLIVersion }} ${getPath()} android/util/DisplayMetrics from: ${dmSources.joinToString(", ")}")
+                                        // Tier-2: this is an Android/Robolectric test task. Attach -Xlog:class+load so the test JVM records where DisplayMetrics is actually defined (incl. Robolectric's sandbox loader). Guards: JDK 9+ only (the flag aborts an unrecognized-option JDK 8 JVM), writable dir, size-capped file (never stdout). jvmArgs in doFirst is read at fork time (after this action) yet stays out of up-to-date inputs.
+                                        val testJvmMajor = (try { getJavaLauncher().getOrNull()?.getMetadata()?.getLanguageVersion()?.asInt() } catch (e: Throwable) { null }) ?: org.gradle.api.JavaVersion.current().getMajorVersion().toIntOrNull()
+                                        val dirOk = try { sandboxLogDir{{ .ID }}.mkdirs(); sandboxLogDir{{ .ID }}.isDirectory() && sandboxLogDir{{ .ID }}.canWrite() } catch (e: Throwable) { false }
+                                        if (testJvmMajor != null && testJvmMajor >= 9 && dirOk) {
+                                            val probeLog = java.io.File(sandboxLogDir{{ .ID }}, getPath().replace(':', '_').trim('_') + "-%p.classload.log")
+                                            jvmArgs("-Xlog:class+load=info:file=${probeLog.getAbsolutePath()}::filesize=16m,filecount=1")
+                                        }
                                     }
                                 } catch (t: Throwable) {
                                     getLogger().lifecycle("[robolectric-classpath-probe] ERROR cli={{ $.CLIVersion }} ${t.javaClass.getName()}: ${t.message}")

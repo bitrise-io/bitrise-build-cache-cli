@@ -81,7 +81,7 @@ func TestActivate(t *testing.T) {
 				`log("prepending pluginManagement mirror https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins")`,
 				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
 				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
-				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on all Test tasks (audit=${auditTaskCentral != null})")`,
+				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on all Test tasks (audit=${auditTaskCentral != null}, sandboxProbe=${auditTaskCentral != null})")`,
 				`if (System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false") {`,
 				`tasks.register("bitriseRobolectricJarAuditCentral") {`,
 				`allprojects {`,
@@ -93,6 +93,13 @@ func TestActivate(t *testing.T) {
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli=v0.0.0-test `,
 				`getLogger().lifecycle("[robolectric-classpath-probe] cli=v0.0.0-test ${getPath()} android/util/DisplayMetrics from: `,
 				`z.getEntry("android/util/DisplayMetrics.class") != null`,
+				// Tier-2 sandbox probe (opt-OUT: shares BITRISE_ROBOLECTRIC_JAR_AUDIT kill-switch; -Xlog:class+load, JDK9+ + Android-task gated)
+				`val testJvmMajor = (try { getJavaLauncher().getOrNull()?.getMetadata()?.getLanguageVersion()?.asInt() } catch (e: Throwable) { null }) ?: org.gradle.api.JavaVersion.current().getMajorVersion().toIntOrNull()`,
+				`if (testJvmMajor != null && testJvmMajor >= 9 && dirOk) {`,
+				`jvmArgs("-Xlog:class+load=info:file=${probeLog.getAbsolutePath()}::filesize=16m,filecount=1")`,
+				`getPath().replace(':', '_').trim('_') + "-%p.classload.log"`,
+				`seq.filter { it.contains("android.util.DisplayMetrics") }.forEach { ln ->`,
+				`getLogger().lifecycle("[robolectric-sandbox-probe] cli=v0.0.0-test ${ln.trim()}")`,
 			},
 			expectNotContain: []string{
 				"https://repository-manager.services.bitrise.io:8090/maven/jitpack",
