@@ -154,6 +154,18 @@ Create GitHub releases for whichever of the five step repos the user actually wa
 
 After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each released step. They may need a rebase.
 
+⚠ **steplib PR titles use the step's steplib ID, NOT its GitHub repo name — and the Gradle step's two names differ.** The steplib PR title is `<steplib-id>-<version>`. For most steps the id matches the repo, but the Gradle step's repo is `bitrise-step-activate-gradle-remote-cache` while its steplib id is **`activate-build-cache-for-gradle`** — so its steplib PR is titled `activate-build-cache-for-gradle-<version>` (e.g. `activate-build-cache-for-gradle-2.20.16`), not `activate-gradle-remote-cache-…`. If you search/poll for the wrong name the PR looks "missing" when it is in fact open. The five repo → steplib-id mappings:
+
+| GitHub repo | steplib PR id |
+|---|---|
+| `bitrise-step-activate-gradle-remote-cache` | **`activate-build-cache-for-gradle`** |
+| `bitrise-step-activate-build-cache-for-xcode` | `activate-build-cache-for-xcode` |
+| `bitrise-step-activate-gradle-mirrors` | `activate-gradle-mirrors` |
+| `bitrise-step-activate-react-native-features` | `activate-react-native-features` |
+| `bitrise-step-activate-gradle-features` | `activate-gradle-features` |
+
+**Merge each steplib PR as soon as it is individually MERGEABLE — do not batch-wait for all of them.** They appear and become mergeable at different times; gating on "all N present" stalls the whole release behind the slowest one (and behind any name-matching mistake above).
+
 ```bash
 gh pr review --approve --repo bitrise-io/bitrise-steplib <PR_NUMBER>
 gh pr merge --squash --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
