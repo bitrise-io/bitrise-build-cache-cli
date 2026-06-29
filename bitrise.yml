@@ -1357,6 +1357,7 @@ workflows:
               CLI=/Users/vagrant/.local/bin/bitrise-build-cache-cli
               "$CLI" auth set --workspace-id "'"$BITRISE_WORKSPACE_ID"'" --token "'"$BITRISE_TOKEN"'" >/dev/null
               "$CLI" activate xcode --cache
+              "$CLI" activate c++
               "$CLI" daemon install
               "$CLI" daemon restart
 
