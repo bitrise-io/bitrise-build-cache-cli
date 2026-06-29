@@ -56,3 +56,11 @@ func TestPaths_proxySocket(t *testing.T) {
 
 	assert.Equal(t, "/tmp/xcelerate-proxy.sock", p.ProxySocketPath("/tmp"))
 }
+
+func TestPaths_invocations(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.local/state/bitrise-build-cache/invocations", p.InvocationsDir())
+	assert.Equal(t, "/h/.local/state/bitrise-build-cache/invocations/2026-06-25.ndjson",
+		p.InvocationsFile("2026-06-25"))
+}

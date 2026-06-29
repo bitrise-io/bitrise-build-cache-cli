@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bitrise-io/bitrise-build-cache-cli/blob/main/docs/local-invocation-log.schema.json",
+  "title": "Local invocation log record",
+  "type": "object",
+  "required": [
+    "invocation_id",
+    "command",
+    "tool",
+    "cli_version",
+    "started_at",
+    "exit_code",
+    "source"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "invocation_id": { "type": "string", "minLength": 1 },
+    "command":       { "type": "string" },
+    "tool":          { "type": "string", "enum": ["xcode", "gradle", "bazel", "ccache", "rn"] },
+    "tool_version":  { "type": "string" },
+    "cli_version":   { "type": "string", "minLength": 1 },
+    "started_at":    { "type": "string", "format": "date-time" },
+    "finished_at":   { "type": "string", "format": "date-time" },
+    "exit_code":     { "type": "integer" },
+    "source":        { "type": "string", "enum": ["local", "ci"] }
+  }
+}
