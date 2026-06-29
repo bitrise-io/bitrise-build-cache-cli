@@ -2,6 +2,7 @@ package ccache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -116,10 +117,14 @@ func (a *Activator) Activate(ctx context.Context) error {
 	}
 
 	mpCfg := multiplatformconfig.Config{DebugLogging: a.debugLogging}
-	if err := keychain.New().Save(keychain.Credentials{
-		AuthToken:   config.AuthConfig.AuthToken,
-		WorkspaceID: config.AuthConfig.WorkspaceID,
-	}); err != nil {
+	keychainErr := errors.New("skip-jwt")
+	if !config.AuthConfig.IsJWT {
+		keychainErr = keychain.New().Save(keychain.Credentials{
+			AuthToken:   config.AuthConfig.AuthToken,
+			WorkspaceID: config.AuthConfig.WorkspaceID,
+		})
+	}
+	if keychainErr != nil {
 		mpCfg.AuthConfig = config.AuthConfig
 	}
 	if err := mpCfg.Save(a.osProxy, a.encoderFactory); err != nil {

@@ -3,6 +3,7 @@ package xcelerate
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,10 +91,14 @@ func Activate(
 	}
 
 	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
-	if err := keychain.New().Save(keychain.Credentials{
-		AuthToken:   config.AuthConfig.AuthToken,
-		WorkspaceID: config.AuthConfig.WorkspaceID,
-	}); err != nil {
+	keychainErr := errors.New("skip-jwt")
+	if !config.AuthConfig.IsJWT {
+		keychainErr = keychain.New().Save(keychain.Credentials{
+			AuthToken:   config.AuthConfig.AuthToken,
+			WorkspaceID: config.AuthConfig.WorkspaceID,
+		})
+	}
+	if keychainErr != nil {
 		mpCfg.AuthConfig = config.AuthConfig
 	}
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
