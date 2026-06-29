@@ -86,11 +86,9 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 		return Config{}, fmt.Errorf("decode xcelerate config file (%s): %w", configFilePath, err)
 	}
 
-	// Auth credentials live in the multiplatform analytics config. Prefer that
-	// source so callers can keep using config.AuthConfig; fall back to whatever
-	// the legacy xcelerate config (decoded above) carried, for users upgrading
-	// from a CLI version that still persisted auth in the xcelerate config.
-	if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
+	if kcCfg, ok := common.GetKeychainCredentials(); ok {
+		config.AuthConfig = kcCfg
+	} else if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
 		config.AuthConfig = mpCfg.AuthConfig
 	}
 

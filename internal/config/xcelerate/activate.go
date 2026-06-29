@@ -3,6 +3,7 @@ package xcelerate
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/shirou/gopsutil/v4/process"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
@@ -88,12 +90,16 @@ func Activate(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	// Auth credentials are persisted only in the multiplatform analytics config
-	// (single source of truth on disk). The xcelerate config carries auth in-memory
-	// at runtime via ReadConfig, but never to JSON.
-	mpCfg := multiplatformconfig.Config{
-		AuthConfig:   config.AuthConfig,
-		DebugLogging: config.DebugLogging,
+	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
+	keychainErr := errors.New("skip-jwt")
+	if !config.AuthConfig.IsJWT {
+		keychainErr = keychain.New().Save(keychain.Credentials{
+			AuthToken:   config.AuthConfig.AuthToken,
+			WorkspaceID: config.AuthConfig.WorkspaceID,
+		})
+	}
+	if keychainErr != nil {
+		mpCfg.AuthConfig = config.AuthConfig
 	}
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
