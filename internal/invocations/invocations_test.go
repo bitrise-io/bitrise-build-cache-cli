@@ -74,13 +74,27 @@ func TestWriter_Append_rotatesByDay(t *testing.T) {
 	assert.NotContains(t, string(today), "yesterday")
 }
 
-func TestWriter_Append_rejectsOversizedRecord(t *testing.T) {
-	w, _ := newTestWriter(t, time.Now().UTC())
-	rec := Record{InvocationID: strings.Repeat("x", recordSizeLimit)}
+func TestWriter_Append_writesOversizedRecordVerbatim(t *testing.T) {
+	at := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	w, p := newTestWriter(t, at)
 
-	err := w.Append(rec)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exceeds atomic-append limit")
+	cmd := strings.Repeat("x", 8000)
+	rec := Record{
+		InvocationID: "big",
+		Command:      cmd,
+		Tool:         ToolXcode,
+		CLIVersion:   "v2.8.6",
+		StartedAt:    at,
+		Source:       SourceLocal,
+	}
+	require.NoError(t, w.Append(rec))
+
+	body, err := os.ReadFile(p.InvocationsFile("2026-06-25"))
+	require.NoError(t, err)
+
+	var got Record
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimRight(string(body), "\n")), &got))
+	assert.Equal(t, cmd, got.Command)
 }
 
 func TestWriter_Append_concurrentWritesParseable(t *testing.T) {
@@ -244,39 +258,19 @@ func TestWriter_Append_readOnlyDirSurfacesError(t *testing.T) {
 	assert.Contains(t, err.Error(), "open invocation log")
 }
 
-func TestReader_Recent_malformedLineErrors(t *testing.T) {
+func TestReader_Recent_skipsMalformedLines(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
 
 	day := p.InvocationsFile("2026-06-25")
-	require.NoError(t, os.WriteFile(day, []byte("{not json}\n"), 0o644))
+	body := "{not json}\n" + `{"invocation_id":"good"}` + "\n"
+	require.NoError(t, os.WriteFile(day, []byte(body), 0o644))
 
 	r := NewReader(p)
-	_, err := r.Recent(10)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse line")
-}
-
-func TestWriter_Append_truncatesOversizedCommand(t *testing.T) {
-	w, p := newTestWriter(t, time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC))
-
-	rec := Record{
-		InvocationID: "trunc",
-		Command:      strings.Repeat("x", 5000),
-		Tool:         ToolXcode,
-		CLIVersion:   "v2.8.6",
-		StartedAt:    time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC),
-		Source:       SourceLocal,
-	}
-	require.NoError(t, w.Append(rec))
-
-	body, err := os.ReadFile(p.InvocationsFile("2026-06-25"))
+	recs, err := r.Recent(10)
 	require.NoError(t, err)
-
-	var got Record
-	require.NoError(t, json.Unmarshal([]byte(strings.TrimRight(string(body), "\n")), &got))
-	assert.True(t, strings.HasSuffix(got.Command, truncSuffix))
-	assert.LessOrEqual(t, len(body), recordSizeLimit)
+	require.Len(t, recs, 1)
+	assert.Equal(t, "good", recs[0].InvocationID)
 }
 
 func TestWriter_Append_runsSweepAfterMarkerExpiry(t *testing.T) {

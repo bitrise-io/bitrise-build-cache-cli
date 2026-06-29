@@ -15,7 +15,7 @@ One file per UTC date. Files older than 30 days are deleted by the next `Append`
 
 ## Schema
 
-One JSON object per line. UTF-8, LF-terminated. Each line must be ≤ 4 KiB so a single `O_APPEND` write stays atomic across concurrent writers. POSIX does not formally guarantee regular-file `O_APPEND` atomicity, but Linux and macOS deliver it in practice for writes ≤ PIPE_BUF — sticking to that bound is the simplest portable rule.
+One JSON object per line. UTF-8, LF-terminated. Records ≤ 4 KiB land atomically: POSIX does not formally guarantee regular-file `O_APPEND` atomicity, but Linux and macOS deliver it in practice for writes within PIPE_BUF. Larger records are still written verbatim — the `command` field needs to stay intact for rerun, so writers MUST NOT truncate it — but two concurrent multi-process writes of oversize lines may interleave; readers should treat malformed lines as recoverable parse errors.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -47,7 +47,7 @@ Each writer must:
 4. Write **the full line in one syscall**.
 5. Close the file.
 
-The 4 KiB cap on the line size matches PIPE_BUF on Linux / macOS, which is the threshold below which `write(2)` on a regular file under `O_APPEND` is observed to be atomic in practice. Records over the cap should be shrunk by truncating their `command` field (the canonical Go writer does this with a `… [truncated]` suffix) before falling back to outright rejection.
+The 4 KiB atomic-write threshold matches PIPE_BUF on Linux / macOS, which is the size below which `write(2)` on a regular file under `O_APPEND` is observed to be atomic in practice. Above it, two concurrent multi-process writes may interleave; the `command` field is kept intact so re-running the recorded invocation stays possible, and readers are expected to skip any malformed line they encounter.
 
 ## Retention
 
@@ -92,9 +92,6 @@ fun appendInvocation(record: InvocationRecord) {
     val file = File(dir, "$day.ndjson")
 
     val line = recordToJson(record) + "\n"
-    require(line.toByteArray(Charsets.UTF_8).size <= 4096) {
-        "invocation record exceeds atomic-append limit (4096 bytes)"
-    }
 
     Files.newOutputStream(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.APPEND).use {
         it.write(line.toByteArray(Charsets.UTF_8))
@@ -102,4 +99,4 @@ fun appendInvocation(record: InvocationRecord) {
 }
 ```
 
-The JVM serialiser is up to the caller — Jackson, kotlinx.serialization, or hand-rolled — as long as the JSON object stays one line ≤ 4 KiB.
+The JVM serialiser is up to the caller — Jackson, kotlinx.serialization, or hand-rolled — as long as the JSON object stays on one line. Records ≤ 4 KiB land atomically against concurrent writers; larger ones write through and may interleave in rare multi-process collisions.

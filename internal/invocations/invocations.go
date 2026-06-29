@@ -46,8 +46,6 @@ type Record struct {
 
 const (
 	dayLayout        = "2006-01-02"
-	recordSizeLimit  = 4096
-	truncSuffix      = "… [truncated]"
 	defaultRetention = 30 * 24 * time.Hour
 	sweepInterval    = 24 * time.Hour
 	sweepMarkerName  = ".last-sweep"
@@ -66,13 +64,6 @@ func (w *Writer) Append(rec Record) error {
 	line, err := encodeRecord(rec)
 	if err != nil {
 		return err
-	}
-
-	if len(line) > recordSizeLimit {
-		line, err = encodeWithTruncatedCommand(rec, len(line))
-		if err != nil {
-			return err
-		}
 	}
 
 	if err := os.MkdirAll(w.Paths.InvocationsDir(), 0o755); err != nil {
@@ -95,34 +86,6 @@ func (w *Writer) Append(rec Record) error {
 	_ = w.maybeSweep()
 
 	return nil
-}
-
-func encodeWithTruncatedCommand(rec Record, encodedLen int) ([]byte, error) {
-	orig := rec.Command
-	overshoot := encodedLen - recordSizeLimit
-	room := len(orig) - overshoot - len(truncSuffix) - 16
-	if room < 0 {
-		return nil, fmt.Errorf("record %d bytes exceeds atomic-append limit %d even after truncating command", encodedLen, recordSizeLimit)
-	}
-
-	for range 3 {
-		rec.Command = orig[:room] + truncSuffix
-		line, err := encodeRecord(rec)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(line) <= recordSizeLimit {
-			return line, nil
-		}
-
-		room -= len(line) - recordSizeLimit
-		if room < 0 {
-			break
-		}
-	}
-
-	return nil, fmt.Errorf("record still exceeds atomic-append limit %d after 3 truncation attempts", recordSizeLimit)
 }
 
 func (w *Writer) maybeSweep() error {
@@ -268,7 +231,7 @@ func readNDJSON(path string) ([]Record, error) {
 
 		var rec Record
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			return nil, fmt.Errorf("parse line in %s: %w", path, err)
+			continue
 		}
 
 		out = append(out, rec)
