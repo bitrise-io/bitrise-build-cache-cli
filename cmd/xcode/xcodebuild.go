@@ -257,9 +257,6 @@ type relationSender interface {
 	PutInvocationRelation(rel multiplatform.InvocationRelation) error
 }
 
-// localInvocationLogger appends the invocation record to the on-disk
-// invocation log (~/.local/state/bitrise-build-cache/invocations/<day>.ndjson).
-// Same surface as invocations.Writer.Append.
 type localInvocationLogger interface {
 	Append(rec invocations.Record) error
 }
@@ -280,8 +277,6 @@ type XcodebuildRunner struct {
 	invocationAPI invocationSaver
 	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
 	relationAPI relationSender
-	// localLogger writes the invocation to the shared on-disk log. If nil, the default
-	// invocations.Writer rooted at the user's home dir is used.
 	localLogger localInvocationLogger
 }
 
@@ -355,9 +350,6 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	return runStats
 }
 
-// appendLocalInvocationLog mirrors the invocation to the shared on-disk log.
-// Runs before the network emit so a BE outage does not lose the local record.
-// Local-write failure is logged at warn level and never blocks the wrapper.
 func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, runStats xcodeargs.RunStats) {
 	logger := c.resolveLocalLogger()
 	if logger == nil {
