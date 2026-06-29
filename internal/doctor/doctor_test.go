@@ -706,3 +706,120 @@ func TestDaemonUpFix_propagatesError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exit status 1")
 }
+
+func TestDaemonUpFixer_listsStartedServices(t *testing.T) {
+	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) {
+		return []string{"xcelerate-proxy", "ccache-helper"}, nil
+	}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "xcelerate-proxy")
+	assert.Contains(t, detail, "ccache-helper")
+}
+
+func TestDaemonUpFixer_noServicesIsNoop(t *testing.T) {
+	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) { return nil, nil }}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "no services")
+}
+
+func TestDaemonRestartFixer_listsRestartedServices(t *testing.T) {
+	f := DaemonRestartFixer{Restart: func(context.Context) ([]string, error) {
+		return []string{"xcelerate-proxy"}, nil
+	}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "xcelerate-proxy")
+}
+
+func TestDaemonRestartFixer_propagatesError(t *testing.T) {
+	f := DaemonRestartFixer{Restart: func(context.Context) ([]string, error) {
+		return nil, errors.New("Down failed")
+	}}
+
+	_, err := f.Fix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Down failed")
+}
+
+func TestUpdateFixer_invokesInjectedUpdate(t *testing.T) {
+	called := false
+	f := UpdateFixer{Update: func(context.Context) error {
+		called = true
+
+		return nil
+	}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Contains(t, detail, "update")
+}
+
+func TestUpdateFixer_propagatesError(t *testing.T) {
+	f := UpdateFixer{Update: func(context.Context) error { return errors.New("brew lock") }}
+
+	_, err := f.Fix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "brew lock")
+}
+
+func TestLogDirsFixer_createsMissingDirs(t *testing.T) {
+	tmp := t.TempDir()
+	a := filepath.Join(tmp, "a")
+	b := filepath.Join(tmp, "b")
+
+	f := LogDirsFixer{Candidates: []string{a, b}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, a)
+	assert.Contains(t, detail, b)
+
+	for _, p := range []string{a, b} {
+		info, statErr := os.Stat(p)
+		require.NoError(t, statErr)
+		assert.True(t, info.IsDir())
+	}
+}
+
+func TestLogDirsFixer_skipsExisting(t *testing.T) {
+	tmp := t.TempDir()
+	existing := filepath.Join(tmp, "exists")
+	missing := filepath.Join(tmp, "missing")
+	require.NoError(t, os.MkdirAll(existing, 0o755))
+
+	f := LogDirsFixer{Candidates: []string{existing, missing}}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.NotContains(t, detail, existing)
+	assert.Contains(t, detail, missing)
+}
+
+func TestRemoveFileFixer_removesAndLabels(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "stale.pid")
+	require.NoError(t, os.WriteFile(target, []byte("99999"), 0o600))
+
+	f := RemoveFileFixer{Path: target, Label: "stale pid file"}
+
+	detail, err := f.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "stale pid file")
+	assert.Contains(t, detail, target)
+
+	_, statErr := os.Stat(target)
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestRemoveFileFixer_missingFileIsError(t *testing.T) {
+	f := RemoveFileFixer{Path: filepath.Join(t.TempDir(), "nope"), Label: "missing"}
+
+	_, err := f.Fix()
+	require.Error(t, err)
+}
