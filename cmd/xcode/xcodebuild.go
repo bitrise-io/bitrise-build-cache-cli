@@ -394,7 +394,10 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 		return nil
 	}
 
-	return invocations.NewWriter(p)
+	w := invocations.NewWriter(p)
+	w.Logger = c.Logger
+
+	return w
 }
 
 func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {

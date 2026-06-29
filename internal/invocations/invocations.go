@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
@@ -52,8 +54,9 @@ const (
 )
 
 type Writer struct {
-	Paths paths.Paths
-	Clock func() time.Time
+	Paths  paths.Paths
+	Clock  func() time.Time
+	Logger log.Logger
 }
 
 func NewWriter(p paths.Paths) *Writer {
@@ -83,6 +86,10 @@ func (w *Writer) Append(rec Record) error {
 		return fmt.Errorf("write invocation record: %w", err)
 	}
 
+	if w.Logger != nil {
+		w.Logger.Debugf("Appended local invocation log entry to %s", path)
+	}
+
 	_ = w.maybeSweep()
 
 	return nil
@@ -94,8 +101,13 @@ func (w *Writer) maybeSweep() error {
 		return nil
 	}
 
-	if _, err := Sweep(w.Paths, defaultRetention, w.now()); err != nil {
+	removed, err := Sweep(w.Paths, defaultRetention, w.now())
+	if err != nil {
 		return err
+	}
+
+	if w.Logger != nil {
+		w.Logger.Debugf("Swept %d stale local invocation log file(s)", removed)
 	}
 
 	now := w.now()
