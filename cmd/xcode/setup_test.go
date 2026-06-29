@@ -4,11 +4,14 @@ package xcode_test
 import (
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/mock"
+	keyring "github.com/zalando/go-keyring"
 )
 
 var mockLogger = &utilsMocks.Logger{}
 
 func init() {
+	keyring.MockInit()
+
 	mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()

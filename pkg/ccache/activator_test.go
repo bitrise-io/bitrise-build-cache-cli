@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
@@ -21,6 +22,8 @@ import (
 )
 
 var mockLogger = newMockLogger() //nolint:gochecknoglobals
+
+func init() { keyring.MockInit() }
 
 func newMockLogger() *utilsMocks.Logger {
 	l := &utilsMocks.Logger{}
