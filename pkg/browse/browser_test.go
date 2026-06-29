@@ -50,8 +50,10 @@ func TestBrowse_workspaceFromEnv_buildsListURLWithCIProviderUnknown(t *testing.T
 		BaseURL: "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations?ci_provider=unknown", got)
-	assert.Equal(t, got, op.seenURL)
+	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations?ci_provider=unknown", got.URL)
+	assert.Equal(t, "ws_abc", got.WorkspaceID)
+	assert.Empty(t, got.InvocationID)
+	assert.Equal(t, got.URL, op.seenURL)
 }
 
 func TestBrowse_invocationID_deepLinks_noFilter(t *testing.T) {
@@ -64,8 +66,9 @@ func TestBrowse_invocationID_deepLinks_noFilter(t *testing.T) {
 		BaseURL:      "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations/inv_xyz", got)
-	assert.NotContains(t, got, "ci_provider=")
+	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_abc/invocations/inv_xyz", got.URL)
+	assert.Equal(t, "inv_xyz", got.InvocationID)
+	assert.NotContains(t, got.URL, "ci_provider=")
 }
 
 func TestBrowse_authConfigFallback_resolvesWorkspaceID(t *testing.T) {
@@ -83,7 +86,8 @@ func TestBrowse_authConfigFallback_resolvesWorkspaceID(t *testing.T) {
 		BaseURL: "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_from_auth/invocations?ci_provider=unknown", got)
+	assert.Equal(t, "https://app.bitrise.io/build-cache/ws_from_auth/invocations?ci_provider=unknown", got.URL)
+	assert.Equal(t, "ws_from_auth", got.WorkspaceID)
 }
 
 func TestBrowse_authConfigFallback_errorFallsThroughToSentinel(t *testing.T) {
@@ -109,7 +113,7 @@ func TestBrowse_printOnlySkipsOpener(t *testing.T) {
 		BaseURL:     "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, got)
+	assert.NotEmpty(t, got.URL)
 	assert.Empty(t, op.seenURL, "PrintOnly must not invoke the opener")
 }
 
@@ -139,7 +143,7 @@ func TestBrowse_openerErrNoOpener_emitsNoSupportedLauncherWarn(t *testing.T) {
 		BaseURL:     "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, got)
+	assert.NotEmpty(t, got.URL)
 	assert.Contains(t, buf.String(), "No default browser launcher for this OS")
 }
 
@@ -155,7 +159,7 @@ func TestBrowse_openerGenericError_emitsCouldNotAutoLaunchWarn(t *testing.T) {
 		BaseURL:     "https://app.bitrise.io",
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, got)
+	assert.NotEmpty(t, got.URL)
 	assert.Contains(t, buf.String(), "Could not auto-launch the browser")
 	// Generic-error message should include the underlying error text so
 	// post-mortem isn't blind.

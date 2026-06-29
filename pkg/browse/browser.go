@@ -9,8 +9,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/browse"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 // ciProviderUnknown filters the dashboard's invocation list to local runs
@@ -31,13 +29,19 @@ type Params struct {
 	PrintOnly    bool
 }
 
+type Result struct {
+	URL          string `json:"url"`
+	WorkspaceID  string `json:"workspace_id"`
+	InvocationID string `json:"invocation_id,omitempty"`
+}
+
 type Browser struct {
 	Logger            log.Logger
 	Opener            browse.Opener
 	WorkspaceFromAuth WorkspaceResolver
 }
 
-func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
+func (b *Browser) Open(ctx context.Context, p Params) (Result, error) {
 	workspaceID := p.WorkspaceID
 	if workspaceID == "" {
 		workspaceID = p.Envs[configcommon.EnvWorkspaceID]
@@ -55,7 +59,7 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 	}
 
 	if workspaceID == "" {
-		return "", ErrWorkspaceNotConfigured
+		return Result{}, ErrWorkspaceNotConfigured
 	}
 
 	ciProvider := ""
@@ -70,15 +74,17 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 		BaseURL:          p.BaseURL,
 	})
 	if err != nil {
-		return "", fmt.Errorf("build dashboard URL: %w", err)
+		return Result{}, fmt.Errorf("build dashboard URL: %w", err)
 	}
+
+	res := Result{URL: dashboardURL, WorkspaceID: workspaceID, InvocationID: p.InvocationID}
 
 	if b.Logger != nil {
 		b.Logger.Infof("Bitrise Build Cache dashboard: %s", dashboardURL)
 	}
 
 	if p.PrintOnly {
-		return dashboardURL, nil
+		return res, nil
 	}
 
 	opener := b.Opener
@@ -97,16 +103,14 @@ func (b *Browser) Open(ctx context.Context, p Params) (string, error) {
 		}
 	}
 
-	return dashboardURL, nil
+	return res, nil
 }
 
-// defaultWorkspaceFromAuth reads the WorkspaceID from the multiplatform
-// analytics config, which every `activate` flow writes.
-func defaultWorkspaceFromAuth(_ map[string]string) (string, error) {
-	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+func defaultWorkspaceFromAuth(envs map[string]string) (string, error) {
+	cfg, _, err := configcommon.ResolveAuthConfig(envs)
 	if err != nil {
 		return "", err //nolint:wrapcheck // surfaced only as a fallback signal, never propagated to the user
 	}
 
-	return cfg.AuthConfig.WorkspaceID, nil
+	return cfg.WorkspaceID, nil
 }
