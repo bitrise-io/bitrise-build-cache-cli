@@ -31,6 +31,8 @@ One JSON object per line. UTF-8, LF-terminated. Records ≤ 4 KiB land atomicall
 
 Unknown fields are ignored by readers — additive schema changes are backward compatible.
 
+The structural schema is checked in at [`local-invocation-log.schema.json`](local-invocation-log.schema.json) (JSON Schema draft 2020-12). A canonical example record lives at [`canonical-record.ndjson`](canonical-record.ndjson). Both the bbcli Go writer and the gradle-plugins Kotlin writer have a golden test that encodes a fixed `Record` and byte-compares the result against the canonical line — any field-order, escaping, or schema drift between the two writers surfaces as a failing test on both sides.
+
 ## Concurrency contract
 
 Writers append from multiple processes:

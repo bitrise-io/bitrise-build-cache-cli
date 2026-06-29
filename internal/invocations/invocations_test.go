@@ -17,6 +17,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 )
 
+const canonicalRecordPath = "../../docs/canonical-record.ndjson"
+
 func newTestWriter(t *testing.T, at time.Time) (*Writer, paths.Paths) {
 	t.Helper()
 
@@ -285,4 +287,29 @@ func TestWriter_Append_runsSweepAfterMarkerExpiry(t *testing.T) {
 
 	_, err := os.Stat(stale)
 	assert.True(t, os.IsNotExist(err), "stale file should have been swept")
+}
+
+// Golden cross-writer parity: encoding the canonical Record on the Go side
+// must produce the same bytes as docs/canonical-record.ndjson. The gradle
+// plugin's LocalInvocationLogTest holds the same assertion on the Kotlin
+// side. Schema drift between the two writers fails one or both tests.
+func TestCanonicalRecord_byteEqualToCheckedInFixture(t *testing.T) {
+	fixture, err := os.ReadFile(canonicalRecordPath)
+	require.NoError(t, err)
+
+	rec := Record{
+		InvocationID: "cafe-1234",
+		Command:      "xcodebuild build -workspace Foo.xcworkspace -scheme Foo",
+		Tool:         ToolXcode,
+		ToolVersion:  "16.0",
+		CLIVersion:   "v2.8.6",
+		StartedAt:    time.Date(2026, 6, 25, 13, 14, 15, 0, time.UTC),
+		FinishedAt:   time.Date(2026, 6, 25, 13, 15, 0, 0, time.UTC),
+		ExitCode:     0,
+		Source:       SourceLocal,
+	}
+
+	encoded, err := encodeRecord(rec)
+	require.NoError(t, err)
+	assert.Equal(t, string(fixture), string(encoded), "canonical-record.ndjson must round-trip through the Go writer byte-identically")
 }
