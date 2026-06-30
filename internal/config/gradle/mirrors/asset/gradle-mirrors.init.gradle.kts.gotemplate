@@ -118,22 +118,36 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         }
                                         val sha1 = md.digest().joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
                                         // Structural check: an intact-but-wrong jar (or a truncated one) shows up as MISSING/zip-error or an off DisplayMetrics size, distinguishing it from a correct jar that fails for classpath/version reasons.
+                                        // Also report the ICU data entry: DefaultNativeRuntimeLoader reads icu/icudt*.dat from android-all, and a bucket-A NPE@DefaultNativeRuntimeLoader is an ICU/native read that returned null. A DisplayMetrics-present jar with a MISSING/short icu entry is the smoking gun the displayMetrics check alone misses. Central-directory scan only (no entry-content read), so it stays cheap on every build.
                                         val dm = try {
                                             java.util.zip.ZipFile(jar).use { zf ->
                                                 val e = zf.getEntry("android/util/DisplayMetrics.class")
-                                                if (e != null) "displayMetrics=present(${e.getSize()}) entries=${zf.size()}" else "displayMetrics=MISSING entries=${zf.size()}"
+                                                val dmStr = if (e != null) "displayMetrics=present(${e.getSize()})" else "displayMetrics=MISSING"
+                                                // icu=none is normal for older android-all (pre-native-runtime SDKs don't bundle ICU); it's only a signal when a NEWER jar that should carry icudt shows none/short on a failing build.
+                                                var icu = "icu=none"
+                                                val en = zf.entries()
+                                                while (en.hasMoreElements()) {
+                                                    val n = en.nextElement()
+                                                    val nm = n.getName()
+                                                    if (nm.contains("icudt")) { icu = "icu=${nm.substringAfterLast('/')}(${n.getSize()})"; break }
+                                                }
+                                                "$dmStr $icu entries=${zf.size()}"
                                             }
                                         } catch (z: Throwable) {
                                             "displayMetrics=zip-error(${z.javaClass.getSimpleName()})"
                                         }
                                         getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli={{ $.CLIVersion }} robolectric=$roboVer name=${jar.getName()} sha1=$sha1 size=${jar.length()} mtime=${jar.lastModified()} $dm")
                                     }
-                                // Tier-2: stream the per-fork -Xlog:class+load files (incl. rotated *.classload.log.N), grep the android.util.DisplayMetrics lines (each records the source jar / defining loader), re-emit, then delete (bounded, per-VM). useLines streams so a large log can't OOM the daemon.
+                                // Tier-2: stream the per-fork -Xlog files (class+load + library; incl. rotated *.classload.log.N), grep the relevant lines, re-emit, then delete (bounded, per-VM). useLines streams so a large log can't OOM the daemon. Two signals: android.util.DisplayMetrics class-load lines (source jar / defining loader behind a NoSuchFieldError) and native-library load lines for the Robolectric native runtime (androidruntime/nativeruntime/icu, or any Failed load) — the latter names the real reason behind a bucket-A NPE@DefaultNativeRuntimeLoader, which the line-201 summary swallows. The library filter is scoped to native-runtime artifacts so it can't re-emit every .so the JVM loads.
                                 sandboxLogDir{{ .ID }}.listFiles()?.filter { it.isFile() && it.getName().contains("classload.log") }?.forEach { lf ->
                                     try {
                                         lf.useLines { seq ->
-                                            seq.filter { it.contains("android.util.DisplayMetrics") }.forEach { ln ->
-                                                getLogger().lifecycle("[robolectric-sandbox-probe] cli={{ $.CLIVersion }} ${ln.trim()}")
+                                            seq.forEach { ln ->
+                                                if (ln.contains("android.util.DisplayMetrics")) {
+                                                    getLogger().lifecycle("[robolectric-sandbox-probe] cli={{ $.CLIVersion }} ${ln.trim()}")
+                                                } else if (ln.contains("library]") && (ln.contains("androidruntime") || ln.contains("nativeruntime") || ln.contains("icudt") || ln.contains("Failed"))) {
+                                                    getLogger().lifecycle("[robolectric-nativeruntime-probe] cli={{ $.CLIVersion }} ${ln.trim()}")
+                                                }
                                             }
                                         }
                                         lf.delete()
@@ -154,6 +168,16 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                         systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
                         if (auditTask{{ .ID }} != null) {
                             finalizedBy(auditTask{{ .ID }})
+                            // Surface the swallowed cause behind a native-runtime failure: the NPE@DefaultNativeRuntimeLoader summary hides the upstream UnsatisfiedLinkError / IOException / resource-not-found. FULL exception format + causes, added only for the FAILED event, so green builds get zero extra output and we don't clobber an existing event set.
+                            testLogging.setShowCauses(true)
+                            testLogging.setShowStackTraces(true)
+                            testLogging.setExceptionFormat(org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL)
+                            testLogging.events("failed")
+                            // Opt-IN deep Robolectric logging (default OFF). robolectric.logging=stdout prints on every test in every fork — it WOULD flood normal builds fleet-wide — so it is gated behind an explicit env, enabled only to debug a specific repro.
+                            if (System.getenv("BITRISE_ROBOLECTRIC_VERBOSE_LOGGING") == "true") {
+                                systemProperty("robolectric.logging.enabled", "true")
+                                systemProperty("robolectric.logging", "stdout")
+                            }
                             // Classpath probe: lists the jars on the test runtime classpath that provide android/util/DisplayMetrics.class, in classpath order. >1 entry (e.g. a mockable-android/stub jar alongside android-all) names a shadow that produces NoSuchFieldError on an otherwise-correct jar. Runs before the test (so it's captured on failing builds), never fails the build.
                             doFirst {
                                 try {
@@ -165,12 +189,14 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         .map { "${it.getName()}(${it.length()})" }
                                     if (dmSources.isNotEmpty()) {
                                         getLogger().lifecycle("[robolectric-classpath-probe] cli={{ $.CLIVersion }} ${getPath()} android/util/DisplayMetrics from: ${dmSources.joinToString(", ")}")
-                                        // Tier-2: this is an Android/Robolectric test task. Attach -Xlog:class+load so the test JVM records where DisplayMetrics is actually defined (incl. Robolectric's sandbox loader). Guards: JDK 9+ only (the flag aborts an unrecognized-option JDK 8 JVM), writable dir, size-capped file (never stdout). jvmArgs in doFirst is read at fork time (after this action) yet stays out of up-to-date inputs.
+                                        // Tier-2: this is an Android/Robolectric test task. Attach -Xlog:class+load (where DisplayMetrics is actually defined, incl. Robolectric's sandbox loader) + library (whether/where the native runtime .so loaded — the real reason behind a bucket-A NPE). Both routed to one per-fork file. Guards: JDK 9+ only (the flag aborts an unrecognized-option JDK 8 JVM), writable dir, size-capped file (never stdout). jvmArgs in doFirst is read at fork time (after this action) yet stays out of up-to-date inputs.
                                         val testJvmMajor = (try { getJavaLauncher().getOrNull()?.getMetadata()?.getLanguageVersion()?.asInt() } catch (e: Throwable) { null }) ?: org.gradle.api.JavaVersion.current().getMajorVersion().toIntOrNull()
                                         val dirOk = try { sandboxLogDir{{ .ID }}.mkdirs(); sandboxLogDir{{ .ID }}.isDirectory() && sandboxLogDir{{ .ID }}.canWrite() } catch (e: Throwable) { false }
                                         if (testJvmMajor != null && testJvmMajor >= 9 && dirOk) {
                                             val probeLog = java.io.File(sandboxLogDir{{ .ID }}, getPath().replace(':', '_').trim('_') + "-%p.classload.log")
-                                            jvmArgs("-Xlog:class+load=info:file=${probeLog.getAbsolutePath()}::filesize=16m,filecount=1")
+                                            // CRITICAL: -Xlog rejects an UNKNOWN tag by aborting JVM startup ("Could not create the Java Virtual Machine") — that fails the test fork and the build. class+load exists since JDK 9; the library tag only since JDK 15, so it is INVALID on JDK 11 (a common Robolectric JVM) and would break every fork there. Gate library at >=17 (verified valid on 17/21, fails on 11); older JDKs get class+load only.
+                                            val xlogTags = if (testJvmMajor >= 17) "class+load=info,library=info" else "class+load=info"
+                                            jvmArgs("-Xlog:${xlogTags}:file=${probeLog.getAbsolutePath()}::filesize=16m,filecount=1")
                                         }
                                     }
                                 } catch (t: Throwable) {

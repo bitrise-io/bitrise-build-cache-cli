@@ -1351,8 +1351,11 @@ workflows:
         - content: |-
             set -exo pipefail
             ./gradlew debug --info --stacktrace > "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1
-            # Robolectric unit test to exercise the android-all jar audit (tolerate failure; append logs).
-            ./gradlew :ad-click-impl:testDebugUnitTest --info --stacktrace >> "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1 || true
+            # Robolectric unit test to exercise the android-all jar audit + native-runtime probes (tolerate failure; append logs).
+            # --rerun forces just this task to re-execute (bypasses both up-to-date and the build cache for the test task only,
+            # so its compile deps still load FROM-CACHE): served FROM-CACHE the test never forks a JVM, so Robolectric never
+            # boots and DisplayMetrics / android-all / the native runtime never load (the probe + ICU audit stay dark).
+            ./gradlew :ad-click-impl:testDebugUnitTest --rerun --info --stacktrace >> "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1 || true
     - script:
         title: Assert downloads from MavenCentral mirror
         inputs:
