@@ -126,10 +126,13 @@ func (a *Activator) Activate(ctx context.Context) error {
 	}
 	if keychainErr != nil {
 		mpCfg.AuthConfig = config.AuthConfig
+	} else {
+		a.logger.Infof("Saved auth credentials to the OS keychain")
 	}
 	if err := mpCfg.Save(a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
+	a.logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(a.osProxy))
 
 	baseDir := a.baseDirOverride
 	if baseDir == "" {
