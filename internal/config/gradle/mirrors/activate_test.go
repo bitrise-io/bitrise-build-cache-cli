@@ -89,7 +89,7 @@ func TestActivate(t *testing.T) {
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli=v0.0.0-test robolectric=$roboVer name=`,
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] cli=v0.0.0-test components $components")`,
 				`val dmStr = if (e != null) "displayMetrics=present(${e.getSize()})" else "displayMetrics=MISSING"`,
-				`if (nm.contains("icudt") && nm.endsWith(".dat")) { icu = "icu=${nm.substringAfterLast('/')}(${n.getSize()})"; break }`,
+				`if (nm.contains("icudt")) { icu = "icu=${nm.substringAfterLast('/')}(${n.getSize()})"; break }`,
 				`java.util.zip.ZipFile(jar).use`,
 				// Native-runtime capture: testLogging FULL on FAILED, opt-in stdout logging, combined -Xlog, native-lib re-emit
 				`testLogging.setExceptionFormat(org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL)`,

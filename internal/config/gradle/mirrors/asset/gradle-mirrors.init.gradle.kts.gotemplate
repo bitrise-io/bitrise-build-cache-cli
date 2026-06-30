@@ -123,12 +123,13 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                             java.util.zip.ZipFile(jar).use { zf ->
                                                 val e = zf.getEntry("android/util/DisplayMetrics.class")
                                                 val dmStr = if (e != null) "displayMetrics=present(${e.getSize()})" else "displayMetrics=MISSING"
-                                                var icu = "icu=MISSING"
+                                                // icu=none is normal for older android-all (pre-native-runtime SDKs don't bundle ICU); it's only a signal when a NEWER jar that should carry icudt shows none/short on a failing build.
+                                                var icu = "icu=none"
                                                 val en = zf.entries()
                                                 while (en.hasMoreElements()) {
                                                     val n = en.nextElement()
                                                     val nm = n.getName()
-                                                    if (nm.contains("icudt") && nm.endsWith(".dat")) { icu = "icu=${nm.substringAfterLast('/')}(${n.getSize()})"; break }
+                                                    if (nm.contains("icudt")) { icu = "icu=${nm.substringAfterLast('/')}(${n.getSize()})"; break }
                                                 }
                                                 "$dmStr $icu entries=${zf.size()}"
                                             }
