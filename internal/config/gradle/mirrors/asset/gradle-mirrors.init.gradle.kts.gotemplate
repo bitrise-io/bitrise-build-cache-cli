@@ -194,7 +194,9 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                                         val dirOk = try { sandboxLogDir{{ .ID }}.mkdirs(); sandboxLogDir{{ .ID }}.isDirectory() && sandboxLogDir{{ .ID }}.canWrite() } catch (e: Throwable) { false }
                                         if (testJvmMajor != null && testJvmMajor >= 9 && dirOk) {
                                             val probeLog = java.io.File(sandboxLogDir{{ .ID }}, getPath().replace(':', '_').trim('_') + "-%p.classload.log")
-                                            jvmArgs("-Xlog:class+load=info,library=info:file=${probeLog.getAbsolutePath()}::filesize=16m,filecount=1")
+                                            // CRITICAL: -Xlog rejects an UNKNOWN tag by aborting JVM startup ("Could not create the Java Virtual Machine") — that fails the test fork and the build. class+load exists since JDK 9; the library tag only since JDK 15, so it is INVALID on JDK 11 (a common Robolectric JVM) and would break every fork there. Gate library at >=17 (verified valid on 17/21, fails on 11); older JDKs get class+load only.
+                                            val xlogTags = if (testJvmMajor >= 17) "class+load=info,library=info" else "class+load=info"
+                                            jvmArgs("-Xlog:${xlogTags}:file=${probeLog.getAbsolutePath()}::filesize=16m,filecount=1")
                                         }
                                     }
                                 } catch (t: Throwable) {
