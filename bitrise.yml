@@ -22,6 +22,46 @@ include:
 - path: bitrise_rn_config/bitrise.yml
 
 workflows:
+  path_repro_chained:
+    before_run:
+    - path_repro_chain1
+    - path_repro_chain2
+    steps:
+    - script@1:
+        title: Debug print PATH (chained main)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            echo "PATH=$PATH"
+            echo "$PATH" | tr ':' '\n' | grep -F TESTPATH && echo "TESTPATH PRESENT" || (echo "TESTPATH MISSING" && exit 1)
+
+  path_repro_chain1:
+    steps:
+    - set-env-var@0:
+        inputs:
+        - destination_keys: PATH
+        - value: $PATH:TESTPATH
+    - script@1:
+        title: Debug print PATH (chain1)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            echo "PATH=$PATH"
+            echo "$PATH" | tr ':' '\n' | grep -F TESTPATH && echo "TESTPATH PRESENT" || (echo "TESTPATH MISSING" && exit 1)
+
+  path_repro_chain2:
+    steps:
+    - script@1:
+        title: Debug print PATH (chain2)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            echo "PATH=$PATH"
+            echo "$PATH" | tr ':' '\n' | grep -F TESTPATH && echo "TESTPATH PRESENT" || (echo "TESTPATH MISSING" && exit 1)
+
   release:
     description: |
       Creates Linux and Darwin binaries, publishes a GitHub release, and
