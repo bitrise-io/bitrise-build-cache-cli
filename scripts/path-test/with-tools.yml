@@ -1,0 +1,53 @@
+format_version: "23"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: other
+
+meta:
+  bitrise.io:
+    stack: linux-docker-android-22.04
+    machine_type_id: g2.linux.medium
+    machine_region: region-us
+
+tools:
+  golang: 1.26:latest
+
+workflows:
+  chained:
+    before_run:
+    - chain1
+    - chain2
+    steps:
+    - script@1:
+        title: Debug print PATH (chained main)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            echo "PATH=$PATH"
+            echo "$PATH" | tr ':' '\n' | grep -F TESTPATH && echo "TESTPATH PRESENT" || (echo "TESTPATH MISSING" && exit 1)
+
+  chain1:
+    steps:
+    - set-env-var@0:
+        inputs:
+        - destination_keys: PATH
+        - value: $PATH:TESTPATH
+    - script@1:
+        title: Debug print PATH (chain1)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            echo "PATH=$PATH"
+            echo "$PATH" | tr ':' '\n' | grep -F TESTPATH && echo "TESTPATH PRESENT" || (echo "TESTPATH MISSING" && exit 1)
+
+  chain2:
+    steps:
+    - script@1:
+        title: Debug print PATH (chain2)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            echo "PATH=$PATH"
+            echo "$PATH" | tr ':' '\n' | grep -F TESTPATH && echo "TESTPATH PRESENT" || (echo "TESTPATH MISSING" && exit 1)
