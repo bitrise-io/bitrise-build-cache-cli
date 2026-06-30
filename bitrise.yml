@@ -21,6 +21,9 @@ app:
 include:
 - path: bitrise_rn_config/bitrise.yml
 
+tools:
+  golang: 1.24:latest
+
 workflows:
   path_repro_chained:
     before_run:
