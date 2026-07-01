@@ -185,17 +185,26 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                             doFirst {
                                 try {
                                     val cpFiles = getClasspath().getFiles()
+                                    // For every jar on the classpath that provides android/util/DisplayMetrics, read the class bytes and check whether it actually DECLARES the noncompatWidthPixels field (the field DeviceConfig writes). A jar whose DisplayMetrics is MISSING it is a stub/stripped class (public android.jar / mockable-android) — the concrete culprit that shadows android-all's instrumented class and produces the NoSuchFieldError. Scanning the constant pool for the field name is enough (present iff declared). Class entry is small; read is cheap.
                                     val dmSources = cpFiles
                                         .filter { it.isFile() && it.getName().endsWith(".jar") }
-                                        .filter {
-                                            try { java.util.zip.ZipFile(it).use { z -> z.getEntry("android/util/DisplayMetrics.class") != null } } catch (e: Throwable) { false }
+                                        .mapNotNull { jar ->
+                                            try {
+                                                java.util.zip.ZipFile(jar).use { z ->
+                                                    val e = z.getEntry("android/util/DisplayMetrics.class")
+                                                    if (e == null) null else {
+                                                        val bytes = z.getInputStream(e).use { it.readBytes() }
+                                                        val hasField = String(bytes, Charsets.ISO_8859_1).contains("noncompatWidthPixels")
+                                                        "${jar.getName()}(${jar.length()},noncompatWidthPixels:${if (hasField) "present" else "MISSING"})"
+                                                    }
+                                                }
+                                            } catch (e: Throwable) { null }
                                         }
-                                        .map { "${it.getName()}(${it.length()})" }
                                     if (dmSources.isNotEmpty()) {
                                         getLogger().lifecycle("[robolectric-classpath-probe] cli={{ $.CLIVersion }} ${getPath()} android/util/DisplayMetrics from: ${dmSources.joinToString(", ")}")
                                         // Instrumentation fingerprint — answers robolectric#9630 ("is a bytecode-manipulation framework perturbing which DisplayMetrics loads?") without customer source. Reports, from the test task itself (no getProject() → config-cache safe): the JaCoCo task extension (its -javaagent instruments every class), any explicit -javaagent on jvmArgs, byte-manip framework jars on the test classpath (mockk/byte-buddy/unmock/powermock/mockito inline+agent), and any STUB DisplayMetrics jar (android.jar / mockable-android-*) that could shadow android-all's instrumented class. Names only, one line, wrapped.
                                         val cpNames = cpFiles.map { it.getName() }
-                                        val byteManip = cpNames.filter { n -> listOf("mockk", "byte-buddy", "byte_buddy", "bytebuddy", "unmock", "powermock", "mockito-inline", "mockito-agent").any { n.contains(it) } }.distinct().sorted()
+                                        val byteManip = cpNames.filter { n -> listOf("mockk", "byte-buddy", "byte_buddy", "bytebuddy", "unmock", "powermock", "mockito-inline", "mockito-agent", "jacoco").any { n.contains(it) } }.distinct().sorted()
                                         val stubJars = cpNames.filter { it == "android.jar" || it.startsWith("mockable-android") }.distinct()
                                         val jacocoOn = try { getExtensions().findByName("jacoco") != null } catch (e: Throwable) { false }
                                         val agents = try { getJvmArgs().filter { it.startsWith("-javaagent") }.map { it.substringAfterLast('/').substringBefore('=') } } catch (e: Throwable) { emptyList<String>() }
