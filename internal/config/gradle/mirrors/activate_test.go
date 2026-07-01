@@ -102,6 +102,11 @@ func TestActivate(t *testing.T) {
 				`getLogger().lifecycle("[robolectric-nativeruntime-probe] cli=v0.0.0-test ${ln.trim()}")`,
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli=v0.0.0-test `,
 				`getLogger().lifecycle("[robolectric-classpath-probe] cli=v0.0.0-test ${getPath()} android/util/DisplayMetrics from: `,
+				// Instrumentation fingerprint probe (bytecode-manipulation detection — robolectric#9630)
+				`val byteManip = cpNames.filter { n -> listOf("mockk", "byte-buddy", "byte_buddy", "bytebuddy", "unmock", "powermock", "mockito-inline", "mockito-agent").any { n.contains(it) } }.distinct().sorted()`,
+				`val stubJars = cpNames.filter { it == "android.jar" || it.startsWith("mockable-android") }.distinct()`,
+				`val jacocoOn = try { getExtensions().findByName("jacoco") != null } catch (e: Throwable) { false }`,
+				`getLogger().lifecycle("[robolectric-instrumentation-probe] cli=v0.0.0-test ${getPath()} jacoco=${jacocoOn} agents=${agents} frameworks=${byteManip} stubDisplayMetricsJar=${stubJars}")`,
 				`z.getEntry("android/util/DisplayMetrics.class") != null`,
 				// Tier-2 sandbox probe (opt-OUT: shares BITRISE_ROBOLECTRIC_JAR_AUDIT kill-switch; -Xlog:class+load, JDK9+ + Android-task gated)
 				`val testJvmMajor = (try { getJavaLauncher().getOrNull()?.getMetadata()?.getLanguageVersion()?.asInt() } catch (e: Throwable) { null }) ?: org.gradle.api.JavaVersion.current().getMajorVersion().toIntOrNull()`,
