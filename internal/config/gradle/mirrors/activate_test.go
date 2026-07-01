@@ -106,7 +106,7 @@ func TestActivate(t *testing.T) {
 				`val byteManip = cpNames.filter { n -> listOf("mockk", "byte-buddy", "byte_buddy", "bytebuddy", "unmock", "powermock", "mockito-inline", "mockito-agent", "jacoco").any { n.contains(it) } }.distinct().sorted()`,
 				`val stubJars = cpNames.filter { it == "android.jar" || it.startsWith("mockable-android") }.distinct()`,
 				`val jacocoOn = try { getExtensions().findByName("jacoco") != null } catch (e: Throwable) { false }`,
-				`getLogger().lifecycle("[robolectric-instrumentation-probe] cli=v0.0.0-test ${getPath()} jacoco=${jacocoOn} agents=${agents} frameworks=${byteManip} stubDisplayMetricsJar=${stubJars}")`,
+				`getLogger().lifecycle("[robolectric-instrumentation-probe] cli=v0.0.0-test ${getPath()} jacoco=${jacocoOn} frameworks=${byteManip} stubDisplayMetricsJar=${stubJars}")`,
 				`val hasField = String(bytes, Charsets.ISO_8859_1).contains("noncompatWidthPixels")`,
 				`"${jar.getName()}(${jar.length()},noncompatWidthPixels:${if (hasField) "present" else "MISSING"})"`,
 				// Tier-2 sandbox probe (opt-OUT: shares BITRISE_ROBOLECTRIC_JAR_AUDIT kill-switch; -Xlog:class+load, JDK9+ + Android-task gated)
