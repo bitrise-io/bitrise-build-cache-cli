@@ -102,7 +102,13 @@ func TestActivate(t *testing.T) {
 				`getLogger().lifecycle("[robolectric-nativeruntime-probe] cli=v0.0.0-test ${ln.trim()}")`,
 				`getLogger().lifecycle("[bitrise-robolectric-jar-audit] ERROR cli=v0.0.0-test `,
 				`getLogger().lifecycle("[robolectric-classpath-probe] cli=v0.0.0-test ${getPath()} android/util/DisplayMetrics from: `,
-				`z.getEntry("android/util/DisplayMetrics.class") != null`,
+				// Instrumentation fingerprint probe (bytecode-manipulation detection — robolectric#9630)
+				`val byteManip = cpNames.filter { n -> listOf("mockk", "byte-buddy", "byte_buddy", "bytebuddy", "unmock", "powermock", "mockito-inline", "mockito-agent", "jacoco").any { n.contains(it) } }.distinct().sorted()`,
+				`val stubJars = cpNames.filter { it == "android.jar" || it.startsWith("mockable-android") }.distinct()`,
+				`val jacocoOn = try { getExtensions().findByName("jacoco") != null } catch (e: Throwable) { false }`,
+				`getLogger().lifecycle("[robolectric-instrumentation-probe] cli=v0.0.0-test ${getPath()} jacoco=${jacocoOn} frameworks=${byteManip} stubDisplayMetricsJar=${stubJars}")`,
+				`val hasField = String(bytes, Charsets.ISO_8859_1).contains("noncompatWidthPixels")`,
+				`"${jar.getName()}(${jar.length()},noncompatWidthPixels:${if (hasField) "present" else "MISSING"})"`,
 				// Tier-2 sandbox probe (opt-OUT: shares BITRISE_ROBOLECTRIC_JAR_AUDIT kill-switch; -Xlog:class+load, JDK9+ + Android-task gated)
 				`val testJvmMajor = (try { getJavaLauncher().getOrNull()?.getMetadata()?.getLanguageVersion()?.asInt() } catch (e: Throwable) { null }) ?: org.gradle.api.JavaVersion.current().getMajorVersion().toIntOrNull()`,
 				`if (testJvmMajor != null && testJvmMajor >= 9 && dirOk) {`,
