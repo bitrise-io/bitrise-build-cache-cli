@@ -24,6 +24,7 @@ func TestGeneratePlist_xcelerateProxy(t *testing.T) {
 	assert.Contains(t, got, "<string>/Users/alice/.local/state/bitrise-build-cache/logs/xcelerate-proxy.out.log</string>")
 	assert.Contains(t, got, "<string>/Users/alice/.local/state/bitrise-build-cache/logs/xcelerate-proxy.err.log</string>")
 	assert.Contains(t, got, "<key>KeepAlive</key>")
+	assert.Contains(t, got, "<key>SuccessfulExit</key>")
 	assert.Contains(t, got, "<key>RunAtLoad</key>")
 	assert.Contains(t, got, "<string>Background</string>")
 }
