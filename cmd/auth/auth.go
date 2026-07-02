@@ -35,6 +35,7 @@ var authCmd = &cobra.Command{
 var (
 	setToken       string
 	setWorkspaceID string
+	setUsername    string
 )
 
 // nolint:gochecknoglobals
@@ -47,6 +48,7 @@ var authSetCmd = &cobra.Command{
 
 		setToken = strings.TrimSpace(setToken)
 		setWorkspaceID = strings.TrimSpace(setWorkspaceID)
+		setUsername = strings.TrimSpace(setUsername)
 
 		switch {
 		case setToken == "" && setWorkspaceID == "":
@@ -58,14 +60,21 @@ var authSetCmd = &cobra.Command{
 		}
 
 		kc := keychain.New()
-		if err := kc.Save(keychain.Credentials{
-			AuthToken:   setToken,
-			WorkspaceID: setWorkspaceID,
-		}); err != nil {
+		existing, err := kc.Load()
+		if err != nil && !errors.Is(err, keychain.ErrNotFound) {
+			return fmt.Errorf("load existing credentials: %w", err)
+		}
+		existing.AuthToken = setToken
+		existing.WorkspaceID = setWorkspaceID
+		existing.Username = setUsername
+		if err := kc.Save(existing); err != nil {
 			return fmt.Errorf("save credentials to keychain: %w", err)
 		}
 
 		logger.TInfof("✅ Credentials saved to the OS keychain")
+		if setUsername != "" {
+			logger.TInfof("Display name for local invocations set to %q.", setUsername)
+		}
 
 		switch scrubbed, err := scrubDiskCredentials(); {
 		case err != nil:
@@ -319,6 +328,7 @@ type credAudit struct {
 	state       credSourceState
 	workspaceID string
 	authToken   string
+	username    string
 	note        string
 	err         error
 }
@@ -377,6 +387,9 @@ func renderSource(logger log.Logger, s credSource, a credAudit) bool {
 	case sourcePopulated:
 		logger.Infof("  Workspace ID: %s", a.workspaceID)
 		logger.Infof("  Auth token:   %s", maskToken(a.authToken))
+		if a.username != "" {
+			logger.Infof("  Display name: %s", a.username)
+		}
 		if a.note != "" {
 			logger.Infof("  %s", a.note)
 		}
@@ -400,7 +413,7 @@ func probeKeychain() credAudit {
 		return credAudit{state: sourceReadError, err: err}
 	}
 
-	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken}
+	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
 	if desc := configcommon.DescribeKeychainCredentials(creds); desc.IsOAuthLogin {
 		audit.note = desc.Detail()
 	}
@@ -527,6 +540,7 @@ func maskToken(token string) string {
 func init() {
 	authSetCmd.Flags().StringVar(&setToken, "token", "", "Bitrise Build Cache auth token (required)")
 	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID (required)")
+	authSetCmd.Flags().StringVar(&setUsername, "username", "", "Display name for local invocations (optional). Overrides the OS username. Env var BITRISE_BUILD_CACHE_USERNAME takes precedence for a single run.")
 	_ = authSetCmd.MarkFlagRequired("token")
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
 
