@@ -1393,21 +1393,21 @@ workflows:
 
             echo "SUCCESS: Verified $MATCH_COUNT downloads from the Google mirror."
     - script:
-        title: Assert robolectric jar audit emitted
+        title: Assert robolectric probe emitted
         inputs:
         - content: |-
             set -exo pipefail
 
-            MATCH_COUNT=$(grep -cE '\[bitrise-robolectric-jar-audit\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true)
-            echo "Found $MATCH_COUNT robolectric jar audit log lines:"
-            grep -E '\[bitrise-robolectric-jar-audit\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true
+            MATCH_COUNT=$(grep -cE '\[robolectric-probe\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+            echo "Found $MATCH_COUNT robolectric probe log lines:"
+            grep -E '\[robolectric-probe\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true
 
             if [[ "$MATCH_COUNT" -eq 0 ]]; then
-              echo "ERROR: no [bitrise-robolectric-jar-audit] line found — the android-all jar audit did not emit."
+              echo "ERROR: no [robolectric-probe] line found — the probe did not emit."
               exit 1
             fi
 
-            echo "SUCCESS: robolectric jar audit emitted $MATCH_COUNT line(s)."
+            echo "SUCCESS: robolectric probe emitted $MATCH_COUNT line(s)."
     - script:
         title: Check for cache invocations
         inputs:
