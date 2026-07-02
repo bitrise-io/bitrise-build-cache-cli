@@ -35,6 +35,7 @@ var authCmd = &cobra.Command{
 var (
 	setToken       string
 	setWorkspaceID string
+	setUsername    string
 )
 
 // nolint:gochecknoglobals
@@ -47,6 +48,7 @@ var authSetCmd = &cobra.Command{
 
 		setToken = strings.TrimSpace(setToken)
 		setWorkspaceID = strings.TrimSpace(setWorkspaceID)
+		setUsername = strings.TrimSpace(setUsername)
 
 		switch {
 		case setToken == "" && setWorkspaceID == "":
@@ -61,11 +63,15 @@ var authSetCmd = &cobra.Command{
 		if err := kc.Save(keychain.Credentials{
 			AuthToken:   setToken,
 			WorkspaceID: setWorkspaceID,
+			Username:    setUsername,
 		}); err != nil {
 			return fmt.Errorf("save credentials to keychain: %w", err)
 		}
 
 		logger.TInfof("✅ Credentials saved to the OS keychain")
+		if setUsername != "" {
+			logger.Infof("Display name for local invocations set to %q.", setUsername)
+		}
 
 		switch scrubbed, err := scrubDiskCredentials(); {
 		case err != nil:
@@ -527,6 +533,7 @@ func maskToken(token string) string {
 func init() {
 	authSetCmd.Flags().StringVar(&setToken, "token", "", "Bitrise Build Cache auth token (required)")
 	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID (required)")
+	authSetCmd.Flags().StringVar(&setUsername, "username", "", "Display name for local invocations (optional). Overrides the OS username. Env var BITRISEIO_CACHE_USERNAME takes precedence for a single run.")
 	_ = authSetCmd.MarkFlagRequired("token")
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
 

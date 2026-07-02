@@ -24,11 +24,16 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs := utils.AllEnvs()
 
 	stored, source := wizardStartingCreds(envs)
+	var storedUsername string
+	if creds, err := kc.Load(); err == nil {
+		storedUsername = creds.Username
+	}
 
 	var (
 		selectedTools []string
 		workspaceID   = stored.WorkspaceID
 		authToken     = stored.AuthToken
+		username      = storedUsername
 		pushEnabled   bool
 	)
 
@@ -60,6 +65,12 @@ func (*huhWizard) Run(ctx context.Context) error {
 
 	groups = append(groups,
 		huh.NewGroup(
+			huh.NewInput().
+				Title("Display name for this machine's local invocations").
+				Description("Used to tag your local invocations in the Bitrise Build Cache dashboard. Defaults to the OS username; leave empty to keep the default.").
+				Value(&username),
+		),
+		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Enable cache push?").
 				Description("Default off — recommended for local dev (so a flaky local build can't poison the shared cache).").
@@ -76,8 +87,15 @@ func (*huhWizard) Run(ctx context.Context) error {
 	switch source {
 	case configcommon.AuthSourceKeychain:
 		logger.TInfof("Using credentials from the OS keychain.")
+		if username != storedUsername {
+			if err := persistCredentials(kc, workspaceID, authToken, username); err != nil {
+				logger.Warnf("Could not update the OS keychain with the new display name (%v).", err)
+			} else {
+				logger.Infof("Updated display name for local invocations.")
+			}
+		}
 	case configcommon.AuthSourceEnvVars:
-		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
+		if err := persistCredentials(kc, workspaceID, authToken, username); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
 		} else {
 			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
@@ -87,7 +105,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		// JWT is per-build, multiplatform is already on disk — neither warrants persisting again.
 		logger.TInfof("Using credentials resolved by the CLI.")
 	case configcommon.AuthSourceNone:
-		if err := persistCredentials(kc, workspaceID, authToken); err != nil {
+		if err := persistCredentials(kc, workspaceID, authToken, username); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
 		} else {
 			logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
@@ -117,8 +135,8 @@ func wizardStartingCreds(envs map[string]string) (configcommon.CacheAuthConfig, 
 	return cfg, src
 }
 
-func persistCredentials(kc keychainStore, workspaceID, authToken string) error {
-	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
+func persistCredentials(kc keychainStore, workspaceID, authToken, username string) error {
+	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID, Username: username}); err != nil {
 		return fmt.Errorf("save credentials to keychain: %w", err)
 	}
 

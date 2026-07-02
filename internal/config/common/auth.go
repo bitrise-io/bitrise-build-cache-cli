@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/user"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
@@ -14,6 +15,7 @@ const (
 	EnvAuthToken   = "BITRISE_BUILD_CACHE_AUTH_TOKEN"   //nolint:gosec // env-var key, not a credential
 	EnvWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID" //nolint:gosec // env-var key, not a credential
 	EnvJWT         = "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"
+	EnvUsername    = "BITRISEIO_CACHE_USERNAME"
 )
 
 var (
@@ -69,6 +71,44 @@ func GetKeychainCredentialsWith(loader AuthLoader) (CacheAuthConfig, bool) {
 		AuthToken:   creds.AuthToken,
 		WorkspaceID: creds.WorkspaceID,
 	}, true
+}
+
+type UsernameSource int
+
+const (
+	UsernameSourceNone UsernameSource = iota
+	UsernameSourceEnv
+	UsernameSourceKeychain
+	UsernameSourceOS
+)
+
+func ResolveUsername(envs map[string]string) (string, UsernameSource) {
+	return resolveUsername(envs, keychain.New(), osUsername)
+}
+
+func resolveUsername(envs map[string]string, loader AuthLoader, osResolver func() string) (string, UsernameSource) {
+	if v := strings.TrimSpace(envs[EnvUsername]); v != "" {
+		return v, UsernameSourceEnv
+	}
+	if creds, err := loader.Load(); err == nil {
+		if v := strings.TrimSpace(creds.Username); v != "" {
+			return v, UsernameSourceKeychain
+		}
+	}
+	if v := strings.TrimSpace(osResolver()); v != "" {
+		return v, UsernameSourceOS
+	}
+
+	return "", UsernameSourceNone
+}
+
+func osUsername() string {
+	u, err := user.Current()
+	if err != nil {
+		return ""
+	}
+
+	return u.Username
 }
 
 // Wired via RegisterMultiplatformReader to avoid a multiplatform→common import cycle.

@@ -11,7 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -165,4 +167,34 @@ authToken.set(providers.bitriseAuthToken())
 	scrubbed, err := scrubGradleInitKts(utils.DefaultOsProxy{})
 	require.NoError(t, err)
 	assert.Empty(t, scrubbed.path, "value-source form has no literal to scrub")
+}
+
+func TestAuthSetCmd_persistsUsernameToKeychain(t *testing.T) {
+	keyring.MockInit()
+	setToken = "tok-123"
+	setWorkspaceID = "ws-456"
+	setUsername = "alice"
+	t.Cleanup(func() { setToken, setWorkspaceID, setUsername = "", "", "" })
+
+	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
+
+	creds, err := keychain.New().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "tok-123", creds.AuthToken)
+	assert.Equal(t, "ws-456", creds.WorkspaceID)
+	assert.Equal(t, "alice", creds.Username)
+}
+
+func TestAuthSetCmd_emptyUsernameLeavesFieldEmpty(t *testing.T) {
+	keyring.MockInit()
+	setToken = "tok"
+	setWorkspaceID = "ws"
+	setUsername = ""
+	t.Cleanup(func() { setToken, setWorkspaceID, setUsername = "", "", "" })
+
+	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
+
+	creds, err := keychain.New().Load()
+	require.NoError(t, err)
+	assert.Empty(t, creds.Username)
 }

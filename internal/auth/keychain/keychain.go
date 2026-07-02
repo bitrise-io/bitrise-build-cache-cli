@@ -23,6 +23,7 @@ var ErrNotFound = errors.New("no Bitrise Build Cache credentials in keychain")
 type Credentials struct {
 	AuthToken          string    `json:"auth_token"`
 	WorkspaceID        string    `json:"workspace_id"`
+	Username           string    `json:"username,omitempty"`
 	PATExpiry          time.Time `json:"pat_expiry,omitempty"`
 	JWT                string    `json:"jwt,omitempty"`
 	JWTExpiry          time.Time `json:"jwt_expiry,omitempty"`

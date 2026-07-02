@@ -6,7 +6,6 @@ import (
 	"hash"
 	"maps"
 	"os"
-	"os/user"
 	"runtime"
 	"strconv"
 	"strings"
@@ -319,12 +318,8 @@ func generateHostMetadata(envs map[string]string, commandFunc CommandFunc, logge
 	}
 	metadata.Hostname = strings.TrimSpace(hostname)
 
-	// Username
-	u, err := user.Current()
-	if err != nil {
-		logger.Errorf("Error in get username: %v", err)
-	}
-	metadata.Username = strings.TrimSpace(u.Username)
+	resolved, _ := ResolveUsername(envs)
+	metadata.Username = strings.TrimSpace(resolved)
 
 	return metadata
 }
