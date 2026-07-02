@@ -13,6 +13,7 @@ import (
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/reactnative"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/update"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode"
+	_ "github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode_app"
 )
 
 func main() {
