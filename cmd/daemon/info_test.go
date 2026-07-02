@@ -23,7 +23,7 @@ func TestProbeSocket_fileExistsButNothingListening(t *testing.T) {
 	f, err := os.Create(path)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-	assert.Equal(t, statusStopped, probeSocket(path))
+	assert.Equal(t, statusStuck, probeSocket(path))
 }
 
 func TestProbeSocket_listeningSocket(t *testing.T) {
@@ -42,6 +42,14 @@ func TestProbeSocket_listeningSocket(t *testing.T) {
 
 func TestProbeCcacheSocket_missingFile(t *testing.T) {
 	assert.Equal(t, statusStopped, probeCcacheSocket(filepath.Join(t.TempDir(), "does-not-exist.sock")))
+}
+
+func TestProbeCcacheSocket_fileExistsButNothingListening(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stale.sock")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	assert.Equal(t, statusStuck, probeCcacheSocket(path))
 }
 
 func TestProbeCcacheSocket_healthCheckOK(t *testing.T) {

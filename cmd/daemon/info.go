@@ -31,6 +31,7 @@ type serviceInfo struct {
 const (
 	statusRunning       = "running"
 	statusStopped       = "stopped"
+	statusStuck         = "stuck (socket present, not responding — run `bitrise-build-cache doctor --fix` or `bitrise-build-cache daemon restart`)"
 	statusNotConfigured = "not configured"
 	probeTimeout        = 500 * time.Millisecond
 )
@@ -121,7 +122,7 @@ func probeSocket(path string) string {
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", path)
 	if err != nil {
-		return statusStopped
+		return statusStuck
 	}
 	_ = conn.Close()
 
@@ -144,7 +145,7 @@ func probeCcacheSocket(path string) string {
 	defer cancel()
 
 	if err := ccache.SendHealthCheck(ctx, path); err != nil {
-		return statusStopped
+		return statusStuck
 	}
 
 	return statusRunning
