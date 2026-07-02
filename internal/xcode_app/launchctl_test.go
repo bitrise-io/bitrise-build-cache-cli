@@ -50,11 +50,20 @@ func TestLaunchctl_Setenv_nonZeroExitIsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "boom")
 }
 
-func TestLaunchctl_Unsetenv_swallowsNonZero(t *testing.T) {
+func TestLaunchctl_Unsetenv_exit113IsSuccess(t *testing.T) {
 	r := &fakeRunner{exit: 113}
 	c := LaunchctlClient{Runner: r}
 
 	require.NoError(t, c.Unsetenv(context.Background(), "K"))
+}
+
+func TestLaunchctl_Unsetenv_otherNonZeroIsError(t *testing.T) {
+	r := &fakeRunner{exit: 1, stderr: "permission denied"}
+	c := LaunchctlClient{Runner: r}
+
+	err := c.Unsetenv(context.Background(), "K")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "permission denied")
 }
 
 func TestLaunchctl_Bootstrap_runsBootoutThenBootstrap(t *testing.T) {

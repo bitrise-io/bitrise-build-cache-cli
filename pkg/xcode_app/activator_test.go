@@ -5,6 +5,9 @@ package xcode_app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -44,4 +47,34 @@ func TestDisable_returnsErrUnsupportedPlatformOnNonDarwin(t *testing.T) {
 	_, err := a.Disable(context.Background())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrUnsupportedPlatform)
+}
+
+func TestResolvePreviousOverride_passesThroughRealPriorPath(t *testing.T) {
+	got := resolvePreviousOverride("/Users/me/Base.xcconfig", "/tmp/state.json", "/tmp/xcode-app.xcconfig")
+	assert.Equal(t, "/Users/me/Base.xcconfig", got)
+}
+
+func TestResolvePreviousOverride_selfLoopReadsStoredState(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	raw, err := json.Marshal(map[string]string{"previousXCConfigPath": "/Users/me/Base.xcconfig"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(statePath, raw, 0o600))
+
+	got := resolvePreviousOverride("/tmp/xcode-app.xcconfig", statePath, "/tmp/xcode-app.xcconfig")
+	assert.Equal(t, "/Users/me/Base.xcconfig", got)
+}
+
+func TestResolvePreviousOverride_selfLoopWithMissingStateReturnsEmpty(t *testing.T) {
+	got := resolvePreviousOverride("/tmp/xcode-app.xcconfig", filepath.Join(t.TempDir(), "no-such.json"), "/tmp/xcode-app.xcconfig")
+	assert.Empty(t, got)
+}
+
+func TestResolvePreviousOverride_selfLoopWithCorruptStateReturnsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	require.NoError(t, os.WriteFile(statePath, []byte("{not-json"), 0o600))
+
+	got := resolvePreviousOverride("/tmp/xcode-app.xcconfig", statePath, "/tmp/xcode-app.xcconfig")
+	assert.Empty(t, got)
 }

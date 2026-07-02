@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 const SetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
@@ -53,7 +54,7 @@ func RenderSetenvAgent(xcconfigPath string) (string, error) {
 	), nil
 }
 
-func WriteSetenvAgent(home, xcconfigPath string) (string, error) {
+func WriteSetenvAgent(osProxy utils.OsProxy, home, xcconfigPath string) (string, error) {
 	body, err := RenderSetenvAgent(xcconfigPath)
 	if err != nil {
 		return "", err
@@ -62,20 +63,20 @@ func WriteSetenvAgent(home, xcconfigPath string) (string, error) {
 	path := SetenvAgentPlistPath(home)
 	dir := filepath.Dir(path)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := osProxy.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil { //nolint:gosec // plist must be world-readable for launchctl
+	if err := osProxy.WriteFile(path, []byte(body), 0o644); err != nil { //nolint:gosec // plist must be world-readable for launchctl
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
 
 	return path, nil
 }
 
-func RemoveSetenvAgent(home string) (string, error) {
+func RemoveSetenvAgent(osProxy utils.OsProxy, home string) (string, error) {
 	path := SetenvAgentPlistPath(home)
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := osProxy.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return path, fmt.Errorf("remove %s: %w", path, err)
 	}
 

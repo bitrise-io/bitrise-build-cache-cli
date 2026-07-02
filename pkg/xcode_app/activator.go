@@ -39,6 +39,7 @@ type EnableResult struct {
 	PreviousXCConfigPath string
 	XcelerateProxySocket string
 	RunningXcodePIDs     []int
+	ProxyStartError      error
 }
 
 type DisableResult struct {
@@ -55,7 +56,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	}
 
 	osProxy := a.osProxy()
-	logger := a.Logger
+	logger := a.logger()
 
 	cfg, err := xcelerate.ReadConfig(osProxy, a.decoderFactory())
 	if err != nil {
@@ -66,20 +67,10 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		return EnableResult{}, fmt.Errorf("xcelerate config has empty proxy socket path — re-run `activate xcode`")
 	}
 
-	xcconfigPath := xa.OverrideXCConfigPath(osProxy)
-	statePath := xa.StateFilePath(osProxy)
+	xcconfigPath := xcelerate.XcodeAppOverrideXCConfigFile(osProxy)
+	statePath := xcelerate.XcodeAppStateFile(osProxy)
 
-	// Self-loop guard: a second enable inheriting our own override path would clobber the state file and lose the original prior path.
-	previous := a.Envs[xa.XCConfigEnvVar]
-	if previous == xcconfigPath {
-		if existing, found, loadErr := xa.LoadState(statePath); loadErr == nil && found {
-			previous = existing.PreviousXCConfigPath
-		} else {
-			// Existing state unreadable or absent — treat the env value as
-			// noise rather than a real prior override.
-			previous = ""
-		}
-	}
+	previous := resolvePreviousOverride(a.Envs[xa.XCConfigEnvVar], statePath, xcconfigPath)
 
 	body, err := xa.RenderOverride(cfg.ProxySocketPath, previous)
 	if err != nil {
@@ -107,7 +98,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		return EnableResult{}, fmt.Errorf("resolve home dir: %w", err)
 	}
 
-	plistPath, err := xa.WriteSetenvAgent(home, xcconfigPath)
+	plistPath, err := xa.WriteSetenvAgent(osProxy, home, xcconfigPath)
 	if err != nil {
 		return EnableResult{}, fmt.Errorf("write LaunchAgent: %w", err)
 	}
@@ -116,8 +107,9 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		return EnableResult{}, fmt.Errorf("bootstrap LaunchAgent: %w", err)
 	}
 
-	if err := a.installAndStartProxy(ctx); err != nil {
-		logger.Warnf("Could not start xcelerate-proxy daemon: %s. Run `bitrise-build-cache daemon install + up` manually.", err)
+	proxyErr := a.installAndStartProxy(ctx)
+	if proxyErr != nil {
+		logger.Warnf("Could not start xcelerate-proxy daemon: %s. Run `bitrise-build-cache daemon install + up` manually.", proxyErr)
 	}
 
 	pids, checkErr := a.xcodeChecker().RunningPIDs(ctx)
@@ -131,6 +123,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		PreviousXCConfigPath: previous,
 		XcelerateProxySocket: cfg.ProxySocketPath,
 		RunningXcodePIDs:     pids,
+		ProxyStartError:      proxyErr,
 	}, nil
 }
 
@@ -141,6 +134,7 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 	}
 
 	osProxy := a.osProxy()
+	logger := a.logger()
 
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
@@ -153,13 +147,15 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 		return DisableResult{}, fmt.Errorf("bootout LaunchAgent: %w", err)
 	}
 
-	if _, err := xa.RemoveSetenvAgent(home); err != nil {
+	if _, err := xa.RemoveSetenvAgent(osProxy, home); err != nil {
 		return DisableResult{}, fmt.Errorf("remove LaunchAgent plist: %w", err)
 	}
 
-	state, _, err := xa.LoadState(xa.StateFilePath(osProxy))
+	state, _, err := xa.LoadState(xcelerate.XcodeAppStateFile(osProxy))
 	if err != nil {
-		return DisableResult{}, fmt.Errorf("load state: %w", err)
+		logger.Warnf("Could not read xcode-app state file (%s) — continuing with best-effort cleanup.", err)
+
+		state = xa.State{}
 	}
 
 	result := DisableResult{
@@ -180,7 +176,7 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 		}
 	}
 
-	xcconfigPath := xa.OverrideXCConfigPath(osProxy)
+	xcconfigPath := xcelerate.XcodeAppOverrideXCConfigFile(osProxy)
 	if err := osProxy.Remove(xcconfigPath); err != nil {
 		// Not-exist is fine — already disabled.
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -190,7 +186,7 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 		result.XCConfigRemoved = true
 	}
 
-	if err := xa.RemoveState(xa.StateFilePath(osProxy)); err != nil {
+	if err := xa.RemoveState(xcelerate.XcodeAppStateFile(osProxy)); err != nil {
 		return result, fmt.Errorf("remove state file: %w", err)
 	}
 
@@ -229,6 +225,20 @@ func (a *Activator) installAndStartProxy(ctx context.Context) error {
 	return nil
 }
 
+// resolvePreviousOverride: on self-loop (env == ownPath) fall back to on-disk state so the original prior override survives repeat Enables.
+func resolvePreviousOverride(envValue, statePath, ownPath string) string {
+	if envValue != ownPath {
+		return envValue
+	}
+
+	existing, found, err := xa.LoadState(statePath)
+	if err != nil || !found {
+		return ""
+	}
+
+	return existing.PreviousXCConfigPath
+}
+
 // xcelerateProxyService excludes ccache-helper intentionally — Xcode.app builds don't use ccache.
 // Errors rather than falling back so this caller and daemon's canonical service set can't silently diverge.
 func xcelerateProxyService() (daemon.Service, error) {
@@ -249,6 +259,14 @@ func (a *Activator) osProxy() utils.OsProxy {
 	}
 
 	return utils.DefaultOsProxy{}
+}
+
+func (a *Activator) logger() log.Logger {
+	if a.Logger != nil {
+		return a.Logger
+	}
+
+	return log.NewLogger()
 }
 
 func (a *Activator) decoderFactory() utils.DecoderFactory {

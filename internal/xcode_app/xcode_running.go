@@ -31,18 +31,21 @@ func (d DefaultXcodeChecker) runner() daemon.CommandRunner {
 	return exec.ExecRunner{}
 }
 
-// RunningPIDs returns empty slice when pgrep exit 1 (no match).
+// RunningPIDs: pgrep exit 1 = no match; exit >1 (2 syntax, 3 fatal) = error.
 func (d DefaultXcodeChecker) RunningPIDs(ctx context.Context) ([]int, error) {
-	stdout, _, code, err := d.runner().Run(ctx, pgrepBin, "-x", XcodeProcessName)
+	stdout, stderr, code, err := d.runner().Run(ctx, pgrepBin, "-x", XcodeProcessName)
 	if err != nil {
 		return nil, fmt.Errorf("pgrep -x %s: %w", XcodeProcessName, err)
 	}
 
-	if code == 1 {
+	switch code {
+	case 0:
+		return parsePIDs(stdout), nil
+	case 1:
 		return nil, nil
+	default:
+		return nil, fmt.Errorf("pgrep -x %s exited %d: %s", XcodeProcessName, code, strings.TrimSpace(stderr))
 	}
-
-	return parsePIDs(stdout), nil
 }
 
 func parsePIDs(stdout string) []int {

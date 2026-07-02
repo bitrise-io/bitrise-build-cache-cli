@@ -17,7 +17,9 @@ var disableCmd = &cobra.Command{
 	Short: "Disable the Bitrise Build Cache override for Xcode.app GUI builds",
 	Long: `disable reverses ` + "`xcode-app enable`" + `: boots out the LaunchAgent, removes its plist, ` +
 		`removes the override xcconfig under ~/.bitrise-xcelerate/, and restores the prior XCODE_XCCONFIG_FILE ` +
-		`environment value (if one was captured at enable time). Idempotent — safe to run when not enabled.`,
+		`environment value (if one was captured at enable time). Idempotent — safe to run when not enabled. ` +
+		`Does NOT stop the xcelerate-proxy daemon — the ` + "`xcodebuild`" + ` wrapper flow depends on it too. ` +
+		`Use ` + "`bitrise-build-cache daemon down`" + ` to stop the daemon.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -42,6 +44,8 @@ var disableCmd = &cobra.Command{
 		} else {
 			logger.Infof("Cleared XCODE_XCCONFIG_FILE (no prior override to restore)")
 		}
+
+		logger.Infof("xcelerate-proxy daemon left running — the xcodebuild wrapper flow depends on it. Run `bitrise-build-cache daemon down` to stop it.")
 
 		return nil
 	},

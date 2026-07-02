@@ -1,3 +1,4 @@
+// Package xcode_app drives Xcode.app (GUI) build-cache enable/disable via launchctl + an override xcconfig. macOS-only.
 package xcode_app
 
 import (
@@ -52,8 +53,13 @@ func (c LaunchctlClient) Setenv(ctx context.Context, key, value string) error {
 
 // Unsetenv treats launchctl exit 113 ("already unset") as success.
 func (c LaunchctlClient) Unsetenv(ctx context.Context, key string) error {
-	if _, _, _, err := c.runner().Run(ctx, c.bin(), "unsetenv", key); err != nil { //nolint:dogsled // matches the runner contract; we intentionally ignore stdout/stderr/exit
+	_, stderr, code, err := c.runner().Run(ctx, c.bin(), "unsetenv", key)
+	if err != nil {
 		return fmt.Errorf("launchctl unsetenv: %w", err)
+	}
+
+	if code != 0 && code != 113 {
+		return fmt.Errorf("launchctl unsetenv %s exited %d: %s", key, code, strings.TrimSpace(stderr))
 	}
 
 	return nil

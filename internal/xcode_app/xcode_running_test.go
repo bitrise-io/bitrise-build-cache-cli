@@ -37,6 +37,23 @@ func TestDefaultXcodeChecker_execErrorPropagates(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDefaultXcodeChecker_exit2IsError(t *testing.T) {
+	r := &fakeRunner{exit: 2, stderr: "pgrep: bad option"}
+	c := DefaultXcodeChecker{Runner: r}
+
+	_, err := c.RunningPIDs(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bad option")
+}
+
+func TestDefaultXcodeChecker_exit3IsError(t *testing.T) {
+	r := &fakeRunner{exit: 3, stderr: "fatal"}
+	c := DefaultXcodeChecker{Runner: r}
+
+	_, err := c.RunningPIDs(context.Background())
+	require.Error(t, err)
+}
+
 func TestParsePIDs_filtersInvalidLines(t *testing.T) {
 	assert.Equal(t, []int{1, 2}, parsePIDs("1\nnot-a-pid\n\n2\n"))
 }

@@ -46,7 +46,14 @@ var enableCmd = &cobra.Command{
 			logger.Infof("Chained previous XCODE_XCCONFIG_FILE: %s", result.PreviousXCConfigPath)
 		}
 		logger.Donef("Set XCODE_XCCONFIG_FILE via launchctl (LaunchAgent: %s)", result.LaunchAgentPlistPath)
-		logger.Donef("Proxy socket: %s", result.XcelerateProxySocket)
+
+		if result.ProxyStartError != nil {
+			logger.Errorf("xcelerate-proxy daemon did NOT start: %s", result.ProxyStartError)
+			logger.Errorf("Xcode will read the override, dial %s, and get no response — 100%% cache miss until the proxy is up.", result.XcelerateProxySocket)
+			logger.Errorf("Recover: `bitrise-build-cache daemon install && bitrise-build-cache daemon up`, then re-run `xcode-app enable`.")
+		} else {
+			logger.Donef("Proxy socket: %s", result.XcelerateProxySocket)
+		}
 
 		if len(result.RunningXcodePIDs) > 0 {
 			logger.Warnf("Xcode is currently running (pid %v). Quit and relaunch Xcode to pick up the cache override.", result.RunningXcodePIDs)

@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
 func TestRenderSetenvAgent_includesLabelAndProgramArgs(t *testing.T) {
@@ -41,8 +43,9 @@ func TestRenderSetenvAgent_escapesXMLSpecialChars(t *testing.T) {
 
 func TestWriteAndRemoveSetenvAgent(t *testing.T) {
 	home := t.TempDir()
+	osProxy := utils.DefaultOsProxy{}
 
-	path, err := WriteSetenvAgent(home, "/Users/me/x.xcconfig")
+	path, err := WriteSetenvAgent(osProxy, home, "/Users/me/x.xcconfig")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, SetenvAgentPlistRelative), path)
 
@@ -50,7 +53,7 @@ func TestWriteAndRemoveSetenvAgent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "<string>/Users/me/x.xcconfig</string>")
 
-	removed, err := RemoveSetenvAgent(home)
+	removed, err := RemoveSetenvAgent(osProxy, home)
 	require.NoError(t, err)
 	assert.Equal(t, path, removed)
 
@@ -59,6 +62,6 @@ func TestWriteAndRemoveSetenvAgent(t *testing.T) {
 }
 
 func TestRemoveSetenvAgent_missingFileIsNotAnError(t *testing.T) {
-	_, err := RemoveSetenvAgent(t.TempDir())
+	_, err := RemoveSetenvAgent(utils.DefaultOsProxy{}, t.TempDir())
 	require.NoError(t, err)
 }

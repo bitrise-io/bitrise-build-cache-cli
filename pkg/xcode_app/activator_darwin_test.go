@@ -5,6 +5,7 @@ package xcode_app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcode_app"
 )
 
@@ -137,7 +139,7 @@ func TestEnable_writesXCConfigAndStateFile_noPrevious(t *testing.T) {
 	got, err := a.Enable(context.Background())
 	require.NoError(t, err)
 
-	xcconfigPath := filepath.Join(home, ".bitrise-xcelerate", xa.OverrideXCConfigFileName)
+	xcconfigPath := filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppOverrideXCConfigFileName)
 	assert.Equal(t, xcconfigPath, got.XCConfigPath)
 
 	content, err := os.ReadFile(xcconfigPath) //nolint:gosec
@@ -145,7 +147,7 @@ func TestEnable_writesXCConfigAndStateFile_noPrevious(t *testing.T) {
 	assert.Contains(t, string(content), "COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock")
 	assert.NotContains(t, string(content), "#include")
 
-	statePath := filepath.Join(home, ".bitrise-xcelerate", xa.StateFileName)
+	statePath := filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppStateFileName)
 	state, found, err := xa.LoadState(statePath)
 	require.NoError(t, err)
 	require.True(t, found)
@@ -159,6 +161,23 @@ func TestEnable_writesXCConfigAndStateFile_noPrevious(t *testing.T) {
 	assert.Equal(t, "xcelerate-proxy", backend.started[0].Name)
 }
 
+func TestEnable_surfacesProxyStartErrorInResult(t *testing.T) {
+	home := setupDarwinFixture(t, "/tmp/xcelerate-proxy.sock")
+	a, _, _ := newActivatorForTest(t, home, map[string]string{})
+	a.DaemonBackend = &failingBackend{}
+
+	got, err := a.Enable(context.Background())
+	require.NoError(t, err, "proxy start failure must not fail Enable — xcconfig + LaunchAgent are already installed")
+	require.Error(t, got.ProxyStartError)
+	assert.Contains(t, got.ProxyStartError.Error(), "install boom")
+}
+
+type failingBackend struct{ stubBackend }
+
+func (b *failingBackend) Install(_ context.Context, _ daemon.Paths, _ daemon.Service, _ string) (string, error) {
+	return "", errors.New("install boom")
+}
+
 func TestEnable_chainsPreviousXCConfigViaInclude(t *testing.T) {
 	home := setupDarwinFixture(t, "/tmp/xcelerate-proxy.sock")
 	previousPath := "/Users/me/Base.xcconfig"
@@ -167,12 +186,12 @@ func TestEnable_chainsPreviousXCConfigViaInclude(t *testing.T) {
 	_, err := a.Enable(context.Background())
 	require.NoError(t, err)
 
-	xcconfigPath := filepath.Join(home, ".bitrise-xcelerate", xa.OverrideXCConfigFileName)
+	xcconfigPath := filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppOverrideXCConfigFileName)
 	content, err := os.ReadFile(xcconfigPath) //nolint:gosec
 	require.NoError(t, err)
 	assert.Contains(t, string(content), `#include "/Users/me/Base.xcconfig"`)
 
-	state, found, err := xa.LoadState(filepath.Join(home, ".bitrise-xcelerate", xa.StateFileName))
+	state, found, err := xa.LoadState(filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppStateFileName))
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, previousPath, state.PreviousXCConfigPath)
@@ -196,14 +215,14 @@ func TestEnable_selfLoopPreservesOriginalState(t *testing.T) {
 	_, err := a.Enable(context.Background())
 	require.NoError(t, err)
 
-	xcconfigPath := filepath.Join(home, ".bitrise-xcelerate", xa.OverrideXCConfigFileName)
+	xcconfigPath := filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppOverrideXCConfigFileName)
 
 	// Second enable — env now points at our own xcconfig (the self-loop).
 	a2, _, _ := newActivatorForTest(t, home, map[string]string{xa.XCConfigEnvVar: xcconfigPath})
 	_, err = a2.Enable(context.Background())
 	require.NoError(t, err)
 
-	state, found, err := xa.LoadState(filepath.Join(home, ".bitrise-xcelerate", xa.StateFileName))
+	state, found, err := xa.LoadState(filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppStateFileName))
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, originalPath, state.PreviousXCConfigPath, "state must still point at the user's real prior override after the self-loop")
@@ -230,12 +249,12 @@ func TestDisable_restoresPreviousXCConfig(t *testing.T) {
 	assert.Equal(t, previousPath, got.RestoredXCConfigPath)
 
 	// State file gone.
-	_, found, err := xa.LoadState(filepath.Join(home, ".bitrise-xcelerate", xa.StateFileName))
+	_, found, err := xa.LoadState(filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppStateFileName))
 	require.NoError(t, err)
 	assert.False(t, found)
 
 	// XCConfig override gone.
-	_, statErr := os.Stat(filepath.Join(home, ".bitrise-xcelerate", xa.OverrideXCConfigFileName))
+	_, statErr := os.Stat(filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppOverrideXCConfigFileName))
 	require.Error(t, statErr)
 
 	// Last launchctl call is setenv to the restored previous path.
@@ -254,6 +273,28 @@ func TestDisable_noPriorStateClearsEnv(t *testing.T) {
 
 	assert.Empty(t, got.RestoredXCConfigPath)
 	assertLaunchctlCall(t, runner, "unsetenv", xa.XCConfigEnvVar)
+}
+
+func TestDisable_corruptStateFileFallsBackToZeroState(t *testing.T) {
+	home := setupDarwinFixture(t, "/tmp/xcelerate-proxy.sock")
+	a, runner, _ := newActivatorForTest(t, home, map[string]string{})
+
+	_, err := a.Enable(context.Background())
+	require.NoError(t, err)
+
+	statePath := filepath.Join(home, ".bitrise-xcelerate", paths.XcodeAppStateFileName)
+	require.NoError(t, os.WriteFile(statePath, []byte("{not-json"), 0o600))
+
+	got, err := a.Disable(context.Background())
+	require.NoError(t, err)
+
+	assert.Empty(t, got.RestoredXCConfigPath)
+	assert.True(t, got.LaunchAgentRemoved)
+	assert.True(t, got.XCConfigRemoved)
+	assertLaunchctlCall(t, runner, "unsetenv", xa.XCConfigEnvVar)
+
+	_, statErr := os.Stat(statePath)
+	require.Error(t, statErr, "state file must be removed even after corrupt read")
 }
 
 // assertLaunchctlCall asserts the recorded runner saw at least one call
