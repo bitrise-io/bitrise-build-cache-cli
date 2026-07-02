@@ -456,3 +456,47 @@ func TestGetKeychainCredentials_loadErrorTreatedAsEmpty(t *testing.T) {
 	_, ok := GetKeychainCredentialsWith(loader)
 	assert.False(t, ok)
 }
+
+func osUserStub() string { return "os-user" }
+
+func TestResolveUsername_envWins(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	envs := map[string]string{EnvUsername: "env-user"}
+
+	got, src := resolveUsername(envs, loader, osUserStub)
+	assert.Equal(t, "env-user", got)
+	assert.Equal(t, UsernameSourceEnv, src)
+}
+
+func TestResolveUsername_keychainWinsOverOS(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+
+	got, src := resolveUsername(map[string]string{}, loader, osUserStub)
+	assert.Equal(t, "kc-user", got)
+	assert.Equal(t, UsernameSourceKeychain, src)
+}
+
+func TestResolveUsername_osFallback(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{}}
+
+	got, src := resolveUsername(map[string]string{}, loader, osUserStub)
+	assert.Equal(t, "os-user", got)
+	assert.Equal(t, UsernameSourceOS, src)
+}
+
+func TestResolveUsername_envEmptyStringSkipped(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	envs := map[string]string{EnvUsername: "  "}
+
+	got, src := resolveUsername(envs, loader, osUserStub)
+	assert.Equal(t, "kc-user", got)
+	assert.Equal(t, UsernameSourceKeychain, src)
+}
+
+func TestResolveUsername_allEmpty(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+
+	got, src := resolveUsername(map[string]string{}, loader, func() string { return "" })
+	assert.Empty(t, got)
+	assert.Equal(t, UsernameSourceNone, src)
+}
