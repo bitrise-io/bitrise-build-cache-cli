@@ -7,13 +7,13 @@ package status
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -46,6 +46,8 @@ type CheckerParams struct {
 	Logger         log.Logger
 	OsProxy        utils.OsProxy
 	DecoderFactory utils.DecoderFactory
+	// Envs honors GRADLE_USER_HOME when locating the init script; nil means utils.AllEnvs().
+	Envs map[string]string
 }
 
 // Checker inspects the filesystem for cache-feature activation signals.
@@ -53,6 +55,7 @@ type Checker struct {
 	logger         log.Logger
 	osProxy        utils.OsProxy
 	decoderFactory utils.DecoderFactory
+	envs           map[string]string
 }
 
 // NewChecker creates a Checker, filling in production defaults for any nil
@@ -73,10 +76,16 @@ func NewChecker(p CheckerParams) *Checker {
 		decoderFactory = utils.DefaultDecoderFactory{}
 	}
 
+	envs := p.Envs
+	if envs == nil {
+		envs = utils.AllEnvs()
+	}
+
 	return &Checker{
 		logger:         logger,
 		osProxy:        osProxy,
 		decoderFactory: decoderFactory,
+		envs:           envs,
 	}
 }
 
@@ -119,8 +128,8 @@ func (c *Checker) gradleEnabled() bool {
 		return false
 	}
 
-	initFile := filepath.Join(home, ".gradle", "init.d", "bitrise-build-cache.init.gradle.kts")
-	if _, err := c.osProxy.Stat(initFile); err != nil {
+	gradleHome := paths.FromHome(home).GradleHome(c.envs[paths.GradleUserHomeEnvKey])
+	if _, err := c.osProxy.Stat(paths.GradleInitScript(gradleHome)); err != nil {
 		return false
 	}
 

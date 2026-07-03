@@ -13,20 +13,13 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle/mirrors"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-// DefaultGradleHome is used when ActivatorParams.GradleHome is empty.
-const DefaultGradleHome = "~/.gradle"
-
 // ActivatorParams configures the Gradle mirrors activation.
 type ActivatorParams struct {
-	// GradleHome is the Gradle home directory. Tilde-prefixed paths are expanded.
-	// Empty means DefaultGradleHome.
+	// GradleHome is expanded as-is; empty resolves GRADLE_USER_HOME, else ~/.gradle.
 	GradleHome string
 
 	// ProjectRoot is the directory scanned for scope-gap warnings (Gradle
@@ -101,17 +94,12 @@ func NewActivator(params ActivatorParams) *Activator {
 		envs = utils.AllEnvs()
 	}
 
-	gradleHome := params.GradleHome
-	if gradleHome == "" {
-		gradleHome = DefaultGradleHome
-	}
-
 	return &Activator{
 		logger:       logger,
 		osProxy:      osProxy,
 		pathModifier: pathModifier,
 
-		gradleHome:    gradleHome,
+		gradleHome:    params.GradleHome,
 		projectRoot:   params.ProjectRoot,
 		selectedFlags: params.SelectedFlags,
 		datacenter:    params.Datacenter,
@@ -133,9 +121,18 @@ func (a *Activator) Activate(_ context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise mirrors for Gradle")
 
-	gradleHome, err := a.pathModifier.AbsPath(a.gradleHome)
+	gradleHome, err := a.resolveGradleHome()
 	if err != nil {
-		return fmt.Errorf("expand Gradle home path (%s): %w", a.gradleHome, err)
+		return err
+	}
+
+	// Skip the migration for an explicit GradleHome override; only heal env-resolved homes.
+	if a.gradleHome == "" {
+		if home, herr := a.osProxy.UserHomeDir(); herr == nil {
+			if merr := mirrorsconfig.MigratePrebootInitScript(a.logger, a.osProxy, paths.FromHome(home).GradleHome(""), gradleHome); merr != nil {
+				a.logger.Warnf("Could not relocate preboot Gradle mirrors init script: %s", merr)
+			}
+		}
 	}
 
 	enabled := a.resolveEnabled()
@@ -160,6 +157,24 @@ func (a *Activator) Activate(_ context.Context) error {
 // ---------------------------------------------------------------------------
 // Private — env fallback
 // ---------------------------------------------------------------------------
+
+func (a *Activator) resolveGradleHome() (string, error) {
+	if a.gradleHome != "" {
+		abs, err := a.pathModifier.AbsPath(a.gradleHome)
+		if err != nil {
+			return "", fmt.Errorf("expand Gradle home path (%s): %w", a.gradleHome, err)
+		}
+
+		return abs, nil
+	}
+
+	home, err := a.osProxy.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+
+	return paths.FromHome(home).GradleHome(a.envs[paths.GradleUserHomeEnvKey]), nil
+}
 
 func (a *Activator) resolveEnabled() bool {
 	if a.enabled != nil {

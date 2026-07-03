@@ -434,6 +434,8 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
+    # activate must write the init script here, not $HOME/.gradle
+    - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -460,10 +462,17 @@ workflows:
             set -exo pipefail
             ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
     - script:
-        title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
+        title: Assert init script honors GRADLE_USER_HOME
         inputs:
           - content: |-
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+              set -exo pipefail
+              test -f "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
+              # activate writes build-cache to GRADLE_USER_HOME and migrates the preboot mirror out of ~/.gradle
+              if [ -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" ] || [ -f "$HOME/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts" ]; then
+                echo "ERROR: bitrise init scripts left in ~/.gradle instead of GRADLE_USER_HOME ($GRADLE_USER_HOME)"
+                exit 1
+              fi
+              cat "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
     - script:
         title: Build and capture logs
         inputs:
@@ -1298,6 +1307,8 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
     - BRANCH: develop
+    # both init scripts must land here, not $HOME/.gradle
+    - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -1323,14 +1334,22 @@ workflows:
             export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
             ../bitrise-build-cache-cli activate gradle-mirrors -d
     - script:
-        title: Print init scripts
+        title: Assert init scripts honor GRADLE_USER_HOME
         inputs:
           - content: |-
+              set -exo pipefail
+              test -f "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
+              test -f "$GRADLE_USER_HOME/init.d/bitrise-gradle-mirrors.init.gradle.kts"
+              # activate migrates the preboot mirror out of ~/.gradle, and everything else lands in GRADLE_USER_HOME
+              if [ -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" ] || [ -f "$HOME/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts" ]; then
+                echo "ERROR: init scripts written to ~/.gradle instead of GRADLE_USER_HOME ($GRADLE_USER_HOME)"
+                exit 1
+              fi
               echo "=== bitrise-build-cache.init.gradle.kts ==="
-              cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
+              cat "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
               echo ""
               echo "=== bitrise-gradle-mirrors.init.gradle.kts ==="
-              cat ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts
+              cat "$GRADLE_USER_HOME/init.d/bitrise-gradle-mirrors.init.gradle.kts"
     - script:
         title: Guard - init script compiles clean under allWarningsAsErrors
         inputs:
@@ -1344,7 +1363,7 @@ workflows:
             GUARD_HOME=$(mktemp -d)
             GUARD_PROJ=$(mktemp -d)
             mkdir -p "$GUARD_HOME/init.d"
-            cp ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts "$GUARD_HOME/init.d/"
+            cp "$GRADLE_USER_HOME/init.d/bitrise-gradle-mirrors.init.gradle.kts" "$GUARD_HOME/init.d/"
             printf 'org.gradle.kotlin.dsl.allWarningsAsErrors=true\n' > "$GUARD_HOME/gradle.properties"
             printf 'rootProject.name = "init-compile-guard"\n' > "$GUARD_PROJ/settings.gradle.kts"
             GRADLE_USER_HOME="$GUARD_HOME" ./gradlew --project-dir "$GUARD_PROJ" help --stacktrace

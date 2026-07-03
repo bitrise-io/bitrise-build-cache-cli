@@ -28,7 +28,6 @@ disables the mirrors per workflow / per workspace without removing the file.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		activator := mirrorspkg.NewActivator(mirrorspkg.ActivatorParams{
-			GradleHome:    gradleHomeNonExpanded,
 			SelectedFlags: selectedMirrorFlags(cmd),
 			DebugLogging:  common.IsDebugLogMode,
 		})

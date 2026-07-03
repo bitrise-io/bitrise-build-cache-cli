@@ -73,6 +73,8 @@ func newCheckerForHome(home string) *status.Checker {
 		Logger:         mockLogger,
 		OsProxy:        osProxy,
 		DecoderFactory: decoderFactory,
+		// Empty (not nil) so an ambient GRADLE_USER_HOME can't redirect the lookup.
+		Envs: map[string]string{},
 	})
 }
 
@@ -123,6 +125,35 @@ func TestChecker_Status_Matrix(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestChecker_Gradle_HonorsCustomGradleUserHome(t *testing.T) {
+	home := t.TempDir()
+	gradleUserHome := t.TempDir()
+
+	initDir := filepath.Join(gradleUserHome, "init.d")
+	require.NoError(t, os.MkdirAll(initDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(initDir, "bitrise-build-cache.init.gradle.kts"), []byte("// stub"), 0o600))
+
+	osProxy := &utilsMocks.OsProxyMock{
+		UserHomeDirFunc: func() (string, error) { return home, nil },
+		OpenFileFunc:    os.OpenFile,
+		StatFunc:        os.Stat,
+	}
+	decoderFactory := &utilsMocks.DecoderFactoryMock{
+		DecoderFunc: func(r io.Reader) utils.Decoder { return json.NewDecoder(r) },
+	}
+
+	c := status.NewChecker(status.CheckerParams{
+		Logger:         mockLogger,
+		OsProxy:        osProxy,
+		DecoderFactory: decoderFactory,
+		Envs:           map[string]string{"GRADLE_USER_HOME": gradleUserHome},
+	})
+
+	gradle, err := c.IsEnabled(status.FeatureGradle)
+	require.NoError(t, err)
+	assert.True(t, gradle)
 }
 
 func TestChecker_XcodeDisabled_WhenBuildCacheFlagFalse(t *testing.T) {

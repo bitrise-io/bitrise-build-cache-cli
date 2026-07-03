@@ -5,18 +5,17 @@ import (
 	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 const (
-	gradleHomeNonExpanded   = "~/.gradle"
 	FmtErrorEnableForGradle = "adding Gradle plugins failed: %w"
 )
 
@@ -49,12 +48,14 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Enable Bitrise Build Cache for Gradle")
 		//
-		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
+		allEnvs := utils.AllEnvs()
+
+		p, err := paths.Default()
 		if err != nil {
-			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
+			return fmt.Errorf("resolve home dir: %w", err)
 		}
 
-		allEnvs := utils.AllEnvs()
+		gradleHome := p.GradleHome(allEnvs[paths.GradleUserHomeEnvKey])
 
 		//
 		if err := EnableForGradleCmdFn(logger, gradleHome, allEnvs); err != nil {
