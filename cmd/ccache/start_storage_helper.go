@@ -1,8 +1,11 @@
 package ccache
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
@@ -36,6 +39,12 @@ var (
 				DebugLogging: common.IsDebugLogMode,
 			})
 			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					log.NewLogger().TInfof("ccache not configured; run `bitrise-build-cache activate c++` to enable. Helper idle.")
+
+					return nil
+				}
+
 				return fmt.Errorf("create storage helper: %w", err)
 			}
 

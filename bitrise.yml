@@ -1135,15 +1135,19 @@ workflows:
             # ----- daemon info smoke test + socket capture (human + JSON, must agree) -----
             info_out="$(../bitrise-build-cache-cli daemon info)"
             echo "$info_out"
-            proxy_socket="$(echo "$info_out" | awk -F': *' '/xcelerate-proxy/ {print $2}')"
+            proxy_socket="$(echo "$info_out" | awk -F': *' '/^xcelerate-proxy:/ {print $2; exit}')"
             [[ -n "$proxy_socket" ]] || { echo "FAIL: daemon info did not print xcelerate-proxy socket"; exit 1; }
             [[ "$proxy_socket" != "<not configured"* ]] || { echo "FAIL: socket reported as not configured"; exit 1; }
+            echo "$info_out" | grep -q '^xcelerate-proxy status:' || { echo "FAIL: daemon info missing 'xcelerate-proxy status:' line"; exit 1; }
+            echo "$info_out" | grep -q '^ccache-helper status:'   || { echo "FAIL: daemon info missing 'ccache-helper status:' line"; exit 1; }
 
             info_json="$(../bitrise-build-cache-cli daemon info --json)"
             echo "$info_json"
             proxy_socket_json="$(echo "$info_json" | jq -er '.xcelerateProxy')"
             [[ "$proxy_socket" == "$proxy_socket_json" ]] || { echo "FAIL: daemon info JSON ($proxy_socket_json) disagrees with text ($proxy_socket)"; exit 1; }
-            echo "$info_json" | jq -er '.ccacheHelper' >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelper field"; exit 1; }
+            echo "$info_json" | jq -er '.ccacheHelper'         >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelper field"; exit 1; }
+            echo "$info_json" | jq -er '.xcelerateProxyStatus' >/dev/null || { echo "FAIL: daemon info --json missing xcelerateProxyStatus field"; exit 1; }
+            echo "$info_json" | jq -er '.ccacheHelperStatus'   >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelperStatus field"; exit 1; }
 
             envman add --key PROXY_SOCKET --value "$proxy_socket"
 

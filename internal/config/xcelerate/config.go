@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -23,7 +23,7 @@ const (
 	ErrFmtCreateConfigFile = `failed to create xcelerate config file: %w`
 	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
-	ErrNoAuthConfig        = "read auth config: %w"
+	ErrNoAuthConfig        = "resolve auth config: %w"
 )
 
 type Params struct {
@@ -45,20 +45,23 @@ type Params struct {
 // the BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var and written to
 // ~/.local/state/xcelerate/benchmark/benchmark-phase.json during activation.
 type Config struct {
-	ProxyVersion           string `json:"proxyVersion"`
-	ProxySocketPath        string `json:"proxySocketPath"`
-	CLIVersion             string `json:"cliVersion"`
-	WrapperVersion         string `json:"wrapperVersion"`
-	OriginalXcodebuildPath string `json:"originalXcodebuildPath"`
-	OriginalXcrunPath      string `json:"originalXcrunPath"`
-	BuildCacheEnabled      bool   `json:"buildCacheEnabled"`
-	BuildCacheSkipFlags    bool   `json:"buildCacheSkipFlags"`
-	DisablePrefixMapping   bool   `json:"disablePrefixMapping,omitempty"`
-	BuildCacheEndpoint     string `json:"buildCacheEndpoint"`
-	PushEnabled            bool   `json:"pushEnabled"`
-	DebugLogging           bool   `json:"debugLogging,omitempty"`
-	Silent                 bool   `json:"silent,omitempty"`
-	XcodebuildTimestamps   bool   `json:"xcodebuildTimestamps,omitempty"`
+	ProxyVersion    string `json:"proxyVersion"`
+	ProxySocketPath string `json:"proxySocketPath"`
+	// ConfigVersion is the semver of this config's schema. Refresh nudges only when this bumps.
+	ConfigVersion string `json:"configVersion,omitempty"`
+	// WrittenAt records when the config was last (re-)written by activate.
+	WrittenAt              time.Time `json:"writtenAt,omitzero"`
+	WrapperVersion         string    `json:"wrapperVersion"`
+	OriginalXcodebuildPath string    `json:"originalXcodebuildPath"`
+	OriginalXcrunPath      string    `json:"originalXcrunPath"`
+	BuildCacheEnabled      bool      `json:"buildCacheEnabled"`
+	BuildCacheSkipFlags    bool      `json:"buildCacheSkipFlags"`
+	DisablePrefixMapping   bool      `json:"disablePrefixMapping,omitempty"`
+	BuildCacheEndpoint     string    `json:"buildCacheEndpoint"`
+	PushEnabled            bool      `json:"pushEnabled"`
+	DebugLogging           bool      `json:"debugLogging,omitempty"`
+	Silent                 bool      `json:"silent,omitempty"`
+	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
 	// (single canonical source for auth credentials on disk). The JSON tag is
 	// preserved for read-side backwards compatibility with older xcelerate
@@ -85,11 +88,9 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 		return Config{}, fmt.Errorf("decode xcelerate config file (%s): %w", configFilePath, err)
 	}
 
-	// Auth credentials live in the multiplatform analytics config. Prefer that
-	// source so callers can keep using config.AuthConfig; fall back to whatever
-	// the legacy xcelerate config (decoded above) carried, for users upgrading
-	// from a CLI version that still persisted auth in the xcelerate config.
-	if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
+	if kcCfg, ok := common.GetKeychainCredentials(); ok {
+		config.AuthConfig = kcCfg
+	} else if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
 		config.AuthConfig = mpCfg.AuthConfig
 	}
 
@@ -124,7 +125,7 @@ func NewConfig(ctx context.Context,
 	exporter EnvExporter,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (Config, error) {
-	authConfig, err := common.ReadAuthConfigFromEnvironments(envs)
+	authConfig, _, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
@@ -169,15 +170,13 @@ func NewConfig(ctx context.Context,
 	}
 	logger.Infof("Using xcrun path: %s. You can always override this by supplying --xcrun-path.", xcrunPath)
 
-	proxySocketPath := params.ProxySocketPathOverride
-	if proxySocketPath == "" {
-		proxySocketPath = envs["BITRISE_XCELERATE_PROXY_SOCKET_PATH"]
-		if proxySocketPath == "" {
-			proxySocketPath = filepath.Join(osProxy.TempDir(), paths.ProxySocketName)
-			logger.Infof("Using new proxy socket path: %s", proxySocketPath)
-		} else {
-			logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
-		}
+	proxySocketPath := ResolveProxySocketPath(params.ProxySocketPathOverride, envs, osProxy)
+	switch {
+	case params.ProxySocketPathOverride != "":
+	case envs[EnvProxySocketPath] != "":
+		logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
+	default:
+		logger.Infof("Using new proxy socket path: %s", proxySocketPath)
 	}
 
 	if params.BuildCacheEndpoint == "" {
@@ -198,7 +197,8 @@ func NewConfig(ctx context.Context,
 		ProxyVersion:           envs["BITRISE_XCELERATE_PROXY_VERSION"],
 		ProxySocketPath:        proxySocketPath,
 		WrapperVersion:         envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
-		CLIVersion:             common.GetCLIVersion(logger),
+		ConfigVersion:          toolconfig.XcelerateConfigVersion,
+		WrittenAt:              time.Now().UTC(),
 		OriginalXcodebuildPath: xcodePath,
 		OriginalXcrunPath:      xcrunPath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,

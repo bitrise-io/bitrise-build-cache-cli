@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
@@ -29,6 +30,7 @@ func runStatusCmd(t *testing.T, home string, args ...string) (string, string, er
 	t.Helper()
 
 	t.Setenv("HOME", home)
+	keyring.MockInit() // clean in-memory keychain so auth status doesn't read the dev's real one
 
 	cmd, _, err := common.RootCmd.Find([]string{"status"})
 	require.NoError(t, err)
@@ -114,19 +116,32 @@ func TestStatus_TextTable(t *testing.T) {
 func TestStatus_JSON_Shape(t *testing.T) {
 	home := t.TempDir()
 	writeRNFixture(t, home, true)
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
 
 	stdout, _, err := runStatusCmd(t, home, "--json")
 	require.NoError(t, err)
 
-	var got map[string]bool
+	var got struct {
+		Gradle      bool  `json:"gradle"`
+		Xcode       bool  `json:"xcode"`
+		Cpp         bool  `json:"cpp"`
+		ReactNative bool  `json:"reactNative"`
+		Bazel       *bool `json:"bazel"`
+		Auth        struct {
+			Configured bool   `json:"configured"`
+			Source     string `json:"source"`
+		} `json:"auth"`
+	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
 
-	assert.False(t, got["gradle"])
-	assert.False(t, got["xcode"])
-	assert.False(t, got["cpp"])
-	assert.True(t, got["reactNative"])
-	_, hasBazel := got["bazel"]
-	assert.False(t, hasBazel)
+	assert.False(t, got.Gradle)
+	assert.False(t, got.Xcode)
+	assert.False(t, got.Cpp)
+	assert.True(t, got.ReactNative)
+	assert.Nil(t, got.Bazel)
+	assert.False(t, got.Auth.Configured)
+	assert.Equal(t, "none", got.Auth.Source)
 }
 
 func TestStatus_FeatureBazel_ExitTwo(t *testing.T) {

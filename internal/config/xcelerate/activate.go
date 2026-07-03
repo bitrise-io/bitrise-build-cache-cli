@@ -3,6 +3,7 @@ package xcelerate
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/shirou/gopsutil/v4/process"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
@@ -63,7 +65,11 @@ func Activate(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envs)
+	authConfig, _, err := configcommon.ResolveAuthConfig(envs)
+	if err != nil {
+		return fmt.Errorf("resolve auth config: %w", err)
+	}
+
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
 	config, err := NewConfig(
@@ -84,16 +90,23 @@ func Activate(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	// Auth credentials are persisted only in the multiplatform analytics config
-	// (single source of truth on disk). The xcelerate config carries auth in-memory
-	// at runtime via ReadConfig, but never to JSON.
-	mpCfg := multiplatformconfig.Config{
-		AuthConfig:   config.AuthConfig,
-		DebugLogging: config.DebugLogging,
+	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
+	keychainErr := errors.New("skip-jwt")
+	if !config.AuthConfig.IsJWT {
+		keychainErr = keychain.New().Save(keychain.Credentials{
+			AuthToken:   config.AuthConfig.AuthToken,
+			WorkspaceID: config.AuthConfig.WorkspaceID,
+		})
+	}
+	if keychainErr != nil {
+		mpCfg.AuthConfig = config.AuthConfig
+	} else {
+		logger.Infof("Saved auth credentials to the OS keychain")
 	}
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
+	logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(osProxy))
 
 	if err := copyCLIToXcelerateBinDir(ctx, osProxy, logger); err != nil {
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
@@ -103,7 +116,6 @@ func Activate(
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
-	logger.Debugf("Xcelerate command added to ~/.bashrc and ~/.zshrc")
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
 
@@ -240,7 +252,6 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	}
 
 	scriptPath := filepath.Join(binPath, "xcodebuild")
-	logger.Debugf("Creating xcodebuild wrapper script: %s", scriptPath)
 
 	if err := osProxy.WriteFile(scriptPath,
 		[]byte(fmt.Sprintf(xcodebuildWrapperScriptContent,
@@ -248,9 +259,9 @@ func addXcelerateCommandToPathWithScriptWrapper(
 			binPath)), 0o755); err != nil {
 		return fmt.Errorf("failed to create xcodebuild wrapper script: %w", err)
 	}
+	logger.Infof("Wrote xcodebuild wrapper script: %s", scriptPath)
 
 	scriptPath = filepath.Join(binPath, "xcrun")
-	logger.Debugf("Creating xcrun wrapper script: %s", scriptPath)
 
 	if err := osProxy.WriteFile(scriptPath,
 		[]byte(fmt.Sprintf(xcrunWrapperScriptContent,
@@ -259,6 +270,7 @@ func addXcelerateCommandToPathWithScriptWrapper(
 			config.OriginalXcrunPath)), 0o755); err != nil {
 		return fmt.Errorf("failed to create xcrun wrapper script: %w", err)
 	}
+	logger.Infof("Wrote xcrun wrapper script: %s", scriptPath)
 
 	path := strings.ReplaceAll(envs["PATH"], binPath+":", "")
 	path = strings.Join([]string{binPath, path}, ":")

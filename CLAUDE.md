@@ -49,6 +49,18 @@ internal/     → Core business logic, config, protocols
 - `internal/build_cache/kv/` — key-value storage client for the build cache GRPC protocol
 - `internal/hash/` — blake3 hashing utilities
 - `internal/stringmerge/` — merges content into config files using `# [start]/[end] generated-by-bitrise-build-cache` marker blocks
+- `internal/paths/` — single source of truth for every on-disk location the CLI reads or writes. Filenames, dir layouts, socket/pid names live as constants in `paths.go`; per-`Paths` methods compose them against a home dir.
+
+**On-disk path placement:**
+
+All filenames, directory layouts, socket names, pid filenames, and env-var keys that resolve to a path go through `internal/paths` (or via a per-package `Resolve...Path` helper that itself uses `paths`). Concretely:
+
+- New filename / dir constant → add to `internal/paths/paths.go` + expose a `Paths` method.
+- New env var that overrides a path → exported constant in the consuming package (next to `ccacheconfig.EnvIPCSocketPath`, `xceleratconfig.EnvProxySocketPath`) plus a `Resolve...Path(override, envs, osProxy)` helper. The helper is the single source of resolution for both the writer (`activate`) and any inspector (`doctor`, audits) so they cannot drift.
+- Doctor / status / inspector code calls the resolver — never re-implements the env → default chain.
+- When you find yourself typing a path literal a second time, route it through `paths` instead.
+
+Acceptable carve-outs: paths inside generated artifact bodies the CLI doesn't itself read/write (e.g. text rendered into a downstream config); paths entirely confined to a test temp dir.
 
 **Protocol Buffers:** `proto/` contains definitions for Bazel remote execution API, KV storage, and LLVM CAS/session protocols. Regenerate with `make protoc`.
 
@@ -194,3 +206,8 @@ The deployments repo has **no CI on PRs** (no GitHub Actions workflows; the Bitr
 After sed-bumping the constants, the script asserts the working tree shows **exactly** `+2/-2` per startup script and no other files modified — defensive check against a loose regex matching unintended lines.
 
 Required Bitrise secret: `PREBOOTING_BOT_TOKEN` (GH PAT for `Bitrise Infrabot`, scoped to `bitrise-io/build-prebooting-deployments`: `contents:write` + `pull_requests:write`). Slack-alerts on failure; safe to retry the workflow without re-cutting the tag.
+
+## Comments in code
+
+Avoid commenting obvious code flows. Avoid adding long comments, be precise and include only what's not obvious from the surrounding context. Avoid bloating existing code with new comments.
+Do not describe code flows that can be read from the code itself. Do not document messages (or error strings), they would be duplications. Do not include ticket numbers unless it was a non-trivial production bug. Do not include caller sources, those are discoverable.

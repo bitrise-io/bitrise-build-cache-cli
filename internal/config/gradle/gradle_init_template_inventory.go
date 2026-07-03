@@ -43,6 +43,8 @@ type PluginCommonTemplateInventory struct {
 	AppSlug    string
 	CIProvider string
 	Version    string
+
+	CLIPath string
 }
 
 type TemplateInventory struct {

@@ -30,8 +30,23 @@ const (
 	// ProxySocketName is the xcelerate proxy unix-socket filename (lives under the OS temp dir).
 	ProxySocketName = "xcelerate-proxy.sock"
 
+	// ProxyPidFileName is the xcelerate proxy pid file written into XcelerateRoot.
+	ProxyPidFileName = "proxy.pid"
+
+	// CcacheSocketName is the ccache IPC unix-socket filename (lives under the OS temp dir).
+	CcacheSocketName = "ccache-ipc.sock"
+
+	// xcelerateLogsRelative is the per-user xcelerate log dir.
+	xcelerateLogsRelative = ".local/state/xcelerate/logs"
+
+	// ccacheLogsRelative is the per-user ccache log dir.
+	ccacheLogsRelative = ".local/state/ccache/logs"
+
 	// daemonLogsSubdir is the daemon supervisor stdout/stderr log dir.
 	daemonLogsSubdir = "logs"
+
+	// invocationsSubdir holds the per-day NDJSON invocation log files.
+	invocationsSubdir = "invocations"
 
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
@@ -44,6 +59,9 @@ const (
 
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
+
+	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
+	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 )
 
 // Paths resolves on-disk locations rooted at a single home directory.
@@ -89,6 +107,14 @@ func (p Paths) SystemdUserDir() string {
 // DaemonLogDir is the absolute path of the daemon supervisor stdout/stderr log dir.
 func (p Paths) DaemonLogDir() string {
 	return filepath.Join(p.StateDir(), daemonLogsSubdir)
+}
+
+func (p Paths) InvocationsDir() string {
+	return filepath.Join(p.StateDir(), invocationsSubdir)
+}
+
+func (p Paths) InvocationsFile(day string) string {
+	return filepath.Join(p.InvocationsDir(), day+".ndjson")
 }
 
 // PlistPath returns the per-user LaunchAgent plist path for the given label.
@@ -159,4 +185,29 @@ func (p Paths) XcelerateBinFile(name string) string {
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
 func (p Paths) ProxySocketPath(tempDir string) string {
 	return filepath.Join(tempDir, ProxySocketName)
+}
+
+// ProxyPidFile returns the xcelerate proxy pid file path under XcelerateRoot.
+func (p Paths) ProxyPidFile() string {
+	return filepath.Join(p.XcelerateRoot(), ProxyPidFileName)
+}
+
+// CcacheSocketPath returns the ccache IPC unix-socket path under the supplied temp dir.
+func (p Paths) CcacheSocketPath(tempDir string) string {
+	return filepath.Join(tempDir, CcacheSocketName)
+}
+
+// XcelerateLogDir returns ~/.local/state/xcelerate/logs.
+func (p Paths) XcelerateLogDir() string {
+	return filepath.Join(p.Home, xcelerateLogsRelative)
+}
+
+// CcacheLogDir returns ~/.local/state/ccache/logs.
+func (p Paths) CcacheLogDir() string {
+	return filepath.Join(p.Home, ccacheLogsRelative)
+}
+
+// GradleInitScriptFile returns the absolute path of the generated gradle init script.
+func (p Paths) GradleInitScriptFile() string {
+	return filepath.Join(p.Home, gradleInitScriptRelative)
 }

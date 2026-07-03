@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
 )
 
@@ -68,11 +71,22 @@ func runStatus(out, errOut io.Writer, checker *status.Checker) error {
 	}
 
 	s := checker.Status()
+	auth := currentAuthStatus()
 	if statusJSONOutput {
-		return writeJSON(out, s)
+		return writeJSON(out, statusOutput{
+			Gradle:      s.Gradle,
+			Xcode:       s.Xcode,
+			Cpp:         s.Cpp,
+			ReactNative: s.ReactNative,
+			Auth:        auth,
+		})
 	}
 
-	return writeTable(out, s)
+	if err := writeTable(out, s); err != nil {
+		return err
+	}
+
+	return writeAuthLine(out, auth)
 }
 
 // runStatusFeature handles --feature queries. Precedence when combined:
@@ -107,6 +121,83 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 		fmt.Fprintln(out, "enabled")
 	} else {
 		fmt.Fprintln(out, "disabled")
+	}
+
+	return nil
+}
+
+// authStatusInfo summarizes the credential the build cache will use, for status
+// output. Read-only; never includes token material.
+type authStatusInfo struct {
+	Configured  bool   `json:"configured"`
+	Source      string `json:"source"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	TokenExpiry string `json:"token_expiry,omitempty"`
+	Expired     bool   `json:"expired,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// statusOutput is the --json shape: feature flags plus auth.
+type statusOutput struct {
+	Gradle      bool           `json:"gradle"`
+	Xcode       bool           `json:"xcode"`
+	Cpp         bool           `json:"cpp"`
+	ReactNative bool           `json:"reactNative"`
+	Auth        authStatusInfo `json:"auth"`
+}
+
+// currentAuthStatus reports the credential commands would use, via config
+// common's resolution + shared AuthDescription. Never refreshes or writes.
+func currentAuthStatus() authStatusInfo {
+	cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+	switch {
+	case errors.Is(err, configcommon.ErrAuthTokenNotProvided), errors.Is(err, configcommon.ErrWorkspaceIDNotProvided):
+		return authStatusInfo{Source: "none"}
+	case err != nil:
+		// A real resolution failure (e.g. a malformed service JWT) — surface it
+		// rather than mislabel it "not configured".
+		return authStatusInfo{Source: "error", Error: err.Error()}
+	case cfg.AuthToken == "":
+		return authStatusInfo{Source: "none"}
+	}
+
+	d := configcommon.DescribeResolved(cfg, source)
+	info := authStatusInfo{
+		Configured:  true,
+		Source:      d.Label(),
+		WorkspaceID: d.WorkspaceID,
+	}
+	if !d.PATExpiry.IsZero() {
+		info.TokenExpiry = d.PATExpiry.Format(time.RFC3339)
+		info.Expired = d.Expired()
+	}
+
+	return info
+}
+
+// writeAuthLine appends a one-line auth summary to the text status output.
+func writeAuthLine(out io.Writer, a authStatusInfo) error {
+	line := "Auth: "
+	switch {
+	case a.Error != "":
+		line += "could not resolve credentials: " + a.Error
+	case !a.Configured:
+		line += "not configured (run 'bitrise-build-cache auth login' or 'bitrise-build-cache activate --interactive', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)"
+	default:
+		line += a.Source
+		if a.WorkspaceID != "" {
+			line += fmt.Sprintf(" (workspace %s)", a.WorkspaceID)
+		}
+		switch {
+		case a.TokenExpiry == "":
+		case a.Expired:
+			line += ", token expired — refreshes on next use"
+		default:
+			line += ", token valid until " + a.TokenExpiry
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\n"+line); err != nil {
+		return fmt.Errorf("write auth status: %w", err)
 	}
 
 	return nil

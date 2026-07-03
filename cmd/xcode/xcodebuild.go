@@ -26,6 +26,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
@@ -245,12 +247,18 @@ func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Wri
 
 //go:generate moq -stub -out xcodebuild_relation_mock_test.go -pkg xcode . relationSender
 
+//go:generate moq -stub -out xcodebuild_local_log_mock_test.go -pkg xcode . localInvocationLogger
+
 type invocationSaver interface {
 	PutInvocation(inv analytics.Invocation) error
 }
 
 type relationSender interface {
 	PutInvocationRelation(rel multiplatform.InvocationRelation) error
+}
+
+type localInvocationLogger interface {
+	Append(rec invocations.Record) error
 }
 
 // XcodebuildRunner holds configuration for the xcodebuild wrapper and provides
@@ -269,6 +277,8 @@ type XcodebuildRunner struct {
 	invocationAPI invocationSaver
 	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
 	relationAPI relationSender
+	// localLogger appends to the local invocation log. If nil, paths.Default + invocations.NewWriter is used.
+	localLogger localInvocationLogger
 }
 
 // Run executes the xcodebuild wrapper: runs xcodebuild, collects stats,
@@ -335,9 +345,59 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		XcodeBuildNumber: runStats.XcodeBuildNumber,
 	}, c.Config.AuthConfig, c.Metadata)
 
+	c.appendLocalInvocationLog(*inv, runStats)
 	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
 	return runStats
+}
+
+func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, runStats xcodeargs.RunStats) {
+	logger := c.resolveLocalLogger()
+	if logger == nil {
+		return
+	}
+
+	src := invocations.SourceLocal
+	if c.Metadata.CIProvider != "" {
+		src = invocations.SourceCI
+	}
+
+	startedAt := runStats.StartTime
+	finishedAt := startedAt.Add(time.Duration(runStats.DurationMS) * time.Millisecond)
+
+	rec := invocations.Record{
+		InvocationID: inv.InvocationID,
+		Command:      inv.Command,
+		Tool:         invocations.ToolXcode,
+		ToolVersion:  inv.XcodeVersion,
+		CLIVersion:   inv.CLIVersion,
+		StartedAt:    startedAt,
+		FinishedAt:   finishedAt,
+		ExitCode:     runStats.ExitCode,
+		Source:       src,
+	}
+
+	if err := logger.Append(rec); err != nil {
+		c.Logger.Warnf("Failed to append local invocation log: %v", err)
+	}
+}
+
+func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
+	if c.localLogger != nil {
+		return c.localLogger
+	}
+
+	p, err := paths.Default()
+	if err != nil {
+		c.Logger.Warnf("Skipping local invocation log: %v", err)
+
+		return nil
+	}
+
+	w := invocations.NewWriter(p)
+	w.Logger = c.Logger
+
+	return w
 }
 
 func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {

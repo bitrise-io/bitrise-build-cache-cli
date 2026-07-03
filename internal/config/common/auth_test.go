@@ -3,11 +3,148 @@ package common
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
 )
+
+type fakeAuthLoader struct {
+	creds keychain.Credentials
+	err   error
+}
+
+func (f fakeAuthLoader) Load() (keychain.Credentials, error) { return f.creds, f.err }
+
+func TestResolveAuthConfig_envVarsWinOverKeychain(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, _, err := resolveAuthConfig(envs, loader, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken, "env vars take precedence over stored creds")
+	assert.Equal(t, "env-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_jwtEnvWinsOverKeychain(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	envs := map[string]string{
+		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeUMAJWT("ci-ws"),
+	}
+
+	got, _, err := resolveAuthConfig(envs, loader, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ci-ws", got.WorkspaceID, "CI JWT env var overrides stored creds")
+	assert.True(t, got.IsJWT)
+}
+
+func TestResolveAuthConfig_noEnv_keychainHit(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+
+	got, _, err := resolveAuthConfig(map[string]string{}, loader, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "kc-tok", got.AuthToken)
+	assert.Equal(t, "kc-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_noEnv_keychainNotFound_returnsEnvNotSetError(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+
+	_, _, err := resolveAuthConfig(map[string]string{}, loader, nil)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
+}
+
+func TestResolveAuthConfig_noEnv_keychainError_returnsEnvNotSetError(t *testing.T) {
+	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
+
+	_, _, err := resolveAuthConfig(map[string]string{}, loader, nil)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
+}
+
+func TestResolveAuthConfig_noEnv_keychainPartial_returnsEnvNotSetError(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+
+	_, _, err := resolveAuthConfig(map[string]string{}, loader, nil)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
+}
+
+func TestResolveAuthConfig_partialEnv_fallsBackToKeychain(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN": "env-tok",
+	}
+
+	got, _, err := resolveAuthConfig(envs, loader, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "kc-tok", got.AuthToken, "incomplete env vars should not silently mix with keychain")
+	assert.Equal(t, "kc-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_noEnv_noKeychain_fallsBackToMultiplatformConfig(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
+	}
+
+	got, _, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.NoError(t, err)
+	assert.Equal(t, "mp-tok", got.AuthToken)
+	assert.Equal(t, "mp-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_keychainWinsOverMultiplatformConfig(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
+	}
+
+	got, _, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.NoError(t, err)
+	assert.Equal(t, "kc-tok", got.AuthToken, "keychain takes precedence over multiplatform config")
+	assert.Equal(t, "kc-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_envWinsOverMultiplatformConfig(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
+	}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
+	}
+
+	got, _, err := resolveAuthConfig(envs, loader, readMp)
+	require.NoError(t, err)
+	assert.Equal(t, "env-tok", got.AuthToken, "env vars take precedence over multiplatform config")
+	assert.Equal(t, "env-ws", got.WorkspaceID)
+}
+
+func TestResolveAuthConfig_multiplatformReaderErrorIsSwallowed(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{}, errors.New("disk read failed")
+	}
+
+	_, _, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided, "multiplatform read error falls through to env-not-set canonical error")
+}
+
+func TestResolveAuthConfig_multiplatformPartial_fallsThroughToEnvError(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+	readMp := func() (CacheAuthConfig, error) {
+		return CacheAuthConfig{AuthToken: "mp-tok"}, nil
+	}
+
+	_, _, err := resolveAuthConfig(map[string]string{}, loader, readMp)
+	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
+}
 
 func makeJWT(payload map[string]any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
@@ -39,7 +176,7 @@ func makeUMAJWT(orgID string) string {
 	})
 }
 
-func TestReadAuthConfigFromEnvironments(t *testing.T) {
+func TestReadAuthConfigFromEnvs(t *testing.T) {
 	validJWT := makeUMAJWT("jwt-workspace-id")
 
 	tests := []struct {
@@ -154,7 +291,7 @@ func TestReadAuthConfigFromEnvironments(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, err := ReadAuthConfigFromEnvironments(tt.envVars)
+			config, _, err := readAuthConfigFromEnvironments(tt.envVars)
 			if tt.expectedError != "" {
 				require.EqualError(t, err, tt.expectedError)
 			} else {
@@ -287,4 +424,79 @@ func TestExtractWorkspaceIDFromJWT(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetKeychainCredentials_populated(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+
+	cfg, ok := GetKeychainCredentialsWith(loader)
+	require.True(t, ok)
+	assert.Equal(t, "kc-tok", cfg.AuthToken)
+	assert.Equal(t, "kc-ws", cfg.WorkspaceID)
+}
+
+func TestGetKeychainCredentials_notFound(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+
+	cfg, ok := GetKeychainCredentialsWith(loader)
+	assert.False(t, ok)
+	assert.Empty(t, cfg.AuthToken)
+}
+
+func TestGetKeychainCredentials_partialTreatedAsEmpty(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+
+	_, ok := GetKeychainCredentialsWith(loader)
+	assert.False(t, ok, "token without workspace ID is incomplete; treat as not present")
+}
+
+func TestGetKeychainCredentials_loadErrorTreatedAsEmpty(t *testing.T) {
+	loader := fakeAuthLoader{err: errors.New("dbus connection failed")}
+
+	_, ok := GetKeychainCredentialsWith(loader)
+	assert.False(t, ok)
+}
+
+func osUserStub() string { return "os-user" }
+
+func TestResolveUsername_envWins(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	envs := map[string]string{EnvUsername: "env-user"}
+
+	got, src := resolveUsername(envs, loader, osUserStub)
+	assert.Equal(t, "env-user", got)
+	assert.Equal(t, UsernameSourceEnv, src)
+}
+
+func TestResolveUsername_keychainWinsOverOS(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+
+	got, src := resolveUsername(map[string]string{}, loader, osUserStub)
+	assert.Equal(t, "kc-user", got)
+	assert.Equal(t, UsernameSourceKeychain, src)
+}
+
+func TestResolveUsername_osFallback(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{}}
+
+	got, src := resolveUsername(map[string]string{}, loader, osUserStub)
+	assert.Equal(t, "os-user", got)
+	assert.Equal(t, UsernameSourceOS, src)
+}
+
+func TestResolveUsername_envEmptyStringSkipped(t *testing.T) {
+	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	envs := map[string]string{EnvUsername: "  "}
+
+	got, src := resolveUsername(envs, loader, osUserStub)
+	assert.Equal(t, "kc-user", got)
+	assert.Equal(t, UsernameSourceKeychain, src)
+}
+
+func TestResolveUsername_allEmpty(t *testing.T) {
+	loader := fakeAuthLoader{err: keychain.ErrNotFound}
+
+	got, src := resolveUsername(map[string]string{}, loader, func() string { return "" })
+	assert.Empty(t, got)
+	assert.Equal(t, UsernameSourceNone, src)
 }

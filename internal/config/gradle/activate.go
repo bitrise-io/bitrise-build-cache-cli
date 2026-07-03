@@ -25,7 +25,11 @@ func Activate(
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
 ) error {
-	authConfig, _ := configcommon.ReadAuthConfigFromEnvironments(envProvider)
+	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
+	if err != nil {
+		return fmt.Errorf(ErrFmtReadAuthConfig, err)
+	}
+
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
 	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)

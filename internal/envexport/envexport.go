@@ -34,6 +34,8 @@ func New(envs map[string]string, logger log.Logger) *EnvExporter {
 func (e *EnvExporter) Export(key, value string) {
 	if err := os.Setenv(key, value); err != nil {
 		e.logger.Debugf("Failed to set env var %s: %v", key, err)
+	} else {
+		e.logger.Infof("Exported %s to the current process environment", key)
 	}
 
 	e.exportViaEnvman(key, value)
@@ -44,7 +46,10 @@ func (e *EnvExporter) exportViaEnvman(key, value string) {
 	stdout, stderr, err := (exec.ExecRunner{}).RunCheck(context.Background(), "envman", "add", "--key", key, "--value", value)
 	if err != nil {
 		e.logger.Debugf("Failed to export %s via envman: %s (%v)", key, stdout+stderr, err)
+
+		return
 	}
+	e.logger.Infof("Exported %s via envman", key)
 }
 
 func (e *EnvExporter) exportViaGitHubEnv(key, value string) {
@@ -70,7 +75,10 @@ func (e *EnvExporter) exportViaGitHubEnv(key, value string) {
 
 	if err := writer.Flush(); err != nil {
 		e.logger.Debugf("Failed to flush GITHUB_ENV file: %v", err)
+
+		return
 	}
+	e.logger.Infof("Appended %s to %s", key, filePath)
 }
 
 // ExportToShellRC writes an export statement to ~/.bashrc and ~/.zshrc using a marker block.
@@ -92,7 +100,10 @@ func (e *EnvExporter) ExportToShellRC(blockName, content string) {
 		rcPath := filepath.Join(homeDir, rcFile)
 		if err := writeShellRCBlock(rcPath, blockName, content); err != nil {
 			e.logger.Debugf("Failed to update %s: %v", rcFile, err)
+
+			continue
 		}
+		e.logger.Infof("Updated %s with %q block", rcPath, blockName)
 	}
 }
 
