@@ -4,7 +4,7 @@
 package xcode
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"sync"
 )
 

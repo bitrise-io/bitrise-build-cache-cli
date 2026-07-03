@@ -15,12 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common/mocks"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func TestConfig_Save(t *testing.T) {

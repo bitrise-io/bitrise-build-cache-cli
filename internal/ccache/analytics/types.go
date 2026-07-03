@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 )
 
 // CcacheStats holds statistics parsed from `ccache -v -v -s`.

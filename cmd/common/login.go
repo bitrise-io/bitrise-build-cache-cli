@@ -8,10 +8,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/bitriseapi"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/oauth"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 var loginWorkspace string //nolint:gochecknoglobals

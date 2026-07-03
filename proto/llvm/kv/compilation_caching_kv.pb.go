@@ -430,7 +430,7 @@ const file_llvm_kv_compilation_caching_kv_proto_rawDesc = "" +
 	"KeyValueDB\x12}\n" +
 	"\bGetValue\x126.compilation_cache_service.keyvalue.v1.GetValueRequest\x1a7.compilation_cache_service.keyvalue.v1.GetValueResponse\"\x00\x12}\n" +
 	"\bPutValue\x126.compilation_cache_service.keyvalue.v1.PutValueRequest\x1a7.compilation_cache_service.keyvalue.v1.PutValueResponse\"\x00B\x8a\x01\n" +
-	"&com.apple.dt.compilation_cache_serviceB\x17CompilationCachingProtoP\x01Z?github.com/bitrise-io/bitrise-build-cache-cli/v2/llvm/kv;llvmkv\xa2\x02\x03CCSb\x06proto3"
+	"&com.apple.dt.compilation_cache_serviceB\x17CompilationCachingProtoP\x01Z?github.com/bitrise-io/bitrise-build-cache-cli/v3/llvm/kv;llvmkv\xa2\x02\x03CCSb\x06proto3"
 
 var (
 	file_llvm_kv_compilation_caching_kv_proto_rawDescOnce sync.Once

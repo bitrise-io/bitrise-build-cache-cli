@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/browse"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/browse"
 )
 
 // browse_ErrNoOpener returns the internal sentinel so the public-API

@@ -13,12 +13,12 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
-	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
-	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
 //nolint:gochecknoglobals

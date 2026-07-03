@@ -3,7 +3,7 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/authprompt"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
 )
 
 type AuthPromptFixer struct {

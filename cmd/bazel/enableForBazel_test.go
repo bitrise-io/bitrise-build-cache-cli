@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/bazel"
-	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/bazel"
+	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func makeFakeJWT(orgID string) string {

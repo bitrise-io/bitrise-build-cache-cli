@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func (d *Doctor) xcelerateXcconfigCheck() Check {

@@ -11,11 +11,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/hash"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 const GradleConfigCacheMetadataPath = "gradle-config-cache-metadata.json"

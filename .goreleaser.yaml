@@ -32,7 +32,7 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-      - -X github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common.injectedVersion={{.Version}}
+      - -X github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common.injectedVersion={{.Version}}
     goos:
       - linux
       # - windows

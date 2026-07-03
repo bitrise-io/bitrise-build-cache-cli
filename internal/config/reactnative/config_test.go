@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func TestConfig_SaveAndRead_RoundTrip(t *testing.T) {

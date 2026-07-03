@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 )
 
 type DaemonUpFixer struct {

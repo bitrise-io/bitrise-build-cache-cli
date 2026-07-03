@@ -14,10 +14,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // ---------------------------------------------------------------------------

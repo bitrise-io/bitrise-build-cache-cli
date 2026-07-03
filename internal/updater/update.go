@@ -8,7 +8,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 )
 
 type Options struct {

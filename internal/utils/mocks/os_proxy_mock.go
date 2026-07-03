@@ -4,7 +4,7 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"os"
 	"sync"
 )

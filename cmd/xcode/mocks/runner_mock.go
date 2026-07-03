@@ -5,8 +5,8 @@ package mocks
 
 import (
 	"context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"sync"
 )
 

@@ -8,7 +8,7 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
 
 const (

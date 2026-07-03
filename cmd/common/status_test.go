@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
-	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 )
 
 // runStatusCmd invokes the registered "status" cobra command with the given

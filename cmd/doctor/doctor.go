@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/doctor"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 )
 
 const (

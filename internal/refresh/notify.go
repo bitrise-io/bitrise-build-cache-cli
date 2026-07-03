@@ -6,7 +6,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"golang.org/x/mod/semver"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
 
 // CurrentConfigVersions returns the semver each tool's persisted config should

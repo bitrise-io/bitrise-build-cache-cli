@@ -5,8 +5,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
 
 const (

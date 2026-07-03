@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/status"
 )
 
 //nolint:gochecknoglobals

@@ -1020,7 +1020,7 @@ const file_llvm_cas_compilation_caching_cas_proto_rawDesc = "" +
 	"\x03Put\x12/.compilation_cache_service.cas.v1.CASPutRequest\x1a0.compilation_cache_service.cas.v1.CASPutResponse\"\x00\x12m\n" +
 	"\x04Load\x120.compilation_cache_service.cas.v1.CASLoadRequest\x1a1.compilation_cache_service.cas.v1.CASLoadResponse\"\x00\x12m\n" +
 	"\x04Save\x120.compilation_cache_service.cas.v1.CASSaveRequest\x1a1.compilation_cache_service.cas.v1.CASSaveResponse\"\x00B\x8c\x01\n" +
-	"&com.apple.dt.compilation_cache_serviceB\x17CompilationCachingProtoP\x01ZAgithub.com/bitrise-io/bitrise-build-cache-cli/v2/llvm/cas;llvmcas\xa2\x02\x03CCSb\x06proto3"
+	"&com.apple.dt.compilation_cache_serviceB\x17CompilationCachingProtoP\x01ZAgithub.com/bitrise-io/bitrise-build-cache-cli/v3/llvm/cas;llvmcas\xa2\x02\x03CCSb\x06proto3"
 
 var (
 	file_llvm_cas_compilation_caching_cas_proto_rawDescOnce sync.Once

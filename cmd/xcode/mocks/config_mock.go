@@ -4,8 +4,8 @@
 package mocks
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"sync"
 )

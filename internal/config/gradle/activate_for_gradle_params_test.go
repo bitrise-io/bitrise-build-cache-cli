@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common/mocks"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
 
 func Test_activateGradleParams(t *testing.T) {

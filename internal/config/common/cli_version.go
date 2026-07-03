@@ -12,7 +12,7 @@ import (
 
 // injectedVersion is the CLI version stamped at build time via:
 //
-//	-ldflags "-X github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common.injectedVersion=<ver>"
+//	-ldflags "-X github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common.injectedVersion=<ver>"
 //
 // Goreleaser sets this on every release build. Local `go build` leaves it
 // empty and we fall back to debug.ReadBuildInfo below.

@@ -3,7 +3,7 @@ package gradleconfig
 import (
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
 
 // SidecarMigrator implements toolconfig.Migrator for the gradle sidecar.

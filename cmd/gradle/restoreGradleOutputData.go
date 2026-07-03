@@ -8,8 +8,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/diagnostics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/diagnostics"
 )
 
 var restoreGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals

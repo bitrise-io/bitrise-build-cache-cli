@@ -8,9 +8,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	browsepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/browse"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	browsepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/browse"
 )
 
 //nolint:gochecknoglobals

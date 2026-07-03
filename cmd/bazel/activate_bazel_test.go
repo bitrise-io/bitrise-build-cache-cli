@@ -7,9 +7,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/bazel"
-	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/bazel"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/bazel"
+	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
 func Test_activateBazelCmdFn(t *testing.T) {

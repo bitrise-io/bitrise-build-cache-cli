@@ -7,7 +7,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/updater"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/updater"
 )
 
 type UpdateFixer struct {

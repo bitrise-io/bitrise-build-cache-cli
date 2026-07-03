@@ -3,9 +3,9 @@ package gradle
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle/mirrors"
-	mirrorspkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/gradle/mirrors"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle/mirrors"
+	mirrorspkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/gradle/mirrors"
 )
 
 var activateGradleMirrorsCmd = &cobra.Command{ //nolint:gochecknoglobals

@@ -9,7 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
 
 type recordingMigrator struct {
