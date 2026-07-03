@@ -141,6 +141,10 @@ workflows:
         envs:
         - STEP_NAME: bitrise-step-activate-react-native-features
         - UPDATE_SCRIPT_PATH: ../scripts/update_activate_react_native_features.sh
+    - bundle::update-step:
+        envs:
+        - STEP_NAME: bitrise-step-activate-gradle-mirrors
+        - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -1328,11 +1332,34 @@ workflows:
               echo "=== bitrise-gradle-mirrors.init.gradle.kts ==="
               cat ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts
     - script:
+        title: Guard - init script compiles clean under allWarningsAsErrors
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Some customers' Gradle promotes Kotlin DSL warnings to errors via
+            # org.gradle.kotlin.dsl.allWarningsAsErrors; under that setting an init-script
+            # warning fails compilation and thus every gradle build (the v2.8.10 regression).
+            # Compile our init script in an isolated GRADLE_USER_HOME + empty project so the
+            # property applies only to our script, not DuckDuckGo's build scripts.
+            GUARD_HOME=$(mktemp -d)
+            GUARD_PROJ=$(mktemp -d)
+            mkdir -p "$GUARD_HOME/init.d"
+            cp ~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts "$GUARD_HOME/init.d/"
+            printf 'org.gradle.kotlin.dsl.allWarningsAsErrors=true\n' > "$GUARD_HOME/gradle.properties"
+            printf 'rootProject.name = "init-compile-guard"\n' > "$GUARD_PROJ/settings.gradle.kts"
+            GRADLE_USER_HOME="$GUARD_HOME" ./gradlew --project-dir "$GUARD_PROJ" help --stacktrace
+            echo "SUCCESS: init script compiles clean under allWarningsAsErrors"
+    - script:
         title: Build and capture logs
         inputs:
         - content: |-
             set -exo pipefail
             ./gradlew debug --info --stacktrace > "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1
+            # Robolectric unit test to exercise the android-all jar audit + native-runtime probes (tolerate failure; append logs).
+            # --rerun forces just this task to re-execute (bypasses both up-to-date and the build cache for the test task only,
+            # so its compile deps still load FROM-CACHE): served FROM-CACHE the test never forks a JVM, so Robolectric never
+            # boots and DisplayMetrics / android-all / the native runtime never load (the probe + ICU audit stay dark).
+            ./gradlew :ad-click-impl:testDebugUnitTest --rerun --info --stacktrace >> "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1 || true
     - script:
         title: Assert downloads from MavenCentral mirror
         inputs:
@@ -1369,6 +1396,22 @@ workflows:
             fi
 
             echo "SUCCESS: Verified $MATCH_COUNT downloads from the Google mirror."
+    - script:
+        title: Assert robolectric probe emitted
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            MATCH_COUNT=$(grep -cE '\[robolectric-probe\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true)
+            echo "Found $MATCH_COUNT robolectric probe log lines:"
+            grep -E '\[robolectric-probe\]' "$BITRISE_DEPLOY_DIR/logs.txt" || true
+
+            if [[ "$MATCH_COUNT" -eq 0 ]]; then
+              echo "ERROR: no [robolectric-probe] line found — the probe did not emit."
+              exit 1
+            fi
+
+            echo "SUCCESS: robolectric probe emitted $MATCH_COUNT line(s)."
     - script:
         title: Check for cache invocations
         inputs:
@@ -1439,6 +1482,10 @@ workflows:
           envs:
             - STEP_NAME: bitrise-step-activate-react-native-features
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_react_native_features.sh
+      - bundle::update-step:
+          envs:
+            - STEP_NAME: bitrise-step-activate-gradle-mirrors
+            - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
 
 step_bundles:
   release-flow-check:

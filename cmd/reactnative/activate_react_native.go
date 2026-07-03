@@ -11,9 +11,10 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	gradleEnabled bool
-	xcodeEnabled  bool
-	cppEnabled    bool
+	gradleEnabled        bool
+	xcodeEnabled         bool
+	cppEnabled           bool
+	disablePrefixMapping bool
 )
 
 //nolint:gochecknoglobals
@@ -33,10 +34,11 @@ Note: This is a convenience activation method, if your activation requires fine-
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
-			GradleEnabled: gradleEnabled,
-			XcodeEnabled:  xcodeEnabled,
-			CppEnabled:    cppEnabled,
-			DebugLogging:  common.IsDebugLogMode,
+			GradleEnabled:        gradleEnabled,
+			XcodeEnabled:         xcodeEnabled,
+			CppEnabled:           cppEnabled,
+			DisablePrefixMapping: disablePrefixMapping,
+			DebugLogging:         common.IsDebugLogMode,
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
@@ -52,4 +54,5 @@ func init() {
 	activateReactNativeCmd.Flags().BoolVar(&gradleEnabled, "gradle", true, "Activate Gradle build cache (Android).")
 	activateReactNativeCmd.Flags().BoolVar(&xcodeEnabled, "xcode", true, "Activate Xcode build cache (iOS).")
 	activateReactNativeCmd.Flags().BoolVar(&cppEnabled, "cpp", true, "Activate C++ build cache via ccache (native modules).")
+	activateReactNativeCmd.Flags().BoolVar(&disablePrefixMapping, "disable-prefix-mapping", false, "Disable Clang prefix-mapping flags for the Xcode build cache (see `activate xcode --disable-prefix-mapping`).")
 }

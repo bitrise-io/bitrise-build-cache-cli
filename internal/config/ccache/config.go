@@ -21,7 +21,7 @@ const (
 	defaultLogFile            = "ccache-%s.log"
 	defaultErrLogFile         = "ccache-err.log"
 	defaultIdleTimeout        = "15m"
-	defaultCRSHDataTimeout    = "2s"
+	defaultCRSHDataTimeout    = "5s"
 	defaultCRSHRequestTimeout = "20s"
 
 	ErrFmtOpenConfigFile   = "open ccache config file (%s): %w"

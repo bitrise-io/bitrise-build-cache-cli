@@ -30,10 +30,11 @@ import (
 
 // ActivatorParams holds the activation flags.
 type ActivatorParams struct {
-	GradleEnabled bool
-	XcodeEnabled  bool
-	CppEnabled    bool
-	DebugLogging  bool
+	GradleEnabled        bool
+	XcodeEnabled         bool
+	CppEnabled           bool
+	DisablePrefixMapping bool
+	DebugLogging         bool
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -66,7 +67,7 @@ func NewActivator(params ActivatorParams) *Activator {
 	}
 
 	if params.XcodeEnabled {
-		a.xcode = &xcodeActivator{logger: logger, debugLogging: params.DebugLogging}
+		a.xcode = &xcodeActivator{logger: logger, debugLogging: params.DebugLogging, disablePrefixMapping: params.DisablePrefixMapping}
 	}
 
 	// ccache only meaningfully wraps the Android/Gradle native build path in
@@ -298,13 +299,15 @@ func (g *gradleActivator) activate() error {
 }
 
 type xcodeActivator struct {
-	logger       log.Logger
-	debugLogging bool
+	logger               log.Logger
+	debugLogging         bool
+	disablePrefixMapping bool
 }
 
 func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams := xcelerate.DefaultParams()
 	xcodeParams.DebugLogging = x.debugLogging
+	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping
 
 	if err := xcelerate.Activate(
 		ctx,

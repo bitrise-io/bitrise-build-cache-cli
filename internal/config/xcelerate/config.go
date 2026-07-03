@@ -30,6 +30,7 @@ type Params struct {
 	BuildCacheEnabled           bool
 	BuildCacheEndpoint          string
 	BuildCacheSkipFlags         bool
+	DisablePrefixMapping        bool
 	DebugLogging                bool
 	Silent                      bool
 	XcodePathOverride           string
@@ -55,6 +56,7 @@ type Config struct {
 	OriginalXcrunPath      string    `json:"originalXcrunPath"`
 	BuildCacheEnabled      bool      `json:"buildCacheEnabled"`
 	BuildCacheSkipFlags    bool      `json:"buildCacheSkipFlags"`
+	DisablePrefixMapping   bool      `json:"disablePrefixMapping,omitempty"`
 	BuildCacheEndpoint     string    `json:"buildCacheEndpoint"`
 	PushEnabled            bool      `json:"pushEnabled"`
 	DebugLogging           bool      `json:"debugLogging,omitempty"`
@@ -99,6 +101,7 @@ func DefaultParams() Params {
 	return Params{
 		BuildCacheEnabled:           true,
 		BuildCacheSkipFlags:         false,
+		DisablePrefixMapping:        false,
 		BuildCacheEndpoint:          "",
 		Silent:                      false,
 		DebugLogging:                false,
@@ -200,6 +203,7 @@ func NewConfig(ctx context.Context,
 		OriginalXcrunPath:      xcrunPath,
 		BuildCacheEnabled:      params.BuildCacheEnabled,
 		BuildCacheSkipFlags:    params.BuildCacheSkipFlags,
+		DisablePrefixMapping:   params.DisablePrefixMapping,
 		BuildCacheEndpoint:     params.BuildCacheEndpoint,
 		PushEnabled:            params.PushEnabled,
 		DebugLogging:           params.DebugLogging,
