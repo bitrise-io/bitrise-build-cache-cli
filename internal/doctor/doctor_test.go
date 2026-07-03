@@ -637,6 +637,26 @@ func TestCcacheHelperCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
 	require.IsType(t, DaemonUpFixer{}, res.Fixer)
 }
 
+func TestCcacheHelperCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "doctor-ccache-stuck-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socketPath := filepath.Join(dir, "stale.sock")
+	f, err := os.Create(socketPath)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": socketPath},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
+	}
+
+	res := r.ccacheHelperCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "stuck")
+	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
+}
+
 func TestCLIVersionCheck_behindIsFixable(t *testing.T) {
 	r := &Doctor{
 		CLIVersion:       "v2.8.3",

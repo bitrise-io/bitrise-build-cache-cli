@@ -69,7 +69,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 			if dialErr != nil {
 				return Result{
 					State:   StateWarn,
-					Detail:  fmt.Sprintf("pid %d alive but socket %s not accepting connections (%v) — fixable", pid, socketPath, dialErr),
+					Detail:  fmt.Sprintf("stuck: pid %d alive but socket %s not accepting connections (%v) — fixable", pid, socketPath, dialErr),
 					Fixable: true,
 					Fixer:   DaemonRestartFixer{},
 				}

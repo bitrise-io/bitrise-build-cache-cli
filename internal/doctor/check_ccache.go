@@ -44,9 +44,9 @@ func (d *Doctor) ccacheHelperCheck() Check {
 			if err != nil {
 				return Result{
 					State:   StateWarn,
-					Detail:  fmt.Sprintf("socket %s present but not accepting connections (%v) — fixable", socketPath, err),
+					Detail:  fmt.Sprintf("stuck: socket %s present but not accepting connections (%v) — fixable", socketPath, err),
 					Fixable: true,
-					Fixer:   RemoveFileFixer{Path: socketPath, Label: "orphan socket"},
+					Fixer:   DaemonRestartFixer{},
 				}
 			}
 			_ = conn.Close()
