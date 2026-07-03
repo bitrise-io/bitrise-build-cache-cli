@@ -12,20 +12,24 @@ For the underlying CLI install + auth, see
 ## TL;DR
 
 ```sh
-# 1) one-time CLI + auth setup (see docs/install.md)
+# 1) one-time CLI install (see docs/install.md)
 brew install bitrise-io/bitrise-build-cache/bitrise-build-cache
-export BITRISE_BUILD_CACHE_AUTH_TOKEN="<PAT>"
-export BITRISE_BUILD_CACHE_WORKSPACE_ID="<workspace-slug>"
 
-# 2) configure the Xcode compile cache (writes ~/.bitrise-xcelerate/config.json)
+# 2) interactive sign-in — browser SSO, workspace picker, token stored
+#    in the OS keychain (auto-refreshed on subsequent CLI calls)
+bitrise-build-cache auth login
+
+# 3) configure the Xcode compile cache (writes ~/.bitrise-xcelerate/config.json)
 bitrise-build-cache activate xcode
 
-# 3) enable the override for Xcode.app GUI builds
+# 4) enable the override for Xcode.app GUI builds
 #    (also installs + starts the xcelerate-proxy daemon for you)
 bitrise-build-cache xcode-app enable
 
-# 4) relaunch Xcode, then build any target
+# 5) relaunch Xcode, then build any target
 ```
+
+Prefer env vars over the browser flow? Set `BITRISE_BUILD_CACHE_AUTH_TOKEN` + `BITRISE_BUILD_CACHE_WORKSPACE_ID` in your shell rc instead of step 2 — see [post-install](install.md#post-install). Env vars always take precedence over the keychain-stored token.
 
 macOS only. Linux + Windows don't ship Xcode.
 
@@ -61,7 +65,7 @@ socket to dial.
 | Step                                             | Why                                                                                                        |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `bitrise-build-cache --version` works            | Confirms the CLI is on `$PATH`. See [`docs/install.md`](install.md).                                       |
-| Auth env vars exported                           | `BITRISE_BUILD_CACHE_AUTH_TOKEN` + `BITRISE_BUILD_CACHE_WORKSPACE_ID`. See [post-install](install.md#post-install). |
+| Authenticated                                    | Either run `bitrise-build-cache auth login` (browser SSO + OS-keychain-stored token, auto-refreshed) **or** export `BITRISE_BUILD_CACHE_AUTH_TOKEN` + `BITRISE_BUILD_CACHE_WORKSPACE_ID`. Env vars take precedence when both are set. See [post-install](install.md#post-install). |
 | `bitrise-build-cache activate xcode` has run     | Writes `~/.bitrise-xcelerate/config.json` containing the proxy socket path that `xcode-app enable` reads.  |
 
 `xcode-app enable` installs + starts the xcelerate-proxy service itself (filtered subset of `daemon install + up`), so you don't need to run those separately. If you've already registered the daemon for other tools (ccache etc.), the proxy install is a no-op. `xcode-app enable` errors with a clear hint if the CLI / auth / `activate xcode` prerequisite is missing.
@@ -192,8 +196,11 @@ if ! command -v bitrise-build-cache >/dev/null; then
   exit 1
 fi
 
-# Auth env vars must already be set by the developer's shell rc.
-# Workspace credentials are personal — never commit them.
+# Trigger interactive sign-in when no creds are resolvable (env vars → keychain → analytics config).
+# `auth token` exits non-zero when nothing resolves; `auth login` is a no-op if the keychain already has a valid token.
+if ! bitrise-build-cache auth token >/dev/null 2>&1; then
+  bitrise-build-cache auth login
+fi
 
 bitrise-build-cache activate xcode
 bitrise-build-cache daemon install
@@ -205,9 +212,10 @@ Document in your repo's `README.md` that running
 `./scripts/enable-bitrise-build-cache.sh` after the first `git clone` is
 all that's needed.
 
-> **Auth credentials stay personal.** Each developer's PAT is tied to their
-> Bitrise account; never commit it to the repo. The helper script assumes
-> the env vars are already exported by the developer's shell rc.
+> **Auth credentials stay personal.** Each developer either runs
+> `bitrise-build-cache auth login` once (browser SSO, token in OS
+> keychain, auto-refreshed) or exports their own PAT via
+> `BITRISE_BUILD_CACHE_AUTH_TOKEN` — never commit either to the repo.
 
 ---
 
