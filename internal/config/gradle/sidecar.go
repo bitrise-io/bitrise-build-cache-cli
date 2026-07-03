@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
 
 // Sidecar is the gradle activation provenance file written next to the

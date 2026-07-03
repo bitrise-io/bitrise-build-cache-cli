@@ -213,7 +213,7 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"\aSession\x12B\n" +
 	"\n" +
 	"SetSession\x12\x1a.session.SetSessionRequest\x1a\x16.google.protobuf.Empty\"\x00\x12M\n" +
-	"\x0fGetSessionStats\x12\x16.google.protobuf.Empty\x1a .session.GetSessionStatsResponse\"\x00BGZEgithub.com/bitrise-io/bitrise-build-cache-cli/v2/llvm/session;sessionb\x06proto3"
+	"\x0fGetSessionStats\x12\x16.google.protobuf.Empty\x1a .session.GetSessionStatsResponse\"\x00BGZEgithub.com/bitrise-io/bitrise-build-cache-cli/v3/llvm/session;sessionb\x06proto3"
 
 var (
 	file_llvm_session_session_proto_rawDescOnce sync.Once

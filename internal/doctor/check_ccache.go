@@ -9,9 +9,9 @@ import (
 	"os"
 	"time"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func (d *Doctor) ccacheHelperCheck() Check {

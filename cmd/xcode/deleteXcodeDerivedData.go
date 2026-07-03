@@ -13,13 +13,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/filegroup"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/hash"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filegroup"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 )
 
 // nolint: gochecknoglobals

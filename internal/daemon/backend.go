@@ -5,7 +5,7 @@ import (
 	"errors"
 	"runtime"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
 )
 
 var ErrUnsupportedPlatform = errors.New("daemon install is only supported on macOS (launchd) and Linux (systemd)")

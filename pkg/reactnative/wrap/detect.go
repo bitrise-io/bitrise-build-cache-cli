@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/status"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/status"
 )
 
 // OptOutEnv, when set to "0", skips detection entirely and returns a

@@ -3,8 +3,8 @@ package xcelerate
 import (
 	"path/filepath"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 const (

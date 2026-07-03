@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils/mocks"
-	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/ccache"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
 var mockLogger = newMockLogger() //nolint:gochecknoglobals

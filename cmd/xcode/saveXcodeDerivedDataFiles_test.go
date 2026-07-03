@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/xcode"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/deriveddata/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata/mocks"
 )
 
 func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {

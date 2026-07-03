@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/protocol"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 )
 
 func TestProbeSocket_missingFile(t *testing.T) {

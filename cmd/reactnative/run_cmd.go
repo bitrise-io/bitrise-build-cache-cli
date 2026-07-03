@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/reactnative"
+	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
 //nolint:gochecknoglobals

@@ -12,7 +12,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/filegroup"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filegroup"
 )
 
 type DownloadFilesStats struct {

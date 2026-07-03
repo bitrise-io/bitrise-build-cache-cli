@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 )
 
 // helperEnvVar gates the helper-process branch of TestMain. When set, the

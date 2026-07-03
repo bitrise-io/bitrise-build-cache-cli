@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 const StateFile = "version-state.json"

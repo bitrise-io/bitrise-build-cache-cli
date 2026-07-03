@@ -7,12 +7,12 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/auth/keychain"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/refresh"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/toolconfig"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/refresh"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 type State string

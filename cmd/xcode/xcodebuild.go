@@ -22,17 +22,17 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/analytics/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/invocations"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/xcodeargs"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/llvm/session"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
 const (

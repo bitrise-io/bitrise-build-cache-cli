@@ -12,7 +12,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/logio"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/logio"
 )
 
 const InstallerURL = "https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh"

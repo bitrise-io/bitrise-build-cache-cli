@@ -11,10 +11,10 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
-	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/reactnative"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // Feature names accepted by IsEnabled and the `--feature` flag.

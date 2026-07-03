@@ -11,13 +11,13 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/hash"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	xa "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 )
 
 const XCodeCacheMetadataPath = "dd-metadata.json"

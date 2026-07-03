@@ -3,7 +3,7 @@ package daemon
 import (
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // Paths is an alias of the shared internal/paths.Paths so external callers

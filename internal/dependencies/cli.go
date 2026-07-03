@@ -18,7 +18,7 @@ import (
 
 const (
 	cliBinaryName = "bitrise-build-cache"
-	cliModulePath = "github.com/bitrise-io/bitrise-build-cache-cli/v2"
+	cliModulePath = "github.com/bitrise-io/bitrise-build-cache-cli/v3"
 	// InstallDir is the directory where dependency binaries (CLI, ccache) are installed.
 	InstallDir = "/usr/local/bin"
 )

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
+	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common"
 )
 
 //nolint:gochecknoglobals

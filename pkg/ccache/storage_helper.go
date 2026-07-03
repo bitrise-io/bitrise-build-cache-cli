@@ -16,16 +16,16 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/build_cache/kv"
-	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache"
-	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/ccache/analytics"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/ccache"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/exec"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
-	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/common/childstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
+	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
+	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
+	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 )
 
 // ---------------------------------------------------------------------------

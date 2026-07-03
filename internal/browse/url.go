@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
 
 var ErrMissingWorkspace = errors.New("BuildURL: WorkspaceID is required")

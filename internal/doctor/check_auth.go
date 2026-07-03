@@ -3,7 +3,7 @@ package doctor
 import (
 	"context"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
 func (d *Doctor) authCheck() Check {

@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/gradle/mirrors"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v2/pkg/gradle/mirrors"
+	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle/mirrors"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/gradle/mirrors"
 )
 
 func boolPtr(b bool) *bool { return &b }
