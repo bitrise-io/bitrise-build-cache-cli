@@ -17,6 +17,7 @@ import (
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
@@ -114,6 +115,17 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 		return fmt.Errorf("activate plugins for Gradle: %w", err)
 	}
 
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		if err := gradleconfig.WriteSidecar(home, gradleconfig.Sidecar{
+			InitScriptPath:   paths.FromHome(home).GradleInitScriptFile(),
+			CacheEnabled:     params.Cache.Enabled,
+			CachePushEnabled: params.Cache.PushEnabled,
+			AnalyticsEnabled: params.Analytics.Enabled,
+		}); err != nil {
+			logger.Debugf("gradle sidecar write failed (non-fatal): %s", err)
+		}
+	}
+
 	logger.TInfof("✅ Bitrise Build Cache activated for Gradle")
 
 	return nil
@@ -145,6 +157,19 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 
 	if err := inventory.WriteToBazelrc(logger, bazelrcPath, utils.DefaultOsProxy{}, utils.DefaultTemplateProxy()); err != nil {
 		return fmt.Errorf("write .bazelrc: %w", err)
+	}
+
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		if mErr := bazelconfig.WriteSidecar(home, bazelconfig.Sidecar{
+			BazelrcPath:       bazelrcPath,
+			CacheEnabled:      params.Cache.Enabled,
+			CachePushEnabled:  params.Cache.PushEnabled,
+			BESEnabled:        params.BES.Enabled,
+			RBEEnabled:        params.RBE.Enabled,
+			TimestampsEnabled: params.Timestamps,
+		}); mErr != nil {
+			logger.Debugf("bazel sidecar write failed (non-fatal): %s", mErr)
+		}
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")
