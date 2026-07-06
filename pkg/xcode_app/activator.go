@@ -12,6 +12,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcode_app"
 )
@@ -141,7 +142,7 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 		return DisableResult{}, fmt.Errorf("resolve home dir: %w", err)
 	}
 
-	plistPath := xa.SetenvAgentPlistPath(home)
+	plistPath := paths.FromHome(home).XcodeAppSetenvAgentPlistFile()
 
 	if err := a.Launchctl.Bootout(ctx, plistPath); err != nil {
 		return DisableResult{}, fmt.Errorf("bootout LaunchAgent: %w", err)

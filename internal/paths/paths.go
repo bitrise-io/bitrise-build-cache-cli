@@ -63,6 +63,9 @@ const (
 	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `xcode-app enable`.
 	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
 
+	// XcodeAppSetenvAgentLabel is the launchd label + plist basename for the xcode-app setenv agent.
+	XcodeAppSetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
+
 	// XcodeAppStateFileName holds the prior XCODE_XCCONFIG_FILE captured at enable time.
 	XcodeAppStateFileName = "xcode-app-state.json"
 
@@ -186,6 +189,11 @@ func (p Paths) XcodeAppOverrideXCConfigFile() string {
 // XcodeAppStateFile returns ~/.bitrise-xcelerate/xcode-app-state.json.
 func (p Paths) XcodeAppStateFile() string {
 	return filepath.Join(p.XcelerateRoot(), XcodeAppStateFileName)
+}
+
+// XcodeAppSetenvAgentPlistFile returns the LaunchAgent plist path for the xcode-app setenv agent.
+func (p Paths) XcodeAppSetenvAgentPlistFile() string {
+	return p.PlistPath(XcodeAppSetenvAgentLabel)
 }
 
 // XcelerateBinDir returns ~/.bitrise-xcelerate/bin.

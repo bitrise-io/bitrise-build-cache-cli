@@ -9,16 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
-
-const SetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
-
-const SetenvAgentPlistRelative = "Library/LaunchAgents/" + SetenvAgentLabel + ".plist"
-
-func SetenvAgentPlistPath(home string) string {
-	return filepath.Join(home, SetenvAgentPlistRelative)
-}
 
 // Verbatim ProgramArguments (no `sh -c …`) avoid quoting hazards on paths with spaces.
 const setenvPlistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
@@ -47,7 +40,7 @@ func RenderSetenvAgent(xcconfigPath string) (string, error) {
 
 	return fmt.Sprintf(
 		setenvPlistTemplate,
-		xmlEscape(SetenvAgentLabel),
+		xmlEscape(paths.XcodeAppSetenvAgentLabel),
 		xmlEscape(LaunchctlBin),
 		xmlEscape(XCConfigEnvVar),
 		xmlEscape(xcconfigPath),
@@ -60,7 +53,7 @@ func WriteSetenvAgent(osProxy utils.OsProxy, home, xcconfigPath string) (string,
 		return "", err
 	}
 
-	path := SetenvAgentPlistPath(home)
+	path := paths.FromHome(home).XcodeAppSetenvAgentPlistFile()
 	dir := filepath.Dir(path)
 
 	if err := osProxy.MkdirAll(dir, 0o755); err != nil {
@@ -75,7 +68,7 @@ func WriteSetenvAgent(osProxy utils.OsProxy, home, xcconfigPath string) (string,
 }
 
 func RemoveSetenvAgent(osProxy utils.OsProxy, home string) (string, error) {
-	path := SetenvAgentPlistPath(home)
+	path := paths.FromHome(home).XcodeAppSetenvAgentPlistFile()
 	if err := osProxy.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return path, fmt.Errorf("remove %s: %w", path, err)
 	}

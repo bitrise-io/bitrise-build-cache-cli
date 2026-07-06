@@ -4,12 +4,12 @@ package xcode_app
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
 )
 
@@ -17,7 +17,7 @@ func TestRenderSetenvAgent_includesLabelAndProgramArgs(t *testing.T) {
 	got, err := RenderSetenvAgent("/Users/me/.bitrise-xcelerate/xcode-app.xcconfig")
 	require.NoError(t, err)
 
-	assert.Contains(t, got, "<string>"+SetenvAgentLabel+"</string>")
+	assert.Contains(t, got, "<string>"+paths.XcodeAppSetenvAgentLabel+"</string>")
 	assert.Contains(t, got, "<string>"+LaunchctlBin+"</string>")
 	assert.Contains(t, got, "<string>setenv</string>")
 	assert.Contains(t, got, "<string>"+XCConfigEnvVar+"</string>")
@@ -47,7 +47,7 @@ func TestWriteAndRemoveSetenvAgent(t *testing.T) {
 
 	path, err := WriteSetenvAgent(osProxy, home, "/Users/me/x.xcconfig")
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(home, SetenvAgentPlistRelative), path)
+	assert.Equal(t, paths.FromHome(home).XcodeAppSetenvAgentPlistFile(), path)
 
 	content, err := os.ReadFile(path) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
