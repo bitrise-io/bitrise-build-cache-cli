@@ -17,6 +17,7 @@ import (
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
@@ -115,9 +116,8 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 	}
 
 	if home, homeErr := os.UserHomeDir(); homeErr == nil {
-		initFile := filepath.Join(gradleHome, "init.d", "bitrise-build-cache.init.gradle.kts")
 		if err := gradleconfig.WriteSidecar(home, gradleconfig.Sidecar{
-			InitScriptPath:   initFile,
+			InitScriptPath:   paths.FromHome(home).GradleInitScriptFile(),
 			CacheEnabled:     params.Cache.Enabled,
 			CachePushEnabled: params.Cache.PushEnabled,
 			AnalyticsEnabled: params.Analytics.Enabled,
