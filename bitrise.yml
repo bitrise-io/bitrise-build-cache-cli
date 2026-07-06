@@ -41,8 +41,8 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
 
-            asdf install golang 1.24.3
-            asdf global golang 1.24.3
+            asdf install golang 1.25.9
+            asdf global golang 1.25.9
     - script:
         title: Install Goreleaser
         inputs:
@@ -1464,8 +1464,8 @@ workflows:
             - content: |-
                 #!/usr/bin/env bash
 
-                asdf install golang 1.24.3
-                asdf global golang 1.24.3
+                asdf install golang 1.25.9
+                asdf global golang 1.25.9
       - bundle::update-step:
           envs:
             - STEP_NAME: bitrise-step-activate-gradle-remote-cache
@@ -1506,8 +1506,8 @@ step_bundles:
             #!/usr/bin/env bash
             set -ex
 
-            asdf install golang 1.24.3
-            asdf global golang 1.24.3
+            asdf install golang 1.25.9
+            asdf global golang 1.25.9
     - script:
         title: Syntax-check installer.sh (POSIX sh)
         inputs:
