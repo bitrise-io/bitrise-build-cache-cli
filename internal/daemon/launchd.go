@@ -35,7 +35,7 @@ func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 		return path, fmt.Errorf("write plist %s: %w", path, err)
 	}
 
-	if err := b.bootstrap(ctx, path); err != nil {
+	if err := b.bootstrap(ctx, path, svc.Label()); err != nil {
 		return path, err
 	}
 
@@ -45,7 +45,7 @@ func (b LaunchdBackend) Install(ctx context.Context, paths Paths, svc Service, e
 func (b LaunchdBackend) Start(ctx context.Context, paths Paths, svc Service) error {
 	path := paths.PlistPath(svc.Label())
 
-	return b.bootstrap(ctx, path)
+	return b.bootstrap(ctx, path, svc.Label())
 }
 
 func (b LaunchdBackend) Stop(ctx context.Context, paths Paths, svc Service) error {
@@ -78,8 +78,12 @@ func guiTarget() string {
 
 const launchctlBootoutNotLoaded = 5
 
-// bootstrap pre-boots out so a rerun picks up the new executable path on CLI upgrades.
-func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath string) error {
+// bootstrap pre-boots out so a rerun picks up the new executable path on CLI upgrades,
+// then bootstraps + explicitly kickstarts the service. `bootstrap` alone is
+// unreliable on macOS Sequoia (25.x): plists with `RunAtLoad = true` land in
+// `state = not running` after `launchctl bootstrap` and never fire, so a
+// follow-up `kickstart -k` is what actually gets the process running.
+func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath, label string) error {
 	_, stderr, code, runErr := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath)
 	if runErr != nil {
 		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
@@ -96,6 +100,16 @@ func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath string) error {
 
 	if code != 0 {
 		return fmt.Errorf("launchctl bootstrap %s exited %d: %s", plistPath, code, strings.TrimSpace(stderr))
+	}
+
+	target := guiTarget() + "/" + label
+	_, stderr, code, err = b.Runner.Run(ctx, launchctlBin, "kickstart", "-k", target)
+	if err != nil {
+		return fmt.Errorf("launchctl kickstart %s: %w", target, err)
+	}
+
+	if code != 0 {
+		return fmt.Errorf("launchctl kickstart %s exited %d: %s", target, code, strings.TrimSpace(stderr))
 	}
 
 	return nil
