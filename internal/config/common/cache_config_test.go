@@ -367,3 +367,63 @@ func TestNewMetadata_usernameEnvWhitespaceFallsThrough(t *testing.T) {
 	assert.NotEqual(t, "   ", got.HostMetadata.Username)
 	assert.NotEmpty(t, got.HostMetadata.Username, "should fall back to OS username")
 }
+
+func TestRedactBitriseEnvs_alwaysRedactedKeys(t *testing.T) {
+	t.Parallel()
+
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":          "raw-token-1",
+		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": "raw-token-2",
+		"BITRISE_API_TOKEN":                       "raw-token-3",
+		"BUILD_TRIGGER_TOKEN":                     "raw-token-4",
+		"PATH":                                    "/usr/bin",
+	}
+
+	redactBitriseEnvs(envs)
+
+	for _, key := range []string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN",
+		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN",
+		"BITRISE_API_TOKEN",
+		"BUILD_TRIGGER_TOKEN",
+	} {
+		assert.NotEqual(t, "raw-token", envs[key][:9], "%s must be redacted", key)
+		assert.Contains(t, envs[key], "<sha256@", "%s must be redacted with sha256 marker", key)
+	}
+	assert.Equal(t, "/usr/bin", envs["PATH"], "non-sensitive envs must be passed through")
+}
+
+func TestRedactBitriseEnvs_tokenValuePrefixSafetyNet(t *testing.T) {
+	t.Parallel()
+
+	envs := map[string]string{
+		"SOME_UNKNOWN_TOKEN_KEY": "bitpat_ABCDEF",
+		"ANOTHER_UNKNOWN_KEY":    "bitwat_XYZ123",
+		"UNRELATED":              "plain-value",
+	}
+
+	redactBitriseEnvs(envs)
+
+	assert.Contains(t, envs["SOME_UNKNOWN_TOKEN_KEY"], "<sha256@",
+		"bitpat_ values must be redacted even when the key is unknown")
+	assert.Contains(t, envs["ANOTHER_UNKNOWN_KEY"], "<sha256@",
+		"bitwat_ values must be redacted even when the key is unknown")
+	assert.Equal(t, "plain-value", envs["UNRELATED"], "non-token values must be passed through")
+}
+
+func TestRedactBitriseEnvs_secretKeyListStillHonoured(t *testing.T) {
+	t.Parallel()
+
+	envs := map[string]string{
+		"BITRISE_SECRET_ENV_KEY_LIST": "MY_SECRET,OTHER",
+		"MY_SECRET":                   "s1",
+		"OTHER":                       "s2",
+		"NOT_SECRET":                  "kept",
+	}
+
+	redactBitriseEnvs(envs)
+
+	assert.Contains(t, envs["MY_SECRET"], "<sha256@")
+	assert.Contains(t, envs["OTHER"], "<sha256@")
+	assert.Equal(t, "kept", envs["NOT_SECRET"])
+}

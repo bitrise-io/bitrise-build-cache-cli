@@ -157,23 +157,59 @@ func hashKeyValue(hasher hash.Hash, key, value string) []byte {
 	return hasher.Sum(nil)
 }
 
+// alwaysRedactKeys are env vars that carry a Bitrise credential regardless of
+// whether BITRISE_SECRET_ENV_KEY_LIST names them. Keep in sync with any new
+// token-bearing env var the CLI or step layer introduces.
+var alwaysRedactKeys = []string{ //nolint:gochecknoglobals
+	EnvAuthToken, // BITRISE_BUILD_CACHE_AUTH_TOKEN
+	EnvJWT,       // BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN
+	"BITRISE_API_TOKEN",
+	"BUILD_TRIGGER_TOKEN",
+}
+
+// tokenValuePrefixes are value prefixes that identify a Bitrise credential —
+// used as a safety net so a value never surfaces cleartext even if its env-var
+// key isn't in the explicit lists above.
+var tokenValuePrefixes = []string{"bitpat_", "bitwat_"} //nolint:gochecknoglobals
+
 func redactBitriseEnvs(envs map[string]string) {
-	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
-	secretKeyList := strings.Split(secretKeys, ",")
 	hasher := sha256.New()
-	for _, key := range secretKeyList {
+	redact := func(key, value string) {
+		envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, value)[:4])
+	}
+
+	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
+	for key := range strings.SplitSeq(secretKeys, ",") {
 		if key == "" {
 			continue
 		}
 		if envValue, ok := envs[key]; ok {
-			envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, envValue)[:4])
+			redact(key, envValue)
 		}
 	}
 
-	key := EnvAuthToken
-	if envValue, ok := envs[key]; ok {
-		envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, envValue)[:4])
+	for _, key := range alwaysRedactKeys {
+		if envValue, ok := envs[key]; ok {
+			redact(key, envValue)
+		}
 	}
+
+	for key, value := range envs {
+		if !hasTokenPrefix(value) {
+			continue
+		}
+		redact(key, value)
+	}
+}
+
+func hasTokenPrefix(value string) bool {
+	for _, p := range tokenValuePrefixes {
+		if strings.HasPrefix(value, p) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[string]string) GitMetadata {
