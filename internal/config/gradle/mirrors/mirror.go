@@ -6,6 +6,8 @@ import (
 	_ "embed"
 	"strings"
 	"unicode"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // RepoMirror describes a single repository that can be mirrored.
@@ -36,8 +38,7 @@ func InitTemplate() string {
 	return initTemplate
 }
 
-// InitFileName is the filename written under ~/.gradle/init.d.
-const InitFileName = "bitrise-gradle-mirrors.init.gradle.kts"
+const InitFileName = paths.GradleMirrorsInitScriptName
 
 // URLPattern is the format string for mirror URLs: URL segment.
 // The canonical un-suffixed hostname is redirected to DC-internal proxy IPs

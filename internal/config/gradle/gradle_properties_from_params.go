@@ -30,9 +30,9 @@ func (updater GradlePropertiesUpdater) UpdateGradleProps(
 	logger log.Logger,
 	gradleHomePath string,
 ) error {
-	logger.Infof("(i) Write ~/.gradle/gradle.properties")
-
 	gradlePropertiesPath := filepath.Join(gradleHomePath, "gradle.properties")
+	logger.Infof("(i) Write %s", gradlePropertiesPath)
+
 	currentGradlePropsFileContent, isGradlePropsExists, err := updater.OsProxy.ReadFileIfExists(gradlePropertiesPath)
 	if err != nil {
 		return fmt.Errorf(ErrFmtGradlePropertiesCheck, gradlePropertiesPath, err)

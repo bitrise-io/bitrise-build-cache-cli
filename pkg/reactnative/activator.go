@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/pathutil"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -20,6 +19,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/dependencies"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
@@ -266,10 +266,14 @@ type gradleActivator struct {
 }
 
 func (g *gradleActivator) activate() error {
-	gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")
+	allEnvs := utils.AllEnvs()
+
+	p, err := paths.Default()
 	if err != nil {
-		return fmt.Errorf("expand Gradle home path: %w", err)
+		return fmt.Errorf("resolve home dir: %w", err)
 	}
+
+	gradleHome := p.GradleHome(allEnvs[paths.GradleUserHomeEnvKey])
 
 	gradleParams := gradleconfig.DefaultActivateGradleParams()
 	gradleParams.Cache.Enabled = true
@@ -278,7 +282,7 @@ func (g *gradleActivator) activate() error {
 	if err := gradleconfig.Activate(
 		g.logger,
 		gradleHome,
-		utils.AllEnvs(),
+		allEnvs,
 		g.debugLogging,
 		gradleParams.TemplateInventory,
 		func(inventory gradleconfig.TemplateInventory, path string) error {

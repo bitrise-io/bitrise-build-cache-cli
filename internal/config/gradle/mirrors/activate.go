@@ -113,7 +113,7 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 
 	initDPath := filepath.Join(params.GradleHome, "init.d")
 	if err := osProxy.MkdirAll(initDPath, 0o755); err != nil { //nolint:mnd
-		return fmt.Errorf("ensure ~/.gradle/init.d exists: %w", err)
+		return fmt.Errorf("ensure Gradle init.d exists: %w", err)
 	}
 
 	initFilePath := filepath.Join(initDPath, InitFileName)

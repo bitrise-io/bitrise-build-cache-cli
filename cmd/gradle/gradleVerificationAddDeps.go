@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -28,13 +28,15 @@ This command will:
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Add Bitrise Build Cache for Gradle plugins")
 		//
-		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
-		if err != nil {
-			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
-		}
-
 		//
 		allEnvs := utils.AllEnvs()
+
+		p, err := paths.Default()
+		if err != nil {
+			return fmt.Errorf("resolve home dir: %w", err)
+		}
+
+		gradleHome := p.GradleHome(allEnvs[paths.GradleUserHomeEnvKey])
 		if err := addGradlePluginsFn(logger, gradleHome, allEnvs); err != nil {
 			return fmt.Errorf("enable Gradle Build Cache: %w", err)
 		}

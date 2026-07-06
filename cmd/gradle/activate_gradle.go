@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle/mirrors"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -36,12 +37,18 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Activate Bitrise plugins for Gradle")
 
-		gradleHome, err := pathutil.NewPathModifier().AbsPath(gradleHomeNonExpanded)
+		allEnvs := utils.AllEnvs()
+
+		p, err := paths.Default()
 		if err != nil {
-			return fmt.Errorf("expand Gradle home path (%s), error: %w", gradleHome, err)
+			return fmt.Errorf("resolve home dir: %w", err)
 		}
 
-		allEnvs := utils.AllEnvs()
+		gradleHome := p.GradleHome(allEnvs[paths.GradleUserHomeEnvKey])
+
+		if merr := mirrorsconfig.MigratePrebootInitScript(logger, utils.DefaultOsProxy{}, p.GradleHome(""), gradleHome); merr != nil {
+			logger.Warnf("Could not relocate preboot Gradle mirrors init script: %s", merr)
+		}
 
 		if cliPath, exeErr := os.Executable(); exeErr == nil {
 			activateGradleParams.CLIPath = cliPath
