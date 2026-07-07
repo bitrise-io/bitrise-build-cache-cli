@@ -11,7 +11,7 @@
 #   WORKSPACE_SLUG     — target workspace slug.
 #   RDE_STACK_ID         — e.g. osx-xcode-26.0.x-edge.
 #   RDE_MACHINE_TYPE     — e.g. g2.mac.medium.
-#   BITRISE_GIT_TAG      — CLI tag to smoke, e.g. v3.0.1 (script strips leading v).
+#   RDE_SMOKE_CLI_TAG      — CLI tag to smoke, e.g. v3.0.1 (script strips leading v).
 #
 # Optional:
 #   RDE_API_BASE         — override for the RDE API root; defaults to
@@ -29,7 +29,7 @@ set -euo pipefail
 : "${WORKSPACE_SLUG:?}"
 : "${RDE_STACK_ID:?}"
 : "${RDE_MACHINE_TYPE:?}"
-: "${BITRISE_GIT_TAG:?}"
+: "${RDE_SMOKE_CLI_TAG:?}"
 
 API_BASE="${RDE_API_BASE:-https://api.bitrise.io/rde}"
 AUTO_TERMINATE_MIN="${RDE_AUTO_TERMINATE_MIN:-30}"
@@ -54,8 +54,8 @@ curl_rde() {
 # ---------- provision ----------
 log "provisioning session on $RDE_STACK_ID / $RDE_MACHINE_TYPE"
 create_body=$(jq -n \
-  --arg name "cli-smoke-${BITRISE_GIT_TAG}" \
-  --arg desc "Smoke test for CLI ${BITRISE_GIT_TAG}" \
+  --arg name "cli-smoke-${RDE_SMOKE_CLI_TAG}" \
+  --arg desc "Smoke test for CLI ${RDE_SMOKE_CLI_TAG}" \
   --arg stack "$RDE_STACK_ID" \
   --arg mtype "$RDE_MACHINE_TYPE" \
   --arg cluster "${RDE_CLUSTER:-}" \
@@ -119,10 +119,10 @@ remote_bash() {
 log "[1/3] install CLI via installer.sh"
 remote_bash "curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b \"\$HOME/.bitrise/bin\""
 
-log "[2/3] check --version reports ${BITRISE_GIT_TAG#v}"
+log "[2/3] check --version reports ${RDE_SMOKE_CLI_TAG#v}"
 got_version=$(remote_bash "\$HOME/.bitrise/bin/bitrise-build-cache --version" | awk '{print $NF}')
-[[ "$got_version" == "${BITRISE_GIT_TAG#v}"* ]] || {
-  echo "version mismatch: want ${BITRISE_GIT_TAG#v}, got $got_version" >&2
+[[ "$got_version" == "${RDE_SMOKE_CLI_TAG#v}"* ]] || {
+  echo "version mismatch: want ${RDE_SMOKE_CLI_TAG#v}, got $got_version" >&2
   exit 1
 }
 
