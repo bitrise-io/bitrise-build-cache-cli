@@ -25,9 +25,12 @@ import (
 
 // nolint:gochecknoglobals
 var authCmd = &cobra.Command{
-	Use:          "auth",
-	Short:        "Manage Bitrise Build Cache credentials stored in the OS keychain",
-	Long:         `Manage Bitrise Build Cache credentials stored in the OS keychain (macOS Keychain, Linux secret-service). Stored credentials are used when BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID (or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN on Bitrise CI) are not set — env vars take precedence so you can override the stored credentials for a single run.`,
+	Use:   "auth",
+	Short: "Manage Bitrise Build Cache credentials stored in the OS keychain",
+	Long: fmt.Sprintf("Manage Bitrise Build Cache credentials stored in the OS keychain (macOS Keychain, Linux secret-service). "+
+		"Stored credentials are used when %s / %s (or %s on Bitrise CI) are not set — env vars take precedence "+
+		"so you can override the stored credentials for a single run.",
+		configcommon.EnvAuthToken, configcommon.EnvWorkspaceID, configcommon.EnvJWT),
 	SilenceUsage: true,
 }
 
@@ -94,7 +97,7 @@ var authSetCmd = &cobra.Command{
 			}
 		}
 
-		logger.Infof("You can now remove BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID from your shell rc files.")
+		logger.Infof("You can now remove %s + %s from your shell rc files.", configcommon.EnvAuthToken, configcommon.EnvWorkspaceID)
 		logger.Infof("If you have running Gradle daemons, stop them so the new token is picked up: `./gradlew --stop`.")
 
 		return nil
@@ -275,9 +278,11 @@ var (
 
 // nolint:gochecknoglobals
 var authStatusCmd = &cobra.Command{
-	Use:          "status",
-	Short:        "Show Bitrise Build Cache credentials discovered across all known sources",
-	Long:         "Shows credentials found in the OS keychain, the multiplatform analytics config on disk, and the BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISE_BUILD_CACHE_WORKSPACE_ID / BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
+	Use:   "status",
+	Short: "Show Bitrise Build Cache credentials discovered across all known sources",
+	Long: fmt.Sprintf("Shows credentials found in the OS keychain, the multiplatform analytics config on disk, "+
+		"and the %s / %s / %s env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
+		configcommon.EnvAuthToken, configcommon.EnvWorkspaceID, configcommon.EnvJWT),
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -370,8 +375,8 @@ func credSources(envs map[string]string) (credSource, []credSource) {
 		{"Multiplatform config", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
 		{"Xcelerate config", displayHomePath(osProxy, xcelerateConfigPath), probeRawConfig(xcelerateConfigPath)},
 		{"Ccache config", displayHomePath(osProxy, ccacheConfigPath), probeRawConfig(ccacheConfigPath)},
-		{"Env vars (BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)", "process env", func() credAudit { return probeEnvVars(envs) }},
-		{"CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)", "process env", func() credAudit { return probeJWT(envs) }},
+		{fmt.Sprintf("Env vars (%s + %s)", configcommon.EnvAuthToken, configcommon.EnvWorkspaceID), "process env", func() credAudit { return probeEnvVars(envs) }},
+		{fmt.Sprintf("CI JWT (%s)", configcommon.EnvJWT), "process env", func() credAudit { return probeJWT(envs) }},
 	}
 
 	return target, migrationSources
@@ -557,7 +562,7 @@ func maskToken(token string) string {
 func init() {
 	authSetCmd.Flags().StringVar(&setToken, "token", "", "Bitrise Build Cache auth token (required)")
 	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID (required)")
-	authSetCmd.Flags().StringVar(&setUsername, "username", "", "Display name for local invocations (optional). Overrides the OS username. Env var BITRISE_BUILD_CACHE_USERNAME takes precedence for a single run.")
+	authSetCmd.Flags().StringVar(&setUsername, "username", "", fmt.Sprintf("Display name for local invocations (optional). Overrides the OS username. Env var %s takes precedence for a single run.", configcommon.EnvUsername))
 	_ = authSetCmd.MarkFlagRequired("token")
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
 
