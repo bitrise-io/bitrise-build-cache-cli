@@ -255,14 +255,17 @@ workflows:
     description: |
       On-demand: provision a Bitrise Remote Dev Environment (RDE) mac
       session, install the CLI into it via installer.sh, run `doctor`,
-      and tear the session down. Exercises the local-dev experience
-      surfaces (installer + doctor on a fresh mac) that regular Bitrise
-      steps can't cover — those run inside pre-baked worker images and
-      never simulate a first-time user install.
+      and permanently delete the session. Exercises the local-dev
+      experience surfaces (installer + doctor on a fresh mac) that
+      regular Bitrise steps can't cover — those run inside pre-baked
+      worker images and never simulate a first-time user install.
 
-      Scaffold — not wired into any pipeline. Manual trigger only.
-      See `scripts/rde_smoke_test.sh` for the TODOs before this can run
-      unattended (devenv API path + auth handshake).
+      Uses the RDE HTTP API (https://api.bitrise.io/rde) with a Bearer
+      token (RDE_ACCESS_TOKEN) — the same endpoints bitrise-cli's
+      internal/rde package hits. SSH auth is password-based; the session
+      record carries sshAddress + sshPassword after RUNNING.
+
+      Manual trigger only; not wired into release-and-verify.
     envs:
     - RDE_ACCESS_TOKEN: $RDE_ACCESS_TOKEN
     - RDE_WORKSPACE_ID: $RDE_WORKSPACE_ID
@@ -276,6 +279,13 @@ workflows:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8: {}
+    - script:
+        title: Install sshpass
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            command -v sshpass >/dev/null || sudo apt-get install -y sshpass
     - script:
         title: RDE mac smoke test (installer.sh + doctor)
         inputs:
