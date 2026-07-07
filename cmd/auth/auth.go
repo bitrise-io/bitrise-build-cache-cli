@@ -321,13 +321,13 @@ func renderUsername(logger log.Logger, envs map[string]string) {
 	name, src := configcommon.ResolveUsername(envs)
 	switch src {
 	case configcommon.UsernameSourceEnv:
-		logger.Infof("Local invocation display name: %s (source: BITRISE_BUILD_CACHE_USERNAME env)", name)
+		logger.Infof("Local invocation display name: %s (source: %s env)", name, configcommon.EnvUsername)
 	case configcommon.UsernameSourceKeychain:
 		logger.Infof("Local invocation display name: %s (source: keychain)", name)
 	case configcommon.UsernameSourceOS:
 		logger.Infof("Local invocation display name: %s (source: OS username fallback)", name)
 	case configcommon.UsernameSourceNone:
-		logger.Infof("Local invocation display name: (none — set via `auth set --username <name>` or BITRISE_BUILD_CACHE_USERNAME)")
+		logger.Infof("Local invocation display name: (none — set via `auth set --username <name>` or %s)", configcommon.EnvUsername)
 	}
 }
 
