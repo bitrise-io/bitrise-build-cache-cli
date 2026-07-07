@@ -162,9 +162,6 @@ func StartXcodeCacheProxy(
 
 	srv := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory)
 
-	// grpc.Server.Stop closes the listener and returns Serve cleanly (nil).
-	// Doing this instead of raw listener.Close avoids the "accept … use of
-	// closed network connection" error path that a bare Close would trigger.
 	go func() {
 		<-ctx.Done()
 		srv.Stop()
