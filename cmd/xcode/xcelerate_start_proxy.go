@@ -103,11 +103,6 @@ var (
 			}
 			defer listener.Close()
 
-			go func() {
-				<-signalCtx.Done()
-				_ = listener.Close()
-			}()
-
 			return StartXcodeCacheProxy(
 				signalCtx,
 				config,
@@ -165,10 +160,15 @@ func StartXcodeCacheProxy(
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
+	srv := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory)
+
+	go func() {
+		<-ctx.Done()
+		srv.Stop()
+	}()
+
 	//nolint:wrapcheck
-	return proxy.
-		NewProxy(client, config.PushEnabled, initialLogger, loggerFactory).
-		Serve(listener)
+	return srv.Serve(listener)
 }
 
 func getProxyLogFile(osProxy utils.OsProxy, invocationID string) (string, error) {
