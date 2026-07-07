@@ -117,7 +117,7 @@ func warnIfShadowedBinary(logger log.Logger, pinned string) {
 		return
 	}
 
-	logger.Warnf("Pinning %s into the supervisor config, but `bitrise-build-cache` on your $PATH resolves to %s.", pinned, onPath)
+	logger.Warnf("Pinning %s into the supervisor config, but `%s` on your $PATH resolves to %s.", pinned, paths.CLIBinaryName, onPath)
 	logger.Warnf("Interactive commands and the daemon would use different binaries — likely different CLI versions too.")
 	logger.Warnf("To pin the PATH binary instead, rerun via its full path: %s daemon install", onPath)
 }
