@@ -68,16 +68,24 @@ pass "doctor JSON contract ok (states=$STATES)"
 log "drift-nudge fires after simulated CLI-version bump"
 mkdir -p ~/.local/state/bitrise-build-cache
 "$CLI" doctor --no-backend-probe --no-update-check >/dev/null 2>&1 || true
-if [ -f ~/.local/state/bitrise-build-cache/version-state.json ]; then
+STATE_FILE=~/.local/state/bitrise-build-cache/version-state.json
+if [ -f "$STATE_FILE" ] && [ -f ~/.bitrise/cache/gradle/config.json ]; then
   jq '.configVersion = "0.0.1"' ~/.bitrise/cache/gradle/config.json > /tmp/g && mv /tmp/g ~/.bitrise/cache/gradle/config.json
-  jq '.last_version = "v0.0.1"' ~/.local/state/bitrise-build-cache/version-state.json > /tmp/vs && mv /tmp/vs ~/.local/state/bitrise-build-cache/version-state.json
-  if "$CLI" auth status 2>&1 | grep -qi "schema major bump\|re-run.*activate gradle"; then
+  jq '.last_version = "v0.0.1"' "$STATE_FILE" > /tmp/vs && mv /tmp/vs "$STATE_FILE"
+  NUDGE_OUT=$("$CLI" auth status 2>&1 || true)
+  if echo "$NUDGE_OUT" | grep -qi "schema major bump\|re-run.*activate gradle"; then
     pass "drift nudge fires"
   else
+    printf '\033[33m  ⚠ drift nudge did not fire — dumping state for triage\033[0m\n'
+    echo "-- sidecar --"; cat ~/.bitrise/cache/gradle/config.json
+    echo "-- state --"; cat "$STATE_FILE"
+    echo "-- auth status output --"; echo "$NUDGE_OUT"
     fail "drift nudge did not fire"
   fi
 else
-  printf '\033[33m  ⚠ version-state.json not created (skipping drift-nudge check)\033[0m\n'
+  printf '\033[33m  ⚠ prerequisites missing (state=%s, sidecar=%s) — skipping drift-nudge check\033[0m\n' \
+    "$([ -f "$STATE_FILE" ] && echo yes || echo no)" \
+    "$([ -f ~/.bitrise/cache/gradle/config.json ] && echo yes || echo no)"
 fi
 
 log "update --dry-run detects install method and makes no changes"
