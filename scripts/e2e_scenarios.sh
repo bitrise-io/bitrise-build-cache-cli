@@ -60,8 +60,10 @@ pass "bazel sidecar ok"
 log "doctor --no-backend-probe --no-update-check --json"
 DOCTOR_JSON=$("$CLI" doctor --no-backend-probe --no-update-check --json 2>&1 | sed -n '/^{/,/^}/p')
 if [ -z "$DOCTOR_JSON" ]; then fail "doctor produced no JSON"; fi
-echo "$DOCTOR_JSON" | jq -e '.overall' >/dev/null || fail "doctor JSON missing overall"
-pass "doctor JSON contract ok (overall=$(echo "$DOCTOR_JSON" | jq -r .overall))"
+echo "$DOCTOR_JSON" | jq -e '.items | length > 0' >/dev/null || fail "doctor JSON missing items"
+echo "$DOCTOR_JSON" | jq -e '.cli_version' >/dev/null || fail "doctor JSON missing cli_version"
+STATES=$(echo "$DOCTOR_JSON" | jq -r '[.items[].result.state] | join(",")')
+pass "doctor JSON contract ok (states=$STATES)"
 
 log "drift-nudge fires after simulated CLI-version bump"
 mkdir -p ~/.local/state/bitrise-build-cache
