@@ -37,7 +37,7 @@ pass "non-TTY error surfaced"
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
 
 log "activate gradle → sidecar + init.d script + no plaintext token"
-"$CLI" activate gradle --push=false >/dev/null
+"$CLI" activate gradle --cache-push=false >/dev/null
 [ -f ~/.bitrise/cache/gradle/config.json ]  || fail "gradle sidecar missing"
 [ -f ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts ] || fail "gradle init.d missing"
 if grep -q "$FAKE_TOKEN" ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts; then
@@ -46,7 +46,7 @@ fi
 pass "gradle sidecar ok, no plaintext token"
 
 log "activate bazel → sidecar + .bazelrc + no plaintext token"
-"$CLI" activate bazel --push=false >/dev/null || true
+"$CLI" activate bazel --cache-push=false >/dev/null || true
 [ -f ~/.bitrise/cache/bazel/config.json ] || fail "bazel sidecar missing"
 if [ -f ~/.bazelrc ] && grep -q "$FAKE_TOKEN" ~/.bazelrc; then
   fail "plaintext token leaked into .bazelrc"
