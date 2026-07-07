@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 )
 
@@ -67,6 +70,8 @@ var installCmd = &cobra.Command{
 			exe = stable
 		}
 
+		warnIfShadowedBinary(logger, exe)
+
 		result, err := daemonpkg.Install(cmd.Context(), backend, paths, daemonpkg.DefaultServices(), exe)
 		if err != nil {
 			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) {
@@ -101,6 +106,33 @@ var installCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func warnIfShadowedBinary(logger log.Logger, pinned string) {
+	onPath, err := exec.LookPath(paths.CLIBinaryName)
+	if err != nil {
+		return
+	}
+	if resolvePath(pinned) == resolvePath(onPath) {
+		return
+	}
+
+	logger.Warnf("Pinning %s into the supervisor config, but `%s` on your $PATH resolves to %s.", pinned, paths.CLIBinaryName, onPath)
+	logger.Warnf("Interactive commands and the daemon would use different binaries — likely different CLI versions too.")
+	logger.Warnf("To pin the PATH binary instead, rerun via its full path: %s daemon install", onPath)
+}
+
+func resolvePath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
+	}
+
+	return resolved
 }
 
 func init() {
