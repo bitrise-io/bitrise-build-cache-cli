@@ -127,10 +127,12 @@ done
 [[ "$status" == "SESSION_STATUS_RUNNING" ]] || { echo "session never reached RUNNING (last: $status)" >&2; exit 1; }
 [[ -n "$ssh_addr" && -n "$ssh_password" ]] || { echo "session RUNNING but SSH details empty" >&2; exit 1; }
 
-# sshAddress is "user@host:port" — split it.
-ssh_userhost="${ssh_addr%:*}"
-ssh_port="${ssh_addr##*:}"
-[[ "$ssh_port" == "$ssh_addr" ]] && ssh_port=22
+# sshAddress may be a full `ssh user@host -p PORT` command or a bare
+# "host:port" — parse the same way bitrise-cli's internal/rde does.
+ssh_userhost=$(printf '%s\n' "$ssh_addr" | grep -oE '[[:alnum:]._-]+@[[:alnum:]._-]+' | tail -1)
+ssh_port=$(printf '%s\n' "$ssh_addr" | grep -oE '\-p[[:space:]]+[0-9]+' | tail -1 | awk '{print $NF}')
+: "${ssh_port:=22}"
+[[ -n "$ssh_userhost" ]] || { echo "could not parse user@host from sshAddress: $ssh_addr" >&2; exit 1; }
 log "ssh ready: ${ssh_userhost}:${ssh_port}"
 
 # ---------- exec smoke commands ----------
