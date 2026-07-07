@@ -1521,6 +1521,17 @@ workflows:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8: {}
     - script@1:
+        title: install + start headless gnome-keyring (Secret Service for CLI)
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -euxo pipefail
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11
+            eval "$(dbus-launch --sh-syntax)"
+            printf 'test-pass\n' | gnome-keyring-daemon --unlock --components=secrets
+            envman add --key DBUS_SESSION_BUS_ADDRESS --value "$DBUS_SESSION_BUS_ADDRESS"
+    - script@1:
         title: build + run portable e2e scenarios
         inputs:
         - content: |-
