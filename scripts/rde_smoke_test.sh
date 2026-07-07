@@ -43,12 +43,24 @@ log() { printf '[rde-smoke] %s\n' "$*"; }
 
 curl_rde() {
   local method="$1" path="$2"; shift 2
-  curl -fsS -X "$method" \
+  local tmp status
+  tmp=$(mktemp)
+  status=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
     -H "Authorization: Bearer $RDE_BITRISE_PAT" \
     -H "X-Request-Source: cli" \
     -H "User-Agent: bitrise-build-cache-cli-rde-smoke" \
     -H "Content-Type: application/json" \
-    "$@" "${API_BASE}${path}"
+    "$@" "${API_BASE}${path}")
+  if [[ "$status" != 2* ]]; then
+    echo "[rde-smoke] HTTP $status on $method ${API_BASE}${path}" >&2
+    cat "$tmp" >&2
+    echo >&2
+    rm -f "$tmp"
+    return 22
+  fi
+
+  cat "$tmp"
+  rm -f "$tmp"
 }
 
 # ---------- provision ----------
