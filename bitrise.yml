@@ -251,6 +251,39 @@ workflows:
         title: Send slack if failed
         run_if: ".IsBuildFailed"
 
+  rde-mac-local-dx-smoke:
+    description: |
+      On-demand: provision a Bitrise Remote Dev Environment (RDE) mac
+      session, install the CLI into it via installer.sh, run `doctor`,
+      and tear the session down. Exercises the local-dev experience
+      surfaces (installer + doctor on a fresh mac) that regular Bitrise
+      steps can't cover — those run inside pre-baked worker images and
+      never simulate a first-time user install.
+
+      Scaffold — not wired into any pipeline. Manual trigger only.
+      See `scripts/rde_smoke_test.sh` for the TODOs before this can run
+      unattended (devenv API path + auth handshake).
+    envs:
+    - RDE_ACCESS_TOKEN: $RDE_ACCESS_TOKEN
+    - RDE_WORKSPACE_ID: $RDE_WORKSPACE_ID
+    - RDE_STACK_ID: osx-xcode-26.0.x-edge
+    - RDE_MACHINE_TYPE: g2.mac.medium
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script:
+        title: RDE mac smoke test (installer.sh + doctor)
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/rde_smoke_test.sh
+
   test:
     steps:
     - activate-ssh-key@4:
