@@ -7,8 +7,8 @@
 # GitHub release is live so the pinned tag resolves cleanly.
 #
 # Required env:
-#   RDE_ACCESS_TOKEN     — Bitrise PAT with RDE scope.
-#   RDE_WORKSPACE_ID     — target workspace slug.
+#   RDE_BITRISE_PAT     — Bitrise PAT with RDE scope.
+#   WORKSPACE_SLUG     — target workspace slug.
 #   RDE_STACK_ID         — e.g. osx-xcode-26.0.x-edge.
 #   RDE_MACHINE_TYPE     — e.g. g2.mac.medium.
 #   BITRISE_GIT_TAG      — CLI tag to smoke, e.g. v3.0.1 (script strips leading v).
@@ -25,15 +25,15 @@
 
 set -euo pipefail
 
-: "${RDE_ACCESS_TOKEN:?}"
-: "${RDE_WORKSPACE_ID:?}"
+: "${RDE_BITRISE_PAT:?}"
+: "${WORKSPACE_SLUG:?}"
 : "${RDE_STACK_ID:?}"
 : "${RDE_MACHINE_TYPE:?}"
 : "${BITRISE_GIT_TAG:?}"
 
 API_BASE="${RDE_API_BASE:-https://api.bitrise.io/rde}"
 AUTO_TERMINATE_MIN="${RDE_AUTO_TERMINATE_MIN:-30}"
-WS_PATH="/v1/workspaces/${RDE_WORKSPACE_ID}"
+WS_PATH="/v1/workspaces/${WORKSPACE_SLUG}"
 
 for tool in jq curl sshpass ssh; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
@@ -44,7 +44,7 @@ log() { printf '[rde-smoke] %s\n' "$*"; }
 curl_rde() {
   local method="$1" path="$2"; shift 2
   curl -fsS -X "$method" \
-    -H "Authorization: Bearer $RDE_ACCESS_TOKEN" \
+    -H "Authorization: Bearer $RDE_BITRISE_PAT" \
     -H "X-Request-Source: cli" \
     -H "User-Agent: bitrise-build-cache-cli-rde-smoke" \
     -H "Content-Type: application/json" \
@@ -77,7 +77,7 @@ cleanup() {
   local rc=$?
   log "deleting session $session_id (rc=$rc)"
   curl -fsS -X DELETE \
-    -H "Authorization: Bearer $RDE_ACCESS_TOKEN" \
+    -H "Authorization: Bearer $RDE_BITRISE_PAT" \
     -H "X-Request-Source: cli" \
     "${API_BASE}${WS_PATH}/sessions/${session_id}" >/dev/null || true
   exit "$rc"

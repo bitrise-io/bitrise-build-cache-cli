@@ -261,14 +261,12 @@ workflows:
       worker images and never simulate a first-time user install.
 
       Uses the RDE HTTP API (https://api.bitrise.io/rde) with a Bearer
-      token (RDE_ACCESS_TOKEN) — the same endpoints bitrise-cli's
+      token (RDE_BITRISE_PAT) — the same endpoints bitrise-cli's
       internal/rde package hits. SSH auth is password-based; the session
       record carries sshAddress + sshPassword after RUNNING.
 
       Manual trigger only; not wired into release-and-verify.
     envs:
-    - RDE_ACCESS_TOKEN: $RDE_ACCESS_TOKEN
-    - RDE_WORKSPACE_ID: $RDE_WORKSPACE_ID
     - RDE_STACK_ID: osx-xcode-26.0.x-edge
     - RDE_MACHINE_TYPE: g2.mac.medium
     meta:
