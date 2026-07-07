@@ -1506,6 +1506,59 @@ workflows:
             - STEP_NAME: bitrise-step-activate-gradle-mirrors
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
 
+  e2e-scenarios-linux:
+    description: |
+      Runs the portable subset of the manual PR-#401 walkthrough as an
+      automated smoke test: auth CRUD, activate gradle+bazel sidecars,
+      doctor JSON contract, drift-nudge, update --dry-run, browse. See
+      scripts/e2e_scenarios.sh.
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script@1:
+        title: build + run portable e2e scenarios
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -euxo pipefail
+            go build -o /tmp/bitrise-build-cache .
+            CLI=/tmp/bitrise-build-cache bash ./scripts/e2e_scenarios.sh
+
+  e2e-scenarios-macos:
+    description: |
+      Portable e2e scenarios + macOS daemon lifecycle (install / up / down /
+      restart, socket unlink, launchctl kickstart). See scripts/e2e_scenarios.sh
+      and scripts/e2e_scenarios_macos.sh.
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.medium
+        stack: osx-xcode-edge
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script@1:
+        title: build + run portable e2e scenarios
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -euxo pipefail
+            mkdir -p "$HOME/.bitrise/bin"
+            go build -o "$HOME/.bitrise/bin/bitrise-build-cache" .
+            CLI="$HOME/.bitrise/bin/bitrise-build-cache" bash ./scripts/e2e_scenarios.sh
+    - script@1:
+        title: run macOS-only daemon-lifecycle e2e scenarios
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -euxo pipefail
+            CLI="$HOME/.bitrise/bin/bitrise-build-cache" bash ./scripts/e2e_scenarios_macos.sh
+
 step_bundles:
   release-flow-check:
     description: |
@@ -1937,6 +1990,8 @@ pipelines:
         parallel: 3
       e2e-xcode-comp-cache: {}
       e2e-daemon-install-macos: {}
+      e2e-scenarios-linux: {}
+      e2e-scenarios-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
