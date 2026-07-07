@@ -268,7 +268,7 @@ workflows:
       Manual trigger only; not wired into release-and-verify.
     envs:
     - RDE_STACK_ID: osx-xcode-26.0.x-edge
-    - RDE_MACHINE_TYPE: g2.mac.medium
+    - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
