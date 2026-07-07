@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os/signal"
+	"syscall"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
@@ -48,7 +50,12 @@ var (
 				return fmt.Errorf("create storage helper: %w", err)
 			}
 
-			if err := helper.Start(cmd.Context()); err != nil {
+			// Propagate SIGTERM / SIGINT so the helper's Run loop exits and the
+			// listener's deferred Close unlinks the Unix socket file.
+			signalCtx, stopSignals := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
+			defer stopSignals()
+
+			if err := helper.Start(signalCtx); err != nil {
 				return fmt.Errorf("run storage helper: %w", err)
 			}
 
