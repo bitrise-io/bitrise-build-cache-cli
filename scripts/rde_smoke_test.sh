@@ -98,15 +98,28 @@ trap cleanup EXIT
 
 # ---------- wait for RUNNING + SSH details populated ----------
 log "waiting for session to reach SESSION_STATUS_RUNNING + SSH ready"
-ssh_addr="" ssh_password=""
-for _ in $(seq 1 60); do
+ssh_addr="" ssh_password="" prev_status=""
+for i in $(seq 1 60); do
   s=$(curl_rde GET "${WS_PATH}/sessions/${session_id}")
   status=$(echo "$s" | jq -r '.session.status // empty')
   ssh_addr=$(echo "$s" | jq -r '.session.sshAddress // empty')
   ssh_password=$(echo "$s" | jq -r '.session.sshPassword // empty')
-  if [[ "$status" == "SESSION_STATUS_RUNNING" && -n "$ssh_addr" && -n "$ssh_password" ]]; then
-    break
+
+  if [[ "$status" != "$prev_status" ]]; then
+    log "[$i] status: $status"
+    prev_status="$status"
   fi
+
+  case "$status" in
+  SESSION_STATUS_RUNNING)
+    [[ -n "$ssh_addr" && -n "$ssh_password" ]] && break
+    ;;
+  SESSION_STATUS_TERMINATED | SESSION_STATUS_STARTUP_ERROR | SESSION_STATUS_TERMINATING)
+    echo "session reached terminal status $status before RUNNING; full record:" >&2
+    echo "$s" | jq . >&2
+    exit 1
+    ;;
+  esac
 
   sleep 10
 done
