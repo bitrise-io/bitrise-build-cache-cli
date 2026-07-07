@@ -13,6 +13,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 )
 
@@ -108,7 +109,7 @@ var installCmd = &cobra.Command{
 }
 
 func warnIfShadowedBinary(logger log.Logger, pinned string) {
-	onPath, err := exec.LookPath("bitrise-build-cache")
+	onPath, err := exec.LookPath(paths.CLIBinaryName)
 	if err != nil {
 		return
 	}

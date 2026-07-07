@@ -64,6 +64,9 @@ const (
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 )
 
+// CLIBinaryName is the on-disk name of the CLI executable (daemon plist entry, PATH lookup).
+const CLIBinaryName = "bitrise-build-cache"
+
 // Paths resolves on-disk locations rooted at a single home directory.
 type Paths struct {
 	Home string
