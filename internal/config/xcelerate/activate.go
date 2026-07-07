@@ -3,7 +3,6 @@ package xcelerate
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -91,17 +90,19 @@ func Activate(
 	}
 
 	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
-	keychainErr := errors.New("skip-jwt")
-	if !config.AuthConfig.IsJWT {
-		keychainErr = keychain.New().Save(keychain.Credentials{
+	if config.AuthConfig.IsJWT {
+		mpCfg.AuthConfig = config.AuthConfig
+	} else {
+		wrote, err := keychain.New().SaveIfChanged(keychain.Credentials{
 			AuthToken:   config.AuthConfig.AuthToken,
 			WorkspaceID: config.AuthConfig.WorkspaceID,
 		})
-	}
-	if keychainErr != nil {
-		mpCfg.AuthConfig = config.AuthConfig
-	} else {
-		configcommon.LogKeychainSaved(logger)
+		switch {
+		case err != nil:
+			mpCfg.AuthConfig = config.AuthConfig
+		case wrote:
+			logger.Infof("Saved auth credentials to the OS keychain")
+		}
 	}
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)

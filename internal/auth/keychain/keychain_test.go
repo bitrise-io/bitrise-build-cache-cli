@@ -106,6 +106,38 @@ func TestClearNoopOnEmpty(t *testing.T) {
 	assert.NoError(t, k.Clear())
 }
 
+func TestSaveIfChanged_writesOnFirstSave(t *testing.T) {
+	k := &Keychain{Backend: newFakeBackend()}
+
+	wrote, err := k.SaveIfChanged(Credentials{AuthToken: "tok", WorkspaceID: "ws"})
+	require.NoError(t, err)
+	assert.True(t, wrote)
+}
+
+func TestSaveIfChanged_skipsWhenIdentical(t *testing.T) {
+	be := newFakeBackend()
+	k := &Keychain{Backend: be}
+	creds := Credentials{AuthToken: "tok", WorkspaceID: "ws"}
+	require.NoError(t, k.Save(creds))
+
+	wrote, err := k.SaveIfChanged(creds)
+	require.NoError(t, err)
+	assert.False(t, wrote)
+}
+
+func TestSaveIfChanged_writesWhenDifferent(t *testing.T) {
+	k := &Keychain{Backend: newFakeBackend()}
+	require.NoError(t, k.Save(Credentials{AuthToken: "old", WorkspaceID: "ws"}))
+
+	wrote, err := k.SaveIfChanged(Credentials{AuthToken: "new", WorkspaceID: "ws"})
+	require.NoError(t, err)
+	assert.True(t, wrote)
+
+	got, err := k.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "new", got.AuthToken)
+}
+
 func TestLoadWrapsBackendError(t *testing.T) {
 	backendErr := errors.New("dbus connection failed")
 	be := newFakeBackend()

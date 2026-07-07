@@ -102,6 +102,22 @@ func (k *Keychain) Save(c Credentials) error {
 	return nil
 }
 
+// SaveIfChanged writes c only when its serialised form differs from what is
+// already stored. Returns true if a write happened. Missing / unreadable
+// existing entries count as changed.
+func (k *Keychain) SaveIfChanged(c Credentials) (bool, error) {
+	existing, err := k.Load()
+	if err == nil && existing == c {
+		return false, nil
+	}
+
+	if err := k.Save(c); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (k *Keychain) Clear() error {
 	switch err := k.Backend.Delete(serviceName, accountName); {
 	case err == nil, errors.Is(err, keyring.ErrNotFound):
