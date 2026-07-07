@@ -30,11 +30,9 @@ echo "$STATUS_OUT" | grep -qi "not configured\|no credentials" || fail "auth cle
 pass "auth CRUD ok"
 
 log "non-TTY interactive rejection"
-if "$CLI" activate --interactive </dev/null 2>&1 | grep -qi "interactive setup requires a terminal"; then
-  pass "non-TTY error surfaced"
-else
-  fail "expected non-TTY error"
-fi
+INTERACTIVE_OUT=$("$CLI" activate --interactive </dev/null 2>&1 || true)
+echo "$INTERACTIVE_OUT" | grep -qi "interactive setup requires a terminal" || fail "expected non-TTY error, got: $INTERACTIVE_OUT"
+pass "non-TTY error surfaced"
 
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
 
