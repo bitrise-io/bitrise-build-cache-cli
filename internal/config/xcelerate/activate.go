@@ -101,7 +101,7 @@ func Activate(
 	if keychainErr != nil {
 		mpCfg.AuthConfig = config.AuthConfig
 	} else {
-		logger.Infof("Saved auth credentials to the OS keychain")
+		configcommon.LogKeychainSaved(logger)
 	}
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
