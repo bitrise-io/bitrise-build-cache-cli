@@ -13,6 +13,11 @@ rm -f ~/Library/LaunchAgents/io.bitrise.build-cache.*.plist
 rm -f "$TMPDIR"/xcelerate-proxy.sock "$TMPDIR"/ccache-ipc.sock 2>/dev/null || true
 rm -rf ~/.local/state/bitrise-build-cache/logs/
 
+log "activate xcode + c++ (prerequisite for daemon install)"
+"$CLI" activate xcode --cache-push=false >/dev/null
+"$CLI" activate c++ --cache-push=false >/dev/null
+pass "xcode + c++ activated"
+
 log "daemon install → both services running (via post-bootstrap kickstart)"
 "$CLI" daemon install
 sleep 2
