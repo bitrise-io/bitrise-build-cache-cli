@@ -102,9 +102,7 @@ func (k *Keychain) Save(c Credentials) error {
 	return nil
 }
 
-// SaveIfChanged writes c only when its serialised form differs from what is
-// already stored. Returns true if a write happened. Missing / unreadable
-// existing entries count as changed.
+// SaveIfChanged writes c only when it differs from the stored value; returns whether a write happened.
 func (k *Keychain) SaveIfChanged(c Credentials) (bool, error) {
 	existing, err := k.Load()
 	if err == nil && existing == c {
