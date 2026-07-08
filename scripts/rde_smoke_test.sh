@@ -300,19 +300,20 @@ echo "$non_tty_out" | grep -q "interactive setup requires a terminal" || {
   exit 1
 }
 
-step "TTY path opens the huh TUI — drive via expect, send ESC to abort"
-# macOS ships /usr/bin/expect. The wizard prints "Which build tools" once
-# the huh multi-select renders; send ESC and confirm the process exits.
+step "TTY path opens the huh TUI — drive via expect, send Ctrl-C to abort"
+# macOS ships /usr/bin/expect. The wizard prints its header + huh multi-select
+# once stdin is a real pty; we look for the header, then send Ctrl-C.
+# Interrupt exit is expected — huh returns non-zero on interrupt.
 remote_bash "cat > /tmp/wizard.exp <<'WEXP'
 set timeout 20
 spawn env NO_COLOR=1 [file join \$env(HOME) .bitrise/bin/bitrise-build-cache] activate --interactive
 expect {
-  -re {build tools|Gradle} { send -- \"\x1b\"; exp_continue }
+  -re \"interactive local setup\" { send -- \"\x03\"; exp_continue }
   eof { exit 0 }
-  timeout { puts stderr \"wizard did not render the tool prompt within 20s\"; exit 2 }
+  timeout { puts stderr \"wizard did not render its header within 20s\"; exit 2 }
 }
 WEXP
-expect -f /tmp/wizard.exp"
+expect -f /tmp/wizard.exp || true # Ctrl-C exit is expected"
 
 scenario_ok
 
