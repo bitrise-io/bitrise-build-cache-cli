@@ -333,10 +333,17 @@ remote_bash "command -v gradle || brew install gradle" || {
 step "re-set keychain (activate xcode may have overwritten it with derived creds)"
 remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
 
-step "auth token — CLI must read the same token back from keychain"
-tok=$(remote_bash "$CLI auth token 2>/dev/null")
+step "auth token — CLI must read the same token back from keychain (env unset)"
+# Unset every known BITRISE_BUILD_CACHE_* + BITRISEIO_* env var so nothing
+# shadows the keychain source. Print what auth status resolves to for
+# post-hoc debugging in case the assertion still fails.
+tok=$(remote_bash "unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth token 2>/dev/null")
 [[ -n "$tok" ]] || { echo "auth token returned empty — keychain read broken" >&2; exit 1; }
-[[ "$tok" == "$RDE_BITRISE_PAT" ]] || { echo "auth token mismatch" >&2; exit 1; }
+if [[ "$tok" != "$RDE_BITRISE_PAT" ]]; then
+  echo "auth token mismatch — dumping debug state:" >&2
+  remote_bash "unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth status --debug" >&2 || true
+  exit 1
+fi
 
 step "scratch gradle project + \`gradle help\` picks up init.d script"
 remote_bash "set -eux; d=/tmp/gradle-smoke; rm -rf \$d; mkdir -p \$d; cd \$d; \\
