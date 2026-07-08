@@ -41,6 +41,33 @@ done
 
 log() { printf '[rde-smoke] %s\n' "$*"; }
 
+# Scenario banner + result reporting.
+banner() {
+  local title="$1"
+  printf '\n'
+  printf '════════════════════════════════════════════════════════════════════════════\n'
+  printf '  %s\n' "$title"
+  printf '════════════════════════════════════════════════════════════════════════════\n'
+}
+
+step() {
+  local label="$1"
+  printf '\n── %s ──────────────────────────────────────────────────────\n' "$label"
+}
+
+# Named scenarios drive the trap so we always report which one aborted.
+CURRENT_SCENARIO=""
+scenario() {
+  CURRENT_SCENARIO="$1"
+  banner "$1"
+}
+
+failed_scenarios=()
+scenario_ok() {
+  printf '\n✅ %s\n' "$CURRENT_SCENARIO"
+  CURRENT_SCENARIO=""
+}
+
 curl_rde() {
   local method="$1" path="$2"; shift 2
   local tmp status
@@ -89,6 +116,10 @@ log "session id: $session_id"
 # keeps consuming quota until auto-terminate hours later.
 cleanup() {
   local rc=$?
+  if [[ $rc -ne 0 && -n "$CURRENT_SCENARIO" ]]; then
+    printf '\n❌ FAILED IN: %s\n' "$CURRENT_SCENARIO" >&2
+  fi
+
   log "cleaning up session $session_id (rc=$rc)"
   curl_rde POST "${WS_PATH}/sessions/${session_id}/terminate" -d '{}' >/dev/null 2>&1 || true
   curl_rde DELETE "${WS_PATH}/sessions/${session_id}" >/dev/null 2>&1 || true
@@ -156,33 +187,37 @@ remote_bash() {
   SSHPASS="$ssh_password" sshpass -e ssh "${SSH_OPTS[@]}" "$ssh_userhost" "bash -i -l -c $(printf '%q' "$1")"
 }
 
-CLI="\$HOME/.bitrise/bin/bitrise-build-cache"
+CLI="\$HOME/.bitrise/bin/bitrise-build-cache --no-update-check"
 
-# ─────────────────────────────────────────────────────────────
-# 1. installer.sh — first-time install on a virgin mac
-# ─────────────────────────────────────────────────────────────
-log "[1] install CLI ${RDE_SMOKE_CLI_TAG} via installer.sh"
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 1 — installer.sh on a virgin mac (first-time install path)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 1 — installer.sh (first-time install on virgin mac)"
+
+step "install CLI ${RDE_SMOKE_CLI_TAG} via installer.sh"
 remote_bash "curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b \"\$HOME/.bitrise/bin\" ${RDE_SMOKE_CLI_TAG}"
 
-log "[2] --version reports ${RDE_SMOKE_CLI_TAG#v}"
+step "--version reports ${RDE_SMOKE_CLI_TAG#v}"
 got_version=$(remote_bash "$CLI --version" | awk '{print $NF}')
 [[ "$got_version" == "${RDE_SMOKE_CLI_TAG#v}"* ]] || {
   echo "version mismatch: want ${RDE_SMOKE_CLI_TAG#v}, got $got_version" >&2
   exit 1
 }
 
-# ─────────────────────────────────────────────────────────────
-# 3. Keychain flow — auth set + status
-#    RDE-unique: regular Bitrise workers don't have a persistent
-#    user Keychain — this is the only way to smoke ACI-5028.
-# ─────────────────────────────────────────────────────────────
-log "[3] auth set — write credentials to OS keychain"
-# Pre-unlock the login keychain: RDE's vagrant user is auto-logged-in,
-# so the keychain password matches the SSH password we already have.
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 2 — Keychain flow (RDE-unique: real user Keychain, ACI-5028)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 2 — Keychain flow (auth set / auth status)"
+
+step "unlock login.keychain (RDE vagrant password == SSH password)"
 remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+
+step "auth set — write credentials to OS keychain"
 remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
 
-log "[4] auth status — reports keychain source + workspace"
+step "auth status — must report source=keychain + workspace"
 auth_status=$(remote_bash "$CLI auth status") || {
   echo "auth status failed" >&2
   exit 1
@@ -191,35 +226,46 @@ echo "$auth_status"
 echo "$auth_status" | grep -qi "keychain" || { echo "auth status did not report keychain source" >&2; exit 1; }
 echo "$auth_status" | grep -q "$WORKSPACE_SLUG" || { echo "auth status missing workspace id $WORKSPACE_SLUG" >&2; exit 1; }
 
-# ─────────────────────────────────────────────────────────────
-# 4. Daemon flow — install / up / info / uninstall
-#    RDE-unique: regular workers have no persistent launchd state
-#    across steps; this validates the LaunchAgent lifecycle end-to-end.
-# ─────────────────────────────────────────────────────────────
-log "[5] activate xcode (daemon needs a proxy socket path to bind on)"
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 3 — Daemon lifecycle (RDE-unique: real launchd, ACI-5032)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 3 — Daemon lifecycle (install / info / uninstall via launchd)"
+
+step "activate xcode — daemon needs a proxy socket path to bind on"
 remote_bash "$CLI activate xcode --cache"
 
-log "[6] daemon install — writes LaunchAgent + bootstraps into launchd"
+step "daemon install — writes LaunchAgent plist + bootstraps"
 remote_bash "$CLI daemon install"
+
+step "launchctl list — LaunchAgent must be registered"
 remote_bash "launchctl list | grep -q 'bitrise.*build.*cache'" || {
   echo "LaunchAgent not registered with launchctl" >&2
   remote_bash "launchctl list | grep -i bitrise || true" >&2
   exit 1
 }
 
-log "[7] daemon info — reports per-service status"
+step "daemon info — reports per-service status"
 remote_bash "$CLI daemon info"
 
-log "[8] daemon uninstall — tears LaunchAgent down cleanly"
+step "daemon uninstall — tears LaunchAgent down cleanly"
 remote_bash "$CLI daemon uninstall"
 
-# ─────────────────────────────────────────────────────────────
-# 5. Doctor — non-zero is expected after auth+activate, but
-#    the exit path must not crash. Loose gate: it just runs.
-# ─────────────────────────────────────────────────────────────
-log "[9] doctor — final health snapshot"
-if ! remote_bash "$CLI doctor --no-update-check"; then
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 4 — Doctor snapshot (loose: must run, non-zero acceptable)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 4 — Doctor final snapshot"
+
+step "doctor — expected non-zero after uninstall (proxy no longer running)"
+if ! remote_bash "$CLI doctor"; then
   log "doctor exited non-zero — expected on a partially-configured mac"
 fi
 
-log "smoke test passed"
+scenario_ok
+
+printf '\n════════════════════════════════════════════════════════════════════════════\n'
+printf '  🎉 ALL SCENARIOS PASSED\n'
+printf '════════════════════════════════════════════════════════════════════════════\n\n'
