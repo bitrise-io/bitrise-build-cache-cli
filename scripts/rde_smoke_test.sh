@@ -207,21 +207,19 @@ got_version=$(remote_bash "$CLI --version" | awk '{print $NF}')
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 2 — Keychain flow (RDE-unique: real user Keychain, ACI-5028)
+# SCENARIO 2 — Keychain flow + username override
+#              (RDE-unique: real user Keychain — ACI-5028, ACI-4264)
 # ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 2 — Keychain flow (auth set / auth status)"
+scenario "SCENARIO 2 — Keychain flow (auth set / auth status + --username)"
 
 step "unlock login.keychain (RDE vagrant password == SSH password)"
 remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
 
-step "auth set — write credentials to OS keychain"
-remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
+step "auth set — write credentials + username to OS keychain"
+remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}' --username 'rde-smoke-user'"
 
 step "auth status — must report source=keychain + workspace"
-auth_status=$(remote_bash "$CLI auth status") || {
-  echo "auth status failed" >&2
-  exit 1
-}
+auth_status=$(remote_bash "$CLI auth status") || { echo "auth status failed" >&2; exit 1; }
 echo "$auth_status"
 echo "$auth_status" | grep -qi "keychain" || { echo "auth status did not report keychain source" >&2; exit 1; }
 echo "$auth_status" | grep -q "$WORKSPACE_SLUG" || { echo "auth status missing workspace id $WORKSPACE_SLUG" >&2; exit 1; }
@@ -229,12 +227,80 @@ echo "$auth_status" | grep -q "$WORKSPACE_SLUG" || { echo "auth status missing w
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 3 — Daemon lifecycle (RDE-unique: real launchd, ACI-5032)
+# SCENARIO 3 — Gradle sidecar (ACI-5039 per-tool config-version sidecars)
 # ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 3 — Daemon lifecycle (install / info / uninstall via launchd)"
+scenario "SCENARIO 3 — Gradle sidecar file (ACI-5039)"
+
+step "activate gradle — writes ~/.bitrise/cache/gradle/config.json"
+remote_bash "$CLI activate gradle --cache"
+
+step "sidecar file exists + has configVersion"
+remote_bash "cat \$HOME/.bitrise/cache/gradle/config.json" | tee /tmp/sidecar.json
+grep -q '"configVersion"' /tmp/sidecar.json || { echo "gradle sidecar missing configVersion field" >&2; exit 1; }
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 4 — Local invocation log (ACI-5090)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 4 — Local invocation log ndjson"
 
 step "activate xcode — daemon needs a proxy socket path to bind on"
 remote_bash "$CLI activate xcode --cache"
+
+step "at least one invocation ndjson under ~/.local/state/bitrise-build-cache/invocations/"
+remote_bash "ls -la \$HOME/.local/state/bitrise-build-cache/invocations/ 2>/dev/null | tee /tmp/inv.list; [[ -s /tmp/inv.list ]] && grep -q '\\.ndjson' /tmp/inv.list" || {
+  echo "no invocation log files found" >&2; exit 1
+}
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 5 — Version-drift detector + --no-update-check (ACI-5037)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 5 — Version-drift detector (--no-update-check silences)"
+
+step "run --version WITH the nudge enabled (uses installed CLI without --no-update-check alias)"
+drift_out=$(remote_bash "\$HOME/.bitrise/bin/bitrise-build-cache --version 2>&1") || true
+echo "$drift_out"
+echo "$drift_out" | grep -q "is available" && log "nudge printed (real newer version on GitHub, expected)" \
+  || log "no nudge — installed CLI already matches GitHub latest"
+
+step "run same with --no-update-check — no 'is available' line"
+quiet_out=$(remote_bash "\$HOME/.bitrise/bin/bitrise-build-cache --no-update-check --version 2>&1")
+echo "$quiet_out"
+echo "$quiet_out" | grep -q "is available" && { echo "--no-update-check did not silence the nudge" >&2; exit 1; } || true
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 6 — update --dry-run (ACI-5038)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 6 — update --dry-run"
+
+step "update --dry-run — should print an upgrade command without executing"
+update_out=$(remote_bash "$CLI update --dry-run 2>&1") || { echo "update --dry-run failed" >&2; echo "$update_out" >&2; exit 1; }
+echo "$update_out"
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 7 — browse --print (ACI-5049)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 7 — browse --print (headless URL emit)"
+
+step "browse --print — emits a bitrise.io URL, no browser launch"
+browse_out=$(remote_bash "$CLI browse --print 2>&1") || { echo "browse --print failed" >&2; echo "$browse_out" >&2; exit 1; }
+echo "$browse_out"
+echo "$browse_out" | grep -qE 'https?://[^ ]*bitrise' || { echo "browse --print did not emit a bitrise URL" >&2; exit 1; }
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 8 — Daemon lifecycle: install / up / info / down / restart / uninstall
+#              (RDE-unique: real launchd — ACI-5030, ACI-5031, ACI-5032, ACI-5127)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 8 — Daemon lifecycle (install / up / info / down / restart / uninstall)"
 
 step "daemon install — writes LaunchAgent plist + bootstraps"
 remote_bash "$CLI daemon install"
@@ -249,20 +315,30 @@ remote_bash "launchctl list | grep -q 'bitrise.*build.*cache'" || {
 step "daemon info — reports per-service status"
 remote_bash "$CLI daemon info"
 
+step "daemon down — stops services"
+remote_bash "$CLI daemon down"
+
+step "daemon up — restarts services"
+remote_bash "$CLI daemon up"
+
+step "daemon restart — full cycle"
+remote_bash "$CLI daemon restart"
+
 step "daemon uninstall — tears LaunchAgent down cleanly"
 remote_bash "$CLI daemon uninstall"
 
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 4 — Doctor snapshot (loose: must run, non-zero acceptable)
+# SCENARIO 9 — Doctor + --fix (ACI-5128)
 # ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 4 — Doctor final snapshot"
+scenario "SCENARIO 9 — Doctor snapshot + --fix"
 
-step "doctor — expected non-zero after uninstall (proxy no longer running)"
-if ! remote_bash "$CLI doctor"; then
-  log "doctor exited non-zero — expected on a partially-configured mac"
-fi
+step "doctor — expected non-zero after uninstall (services no longer running)"
+remote_bash "$CLI doctor" || log "doctor non-zero as expected"
+
+step "doctor --fix — auto-repair the fixable items"
+remote_bash "$CLI doctor --fix" || log "doctor --fix non-zero (some items require manual action)"
 
 scenario_ok
 
