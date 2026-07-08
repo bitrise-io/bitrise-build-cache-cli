@@ -112,7 +112,8 @@ for i in $(seq 1 60); do
 
   case "$status" in
   SESSION_STATUS_RUNNING)
-    [[ -n "$ssh_addr" && -n "$ssh_password" ]] && break
+    ssh_open=$(echo "$s" | jq -r '.session.sshConnectionOpen // false')
+    [[ -n "$ssh_addr" && -n "$ssh_password" && "$ssh_open" == "true" ]] && break
     ;;
   SESSION_STATUS_TERMINATED | SESSION_STATUS_STARTUP_ERROR | SESSION_STATUS_TERMINATING)
     echo "session reached terminal status $status before RUNNING; full record:" >&2
@@ -136,7 +137,19 @@ ssh_port=$(printf '%s\n' "$ssh_addr" | grep -oE '\-p[[:space:]]+[0-9]+' | tail -
 log "ssh ready: ${ssh_userhost}:${ssh_port}"
 
 # ---------- exec smoke commands ----------
-SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p "$ssh_port")
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -p "$ssh_port")
+
+# Probe port until sshd accepts (backend flips RUNNING before sshd binds).
+log "probing sshd on ${ssh_userhost}:${ssh_port}"
+for i in $(seq 1 30); do
+  if SSHPASS="$ssh_password" sshpass -e ssh "${SSH_OPTS[@]}" -o BatchMode=no "$ssh_userhost" 'true' 2>/dev/null; then
+    log "sshd reachable"
+    break
+  fi
+
+  [[ $i -eq 30 ]] && { echo "sshd never accepted connections" >&2; exit 1; }
+  sleep 5
+done
 
 remote_bash() {
   # Forced-interactive login shell, matching bitrise_devenv_execute semantics.
