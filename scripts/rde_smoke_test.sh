@@ -240,12 +240,66 @@ grep -q '"configVersion"' /tmp/sidecar.json || { echo "gradle sidecar missing co
 
 scenario_ok
 
-# SCENARIO 4 (activate xcode) — needed as setup for the daemon scenario later.
-# The invocation-log write side of ACI-5090 only fires when the xcodebuild
-# wrapper runs against a real project, so it can't be smoked here.
-scenario "SCENARIO 4 — activate xcode (setup for daemon lifecycle)"
-step "activate xcode — daemon needs a proxy socket path to bind on"
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 4 — Local invocation log via xcodebuild wrapper (ACI-5090)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 4 — Local invocation log (xcodebuild wrapper)"
+
+step "activate xcode — installs the xcelerate xcodebuild wrapper"
 remote_bash "$CLI activate xcode --cache"
+
+step "run wrapper: ~/.bitrise-xcelerate/bin/xcodebuild -version"
+remote_bash "\$HOME/.bitrise-xcelerate/bin/xcodebuild -version" || {
+  echo "xcodebuild wrapper failed" >&2; exit 1
+}
+
+step "invocation ndjson under ~/.local/state/bitrise-build-cache/invocations/"
+remote_bash "ls -la \$HOME/.local/state/bitrise-build-cache/invocations/" \
+  | grep -q '\.ndjson' || {
+    echo "no invocation log ndjson written by wrapper" >&2; exit 1
+  }
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 4b — No plaintext credentials on disk (ACI-5123 / ACI-5125)
+#              RDE-unique: needs a real Keychain for the CLI to hydrate from.
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 4b — No plaintext credentials on disk"
+
+step "grep known files for the raw token — must find zero hits"
+# Search dot-files, shell rc, gradle config, xcelerate config, cache dir.
+# `grep -R` walks recursively; we redirect stderr because permission-denied
+# lines on system dirs are irrelevant to the assertion.
+hits=$(remote_bash "grep -RF '${RDE_BITRISE_PAT}' \
+  \$HOME/.zshrc \$HOME/.bashrc \$HOME/.profile \\
+  \$HOME/.gradle \$HOME/.bitrise-xcelerate \$HOME/.bitrise \\
+  \$HOME/.local/state/bitrise-build-cache 2>/dev/null || true")
+if [[ -n "$hits" ]]; then
+  echo "❌ plaintext token found on disk:" >&2
+  echo "$hits" >&2
+  exit 1
+fi
+log "clean — token is only in the Keychain"
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 4c — activate --interactive wizard TTY guard (ACI-5027)
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 4c — activate --interactive wizard TTY guard"
+
+step "non-TTY invocation must error with the expected guard message"
+# Feed no TTY: default sshpass invocation runs the command without -t.
+non_tty_out=$(remote_bash "$CLI activate --interactive 2>&1") && {
+  echo "expected non-zero exit; got success" >&2; exit 1
+} || true
+echo "$non_tty_out"
+echo "$non_tty_out" | grep -q "interactive setup requires a terminal" || {
+  echo "wizard did not print the expected TTY-required guard message" >&2
+  exit 1
+}
+
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
