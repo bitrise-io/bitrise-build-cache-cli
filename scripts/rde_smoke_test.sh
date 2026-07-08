@@ -325,8 +325,10 @@ scenario_ok
 # ═════════════════════════════════════════════════════════════════════════════
 scenario "SCENARIO 4d — Gradle hydration from keychain (real gradle run)"
 
-step "which gradle — RDE mac stack must have it preinstalled"
-remote_bash "command -v gradle || (echo 'gradle not on PATH' >&2; exit 1)"
+step "ensure gradle available (brew install if missing on the mac stack)"
+remote_bash "command -v gradle || brew install gradle" || {
+  echo "gradle install failed" >&2; exit 1
+}
 
 step "auth token — CLI must read the token back from keychain"
 tok=$(remote_bash "$CLI auth token 2>/dev/null")
