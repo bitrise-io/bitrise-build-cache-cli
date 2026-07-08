@@ -50,7 +50,7 @@ func TestDisable_returnsErrUnsupportedPlatformOnNonDarwin(t *testing.T) {
 }
 
 func TestResolvePreviousOverride_passesThroughRealPriorPath(t *testing.T) {
-	got := resolvePreviousOverride("/Users/me/Base.xcconfig", "/tmp/state.json", "/tmp/xcode-app.xcconfig")
+	got := resolvePreviousOverride(newLogger(),"/Users/me/Base.xcconfig", "/tmp/state.json", "/tmp/xcode-app.xcconfig")
 	assert.Equal(t, "/Users/me/Base.xcconfig", got)
 }
 
@@ -61,12 +61,12 @@ func TestResolvePreviousOverride_selfLoopReadsStoredState(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(statePath, raw, 0o600))
 
-	got := resolvePreviousOverride("/tmp/xcode-app.xcconfig", statePath, "/tmp/xcode-app.xcconfig")
+	got := resolvePreviousOverride(newLogger(),"/tmp/xcode-app.xcconfig", statePath, "/tmp/xcode-app.xcconfig")
 	assert.Equal(t, "/Users/me/Base.xcconfig", got)
 }
 
 func TestResolvePreviousOverride_selfLoopWithMissingStateReturnsEmpty(t *testing.T) {
-	got := resolvePreviousOverride("/tmp/xcode-app.xcconfig", filepath.Join(t.TempDir(), "no-such.json"), "/tmp/xcode-app.xcconfig")
+	got := resolvePreviousOverride(newLogger(),"/tmp/xcode-app.xcconfig", filepath.Join(t.TempDir(), "no-such.json"), "/tmp/xcode-app.xcconfig")
 	assert.Empty(t, got)
 }
 
@@ -75,6 +75,6 @@ func TestResolvePreviousOverride_selfLoopWithCorruptStateReturnsEmpty(t *testing
 	statePath := filepath.Join(dir, "state.json")
 	require.NoError(t, os.WriteFile(statePath, []byte("{not-json"), 0o600))
 
-	got := resolvePreviousOverride("/tmp/xcode-app.xcconfig", statePath, "/tmp/xcode-app.xcconfig")
+	got := resolvePreviousOverride(newLogger(),"/tmp/xcode-app.xcconfig", statePath, "/tmp/xcode-app.xcconfig")
 	assert.Empty(t, got)
 }

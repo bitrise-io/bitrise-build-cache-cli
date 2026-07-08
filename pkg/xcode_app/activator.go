@@ -59,6 +59,9 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	osProxy := a.osProxy()
 	logger := a.logger()
 
+	logger.TInfof("Enabling Xcode.app build cache override")
+
+	logger.Debugf("Reading xcelerate config from %s", xcelerate.ConfigFile(osProxy))
 	cfg, err := xcelerate.ReadConfig(osProxy, a.decoderFactory())
 	if err != nil {
 		return EnableResult{}, fmt.Errorf("%w: %w", ErrXcelerateNotConfigured, err)
@@ -71,7 +74,10 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	xcconfigPath := xcelerate.XcodeAppOverrideXCConfigFile(osProxy)
 	statePath := xcelerate.XcodeAppStateFile(osProxy)
 
-	previous := resolvePreviousOverride(a.Envs[xa.XCConfigEnvVar], statePath, xcconfigPath)
+	previous := resolvePreviousOverride(logger, a.Envs[xa.XCConfigEnvVar], statePath, xcconfigPath)
+	if previous != "" {
+		logger.Infof("Preserving prior XCODE_XCCONFIG_FILE override: %s", previous)
+	}
 
 	body, err := xa.RenderOverride(cfg.ProxySocketPath, previous)
 	if err != nil {
@@ -85,14 +91,17 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	if err := osProxy.WriteFile(xcconfigPath, []byte(body), 0o644); err != nil { //nolint:gosec // xcconfig must be readable by Xcode
 		return EnableResult{}, fmt.Errorf("write %s: %w", xcconfigPath, err)
 	}
+	logger.Debugf("Wrote override xcconfig: %s", xcconfigPath)
 
 	if err := xa.SaveState(statePath, xa.State{PreviousXCConfigPath: previous}); err != nil {
 		return EnableResult{}, fmt.Errorf("save state: %w", err)
 	}
+	logger.Debugf("Saved xcode-app state: %s", statePath)
 
 	if err := a.Launchctl.Setenv(ctx, xa.XCConfigEnvVar, xcconfigPath); err != nil {
 		return EnableResult{}, fmt.Errorf("set XCODE_XCCONFIG_FILE: %w", err)
 	}
+	logger.Debugf("launchctl setenv %s=%s", xa.XCConfigEnvVar, xcconfigPath)
 
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
@@ -103,14 +112,18 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 	if err != nil {
 		return EnableResult{}, fmt.Errorf("write LaunchAgent: %w", err)
 	}
+	logger.Debugf("Wrote LaunchAgent plist: %s", plistPath)
 
 	if err := a.Launchctl.Bootstrap(ctx, plistPath); err != nil {
 		return EnableResult{}, fmt.Errorf("bootstrap LaunchAgent: %w", err)
 	}
+	logger.Infof("Bootstrapped LaunchAgent so XCODE_XCCONFIG_FILE persists across logins")
 
 	proxyErr := a.installAndStartProxy(ctx)
 	if proxyErr != nil {
 		logger.Warnf("Could not start xcelerate-proxy daemon: %s. Run `bitrise-build-cache daemon install + up` manually.", proxyErr)
+	} else {
+		logger.Infof("Started xcelerate-proxy daemon")
 	}
 
 	pids, checkErr := a.xcodeChecker().RunningPIDs(ctx)
@@ -137,6 +150,8 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 	osProxy := a.osProxy()
 	logger := a.logger()
 
+	logger.TInfof("Disabling Xcode.app build cache override")
+
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
 		return DisableResult{}, fmt.Errorf("resolve home dir: %w", err)
@@ -147,10 +162,12 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 	if err := a.Launchctl.Bootout(ctx, plistPath); err != nil {
 		return DisableResult{}, fmt.Errorf("bootout LaunchAgent: %w", err)
 	}
+	logger.Debugf("Booted out LaunchAgent: %s", plistPath)
 
 	if _, err := xa.RemoveSetenvAgent(osProxy, home); err != nil {
 		return DisableResult{}, fmt.Errorf("remove LaunchAgent plist: %w", err)
 	}
+	logger.Debugf("Removed LaunchAgent plist: %s", plistPath)
 
 	state, _, err := xa.LoadState(xcelerate.XcodeAppStateFile(osProxy))
 	if err != nil {
@@ -165,26 +182,27 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 	}
 
 	if state.PreviousXCConfigPath != "" {
-		// Restore the user's prior override so their tooling keeps working.
 		if err := a.Launchctl.Setenv(ctx, xa.XCConfigEnvVar, state.PreviousXCConfigPath); err != nil {
 			return result, fmt.Errorf("restore previous XCODE_XCCONFIG_FILE: %w", err)
 		}
 
 		result.RestoredXCConfigPath = state.PreviousXCConfigPath
+		logger.Infof("Restored prior XCODE_XCCONFIG_FILE: %s", state.PreviousXCConfigPath)
 	} else {
 		if err := a.Launchctl.Unsetenv(ctx, xa.XCConfigEnvVar); err != nil {
 			return result, fmt.Errorf("unset XCODE_XCCONFIG_FILE: %w", err)
 		}
+		logger.Debugf("Unset %s via launchctl", xa.XCConfigEnvVar)
 	}
 
 	xcconfigPath := xcelerate.XcodeAppOverrideXCConfigFile(osProxy)
 	if err := osProxy.Remove(xcconfigPath); err != nil {
-		// Not-exist is fine — already disabled.
 		if !errors.Is(err, fs.ErrNotExist) {
 			return result, fmt.Errorf("remove %s: %w", xcconfigPath, err)
 		}
 	} else {
 		result.XCConfigRemoved = true
+		logger.Debugf("Removed override xcconfig: %s", xcconfigPath)
 	}
 
 	if err := xa.RemoveState(xcelerate.XcodeAppStateFile(osProxy)); err != nil {
@@ -227,7 +245,7 @@ func (a *Activator) installAndStartProxy(ctx context.Context) error {
 }
 
 // resolvePreviousOverride: on self-loop (env == ownPath) fall back to on-disk state so the original prior override survives repeat Enables.
-func resolvePreviousOverride(envValue, statePath, ownPath string) string {
+func resolvePreviousOverride(logger log.Logger, envValue, statePath, ownPath string) string {
 	if envValue != ownPath {
 		return envValue
 	}
@@ -235,6 +253,10 @@ func resolvePreviousOverride(envValue, statePath, ownPath string) string {
 	existing, found, err := xa.LoadState(statePath)
 	if err != nil || !found {
 		return ""
+	}
+
+	if existing.PreviousXCConfigPath != "" {
+		logger.Debugf("XCODE_XCCONFIG_FILE points at our own override — recovered prior override from state: %s", existing.PreviousXCConfigPath)
 	}
 
 	return existing.PreviousXCConfigPath
