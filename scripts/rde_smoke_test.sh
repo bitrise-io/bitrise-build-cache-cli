@@ -346,10 +346,16 @@ scenario_ok
 # ═════════════════════════════════════════════════════════════════════════════
 scenario "SCENARIO 4d — Gradle hydration from keychain (real gradle run)"
 
-step "ensure gradle available (brew install if missing on the mac stack)"
-remote_bash "command -v gradle || brew install gradle" || {
-  echo "gradle install failed" >&2; exit 1
-}
+step "ensure gradle available (install via brew on mac, apt on linux)"
+if is_mac; then
+  remote_bash "command -v gradle || brew install gradle" || {
+    echo "gradle brew install failed" >&2; exit 1
+  }
+else
+  remote_bash "command -v gradle || sudo apt-get update -q && sudo apt-get install -y gradle" || {
+    echo "gradle apt install failed" >&2; exit 1
+  }
+fi
 
 step "re-set keychain (activate xcode may have overwritten it with derived creds)"
 remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
