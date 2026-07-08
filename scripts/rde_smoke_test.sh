@@ -337,8 +337,10 @@ step "auth token — CLI must read the same token back from keychain (env unset)
 # The CLI prefixes stdout with 'Bitrise Build Cache CLI version: 3.0.1' — grab
 # only the last non-empty line, which is the raw token. Unset env creds so
 # only the keychain source is consulted.
-tok=$(remote_bash "NO_COLOR=1 CLICOLOR=0 TERM=dumb; unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth token 2>/dev/null" \
+raw_tok=$(remote_bash "NO_COLOR=1 CLICOLOR=0 TERM=dumb; unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth token 2>/dev/null" \
   | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g' | awk 'NF' | tail -1)
+# `auth token` returns workspaceID:token in gradle format for PATs. Strip the prefix.
+tok="${raw_tok#*:}"
 [[ -n "$tok" ]] || { echo "auth token returned empty — keychain read broken" >&2; exit 1; }
 if [[ "$tok" != "$RDE_BITRISE_PAT" ]]; then
   echo "auth token mismatch:" >&2
