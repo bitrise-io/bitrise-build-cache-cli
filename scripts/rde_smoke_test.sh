@@ -341,7 +341,13 @@ tok=$(remote_bash "NO_COLOR=1 CLICOLOR=0 TERM=dumb; unset BITRISE_BUILD_CACHE_AU
   | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g' | awk 'NF' | tail -1)
 [[ -n "$tok" ]] || { echo "auth token returned empty — keychain read broken" >&2; exit 1; }
 if [[ "$tok" != "$RDE_BITRISE_PAT" ]]; then
-  echo "auth token mismatch (got last 4: ${tok: -4}; want last 4: ${RDE_BITRISE_PAT: -4})" >&2
+  echo "auth token mismatch:" >&2
+  echo "  got  len=${#tok}  last4=${tok: -4}" >&2
+  echo "  want len=${#RDE_BITRISE_PAT}  last4=${RDE_BITRISE_PAT: -4}" >&2
+  echo "  got  xxd:" >&2
+  printf '%s' "$tok" | xxd | head -5 >&2
+  echo "  want xxd:" >&2
+  printf '%s' "$RDE_BITRISE_PAT" | xxd | head -5 >&2
   remote_bash "$CLI auth status --debug" >&2 || true
   exit 1
 fi
