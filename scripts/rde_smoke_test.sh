@@ -248,8 +248,8 @@ scenario "SCENARIO 4 — Local invocation log (xcodebuild wrapper)"
 step "activate xcode — installs the xcelerate xcodebuild wrapper"
 remote_bash "$CLI activate xcode --cache"
 
-step "run wrapper: ~/.bitrise-xcelerate/bin/xcodebuild -version"
-remote_bash "\$HOME/.bitrise-xcelerate/bin/xcodebuild -version" || {
+step "run wrapper: xcodebuild -showsdks (records invocation; -version short-circuits)"
+remote_bash "\$HOME/.bitrise-xcelerate/bin/xcodebuild -showsdks" || {
   echo "xcodebuild wrapper failed" >&2; exit 1
 }
 
@@ -299,6 +299,45 @@ echo "$non_tty_out" | grep -q "interactive setup requires a terminal" || {
   echo "wizard did not print the expected TTY-required guard message" >&2
   exit 1
 }
+
+step "TTY path opens the huh TUI — drive via expect, send ESC to abort"
+# macOS ships /usr/bin/expect. The wizard prints "Which build tools" once
+# the huh multi-select renders; send ESC and confirm the process exits.
+remote_bash "cat > /tmp/wizard.exp <<'WEXP'
+set timeout 20
+spawn env NO_COLOR=1 [file join \$env(HOME) .bitrise/bin/bitrise-build-cache] activate --interactive
+expect {
+  -re {build tools|Gradle} { send -- \"\x1b\"; exp_continue }
+  eof { exit 0 }
+  timeout { puts stderr \"wizard did not render the tool prompt within 20s\"; exit 2 }
+}
+WEXP
+expect -f /tmp/wizard.exp"
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO 4d — Gradle hydration (ACI-5123 / ACI-5125)
+#              Runs a real gradle build against a minimal project so the
+#              init.d/*.kts we wrote in SCENARIO 3 actually gets loaded
+#              and hits BitriseAuthTokenSource → \`auth token\` → keychain.
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO 4d — Gradle hydration from keychain (real gradle run)"
+
+step "which gradle — RDE mac stack must have it preinstalled"
+remote_bash "command -v gradle || (echo 'gradle not on PATH' >&2; exit 1)"
+
+step "auth token — CLI must read the token back from keychain"
+tok=$(remote_bash "$CLI auth token 2>/dev/null")
+[[ -n "$tok" ]] || { echo "auth token returned empty — keychain read broken" >&2; exit 1; }
+[[ "$tok" == "$RDE_BITRISE_PAT" ]] || { echo "auth token mismatch" >&2; exit 1; }
+
+step "scratch gradle project + \`gradle help\` picks up init.d script"
+remote_bash "set -eux; d=/tmp/gradle-smoke; rm -rf \$d; mkdir -p \$d; cd \$d; \\
+  echo 'rootProject.name = \"smoke\"' > settings.gradle; \\
+  touch build.gradle; \\
+  gradle --no-daemon --console=plain --info help 2>&1 | tee /tmp/gradle.out | tail -50; \\
+  grep -q 'Bitrise' /tmp/gradle.out && echo 'init.d script fired' || (echo 'init.d script never loaded' >&2; exit 1)"
 
 scenario_ok
 
