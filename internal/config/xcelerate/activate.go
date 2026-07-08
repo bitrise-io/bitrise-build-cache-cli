@@ -99,6 +99,7 @@ func Activate(
 		})
 		switch {
 		case err != nil:
+			logger.Warnf("Failed to save auth credentials to the OS keychain, falling back to inline auth config: %s", err)
 			mpCfg.AuthConfig = config.AuthConfig
 		case wrote:
 			logger.Infof("Saved auth credentials to the OS keychain")

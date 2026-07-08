@@ -125,6 +125,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		})
 		switch {
 		case err != nil:
+			a.logger.Warnf("Failed to save auth credentials to the OS keychain, falling back to inline auth config: %s", err)
 			mpCfg.AuthConfig = config.AuthConfig
 		case wrote:
 			a.logger.Infof("Saved auth credentials to the OS keychain")
