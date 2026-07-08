@@ -156,19 +156,70 @@ remote_bash() {
   SSHPASS="$ssh_password" sshpass -e ssh "${SSH_OPTS[@]}" "$ssh_userhost" "bash -i -l -c $(printf '%q' "$1")"
 }
 
-log "[1/3] install CLI ${RDE_SMOKE_CLI_TAG} via installer.sh"
+CLI="\$HOME/.bitrise/bin/bitrise-build-cache"
+
+# ─────────────────────────────────────────────────────────────
+# 1. installer.sh — first-time install on a virgin mac
+# ─────────────────────────────────────────────────────────────
+log "[1] install CLI ${RDE_SMOKE_CLI_TAG} via installer.sh"
 remote_bash "curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b \"\$HOME/.bitrise/bin\" ${RDE_SMOKE_CLI_TAG}"
 
-log "[2/3] check --version reports ${RDE_SMOKE_CLI_TAG#v}"
-got_version=$(remote_bash "\$HOME/.bitrise/bin/bitrise-build-cache --version" | awk '{print $NF}')
+log "[2] --version reports ${RDE_SMOKE_CLI_TAG#v}"
+got_version=$(remote_bash "$CLI --version" | awk '{print $NF}')
 [[ "$got_version" == "${RDE_SMOKE_CLI_TAG#v}"* ]] || {
   echo "version mismatch: want ${RDE_SMOKE_CLI_TAG#v}, got $got_version" >&2
   exit 1
 }
 
-log "[3/3] doctor runs on a fresh mac session (non-zero is fine — no auth, no ccache expected)"
-if ! remote_bash "\$HOME/.bitrise/bin/bitrise-build-cache doctor --no-update-check"; then
-  log "doctor exited non-zero — expected on a fresh mac without auth"
+# ─────────────────────────────────────────────────────────────
+# 3. Keychain flow — auth set + status
+#    RDE-unique: regular Bitrise workers don't have a persistent
+#    user Keychain — this is the only way to smoke ACI-5028.
+# ─────────────────────────────────────────────────────────────
+log "[3] auth set — write credentials to OS keychain"
+# Pre-unlock the login keychain: RDE's vagrant user is auto-logged-in,
+# so the keychain password matches the SSH password we already have.
+remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
+
+log "[4] auth status — reports keychain source + workspace"
+auth_status=$(remote_bash "$CLI auth status") || {
+  echo "auth status failed" >&2
+  exit 1
+}
+echo "$auth_status"
+echo "$auth_status" | grep -qi "keychain" || { echo "auth status did not report keychain source" >&2; exit 1; }
+echo "$auth_status" | grep -q "$WORKSPACE_SLUG" || { echo "auth status missing workspace id $WORKSPACE_SLUG" >&2; exit 1; }
+
+# ─────────────────────────────────────────────────────────────
+# 4. Daemon flow — install / up / info / uninstall
+#    RDE-unique: regular workers have no persistent launchd state
+#    across steps; this validates the LaunchAgent lifecycle end-to-end.
+# ─────────────────────────────────────────────────────────────
+log "[5] activate xcode (daemon needs a proxy socket path to bind on)"
+remote_bash "$CLI activate xcode --cache"
+
+log "[6] daemon install — writes LaunchAgent + bootstraps into launchd"
+remote_bash "$CLI daemon install"
+remote_bash "launchctl list | grep -q 'bitrise.*build.*cache'" || {
+  echo "LaunchAgent not registered with launchctl" >&2
+  remote_bash "launchctl list | grep -i bitrise || true" >&2
+  exit 1
+}
+
+log "[7] daemon info — reports per-service status"
+remote_bash "$CLI daemon info"
+
+log "[8] daemon uninstall — tears LaunchAgent down cleanly"
+remote_bash "$CLI daemon uninstall"
+
+# ─────────────────────────────────────────────────────────────
+# 5. Doctor — non-zero is expected after auth+activate, but
+#    the exit path must not crash. Loose gate: it just runs.
+# ─────────────────────────────────────────────────────────────
+log "[9] doctor — final health snapshot"
+if ! remote_bash "$CLI doctor --no-update-check"; then
+  log "doctor exited non-zero — expected on a partially-configured mac"
 fi
 
 log "smoke test passed"
