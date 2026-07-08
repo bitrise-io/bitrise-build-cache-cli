@@ -330,7 +330,10 @@ remote_bash "command -v gradle || brew install gradle" || {
   echo "gradle install failed" >&2; exit 1
 }
 
-step "auth token — CLI must read the token back from keychain"
+step "re-set keychain (activate xcode may have overwritten it with derived creds)"
+remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
+
+step "auth token — CLI must read the same token back from keychain"
 tok=$(remote_bash "$CLI auth token 2>/dev/null")
 [[ -n "$tok" ]] || { echo "auth token returned empty — keychain read broken" >&2; exit 1; }
 [[ "$tok" == "$RDE_BITRISE_PAT" ]] || { echo "auth token mismatch" >&2; exit 1; }
