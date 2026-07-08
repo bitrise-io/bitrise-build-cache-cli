@@ -240,19 +240,12 @@ grep -q '"configVersion"' /tmp/sidecar.json || { echo "gradle sidecar missing co
 
 scenario_ok
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 4 — Local invocation log (ACI-5090)
-# ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 4 — Local invocation log ndjson"
-
+# SCENARIO 4 (activate xcode) — needed as setup for the daemon scenario later.
+# The invocation-log write side of ACI-5090 only fires when the xcodebuild
+# wrapper runs against a real project, so it can't be smoked here.
+scenario "SCENARIO 4 — activate xcode (setup for daemon lifecycle)"
 step "activate xcode — daemon needs a proxy socket path to bind on"
 remote_bash "$CLI activate xcode --cache"
-
-step "at least one invocation ndjson under ~/.local/state/bitrise-build-cache/invocations/"
-remote_bash "ls -la \$HOME/.local/state/bitrise-build-cache/invocations/ 2>/dev/null | tee /tmp/inv.list; [[ -s /tmp/inv.list ]] && grep -q '\\.ndjson' /tmp/inv.list" || {
-  echo "no invocation log files found" >&2; exit 1
-}
-
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
