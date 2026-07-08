@@ -187,6 +187,12 @@ remote_bash() {
   SSHPASS="$ssh_password" sshpass -e ssh "${SSH_OPTS[@]}" "$ssh_userhost" "bash -i -l -c $(printf '%q' "$1")"
 }
 
+# Detect remote OS once so scenarios can gate mac-only vs linux-only steps.
+REMOTE_OS=$(remote_bash "uname -s" | tr -d '\r' | awk 'NF' | tail -1)
+log "remote OS: $REMOTE_OS"
+is_mac()   { [[ "$REMOTE_OS" == "Darwin" ]]; }
+is_linux() { [[ "$REMOTE_OS" == "Linux"  ]]; }
+
 CLI="\$HOME/.bitrise/bin/bitrise-build-cache --no-update-check"
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -212,8 +218,10 @@ scenario_ok
 # ═════════════════════════════════════════════════════════════════════════════
 scenario "SCENARIO 2 — Keychain flow (auth set / auth status + --username)"
 
-step "unlock login.keychain (RDE vagrant password == SSH password)"
-remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+if is_mac; then
+  step "unlock login.keychain (RDE vagrant password == SSH password)"
+  remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+fi
 
 step "auth set — write credentials + username to OS keychain"
 remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}' --username 'rde-smoke-user'"
@@ -240,26 +248,31 @@ grep -q '"configVersion"' /tmp/sidecar.json || { echo "gradle sidecar missing co
 
 scenario_ok
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 4 — Local invocation log via xcodebuild wrapper (ACI-5090)
-# ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 4 — Local invocation log (xcodebuild wrapper)"
+if is_mac; then
+  # ═════════════════════════════════════════════════════════════════════════════
+  # SCENARIO 4 — Local invocation log via xcodebuild wrapper (ACI-5090)
+  #              macOS-only: xcodebuild wrapper needs Xcode.app.
+  # ═════════════════════════════════════════════════════════════════════════════
+  scenario "SCENARIO 4 — Local invocation log (xcodebuild wrapper)"
 
-step "activate xcode — installs the xcelerate xcodebuild wrapper"
-remote_bash "$CLI activate xcode --cache"
+  step "activate xcode — installs the xcelerate xcodebuild wrapper"
+  remote_bash "$CLI activate xcode --cache"
 
-step "run wrapper: xcodebuild -showsdks (records invocation; -version short-circuits)"
-remote_bash "\$HOME/.bitrise-xcelerate/bin/xcodebuild -showsdks" || {
-  echo "xcodebuild wrapper failed" >&2; exit 1
-}
-
-step "invocation ndjson under ~/.local/state/bitrise-build-cache/invocations/"
-remote_bash "ls -la \$HOME/.local/state/bitrise-build-cache/invocations/" \
-  | grep -q '\.ndjson' || {
-    echo "no invocation log ndjson written by wrapper" >&2; exit 1
+  step "run wrapper: xcodebuild -showsdks (records invocation; -version short-circuits)"
+  remote_bash "\$HOME/.bitrise-xcelerate/bin/xcodebuild -showsdks" || {
+    echo "xcodebuild wrapper failed" >&2; exit 1
   }
 
-scenario_ok
+  step "invocation ndjson under ~/.local/state/bitrise-build-cache/invocations/"
+  remote_bash "ls -la \$HOME/.local/state/bitrise-build-cache/invocations/" \
+    | grep -q '\.ndjson' || {
+      echo "no invocation log ndjson written by wrapper" >&2; exit 1
+    }
+
+  scenario_ok
+else
+  log "SCENARIO 4 (xcodebuild wrapper) — skipped on $REMOTE_OS"
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO 4b — No plaintext credentials on disk (ACI-5123 / ACI-5125)
@@ -406,19 +419,34 @@ scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO 8 — Daemon lifecycle: install / up / info / down / restart / uninstall
-#              (RDE-unique: real launchd — ACI-5030, ACI-5031, ACI-5032, ACI-5127)
+#              (RDE-unique: real launchd on mac / systemd --user on linux
+#              — ACI-5030, ACI-5031, ACI-5032, ACI-5127)
 # ═════════════════════════════════════════════════════════════════════════════
 scenario "SCENARIO 8 — Daemon lifecycle (install / up / info / down / restart / uninstall)"
 
-step "daemon install — writes LaunchAgent plist + bootstraps"
+if is_linux; then
+  step "activate c++ — daemon needs a ccache-helper socket to bind on"
+  remote_bash "$CLI activate c++ || true"
+fi
+
+step "daemon install — writes service unit + bootstraps"
 remote_bash "$CLI daemon install"
 
-step "launchctl list — LaunchAgent must be registered"
-remote_bash "launchctl list | grep -q 'bitrise.*build.*cache'" || {
-  echo "LaunchAgent not registered with launchctl" >&2
-  remote_bash "launchctl list | grep -i bitrise || true" >&2
-  exit 1
-}
+if is_mac; then
+  step "launchctl list — LaunchAgent must be registered"
+  remote_bash "launchctl list | grep -q 'bitrise.*build.*cache'" || {
+    echo "LaunchAgent not registered with launchctl" >&2
+    remote_bash "launchctl list | grep -i bitrise || true" >&2
+    exit 1
+  }
+else
+  step "systemctl --user list-unit-files — service unit must be registered"
+  remote_bash "systemctl --user list-unit-files | grep -q 'bitrise.*build.*cache'" || {
+    echo "systemd --user unit not registered" >&2
+    remote_bash "systemctl --user list-unit-files | grep -i bitrise || true" >&2
+    exit 1
+  }
+fi
 
 step "daemon info — reports per-service status"
 remote_bash "$CLI daemon info"

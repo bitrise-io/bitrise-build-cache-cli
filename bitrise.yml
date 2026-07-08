@@ -292,6 +292,41 @@ workflows:
             set -e
             ./scripts/rde_smoke_test.sh
 
+  rde-linux-local-dx-smoke:
+    description: |
+      Linux twin of rde-mac-local-dx-smoke. Same script, but the
+      xcodebuild-wrapper scenario is skipped (macOS-only) and the
+      daemon-lifecycle scenario asserts against systemctl --user
+      instead of launchctl. See scripts/rde_smoke_test.sh for the
+      OS-branching logic.
+
+      Manual trigger only; not wired into release-and-verify.
+    envs:
+    - RDE_STACK_ID: ubuntu-resolute-26.04-bitrise-2026-android
+    - RDE_MACHINE_TYPE: g2.linux.amd-zen4.2c-8g
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script:
+        title: Install sshpass
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            command -v sshpass >/dev/null || sudo apt-get install -y sshpass
+    - script:
+        title: RDE linux smoke test
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/rde_smoke_test.sh
+
   test:
     steps:
     - activate-ssh-key@4:
