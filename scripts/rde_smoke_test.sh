@@ -194,6 +194,12 @@ is_mac()   { [[ "$REMOTE_OS" == "Darwin" ]]; }
 is_linux() { [[ "$REMOTE_OS" == "Linux"  ]]; }
 
 CLI="\$HOME/.bitrise/bin/bitrise-build-cache --no-update-check"
+# On Linux the RDE VM has no secret-service, so keychain is unusable —
+# supply credentials via env vars so downstream scenarios (activate
+# gradle, daemon install, etc.) can still authenticate.
+if is_linux; then
+  CLI="env BITRISE_BUILD_CACHE_AUTH_TOKEN='${RDE_BITRISE_PAT}' BITRISE_BUILD_CACHE_WORKSPACE_ID='${WORKSPACE_SLUG}' $CLI"
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO 1 — installer.sh on a virgin mac (first-time install path)
@@ -212,27 +218,29 @@ got_version=$(remote_bash "$CLI --version" | awk '{print $NF}')
 
 scenario_ok
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 2 — Keychain flow + username override
-#              (RDE-unique: real user Keychain — ACI-5028, ACI-4264)
-# ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 2 — Keychain flow (auth set / auth status + --username)"
-
 if is_mac; then
+  # ═════════════════════════════════════════════════════════════════════════════
+  # SCENARIO 2 — Keychain flow + username override
+  #              (macOS-only in RDE: linux VMs don't ship a secret-service).
+  # ═════════════════════════════════════════════════════════════════════════════
+  scenario "SCENARIO 2 — Keychain flow (auth set / auth status + --username)"
+
   step "unlock login.keychain (RDE vagrant password == SSH password)"
   remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+
+  step "auth set — write credentials + username to OS keychain"
+  remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}' --username 'rde-smoke-user'"
+
+  step "auth status — must report source=keychain + workspace"
+  auth_status=$(remote_bash "$CLI auth status") || { echo "auth status failed" >&2; exit 1; }
+  echo "$auth_status"
+  echo "$auth_status" | grep -qi "keychain" || { echo "auth status did not report keychain source" >&2; exit 1; }
+  echo "$auth_status" | grep -q "$WORKSPACE_SLUG" || { echo "auth status missing workspace id $WORKSPACE_SLUG" >&2; exit 1; }
+
+  scenario_ok
+else
+  log "SCENARIO 2 (keychain flow) — skipped on $REMOTE_OS (no org.freedesktop.secrets in RDE linux VM)"
 fi
-
-step "auth set — write credentials + username to OS keychain"
-remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}' --username 'rde-smoke-user'"
-
-step "auth status — must report source=keychain + workspace"
-auth_status=$(remote_bash "$CLI auth status") || { echo "auth status failed" >&2; exit 1; }
-echo "$auth_status"
-echo "$auth_status" | grep -qi "keychain" || { echo "auth status did not report keychain source" >&2; exit 1; }
-echo "$auth_status" | grep -q "$WORKSPACE_SLUG" || { echo "auth status missing workspace id $WORKSPACE_SLUG" >&2; exit 1; }
-
-scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO 3 — Gradle sidecar (ACI-5039 per-tool config-version sidecars)
