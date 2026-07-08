@@ -143,8 +143,8 @@ remote_bash() {
   SSHPASS="$ssh_password" sshpass -e ssh "${SSH_OPTS[@]}" "$ssh_userhost" "bash -i -l -c $(printf '%q' "$1")"
 }
 
-log "[1/3] install CLI via installer.sh"
-remote_bash "curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b \"\$HOME/.bitrise/bin\""
+log "[1/3] install CLI ${RDE_SMOKE_CLI_TAG} via installer.sh"
+remote_bash "curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b \"\$HOME/.bitrise/bin\" ${RDE_SMOKE_CLI_TAG}"
 
 log "[2/3] check --version reports ${RDE_SMOKE_CLI_TAG#v}"
 got_version=$(remote_bash "\$HOME/.bitrise/bin/bitrise-build-cache --version" | awk '{print $NF}')
