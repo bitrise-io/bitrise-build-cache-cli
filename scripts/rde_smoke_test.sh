@@ -334,14 +334,15 @@ step "re-set keychain (activate xcode may have overwritten it with derived creds
 remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
 
 step "auth token — CLI must read the same token back from keychain (env unset)"
-# Unset every known BITRISE_BUILD_CACHE_* + BITRISEIO_* env var so nothing
-# shadows the keychain source. Print what auth status resolves to for
-# post-hoc debugging in case the assertion still fails.
-tok=$(remote_bash "unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth token 2>/dev/null")
+# The CLI prefixes stdout with 'Bitrise Build Cache CLI version: 3.0.1' — grab
+# only the last non-empty line, which is the raw token. Unset env creds so
+# only the keychain source is consulted.
+tok=$(remote_bash "unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth token 2>/dev/null" \
+  | awk 'NF' | tail -1)
 [[ -n "$tok" ]] || { echo "auth token returned empty — keychain read broken" >&2; exit 1; }
 if [[ "$tok" != "$RDE_BITRISE_PAT" ]]; then
-  echo "auth token mismatch — dumping debug state:" >&2
-  remote_bash "unset BITRISE_BUILD_CACHE_AUTH_TOKEN BITRISE_BUILD_CACHE_WORKSPACE_ID BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN; $CLI auth status --debug" >&2 || true
+  echo "auth token mismatch (got last 4: ${tok: -4}; want last 4: ${RDE_BITRISE_PAT: -4})" >&2
+  remote_bash "$CLI auth status --debug" >&2 || true
   exit 1
 fi
 
