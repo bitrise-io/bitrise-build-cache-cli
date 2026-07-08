@@ -84,14 +84,14 @@ if [[ -z "$session_id" ]]; then
 fi
 log "session id: $session_id"
 
-# Delete on ANY exit — including test failure.
+# Terminate + delete on ANY exit — DELETE alone can't free CPU quota
+# on a RUNNING session; the backend rejects it silently and the VM
+# keeps consuming quota until auto-terminate hours later.
 cleanup() {
   local rc=$?
-  log "deleting session $session_id (rc=$rc)"
-  curl -fsS -X DELETE \
-    -H "Authorization: Bearer $RDE_BITRISE_PAT" \
-    -H "X-Request-Source: cli" \
-    "${API_BASE}${WS_PATH}/sessions/${session_id}" >/dev/null || true
+  log "cleaning up session $session_id (rc=$rc)"
+  curl_rde POST "${WS_PATH}/sessions/${session_id}/terminate" -d '{}' >/dev/null 2>&1 || true
+  curl_rde DELETE "${WS_PATH}/sessions/${session_id}" >/dev/null 2>&1 || true
   exit "$rc"
 }
 trap cleanup EXIT
