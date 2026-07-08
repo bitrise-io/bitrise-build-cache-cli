@@ -357,10 +357,12 @@ else
   }
 fi
 
-step "re-set keychain (activate xcode may have overwritten it with derived creds)"
-remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
+if is_mac; then
+  step "re-set keychain (activate xcode may have overwritten it with derived creds)"
+  remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
+fi
 
-step "auth token — CLI must read the same token back from keychain (env unset)"
+step "auth token — CLI must read the same token back (mac=keychain, linux=env)"
 # The CLI prefixes stdout with 'Bitrise Build Cache CLI version: 3.0.1' — grab
 # only the last non-empty line, which is the raw token. Unset env creds so
 # only the keychain source is consulted.
