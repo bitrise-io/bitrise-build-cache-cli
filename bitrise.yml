@@ -265,7 +265,7 @@ workflows:
       internal/rde package hits. SSH auth is password-based; the session
       record carries sshAddress + sshPassword after RUNNING.
 
-      Manual trigger only; not wired into release-and-verify.
+      Wired into the features-e2e PR pipeline; also triggerable on demand.
     envs:
     - RDE_STACK_ID: osx-xcode-26.0.x-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
@@ -310,7 +310,7 @@ workflows:
       instead of launchctl. See scripts/rde_smoke_test.sh for the
       OS-branching logic.
 
-      Manual trigger only; not wired into release-and-verify.
+      Wired into the features-e2e PR pipeline; also triggerable on demand.
     envs:
     - RDE_STACK_ID: ubuntu-resolute-26.04-bitrise-2026-android
     - RDE_MACHINE_TYPE: g2.linux.amd-zen4.2c-8g
