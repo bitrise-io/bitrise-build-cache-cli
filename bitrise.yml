@@ -1576,6 +1576,8 @@ step_bundles:
       build the branch binary for RDE_SMOKE_GOOS/RDE_SMOKE_GOARCH so the
       smoke exercises this PR's code rather than the last released tag.
     steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8: {}
     - script:
         title: Install sshpass
