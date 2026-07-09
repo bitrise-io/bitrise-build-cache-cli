@@ -269,7 +269,6 @@ workflows:
     envs:
     - RDE_STACK_ID: osx-xcode-26.0.x-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
-    - RDE_SMOKE_CLI_TAG: v3.0.1
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
@@ -285,6 +284,16 @@ workflows:
             #!/usr/bin/env bash
             set -e
             command -v sshpass >/dev/null || sudo apt-get install -y sshpass
+    - script:
+        title: Resolve latest CLI tag from git
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            git fetch --tags --quiet origin || true
+            TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
+            echo "resolved CLI tag: $TAG"
+            envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
     - script:
         title: RDE mac smoke test (installer.sh + doctor)
         inputs:
@@ -305,7 +314,6 @@ workflows:
     envs:
     - RDE_STACK_ID: ubuntu-resolute-26.04-bitrise-2026-android
     - RDE_MACHINE_TYPE: g2.linux.amd-zen4.2c-8g
-    - RDE_SMOKE_CLI_TAG: v3.0.1
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
@@ -321,6 +329,16 @@ workflows:
             #!/usr/bin/env bash
             set -e
             command -v sshpass >/dev/null || sudo apt-get install -y sshpass
+    - script:
+        title: Resolve latest CLI tag from git
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            git fetch --tags --quiet origin || true
+            TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
+            echo "resolved CLI tag: $TAG"
+            envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
     - script:
         title: RDE linux smoke test
         inputs:
