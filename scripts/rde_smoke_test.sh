@@ -29,7 +29,16 @@ set -euo pipefail
 : "${WORKSPACE_SLUG:?}"
 : "${RDE_STACK_ID:?}"
 : "${RDE_MACHINE_TYPE:?}"
-: "${RDE_SMOKE_CLI_TAG:?}"
+
+# Default to the latest GitHub release when unset — lets the workflow run
+# unattended on PR CI without hardcoding a tag.
+if [[ -z "${RDE_SMOKE_CLI_TAG:-}" ]]; then
+  RDE_SMOKE_CLI_TAG=$(curl -fsSL https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/releases/latest | jq -r '.tag_name')
+  [[ -n "$RDE_SMOKE_CLI_TAG" && "$RDE_SMOKE_CLI_TAG" != "null" ]] || {
+    echo "could not resolve latest CLI tag from GitHub" >&2; exit 1
+  }
+  echo "[rde-smoke] resolved latest tag: $RDE_SMOKE_CLI_TAG"
+fi
 
 API_BASE="${RDE_API_BASE:-https://api.bitrise.io/rde}"
 AUTO_TERMINATE_MIN="${RDE_AUTO_TERMINATE_MIN:-30}"
