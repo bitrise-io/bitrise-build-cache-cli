@@ -14,6 +14,7 @@ import (
 	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -197,6 +198,55 @@ func TestAuthSetCmd_emptyUsernameLeavesFieldEmpty(t *testing.T) {
 	creds, err := keychain.New().Load()
 	require.NoError(t, err)
 	assert.Empty(t, creds.Username)
+}
+
+func TestAuthSetCmd_storageFileWritesToMultiplatformConfig(t *testing.T) {
+	keyring.MockInit()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	setToken = "tok-file"
+	setWorkspaceID = "ws-file"
+	setUsername = "bob"
+	setStorage = "file"
+	t.Cleanup(func() { setToken, setWorkspaceID, setUsername, setStorage = "", "", "", "" })
+
+	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
+
+	creds, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.True(t, ok, "credentials must be present in multiplatform config after --storage=file")
+	assert.Equal(t, "tok-file", creds.AuthToken)
+	assert.Equal(t, "ws-file", creds.WorkspaceID)
+	assert.Equal(t, "bob", creds.Username)
+
+	mp, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.NoError(t, err)
+	assert.Equal(t, "tok-file", mp.AuthConfig.AuthToken, "AuthConfig must mirror for legacy reactnative/invocation readers")
+	assert.Equal(t, "ws-file", mp.AuthConfig.WorkspaceID)
+
+	_, err = keychain.New().Load()
+	assert.ErrorIs(t, err, keychain.ErrNotFound)
+}
+
+func TestAuthSetCmd_ciDetectionRoutesToFile(t *testing.T) {
+	keyring.MockInit()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CIRCLECI", "true")
+
+	setToken = "tok-ci"
+	setWorkspaceID = "ws-ci"
+	setStorage = "" // auto
+	t.Cleanup(func() { setToken, setWorkspaceID, setStorage = "", "", "" })
+
+	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
+
+	creds, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.True(t, ok)
+	assert.Equal(t, "tok-ci", creds.AuthToken)
+
+	_, err := keychain.New().Load()
+	assert.ErrorIs(t, err, keychain.ErrNotFound)
 }
 
 func TestAuthSetCmd_preservesOAuthFieldsOnUsernameEdit(t *testing.T) {

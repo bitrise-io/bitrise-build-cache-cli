@@ -58,6 +58,9 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 		CreateFunc: func(_ string) (*os.File, error) {
 			return os.CreateTemp(tmpDir, "ccache-config-*.json")
 		},
+		WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error { return nil },
+		RenameFunc:    func(_, _ string) error { return nil },
+		RemoveFunc:    func(_ string) error { return nil },
 	}
 }
 

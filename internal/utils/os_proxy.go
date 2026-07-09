@@ -19,6 +19,7 @@ type OsProxy interface {
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	ReadFileIfExists(name string) (string, bool, error)
 	Remove(name string) error
+	Rename(oldpath, newpath string) error
 	Stat(pth string) (os.FileInfo, error)
 	TempDir() string
 	UserHomeDir() (string, error)
@@ -66,6 +67,10 @@ func (d DefaultOsProxy) TempDir() string {
 
 func (d DefaultOsProxy) Remove(name string) error {
 	return os.Remove(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Rename(oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath) //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {

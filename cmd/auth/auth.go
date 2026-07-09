@@ -15,6 +15,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -39,6 +40,7 @@ var (
 	setToken       string
 	setWorkspaceID string
 	setUsername    string
+	setStorage     string
 )
 
 // nolint:gochecknoglobals
@@ -62,26 +64,37 @@ var authSetCmd = &cobra.Command{
 			return errors.New("--workspace-id is required and must not be empty")
 		}
 
-		kc := keychain.New()
-		existing, err := kc.Load()
-		if err != nil && !errors.Is(err, keychain.ErrNotFound) {
+		target, err := store.Select(utils.AllEnvs(), setStorage)
+		if err != nil {
+			return err //nolint:wrapcheck // already user-facing
+		}
+		existing, err := target.Load()
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("load existing credentials: %w", err)
 		}
 		existing.AuthToken = setToken
 		existing.WorkspaceID = setWorkspaceID
 		existing.Username = setUsername
-		if err := kc.Save(existing); err != nil {
-			return fmt.Errorf("save credentials to keychain: %w", err)
+		if err := store.SaveExclusive(target, existing); err != nil {
+			return fmt.Errorf("save credentials: %w", err)
 		}
 
-		logger.TInfof("✅ Credentials saved to the OS keychain")
+		switch target.Kind() {
+		case store.KindKeychain:
+			logger.TInfof("✅ Credentials saved to the OS keychain")
+		case store.KindFile:
+			logger.TInfof("✅ Credentials saved to the multiplatform config file (%s)", displayHomePath(utils.DefaultOsProxy{}, multiplatformconfig.FilePath(utils.DefaultOsProxy{})))
+			if configcommon.DetectCIProvider(utils.AllEnvs()) != "" && setStorage == "" {
+				logger.Infof("(CI detected — keychain skipped because fastlane setup_ci swaps the default keychain and would drop the entry.)")
+			}
+		}
 		if setUsername != "" {
 			logger.TInfof("Display name for local invocations set to %q.", setUsername)
 		}
 
-		switch scrubbed, err := scrubDiskCredentials(); {
+		switch scrubbed, err := scrubDiskCredentials(target.Kind()); {
 		case err != nil:
-			logger.Warnf("Saved to keychain, but could not strip plain-text credentials from disk: %v", err)
+			logger.Warnf("Saved to %s, but could not strip plain-text credentials from disk: %v", target.Kind(), err)
 			logger.Warnf("Run `bitrise-build-cache auth status` to audit remaining sources.")
 		case len(scrubbed) > 0:
 			scrubbedPaths := make([]string, len(scrubbed))
@@ -111,17 +124,22 @@ type scrubbedItem struct {
 	hint string
 }
 
-func scrubDiskCredentials() ([]scrubbedItem, error) {
+func scrubDiskCredentials(target store.Kind) ([]scrubbedItem, error) {
 	osProxy := utils.DefaultOsProxy{}
 
-	var scrubbed []scrubbedItem
-
-	for _, scrub := range []func(utils.OsProxy) (scrubbedItem, error){
-		scrubMultiplatform,
+	scrubbers := []func(utils.OsProxy) (scrubbedItem, error){
 		scrubXcelerate,
 		scrubCcache,
 		scrubGradleInitKts,
-	} {
+	}
+	// Don't scrub the file we just wrote to (different field, same path — confusing on CI logs).
+	if target != store.KindFile {
+		scrubbers = append([]func(utils.OsProxy) (scrubbedItem, error){scrubMultiplatform}, scrubbers...)
+	}
+
+	var scrubbed []scrubbedItem
+
+	for _, scrub := range scrubbers {
 		item, err := scrub(osProxy)
 		if err != nil {
 			return scrubbed, err
@@ -287,9 +305,14 @@ var authStatusCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		target, migrationSources := credSources(utils.AllEnvs())
+		targets, migrationSources := credSources(utils.AllEnvs())
 
-		keychainPopulated := renderSource(logger, target, target.probe())
+		var targetPopulated bool
+		for _, t := range targets {
+			if renderSource(logger, t, t.probe()) {
+				targetPopulated = true
+			}
+		}
 
 		var foundElsewhere, suppressed bool
 		for _, s := range migrationSources {
@@ -311,11 +334,11 @@ var authStatusCmd = &cobra.Command{
 		logger.Println()
 		renderUsername(logger, utils.AllEnvs())
 
-		if !keychainPopulated && foundElsewhere {
+		if !targetPopulated && foundElsewhere {
 			logger.Println()
-			logger.Infof("Credentials exist outside the OS keychain — migrate with:")
+			logger.Infof("Credentials exist outside the managed backends — migrate with:")
 			logger.Infof("  bitrise-build-cache auth set --token <token> --workspace-id <workspace-id>")
-			logger.Infof("`auth set` scrubs the multiplatform config in place; xcelerate and ccache configs are re-written cleanly on the next `activate xcode` / `activate c++`.")
+			logger.Infof("`auth set` picks keychain locally and file storage on CI (fastlane setup_ci wipes the keychain).")
 		}
 
 		return nil
@@ -361,25 +384,26 @@ type credSource struct {
 	probe    func() credAudit
 }
 
-// Returns (target, migrationSources). The target is the canonical home for credentials (OS keychain);
-// migrationSources are inspected to nudge the user toward `auth set` when creds live elsewhere.
-func credSources(envs map[string]string) (credSource, []credSource) {
+func credSources(envs map[string]string) ([]credSource, []credSource) {
 	osProxy := utils.DefaultOsProxy{}
 
 	xcelerateConfigPath := xceleratconfig.ConfigFile(osProxy)
 	ccacheConfigPath := ccacheconfig.ConfigFile(osProxy)
 	multiplatformConfigPath := multiplatformconfig.FilePath(osProxy)
 
-	target := credSource{"OS keychain", "<system keychain>", probeKeychain}
+	targets := []credSource{
+		{"OS keychain", "<system keychain>", probeKeychain},
+		{"Config file (CI-safe)", displayHomePath(osProxy, multiplatformConfigPath), probeFileStore},
+	}
 	migrationSources := []credSource{
-		{"Multiplatform config", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
+		{"Multiplatform config (legacy authConfig)", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
 		{"Xcelerate config", displayHomePath(osProxy, xcelerateConfigPath), probeRawConfig(xcelerateConfigPath)},
 		{"Ccache config", displayHomePath(osProxy, ccacheConfigPath), probeRawConfig(ccacheConfigPath)},
 		{fmt.Sprintf("Env vars (%s + %s)", configcommon.EnvAuthToken, configcommon.EnvWorkspaceID), "process env", func() credAudit { return probeEnvVars(envs) }},
 		{fmt.Sprintf("CI JWT (%s)", configcommon.EnvJWT), "process env", func() credAudit { return probeJWT(envs) }},
 	}
 
-	return target, migrationSources
+	return targets, migrationSources
 }
 
 func renderSource(logger log.Logger, s credSource, a credAudit) bool {
@@ -443,6 +467,19 @@ func probeKeychain() credAudit {
 	return audit
 }
 
+// Reads mp.Credentials (new file backend), distinct from legacy authConfig in probeMultiplatform.
+func probeFileStore() credAudit {
+	creds, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	if !ok {
+		return credAudit{state: sourceAbsent, note: "not present"}
+	}
+	if creds.AuthToken == "" {
+		return credAudit{state: sourceAbsent, note: "credentials block present but empty"}
+	}
+
+	return credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
+}
+
 func probeMultiplatform() credAudit {
 	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	switch {
@@ -452,6 +489,8 @@ func probeMultiplatform() credAudit {
 		return credAudit{state: sourceReadError, err: err}
 	case cfg.AuthConfig.AuthToken == "":
 		return credAudit{state: sourceAbsent, note: "present but no credentials"}
+	case cfg.Credentials != nil:
+		return credAudit{state: sourceAbsent, note: "mirrors the file-store credentials above"}
 	}
 
 	return credAudit{state: sourcePopulated, workspaceID: cfg.AuthConfig.WorkspaceID, authToken: cfg.AuthConfig.AuthToken}
@@ -510,18 +549,37 @@ func probeJWT(envs map[string]string) credAudit {
 }
 
 // nolint:gochecknoglobals
+var (
+	clearStorage string
+)
+
+// nolint:gochecknoglobals
 var authClearCmd = &cobra.Command{
 	Use:          "clear",
-	Short:        "Remove Bitrise Build Cache credentials from the OS keychain",
+	Short:        "Remove Bitrise Build Cache credentials from the OS keychain and the multiplatform config file",
+	Long:         "By default clears the OS keychain + the multiplatform config file. Legacy per-tool copies (xcelerate/ccache/gradle-init) are scrubbed via `auth set`, not here. Use --storage=keychain|file to target one backend.",
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		if err := keychain.New().Clear(); err != nil {
-			return fmt.Errorf("clear credentials from keychain: %w", err)
+		var targets []store.Store
+		switch clearStorage {
+		case "", "auto":
+			targets = []store.Store{store.NewKeychain(), store.NewFile()}
+		case "keychain":
+			targets = []store.Store{store.NewKeychain()}
+		case "file":
+			targets = []store.Store{store.NewFile()}
+		default:
+			return fmt.Errorf("unknown --storage %q (want keychain|file|auto)", clearStorage)
 		}
 
-		logger.TInfof("✅ Credentials removed from the OS keychain")
+		for _, t := range targets {
+			if err := t.Clear(); err != nil {
+				return fmt.Errorf("clear %s: %w", t.Kind(), err)
+			}
+			logger.TInfof("✅ Credentials removed from %s", t.Kind())
+		}
 
 		return nil
 	},
@@ -563,8 +621,11 @@ func init() {
 	authSetCmd.Flags().StringVar(&setToken, "token", "", "Bitrise Build Cache auth token (required)")
 	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID (required)")
 	authSetCmd.Flags().StringVar(&setUsername, "username", "", fmt.Sprintf("Display name for local invocations (optional). Overrides the OS username. Env var %s takes precedence for a single run.", configcommon.EnvUsername))
+	authSetCmd.Flags().StringVar(&setStorage, "storage", "", "Where to persist credentials: keychain (OS keychain) | file (multiplatform config on disk) | auto (default: CI→file, local→keychain). File storage is required on CI where fastlane setup_ci swaps the default keychain.")
 	_ = authSetCmd.MarkFlagRequired("token")
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
+
+	authClearCmd.Flags().StringVar(&clearStorage, "storage", "", "Which backend to clear: keychain | file | auto (default auto clears both).")
 
 	authCmd.AddCommand(authSetCmd)
 	authCmd.AddCommand(authStatusCmd)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
 // Credentials is the OAuth login credential, persisted in the OS keychain as a
@@ -50,36 +51,57 @@ func fromKeychain(kc keychain.Credentials) Credentials {
 	}
 }
 
-// Load reads the stored credential from the keychain. A missing item returns the
-// zero Credentials so a not-logged-in user doesn't see an error.
 func Load() (Credentials, error) {
-	kc, err := keychain.New().Load()
-	if errors.Is(err, keychain.ErrNotFound) {
-		return Credentials{}, nil
-	}
-	if err != nil {
-		return Credentials{}, fmt.Errorf("load credentials: %w", err)
-	}
+	c, _, err := LoadWithSource()
 
-	return fromKeychain(kc), nil
+	return c, err
 }
 
-// Save writes c to the keychain.
+// Second return is nil when nothing was found; refresh flows save back into the same store.
+func LoadWithSource() (Credentials, store.Store, error) {
+	return loadFrom(store.NewKeychain(), store.NewFile())
+}
+
+func loadFrom(backends ...store.Store) (Credentials, store.Store, error) {
+	for _, s := range backends {
+		kc, err := s.Load()
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			continue
+		case err != nil:
+			return Credentials{}, nil, fmt.Errorf("load credentials: %w", err)
+		}
+
+		return fromKeychain(kc), s, nil
+	}
+
+	return Credentials{}, nil, nil
+}
+
 func Save(c Credentials) error {
+	return SaveTo(store.NewKeychain(), c)
+}
+
+func SaveTo(s store.Store, c Credentials) error {
 	if c.PAT == "" {
 		return errors.New("refusing to save credentials with empty PAT")
 	}
-	if err := keychain.New().Save(c.toKeychain()); err != nil {
+	if err := store.SaveExclusive(s, c.toKeychain()); err != nil {
 		return fmt.Errorf("save credentials: %w", err)
 	}
 
 	return nil
 }
 
-// Clear removes the stored credential from the keychain.
 func Clear() error {
-	if err := keychain.New().Clear(); err != nil {
-		return fmt.Errorf("clear credentials: %w", err)
+	return ClearFrom(store.NewKeychain(), store.NewFile())
+}
+
+func ClearFrom(backends ...store.Store) error {
+	for _, s := range backends {
+		if err := s.Clear(); err != nil {
+			return fmt.Errorf("clear credentials: %w", err)
+		}
 	}
 
 	return nil

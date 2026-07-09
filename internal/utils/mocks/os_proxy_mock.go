@@ -46,6 +46,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			RemoveFunc: func(name string) error {
 //				panic("mock out the Remove method")
 //			},
+//			RenameFunc: func(oldpath string, newpath string) error {
+//				panic("mock out the Rename method")
+//			},
 //			StatFunc: func(pth string) (os.FileInfo, error) {
 //				panic("mock out the Stat method")
 //			},
@@ -91,6 +94,9 @@ type OsProxyMock struct {
 
 	// RemoveFunc mocks the Remove method.
 	RemoveFunc func(name string) error
+
+	// RenameFunc mocks the Rename method.
+	RenameFunc func(oldpath string, newpath string) error
 
 	// StatFunc mocks the Stat method.
 	StatFunc func(pth string) (os.FileInfo, error)
@@ -151,6 +157,13 @@ type OsProxyMock struct {
 			// Name is the name argument value.
 			Name string
 		}
+		// Rename holds details about calls to the Rename method.
+		Rename []struct {
+			// Oldpath is the oldpath argument value.
+			Oldpath string
+			// Newpath is the newpath argument value.
+			Newpath string
+		}
 		// Stat holds details about calls to the Stat method.
 		Stat []struct {
 			// Pth is the pth argument value.
@@ -181,6 +194,7 @@ type OsProxyMock struct {
 	lockOpenFile         sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
 	lockRemove           sync.RWMutex
+	lockRename           sync.RWMutex
 	lockStat             sync.RWMutex
 	lockTempDir          sync.RWMutex
 	lockUserHomeDir      sync.RWMutex
@@ -469,6 +483,42 @@ func (mock *OsProxyMock) RemoveCalls() []struct {
 	mock.lockRemove.RLock()
 	calls = mock.calls.Remove
 	mock.lockRemove.RUnlock()
+	return calls
+}
+
+// Rename calls RenameFunc.
+func (mock *OsProxyMock) Rename(oldpath string, newpath string) error {
+	if mock.RenameFunc == nil {
+		panic("OsProxyMock.RenameFunc: method is nil but OsProxy.Rename was just called")
+	}
+	callInfo := struct {
+		Oldpath string
+		Newpath string
+	}{
+		Oldpath: oldpath,
+		Newpath: newpath,
+	}
+	mock.lockRename.Lock()
+	mock.calls.Rename = append(mock.calls.Rename, callInfo)
+	mock.lockRename.Unlock()
+	return mock.RenameFunc(oldpath, newpath)
+}
+
+// RenameCalls gets all the calls that were made to Rename.
+// Check the length with:
+//
+//	len(mockedOsProxy.RenameCalls())
+func (mock *OsProxyMock) RenameCalls() []struct {
+	Oldpath string
+	Newpath string
+} {
+	var calls []struct {
+		Oldpath string
+		Newpath string
+	}
+	mock.lockRename.RLock()
+	calls = mock.calls.Rename
+	mock.lockRename.RUnlock()
 	return calls
 }
 
