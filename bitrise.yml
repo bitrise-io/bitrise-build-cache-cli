@@ -269,6 +269,7 @@ workflows:
     envs:
     - RDE_STACK_ID: osx-xcode-26.0.x-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
+    - RDE_SMOKE_CLI_TAG: v3.0.1
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
@@ -304,6 +305,7 @@ workflows:
     envs:
     - RDE_STACK_ID: ubuntu-resolute-26.04-bitrise-2026-android
     - RDE_MACHINE_TYPE: g2.linux.amd-zen4.2c-8g
+    - RDE_SMOKE_CLI_TAG: v3.0.1
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
