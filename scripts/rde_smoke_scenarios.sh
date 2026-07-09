@@ -153,6 +153,28 @@ else
   log "--tools not present in installed CLI (${RDE_SMOKE_CLI_TAG}); skipping headless drive"
 fi
 
+step "TERM=dumb drives the huh accessible mode (line-based Q&A on stdin)"
+# huh auto-switches to accessible mode when TERM=dumb. Assuming keychain
+# already carries the token (SCENARIO A seeded it), the wizard prompts
+# for: tools multi-select → username → push confirm. Pipe answers:
+#   1     → toggle option 1 (Gradle)
+#   0     → confirm selection
+#   ''    → keep existing username
+#   n     → no cache push
+# TERM=dumb bypass only works in versions that carry the guard-relax patch
+# from this PR — feature-detect the same way we did for --tools.
+if remote_bash "$CLI activate --interactive --help 2>&1 | grep -q 'TERM=dumb'"; then
+  remote_bash "TERM=dumb $CLI activate --interactive <<'EOF' >/tmp/wizard.out 2>&1
+1
+0
+
+n
+EOF
+  cat /tmp/wizard.out"
+else
+  log "TERM=dumb guard-relax not present in installed CLI; skipping accessible drive"
+fi
+
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
