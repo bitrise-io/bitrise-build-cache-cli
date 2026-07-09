@@ -73,15 +73,18 @@ if is_mac; then
   }
 fi
 
-step "no plaintext credentials on disk after every activation"
-# Runs after both activate gradle AND activate xcode so a leak from either
-# path shows up here (previous ordering missed xcode-path leaks).
-hits=$(remote_bash "grep -RF '${RDE_BITRISE_PAT}' \
-  \$HOME/.zshrc \$HOME/.bashrc \$HOME/.profile \\
-  \$HOME/.gradle \$HOME/.bitrise-xcelerate \$HOME/.bitrise \\
-  \$HOME/.local/state/bitrise-build-cache 2>/dev/null || true")
-if [[ -n "$hits" ]]; then
-  echo "❌ plaintext token found on disk:" >&2; echo "$hits" >&2; exit 1
+if is_mac; then
+  step "no plaintext credentials on disk after every activation (keychain-backed)"
+  # macOS-only: on linux we DELIBERATELY put the token in ~/.bitrise/env
+  # (0600) because the RDE VM has no secret-service, so the assertion is
+  # only meaningful on mac.
+  hits=$(remote_bash "grep -RF '${RDE_BITRISE_PAT}' \
+    \$HOME/.zshrc \$HOME/.bashrc \$HOME/.profile \\
+    \$HOME/.gradle \$HOME/.bitrise-xcelerate \$HOME/.bitrise \\
+    \$HOME/.local/state/bitrise-build-cache 2>/dev/null || true")
+  if [[ -n "$hits" ]]; then
+    echo "❌ plaintext token found on disk:" >&2; echo "$hits" >&2; exit 1
+  fi
 fi
 
 if is_mac; then
@@ -94,13 +97,14 @@ if is_mac; then
   # auth token returns workspaceID:token gradle-format for PATs — strip the prefix.
   tok="${raw_tok#*:}"
   [[ "$tok" == "$RDE_BITRISE_PAT" ]] || { echo "auth token mismatch (last4 got=${tok: -4} want=${RDE_BITRISE_PAT: -4})" >&2; exit 1; }
-  # Anchored grep against the init-script's own log signature — 'Bitrise'
-  # would match any Bitrise mention including auth-failure warnings.
+  # Anchored to the init-script's own analytics log tags. These come from
+  # the plugin code path, so they only appear if the init.d/*.kts actually
+  # loaded (not from any random Bitrise output).
   remote_bash "set -eux; d=/tmp/gradle-smoke; rm -rf \$d; mkdir -p \$d; cd \$d; \\
     echo 'rootProject.name = \"smoke\"' > settings.gradle; \\
     touch build.gradle; \\
     gradle --no-daemon --console=plain --info help 2>&1 | tee /tmp/gradle.out | tail -50; \\
-    grep -qE 'Bitrise plugins activated|bitrise-build-cache.init.gradle.kts' /tmp/gradle.out"
+    grep -qE '\\[Bitrise Analytics\\]|\\[Bitrise Build Session\\]' /tmp/gradle.out"
 fi
 
 if is_linux; then
