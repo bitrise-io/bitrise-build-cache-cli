@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
@@ -18,7 +19,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/internal/xcelerate/proxy"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v2/proto/kv_storage"
@@ -165,10 +168,68 @@ func StartXcodeCacheProxy(
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
+	emitter := newSlimInvocationEmitter(config, envProvider, commandFunc, initialLogger)
+
+	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+
+	serveErr := p.Serve(listener)
+
+	p.FlushCurrentSession(context.WithoutCancel(ctx))
+
 	//nolint:wrapcheck
-	return proxy.
-		NewProxy(client, config.PushEnabled, initialLogger, loggerFactory).
-		Serve(listener)
+	return serveErr
+}
+
+// slimInvocationEmitter PUTs a Slim analytics.Invocation on proxy session close.
+// F2 (xcodebuild wrapper) overwrites the same InvocationID with the enriched row.
+type slimInvocationEmitter struct {
+	client   *analytics.Client
+	auth     configcommon.CacheAuthConfig
+	metadata configcommon.CacheConfigMetadata
+	logger   log.Logger
+}
+
+func newSlimInvocationEmitter(
+	config xcelerate.Config,
+	envProvider map[string]string,
+	commandFunc configcommon.CommandFunc,
+	logger log.Logger,
+) proxy.InvocationEmitter {
+	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	if err != nil {
+		logger.Warnf("Slim invocation emit disabled — analytics client init failed: %s", err)
+
+		return nil
+	}
+
+	return &slimInvocationEmitter{
+		client:   client,
+		auth:     config.AuthConfig,
+		metadata: configcommon.NewMetadata(envProvider, commandFunc, logger),
+		logger:   logger,
+	}
+}
+
+func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
+	// Fire-and-forget: proxy's shutdown/setSession critical path must not block on network I/O.
+	go func() {
+		inv := analytics.NewInvocation(analytics.InvocationRunStats{
+			InvocationDate: meta.StartTime,
+			InvocationID:   meta.InvocationID,
+			Duration:       time.Since(meta.StartTime).Milliseconds(),
+			HitRate:        stats.HitRate(),
+		}, e.auth, e.metadata)
+
+		if err := e.client.PutInvocation(*inv); err != nil {
+			e.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
+
+			return
+		}
+
+		e.logger.Debugf("Slim invocation emitted: %s (hit-rate %.02f%%)", meta.InvocationID, stats.HitRate()*100)
+	}()
+
+	_ = ctx
 }
 
 func getProxyLogFile(osProxy utils.OsProxy, invocationID string) (string, error) {

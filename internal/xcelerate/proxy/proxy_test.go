@@ -42,7 +42,7 @@ func Test_Proxy_PushDisabled(t *testing.T) {
 	go func() {
 		p := proxy.NewProxy(kvClient, false, mockLogger, func(invocationID string) (log.Logger, error) {
 			return mockLogger, nil
-		})
+		}, nil)
 
 		_ = p.Serve(listener)
 	}()
