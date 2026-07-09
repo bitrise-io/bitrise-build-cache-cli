@@ -60,6 +60,15 @@ const (
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
 
+	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `xcode-app enable`.
+	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
+
+	// XcodeAppSetenvAgentLabel is the launchd label + plist basename for the xcode-app setenv agent.
+	XcodeAppSetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
+
+	// XcodeAppStateFileName holds the prior XCODE_XCCONFIG_FILE captured at enable time.
+	XcodeAppStateFileName = "xcode-app-state.json"
+
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 )
@@ -173,6 +182,21 @@ func (p Paths) XcelerateRoot() string {
 // XcelerateConfigFile returns ~/.bitrise-xcelerate/config.json.
 func (p Paths) XcelerateConfigFile() string {
 	return filepath.Join(p.XcelerateRoot(), xcelerateConfigFile)
+}
+
+// XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
+func (p Paths) XcodeAppOverrideXCConfigFile() string {
+	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
+}
+
+// XcodeAppStateFile returns ~/.bitrise-xcelerate/xcode-app-state.json.
+func (p Paths) XcodeAppStateFile() string {
+	return filepath.Join(p.XcelerateRoot(), XcodeAppStateFileName)
+}
+
+// XcodeAppSetenvAgentPlistFile returns the LaunchAgent plist path for the xcode-app setenv agent.
+func (p Paths) XcodeAppSetenvAgentPlistFile() string {
+	return p.PlistPath(XcodeAppSetenvAgentLabel)
 }
 
 // XcelerateBinDir returns ~/.bitrise-xcelerate/bin.
