@@ -295,6 +295,15 @@ workflows:
             echo "resolved CLI tag: $TAG"
             envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
     - script:
+        title: Build branch CLI binary (darwin/arm64) — smoke tests PR code, not last release
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o /tmp/bbc-branch-darwin .
+            ls -la /tmp/bbc-branch-darwin
+            envman add --key BRANCH_BINARY_PATH --value /tmp/bbc-branch-darwin
+    - script:
         title: RDE mac smoke test (installer.sh + doctor)
         inputs:
         - content: |
@@ -339,6 +348,15 @@ workflows:
             TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
             echo "resolved CLI tag: $TAG"
             envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
+    - script:
+        title: Build branch CLI binary (linux/amd64) — smoke tests PR code, not last release
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/bbc-branch-linux .
+            ls -la /tmp/bbc-branch-linux
+            envman add --key BRANCH_BINARY_PATH --value /tmp/bbc-branch-linux
     - script:
         title: RDE linux smoke test
         inputs:

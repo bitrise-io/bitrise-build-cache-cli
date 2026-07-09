@@ -26,11 +26,27 @@ scenario "SCENARIO A — Full local-dev journey (one fresh VM)"
 step "installer.sh install of $RDE_SMOKE_CLI_TAG"
 remote_bash "curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b \"\$HOME/.bitrise/bin\" ${RDE_SMOKE_CLI_TAG}"
 
-step "--version reports ${RDE_SMOKE_CLI_TAG#v}"
+# Optional override: when BRANCH_BINARY_PATH is set, scp the branch-built
+# binary over the installer output so subsequent scenarios exercise the
+# code in this PR rather than the last released tag. Used from the
+# workflow's 'Build branch CLI binary' step in bitrise.yml.
+if [[ -n "${BRANCH_BINARY_PATH:-}" && -f "$BRANCH_BINARY_PATH" ]]; then
+  step "overwrite installed CLI with branch binary at $BRANCH_BINARY_PATH"
+  SSHPASS="$ssh_password" sshpass -e scp -P "$ssh_port" \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+    "$BRANCH_BINARY_PATH" "${ssh_userhost}:/tmp/bbc-branch"
+  remote_bash "install -m 0755 /tmp/bbc-branch \$HOME/.bitrise/bin/bitrise-build-cache"
+fi
+
+step "--version reports ${RDE_SMOKE_CLI_TAG#v} (or branch build)"
 got_version=$(remote_bash "$CLI --version" | awk '{print $NF}')
-[[ "$got_version" == "${RDE_SMOKE_CLI_TAG#v}"* ]] || {
-  echo "version mismatch: want ${RDE_SMOKE_CLI_TAG#v}, got $got_version" >&2; exit 1
-}
+if [[ -z "${BRANCH_BINARY_PATH:-}" ]]; then
+  [[ "$got_version" == "${RDE_SMOKE_CLI_TAG#v}"* ]] || {
+    echo "version mismatch: want ${RDE_SMOKE_CLI_TAG#v}, got $got_version" >&2; exit 1
+  }
+else
+  log "installed CLI reports: $got_version (branch override active)"
+fi
 
 if is_mac; then
   step "unlock login.keychain (RDE vagrant password == SSH password)"
@@ -144,36 +160,18 @@ WEXP
 expect -f /tmp/wizard.exp || true # Ctrl-C exit is expected"
 
 step "--tools=gradle drives the wizard headlessly (skips huh, uses env/keychain auth)"
-# The --tools flag is only present in this PR and later releases; the installer
-# tag resolved by 'git describe' is the last released version, which may
-# predate the flag. Detect + skip if the installed CLI doesn't know it yet.
-if remote_bash "$CLI activate --interactive --help 2>&1 | grep -q -- --tools"; then
-  remote_bash "$CLI activate --interactive --tools=gradle --push=false"
-else
-  log "--tools not present in installed CLI (${RDE_SMOKE_CLI_TAG}); skipping headless drive"
-fi
+remote_bash "$CLI activate --interactive --tools=gradle --push=false"
 
 step "TERM=dumb drives the huh accessible mode (line-based Q&A on stdin)"
-# huh auto-switches to accessible mode when TERM=dumb. Assuming keychain
-# already carries the token (SCENARIO A seeded it), the wizard prompts
-# for: tools multi-select → username → push confirm. Pipe answers:
-#   1     → toggle option 1 (Gradle)
-#   0     → confirm selection
-#   ''    → keep existing username
-#   n     → no cache push
-# TERM=dumb bypass only works in versions that carry the guard-relax patch
-# from this PR — feature-detect the same way we did for --tools.
-if remote_bash "$CLI activate --interactive --help 2>&1 | grep -q 'TERM=dumb'"; then
-  remote_bash "TERM=dumb $CLI activate --interactive <<'EOF' >/tmp/wizard.out 2>&1
+# huh auto-switches to accessible mode when TERM=dumb. With keychain seeded
+# by SCENARIO A the wizard prompts: tools multi-select → username → push
+# confirm. Pipe: 1 (toggle Gradle) → 0 (confirm) → '' (keep username) → n (no push).
+remote_bash "TERM=dumb $CLI activate --interactive <<'EOF'
 1
 0
 
 n
-EOF
-  cat /tmp/wizard.out"
-else
-  log "TERM=dumb guard-relax not present in installed CLI; skipping accessible drive"
-fi
+EOF"
 
 scenario_ok
 
