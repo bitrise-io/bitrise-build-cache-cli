@@ -70,24 +70,39 @@ scenario_ok() {
 
 curl_rde() {
   local method="$1" path="$2"; shift 2
-  local tmp status
-  tmp=$(mktemp)
-  status=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
+  # --fail-with-body: exit 22 on non-2xx, body still printed to stdout for context.
+  curl --fail-with-body -sS -X "$method" \
     -H "Authorization: Bearer $RDE_BITRISE_PAT" \
     -H "X-Request-Source: cli" \
     -H "User-Agent: bitrise-build-cache-cli-rde-smoke" \
     -H "Content-Type: application/json" \
-    "$@" "${API_BASE}${path}")
-  if [[ "$status" != 2* ]]; then
-    echo "[rde-smoke] HTTP $status on $method ${API_BASE}${path}" >&2
-    cat "$tmp" >&2
-    echo >&2
-    rm -f "$tmp"
-    return 22
-  fi
+    "$@" "${API_BASE}${path}"
+}
 
-  cat "$tmp"
-  rm -f "$tmp"
+# parse_ssh_addr sets ssh_userhost + ssh_port from a session's sshAddress
+# (may be a full `ssh user@host -p PORT` command or bare "host:port").
+parse_ssh_addr() {
+  local addr="$1"
+  ssh_userhost=$(printf '%s\n' "$addr" | grep -oE '[[:alnum:]._-]+@[[:alnum:]._-]+' | tail -1)
+  ssh_port=$(printf '%s\n'   "$addr" | grep -oE '\-p[[:space:]]+[0-9]+'          | tail -1 | awk '{print $NF}')
+  : "${ssh_port:=22}"
+  [[ -n "$ssh_userhost" ]] || { echo "could not parse user@host from sshAddress: $addr" >&2; return 1; }
+}
+
+# rde_session_cleanup terminates + waits for TERMINATED + deletes + bulk-reaps.
+# See reference_rde_api.md: DELETE on a still-TERMINATING session silently
+# leaves it as TERMINATED, which the backend counts toward the CPU quota.
+rde_session_cleanup() {
+  local sid="$1"
+  curl_rde POST "${WS_PATH}/sessions/${sid}/terminate" -d '{}' >/dev/null 2>&1 || true
+  local st
+  for _ in $(seq 1 12); do
+    st=$(curl_rde GET "${WS_PATH}/sessions/${sid}" 2>/dev/null | jq -r '.session.status // empty')
+    [[ "$st" == "SESSION_STATUS_TERMINATED" ]] && break
+    sleep 5
+  done
+  curl_rde DELETE "${WS_PATH}/sessions/${sid}"                   >/dev/null 2>&1 || true
+  curl_rde POST   "${WS_PATH}/sessions:delete-terminated" -d '{}' >/dev/null 2>&1 || true
 }
 
 # ---------- reap orphans ----------
@@ -119,9 +134,6 @@ if [[ -z "$session_id" ]]; then
 fi
 log "session id: $session_id"
 
-# Terminate + delete on ANY exit — DELETE alone can't free CPU quota
-# on a RUNNING session; the backend rejects it silently and the VM
-# keeps consuming quota until auto-terminate hours later.
 cleanup() {
   local rc=$?
   if [[ $rc -ne 0 && -n "$CURRENT_SCENARIO" ]]; then
@@ -129,19 +141,7 @@ cleanup() {
   fi
 
   log "cleaning up session $session_id (rc=$rc)"
-  curl_rde POST "${WS_PATH}/sessions/${session_id}/terminate" -d '{}' >/dev/null 2>&1 || true
-
-  # DELETE races with backend TERMINATING; poll until TERMINATED, then delete.
-  for _ in $(seq 1 12); do
-    s=$(curl_rde GET "${WS_PATH}/sessions/${session_id}" 2>/dev/null | jq -r '.session.status // empty')
-    [[ "$s" == "SESSION_STATUS_TERMINATED" ]] && break
-    sleep 5
-  done
-  curl_rde DELETE "${WS_PATH}/sessions/${session_id}" >/dev/null 2>&1 || true
-
-  # Final safety net: bulk-reap any TERMINATED sessions in the workspace so
-  # a failed DELETE doesn't leak CPU quota into subsequent CI runs.
-  curl_rde POST "${WS_PATH}/sessions:delete-terminated" -d '{}' >/dev/null 2>&1 || true
+  rde_session_cleanup "$session_id"
   exit "$rc"
 }
 trap cleanup EXIT
@@ -178,12 +178,7 @@ done
 [[ "$status" == "SESSION_STATUS_RUNNING" ]] || { echo "session never reached RUNNING (last: $status)" >&2; exit 1; }
 [[ -n "$ssh_addr" && -n "$ssh_password" ]] || { echo "session RUNNING but SSH details empty" >&2; exit 1; }
 
-# sshAddress may be a full `ssh user@host -p PORT` command or a bare
-# "host:port" — parse the same way bitrise-cli's internal/rde does.
-ssh_userhost=$(printf '%s\n' "$ssh_addr" | grep -oE '[[:alnum:]._-]+@[[:alnum:]._-]+' | tail -1)
-ssh_port=$(printf '%s\n' "$ssh_addr" | grep -oE '\-p[[:space:]]+[0-9]+' | tail -1 | awk '{print $NF}')
-: "${ssh_port:=22}"
-[[ -n "$ssh_userhost" ]] || { echo "could not parse user@host from sshAddress: $ssh_addr" >&2; exit 1; }
+parse_ssh_addr "$ssh_addr" || exit 1
 log "ssh ready: ${ssh_userhost}:${ssh_port}"
 
 # ---------- exec smoke commands ----------
@@ -214,10 +209,16 @@ is_linux() { [[ "$REMOTE_OS" == "Linux"  ]]; }
 
 CLI="\$HOME/.bitrise/bin/bitrise-build-cache --no-update-check"
 # On Linux the RDE VM has no secret-service, so keychain is unusable —
-# supply credentials via env vars so downstream scenarios (activate
-# gradle, daemon install, etc.) can still authenticate.
+# write credentials to ~/.bitrise/env on the VM once (0600) and source
+# it in every remote_bash call. Avoids leaking the token into ps output
+# via 'env FOO=... cmd' args (previous approach).
 if is_linux; then
-  CLI="env BITRISE_BUILD_CACHE_AUTH_TOKEN='${RDE_BITRISE_PAT}' BITRISE_BUILD_CACHE_WORKSPACE_ID='${WORKSPACE_SLUG}' $CLI"
+  remote_bash "install -d -m 0700 \$HOME/.bitrise && umask 077 && \
+cat > \$HOME/.bitrise/env <<EOF
+export BITRISE_BUILD_CACHE_AUTH_TOKEN='${RDE_BITRISE_PAT}'
+export BITRISE_BUILD_CACHE_WORKSPACE_ID='${WORKSPACE_SLUG}'
+EOF"
+  CLI=". \$HOME/.bitrise/env && $CLI"
 fi
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

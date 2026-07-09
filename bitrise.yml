@@ -269,40 +269,14 @@ workflows:
     envs:
     - RDE_STACK_ID: osx-xcode-26.0.x-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
+    - RDE_SMOKE_GOOS: darwin
+    - RDE_SMOKE_GOARCH: arm64
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
         stack: linux-docker-android-22.04
     steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - script:
-        title: Install sshpass
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            command -v sshpass >/dev/null || sudo apt-get install -y sshpass
-    - script:
-        title: Resolve latest CLI tag from git
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            git fetch --tags --quiet origin || true
-            TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
-            echo "resolved CLI tag: $TAG"
-            envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
-    - script:
-        title: Build branch CLI binary (darwin/arm64) — smoke tests PR code, not last release
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o /tmp/bbc-branch-darwin .
-            ls -la /tmp/bbc-branch-darwin
-            envman add --key BRANCH_BINARY_PATH --value /tmp/bbc-branch-darwin
+    - bundle::rde-smoke-prep: {}
     - script:
         title: RDE mac smoke test (installer.sh + doctor)
         inputs:
@@ -323,40 +297,14 @@ workflows:
     envs:
     - RDE_STACK_ID: ubuntu-resolute-26.04-bitrise-2026-android
     - RDE_MACHINE_TYPE: g2.linux.amd-zen4.2c-8g
+    - RDE_SMOKE_GOOS: linux
+    - RDE_SMOKE_GOARCH: amd64
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
         stack: linux-docker-android-22.04
     steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - script:
-        title: Install sshpass
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            command -v sshpass >/dev/null || sudo apt-get install -y sshpass
-    - script:
-        title: Resolve latest CLI tag from git
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            git fetch --tags --quiet origin || true
-            TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
-            echo "resolved CLI tag: $TAG"
-            envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
-    - script:
-        title: Build branch CLI binary (linux/amd64) — smoke tests PR code, not last release
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/bbc-branch-linux .
-            ls -la /tmp/bbc-branch-linux
-            envman add --key BRANCH_BINARY_PATH --value /tmp/bbc-branch-linux
+    - bundle::rde-smoke-prep: {}
     - script:
         title: RDE linux smoke test
         inputs:
@@ -1621,6 +1569,42 @@ workflows:
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
 
 step_bundles:
+  rde-smoke-prep:
+    description: |
+      Shared prep for the rde-mac-local-dx-smoke + rde-linux-local-dx-smoke
+      workflows: clone, install sshpass, resolve the CLI tag from git,
+      build the branch binary for RDE_SMOKE_GOOS/RDE_SMOKE_GOARCH so the
+      smoke exercises this PR's code rather than the last released tag.
+    steps:
+    - git-clone@8: {}
+    - script:
+        title: Install sshpass
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            command -v sshpass >/dev/null || sudo apt-get install -y sshpass
+    - script:
+        title: Resolve latest CLI tag from git
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            git fetch --tags --quiet origin || true
+            TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
+            echo "resolved CLI tag: $TAG"
+            envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
+    - script:
+        title: Build branch CLI binary — smoke tests PR code, not last release
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            out=/tmp/bbc-branch-${RDE_SMOKE_GOOS}-${RDE_SMOKE_GOARCH}
+            GOOS="$RDE_SMOKE_GOOS" GOARCH="$RDE_SMOKE_GOARCH" CGO_ENABLED=0 go build -o "$out" .
+            ls -la "$out"
+            envman add --key BRANCH_BINARY_PATH --value "$out"
+
   release-flow-check:
     description: |
       Dry-run of the release flow. Verifies install/installer.sh still works

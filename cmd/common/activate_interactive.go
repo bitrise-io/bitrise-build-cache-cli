@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -24,11 +23,7 @@ import (
 )
 
 //nolint:gochecknoglobals
-var (
-	interactiveFlag      bool
-	interactiveToolsFlag string
-	interactivePushFlag  bool
-)
+var interactiveFlag bool
 
 type interactiveTool string
 
@@ -42,18 +37,10 @@ const (
 func init() { //nolint:gochecknoinits
 	ActivateCmd.Flags().BoolVar(&interactiveFlag, "interactive", false,
 		"Launch an interactive guided local setup. Prompts for the tool and credentials instead of reading them from environment variables.")
-	ActivateCmd.Flags().StringVar(&interactiveToolsFlag, "tools", "",
-		"Non-interactive drive for --interactive: comma-separated list of tools (gradle, bazel, xcode, ccache). Skips the TUI; uses credentials already resolvable from the environment or keychain.")
-	ActivateCmd.Flags().BoolVar(&interactivePushFlag, "push", true,
-		"Cache push enabled (only used with --tools).")
 	ActivateCmd.SilenceUsage = true
 	ActivateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !interactiveFlag {
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
-		}
-
-		if interactiveToolsFlag != "" {
-			return runInteractiveNonTTY(cmd.Context())
 		}
 
 		// TERM=dumb switches huh into line-based accessible mode; that path
@@ -63,37 +50,12 @@ func init() { //nolint:gochecknoinits
 			return errors.New(`interactive setup requires a terminal. For scripted use:
   bitrise-build-cache auth set --token <token> --workspace-id <workspace-id>
   bitrise-build-cache activate gradle   # or bazel / xcode / c++
-Or drive the wizard non-interactively:
-  bitrise-build-cache activate --interactive --tools=gradle,xcode
 Or run the wizard in accessible line-based mode (answers piped on stdin):
   TERM=dumb bitrise-build-cache activate --interactive`)
 		}
 
 		return (&huhWizard{}).Run(cmd.Context())
 	}
-}
-
-// runInteractiveNonTTY drives the wizard without huh — used by CI smoke
-// tests to exercise the wizard code path without a real pty.
-func runInteractiveNonTTY(ctx context.Context) error {
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
-	tools := make([]string, 0)
-	for _, t := range strings.Split(interactiveToolsFlag, ",") {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-
-		tools = append(tools, t)
-	}
-
-	if len(tools) == 0 {
-		return errors.New("--tools requires at least one entry (gradle, bazel, xcode, ccache)")
-	}
-
-	envs := utils.AllEnvs()
-
-	return runSelectedTools(ctx, logger, tools, envs, interactivePushFlag)
 }
 
 type keychainStore interface {
