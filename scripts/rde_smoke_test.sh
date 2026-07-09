@@ -90,6 +90,14 @@ curl_rde() {
   rm -f "$tmp"
 }
 
+# ---------- reap orphans ----------
+# Best-effort: bulk-delete any lingering TERMINATED sessions from prior
+# runs whose /sessions/{id} DELETE raced with backend TERMINATING state.
+# The backend appears to count TERMINATED sessions toward the CPU quota,
+# so a slow drip of leaks eventually blocks new provisioning.
+log "reaping any terminated sessions from prior runs"
+curl_rde POST "${WS_PATH}/sessions:delete-terminated" -d '{}' >/dev/null 2>&1 || true
+
 # ---------- provision ----------
 log "provisioning session on $RDE_STACK_ID / $RDE_MACHINE_TYPE"
 create_body=$(jq -n \
@@ -122,7 +130,18 @@ cleanup() {
 
   log "cleaning up session $session_id (rc=$rc)"
   curl_rde POST "${WS_PATH}/sessions/${session_id}/terminate" -d '{}' >/dev/null 2>&1 || true
+
+  # DELETE races with backend TERMINATING; poll until TERMINATED, then delete.
+  for _ in $(seq 1 12); do
+    s=$(curl_rde GET "${WS_PATH}/sessions/${session_id}" 2>/dev/null | jq -r '.session.status // empty')
+    [[ "$s" == "SESSION_STATUS_TERMINATED" ]] && break
+    sleep 5
+  done
   curl_rde DELETE "${WS_PATH}/sessions/${session_id}" >/dev/null 2>&1 || true
+
+  # Final safety net: bulk-reap any TERMINATED sessions in the workspace so
+  # a failed DELETE doesn't leak CPU quota into subsequent CI runs.
+  curl_rde POST "${WS_PATH}/sessions:delete-terminated" -d '{}' >/dev/null 2>&1 || true
   exit "$rc"
 }
 trap cleanup EXIT
