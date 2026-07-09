@@ -111,13 +111,16 @@ remote_bash "$CLI doctor --fix" || log "doctor --fix non-zero (some items requir
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO B — activate --interactive wizard TTY drive (ACI-5027)
-#              Truly RDE-only: huh's multi-select refuses to render without
-#              a real pty on stdin, which Bitrise script steps cannot provide.
+# SCENARIO B — activate --interactive wizard (ACI-5027)
+#              Two paths:
+#                (1) non-TTY invocation without --tools must guard-error.
+#                (2) --tools drives the wizard non-interactively, exercising
+#                    the same runSelectedTools() code path huh reaches from
+#                    the TUI. No expect + no pty needed.
 # ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO B — activate --interactive wizard TTY drive"
+scenario "SCENARIO B — activate --interactive wizard (guard + --tools drive)"
 
-step "non-TTY invocation must error with the expected guard message"
+step "non-TTY invocation without --tools must error with the guard message"
 non_tty_out=$(remote_bash "$CLI activate --interactive 2>&1") && {
   echo "expected non-zero exit; got success" >&2; exit 1
 } || true
@@ -125,32 +128,81 @@ echo "$non_tty_out" | grep -q "interactive setup requires a terminal" || {
   echo "wizard did not print the expected TTY-required guard message" >&2; exit 1
 }
 
-step "TTY path opens the huh TUI — drive via expect, send Ctrl-C to abort"
-remote_bash "cat > /tmp/wizard.exp <<'WEXP'
-set timeout 20
-spawn env NO_COLOR=1 [file join \$env(HOME) .bitrise/bin/bitrise-build-cache] activate --interactive
-expect {
-  -re \"interactive local setup\" { send -- \"\x03\"; exp_continue }
-  eof { exit 0 }
-  timeout { puts stderr \"wizard did not render its header within 20s\"; exit 2 }
-}
-WEXP
-expect -f /tmp/wizard.exp || true # Ctrl-C exit is expected"
+step "--tools=gradle drives the wizard headlessly (skips huh, uses env/keychain auth)"
+remote_bash "$CLI activate --interactive --tools=gradle --push=false"
 
 scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
-# NOT YET IMPLEMENTED — truly RDE-only scenarios worth adding later:
-#
-#   * Session persistence: provision → auth set → POST /terminate →
-#     POST /restore → wait for RUNNING → assert keychain entry survived.
-#     Regular Bitrise VMs die at the end of the build, so this is the only
-#     way to smoke persistent-disk restore + credential survival.
+# SCENARIO C — Session persistence across terminate → restore
+#              Truly RDE-only: only RDE sessions have a persistent disk
+#              that survives a stop/start cycle. Regular Bitrise VMs die
+#              at the end of the build.
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO C — Session persistence across terminate → restore"
+
+if is_mac; then
+  step "seed keychain marker with the current tag before terminate"
+  marker="rde-smoke-persist-${RDE_SMOKE_CLI_TAG}"
+  remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+  remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}' --username '${marker}'"
+
+  step "POST /terminate — VM stops, disk stays"
+  curl_rde POST "${WS_PATH}/sessions/${session_id}/terminate" -d '{}' >/dev/null
+  for _ in $(seq 1 24); do
+    st=$(curl_rde GET "${WS_PATH}/sessions/${session_id}" | jq -r '.session.status // empty')
+    [[ "$st" == "SESSION_STATUS_TERMINATED" ]] && break
+    sleep 5
+  done
+  [[ "$st" == "SESSION_STATUS_TERMINATED" ]] || {
+    echo "session did not reach TERMINATED (last: $st)" >&2; exit 1
+  }
+  log "terminated"
+
+  step "POST /restore — VM is re-created from the persistent disk"
+  curl_rde POST "${WS_PATH}/sessions/${session_id}/restore" -d '{}' >/dev/null
+  # Poll status until RUNNING + SSH open again, then re-parse sshAddress.
+  new_addr="" new_pw=""
+  for i in $(seq 1 60); do
+    s=$(curl_rde GET "${WS_PATH}/sessions/${session_id}")
+    st=$(echo "$s" | jq -r '.session.status // empty')
+    open=$(echo "$s" | jq -r '.session.sshConnectionOpen // false')
+    if [[ "$st" == "SESSION_STATUS_RUNNING" && "$open" == "true" ]]; then
+      new_addr=$(echo "$s" | jq -r '.session.sshAddress // empty')
+      new_pw=$(echo "$s"   | jq -r '.session.sshPassword // empty')
+      break
+    fi
+
+    sleep 10
+  done
+  [[ "$st" == "SESSION_STATUS_RUNNING" ]] || {
+    echo "session did not restore to RUNNING (last: $st)" >&2; exit 1
+  }
+  log "restored + sshd back"
+
+  # Rebind ssh globals for the rest of the scenario (and any subsequent ones).
+  ssh_userhost=$(printf '%s\n' "$new_addr" | grep -oE '[[:alnum:]._-]+@[[:alnum:]._-]+' | tail -1)
+  new_port=$(printf '%s\n' "$new_addr" | grep -oE '\-p[[:space:]]+[0-9]+' | tail -1 | awk '{print $NF}')
+  : "${new_port:=22}"
+  ssh_password="$new_pw"
+  SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -p "$new_port")
+
+  step "keychain marker must survive the restore"
+  remote_bash "security unlock-keychain -p '${ssh_password}' ~/Library/Keychains/login.keychain-db || true"
+  status_after=$(remote_bash "$CLI auth status")
+  echo "$status_after"
+  echo "$status_after" | grep -q "$marker" || {
+    echo "keychain marker '$marker' not found after restore" >&2; exit 1
+  }
+
+  scenario_ok
+else
+  log "SCENARIO C (session persistence) — skipped on $REMOTE_OS (linux VM has no user keychain to persist)"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# NOT YET IMPLEMENTED — RDE-only scenarios worth adding later:
 #
 #   * ACI-5036 doctor as Xcode scheme pre-action: needs an xcodeproj +
-#     scheme setup.
-#
-#   * ACI-5024 OAuth `auth login`: needs a browser. Would require running
-#     a Chromium session inside the RDE VM and driving the loopback
-#     callback with expect.
+#     scheme setup on the RDE mac.
 # ═════════════════════════════════════════════════════════════════════════════
