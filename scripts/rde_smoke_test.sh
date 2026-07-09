@@ -338,31 +338,24 @@ expect -f /tmp/wizard.exp || true # Ctrl-C exit is expected"
 
 scenario_ok
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SCENARIO 4d — Gradle hydration (ACI-5123 / ACI-5125)
-#              Runs a real gradle build against a minimal project so the
-#              init.d/*.kts we wrote in SCENARIO 3 actually gets loaded
-#              and hits BitriseAuthTokenSource → \`auth token\` → keychain.
-# ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO 4d — Gradle hydration from keychain (real gradle run)"
-
-step "ensure gradle available (install via brew on mac, apt on linux)"
 if is_mac; then
+  # ═════════════════════════════════════════════════════════════════════════════
+  # SCENARIO 4d — Gradle hydration (ACI-5123 / ACI-5125)
+  #              Mac-only: Ubuntu's apt gradle is 4.4.1, which predates the
+  #              Kotlin init-script provider syntax we rely on. Modern gradle
+  #              would need SDKMAN/asdf bootstrap — out of scope for smoke.
+  # ═════════════════════════════════════════════════════════════════════════════
+  scenario "SCENARIO 4d — Gradle hydration from keychain (real gradle run)"
+
+  step "ensure gradle available (brew install if missing)"
   remote_bash "command -v gradle || brew install gradle" || {
     echo "gradle brew install failed" >&2; exit 1
   }
-else
-  remote_bash "command -v gradle || sudo apt-get update -q && sudo apt-get install -y gradle" || {
-    echo "gradle apt install failed" >&2; exit 1
-  }
-fi
 
-if is_mac; then
   step "re-set keychain (activate xcode may have overwritten it with derived creds)"
   remote_bash "$CLI auth set --token '${RDE_BITRISE_PAT}' --workspace-id '${WORKSPACE_SLUG}'"
-fi
 
-step "auth token — CLI must read the same token back (mac=keychain, linux=env)"
+  step "auth token — CLI must read the same token back from keychain"
 # The CLI prefixes stdout with 'Bitrise Build Cache CLI version: 3.0.1' — grab
 # only the last non-empty line, which is the raw token. Unset env creds so
 # only the keychain source is consulted.
@@ -383,14 +376,17 @@ if [[ "$tok" != "$RDE_BITRISE_PAT" ]]; then
   exit 1
 fi
 
-step "scratch gradle project + \`gradle help\` picks up init.d script"
-remote_bash "set -eux; d=/tmp/gradle-smoke; rm -rf \$d; mkdir -p \$d; cd \$d; \\
-  echo 'rootProject.name = \"smoke\"' > settings.gradle; \\
-  touch build.gradle; \\
-  gradle --no-daemon --console=plain --info help 2>&1 | tee /tmp/gradle.out | tail -50; \\
-  grep -q 'Bitrise' /tmp/gradle.out && echo 'init.d script fired' || (echo 'init.d script never loaded' >&2; exit 1)"
+  step "scratch gradle project + \`gradle help\` picks up init.d script"
+  remote_bash "set -eux; d=/tmp/gradle-smoke; rm -rf \$d; mkdir -p \$d; cd \$d; \\
+    echo 'rootProject.name = \"smoke\"' > settings.gradle; \\
+    touch build.gradle; \\
+    gradle --no-daemon --console=plain --info help 2>&1 | tee /tmp/gradle.out | tail -50; \\
+    grep -q 'Bitrise' /tmp/gradle.out && echo 'init.d script fired' || (echo 'init.d script never loaded' >&2; exit 1)"
 
-scenario_ok
+  scenario_ok
+else
+  log "SCENARIO 4d (gradle hydration) — skipped on $REMOTE_OS (apt gradle is too old for Kotlin init script)"
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO 5 — Version-drift detector + --no-update-check (ACI-5037)
