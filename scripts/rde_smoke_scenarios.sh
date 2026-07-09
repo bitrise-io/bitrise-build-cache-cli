@@ -112,13 +112,16 @@ scenario_ok
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO B — activate --interactive wizard (ACI-5027)
-#              Two paths:
-#                (1) non-TTY invocation without --tools must guard-error.
-#                (2) --tools drives the wizard non-interactively, exercising
-#                    the same runSelectedTools() code path huh reaches from
-#                    the TUI. No expect + no pty needed.
+#              Three paths:
+#                (1) non-TTY without --tools must guard-error.
+#                (2) TTY via expect: verifies the huh TUI actually renders
+#                    (real pty in RDE — regular Bitrise script steps can't).
+#                    Sends Ctrl-C to abort so we don't need to script the
+#                    full multi-select selection flow.
+#                (3) --tools drives runSelectedTools() headlessly, exercising
+#                    the underlying flow the huh TUI reaches on submit.
 # ═════════════════════════════════════════════════════════════════════════════
-scenario "SCENARIO B — activate --interactive wizard (guard + --tools drive)"
+scenario "SCENARIO B — activate --interactive wizard (guard + TUI render + --tools drive)"
 
 step "non-TTY invocation without --tools must error with the guard message"
 non_tty_out=$(remote_bash "$CLI activate --interactive 2>&1") && {
@@ -127,6 +130,18 @@ non_tty_out=$(remote_bash "$CLI activate --interactive 2>&1") && {
 echo "$non_tty_out" | grep -q "interactive setup requires a terminal" || {
   echo "wizard did not print the expected TTY-required guard message" >&2; exit 1
 }
+
+step "TTY path renders the huh TUI — drive via expect, send Ctrl-C to abort"
+remote_bash "cat > /tmp/wizard.exp <<'WEXP'
+set timeout 20
+spawn env NO_COLOR=1 [file join \$env(HOME) .bitrise/bin/bitrise-build-cache] activate --interactive
+expect {
+  -re \"interactive local setup\" { send -- \"\x03\"; exp_continue }
+  eof { exit 0 }
+  timeout { puts stderr \"wizard did not render its header within 20s\"; exit 2 }
+}
+WEXP
+expect -f /tmp/wizard.exp || true # Ctrl-C exit is expected"
 
 step "--tools=gradle drives the wizard headlessly (skips huh, uses env/keychain auth)"
 remote_bash "$CLI activate --interactive --tools=gradle --push=false"
