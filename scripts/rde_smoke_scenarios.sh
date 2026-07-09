@@ -144,7 +144,14 @@ WEXP
 expect -f /tmp/wizard.exp || true # Ctrl-C exit is expected"
 
 step "--tools=gradle drives the wizard headlessly (skips huh, uses env/keychain auth)"
-remote_bash "$CLI activate --interactive --tools=gradle --push=false"
+# The --tools flag is only present in this PR and later releases; the installer
+# tag resolved by 'git describe' is the last released version, which may
+# predate the flag. Detect + skip if the installed CLI doesn't know it yet.
+if remote_bash "$CLI activate --interactive --help 2>&1 | grep -q -- --tools"; then
+  remote_bash "$CLI activate --interactive --tools=gradle --push=false"
+else
+  log "--tools not present in installed CLI (${RDE_SMOKE_CLI_TAG}); skipping headless drive"
+fi
 
 scenario_ok
 
