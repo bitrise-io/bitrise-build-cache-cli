@@ -43,10 +43,15 @@ func init() { //nolint:gochecknoinits
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
 		}
 
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
+		// TERM=dumb switches huh into line-based accessible mode; that path
+		// reads answers from stdin so a real TTY isn't required. Everything
+		// else needs a proper interactive terminal.
+		if os.Getenv("TERM") != "dumb" && !term.IsTerminal(int(os.Stdin.Fd())) {
 			return errors.New(`interactive setup requires a terminal. For scripted use:
   bitrise-build-cache auth set --token <token> --workspace-id <workspace-id>
-  bitrise-build-cache activate gradle   # or bazel / xcode / c++`)
+  bitrise-build-cache activate gradle   # or bazel / xcode / c++
+Or run the wizard in accessible line-based mode (answers piped on stdin):
+  TERM=dumb bitrise-build-cache activate --interactive`)
 		}
 
 		return (&huhWizard{}).Run(cmd.Context())

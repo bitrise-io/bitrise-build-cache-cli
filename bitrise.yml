@@ -251,6 +251,68 @@ workflows:
         title: Send slack if failed
         run_if: ".IsBuildFailed"
 
+  rde-mac-local-dx-smoke:
+    description: |
+      On-demand: provision a Bitrise Remote Dev Environment (RDE) mac
+      session, install the CLI into it via installer.sh, run `doctor`,
+      and permanently delete the session. Exercises the local-dev
+      experience surfaces (installer + doctor on a fresh mac) that
+      regular Bitrise steps can't cover — those run inside pre-baked
+      worker images and never simulate a first-time user install.
+
+      Uses the RDE HTTP API (https://api.bitrise.io/rde) with a Bearer
+      token (RDE_BITRISE_PAT) — the same endpoints bitrise-cli's
+      internal/rde package hits. SSH auth is password-based; the session
+      record carries sshAddress + sshPassword after RUNNING.
+
+      Wired into the features-e2e PR pipeline; also triggerable on demand.
+    envs:
+    - RDE_STACK_ID: osx-xcode-26.0.x-edge
+    - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
+    - RDE_SMOKE_GOOS: darwin
+    - RDE_SMOKE_GOARCH: arm64
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - bundle::rde-smoke-prep: {}
+    - script:
+        title: RDE mac smoke test (installer.sh + doctor)
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/rde_smoke_test.sh
+
+  rde-linux-local-dx-smoke:
+    description: |
+      Linux twin of rde-mac-local-dx-smoke. Same script, but the
+      xcodebuild-wrapper scenario is skipped (macOS-only) and the
+      daemon-lifecycle scenario asserts against systemctl --user
+      instead of launchctl. See scripts/rde_smoke_test.sh for the
+      OS-branching logic.
+
+      Wired into the features-e2e PR pipeline; also triggerable on demand.
+    envs:
+    - RDE_STACK_ID: ubuntu-resolute-26.04-bitrise-2026-android
+    - RDE_MACHINE_TYPE: g2.linux.amd-zen4.2c-8g
+    - RDE_SMOKE_GOOS: linux
+    - RDE_SMOKE_GOARCH: amd64
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - bundle::rde-smoke-prep: {}
+    - script:
+        title: RDE linux smoke test
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/rde_smoke_test.sh
+
   test:
     steps:
     - activate-ssh-key@4:
@@ -1507,6 +1569,44 @@ workflows:
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
 
 step_bundles:
+  rde-smoke-prep:
+    description: |
+      Shared prep for the rde-mac-local-dx-smoke + rde-linux-local-dx-smoke
+      workflows: clone, install sshpass, resolve the CLI tag from git,
+      build the branch binary for RDE_SMOKE_GOOS/RDE_SMOKE_GOARCH so the
+      smoke exercises this PR's code rather than the last released tag.
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script:
+        title: Install sshpass
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            command -v sshpass >/dev/null || sudo apt-get install -y sshpass
+    - script:
+        title: Resolve latest CLI tag from git
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            git fetch --tags --quiet origin || true
+            TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || git describe --tags --abbrev=0)
+            echo "resolved CLI tag: $TAG"
+            envman add --key RDE_SMOKE_CLI_TAG --value "$TAG"
+    - script:
+        title: Build branch CLI binary — smoke tests PR code, not last release
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            out=/tmp/bbc-branch-${RDE_SMOKE_GOOS}-${RDE_SMOKE_GOARCH}
+            GOOS="$RDE_SMOKE_GOOS" GOARCH="$RDE_SMOKE_GOARCH" CGO_ENABLED=0 go build -o "$out" .
+            ls -la "$out"
+            envman add --key BRANCH_BINARY_PATH --value "$out"
+
   release-flow-check:
     description: |
       Dry-run of the release flow. Verifies install/installer.sh still works
@@ -1941,6 +2041,8 @@ pipelines:
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
       e2e-mavencentral-mirror-duckduck: {}
+      rde-mac-local-dx-smoke: {}
+      rde-linux-local-dx-smoke: {}
     triggers:
       pull_request:
         - source_branch: "*"
