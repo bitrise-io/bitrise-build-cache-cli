@@ -12,6 +12,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -34,7 +35,7 @@ func init() {
 }
 
 func stopXcelerateProxyCommandFn(osProxy utils.OsProxy, logger log.Logger) error {
-	pidPath := xcelerate.PathFor(osProxy, pidFile)
+	pidPath := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
 	logger.TInfof("Stopping xcelerate-proxy...")
 

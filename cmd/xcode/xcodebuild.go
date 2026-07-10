@@ -36,7 +36,6 @@ import (
 )
 
 const (
-	pidFile      = "proxy.pid"
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
 	NoBitriseBuildCacheFlag     = "--no-bitrise-build-cache"
@@ -631,7 +630,7 @@ func startProxy(
 	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
 ) error {
-	pidFilePth := xcelerate.PathFor(osProxy, pidFile)
+	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
 	content, exists, err := osProxy.ReadFileIfExists(pidFilePth)
 	if err != nil {

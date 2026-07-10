@@ -2,12 +2,6 @@ package doctor
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io/fs"
-	"net"
-	"os"
-	"time"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
@@ -17,43 +11,7 @@ import (
 func (d *Doctor) ccacheHelperCheck() Check {
 	socketPath := ccacheconfig.ResolveIPCSocketPath("", d.Envs, utils.DefaultOsProxy{})
 
-	return Check{
-		Name: "ccache-helper",
-		Diagnose: func(ctx context.Context) Result {
-			if !d.toolActivated(toolconfig.Ccache) {
-				return Result{State: StateOK, Detail: "skipped (c++ not activated)"}
-			}
-
-			if _, err := os.Stat(socketPath); err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					return Result{
-						State:   StateWarn,
-						Detail:  "not running (no socket file)",
-						Fixable: true,
-						Fixer:   DaemonUpFixer{},
-					}
-				}
-
-				return Result{State: StateError, Detail: "stat ccache socket: " + err.Error()}
-			}
-
-			dialer := &net.Dialer{Timeout: 500 * time.Millisecond}
-			probeCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-			defer cancel()
-			conn, err := dialer.DialContext(probeCtx, "unix", socketPath)
-			if err != nil {
-				return Result{
-					State:   StateWarn,
-					Detail:  fmt.Sprintf("stuck: socket %s present but not accepting connections (%v) — fixable", socketPath, err),
-					Fixable: true,
-					Fixer:   DaemonRestartFixer{},
-				}
-			}
-			_ = conn.Close()
-
-			return Result{State: StateOK, Detail: "running (" + socketPath + ")"}
-		},
-	}
+	return d.socketDaemonCheck("ccache-helper", toolconfig.Ccache, "c++", socketPath)
 }
 
 func (d *Doctor) ccacheBinaryCheck() Check {

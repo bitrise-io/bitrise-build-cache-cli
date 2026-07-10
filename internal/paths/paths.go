@@ -190,11 +190,6 @@ func (p Paths) ProxySocketPath(tempDir string) string {
 	return filepath.Join(tempDir, ProxySocketName)
 }
 
-// ProxyPidFile returns the xcelerate proxy pid file path under XcelerateRoot.
-func (p Paths) ProxyPidFile() string {
-	return filepath.Join(p.XcelerateRoot(), ProxyPidFileName)
-}
-
 // CcacheSocketPath returns the ccache IPC unix-socket path under the supplied temp dir.
 func (p Paths) CcacheSocketPath(tempDir string) string {
 	return filepath.Join(tempDir, CcacheSocketName)
