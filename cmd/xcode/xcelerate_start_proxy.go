@@ -20,8 +20,10 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
@@ -163,9 +165,13 @@ func StartXcodeCacheProxy(
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	emitter := newSlimInvocationEmitter(config, envProvider, commandFunc, initialLogger)
+	bundle := newAnalyticsBundle(config, envProvider, commandFunc, initialLogger)
 
-	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, bundle.emitter())
+
+	if bundle.client != nil {
+		go bundle.watcher(initialLogger).Run(ctx)
+	}
 
 	go func() {
 		<-ctx.Done()
@@ -180,53 +186,104 @@ func StartXcodeCacheProxy(
 	return serveErr
 }
 
-// slimInvocationEmitter PUTs a Slim analytics.Invocation on proxy session close.
-// F2 (xcodebuild wrapper) overwrites the same InvocationID with the enriched row.
-type slimInvocationEmitter struct {
+type analyticsBundle struct {
 	client   *analytics.Client
 	auth     configcommon.CacheAuthConfig
 	metadata configcommon.CacheConfigMetadata
+	pending  *enrichment.Store
+	homeDir  string
 	logger   log.Logger
 }
 
-func newSlimInvocationEmitter(
+func newAnalyticsBundle(
 	config xcelerate.Config,
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
 	logger log.Logger,
-) proxy.InvocationEmitter {
+) *analyticsBundle {
 	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
 	if err != nil {
-		logger.Warnf("Slim invocation emit disabled — analytics client init failed: %s", err)
+		logger.Warnf("Xcode analytics disabled — client init failed: %s", err)
 
-		return nil
+		return &analyticsBundle{logger: logger}
 	}
 
-	return &slimInvocationEmitter{
+	b := &analyticsBundle{
 		client:   client,
 		auth:     config.AuthConfig,
 		metadata: configcommon.NewMetadata(envProvider, commandFunc, logger),
 		logger:   logger,
 	}
+
+	if pathResolver, err := paths.Default(); err != nil {
+		logger.Warnf("Pending-invocation queue disabled — paths.Default: %s", err)
+	} else {
+		b.pending = &enrichment.Store{Path: pathResolver.PendingInvocationsFile()}
+		b.homeDir = pathResolver.Home
+	}
+
+	return b
+}
+
+func (b *analyticsBundle) emitter() proxy.InvocationEmitter {
+	if b.client == nil {
+		return nil
+	}
+
+	return &slimInvocationEmitter{bundle: b}
+}
+
+func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
+	enricher := &enrichment.Enricher{
+		Store:    b.pending,
+		Client:   b.client,
+		Auth:     b.auth,
+		Metadata: b.metadata,
+		Logger:   logger,
+	}
+
+	return &enrichment.Watcher{
+		HomeDir: b.homeDir,
+		Handle:  enricher.Enrich,
+		Logger:  logger,
+	}
+}
+
+type slimInvocationEmitter struct {
+	bundle *analyticsBundle
 }
 
 func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
-	// Fire-and-forget: proxy's shutdown/setSession critical path must not block on network I/O.
+	b := e.bundle
+	duration := time.Since(meta.StartTime).Milliseconds()
+	hitRate := stats.HitRate()
+
+	if b.pending != nil {
+		if err := b.pending.Append(enrichment.PendingRecord{
+			InvocationID: meta.InvocationID,
+			StartTime:    meta.StartTime,
+			Duration:     duration,
+			HitRate:      hitRate,
+		}); err != nil {
+			b.logger.Warnf("Failed to queue pending invocation %s: %s", meta.InvocationID, err)
+		}
+	}
+
 	go func() {
 		inv := analytics.NewInvocation(analytics.InvocationRunStats{
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,
-			Duration:       time.Since(meta.StartTime).Milliseconds(),
-			HitRate:        stats.HitRate(),
-		}, e.auth, e.metadata)
+			Duration:       duration,
+			HitRate:        hitRate,
+		}, b.auth, b.metadata)
 
-		if err := e.client.PutInvocation(*inv); err != nil {
-			e.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
+		if err := b.client.PutInvocation(*inv); err != nil {
+			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
 
 			return
 		}
 
-		e.logger.Debugf("Slim invocation emitted: %s (hit-rate %.02f%%)", meta.InvocationID, stats.HitRate()*100)
+		b.logger.Debugf("Slim invocation emitted: %s (hit-rate %.02f%%)", meta.InvocationID, hitRate*100)
 	}()
 
 	_ = ctx

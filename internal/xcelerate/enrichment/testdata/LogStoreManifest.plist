@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>11</integer>
+	<key>logs</key>
+	<dict>
+		<key>AAAA-BBBB-BUILD</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>documentType</key>
+			<integer>1</integer>
+			<key>fileName</key>
+			<string>AAAA-BBBB-BUILD.xcactivitylog</string>
+			<key>highLevelStatus</key>
+			<string>S</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>MyScheme</string>
+			<key>signature</key>
+			<string>Build MyScheme project</string>
+			<key>timeStartedRecording</key>
+			<real>762345678.5</real>
+			<key>timeStoppedRecording</key>
+			<real>762345688.75</real>
+			<key>title</key>
+			<string>Build MyScheme project</string>
+			<key>uniqueIdentifier</key>
+			<string>AAAA-BBBB-BUILD</string>
+		</dict>
+		<key>CCCC-DDDD-TEST</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>fileName</key>
+			<string>CCCC-DDDD-TEST.xcactivitylog</string>
+			<key>highLevelStatus</key>
+			<string>E</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>MySchemeTests</string>
+			<key>signature</key>
+			<string>Test MySchemeTests</string>
+			<key>timeStartedRecording</key>
+			<real>762345700.0</real>
+			<key>timeStoppedRecording</key>
+			<real>762345720.0</real>
+			<key>title</key>
+			<string>Test MySchemeTests</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

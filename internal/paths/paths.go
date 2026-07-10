@@ -48,6 +48,8 @@ const (
 	// invocationsSubdir holds the per-day NDJSON invocation log files.
 	invocationsSubdir = "invocations"
 
+	pendingInvocationsFilename = "xcelerate-pending-invocations.ndjson"
+
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
 
@@ -127,6 +129,10 @@ func (p Paths) InvocationsDir() string {
 
 func (p Paths) InvocationsFile(day string) string {
 	return filepath.Join(p.InvocationsDir(), day+".ndjson")
+}
+
+func (p Paths) PendingInvocationsFile() string {
+	return filepath.Join(p.StateDir(), pendingInvocationsFilename)
 }
 
 // PlistPath returns the per-user LaunchAgent plist path for the given label.

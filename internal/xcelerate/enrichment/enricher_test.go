@@ -1,0 +1,154 @@
+//go:build unit
+
+package enrichment_test
+
+import (
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+)
+
+func TestEnricher_MatchedPendingReusesID(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "kept-id",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store:        store,
+		Client:       mock,
+		XcodeVersion: "16.2",
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		UUID:       "manifest-uuid",
+		Signature:  "Build MyScheme",
+		SchemeName: "MyScheme",
+		Status:     "S",
+		Start:      base.Add(2 * time.Second),
+		Stop:       base.Add(8 * time.Second),
+	})
+
+	assert.Equal(t, "kept-id", captured.InvocationID)
+	assert.Equal(t, "build MyScheme", captured.Command)
+	assert.Equal(t, "Build MyScheme", captured.FullCommand)
+	assert.True(t, captured.Success)
+	assert.Equal(t, "16.2", captured.XcodeVersion)
+
+	remaining, err := store.Load()
+	require.NoError(t, err)
+	assert.Empty(t, remaining, "matched pending entry must be pruned")
+}
+
+func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	entry := enrichment.ManifestEntry{
+		UUID:      "orphan",
+		Signature: "Archive MyScheme",
+		Status:    "E",
+		Start:     time.Now(),
+		Stop:      time.Now().Add(3 * time.Second),
+	}
+	e.Enrich(entry)
+
+	assert.NotEmpty(t, captured.InvocationID)
+	assert.False(t, captured.Success)
+}
+
+func TestEnricher_PutFailure_DoesNotRemovePending(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Now()
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "kept-id",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error {
+			return errors.New("boom")
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich(enrichment.ManifestEntry{
+		Start: base.Add(1 * time.Second),
+		Stop:  base.Add(2 * time.Second),
+	})
+
+	remaining, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, remaining, 1)
+	assert.Equal(t, "kept-id", remaining[0].InvocationID)
+}
+
+func TestEnricher_MetadataForwarded(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store: store,
+		Auth: configcommon.CacheAuthConfig{
+			WorkspaceID: "ws-1",
+		},
+		Metadata: configcommon.CacheConfigMetadata{
+			BitriseAppID: "app-1",
+		},
+		Client: mock,
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     time.Now(),
+		Stop:      time.Now().Add(time.Second),
+	})
+
+	assert.Equal(t, "ws-1", captured.BitriseOrgSlug)
+	assert.Equal(t, "app-1", captured.BitriseAppSlug)
+}
