@@ -272,6 +272,23 @@ if is_mac; then
     echo "keychain marker '$marker' not found after restore" >&2; exit 1
   }
 
+  # Zsolt's review ask on r3552344471: also verify BC still works post-restore.
+  # xcode-app enable/disable is on a WIP branch, not on main, so we can't check
+  # its plist. Instead, prove that the xcelerate config from SCENARIO A's
+  # `activate xcode` survived the disk-restore + the wrapper still authenticates
+  # and writes a fresh invocation ndjson after the restore.
+  step "xcelerate config survived the restore"
+  remote_bash "test -f \$HOME/.bitrise-xcelerate/config.json"
+
+  step "xcodebuild wrapper still records an invocation after restore"
+  ndjson_before=$(remote_bash "cat \$HOME/.local/state/bitrise-build-cache/invocations/*.ndjson 2>/dev/null | wc -l | tr -d ' '")
+  remote_bash "\$HOME/.bitrise-xcelerate/bin/xcodebuild -showsdks >/dev/null"
+  ndjson_after=$(remote_bash "cat \$HOME/.local/state/bitrise-build-cache/invocations/*.ndjson 2>/dev/null | wc -l | tr -d ' '")
+  log "invocation ndjson line count: before=$ndjson_before after=$ndjson_after"
+  [[ "$ndjson_after" -gt "$ndjson_before" ]] || {
+    echo "wrapper did not append a fresh invocation after restore" >&2; exit 1
+  }
+
   scenario_ok
 else
   log "SCENARIO C (session persistence) — skipped on $REMOTE_OS (linux VM has no user keychain to persist)"
