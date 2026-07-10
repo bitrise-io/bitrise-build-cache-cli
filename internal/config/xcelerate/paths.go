@@ -57,12 +57,3 @@ func ResolveProxySocketPath(override string, envs map[string]string, osProxy uti
 
 	return paths.FromHome("").ProxySocketPath(osProxy.TempDir())
 }
-
-// ProxyPidFile returns the absolute path of the xcelerate proxy pid file.
-func ProxyPidFile(osProxy utils.OsProxy) string {
-	if home, err := osProxy.UserHomeDir(); err == nil {
-		return paths.FromHome(home).ProxyPidFile()
-	}
-
-	return filepath.Join(DirPath(osProxy), paths.ProxyPidFileName)
-}

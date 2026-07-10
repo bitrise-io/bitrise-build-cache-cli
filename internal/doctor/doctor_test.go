@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -208,73 +207,27 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
-// xcelerateProxyPidPath returns the proxy.pid path resolved through paths
-// against the per-test HOME override.
-func xcelerateProxyPidPath(t *testing.T, home string) string {
-	t.Helper()
-	t.Setenv("HOME", home)
+func TestXcelerateProxyCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
 
-	return filepath.Join(home, ".bitrise-xcelerate", "proxy.pid")
-}
-
-func TestXcelerateProxyCheck_noPidIsFixableViaDaemonUp(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
-	assert.True(t, res.Fixable, "no pid file → Fix runs `daemon up` to start the service")
+	assert.Contains(t, res.Detail, "no socket file")
+	assert.True(t, res.Fixable)
 }
 
 func TestXcelerateProxyCheck_skippedWhenNotActivated(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return nil },
+	}
 
-	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return nil }}
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "skipped")
-}
-
-func TestXcelerateProxyCheck_stalePidIsFixable(t *testing.T) {
-	home := t.TempDir()
-	pidPath := xcelerateProxyPidPath(t, home)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
-	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(99999999)), 0o600))
-
-	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
-	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	assert.Equal(t, StateWarn, res.State)
-	assert.True(t, res.Fixable)
-}
-
-func TestXcelerateProxyCheck_fixRemovesStaleFile(t *testing.T) {
-	home := t.TempDir()
-	pidPath := xcelerateProxyPidPath(t, home)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
-	require.NoError(t, os.WriteFile(pidPath, []byte("99999999"), 0o600))
-
-	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} }}
-	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	require.NotNil(t, res.Fixer)
-
-	detail, err := res.Fixer.Fix()
-	require.NoError(t, err)
-	assert.Contains(t, detail, "removed")
-
-	_, err = os.Stat(pidPath)
-	assert.True(t, os.IsNotExist(err))
-}
-
-func TestXcelerateProxyCheck_corruptPidIsFixable(t *testing.T) {
-	home := t.TempDir()
-	pidPath := xcelerateProxyPidPath(t, home)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
-	require.NoError(t, os.WriteFile(pidPath, []byte("not-a-number"), 0o600))
-
-	r := &Doctor{}
-	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	assert.Equal(t, StateWarn, res.State)
-	assert.True(t, res.Fixable)
 }
 
 // ──────────────────────────── ccache ────────────────────────────
@@ -607,9 +560,9 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 
 // ──────────────────────────── daemon-up + update fixes ────────────────────────────
 
-func TestXcelerateProxyCheck_fixerIsDaemonUpWhenNoPid(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+func TestXcelerateProxyCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
 	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
 	}
 
@@ -688,34 +641,23 @@ func TestCLIVersionCheck_fixerIsUpdateFixer(t *testing.T) {
 	require.IsType(t, UpdateFixer{}, res.Fixer)
 }
 
-func TestXcelerateProxyCheck_socketDeadIsFixableViaRestart(t *testing.T) {
-	home := t.TempDir()
-	pidPath := xcelerateProxyPidPath(t, home)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
-	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
+func TestXcelerateProxyCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "doctor-xcelerate-stuck-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socketPath := filepath.Join(dir, "stale.sock")
+	f, err := os.Create(socketPath)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
 
 	r := &Doctor{
-		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": socketPath},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
-	assert.True(t, res.Fixable)
-}
-
-func TestXcelerateProxyCheck_socketDeadFixerIsDaemonRestart(t *testing.T) {
-	home := t.TempDir()
-	pidPath := xcelerateProxyPidPath(t, home)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pidPath), 0o755))
-	require.NoError(t, os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600))
-
-	r := &Doctor{
-		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(home, "missing.sock")},
-		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
-	}
-
-	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	assert.Contains(t, res.Detail, "stuck")
 	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
 }
 
