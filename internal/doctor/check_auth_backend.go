@@ -181,6 +181,8 @@ func sourceLabel(s common.AuthSource) string {
 		return "env"
 	case common.AuthSourceJWT:
 		return "jwt"
+	case common.AuthSourceFile:
+		return "config-file"
 	case common.AuthSourceMultiplatform:
 		return "multiplatform-config"
 	case common.AuthSourceNone:

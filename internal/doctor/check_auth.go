@@ -21,6 +21,12 @@ func (d *Doctor) authCheck() Check {
 				}
 			}
 
+			if cfg, source, err := common.ResolveAuthConfig(d.Envs); err == nil && source == common.AuthSourceFile {
+				desc := common.DescribeResolved(cfg, source)
+
+				return Result{State: StateOK, Detail: desc.Detail()}
+			}
+
 			if ws, tok := d.Envs[common.EnvWorkspaceID], d.Envs[common.EnvAuthToken]; ws != "" && tok != "" {
 				desc := common.DescribeResolved(common.CacheAuthConfig{AuthToken: tok, WorkspaceID: ws}, common.AuthSourceEnvVars)
 

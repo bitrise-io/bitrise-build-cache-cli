@@ -8,13 +8,18 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-var loginWorkspace string //nolint:gochecknoglobals
+//nolint:gochecknoglobals
+var (
+	loginWorkspace string
+	loginStorage   string
+)
 
 // LoginCmd signs the user in via the browser (OAuth) and stores a managed,
 // auto-refreshing credential for local build-cache use.
@@ -64,6 +69,7 @@ var LogoutCmd = &cobra.Command{ //nolint:gochecknoglobals
 
 func init() { //nolint:gochecknoinits
 	LoginCmd.Flags().StringVar(&loginWorkspace, "workspace", "", "workspace (organization) slug to use; skips the interactive picker")
+	LoginCmd.Flags().StringVar(&loginStorage, "storage", "", "Where to persist credentials: keychain | file | auto (default: CI→file, local→keychain).")
 	// LoginCmd / LogoutCmd are registered under the `auth` command (cmd/auth).
 }
 
@@ -92,11 +98,20 @@ func runLogin(cmd *cobra.Command) error {
 	}
 	creds.WorkspaceID = workspace
 
-	if err := oauth.Save(creds); err != nil {
+	target, err := store.Select(envs, loginStorage)
+	if err != nil {
+		return err //nolint:wrapcheck
+	}
+	if err := oauth.SaveTo(target, creds); err != nil {
 		return fmt.Errorf("save credentials: %w", err)
 	}
 
-	logger.Infof("Signed in. Using workspace %q for the build cache.", workspace)
+	switch target.Kind() {
+	case store.KindKeychain:
+		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the OS keychain.", workspace)
+	case store.KindFile:
+		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the multiplatform config file (CI-safe).", workspace)
+	}
 
 	if shadow := shadowingAuthEnv(); shadow != "" {
 		logger.Warnf("%s is set and takes precedence over the login just saved.", shadow)
@@ -113,7 +128,7 @@ func shadowingAuthEnv() string {
 		return configcommon.EnvAuthToken
 	case configcommon.AuthSourceJWT:
 		return configcommon.EnvJWT
-	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceMultiplatform:
+	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceFile, configcommon.AuthSourceMultiplatform:
 	}
 
 	return ""
@@ -145,13 +160,14 @@ func pickWorkspace(ctx context.Context, envs map[string]string, pat string) (str
 	return workspaces[idx].Slug, nil
 }
 
-// hydrateStoredAuth refreshes a stale keychain OAuth login so ResolveAuthConfig
-// serves a live PAT. Skipped when an env credential wins (env precedence, and CI
-// must never refresh); this is the only path that does a network refresh.
+// Skip on Bitrise CI where JWT is env-injected; self-hosted CI with a stored PAT still refreshes.
 func hydrateStoredAuth(ctx context.Context) {
-	// A keychain OAuth login always wins over multiplatform, so only the
-	// keychain source can have one to refresh; env sources take precedence.
-	if _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source != configcommon.AuthSourceKeychain {
+	envs := utils.AllEnvs()
+	if envs[configcommon.EnvJWT] != "" {
+		return
+	}
+	_, source, _ := configcommon.ResolveAuthConfig(envs)
+	if source != configcommon.AuthSourceKeychain && source != configcommon.AuthSourceFile {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))

@@ -30,6 +30,8 @@ func SourceLabel(source AuthSource, isOAuthLogin bool) string {
 		}
 
 		return "OS keychain"
+	case AuthSourceFile:
+		return "config file (CI-safe)"
 	case AuthSourceMultiplatform:
 		return "multiplatform config"
 	case AuthSourceNone:

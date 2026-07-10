@@ -112,9 +112,13 @@ func (c Config) authorizeURL(challenge, state, redirectURI string) string {
 // Returns ErrNotLoggedIn when no OAuth credential is stored. Persists any new
 // tokens back to disk.
 func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
-	creds, err := Load()
+	creds, src, err := LoadWithSource()
 	if err != nil {
 		return Credentials{}, err
+	}
+	save := Save
+	if src != nil {
+		save = func(cr Credentials) error { return SaveTo(src, cr) }
 	}
 	if !creds.IsOAuthManaged() {
 		return Credentials{}, ErrNotLoggedIn
@@ -131,7 +135,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	if creds.JWT != "" && now.Add(refreshSkew).Before(creds.JWTExpiry) {
 		if pat, expiry, exErr := c.exchangeJWTForPAT(ctx, creds.JWT); exErr == nil {
 			creds.PAT, creds.PATExpiry = pat, expiry
-			if err := Save(creds); err != nil {
+			if err := save(creds); err != nil {
 				return Credentials{}, err
 			}
 			c.infof("Refreshed Bitrise access token.")
@@ -161,7 +165,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 		return Credentials{}, fmt.Errorf("exchange refreshed token for a PAT: %w", err)
 	}
 	creds.PAT, creds.PATExpiry = pat, expiry
-	if err := Save(creds); err != nil {
+	if err := save(creds); err != nil {
 		return Credentials{}, err
 	}
 	c.infof("Refreshed Bitrise access token.")

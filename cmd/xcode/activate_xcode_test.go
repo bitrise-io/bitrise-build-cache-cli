@@ -37,6 +37,8 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			CreateFunc:    os.Create,
 			OpenFileFunc:  os.OpenFile,
 			WriteFileFunc: os.WriteFile,
+			RenameFunc:    os.Rename,
+			RemoveFunc:    os.Remove,
 		}
 
 		err := xcode.ActivateXcodeCommandFn(

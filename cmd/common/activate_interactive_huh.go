@@ -117,11 +117,11 @@ func (*huhWizard) Run(ctx context.Context) error {
 	case configcommon.AuthSourceJWT:
 		// Per-build, don't persist.
 		logger.TInfof("Using credentials resolved by the CLI.")
-	case configcommon.AuthSourceMultiplatform:
+	case configcommon.AuthSourceMultiplatform, configcommon.AuthSourceFile:
 		if err := persistCredentials(kc, storedCreds, workspaceID, authToken, username); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with disk values for this run only.", err)
 		} else {
-			logger.TInfof("Migrated credentials from the multiplatform config to the OS keychain.")
+			logger.TInfof("Migrated credentials from the config file to the OS keychain.")
 			if username != "" {
 				logger.Infof("Saved display name %q for local invocations.", username)
 			}
@@ -161,6 +161,7 @@ func usernamePersistable(source configcommon.AuthSource) bool {
 	return source == configcommon.AuthSourceKeychain ||
 		source == configcommon.AuthSourceEnvVars ||
 		source == configcommon.AuthSourceMultiplatform ||
+		source == configcommon.AuthSourceFile ||
 		source == configcommon.AuthSourceNone
 }
 

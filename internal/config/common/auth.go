@@ -52,6 +52,7 @@ const (
 	AuthSourceEnvVars
 	AuthSourceJWT
 	AuthSourceKeychain
+	AuthSourceFile
 	AuthSourceMultiplatform
 )
 
@@ -79,20 +80,28 @@ const (
 	UsernameSourceNone UsernameSource = iota
 	UsernameSourceEnv
 	UsernameSourceKeychain
+	UsernameSourceFile
 	UsernameSourceOS
 )
 
 func ResolveUsername(envs map[string]string) (string, UsernameSource) {
-	return resolveUsername(envs, keychain.New(), osUsername)
+	return resolveUsername(envs, keychain.New(), fileCredentialsReader, osUsername)
 }
 
-func resolveUsername(envs map[string]string, loader AuthLoader, osResolver func() string) (string, UsernameSource) {
+func resolveUsername(envs map[string]string, loader AuthLoader, readFile func() (keychain.Credentials, bool), osResolver func() string) (string, UsernameSource) {
 	if v := strings.TrimSpace(envs[EnvUsername]); v != "" {
 		return v, UsernameSourceEnv
 	}
 	if creds, err := loader.Load(); err == nil {
 		if v := strings.TrimSpace(creds.Username); v != "" {
 			return v, UsernameSourceKeychain
+		}
+	}
+	if readFile != nil {
+		if creds, ok := readFile(); ok {
+			if v := strings.TrimSpace(creds.Username); v != "" {
+				return v, UsernameSourceFile
+			}
 		}
 	}
 	if v := strings.TrimSpace(osResolver()); v != "" {
@@ -120,20 +129,33 @@ func RegisterMultiplatformReader(fn func() (CacheAuthConfig, error)) {
 	multiplatformConfigReader = fn
 }
 
-// ResolveAuthConfig resolves credentials in priority order: env vars → keychain
-// → multiplatform config → env-vars error. The returned AuthSource identifies
-// which source actually populated the result.
-func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, AuthSource, error) {
-	return resolveAuthConfig(envs, keychain.New(), multiplatformConfigReader)
+// Wired from multiplatform to avoid the import cycle.
+//
+//nolint:gochecknoglobals
+var fileCredentialsReader func() (keychain.Credentials, bool)
+
+func RegisterFileCredentialsReader(fn func() (keychain.Credentials, bool)) {
+	fileCredentialsReader = fn
 }
 
-func resolveAuthConfig(envs map[string]string, loader AuthLoader, readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
+// Precedence: env → keychain → multiplatform Credentials (CI-safe file) → legacy authConfig → not-set error.
+func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, AuthSource, error) {
+	return resolveAuthConfig(envs, keychain.New(), fileCredentialsReader, multiplatformConfigReader)
+}
+
+func resolveAuthConfig(envs map[string]string, loader AuthLoader, readFile func() (keychain.Credentials, bool), readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
 	if hasAuthEnvVars(envs) {
 		return readAuthConfigFromEnvironments(envs)
 	}
 
 	if cfg, ok := GetKeychainCredentialsWith(loader); ok {
 		return cfg, AuthSourceKeychain, nil
+	}
+
+	if readFile != nil {
+		if creds, ok := readFile(); ok && creds.AuthToken != "" && creds.WorkspaceID != "" {
+			return CacheAuthConfig{AuthToken: creds.AuthToken, WorkspaceID: creds.WorkspaceID}, AuthSourceFile, nil
+		}
 	}
 
 	if readMultiplatform != nil {
