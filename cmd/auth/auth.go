@@ -352,6 +352,8 @@ func renderUsername(logger log.Logger, envs map[string]string) {
 		logger.Infof("Local invocation display name: %s (source: %s env)", name, configcommon.EnvUsername)
 	case configcommon.UsernameSourceKeychain:
 		logger.Infof("Local invocation display name: %s (source: keychain)", name)
+	case configcommon.UsernameSourceFile:
+		logger.Infof("Local invocation display name: %s (source: config file)", name)
 	case configcommon.UsernameSourceOS:
 		logger.Infof("Local invocation display name: %s (source: OS username fallback)", name)
 	case configcommon.UsernameSourceNone:
