@@ -37,11 +37,11 @@ func (m ManifestEntry) Command() Command {
 	}
 
 	switch strings.ToLower(strings.SplitN(source, " ", 2)[0]) {
-	case "build":
+	case "build", "building", "cleaning", "clean":
 		return CommandBuild
-	case "test":
+	case "test", "testing":
 		return CommandTest
-	case "archive":
+	case "archive", "archiving":
 		return CommandArchive
 	default:
 		return CommandUnknown
@@ -67,6 +67,11 @@ func LoadManifest(path string) ([]ManifestEntry, error) {
 	out := make([]ManifestEntry, 0, len(raw.Logs))
 
 	for uuid, entry := range raw.Logs {
+		status := entry.HighLevelStatus
+		if status == "" {
+			status = entry.PrimaryObservable.HighLevelStatus
+		}
+
 		out = append(out, ManifestEntry{
 			UUID:       uuid,
 			ClassName:  entry.ClassName,
@@ -74,7 +79,7 @@ func LoadManifest(path string) ([]ManifestEntry, error) {
 			Signature:  entry.Signature,
 			SchemeName: entry.SchemeName,
 			FileName:   entry.FileName,
-			Status:     entry.HighLevelStatus,
+			Status:     status,
 			Start:      cfAbsoluteToTime(entry.TimeStarted),
 			Stop:       cfAbsoluteToTime(entry.TimeStopped),
 		})
@@ -102,12 +107,17 @@ type manifestFile struct {
 }
 
 type manifestLog struct {
-	ClassName       string  `plist:"className"`
-	Title           string  `plist:"title"`
-	Signature       string  `plist:"signature"`
-	SchemeName      string  `plist:"schemeIdentifier-schemeName"`
-	FileName        string  `plist:"fileName"`
-	HighLevelStatus string  `plist:"highLevelStatus"`
-	TimeStarted     float64 `plist:"timeStartedRecording"`
-	TimeStopped     float64 `plist:"timeStoppedRecording"`
+	ClassName         string             `plist:"className"`
+	Title             string             `plist:"title"`
+	Signature         string             `plist:"signature"`
+	SchemeName        string             `plist:"schemeIdentifier-schemeName"`
+	FileName          string             `plist:"fileName"`
+	HighLevelStatus   string             `plist:"highLevelStatus"`
+	PrimaryObservable manifestObservable `plist:"primaryObservable"`
+	TimeStarted       float64            `plist:"timeStartedRecording"`
+	TimeStopped       float64            `plist:"timeStoppedRecording"`
+}
+
+type manifestObservable struct {
+	HighLevelStatus string `plist:"highLevelStatus"`
 }

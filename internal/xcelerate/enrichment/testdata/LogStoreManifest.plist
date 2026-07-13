@@ -48,6 +48,28 @@
 			<key>title</key>
 			<string>Test MySchemeTests</string>
 		</dict>
+		<key>EEEE-FFFF-CLEAN</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>fileName</key>
+			<string>EEEE-FFFF-CLEAN.xcactivitylog</string>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+			</dict>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Models</string>
+			<key>signature</key>
+			<string>Cleaning project IceCubesApp with scheme Models and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>805631208.0</real>
+			<key>timeStoppedRecording</key>
+			<real>805631209.9</real>
+			<key>title</key>
+			<string>Cleaning project IceCubesApp with scheme Models and configuration Debug</string>
+		</dict>
 	</dict>
 </dict>
 </plist>
