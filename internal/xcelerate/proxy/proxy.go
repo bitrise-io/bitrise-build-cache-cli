@@ -153,6 +153,7 @@ func (p *Proxy) emitCurrentSessionLocked(ctx context.Context) {
 	}
 
 	meta := *p.currentSession
+	meta.EndTime = p.lastActivity
 	stats := p.sessionState.getStats().toPublic()
 
 	p.emitter.EmitSlim(ctx, meta, stats)

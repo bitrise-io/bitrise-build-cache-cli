@@ -211,12 +211,18 @@ func newSlimInvocationEmitter(
 }
 
 func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
+	endTime := meta.EndTime
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+	duration := endTime.Sub(meta.StartTime).Milliseconds()
+
 	// Fire-and-forget: proxy's shutdown/setSession critical path must not block on network I/O.
 	go func() {
 		inv := analytics.NewInvocation(analytics.InvocationRunStats{
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,
-			Duration:       time.Since(meta.StartTime).Milliseconds(),
+			Duration:       duration,
 			HitRate:        stats.HitRate(),
 		}, e.auth, e.metadata)
 

@@ -12,6 +12,10 @@ type SessionMeta struct {
 	BuildSlug    string
 	StepSlug     string
 	StartTime    time.Time
+	// EndTime is the wall-clock of the last RPC on this session (or zero if
+	// none were observed). Emit callers use it to compute Duration accurately —
+	// otherwise inactivity-timer flushes overreport by the idle window.
+	EndTime time.Time
 }
 
 // SessionStats is the counters snapshot at emit time.
