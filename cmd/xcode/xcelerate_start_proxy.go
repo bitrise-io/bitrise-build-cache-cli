@@ -255,7 +255,11 @@ type slimInvocationEmitter struct {
 
 func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
 	b := e.bundle
-	duration := time.Since(meta.StartTime).Milliseconds()
+	endTime := meta.EndTime
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+	duration := endTime.Sub(meta.StartTime).Milliseconds()
 	hitRate := stats.HitRate()
 
 	if b.pending != nil {
