@@ -169,7 +169,7 @@ func StartXcodeCacheProxy(
 
 	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, bundle.emitter())
 
-	if bundle.client != nil {
+	if bundle.client != nil && bundle.homeDir != "" {
 		go bundle.watcher(initialLogger).Run(ctx)
 	}
 
