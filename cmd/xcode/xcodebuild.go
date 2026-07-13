@@ -8,7 +8,6 @@ import (
 	"maps"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -628,37 +627,14 @@ func startProxy(
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
-	killFunc func(pid int, signum syscall.Signal),
+	_ func(pid int, signum syscall.Signal),
 ) error {
 	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
-	content, exists, err := osProxy.ReadFileIfExists(pidFilePth)
-	if err != nil {
-		return fmt.Errorf("failed to read pid file: %w", err)
-	}
-	if exists {
-		pid, err := strconv.Atoi(strings.TrimSpace(content))
-		if err != nil {
-			return fmt.Errorf("failed to parse pid file content: %w", err)
-		}
+	if pid, alive := readAlivePid(osProxy, pidFilePth, nil); alive {
+		logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
-		logger.TInfof("Attempting to connect to an already running proxy (pid: %d)", pid)
-
-		process, err := osProxy.FindProcess(pid)
-		if err != nil {
-			return fmt.Errorf("failed to find process: %w", err)
-		}
-
-		if err := process.Signal(syscall.Signal(0)); err == nil {
-			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
-
-			return nil
-		}
-
-		logger.TWarnf("Removing stale pid file (pid: %d)", pid)
-		if err := osProxy.Remove(pidFilePth); err != nil {
-			return fmt.Errorf("failed to remove stale pid file: %w", err)
-		}
+		return nil
 	}
 
 	exe, err := osProxy.Executable()
@@ -681,14 +657,7 @@ func startProxy(
 		return fmt.Errorf(errFmtFailedToStartProxy, err)
 	}
 
-	pid := cmd.PID()
-	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0o644); err != nil {
-		killFunc(pid, syscall.SIGKILL)
-
-		return fmt.Errorf(errFmtFailedToCreatePID, err)
-	}
-
-	logger.TDonef(startedProxy, pid)
+	logger.TDonef(startedProxy, cmd.PID())
 
 	return nil
 }
