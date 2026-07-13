@@ -68,7 +68,7 @@ type Proxy struct {
 	lastActivity      time.Time
 }
 
-const defaultInactivityTimeout = 30 * time.Second
+const defaultInactivityTimeout = 10 * time.Second
 
 func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
 	// Note: Gradle plugin uses a client balancer, with multiple channels (min 2), each with multiple connections.
