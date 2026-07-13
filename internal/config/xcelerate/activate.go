@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/shirou/gopsutil/v4/process"
@@ -183,17 +184,42 @@ func copyCLIToXcelerateBinDir(ctx context.Context, osProxy utils.OsProxy, logger
 		return fmt.Errorf("failed to ensure cli is not running: %w", err)
 	}
 
-	writer, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create destination executable: %w", err)
-	}
-	defer writer.Close()
-
-	if _, err = io.Copy(writer, reader); err != nil {
-		return fmt.Errorf("failed to copy executable: %w", err)
+	if err := writeExecutableAtomically(binPath, target, reader); err != nil {
+		return err
 	}
 
 	logger.TInfof("Copied CLI to %s", target)
+
+	return nil
+}
+
+// writeExecutableAtomically renames a temp copy over target, so a failed write or a still-running old CLI can't leave a corrupted binary in place.
+func writeExecutableAtomically(dir, target string, src io.Reader) error {
+	tmp, err := os.CreateTemp(dir, cliBasename+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp executable: %w", err)
+	}
+	defer func() {
+		_ = os.Remove(tmp.Name())
+	}()
+
+	if _, err = io.Copy(tmp, src); err != nil {
+		_ = tmp.Close()
+
+		return fmt.Errorf("failed to copy executable: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp executable: %w", err)
+	}
+
+	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
+		return fmt.Errorf("failed to chmod temp executable: %w", err)
+	}
+
+	if err := os.Rename(tmp.Name(), target); err != nil {
+		return fmt.Errorf("failed to move executable into place: %w", err)
+	}
 
 	return nil
 }
@@ -223,9 +249,27 @@ func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logg
 				return fmt.Errorf("failed to kill already running CLI (pid: %d): %w", p.Pid, err)
 			}
 		}
+
+		waitForProcessExit(ctx, p, logger)
 	}
 
 	return nil
+}
+
+func waitForProcessExit(ctx context.Context, p *process.Process, logger log.Logger) {
+	for range 50 {
+		if running, err := p.IsRunningWithContext(ctx); err == nil && !running {
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	logger.TWarnf("Already running CLI (pid: %d) did not exit in time", p.Pid)
 }
 
 func addXcelerateCommandToPathWithScriptWrapper(

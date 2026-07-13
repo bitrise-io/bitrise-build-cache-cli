@@ -2041,8 +2041,9 @@ pipelines:
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
       e2e-mavencentral-mirror-duckduck: {}
-      rde-mac-local-dx-smoke: {}
-      rde-linux-local-dx-smoke: {}
+      # TEMP: RDE smoke tests disabled while the RDE provisioning is failing.
+      # rde-mac-local-dx-smoke: {}
+      # rde-linux-local-dx-smoke: {}
     triggers:
       pull_request:
         - source_branch: "*"
