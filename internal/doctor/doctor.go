@@ -84,6 +84,7 @@ type Doctor struct {
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 	ActivatedTools     func() map[toolconfig.Tool]bool
 	BackendProbe       BackendProbeFunc
+	Now                func() time.Time
 }
 
 func NewDoctor() *Doctor {
@@ -171,6 +172,7 @@ func (d *Doctor) checks(opts Options) []Check {
 
 	checks = append(checks,
 		d.xcelerateProxyCheck(),
+		d.enrichmentCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
 		d.logDirsCheck(),

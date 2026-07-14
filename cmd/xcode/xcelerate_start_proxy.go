@@ -189,12 +189,13 @@ func StartXcodeCacheProxy(
 }
 
 type analyticsBundle struct {
-	client   *analytics.Client
-	auth     configcommon.CacheAuthConfig
-	metadata configcommon.CacheConfigMetadata
-	pending  *enrichment.Store
-	homeDir  string
-	logger   log.Logger
+	client     *analytics.Client
+	auth       configcommon.CacheAuthConfig
+	metadata   configcommon.CacheConfigMetadata
+	pending    *enrichment.Store
+	healthPath string
+	homeDir    string
+	logger     log.Logger
 }
 
 func newAnalyticsBundle(
@@ -221,6 +222,7 @@ func newAnalyticsBundle(
 		logger.Warnf("Pending-invocation queue disabled — paths.Default: %s", err)
 	} else {
 		b.pending = &enrichment.Store{Path: pathResolver.PendingInvocationsFile()}
+		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
 	}
 
@@ -246,6 +248,9 @@ func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 		Auth:     b.auth,
 		Metadata: b.metadata,
 		Logger:   logger,
+	}
+	if b.healthPath != "" {
+		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
 	}
 
 	return &enrichment.Watcher{

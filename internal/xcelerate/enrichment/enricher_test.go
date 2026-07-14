@@ -152,3 +152,65 @@ func TestEnricher_MetadataForwarded(t *testing.T) {
 	assert.Equal(t, "ws-1", captured.BitriseOrgSlug)
 	assert.Equal(t, "app-1", captured.BitriseAppSlug)
 }
+
+func TestEnricher_UpdatesHealth_OnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+	hw := &enrichment.HealthWriter{Path: filepath.Join(dir, "health.json")}
+
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Health: hw,
+		Now:    func() time.Time { return now },
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	})
+
+	snap, err := enrichment.LoadHealth(hw.Path)
+	require.NoError(t, err)
+	assert.Equal(t, now, snap.LastAttempt.UTC())
+	assert.Equal(t, now, snap.LastSuccess.UTC())
+	assert.Zero(t, snap.ConsecutiveErrors)
+	assert.Empty(t, snap.LastError)
+}
+
+func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+	hw := &enrichment.HealthWriter{Path: filepath.Join(dir, "health.json")}
+
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("network down") },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Health: hw,
+		Now:    func() time.Time { return now },
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	})
+
+	snap, err := enrichment.LoadHealth(hw.Path)
+	require.NoError(t, err)
+	assert.Equal(t, now, snap.LastAttempt.UTC())
+	assert.True(t, snap.LastSuccess.IsZero())
+	assert.Equal(t, 1, snap.ConsecutiveErrors)
+	assert.Contains(t, snap.LastError, "network down")
+}

@@ -18,7 +18,7 @@ type PendingRecord struct {
 	HitRate      float32   `json:"hit_rate"`
 }
 
-const pendingMaxAge = time.Hour
+const EnrichmentPendingMaxAge = time.Hour
 
 type Store struct {
 	Path string
@@ -39,7 +39,7 @@ func (s *Store) Append(rec PendingRecord) error {
 		return err
 	}
 
-	cutoff := s.now().Add(-pendingMaxAge)
+	cutoff := s.now().Add(-EnrichmentPendingMaxAge)
 	kept := existing[:0]
 
 	for _, r := range existing {

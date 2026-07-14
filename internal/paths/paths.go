@@ -50,6 +50,8 @@ const (
 
 	pendingInvocationsFilename = "xcelerate-pending-invocations.ndjson"
 
+	enrichmentHealthFilename = "xcelerate-enrichment-health.json"
+
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
 
@@ -133,6 +135,10 @@ func (p Paths) InvocationsFile(day string) string {
 
 func (p Paths) PendingInvocationsFile() string {
 	return filepath.Join(p.StateDir(), pendingInvocationsFilename)
+}
+
+func (p Paths) EnrichmentHealthFile() string {
+	return filepath.Join(p.StateDir(), enrichmentHealthFilename)
 }
 
 // PlistPath returns the per-user LaunchAgent plist path for the given label.
