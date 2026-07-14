@@ -1,1 +1,1 @@
-{"invocation_id":"cafe-1234","command":"xcodebuild build -workspace Foo.xcworkspace -scheme Foo","tool":"xcode","tool_version":"16.0","cli_version":"v2.8.6","started_at":"2026-06-25T13:14:15Z","finished_at":"2026-06-25T13:15:00Z","exit_code":0,"source":"local"}
+{"invocation_id":"cafe-1234","command":"xcodebuild build -workspace Foo.xcworkspace -scheme Foo","tool":"xcode","tool_version":"16.0","cli_version":"v2.8.6","started_at":"2026-06-25T13:14:15Z","finished_at":"2026-06-25T13:15:00Z","exit_code":0,"username":"alice"}

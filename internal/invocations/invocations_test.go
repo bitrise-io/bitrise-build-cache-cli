@@ -40,7 +40,7 @@ func TestWriter_Append_writesDailyNDJSON(t *testing.T) {
 		CLIVersion:   "v2.8.6",
 		StartedAt:    at,
 		ExitCode:     0,
-		Source:       SourceLocal,
+		Username:     "alice",
 	}
 	require.NoError(t, w.Append(rec))
 
@@ -87,7 +87,7 @@ func TestWriter_Append_writesOversizedRecordVerbatim(t *testing.T) {
 		Tool:         ToolXcode,
 		CLIVersion:   "v2.8.6",
 		StartedAt:    at,
-		Source:       SourceLocal,
+		Username:     "alice",
 	}
 	require.NoError(t, w.Append(rec))
 
@@ -118,7 +118,7 @@ func TestWriter_Append_concurrentWritesParseable(t *testing.T) {
 					Tool:         ToolXcode,
 					CLIVersion:   "v2.8.6",
 					StartedAt:    at,
-					Source:       SourceLocal,
+					Username:     "alice",
 				})
 			}
 		}(i)
@@ -217,7 +217,8 @@ func TestRecord_jsonRoundtrip(t *testing.T) {
 		StartedAt:    start,
 		FinishedAt:   start.Add(45 * time.Second),
 		ExitCode:     0,
-		Source:       SourceCI,
+		CIProvider:   "bitrise",
+		Username:     "bob",
 	}
 
 	b, err := json.Marshal(rec)
@@ -306,7 +307,7 @@ func TestCanonicalRecord_byteEqualToCheckedInFixture(t *testing.T) {
 		StartedAt:    time.Date(2026, 6, 25, 13, 14, 15, 0, time.UTC),
 		FinishedAt:   time.Date(2026, 6, 25, 13, 15, 0, 0, time.UTC),
 		ExitCode:     0,
-		Source:       SourceLocal,
+		Username:     "alice",
 	}
 
 	encoded, err := encodeRecord(rec)

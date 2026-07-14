@@ -27,7 +27,8 @@ One JSON object per line. UTF-8, LF-terminated. Records ≤ 4 KiB land atomicall
 | `started_at` | RFC3339 timestamp | yes | When the tool invocation started. |
 | `finished_at` | RFC3339 timestamp | no | Equal to `started_at + duration`. The canonical Go writer emits one record per completed invocation, so this is always set today; future streaming writers may omit it for in-flight records. |
 | `exit_code` | int | yes | Real exit code where available; 0 = success. |
-| `source` | string | yes | `local` or `ci`. CI iff the writer ran under a known CI provider. |
+| `ci_provider` | string | no | Detected CI provider id (e.g. `bitrise`); empty/omitted ⇒ local run. |
+| `username` | string | no | Resolved local-invocation display name (env → keychain → config file → OS username). |
 
 Unknown fields are ignored by readers — additive schema changes are backward compatible.
 

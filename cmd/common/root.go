@@ -65,7 +65,7 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
 		"register-invocation", "register-child-invocation":
 		return true
-	case "token":
+	case "token", "username":
 		return true
 	default:
 		return false

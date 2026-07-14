@@ -68,6 +68,28 @@ func TestSaveExclusive_ClearsOtherBackend(t *testing.T) {
 	assert.Equal(t, "new", got.AuthToken)
 }
 
+func TestSetUsername_landsInStoreHoldingCredsAndPreservesAuth(t *testing.T) {
+	keyring.MockInit()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Creds live only in the file store; keychain is empty.
+	require.NoError(t, NewFile().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+
+	kind, err := SetUsername(map[string]string{}, "erin")
+	require.NoError(t, err)
+	assert.Equal(t, KindFile, kind, "username must land in the file store that holds the creds, not the keychain")
+
+	got, err := NewFile().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "erin", got.Username)
+	assert.Equal(t, "tok", got.AuthToken, "token must survive a username-only write")
+	assert.Equal(t, "ws", got.WorkspaceID)
+
+	_, kcErr := NewKeychain().Load()
+	require.ErrorIs(t, kcErr, ErrNotFound, "username write must not create a stray keychain entry")
+}
+
 func TestFileStore_SavePersistsAtRestrictedPerms(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

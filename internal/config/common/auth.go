@@ -84,6 +84,23 @@ const (
 	UsernameSourceOS
 )
 
+func (s UsernameSource) String() string {
+	switch s {
+	case UsernameSourceEnv:
+		return "env"
+	case UsernameSourceKeychain:
+		return "keychain"
+	case UsernameSourceFile:
+		return "file"
+	case UsernameSourceOS:
+		return "os"
+	case UsernameSourceNone:
+		return sourceNameNone
+	}
+
+	return "unknown"
+}
+
 func ResolveUsername(envs map[string]string) (string, UsernameSource) {
 	return resolveUsername(envs, keychain.New(), fileCredentialsReader, osUsername)
 }
