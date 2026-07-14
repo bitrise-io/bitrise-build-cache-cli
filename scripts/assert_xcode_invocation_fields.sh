@@ -132,9 +132,9 @@ assert_xcode_invocation_hit_rate_at_least() {
   json=$(_bbc_fetch_xcode_invocation_detail "$invocation_id")
 
   local hit_rate
-  hit_rate=$(_bbc_first_nonempty "$json" '.hitRate' '.hit_rate')
+  hit_rate=$(_bbc_first_nonempty "$json" '.cacheHitRate' '.cache_hit_rate' '.hitRate' '.hit_rate')
   if [[ -z "$hit_rate" ]]; then
-    echo "FAIL: BE detail for $invocation_id has no hitRate field" >&2
+    echo "FAIL: BE detail for $invocation_id has no cacheHitRate field" >&2
     printf '%s' "$json" | jq '.' >&2 || printf '%s\n' "$json" >&2
 
     return 1
