@@ -25,6 +25,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
 )
@@ -165,7 +166,7 @@ func StartXcodeCacheProxy(
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	bundle := newAnalyticsBundle(config, envProvider, commandFunc, initialLogger)
+	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger)
 
 	emitter := bundle.emitter()
 
@@ -190,16 +191,19 @@ func StartXcodeCacheProxy(
 }
 
 type analyticsBundle struct {
-	client     *analytics.Client
-	auth       configcommon.CacheAuthConfig
-	metadata   configcommon.CacheConfigMetadata
-	pending    *enrichment.Store
-	healthPath string
-	homeDir    string
-	logger     log.Logger
+	client           *analytics.Client
+	auth             configcommon.CacheAuthConfig
+	metadata         configcommon.CacheConfigMetadata
+	pending          *enrichment.Store
+	healthPath       string
+	homeDir          string
+	xcodeVersion     string
+	xcodeBuildNumber string
+	logger           log.Logger
 }
 
 func newAnalyticsBundle(
+	ctx context.Context,
 	config xcelerate.Config,
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
@@ -217,6 +221,13 @@ func newAnalyticsBundle(
 		auth:     config.AuthConfig,
 		metadata: configcommon.NewMetadata(envProvider, commandFunc, logger),
 		logger:   logger,
+	}
+
+	if version, buildNumber, err := xcodeversion.Resolve(ctx, config.OriginalXcodebuildPath, commandFunc); err != nil {
+		logger.Debugf("Xcode version resolution failed — enriched invocations will omit it: %s", err)
+	} else {
+		b.xcodeVersion = version
+		b.xcodeBuildNumber = buildNumber
 	}
 
 	if pathResolver, err := paths.Default(); err != nil {
@@ -244,11 +255,13 @@ func (b *analyticsBundle) enrichmentEnabled() bool {
 
 func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 	enricher := &enrichment.Enricher{
-		Store:    b.pending,
-		Client:   b.client,
-		Auth:     b.auth,
-		Metadata: b.metadata,
-		Logger:   logger,
+		Store:            b.pending,
+		Client:           b.client,
+		Auth:             b.auth,
+		Metadata:         b.metadata,
+		XcodeVersion:     b.xcodeVersion,
+		XcodeBuildNumber: b.xcodeBuildNumber,
+		Logger:           logger,
 	}
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}

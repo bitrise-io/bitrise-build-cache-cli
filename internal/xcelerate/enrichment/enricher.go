@@ -19,14 +19,15 @@ type InvocationPutter interface {
 
 // Xcode.app never calls SetSession so no pending match; mint a fresh id.
 type Enricher struct {
-	Store        *Store
-	Client       InvocationPutter
-	Auth         configcommon.CacheAuthConfig
-	Metadata     configcommon.CacheConfigMetadata
-	XcodeVersion string
-	Logger       log.Logger
-	Health       *HealthWriter
-	Now          func() time.Time
+	Store            *Store
+	Client           InvocationPutter
+	Auth             configcommon.CacheAuthConfig
+	Metadata         configcommon.CacheConfigMetadata
+	XcodeVersion     string
+	XcodeBuildNumber string
+	Logger           log.Logger
+	Health           *HealthWriter
+	Now              func() time.Time
 }
 
 func (e *Enricher) now() time.Time {
@@ -58,13 +59,14 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 	}
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
-		InvocationDate: entry.Start,
-		InvocationID:   invocationID,
-		Duration:       entry.Stop.Sub(entry.Start).Milliseconds(),
-		Command:        string(entry.Command()),
-		FullCommand:    entry.Signature,
-		Success:        entry.Success(),
-		XcodeVersion:   e.XcodeVersion,
+		InvocationDate:   entry.Start,
+		InvocationID:     invocationID,
+		Duration:         entry.Stop.Sub(entry.Start).Milliseconds(),
+		Command:          string(entry.Command()),
+		FullCommand:      entry.Signature,
+		Success:          entry.Success(),
+		XcodeVersion:     e.XcodeVersion,
+		XcodeBuildNumber: e.XcodeBuildNumber,
 	}, e.Auth, e.Metadata)
 
 	if scheme := entry.SchemeName; scheme != "" {

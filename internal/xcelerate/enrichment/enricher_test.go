@@ -37,9 +37,10 @@ func TestEnricher_MatchedPendingReusesID(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{
-		Store:        store,
-		Client:       mock,
-		XcodeVersion: "16.2",
+		Store:            store,
+		Client:           mock,
+		XcodeVersion:     "16.2",
+		XcodeBuildNumber: "16C5032a",
 	}
 
 	e.Enrich(enrichment.ManifestEntry{
@@ -56,6 +57,7 @@ func TestEnricher_MatchedPendingReusesID(t *testing.T) {
 	assert.Equal(t, "Build MyScheme", captured.FullCommand)
 	assert.True(t, captured.Success)
 	assert.Equal(t, "16.2", captured.XcodeVersion)
+	assert.Equal(t, "16C5032a", captured.ToolBuildNumber)
 
 	remaining, err := store.Load()
 	require.NoError(t, err)

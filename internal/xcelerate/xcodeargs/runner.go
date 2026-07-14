@@ -19,6 +19,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 )
 
 type RunStats struct {
@@ -205,36 +206,19 @@ func (runner *DefaultRunner) handleInterrupt(ctx context.Context, cmd *exec.Cmd)
 func (runner *DefaultRunner) determineXcodeVersionAndBuildNumber(ctx context.Context, xcodebuild string, runStats *RunStats) error {
 	runner.logger.TDebugf("Checking xcodebuild version and build number: %s -version", xcodebuild)
 
-	versionRegexp := regexp.MustCompile(`Xcode\s+(.*)`)
-	buildNumberRegexp := regexp.MustCompile(`Build version\s+(.*)`)
+	cmdFunc := func(name string, args ...string) (string, error) {
+		out, err := exec.CommandContext(ctx, name, args...).Output()
 
-	output, err := exec.CommandContext(ctx, xcodebuild, "-version").Output()
+		return string(out), err
+	}
+
+	version, buildNumber, err := xcodeversion.Resolve(ctx, xcodebuild, cmdFunc)
 	if err != nil {
-		return fmt.Errorf("xcodebuild -version failed: %w", err)
+		return fmt.Errorf("resolve xcode version: %w", err)
 	}
 
-	runner.logger.TDebugf("xcodebuild -version output: %s", string(output))
-
-	lines := strings.Split(string(output), "\n")
-	if len(lines) < 2 {
-		return fmt.Errorf("unexpected xcodebuild -version output: %s", string(output))
-	}
-
-	versionMatch := versionRegexp.FindStringSubmatch(strings.TrimSpace(lines[0]))
-	runner.logger.TDebugf("xcode version match: %+v", versionMatch)
-	if len(versionMatch) < 2 {
-		return fmt.Errorf("failed to parse xcode version from: %s", lines[0])
-	}
-
-	runStats.XcodeVersion = versionMatch[1]
-
-	buildNumberMatch := buildNumberRegexp.FindStringSubmatch(strings.TrimSpace(lines[1]))
-	runner.logger.TDebugf("xcode build number match: %+v", buildNumberMatch)
-	if len(buildNumberMatch) < 2 {
-		return fmt.Errorf("failed to parse xcode build number from: %s", lines[1])
-	}
-
-	runStats.XcodeBuildNumber = buildNumberMatch[1]
+	runStats.XcodeVersion = version
+	runStats.XcodeBuildNumber = buildNumber
 
 	return nil
 }
