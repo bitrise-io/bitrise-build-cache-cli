@@ -171,6 +171,7 @@ func StartXcodeCacheProxy(
 	emitter := bundle.emitter()
 
 	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
 
 	if bundle.enrichmentEnabled() {
 		go bundle.watcher(initialLogger).Run(ctx)
@@ -374,4 +375,23 @@ func getLogDir(osProxy utils.OsProxy) (string, error) {
 	}
 
 	return logDir, nil
+}
+
+// resolveInactivityTimeout parses BITRISE_XCELERATE_INACTIVITY_TIMEOUT off the
+// injected env map. Returns zero when the var is unset, empty, or unparseable —
+// zero lets proxy.inactivityDuration() fall back to its default.
+func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Duration {
+	raw := envs[xcelerate.EnvInactivityTimeout]
+	if raw == "" {
+		return 0
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		logger.Warnf("Ignoring invalid %s=%q: %s", xcelerate.EnvInactivityTimeout, raw, err)
+
+		return 0
+	}
+
+	return parsed
 }

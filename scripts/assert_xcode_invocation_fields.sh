@@ -151,3 +151,59 @@ assert_xcode_invocation_hit_rate_at_least() {
 
   echo "OK: hitRate=${hit_rate} (${percent}%) >= ${min_percent}%"
 }
+
+# assert_xcode_no_orphan_invocations_for_build <build_slug> <expected_invocation_id>
+# Lists xcode invocations for the current Bitrise build_slug and asserts that
+# exactly one xcode invocation exists, and its id matches <expected_invocation_id>.
+# Used by the F1/F2 race workflow: if the enrichment watcher (F2) had minted an
+# orphan (unmatched manifest → new UUID) instead of waiting for the slim-record
+# retry bucket, the BE would show TWO xcode invocations under the same build.
+assert_xcode_no_orphan_invocations_for_build() {
+  local build_slug="$1"
+  local expected_id="$2"
+  if [[ -z "$build_slug" || -z "$expected_id" ]]; then
+    echo "FAIL: assert_xcode_no_orphan_invocations_for_build <build_slug> <expected_invocation_id>" >&2
+
+    return 1
+  fi
+
+  local url="${BITRISE_API_BASE}/build-cache/${WORKSPACE_SLUG}/invocations.json?tool=xcode&build_slug=${build_slug}&items_per_page=100"
+
+  local response
+  if ! response=$(curl -sSf \
+    -H "Authorization: token ${MONOLITH_API_PAT}" \
+    -H "Accept: application/json" \
+    "$url"); then
+    echo "FAIL: could not GET $url" >&2
+
+    return 1
+  fi
+
+  local ids count
+  ids=$(printf '%s' "$response" | jq -r '.items[]? | (.invocationId // .invocation_id // "")' | grep -v '^$' || true)
+  if [[ -z "$ids" ]]; then
+    count=0
+  else
+    count=$(printf '%s\n' "$ids" | wc -l | tr -d '[:space:]')
+  fi
+
+  if [[ "$count" -ne 1 ]]; then
+    echo "FAIL: expected exactly 1 xcode invocation for build ${build_slug}, got ${count}" >&2
+    echo "invocation ids seen:" >&2
+    printf '%s\n' "$ids" >&2
+    echo "--- BE list payload ---" >&2
+    printf '%s' "$response" | jq '.' >&2 || printf '%s\n' "$response" >&2
+
+    return 1
+  fi
+
+  if [[ "$ids" != "$expected_id" ]]; then
+    echo "FAIL: single xcode invocation id ${ids} does not match wrapper id ${expected_id}" >&2
+    echo "--- BE list payload ---" >&2
+    printf '%s' "$response" | jq '.' >&2 || printf '%s\n' "$response" >&2
+
+    return 1
+  fi
+
+  echo "OK: exactly one xcode invocation for build ${build_slug}, id=${expected_id}"
+}

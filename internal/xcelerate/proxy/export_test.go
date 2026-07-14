@@ -20,3 +20,6 @@ func (p *Proxy) SetLastActivity(t time.Time) {
 
 	p.lastActivity = t
 }
+
+// InactivityDuration exposes p.inactivityDuration for tests.
+func (p *Proxy) InactivityDuration() time.Duration { return p.inactivityDuration() }

@@ -106,3 +106,17 @@ func TestSetSession_ResetsLastActivity(t *testing.T) {
 
 	assert.True(t, p.LastActivity().IsZero(), "SetSession must zero lastActivity from any prior session")
 }
+
+func TestInactivityDuration_ZeroFallsBackToDefault(t *testing.T) {
+	p := newProxyForEmit(t, &capturingEmitter{})
+
+	// Field zero → default (10s per proxy.go).
+	assert.Equal(t, 10*time.Second, p.InactivityDuration())
+}
+
+func TestInactivityDuration_ConfiguredValueWins(t *testing.T) {
+	p := newProxyForEmit(t, &capturingEmitter{})
+	p.InactivityTimeout = 250 * time.Millisecond
+
+	assert.Equal(t, 250*time.Millisecond, p.InactivityDuration())
+}

@@ -272,3 +272,38 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 	_, err := os.Stat(filepath.Join(home, paths.StateDirRelative, "xcelerate-pending-invocations.ndjson"))
 	assert.True(t, os.IsNotExist(err), "pending file must not exist when b.pending is nil")
 }
+
+
+func Test_resolveInactivityTimeout(t *testing.T) {
+	t.Run("unset returns zero", func(t *testing.T) {
+		got := resolveInactivityTimeout(map[string]string{}, bundleTestLogger)
+
+		assert.Equal(t, time.Duration(0), got)
+	})
+
+	t.Run("empty returns zero", func(t *testing.T) {
+		got := resolveInactivityTimeout(map[string]string{xcelerate.EnvInactivityTimeout: ""}, bundleTestLogger)
+
+		assert.Equal(t, time.Duration(0), got)
+	})
+
+	t.Run("valid seconds parsed", func(t *testing.T) {
+		got := resolveInactivityTimeout(map[string]string{xcelerate.EnvInactivityTimeout: "5s"}, bundleTestLogger)
+
+		assert.Equal(t, 5*time.Second, got)
+	})
+
+	t.Run("valid milliseconds parsed", func(t *testing.T) {
+		got := resolveInactivityTimeout(map[string]string{xcelerate.EnvInactivityTimeout: "500ms"}, bundleTestLogger)
+
+		assert.Equal(t, 500*time.Millisecond, got)
+	})
+
+	t.Run("garbage returns zero and warns", func(t *testing.T) {
+		l := newBundleTestLogger()
+		got := resolveInactivityTimeout(map[string]string{xcelerate.EnvInactivityTimeout: "not-a-duration"}, l)
+
+		assert.Equal(t, time.Duration(0), got)
+		l.AssertCalled(t, "Warnf", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+}
