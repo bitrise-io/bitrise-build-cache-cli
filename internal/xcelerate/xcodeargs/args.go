@@ -9,11 +9,15 @@ import (
 	"github.com/spf13/pflag"
 )
 
-//go:generate moq -out mocks/args_mock.go -pkg mocks . XcodeArgs
+//go:generate moq -stub -out mocks/args_mock.go -pkg mocks . XcodeArgs
 type XcodeArgs interface {
 	Args(additional map[string]string) []string
 	Command() string
 	ShortCommand() string
+	DerivedDataPath() string
+	ProjectTempDir() string
+	ProjectDir() string
+	UserOtherCFlags() string
 }
 
 var CacheArgs = map[string]string{
@@ -25,13 +29,6 @@ var CacheArgs = map[string]string{
 	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
-}
-
-// PrefixMapArgs canonicalize the rotating dir roots in clang cache keys so a non-stable
-// checkout/DerivedData path still reuses cache. Suppressed by --disable-prefix-mapping.
-var PrefixMapArgs = map[string]string{
-	"CLANG_ENABLE_PREFIX_MAPPING": "YES",
-	"OTHER_CFLAGS":                "$(inherited) -fdepscan-prefix-map=$(SRCROOT)=/^src -fdepscan-prefix-map=$(OBJROOT)=/^obj -fdepscan-prefix-map=$(SYMROOT)=/^sym -fdepscan-prefix-map=$(BUILT_PRODUCTS_DIR)=/^built -fdepscan-prefix-map=$(HOME)=/^home",
 }
 
 var actions = []string{

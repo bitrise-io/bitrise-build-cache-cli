@@ -73,6 +73,12 @@ const (
 	// XcodeAppStateFileName holds the prior XCODE_XCCONFIG_FILE captured at enable time.
 	XcodeAppStateFileName = "xcode-app-state.json"
 
+	// xcodeManagedDerivedDataTool is the per-workspace DD root managed by the wrapper.
+	xcodeManagedDerivedDataTool = "xcode-dd"
+
+	// xcodeManagedProjectTempDirTool is the per-workspace PROJECT_TEMP_DIR root managed by the wrapper.
+	xcodeManagedProjectTempDirTool = "xcode-ptd"
+
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 )
@@ -244,4 +250,16 @@ func (p Paths) CcacheLogDir() string {
 // GradleInitScriptFile returns the absolute path of the generated gradle init script.
 func (p Paths) GradleInitScriptFile() string {
 	return filepath.Join(p.Home, gradleInitScriptRelative)
+}
+
+// XcodeManagedDerivedDataDir returns the wrapper-owned DerivedData dir for a given
+// workspace-sha, layered under BitriseCacheDir("xcode-dd").
+func (p Paths) XcodeManagedDerivedDataDir(workspaceSHA string) string {
+	return filepath.Join(p.BitriseCacheDir(xcodeManagedDerivedDataTool), workspaceSHA)
+}
+
+// XcodeManagedProjectTempDir returns the wrapper-owned PROJECT_TEMP_DIR dir for a given
+// workspace-sha, layered under BitriseCacheDir("xcode-ptd").
+func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
+	return filepath.Join(p.BitriseCacheDir(xcodeManagedProjectTempDirTool), workspaceSHA)
 }

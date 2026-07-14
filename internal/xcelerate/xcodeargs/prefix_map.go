@@ -1,0 +1,174 @@
+package xcodeargs
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
+// inherited is the Xcode/clang build-setting marker that pulls in the previous
+// value from the setting cascade (target/project/xcconfig). Without it we would
+// silently drop whatever OTHER_CFLAGS the user's project already had.
+const inheritedMarker = "$(inherited)"
+
+// Build-setting keys and derivedDataPath flag literal used by the wrapper
+// when injecting prefix-map rules.
+const (
+	ClangEnablePrefixMappingKey = "CLANG_ENABLE_PREFIX_MAPPING"
+	OtherCFlagsKey              = "OTHER_CFLAGS"
+	ProjectTempDirKey           = "PROJECT_TEMP_DIR"
+	DerivedDataPathFlag         = "-derivedDataPath"
+)
+
+// PrefixMapPaths is the set of absolute paths whose values will be rewritten
+// to stable virtual names in clang's CAS cache keys via -fdepscan-prefix-map.
+// Empty fields produce no rule.
+type PrefixMapPaths struct {
+	Home            string
+	ProjectDir      string
+	DerivedDataPath string
+	ProjectTempDir  string
+}
+
+// BuildOtherCFlagsValue returns the suffix to append after "$(inherited) " in
+// OTHER_CFLAGS. Rule ordering is narrowest-first: when one mapped path sits
+// inside another (e.g. DerivedDataPath under $HOME), the narrower rule must
+// fire first so its virtual name wins regardless of whether clang interprets
+// -fdepscan-prefix-map as first-match-wins or longest-match-wins.
+func BuildOtherCFlagsValue(p PrefixMapPaths) string {
+	type rule struct{ abs, virtual string }
+	rules := []rule{
+		{p.ProjectTempDir, "/^obj"},
+		{p.DerivedDataPath, "/^dd"},
+		{p.ProjectDir, "/^src"},
+		{p.Home, "/^home"},
+	}
+
+	parts := make([]string, 0, len(rules))
+	for _, r := range rules {
+		if r.abs == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("-fdepscan-prefix-map=%s=%s", r.abs, r.virtual))
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// MergeOtherCFlagsValue splices the injected prefix-map suffix into a
+// user-supplied OTHER_CFLAGS value. Any leading $(inherited) markers in the
+// user value are collapsed to a single leading marker so the final layout is:
+//
+//	$(inherited) <user tokens minus $(inherited)> <suffix>
+//
+// An empty user value + empty suffix returns "". An empty user value with a
+// non-empty suffix still emits $(inherited) so the target/xcconfig chain is
+// not lost.
+func MergeOtherCFlagsValue(userValue, suffix string) string {
+	userTokens := stripInherited(strings.Fields(userValue))
+	suffixTrimmed := strings.TrimSpace(suffix)
+
+	if len(userTokens) == 0 && suffixTrimmed == "" {
+		return ""
+	}
+
+	parts := []string{inheritedMarker}
+	parts = append(parts, userTokens...)
+	if suffixTrimmed != "" {
+		parts = append(parts, suffixTrimmed)
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func stripInherited(tokens []string) []string {
+	out := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		if t == inheritedMarker {
+			continue
+		}
+		out = append(out, t)
+	}
+
+	return out
+}
+
+// DerivedDataPath returns the last -derivedDataPath value from OriginalArgs,
+// supporting both `-derivedDataPath X` and `-derivedDataPath=X` forms. A value
+// that begins with `-` in the space form is treated as the next flag and the
+// current one as missing.
+func (p Default) DerivedDataPath() string {
+	return findLastFlagValue(p.OriginalArgs, "derivedDataPath")
+}
+
+// ProjectTempDir returns the last PROJECT_TEMP_DIR=... build-setting value
+// from OriginalArgs. Missing → empty.
+func (p Default) ProjectTempDir() string {
+	var last string
+	for _, arg := range p.OriginalArgs {
+		if v, ok := strings.CutPrefix(arg, "PROJECT_TEMP_DIR="); ok {
+			last = v
+		}
+	}
+
+	return last
+}
+
+// ProjectDir returns the parent directory of the -project or -workspace value
+// on OriginalArgs. -project wins when both are present. Missing → empty.
+func (p Default) ProjectDir() string {
+	if v := findLastFlagValue(p.OriginalArgs, "project"); v != "" {
+		return filepath.Dir(v)
+	}
+	if v := findLastFlagValue(p.OriginalArgs, "workspace"); v != "" {
+		return filepath.Dir(v)
+	}
+
+	return ""
+}
+
+// findLastFlagValue scans argv for either `-name value` or `-name=value` (also
+// tolerating `--name`). Returns the last value found. Space-form values that
+// begin with `-` are rejected as missing (they are the next flag).
+func findLastFlagValue(argv []string, name string) string {
+	var last string
+	for i := 0; i < len(argv); i++ {
+		arg := argv[i]
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		trimmed := strings.TrimLeft(arg, "-")
+
+		if eq := strings.IndexByte(trimmed, '='); eq >= 0 {
+			if trimmed[:eq] == name {
+				last = trimmed[eq+1:]
+			}
+
+			continue
+		}
+
+		if trimmed != name {
+			continue
+		}
+		if i+1 >= len(argv) || strings.HasPrefix(argv[i+1], "-") {
+			continue
+		}
+		last = argv[i+1]
+		i++
+	}
+
+	return last
+}
+
+// UserOtherCFlags returns the last OTHER_CFLAGS=... build-setting value from
+// OriginalArgs. Missing → empty.
+func (p Default) UserOtherCFlags() string {
+	var last string
+	for _, arg := range p.OriginalArgs {
+		if v, ok := strings.CutPrefix(arg, OtherCFlagsKey+"="); ok {
+			last = v
+		}
+	}
+
+	return last
+}

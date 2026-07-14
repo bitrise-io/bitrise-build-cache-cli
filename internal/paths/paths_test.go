@@ -64,3 +64,10 @@ func TestPaths_invocations(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/bitrise-build-cache/invocations/2026-06-25.ndjson",
 		p.InvocationsFile("2026-06-25"))
 }
+
+func TestPaths_xcodeManagedDirs(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.bitrise/cache/xcode-dd/abc123", p.XcodeManagedDerivedDataDir("abc123"))
+	assert.Equal(t, "/h/.bitrise/cache/xcode-ptd/abc123", p.XcodeManagedProjectTempDir("abc123"))
+}

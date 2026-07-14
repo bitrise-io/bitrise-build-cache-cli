@@ -24,8 +24,20 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //			CommandFunc: func() string {
 //				panic("mock out the Command method")
 //			},
+//			DerivedDataPathFunc: func() string {
+//				panic("mock out the DerivedDataPath method")
+//			},
+//			ProjectDirFunc: func() string {
+//				panic("mock out the ProjectDir method")
+//			},
+//			ProjectTempDirFunc: func() string {
+//				panic("mock out the ProjectTempDir method")
+//			},
 //			ShortCommandFunc: func() string {
 //				panic("mock out the ShortCommand method")
+//			},
+//			UserOtherCFlagsFunc: func() string {
+//				panic("mock out the UserOtherCFlags method")
 //			},
 //		}
 //
@@ -40,8 +52,20 @@ type XcodeArgsMock struct {
 	// CommandFunc mocks the Command method.
 	CommandFunc func() string
 
+	// DerivedDataPathFunc mocks the DerivedDataPath method.
+	DerivedDataPathFunc func() string
+
+	// ProjectDirFunc mocks the ProjectDir method.
+	ProjectDirFunc func() string
+
+	// ProjectTempDirFunc mocks the ProjectTempDir method.
+	ProjectTempDirFunc func() string
+
 	// ShortCommandFunc mocks the ShortCommand method.
 	ShortCommandFunc func() string
+
+	// UserOtherCFlagsFunc mocks the UserOtherCFlags method.
+	UserOtherCFlagsFunc func() string
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -53,20 +77,33 @@ type XcodeArgsMock struct {
 		// Command holds details about calls to the Command method.
 		Command []struct {
 		}
+		// DerivedDataPath holds details about calls to the DerivedDataPath method.
+		DerivedDataPath []struct {
+		}
+		// ProjectDir holds details about calls to the ProjectDir method.
+		ProjectDir []struct {
+		}
+		// ProjectTempDir holds details about calls to the ProjectTempDir method.
+		ProjectTempDir []struct {
+		}
 		// ShortCommand holds details about calls to the ShortCommand method.
 		ShortCommand []struct {
 		}
+		// UserOtherCFlags holds details about calls to the UserOtherCFlags method.
+		UserOtherCFlags []struct {
+		}
 	}
-	lockArgs         sync.RWMutex
-	lockCommand      sync.RWMutex
-	lockShortCommand sync.RWMutex
+	lockArgs            sync.RWMutex
+	lockCommand         sync.RWMutex
+	lockDerivedDataPath sync.RWMutex
+	lockProjectDir      sync.RWMutex
+	lockProjectTempDir  sync.RWMutex
+	lockShortCommand    sync.RWMutex
+	lockUserOtherCFlags sync.RWMutex
 }
 
 // Args calls ArgsFunc.
 func (mock *XcodeArgsMock) Args(additional map[string]string) []string {
-	if mock.ArgsFunc == nil {
-		panic("XcodeArgsMock.ArgsFunc: method is nil but XcodeArgs.Args was just called")
-	}
 	callInfo := struct {
 		Additional map[string]string
 	}{
@@ -75,6 +112,12 @@ func (mock *XcodeArgsMock) Args(additional map[string]string) []string {
 	mock.lockArgs.Lock()
 	mock.calls.Args = append(mock.calls.Args, callInfo)
 	mock.lockArgs.Unlock()
+	if mock.ArgsFunc == nil {
+		var (
+			stringsOut []string
+		)
+		return stringsOut
+	}
 	return mock.ArgsFunc(additional)
 }
 
@@ -96,14 +139,17 @@ func (mock *XcodeArgsMock) ArgsCalls() []struct {
 
 // Command calls CommandFunc.
 func (mock *XcodeArgsMock) Command() string {
-	if mock.CommandFunc == nil {
-		panic("XcodeArgsMock.CommandFunc: method is nil but XcodeArgs.Command was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockCommand.Lock()
 	mock.calls.Command = append(mock.calls.Command, callInfo)
 	mock.lockCommand.Unlock()
+	if mock.CommandFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
 	return mock.CommandFunc()
 }
 
@@ -121,16 +167,109 @@ func (mock *XcodeArgsMock) CommandCalls() []struct {
 	return calls
 }
 
+// DerivedDataPath calls DerivedDataPathFunc.
+func (mock *XcodeArgsMock) DerivedDataPath() string {
+	callInfo := struct {
+	}{}
+	mock.lockDerivedDataPath.Lock()
+	mock.calls.DerivedDataPath = append(mock.calls.DerivedDataPath, callInfo)
+	mock.lockDerivedDataPath.Unlock()
+	if mock.DerivedDataPathFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.DerivedDataPathFunc()
+}
+
+// DerivedDataPathCalls gets all the calls that were made to DerivedDataPath.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.DerivedDataPathCalls())
+func (mock *XcodeArgsMock) DerivedDataPathCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockDerivedDataPath.RLock()
+	calls = mock.calls.DerivedDataPath
+	mock.lockDerivedDataPath.RUnlock()
+	return calls
+}
+
+// ProjectDir calls ProjectDirFunc.
+func (mock *XcodeArgsMock) ProjectDir() string {
+	callInfo := struct {
+	}{}
+	mock.lockProjectDir.Lock()
+	mock.calls.ProjectDir = append(mock.calls.ProjectDir, callInfo)
+	mock.lockProjectDir.Unlock()
+	if mock.ProjectDirFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.ProjectDirFunc()
+}
+
+// ProjectDirCalls gets all the calls that were made to ProjectDir.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.ProjectDirCalls())
+func (mock *XcodeArgsMock) ProjectDirCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockProjectDir.RLock()
+	calls = mock.calls.ProjectDir
+	mock.lockProjectDir.RUnlock()
+	return calls
+}
+
+// ProjectTempDir calls ProjectTempDirFunc.
+func (mock *XcodeArgsMock) ProjectTempDir() string {
+	callInfo := struct {
+	}{}
+	mock.lockProjectTempDir.Lock()
+	mock.calls.ProjectTempDir = append(mock.calls.ProjectTempDir, callInfo)
+	mock.lockProjectTempDir.Unlock()
+	if mock.ProjectTempDirFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.ProjectTempDirFunc()
+}
+
+// ProjectTempDirCalls gets all the calls that were made to ProjectTempDir.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.ProjectTempDirCalls())
+func (mock *XcodeArgsMock) ProjectTempDirCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockProjectTempDir.RLock()
+	calls = mock.calls.ProjectTempDir
+	mock.lockProjectTempDir.RUnlock()
+	return calls
+}
+
 // ShortCommand calls ShortCommandFunc.
 func (mock *XcodeArgsMock) ShortCommand() string {
-	if mock.ShortCommandFunc == nil {
-		panic("XcodeArgsMock.ShortCommandFunc: method is nil but XcodeArgs.ShortCommand was just called")
-	}
 	callInfo := struct {
 	}{}
 	mock.lockShortCommand.Lock()
 	mock.calls.ShortCommand = append(mock.calls.ShortCommand, callInfo)
 	mock.lockShortCommand.Unlock()
+	if mock.ShortCommandFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
 	return mock.ShortCommandFunc()
 }
 
@@ -145,5 +284,35 @@ func (mock *XcodeArgsMock) ShortCommandCalls() []struct {
 	mock.lockShortCommand.RLock()
 	calls = mock.calls.ShortCommand
 	mock.lockShortCommand.RUnlock()
+	return calls
+}
+
+// UserOtherCFlags calls UserOtherCFlagsFunc.
+func (mock *XcodeArgsMock) UserOtherCFlags() string {
+	callInfo := struct {
+	}{}
+	mock.lockUserOtherCFlags.Lock()
+	mock.calls.UserOtherCFlags = append(mock.calls.UserOtherCFlags, callInfo)
+	mock.lockUserOtherCFlags.Unlock()
+	if mock.UserOtherCFlagsFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.UserOtherCFlagsFunc()
+}
+
+// UserOtherCFlagsCalls gets all the calls that were made to UserOtherCFlags.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.UserOtherCFlagsCalls())
+func (mock *XcodeArgsMock) UserOtherCFlagsCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockUserOtherCFlags.RLock()
+	calls = mock.calls.UserOtherCFlags
+	mock.lockUserOtherCFlags.RUnlock()
 	return calls
 }

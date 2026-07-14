@@ -3,6 +3,8 @@ package xcode
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"maps"
@@ -39,6 +41,8 @@ const (
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
 	NoBitriseBuildCacheFlag     = "--no-bitrise-build-cache"
+	NoPrefixMapFlag             = "--no-prefix-map"
+	NoManagedDerivedDataFlag    = "--no-managed-derived-data"
 	CreateXCFrameworkFlag       = "-create-xcframework"
 	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
@@ -130,6 +134,20 @@ TBD`,
 			}
 		}
 
+		noPrefixMap := slices.Contains(xcelerateParams.OrigArgs, NoPrefixMapFlag)
+		if noPrefixMap {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoPrefixMapFlag
+			})
+		}
+
+		noManagedDD := slices.Contains(xcelerateParams.OrigArgs, NoManagedDerivedDataFlag)
+		if noManagedDD {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoManagedDerivedDataFlag
+			})
+		}
+
 		// Automatically disable cache for -create-xcframework as it's incompatible
 		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
 			config.BuildCacheEnabled = false
@@ -185,6 +203,8 @@ TBD`,
 			XcodeRunner:        xcodeRunner,
 			ProxySessionClient: proxySessionClient,
 			XcodeArgs:          xcodeArgs,
+			NoPrefixMap:        noPrefixMap,
+			NoManagedDD:        noManagedDD,
 		}
 		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
@@ -272,6 +292,16 @@ type XcodebuildRunner struct {
 	ProxySessionClient session.SessionClient
 	XcodeArgs          xcodeargs.XcodeArgs
 
+	// NoPrefixMap suppresses prefix-map injection for this invocation only
+	// (per-invocation counterpart to Config.DisablePrefixMapping).
+	NoPrefixMap bool
+	// NoManagedDD suppresses the wrapper-owned -derivedDataPath and PROJECT_TEMP_DIR
+	// substitution; user-supplied values are still honoured either way.
+	NoManagedDD bool
+
+	// Paths is the on-disk root resolver. If zero, paths.Default() is used.
+	Paths paths.Paths
+
 	// invocationAPI saves invocations. If nil, a production analytics client is created.
 	invocationAPI invocationSaver
 	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
@@ -285,7 +315,7 @@ type XcodebuildRunner struct {
 //
 //nolint:nestif
 func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
-	toPass := getArgsToPass(c.Config, c.XcodeArgs)
+	toPass := c.assembleArgs()
 	c.Logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
 	if c.ProxySessionClient != nil {
@@ -599,29 +629,148 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 	}
 }
 
-func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []string {
+// assembleArgs composes the final argv passed to xcodebuild. When build cache
+// is enabled and prefix-map injection is on, it adds:
+//   - CLANG_ENABLE_PREFIX_MAPPING=YES
+//   - PROJECT_TEMP_DIR=<wrapper-owned dir> (unless user supplied one or
+//     --no-managed-derived-data was set)
+//   - a spliced OTHER_CFLAGS combining user tokens and the narrowest-first
+//     -fdepscan-prefix-map rules
+//   - -derivedDataPath <wrapper-owned dir> (same gating as PROJECT_TEMP_DIR)
+//
+// Any user-supplied OTHER_CFLAGS on argv is preserved: on local runs (no
+// CIProvider) we warn about the merge so the user can opt out via
+// --no-prefix-map; on CI we stay silent.
+func (c *XcodebuildRunner) assembleArgs() []string {
 	additional := map[string]string{}
 
-	if !config.BuildCacheEnabled {
-		return xcodeArgs.Args(additional)
+	if !c.Config.BuildCacheEnabled {
+		return c.XcodeArgs.Args(additional)
 	}
 
-	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = config.ProxySocketPath
-	if config.BuildCacheSkipFlags {
-		return xcodeArgs.Args(additional)
+	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = c.Config.ProxySocketPath
+	if c.Config.BuildCacheSkipFlags {
+		return c.XcodeArgs.Args(additional)
 	}
 
 	maps.Copy(additional, xcodeargs.CacheArgs)
-	if !config.DisablePrefixMapping {
-		maps.Copy(additional, xcodeargs.PrefixMapArgs)
-	}
+
 	diagnosticRemarks := "NO"
-	if config.DebugLogging {
+	if c.Config.DebugLogging {
 		diagnosticRemarks = "YES"
 	}
 	additional["COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS"] = diagnosticRemarks
 
-	return xcodeArgs.Args(additional)
+	var extraArgv []string
+	var userOtherCFlagsToSplice string
+	var mergedOtherCFlags string
+
+	if !c.Config.DisablePrefixMapping && !c.NoPrefixMap {
+		ps := c.resolvePrefixMapPaths()
+		suffix := xcodeargs.BuildOtherCFlagsValue(ps)
+
+		additional[xcodeargs.ClangEnablePrefixMappingKey] = "YES"
+
+		if ps.ProjectTempDir != "" {
+			additional[xcodeargs.ProjectTempDirKey] = ps.ProjectTempDir
+		}
+
+		userOtherCFlagsToSplice = c.XcodeArgs.UserOtherCFlags()
+		mergedOtherCFlags = xcodeargs.MergeOtherCFlagsValue(userOtherCFlagsToSplice, suffix)
+
+		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" {
+			extraArgv = append(extraArgv, xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath)
+		}
+	}
+
+	toPass := c.XcodeArgs.Args(additional)
+
+	if mergedOtherCFlags != "" {
+		toPass = replaceOrAppendBuildSetting(toPass, xcodeargs.OtherCFlagsKey, mergedOtherCFlags)
+		if userOtherCFlagsToSplice != "" && c.Metadata.CIProvider == "" {
+			c.Logger.TWarnf("Merged user OTHER_CFLAGS with Bitrise prefix-map rules; pass --no-prefix-map to opt out.")
+		}
+	}
+
+	return append(toPass, extraArgv...)
+}
+
+// resolvePrefixMapPaths determines the four absolute paths that feed the
+// narrowest-first prefix-map rules. User-supplied DerivedDataPath /
+// PROJECT_TEMP_DIR take precedence; otherwise the wrapper-owned dirs under
+// ~/.bitrise/cache/xcode-{dd,ptd}/<sha> are used unless c.NoManagedDD is set.
+func (c *XcodebuildRunner) resolvePrefixMapPaths() xcodeargs.PrefixMapPaths {
+	projectDir := c.XcodeArgs.ProjectDir()
+	home, _ := os.UserHomeDir()
+
+	dd := c.XcodeArgs.DerivedDataPath()
+	ptd := c.XcodeArgs.ProjectTempDir()
+
+	if !c.NoManagedDD && projectDir != "" {
+		sha := workspaceSHA(projectDir)
+		p := c.resolvePaths()
+		if dd == "" {
+			dd = p.XcodeManagedDerivedDataDir(sha)
+		}
+		if ptd == "" {
+			ptd = p.XcodeManagedProjectTempDir(sha)
+		}
+	}
+
+	return xcodeargs.PrefixMapPaths{
+		Home:            home,
+		ProjectDir:      projectDir,
+		DerivedDataPath: dd,
+		ProjectTempDir:  ptd,
+	}
+}
+
+func (c *XcodebuildRunner) resolvePaths() paths.Paths {
+	if c.Paths.Home != "" {
+		return c.Paths
+	}
+	p, err := paths.Default()
+	if err != nil {
+		c.Logger.Warnf("Could not resolve user home for managed DerivedData: %v", err)
+
+		return paths.Paths{}
+	}
+
+	return p
+}
+
+// workspaceSHA derives a stable per-checkout key from the workspace directory's
+// absolute path — same path yields the same DD/PTD dir; different absolute paths
+// stay isolated so concurrent xcodebuild runs against parallel checkouts do not
+// stomp on each other's DerivedData.
+func workspaceSHA(projectDir string) string {
+	sum := sha256.Sum256([]byte(projectDir))
+
+	return hex.EncodeToString(sum[:8])
+}
+
+// replaceOrAppendBuildSetting substitutes any existing "KEY=..." entry in argv
+// with the supplied value, or appends it when absent. The caller is responsible
+// for pre-computing the merged value.
+func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
+	out := make([]string, 0, len(argv)+1)
+	replaced := false
+	for _, arg := range argv {
+		if strings.HasPrefix(arg, key+"=") {
+			if !replaced {
+				out = append(out, key+"="+value)
+				replaced = true
+			}
+
+			continue
+		}
+		out = append(out, arg)
+	}
+	if !replaced {
+		out = append(out, key+"="+value)
+	}
+
+	return out
 }
 
 func startProxy(

@@ -32,4 +32,7 @@ func init() {
 	mockLogger.On("TErrorf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("TInfof", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("TWarnf", mock.Anything, mock.Anything, mock.Anything).Return()
+	mockLogger.On("TWarnf", mock.Anything, mock.Anything).Return()
+	mockLogger.On("TWarnf", mock.Anything).Return()
 }
