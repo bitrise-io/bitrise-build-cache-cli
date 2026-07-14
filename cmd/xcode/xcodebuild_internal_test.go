@@ -1,0 +1,191 @@
+//go:build unit
+
+package xcode
+
+import (
+	"regexp"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
+)
+
+func Test_workspaceSHA_deterministic(t *testing.T) {
+	a := workspaceSHA("/work/app")
+	b := workspaceSHA("/work/app")
+
+	assert.Equal(t, a, b, "same input must produce the same output")
+}
+
+func Test_workspaceSHA_differentInputs(t *testing.T) {
+	a := workspaceSHA("/work/app")
+	b := workspaceSHA("/work/other")
+
+	assert.NotEqual(t, a, b)
+}
+
+func Test_workspaceSHA_emptyInput(t *testing.T) {
+	// Empty input must be stable and non-panic; just assert determinism.
+	a := workspaceSHA("")
+	b := workspaceSHA("")
+
+	assert.Equal(t, a, b)
+	assert.NotEmpty(t, a, "sha256 of empty produces a non-empty hex string")
+}
+
+func Test_workspaceSHA_hexShape(t *testing.T) {
+	got := workspaceSHA("/work/app")
+
+	// Code takes the first 8 bytes of sha256 and hex-encodes → 16 lowercase hex chars.
+	assert.Len(t, got, 16)
+	assert.Regexp(t, regexp.MustCompile(`^[0-9a-f]+$`), got)
+}
+
+func newRunnerForResolveTest(argsMock *xcodeargsMocks.XcodeArgsMock, home string, noManagedDD bool) *XcodebuildRunner {
+	return &XcodebuildRunner{
+		Config:      xcelerate.Config{},
+		Metadata:    common.CacheConfigMetadata{},
+		Logger:      bundleTestLogger,
+		CacheLogger: bundleTestLogger,
+		XcodeArgs:   argsMock,
+		NoManagedDD: noManagedDD,
+		Paths:       paths.FromHome(home),
+	}
+}
+
+func Test_XcodebuildRunner_resolvePrefixMapPaths_userSuppliedWins(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		ProjectDirFunc:      func() string { return "/work/app" },
+		DerivedDataPathFunc: func() string { return "/user/dd" },
+		ProjectTempDirFunc:  func() string { return "/user/ptd" },
+	}
+	r := newRunnerForResolveTest(argsMock, "/h", false)
+
+	got := r.resolvePrefixMapPaths()
+
+	assert.Equal(t, "/work/app", got.ProjectDir)
+	assert.Equal(t, "/user/dd", got.DerivedDataPath, "user-supplied DerivedDataPath wins")
+	assert.Equal(t, "/user/ptd", got.ProjectTempDir, "user-supplied ProjectTempDir wins")
+	// Home comes from os.UserHomeDir(); assert non-empty rather than fighting the OS.
+	assert.NotEmpty(t, got.Home)
+}
+
+func Test_XcodebuildRunner_resolvePrefixMapPaths_wrapperOwnedWhenUserBlank(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		ProjectDirFunc:      func() string { return "/work/app" },
+		DerivedDataPathFunc: func() string { return "" },
+		ProjectTempDirFunc:  func() string { return "" },
+	}
+	r := newRunnerForResolveTest(argsMock, "/h", false)
+
+	got := r.resolvePrefixMapPaths()
+
+	assert.Equal(t, "/work/app", got.ProjectDir)
+	sha := workspaceSHA("/work/app")
+	assert.Contains(t, got.DerivedDataPath, "/h/.bitrise/cache/xcode-dd/"+sha)
+	assert.Contains(t, got.ProjectTempDir, "/h/.bitrise/cache/xcode-ptd/"+sha)
+}
+
+func Test_XcodebuildRunner_resolvePrefixMapPaths_noManagedDDSkipsWrapperOwned(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		ProjectDirFunc:      func() string { return "/work/app" },
+		DerivedDataPathFunc: func() string { return "" },
+		ProjectTempDirFunc:  func() string { return "" },
+	}
+	r := newRunnerForResolveTest(argsMock, "/h", true)
+
+	got := r.resolvePrefixMapPaths()
+
+	assert.Equal(t, "/work/app", got.ProjectDir)
+	assert.Empty(t, got.DerivedDataPath, "NoManagedDD must skip wrapper-owned DerivedDataPath")
+	assert.Empty(t, got.ProjectTempDir, "NoManagedDD must skip wrapper-owned ProjectTempDir")
+}
+
+func Test_XcodebuildRunner_resolvePrefixMapPaths_emptyProjectDirSkipsWrapperOwned(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		ProjectDirFunc:      func() string { return "" },
+		DerivedDataPathFunc: func() string { return "" },
+		ProjectTempDirFunc:  func() string { return "" },
+	}
+	r := newRunnerForResolveTest(argsMock, "/h", false)
+
+	got := r.resolvePrefixMapPaths()
+
+	assert.Empty(t, got.ProjectDir)
+	assert.Empty(t, got.DerivedDataPath, "no project dir means no workspace SHA, so no managed dirs")
+	assert.Empty(t, got.ProjectTempDir)
+}
+
+func Test_XcodebuildRunner_resolvePaths_returnsInjectedPathsWhenSet(t *testing.T) {
+	r := &XcodebuildRunner{
+		Logger: bundleTestLogger,
+		Paths:  paths.FromHome("/injected/home"),
+	}
+
+	got := r.resolvePaths()
+	assert.Equal(t, "/injected/home", got.Home)
+}
+
+func Test_XcodebuildRunner_resolvePaths_fallsBackToDefault(t *testing.T) {
+	r := &XcodebuildRunner{
+		Logger: bundleTestLogger,
+		// Paths.Home is empty → falls back to paths.Default().
+	}
+
+	// paths.Default() reads $HOME.
+	t.Setenv("HOME", "/tmp/fallback-home")
+
+	got := r.resolvePaths()
+	assert.Equal(t, "/tmp/fallback-home", got.Home)
+}
+
+func Test_replaceOrAppendBuildSetting_appendsWhenAbsent(t *testing.T) {
+	argv := []string{"xcodebuild", "-scheme", "App"}
+
+	out := replaceOrAppendBuildSetting(argv, "OTHER_CFLAGS", "-Wall")
+
+	require.Equal(t, []string{"xcodebuild", "-scheme", "App", "OTHER_CFLAGS=-Wall"}, out)
+}
+
+func Test_replaceOrAppendBuildSetting_replacesSingleOccurrence(t *testing.T) {
+	argv := []string{"xcodebuild", "OTHER_CFLAGS=$(inherited) -Werror", "-scheme", "App"}
+
+	out := replaceOrAppendBuildSetting(argv, "OTHER_CFLAGS", "-Wall")
+
+	require.Equal(t, []string{"xcodebuild", "OTHER_CFLAGS=-Wall", "-scheme", "App"}, out)
+}
+
+func Test_replaceOrAppendBuildSetting_multipleOccurrences_keepsFirstDropsRest(t *testing.T) {
+	// Reading the code: first hit is rewritten in place and marks replaced=true;
+	// subsequent hits are dropped ("continue"); no re-append at the end.
+	argv := []string{
+		"OTHER_CFLAGS=old-1",
+		"-scheme", "App",
+		"OTHER_CFLAGS=old-2",
+	}
+
+	out := replaceOrAppendBuildSetting(argv, "OTHER_CFLAGS", "new")
+
+	require.Equal(t, []string{"OTHER_CFLAGS=new", "-scheme", "App"}, out,
+		"first occurrence gets replaced in place; later occurrences are dropped")
+}
+
+func Test_replaceOrAppendBuildSetting_emptyArgv(t *testing.T) {
+	out := replaceOrAppendBuildSetting(nil, "KEY", "value")
+
+	require.Equal(t, []string{"KEY=value"}, out)
+}
+
+func Test_replaceOrAppendBuildSetting_valuePreservesEmbeddedEquals(t *testing.T) {
+	argv := []string{"xcodebuild"}
+
+	out := replaceOrAppendBuildSetting(argv, "KEY", "a=b=c")
+
+	require.Equal(t, []string{"xcodebuild", "KEY=a=b=c"}, out,
+		"only the first '=' separates key from value; the rest is preserved")
+}
