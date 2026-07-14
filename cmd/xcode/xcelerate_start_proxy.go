@@ -173,6 +173,7 @@ func StartXcodeCacheProxy(
 
 	if bundle.enrichmentEnabled() {
 		go bundle.watcher(initialLogger).Run(ctx)
+		go bundle.retrier(initialLogger).Run(ctx)
 	}
 
 	go func() {
@@ -257,6 +258,14 @@ func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 		HomeDir: b.homeDir,
 		Handle:  enricher.Enrich,
 		Logger:  logger,
+	}
+}
+
+func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
+	return &enrichment.Retrier{
+		Store:  b.pending,
+		Client: b.client,
+		Logger: logger,
 	}
 }
 

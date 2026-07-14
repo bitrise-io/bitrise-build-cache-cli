@@ -214,3 +214,72 @@ func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
 	assert.Equal(t, 1, snap.ConsecutiveErrors)
 	assert.Contains(t, snap.LastError, "network down")
 }
+
+func TestEnricher_PutFailure_RecordsAttempt(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "pre-existing",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("dial tcp: timeout") },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Now:    func() time.Time { return base.Add(time.Minute) },
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     base.Add(2 * time.Second),
+		Stop:      base.Add(8 * time.Second),
+	})
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "pre-existing", loaded[0].InvocationID)
+	assert.Equal(t, 1, loaded[0].Attempts)
+	assert.Contains(t, loaded[0].LastError, "dial tcp")
+	assert.NotEmpty(t, loaded[0].EnrichedPayload, "failed PUT must persist payload for retry")
+	assert.Equal(t, base.Add(time.Minute), loaded[0].FirstAttempt.UTC())
+	assert.Equal(t, base.Add(time.Minute), loaded[0].LastAttempt.UTC())
+}
+
+func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("boom") },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Now:    func() time.Time { return now },
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		UUID:      "orphan",
+		Signature: "Archive S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	})
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.NotEmpty(t, loaded[0].InvocationID)
+	assert.Equal(t, 1, loaded[0].Attempts)
+	assert.NotEmpty(t, loaded[0].EnrichedPayload)
+	assert.Equal(t, now, loaded[0].FirstAttempt.UTC())
+}

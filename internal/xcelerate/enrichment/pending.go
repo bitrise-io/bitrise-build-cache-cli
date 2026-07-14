@@ -12,10 +12,15 @@ import (
 )
 
 type PendingRecord struct {
-	InvocationID string    `json:"invocation_id"`
-	StartTime    time.Time `json:"start_time"`
-	Duration     int64     `json:"duration_ms"`
-	HitRate      float32   `json:"hit_rate"`
+	InvocationID    string          `json:"invocation_id"`
+	StartTime       time.Time       `json:"start_time"`
+	Duration        int64           `json:"duration_ms"`
+	HitRate         float32         `json:"hit_rate"`
+	FirstAttempt    time.Time       `json:"first_attempt,omitempty"`
+	LastAttempt     time.Time       `json:"last_attempt,omitempty"`
+	Attempts        int             `json:"attempts,omitempty"`
+	LastError       string          `json:"last_error,omitempty"`
+	EnrichedPayload json.RawMessage `json:"enriched_payload,omitempty"`
 }
 
 const EnrichmentPendingMaxAge = time.Hour
@@ -103,6 +108,10 @@ func (s *Store) Remove(invocationID string) error {
 	}
 
 	return s.writeAtomic(kept)
+}
+
+func (s *Store) Save(records []PendingRecord) error {
+	return s.writeAtomic(records)
 }
 
 func (s *Store) writeAtomic(records []PendingRecord) error {

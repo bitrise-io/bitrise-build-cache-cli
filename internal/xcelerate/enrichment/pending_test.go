@@ -106,3 +106,50 @@ func TestStore_Remove_RecreatesMissingDir(t *testing.T) {
 	_, err := os.Stat(filepath.Dir(nested))
 	require.NoError(t, err, "writeAtomic must create the parent dir")
 }
+
+func TestStore_Save_ReplacesFile(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time { return now }}
+
+	require.NoError(t, s.Append(enrichment.PendingRecord{InvocationID: "a", StartTime: now}))
+	require.NoError(t, s.Append(enrichment.PendingRecord{InvocationID: "b", StartTime: now}))
+
+	require.NoError(t, s.Save([]enrichment.PendingRecord{{InvocationID: "only", StartTime: now}}))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "only", loaded[0].InvocationID)
+}
+
+func TestPendingRecord_ExtraFieldsRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time { return now }}
+
+	rec := enrichment.PendingRecord{
+		InvocationID:    "with-retry",
+		StartTime:       now,
+		Duration:        1000,
+		HitRate:         0.42,
+		FirstAttempt:    now.Add(-time.Minute),
+		LastAttempt:     now,
+		Attempts:        3,
+		LastError:       "network",
+		EnrichedPayload: []byte(`{"foo":"bar"}`),
+	}
+
+	require.NoError(t, s.Append(rec))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	got := loaded[0]
+	assert.Equal(t, rec.InvocationID, got.InvocationID)
+	assert.Equal(t, rec.Attempts, got.Attempts)
+	assert.Equal(t, rec.LastError, got.LastError)
+	assert.JSONEq(t, string(rec.EnrichedPayload), string(got.EnrichedPayload))
+	assert.Equal(t, rec.FirstAttempt.UTC(), got.FirstAttempt.UTC())
+	assert.Equal(t, rec.LastAttempt.UTC(), got.LastAttempt.UTC())
+}
