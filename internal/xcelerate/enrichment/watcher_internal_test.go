@@ -228,11 +228,11 @@ func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
 }
 
 // writeInlineManifest writes a minimal manifest with a single entry named uuid at
-// derivedRoot/Logs/Build/LogStoreManifest.plist.
-func writeInlineManifest(t *testing.T, derivedRoot, uuid string) {
+// derivedRoot/Logs/<subdir>/LogStoreManifest.plist.
+func writeInlineManifest(t *testing.T, derivedRoot, subdir, uuid string) {
 	t.Helper()
 
-	dir := filepath.Join(derivedRoot, "Logs", "Build")
+	dir := filepath.Join(derivedRoot, "Logs", subdir)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	plist := `<?xml version="1.0" encoding="UTF-8"?>
@@ -263,15 +263,15 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 	defaultRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-abc")
 	managedRoot := filepath.Join(home, ".bitrise/cache/xcode-dd/deadbeef")
 
-	writeInlineManifest(t, defaultRoot, "UUID-DEFAULT")
-	writeInlineManifest(t, managedRoot, "UUID-MANAGED")
+	writeInlineManifest(t, defaultRoot, "Build", "UUID-DEFAULT")
+	writeInlineManifest(t, managedRoot, "Build", "UUID-MANAGED")
 
 	var handled []string
 	w := &Watcher{
 		HomeDir: home,
 		Globs: []string{
 			DefaultDerivedDataGlob,
-			".bitrise/cache/xcode-dd/*/Logs/Build/LogStoreManifest.plist",
+			".bitrise/cache/xcode-dd/*/Logs/*/LogStoreManifest.plist",
 		},
 		Handle: func(e ManifestEntry) {
 			handled = append(handled, e.UUID)
@@ -305,4 +305,25 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 	w.scan(false)
 
 	assert.Contains(t, handled, uuid, "nil Globs must fall back to DefaultDerivedDataGlob")
+}
+
+func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-pkg")
+	writeInlineManifest(t, derivedRoot, "Package", "UUID-PACKAGE")
+
+	var handled []string
+	w := &Watcher{
+		HomeDir: home,
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false)
+
+	assert.Equal(t, []string{"UUID-PACKAGE"}, handled,
+		"Logs/Package/ manifest (Xcode 26 package builds) must match the default glob")
 }

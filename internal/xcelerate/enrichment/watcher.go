@@ -10,7 +10,7 @@ import (
 
 const DefaultPollInterval = 5 * time.Second
 
-const DefaultDerivedDataGlob = "Library/Developer/Xcode/DerivedData/*/Logs/Build/LogStoreManifest.plist"
+const DefaultDerivedDataGlob = "Library/Developer/Xcode/DerivedData/*/Logs/*/LogStoreManifest.plist"
 
 const DefaultMaxCorrelationRetries = 6
 
