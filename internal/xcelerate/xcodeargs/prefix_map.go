@@ -96,13 +96,16 @@ func stripInherited(tokens []string) []string {
 // DerivedDataPath returns the last -derivedDataPath value from OriginalArgs,
 // supporting both `-derivedDataPath X` and `-derivedDataPath=X` forms. A value
 // that begins with `-` in the space form is treated as the next flag and the
-// current one as missing.
+// current one as missing. Relative values are resolved against the current
+// working directory — clang rejects non-absolute inputs to -fdepscan-prefix-map=.
 func (p Default) DerivedDataPath() string {
-	return findLastFlagValue(p.OriginalArgs, "derivedDataPath")
+	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "derivedDataPath"))
 }
 
 // ProjectTempDir returns the last PROJECT_TEMP_DIR=... build-setting value
-// from OriginalArgs. Missing → empty.
+// from OriginalArgs. Missing → empty. Relative values are resolved against the
+// current working directory — clang rejects non-absolute inputs to
+// -fdepscan-prefix-map=.
 func (p Default) ProjectTempDir() string {
 	var last string
 	for _, arg := range p.OriginalArgs {
@@ -111,20 +114,39 @@ func (p Default) ProjectTempDir() string {
 		}
 	}
 
-	return last
+	return absOrEmpty(last)
 }
 
 // ProjectDir returns the parent directory of the -project or -workspace value
 // on OriginalArgs. -project wins when both are present. Missing → empty.
+// Relative -project/-workspace values are resolved against the current working
+// directory before taking the parent — a bare `App.xcworkspace` would otherwise
+// give `.`, which clang rejects as a -fdepscan-prefix-map= input.
 func (p Default) ProjectDir() string {
 	if v := findLastFlagValue(p.OriginalArgs, "project"); v != "" {
-		return filepath.Dir(v)
+		return absOrEmpty(filepath.Dir(v))
 	}
 	if v := findLastFlagValue(p.OriginalArgs, "workspace"); v != "" {
-		return filepath.Dir(v)
+		return absOrEmpty(filepath.Dir(v))
 	}
 
 	return ""
+}
+
+// absOrEmpty resolves a possibly-relative path to an absolute one against the
+// current working directory. Empty input passes through unchanged (empty means
+// "no rule"). On resolve error the path is dropped rather than emitted as a
+// broken relative value.
+func absOrEmpty(p string) string {
+	if p == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return ""
+	}
+
+	return abs
 }
 
 // findLastFlagValue scans argv for either `-name value` or `-name=value` (also

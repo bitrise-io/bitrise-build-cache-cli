@@ -56,9 +56,11 @@ _bbc_first_nonempty() {
 }
 
 # assert_xcode_invocation_enriched <invocation_id>
-# Asserts scheme, fullCommand, xcodeVersion, and toolBuildNumber are all
-# non-empty on the BE detail payload. Non-empty scheme also acts as a proxy
-# for "the enrichment re-PUT landed" — slim emit never sets scheme.
+# Asserts command, shortCommand, xcodeVersion, and toolBuildNumber are all
+# non-empty on the BE detail payload. Non-empty command acts as the proxy for
+# "the enrichment re-PUT landed" — slim emit never sets command; only the
+# enricher does. The BE folds scheme into command/shortCommand and does not
+# expose it as a standalone field, so scheme presence is not checked directly.
 assert_xcode_invocation_enriched() {
   local invocation_id="$1"
   if [[ -z "$invocation_id" ]]; then
@@ -70,25 +72,25 @@ assert_xcode_invocation_enriched() {
   local json
   json=$(_bbc_fetch_xcode_invocation_detail "$invocation_id")
 
-  local scheme full_command xcode_version tool_build_number
-  scheme=$(_bbc_first_nonempty "$json" '.scheme' '.schemeName' '.scheme_name')
-  full_command=$(_bbc_first_nonempty "$json" '.fullCommand' '.full_command')
+  local full_command short_command xcode_version tool_build_number
+  full_command=$(_bbc_first_nonempty "$json" '.command')
+  short_command=$(_bbc_first_nonempty "$json" '.shortCommand' '.short_command')
   xcode_version=$(_bbc_first_nonempty "$json" '.xcodeVersion' '.xcode_version' '.toolVersion' '.tool_version')
   tool_build_number=$(_bbc_first_nonempty "$json" '.toolBuildNumber' '.tool_build_number' '.xcodeBuildNumber' '.xcode_build_number')
 
   local failed=0
-  if [[ -z "$scheme" ]]; then
-    echo "FAIL: BE detail for $invocation_id has empty scheme (enrichment re-PUT missing)" >&2
+  if [[ -z "$full_command" ]]; then
+    echo "FAIL: BE detail for $invocation_id has empty command (enrichment re-PUT missing)" >&2
     failed=1
   else
-    echo "OK: scheme=$scheme"
+    echo "OK: command=$full_command"
   fi
 
-  if [[ -z "$full_command" ]]; then
-    echo "FAIL: BE detail for $invocation_id has empty fullCommand" >&2
+  if [[ -z "$short_command" ]]; then
+    echo "FAIL: BE detail for $invocation_id has empty shortCommand" >&2
     failed=1
   else
-    echo "OK: fullCommand=$full_command"
+    echo "OK: shortCommand=$short_command"
   fi
 
   if [[ -z "$xcode_version" ]]; then

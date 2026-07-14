@@ -3,6 +3,7 @@
 package xcodeargs_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -208,4 +209,67 @@ func TestDefault_UserOtherCFlags(t *testing.T) {
 			assert.Equal(t, c.want, d.UserOtherCFlags())
 		})
 	}
+}
+
+func TestDefault_ProjectDir_relativeWorkspaceResolvesToAbs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+
+	d := xcodeargs.Default{OriginalArgs: []string{"-workspace", "App.xcworkspace"}}
+
+	// Bare filename → dir is "." → must resolve to the tempdir itself.
+	assert.Equal(t, tmp, d.ProjectDir())
+}
+
+func TestDefault_ProjectDir_relativeProjectResolvesToAbs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+
+	d := xcodeargs.Default{OriginalArgs: []string{"-project", "sub/App.xcodeproj"}}
+
+	assert.Equal(t, filepath.Join(tmp, "sub"), d.ProjectDir())
+}
+
+func TestDefault_ProjectDir_absoluteStaysAbsolute(t *testing.T) {
+	// Regression: chdir to a scratch dir so a bug that re-resolved abs paths
+	// against CWD would visibly move the answer.
+	t.Chdir(t.TempDir())
+
+	d := xcodeargs.Default{OriginalArgs: []string{"-workspace", "/work/app/App.xcworkspace"}}
+
+	assert.Equal(t, "/work/app", d.ProjectDir())
+}
+
+func TestDefault_DerivedDataPath_relativeResolvesToAbs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+
+	d := xcodeargs.Default{OriginalArgs: []string{"-derivedDataPath", "dd"}}
+
+	assert.Equal(t, filepath.Join(tmp, "dd"), d.DerivedDataPath())
+}
+
+func TestDefault_DerivedDataPath_absoluteStaysAbsolute(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	d := xcodeargs.Default{OriginalArgs: []string{"-derivedDataPath", "/tmp/dd"}}
+
+	assert.Equal(t, "/tmp/dd", d.DerivedDataPath())
+}
+
+func TestDefault_ProjectTempDir_relativeResolvesToAbs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+
+	d := xcodeargs.Default{OriginalArgs: []string{"PROJECT_TEMP_DIR=ptd"}}
+
+	assert.Equal(t, filepath.Join(tmp, "ptd"), d.ProjectTempDir())
+}
+
+func TestDefault_ProjectTempDir_absoluteStaysAbsolute(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	d := xcodeargs.Default{OriginalArgs: []string{"PROJECT_TEMP_DIR=/tmp/ptd"}}
+
+	assert.Equal(t, "/tmp/ptd", d.ProjectTempDir())
 }
