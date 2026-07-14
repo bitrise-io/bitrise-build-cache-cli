@@ -254,10 +254,27 @@ func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
 	}
 
+	matchProbe := func(entry enrichment.ManifestEntry) bool {
+		if b.pending == nil {
+			return false
+		}
+
+		records, err := b.pending.Load()
+		if err != nil {
+			return false
+		}
+
+		_, matched := enrichment.Correlate(entry, records)
+
+		return matched
+	}
+
 	return &enrichment.Watcher{
-		HomeDir: b.homeDir,
-		Handle:  enricher.Enrich,
-		Logger:  logger,
+		HomeDir:               b.homeDir,
+		Handle:                enricher.Enrich,
+		Logger:                logger,
+		MatchProbe:            matchProbe,
+		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
 	}
 }
 
