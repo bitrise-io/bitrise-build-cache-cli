@@ -226,3 +226,83 @@ func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
 	assert.Contains(t, w.retries, uuid, "uuid must be in retries after first unmatched scan")
 	assert.NotContains(t, w.seen, uuid, "unmatched uuid must NOT be in seen (otherwise second scan is skipped)")
 }
+
+// writeInlineManifest writes a minimal manifest with a single entry named uuid at
+// derivedRoot/Logs/Build/LogStoreManifest.plist.
+func writeInlineManifest(t *testing.T, derivedRoot, uuid string) {
+	t.Helper()
+
+	dir := filepath.Join(derivedRoot, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logs</key>
+	<dict>
+		<key>` + uuid + `</key>
+		<dict>
+			<key>fileName</key><string>` + uuid + `.xcactivitylog</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>signature</key><string>Build FreshScheme</string>
+			<key>timeStartedRecording</key><real>762345900.0</real>
+			<key>timeStoppedRecording</key><real>762345910.0</real>
+		</dict>
+	</dict>
+</dict>
+</plist>`
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "LogStoreManifest.plist"), []byte(plist), 0o644))
+}
+
+func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
+	home := t.TempDir()
+
+	// Two DerivedData roots (default Library/... layout + wrapper-managed .bitrise/cache/xcode-dd/<sha>).
+	defaultRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-abc")
+	managedRoot := filepath.Join(home, ".bitrise/cache/xcode-dd/deadbeef")
+
+	writeInlineManifest(t, defaultRoot, "UUID-DEFAULT")
+	writeInlineManifest(t, managedRoot, "UUID-MANAGED")
+
+	var handled []string
+	w := &Watcher{
+		HomeDir: home,
+		Globs: []string{
+			DefaultDerivedDataGlob,
+			".bitrise/cache/xcode-dd/*/Logs/Build/LogStoreManifest.plist",
+		},
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false)
+
+	assert.ElementsMatch(t, []string{"UUID-DEFAULT", "UUID-MANAGED"}, handled,
+		"both glob roots must be observed on a single scan")
+}
+
+func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	var handled []string
+	w := &Watcher{
+		HomeDir: home,
+		Globs:   nil,
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false)
+
+	assert.Contains(t, handled, uuid, "nil Globs must fall back to DefaultDerivedDataGlob")
+}

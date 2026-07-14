@@ -152,6 +152,19 @@ func Test_analyticsBundle_watcher_populatedFields(t *testing.T) {
 	assert.Equal(t, enrichment.DefaultMaxCorrelationRetries, w.MaxCorrelationRetries)
 }
 
+func Test_analyticsBundle_watcher_globsIncludeManagedDD(t *testing.T) {
+	home := t.TempDir()
+	b := newBundleForTest(t, home, "")
+
+	w := b.watcher(bundleTestLogger)
+
+	require.NotNil(t, w)
+	assert.Contains(t, w.Globs, enrichment.DefaultDerivedDataGlob,
+		"default Library/Developer DerivedData glob must be observed")
+	assert.Contains(t, w.Globs, paths.XcodeManagedDerivedDataManifestGlobRelative,
+		"wrapper-managed .bitrise/cache/xcode-dd glob must be observed")
+}
+
 func Test_analyticsBundle_watcher_matchProbe_returnsTrueOnOverlap(t *testing.T) {
 	home := t.TempDir()
 	b := newBundleForTest(t, home, "")

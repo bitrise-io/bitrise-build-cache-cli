@@ -284,7 +284,11 @@ func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 	}
 
 	return &enrichment.Watcher{
-		HomeDir:               b.homeDir,
+		HomeDir: b.homeDir,
+		Globs: []string{
+			enrichment.DefaultDerivedDataGlob,
+			paths.XcodeManagedDerivedDataManifestGlobRelative,
+		},
 		Handle:                enricher.Enrich,
 		Logger:                logger,
 		MatchProbe:            matchProbe,

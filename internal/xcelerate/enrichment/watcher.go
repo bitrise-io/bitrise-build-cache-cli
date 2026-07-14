@@ -16,7 +16,7 @@ const DefaultMaxCorrelationRetries = 6
 
 type Watcher struct {
 	HomeDir      string
-	Glob         string
+	Globs        []string
 	PollInterval time.Duration
 	Handle       func(ManifestEntry)
 	Logger       log.Logger
@@ -58,28 +58,30 @@ func (w *Watcher) Run(ctx context.Context) {
 func (w *Watcher) scan(seedOnly bool) {
 	logger := logOr(w.Logger)
 
-	glob := w.Glob
-	if glob == "" {
-		glob = DefaultDerivedDataGlob
+	globs := w.Globs
+	if len(globs) == 0 {
+		globs = []string{DefaultDerivedDataGlob}
 	}
 
-	matches, err := filepath.Glob(filepath.Join(w.HomeDir, glob))
-	if err != nil {
-		logger.Warnf("LogWatcher glob failed: %s", err)
-
-		return
-	}
-
-	for _, path := range matches {
-		entries, err := LoadManifest(path)
+	for _, glob := range globs {
+		matches, err := filepath.Glob(filepath.Join(w.HomeDir, glob))
 		if err != nil {
-			logger.Warnf("LogWatcher failed to load %s: %s", path, err)
+			logger.Warnf("LogWatcher glob failed: %s", err)
 
 			continue
 		}
 
-		for _, entry := range entries {
-			w.handleEntry(entry, seedOnly)
+		for _, path := range matches {
+			entries, err := LoadManifest(path)
+			if err != nil {
+				logger.Warnf("LogWatcher failed to load %s: %s", path, err)
+
+				continue
+			}
+
+			for _, entry := range entries {
+				w.handleEntry(entry, seedOnly)
+			}
 		}
 	}
 }

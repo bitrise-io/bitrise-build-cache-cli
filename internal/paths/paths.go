@@ -81,6 +81,10 @@ const (
 
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
+
+	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
+	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
+	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/Build/LogStoreManifest.plist"
 )
 
 // CLIBinaryName is the on-disk name of the CLI executable (daemon plist entry, PATH lookup).
