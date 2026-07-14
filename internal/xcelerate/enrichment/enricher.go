@@ -25,6 +25,8 @@ type Enricher struct {
 }
 
 func (e *Enricher) Enrich(entry ManifestEntry) {
+	logger := e.Logger
+
 	var (
 		pending []PendingRecord
 		err     error
@@ -32,8 +34,8 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 
 	if e.Store != nil {
 		pending, err = e.Store.Load()
-		if err != nil {
-			e.logf("enrichment load pending: %s", err)
+		if err != nil && logger != nil {
+			logger.Warnf("Failed to load pending invocations for enrichment: %s", err)
 		}
 	}
 
@@ -57,24 +59,20 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 	}
 
 	if err := e.Client.PutInvocation(*inv); err != nil {
-		e.logf("enrichment PutInvocation %s: %s", invocationID, err)
+		if logger != nil {
+			logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
+		}
 
 		return
 	}
 
-	e.logf("enrichment PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
+	if logger != nil {
+		logger.Debugf("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
+	}
 
 	if matched && e.Store != nil {
-		if err := e.Store.Remove(invocationID); err != nil {
-			e.logf("enrichment remove pending %s: %s", invocationID, err)
+		if err := e.Store.Remove(invocationID); err != nil && logger != nil {
+			logger.Warnf("Failed to remove pending invocation %s after enrichment: %s", invocationID, err)
 		}
 	}
-}
-
-func (e *Enricher) logf(format string, args ...any) {
-	if e.Logger == nil {
-		return
-	}
-
-	e.Logger.Debugf(format, args...)
 }

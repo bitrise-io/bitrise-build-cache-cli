@@ -93,3 +93,16 @@ func TestInactivity_NoSessionNoTimer(t *testing.T) {
 
 	assert.Empty(t, emitter.captured())
 }
+
+func TestSetSession_ResetsLastActivity(t *testing.T) {
+	emitter := &capturingEmitter{}
+	p := newProxyForEmit(t, emitter)
+
+	stale := time.Now().Add(-time.Hour)
+	p.SetLastActivity(stale)
+
+	_, err := p.SetSession(context.Background(), &sessionproto.SetSessionRequest{InvocationId: "inv-reset"})
+	require.NoError(t, err)
+
+	assert.True(t, p.LastActivity().IsZero(), "SetSession must zero lastActivity from any prior session")
+}

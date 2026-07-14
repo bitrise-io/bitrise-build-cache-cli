@@ -50,10 +50,12 @@ func (w *Watcher) Run(ctx context.Context) {
 }
 
 func (w *Watcher) scan(seedOnly bool) {
+	logger := w.Logger
+
 	matches, err := filepath.Glob(filepath.Join(w.HomeDir, w.Glob))
 	if err != nil {
-		if w.Logger != nil {
-			w.Logger.Debugf("logwatcher glob error: %s", err)
+		if logger != nil {
+			logger.Warnf("LogWatcher glob failed: %s", err)
 		}
 
 		return
@@ -62,8 +64,8 @@ func (w *Watcher) scan(seedOnly bool) {
 	for _, path := range matches {
 		entries, err := LoadManifest(path)
 		if err != nil {
-			if w.Logger != nil {
-				w.Logger.Debugf("logwatcher load %s: %s", path, err)
+			if logger != nil {
+				logger.Warnf("LogWatcher failed to load %s: %s", path, err)
 			}
 
 			continue

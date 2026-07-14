@@ -34,10 +34,6 @@ func (s *Store) now() time.Time {
 }
 
 func (s *Store) Append(rec PendingRecord) error {
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
-		return fmt.Errorf("mkdir pending dir: %w", err)
-	}
-
 	existing, err := s.Load()
 	if err != nil {
 		return err
@@ -110,6 +106,10 @@ func (s *Store) Remove(invocationID string) error {
 }
 
 func (s *Store) writeAtomic(records []PendingRecord) error {
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
+		return fmt.Errorf("mkdir pending dir: %w", err)
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(s.Path), ".pending-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp: %w", err)

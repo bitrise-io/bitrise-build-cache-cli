@@ -3,6 +3,7 @@
 package enrichment_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -92,4 +93,16 @@ func TestStore_Load_SkipsMalformedLines(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, loaded, 1)
 	assert.Equal(t, "good", loaded[0].InvocationID)
+}
+
+func TestStore_Remove_RecreatesMissingDir(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "does", "not", "exist", "pending.ndjson")
+	s := &enrichment.Store{Path: nested}
+
+	require.NoError(t, s.Remove("noop"), "Remove on missing dir/file must succeed")
+
+	// Directory must be materialised by writeAtomic even though Load returned no records.
+	_, err := os.Stat(filepath.Dir(nested))
+	require.NoError(t, err, "writeAtomic must create the parent dir")
 }

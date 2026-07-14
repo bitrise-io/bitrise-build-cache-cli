@@ -167,9 +167,11 @@ func StartXcodeCacheProxy(
 
 	bundle := newAnalyticsBundle(config, envProvider, commandFunc, initialLogger)
 
-	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, bundle.emitter())
+	emitter := bundle.emitter()
 
-	if bundle.client != nil && bundle.homeDir != "" {
+	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+
+	if bundle.enrichmentEnabled() {
 		go bundle.watcher(initialLogger).Run(ctx)
 	}
 
@@ -231,6 +233,10 @@ func (b *analyticsBundle) emitter() proxy.InvocationEmitter {
 	}
 
 	return &slimInvocationEmitter{bundle: b}
+}
+
+func (b *analyticsBundle) enrichmentEnabled() bool {
+	return b.client != nil && b.pending != nil && b.homeDir != ""
 }
 
 func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {

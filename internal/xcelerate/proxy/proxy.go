@@ -229,6 +229,8 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 		StepSlug:     request.GetStepSlug(),
 		StartTime:    time.Now(),
 	}
+	p.lastActivity = time.Time{}
+	p.inactivityTimer = nil
 
 	logger, err := p.loggerFactory(request.GetInvocationId())
 	if err != nil {
