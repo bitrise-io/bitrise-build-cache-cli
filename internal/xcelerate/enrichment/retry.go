@@ -60,11 +60,11 @@ func (r *Retrier) Sweep() {
 		return
 	}
 
+	logger := logOr(r.Logger)
+
 	records, err := r.Store.Load()
 	if err != nil {
-		if r.Logger != nil {
-			r.Logger.Warnf("Retrier failed to load pending: %s", err)
-		}
+		logger.Warnf("Retrier failed to load pending: %s", err)
 
 		return
 	}
@@ -80,18 +80,14 @@ func (r *Retrier) Sweep() {
 		}
 
 		if !rec.FirstAttempt.IsZero() && now.Sub(rec.FirstAttempt) > r.MaxAge {
-			if r.Logger != nil {
-				r.Logger.Warnf("Enrichment retry gave up on %s after %s (attempts=%d)", rec.InvocationID, now.Sub(rec.FirstAttempt).Round(time.Second), rec.Attempts)
-			}
+			logger.Warnf("Enrichment retry gave up on %s after %s (attempts=%d)", rec.InvocationID, now.Sub(rec.FirstAttempt).Round(time.Second), rec.Attempts)
 
 			continue
 		}
 
 		var inv analytics.Invocation
 		if err := json.Unmarshal(rec.EnrichedPayload, &inv); err != nil {
-			if r.Logger != nil {
-				r.Logger.Warnf("Retrier failed to decode payload for %s: %s — dropping", rec.InvocationID, err)
-			}
+			logger.Warnf("Retrier failed to decode payload for %s: %s — dropping", rec.InvocationID, err)
 
 			continue
 		}
@@ -102,19 +98,15 @@ func (r *Retrier) Sweep() {
 			rec.LastError = putErr.Error()
 			kept = append(kept, rec)
 
-			if r.Logger != nil {
-				r.Logger.Warnf("Retrier PUT failed for %s (attempts=%d): %s", rec.InvocationID, rec.Attempts, putErr)
-			}
+			logger.Warnf("Retrier PUT failed for %s (attempts=%d): %s", rec.InvocationID, rec.Attempts, putErr)
 
 			continue
 		}
 
-		if r.Logger != nil {
-			r.Logger.Debugf("Retrier PUT succeeded for %s (attempts=%d)", rec.InvocationID, rec.Attempts+1)
-		}
+		logger.Debugf("Retrier PUT succeeded for %s (attempts=%d)", rec.InvocationID, rec.Attempts+1)
 	}
 
-	if err := r.Store.Save(kept); err != nil && r.Logger != nil {
-		r.Logger.Warnf("Retrier failed to persist swept pending: %s", err)
+	if err := r.Store.Save(kept); err != nil {
+		logger.Warnf("Retrier failed to persist swept pending: %s", err)
 	}
 }

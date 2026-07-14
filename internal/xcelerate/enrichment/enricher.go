@@ -38,7 +38,7 @@ func (e *Enricher) now() time.Time {
 }
 
 func (e *Enricher) Enrich(entry ManifestEntry) {
-	logger := e.Logger
+	logger := logOr(e.Logger)
 
 	var (
 		pending []PendingRecord
@@ -47,7 +47,7 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 
 	if e.Store != nil {
 		pending, err = e.Store.Load()
-		if err != nil && logger != nil {
+		if err != nil {
 			logger.Warnf("Failed to load pending invocations for enrichment: %s", err)
 		}
 	}
@@ -74,9 +74,7 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 	e.markAttempt()
 
 	if err := e.Client.PutInvocation(*inv); err != nil {
-		if logger != nil {
-			logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
-		}
+		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		e.markFailure(err)
 		e.recordFailure(invocationID, matched, inv, err)
 
@@ -85,12 +83,10 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 
 	e.markSuccess()
 
-	if logger != nil {
-		logger.Debugf("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
-	}
+	logger.Debugf("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
 
 	if matched && e.Store != nil {
-		if err := e.Store.Remove(invocationID); err != nil && logger != nil {
+		if err := e.Store.Remove(invocationID); err != nil {
 			logger.Warnf("Failed to remove pending invocation %s after enrichment: %s", invocationID, err)
 		}
 	}
@@ -104,8 +100,8 @@ func (e *Enricher) markAttempt() {
 	now := e.now()
 	if err := e.Health.Update(func(s *HealthSnapshot) {
 		s.LastAttempt = now
-	}); err != nil && e.Logger != nil {
-		e.Logger.Warnf("Failed to record enrichment attempt health: %s", err)
+	}); err != nil {
+		logOr(e.Logger).Warnf("Failed to record enrichment attempt health: %s", err)
 	}
 }
 
@@ -120,8 +116,8 @@ func (e *Enricher) markSuccess() {
 		s.ConsecutiveErrors = 0
 		s.LastError = ""
 		s.LastErrorAt = time.Time{}
-	}); err != nil && e.Logger != nil {
-		e.Logger.Warnf("Failed to record enrichment success health: %s", err)
+	}); err != nil {
+		logOr(e.Logger).Warnf("Failed to record enrichment success health: %s", err)
 	}
 }
 
@@ -135,8 +131,8 @@ func (e *Enricher) markFailure(putErr error) {
 		s.LastError = putErr.Error()
 		s.LastErrorAt = now
 		s.ConsecutiveErrors++
-	}); err != nil && e.Logger != nil {
-		e.Logger.Warnf("Failed to record enrichment failure health: %s", err)
+	}); err != nil {
+		logOr(e.Logger).Warnf("Failed to record enrichment failure health: %s", err)
 	}
 }
 
@@ -145,11 +141,11 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 		return
 	}
 
+	logger := logOr(e.Logger)
+
 	payload, err := json.Marshal(inv)
 	if err != nil {
-		if e.Logger != nil {
-			e.Logger.Warnf("Failed to marshal enriched invocation %s for retry: %s", invocationID, err)
-		}
+		logger.Warnf("Failed to marshal enriched invocation %s for retry: %s", invocationID, err)
 
 		return
 	}
@@ -167,8 +163,8 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 		LastError:       putErr.Error(),
 		EnrichedPayload: payload,
 	}
-	if err := e.Store.Append(rec); err != nil && e.Logger != nil {
-		e.Logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
+	if err := e.Store.Append(rec); err != nil {
+		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
 	}
 }
 
@@ -176,11 +172,11 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 // load failed and we should abandon the operation); false means the caller
 // should fall through to appending a fresh record.
 func (e *Enricher) updatePendingRetry(invocationID string, payload []byte, putErr error) bool {
+	logger := logOr(e.Logger)
+
 	existing, loadErr := e.Store.Load()
 	if loadErr != nil {
-		if e.Logger != nil {
-			e.Logger.Warnf("Failed to load pending for retry recording: %s", loadErr)
-		}
+		logger.Warnf("Failed to load pending for retry recording: %s", loadErr)
 
 		return true
 	}
@@ -199,8 +195,8 @@ func (e *Enricher) updatePendingRetry(invocationID string, payload []byte, putEr
 		existing[i].LastError = putErr.Error()
 		existing[i].EnrichedPayload = payload
 
-		if err := e.Store.Save(existing); err != nil && e.Logger != nil {
-			e.Logger.Warnf("Failed to persist retry state for %s: %s", invocationID, err)
+		if err := e.Store.Save(existing); err != nil {
+			logger.Warnf("Failed to persist retry state for %s: %s", invocationID, err)
 		}
 
 		return true
