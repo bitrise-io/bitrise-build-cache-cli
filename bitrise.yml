@@ -1215,12 +1215,19 @@ workflows:
             cp xcodebuild-A.log "$BITRISE_DEPLOY_DIR"/
             cp wrapper-A.log "$BITRISE_DEPLOY_DIR"/
     - script:
-        title: Build checkout B (must reuse A's uploads — different absolute path)
+        title: Build checkout B and assert CAS-key stability (retries once on cold-cache miss)
+        retry_times: 1
         inputs:
         - content: |-
             set -exo pipefail
 
+            source ../_e2e/scripts/error.sh
+            source ../_e2e/scripts/extract_invocation_id.sh
+            source ../scripts/assert_xcode_invocation_fields.sh
+
             cd "$CHECKOUT_B_DIR"
+
+            rm -rf "$HOME/.bitrise/cache/xcode-dd" "$HOME/.bitrise/cache/xcode-ptd"
 
             xcodebuild build \
               -workspace ComposableArchitecture.xcworkspace \
@@ -1231,30 +1238,14 @@ workflows:
             cp xcodebuild-B.log "$BITRISE_DEPLOY_DIR"/
             cp wrapper-B.log "$BITRISE_DEPLOY_DIR"/
 
-            # Preserve the wrapper log location so the next step can extract the invocation id.
-            envman add --key CHECKOUT_B_WRAPPER_LOG --value "$BITRISE_DEPLOY_DIR/wrapper-B.log"
-    - script:
-        title: Assert CAS-key stability (checkout B's hit rate)
-        inputs:
-        - content: |-
-            set -exo pipefail
-
-            source ../_e2e/scripts/error.sh
-            source ../_e2e/scripts/extract_invocation_id.sh
-            source ../scripts/assert_xcode_invocation_fields.sh
-
-            # CompilationCacheMetrics presence is a smoke check — the real signal
-            # is checkout B's hitRate from the BE detail endpoint.
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild-B.log" 'CompilationCacheMetrics'
 
-            invocation_id_b=$(extract_invocation_id_xcode "$CHECKOUT_B_WRAPPER_LOG")
+            invocation_id_b=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper-B.log")
             if [[ -z "$invocation_id_b" ]]; then
-              fatal "checkout B invocation ID not found in $CHECKOUT_B_WRAPPER_LOG"
+              fatal "checkout B invocation ID not found in wrapper-B.log"
             fi
             echo "Checkout B invocation ID: $invocation_id_b"
 
-            # Assert the BE reports high reuse for checkout B.
-            # Floor is 80%: the ticket claim is 100%, but flakey CI network can drop hits.
             assert_xcode_invocation_hit_rate_at_least "$invocation_id_b" 80
     - deploy-to-bitrise-io: {}
 
