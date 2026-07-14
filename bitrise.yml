@@ -1137,11 +1137,17 @@ workflows:
         inputs:
            - content: |-
                source ../_e2e/scripts/assert_invocations.sh
+               source ../scripts/assert_xcode_invocation_fields.sh
 
                assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
                assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
                assert_build_performance "$BITRISE_APP_SLUG"
                assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "xcode"
+
+               # ACI-5045 / ACI-5207: assert xcactivitylog enrichment re-PUT populated
+               # scheme + fullCommand + xcodeVersion + toolBuildNumber on the BE payload.
+               # Non-empty scheme also acts as a proxy for "enrichment landed" — slim emit never sets it.
+               assert_xcode_invocation_enriched "$INVOCATION_ID"
     - script:
         title: Check for cache usage
         inputs:
@@ -1149,6 +1155,107 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - deploy-to-bitrise-io: {}
+
+  e2e-xcode-cas-key-stable:
+    description: |
+      ACI-5045: proves the compilation cache lookup key is stable across
+      checkouts at different absolute paths. Two clones of the same repo
+      at the same commit are built back-to-back with the same activation;
+      the second build must reuse the first's uploads. If the CAS key were
+      still path-sensitive (pre-prefix-map), the second build would miss
+      everything and hitRate would be ~0.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - CHECKOUT_B_DIR: $HOME/checkoutB
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Clone the sample repo into a second absolute path
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # feature-e2e-setup already cloned checkout A into ./_tmp and cd'd there.
+            # Clone the same commit into a completely different absolute path.
+            rm -rf "$CHECKOUT_B_DIR"
+            git clone "$TEST_APP_URL" "$CHECKOUT_B_DIR"
+            git -C "$CHECKOUT_B_DIR" checkout "$COMMIT"
+
+            # Sanity: paths must differ; commits must match.
+            [[ "$PWD" != "$CHECKOUT_B_DIR" ]] || { echo "FAIL: checkout paths must differ"; exit 1; }
+            a_sha=$(git rev-parse HEAD)
+            b_sha=$(git -C "$CHECKOUT_B_DIR" rev-parse HEAD)
+            [[ "$a_sha" == "$b_sha" ]] || { echo "FAIL: checkout SHAs differ: A=$a_sha B=$b_sha"; exit 1; }
+            echo "OK: two checkouts at $a_sha (A=$PWD, B=$CHECKOUT_B_DIR)"
+    - script:
+        title: activate xcode using CLI
+        inputs:
+        - content: |-
+            set -eo pipefail
+
+            ../bitrise-build-cache-cli -d activate xcode --cache
+    - script:
+        title: Build checkout A (warm-up — expected mostly misses)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper-A.log | tee xcodebuild-A.log | xcpretty
+
+            cp xcodebuild-A.log "$BITRISE_DEPLOY_DIR"/
+            cp wrapper-A.log "$BITRISE_DEPLOY_DIR"/
+    - script:
+        title: Build checkout B (must reuse A's uploads — different absolute path)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            cd "$CHECKOUT_B_DIR"
+
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper-B.log | tee xcodebuild-B.log | xcpretty
+
+            cp xcodebuild-B.log "$BITRISE_DEPLOY_DIR"/
+            cp wrapper-B.log "$BITRISE_DEPLOY_DIR"/
+
+            # Preserve the wrapper log location so the next step can extract the invocation id.
+            envman add --key CHECKOUT_B_WRAPPER_LOG --value "$BITRISE_DEPLOY_DIR/wrapper-B.log"
+    - script:
+        title: Assert CAS-key stability (checkout B's hit rate)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            source ../_e2e/scripts/error.sh
+            source ../_e2e/scripts/extract_invocation_id.sh
+            source ../scripts/assert_xcode_invocation_fields.sh
+
+            # CompilationCacheMetrics presence is a smoke check — the real signal
+            # is checkout B's hitRate from the BE detail endpoint.
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild-B.log" 'CompilationCacheMetrics'
+
+            invocation_id_b=$(extract_invocation_id_xcode "$CHECKOUT_B_WRAPPER_LOG")
+            if [[ -z "$invocation_id_b" ]]; then
+              fatal "checkout B invocation ID not found in $CHECKOUT_B_WRAPPER_LOG"
+            fi
+            echo "Checkout B invocation ID: $invocation_id_b"
+
+            # Assert the BE reports high reuse for checkout B.
+            # Floor is 80%: the ticket claim is 100%, but flakey CI network can drop hits.
+            assert_xcode_invocation_hit_rate_at_least "$invocation_id_b" 80
     - deploy-to-bitrise-io: {}
 
   e2e-daemon-install-macos:
@@ -2036,6 +2143,7 @@ pipelines:
         - gradle-configuration-e2e-linux-save
         parallel: 3
       e2e-xcode-comp-cache: {}
+      e2e-xcode-cas-key-stable: {}
       e2e-daemon-install-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
