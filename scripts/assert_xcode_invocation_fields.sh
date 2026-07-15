@@ -56,11 +56,13 @@ _bbc_first_nonempty() {
 }
 
 # assert_xcode_invocation_enriched <invocation_id>
-# Asserts command, shortCommand, xcodeVersion, and toolBuildNumber are all
-# non-empty on the BE detail payload. Non-empty command acts as the proxy for
-# "the enrichment re-PUT landed" — slim emit never sets command; only the
-# enricher does. The BE folds scheme into command/shortCommand and does not
-# expose it as a standalone field, so scheme presence is not checked directly.
+# Guards against the enrichment re-PUT regressing: command must include -scheme
+# and shortCommand must start with build. Slim emit sets neither, so their
+# presence proves the F2 enricher's rich payload landed and was not clobbered
+# by a subsequent last-write-wins slim/orphan emit. xcodeVersion and
+# toolBuildNumber are smoke checks that the wrapper's version capture is still
+# wired; they'd also be populated by non-enrichment code paths and are not
+# enrichment-regression signals by themselves.
 assert_xcode_invocation_enriched() {
   local invocation_id="$1"
   if [[ -z "$invocation_id" ]]; then
