@@ -27,6 +27,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
@@ -50,7 +51,6 @@ const (
 
 	errFmtExecutable         = "executable: %w"
 	errFmtFailedToStartProxy = "failed to start proxy: %w"
-	errFmtFailedToCreatePID  = "failed to create pid file: %w"
 )
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/session_client.go ./../../proto/llvm/session SessionClient
@@ -631,7 +631,7 @@ func startProxy(
 ) error {
 	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
-	if pid, alive := readAlivePid(osProxy, pidFilePth, nil); alive {
+	if pid, alive := proxypid.Read(osProxy, pidFilePth, nil); alive {
 		logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
 		return nil

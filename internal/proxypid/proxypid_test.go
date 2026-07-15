@@ -1,6 +1,6 @@
 //go:build unit
 
-package xcode
+package proxypid_test
 
 import (
 	"errors"
@@ -12,14 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-func TestAcquireProxyPidLock_NoPidFile(t *testing.T) {
+func TestAcquire_NoPidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "proxy.pid")
 
-	release, err := acquireProxyPidLock(utils.DefaultOsProxy{}, path, func(int) bool { return false })
+	release, err := proxypid.Acquire(utils.DefaultOsProxy{}, path, func(int) bool { return false })
 	require.NoError(t, err)
 	require.NotNil(t, release)
 
@@ -32,12 +33,12 @@ func TestAcquireProxyPidLock_NoPidFile(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "release should remove pid file")
 }
 
-func TestAcquireProxyPidLock_StalePidFile(t *testing.T) {
+func TestAcquire_StalePidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "proxy.pid")
 	require.NoError(t, os.WriteFile(path, []byte("999999\n"), 0o644))
 
-	release, err := acquireProxyPidLock(utils.DefaultOsProxy{}, path, func(int) bool { return false })
+	release, err := proxypid.Acquire(utils.DefaultOsProxy{}, path, func(int) bool { return false })
 	require.NoError(t, err)
 	defer func() { _ = release() }()
 
@@ -46,53 +47,81 @@ func TestAcquireProxyPidLock_StalePidFile(t *testing.T) {
 	assert.Equal(t, strconv.Itoa(os.Getpid()), string(content), "stale pid file must be overwritten")
 }
 
-func TestAcquireProxyPidLock_LivePidFile(t *testing.T) {
+func TestAcquire_LivePidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "proxy.pid")
 	require.NoError(t, os.WriteFile(path, []byte("4242\n"), 0o644))
 
-	release, err := acquireProxyPidLock(utils.DefaultOsProxy{}, path, func(pid int) bool { return pid == 4242 })
+	release, err := proxypid.Acquire(utils.DefaultOsProxy{}, path, func(pid int) bool { return pid == 4242 })
 	require.Nil(t, release)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, errProxyAlreadyRunning))
+	assert.True(t, errors.Is(err, proxypid.ErrAlreadyRunning))
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, "4242\n", string(content), "existing pid file must not be touched")
 }
 
-func TestAcquireProxyPidLock_OwnPidNotSelfRejected(t *testing.T) {
+func TestAcquire_OwnPidNotSelfRejected(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "proxy.pid")
 	require.NoError(t, os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o644))
 
-	// isAlive returning true would normally reject, but we must not reject our own pid.
-	release, err := acquireProxyPidLock(utils.DefaultOsProxy{}, path, func(int) bool { return true })
+	release, err := proxypid.Acquire(utils.DefaultOsProxy{}, path, func(int) bool { return true })
 	require.NoError(t, err)
 	defer func() { _ = release() }()
 }
 
-func TestAcquireProxyPidLock_ReleaseIdempotent(t *testing.T) {
+func TestAcquire_ReleaseIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "proxy.pid")
 
-	release, err := acquireProxyPidLock(utils.DefaultOsProxy{}, path, nil)
+	release, err := proxypid.Acquire(utils.DefaultOsProxy{}, path, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, release())
 	require.NoError(t, release(), "second release on already-removed pid file must not error")
 }
 
-func TestAcquireProxyPidLock_MalformedPidFile(t *testing.T) {
+func TestAcquire_MalformedPidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "proxy.pid")
 	require.NoError(t, os.WriteFile(path, []byte("garbage"), 0o644))
 
-	release, err := acquireProxyPidLock(utils.DefaultOsProxy{}, path, func(int) bool { return true })
+	release, err := proxypid.Acquire(utils.DefaultOsProxy{}, path, func(int) bool { return true })
 	require.NoError(t, err)
 	defer func() { _ = release() }()
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, strconv.Itoa(os.Getpid()), string(content), "malformed pid file treated as stale")
+}
+
+func TestRead_MissingPidFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "proxy.pid")
+
+	pid, alive := proxypid.Read(utils.DefaultOsProxy{}, path, nil)
+	assert.Equal(t, 0, pid)
+	assert.False(t, alive)
+}
+
+func TestRead_LivePid(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "proxy.pid")
+	require.NoError(t, os.WriteFile(path, []byte("4242\n"), 0o644))
+
+	pid, alive := proxypid.Read(utils.DefaultOsProxy{}, path, func(int) bool { return true })
+	assert.Equal(t, 4242, pid)
+	assert.True(t, alive)
+}
+
+func TestRead_StalePid(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "proxy.pid")
+	require.NoError(t, os.WriteFile(path, []byte("4242\n"), 0o644))
+
+	pid, alive := proxypid.Read(utils.DefaultOsProxy{}, path, func(int) bool { return false })
+	assert.Equal(t, 4242, pid)
+	assert.False(t, alive)
 }
