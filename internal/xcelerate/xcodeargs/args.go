@@ -14,6 +14,7 @@ type XcodeArgs interface {
 	Args(additional map[string]string) []string
 	Command() string
 	ShortCommand() string
+	HasBuildAction() bool
 	DerivedDataPath() string
 	ProjectTempDir() string
 	ProjectDir() string
@@ -43,6 +44,42 @@ var actions = []string{
 	"installhdrs",
 	"install",
 	"clean",
+	"-showsdks",
+	"-showBuildSettings",
+	"-showdestinations",
+	"-showTestPlans",
+	"-version",
+	"-list",
+	"-exportArchive",
+	"-exportLocalizations",
+	"-importLocalizations",
+	"-exportNotarizedApp",
+	"-resolvePackageDependencies",
+	"-create-xcframework",
+}
+
+// buildActions is the subset of xcodebuild action keywords that trigger an
+// actual build (i.e. produce build products). -derivedDataPath / PROJECT_TEMP_DIR
+// / OTHER_CFLAGS injection is only valid when one of these is in argv, or when
+// argv contains no action keyword at all (xcodebuild(1): `build` is the default).
+var buildActions = []string{
+	"build",
+	"build-for-testing",
+	"analyze",
+	"archive",
+	"test",
+	"test-without-building",
+	"docbuild",
+	"installsrc",
+	"installhdrs",
+	"install",
+	"clean",
+}
+
+// queryActions are the xcodebuild action keywords that do not build. If one
+// of these is in argv and no build action is present, xcodebuild rejects
+// -derivedDataPath — skip injection.
+var queryActions = []string{
 	"-showsdks",
 	"-showBuildSettings",
 	"-showdestinations",
@@ -108,6 +145,29 @@ func (p Default) nonCommands() []string {
 
 func (p Default) Command() string {
 	return strings.TrimSpace(strings.Join(p.nonCommands(), " "))
+}
+
+// HasBuildAction reports whether argv triggers a real xcodebuild build. An
+// explicit build-action keyword wins; otherwise argv is a build unless a
+// query-only action (-list, -version, -showBuildSettings, ...) is present.
+func (p Default) HasBuildAction() bool {
+	for _, arg := range p.OriginalArgs {
+		for _, a := range buildActions {
+			if arg == a {
+				return true
+			}
+		}
+	}
+
+	for _, arg := range p.OriginalArgs {
+		for _, q := range queryActions {
+			if arg == q {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (p Default) ShortCommand() string {

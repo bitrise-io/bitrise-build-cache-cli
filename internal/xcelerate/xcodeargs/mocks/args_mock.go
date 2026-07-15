@@ -27,6 +27,9 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //			DerivedDataPathFunc: func() string {
 //				panic("mock out the DerivedDataPath method")
 //			},
+//			HasBuildActionFunc: func() bool {
+//				panic("mock out the HasBuildAction method")
+//			},
 //			ProjectDirFunc: func() string {
 //				panic("mock out the ProjectDir method")
 //			},
@@ -55,6 +58,9 @@ type XcodeArgsMock struct {
 	// DerivedDataPathFunc mocks the DerivedDataPath method.
 	DerivedDataPathFunc func() string
 
+	// HasBuildActionFunc mocks the HasBuildAction method.
+	HasBuildActionFunc func() bool
+
 	// ProjectDirFunc mocks the ProjectDir method.
 	ProjectDirFunc func() string
 
@@ -80,6 +86,9 @@ type XcodeArgsMock struct {
 		// DerivedDataPath holds details about calls to the DerivedDataPath method.
 		DerivedDataPath []struct {
 		}
+		// HasBuildAction holds details about calls to the HasBuildAction method.
+		HasBuildAction []struct {
+		}
 		// ProjectDir holds details about calls to the ProjectDir method.
 		ProjectDir []struct {
 		}
@@ -96,6 +105,7 @@ type XcodeArgsMock struct {
 	lockArgs            sync.RWMutex
 	lockCommand         sync.RWMutex
 	lockDerivedDataPath sync.RWMutex
+	lockHasBuildAction  sync.RWMutex
 	lockProjectDir      sync.RWMutex
 	lockProjectTempDir  sync.RWMutex
 	lockShortCommand    sync.RWMutex
@@ -194,6 +204,36 @@ func (mock *XcodeArgsMock) DerivedDataPathCalls() []struct {
 	mock.lockDerivedDataPath.RLock()
 	calls = mock.calls.DerivedDataPath
 	mock.lockDerivedDataPath.RUnlock()
+	return calls
+}
+
+// HasBuildAction calls HasBuildActionFunc.
+func (mock *XcodeArgsMock) HasBuildAction() bool {
+	callInfo := struct {
+	}{}
+	mock.lockHasBuildAction.Lock()
+	mock.calls.HasBuildAction = append(mock.calls.HasBuildAction, callInfo)
+	mock.lockHasBuildAction.Unlock()
+	if mock.HasBuildActionFunc == nil {
+		var (
+			bOut bool
+		)
+		return bOut
+	}
+	return mock.HasBuildActionFunc()
+}
+
+// HasBuildActionCalls gets all the calls that were made to HasBuildAction.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.HasBuildActionCalls())
+func (mock *XcodeArgsMock) HasBuildActionCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockHasBuildAction.RLock()
+	calls = mock.calls.HasBuildAction
+	mock.lockHasBuildAction.RUnlock()
 	return calls
 }
 

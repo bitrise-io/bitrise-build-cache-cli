@@ -189,3 +189,60 @@ func Test_replaceOrAppendBuildSetting_valuePreservesEmbeddedEquals(t *testing.T)
 	require.Equal(t, []string{"xcodebuild", "KEY=a=b=c"}, out,
 		"only the first '=' separates key from value; the rest is preserved")
 }
+
+
+func Test_XcodebuildRunner_assembleArgs_skipsInjectionForNonBuildActions(t *testing.T) {
+	argv := []string{"-list", "-json", "-project", "foo.xcodeproj"}
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc: func() bool { return false },
+		ArgsFunc: func(_ map[string]string) []string {
+			return argv
+		},
+	}
+	r := &XcodebuildRunner{
+		Config:      xcelerate.Config{BuildCacheEnabled: true, ProxySocketPath: "/tmp/sock"},
+		Metadata:    common.CacheConfigMetadata{},
+		Logger:      bundleTestLogger,
+		CacheLogger: bundleTestLogger,
+		XcodeArgs:   argsMock,
+	}
+
+	out := r.assembleArgs()
+
+	require.Equal(t, argv, out, "non-build argv must pass through unchanged")
+	require.Len(t, argsMock.ArgsCalls(), 1)
+	require.Empty(t, argsMock.ArgsCalls()[0].Additional,
+		"no wrapper additions when there's no build action")
+}
+
+func Test_XcodebuildRunner_assembleArgs_buildActionInjectsProxySocket(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:  func() bool { return true },
+		ProjectDirFunc:      func() string { return "" },
+		DerivedDataPathFunc: func() string { return "" },
+		ProjectTempDirFunc:  func() string { return "" },
+		UserOtherCFlagsFunc: func() string { return "" },
+		ArgsFunc: func(_ map[string]string) []string {
+			return []string{}
+		},
+	}
+	r := &XcodebuildRunner{
+		Config: xcelerate.Config{
+			BuildCacheEnabled:    true,
+			ProxySocketPath:      "/tmp/sock",
+			DisablePrefixMapping: true,
+			BuildCacheSkipFlags:  true,
+		},
+		Metadata:    common.CacheConfigMetadata{},
+		Logger:      bundleTestLogger,
+		CacheLogger: bundleTestLogger,
+		XcodeArgs:   argsMock,
+	}
+
+	_ = r.assembleArgs()
+
+	require.Len(t, argsMock.ArgsCalls(), 1)
+	additional := argsMock.ArgsCalls()[0].Additional
+	require.Equal(t, "/tmp/sock", additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"],
+		"build-action path still receives the proxy socket wiring")
+}

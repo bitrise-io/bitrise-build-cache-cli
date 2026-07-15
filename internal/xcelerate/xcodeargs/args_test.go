@@ -363,3 +363,39 @@ func Test_Command(t *testing.T) {
 	// then
 	assert.Equal(t, "-destination 'platform=iOS Simulator,OS=18.1,name=iPhone 16 Pro' -scheme WordPress -workspace WordPress.xcworkspace  CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO -showBuildTimingSummary test", result)
 }
+
+func Test_HasBuildAction(t *testing.T) {
+	type testCase struct {
+		name string
+		args []string
+		want bool
+	}
+
+	tcs := []testCase{
+		{"build alone", []string{"build"}, true},
+		{"test alone", []string{"test"}, true},
+		{"archive alone", []string{"archive"}, true},
+		{"clean alone", []string{"clean"}, true},
+		{"build-for-testing", []string{"build-for-testing"}, true},
+		{"test-without-building", []string{"test-without-building"}, true},
+		{"installhdrs", []string{"installhdrs"}, true},
+		{"list json project", []string{"-list", "-json", "-project", "foo.xcodeproj"}, false},
+		{"version alone", []string{"-version"}, false},
+		{"showBuildSettings on its own is a query", []string{"-showBuildSettings", "-workspace", "Foo.xcworkspace"}, false},
+		{"build followed by showBuildSettings is a build (build wins)", []string{"build", "-showBuildSettings"}, true},
+		{"mixed: flags before build keyword", []string{"-project", "foo", "-scheme", "bar", "build"}, true},
+		{"no action keyword defaults to build per xcodebuild(1)", []string{"-workspace", "Foo.xcworkspace", "-scheme", "Foo"}, true},
+		{"empty argv defaults to build", []string{}, true},
+		{"exportArchive is a query", []string{"-exportArchive", "-archivePath", "a", "-exportPath", "b"}, false},
+		{"resolvePackageDependencies is a query", []string{"-resolvePackageDependencies", "-workspace", "Foo"}, false},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "xcodebuild"}
+			SUT := xcodeargs.NewDefault(cmd, tc.args, mockLogger)
+
+			assert.Equal(t, tc.want, SUT.HasBuildAction())
+		})
+	}
+}

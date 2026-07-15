@@ -43,7 +43,8 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		}
 
 		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
-			ArgsFunc: func(_ map[string]string) []string { return xcodeArgs },
+			HasBuildActionFunc: func() bool { return true },
+			ArgsFunc:           func(_ map[string]string) []string { return xcodeArgs },
 			CommandFunc: func() string {
 				return "xcodebuild"
 			},
@@ -85,7 +86,8 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		xcodeArgs := []string{}
 
 		xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
-			ArgsFunc: func(_ map[string]string) []string { return xcodeArgs },
+			HasBuildActionFunc: func() bool { return true },
+			ArgsFunc:           func(_ map[string]string) []string { return xcodeArgs },
 			CommandFunc: func() string {
 				return "xcodebuild"
 			},
@@ -148,6 +150,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				var receivedAdditional map[string]string
 				xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
+					HasBuildActionFunc: func() bool { return true },
 					ArgsFunc: func(additional map[string]string) []string {
 						receivedAdditional = additional
 
@@ -215,6 +218,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				var receivedAdditional map[string]string
 				xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
+					HasBuildActionFunc: func() bool { return true },
 					ArgsFunc: func(additional map[string]string) []string {
 						receivedAdditional = additional
 
@@ -278,6 +282,7 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 	t.Run("injects wrapper-owned DerivedData when user did not pass one", func(t *testing.T) {
 		var receivedAdditional map[string]string
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc: func() bool { return true },
 			ArgsFunc: func(additional map[string]string) []string {
 				receivedAdditional = additional
 
@@ -319,6 +324,7 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 
 	t.Run("respects user-supplied DerivedDataPath (no injection)", func(t *testing.T) {
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc:  func() bool { return true },
 			ArgsFunc:            func(_ map[string]string) []string { return []string{"xcodebuild"} },
 			ProjectDirFunc:      func() string { return "/work/app" },
 			DerivedDataPathFunc: func() string { return "/user/dd" },
@@ -344,6 +350,7 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 
 	t.Run("splices user OTHER_CFLAGS between $(inherited) and prefix-map suffix", func(t *testing.T) {
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc: func() bool { return true },
 			ArgsFunc: func(_ map[string]string) []string {
 				return []string{"xcodebuild", "OTHER_CFLAGS=$(inherited) -Werror"}
 			},
@@ -368,10 +375,11 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 
 	t.Run("--no-prefix-map opt-out disables the entire mechanism", func(t *testing.T) {
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
-			ArgsFunc:         func(_ map[string]string) []string { return []string{"xcodebuild"} },
-			ProjectDirFunc:   func() string { return "/work/app" },
-			CommandFunc:      func() string { return "xcodebuild" },
-			ShortCommandFunc: func() string { return "xcodebuild" },
+			HasBuildActionFunc: func() bool { return true },
+			ArgsFunc:           func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			ProjectDirFunc:     func() string { return "/work/app" },
+			CommandFunc:        func() string { return "xcodebuild" },
+			ShortCommandFunc:   func() string { return "xcodebuild" },
 		}
 		var captured []string
 		r := newRunnerWithArgs(xcelerate.Config{
@@ -388,6 +396,7 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 	t.Run("--no-managed-derived-data leaves prefix mapping on but skips the wrapper-owned dirs", func(t *testing.T) {
 		var receivedAdditional map[string]string
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc: func() bool { return true },
 			ArgsFunc: func(additional map[string]string) []string {
 				receivedAdditional = additional
 

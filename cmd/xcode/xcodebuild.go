@@ -641,6 +641,13 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		return c.XcodeArgs.Args(additional)
 	}
 
+	// Query-only invocations (-list, -version, -showBuildSettings on its own, ...)
+	// reject -derivedDataPath and don't need cache wiring. Pass argv through
+	// unchanged; SetSession + proxy handshake in Run() still fire.
+	if !c.XcodeArgs.HasBuildAction() {
+		return c.XcodeArgs.Args(additional)
+	}
+
 	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = c.Config.ProxySocketPath
 	if c.Config.BuildCacheSkipFlags {
 		return c.XcodeArgs.Args(additional)
