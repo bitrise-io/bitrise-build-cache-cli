@@ -3,16 +3,27 @@
 package xcode
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
 func Test_workspaceSHA_deterministic(t *testing.T) {
@@ -245,4 +256,142 @@ func Test_XcodebuildRunner_assembleArgs_buildActionInjectsProxySocket(t *testing
 	additional := argsMock.ArgsCalls()[0].Additional
 	require.Equal(t, "/tmp/sock", additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"],
 		"build-action path still receives the proxy socket wiring")
+}
+
+type countingSessionClient struct {
+	setCalls atomic.Int32
+}
+
+func (c *countingSessionClient) SetSession(_ context.Context, _ *session.SetSessionRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	c.setCalls.Add(1)
+
+	return &emptypb.Empty{}, nil
+}
+
+func (c *countingSessionClient) GetSessionStats(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*session.GetSessionStatsResponse, error) {
+	return &session.GetSessionStatsResponse{}, nil
+}
+
+type countingInvocationSaver struct {
+	putCalls atomic.Int32
+}
+
+func (s *countingInvocationSaver) PutInvocation(_ analytics.Invocation) error {
+	s.putCalls.Add(1)
+
+	return nil
+}
+
+type recordingXcodeRunner struct {
+	stats    xcodeargs.RunStats
+	lastArgs []string
+}
+
+func (r *recordingXcodeRunner) Run(_ context.Context, args []string) xcodeargs.RunStats {
+	r.lastArgs = append([]string(nil), args...)
+
+	return r.stats
+}
+
+func Test_Run_QueryAction_PassthroughSkipsSetSessionAndAnalytics(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	invID := "query-inv-1"
+	origArgs := []string{"-list", "-json", "-project", "foo.xcodeproj"}
+
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc: func() bool { return false },
+		ArgsFunc: func(additional map[string]string) []string {
+			if len(additional) != 0 {
+				t.Fatalf("expected no wrapper additions, got %v", additional)
+			}
+
+			return origArgs
+		},
+	}
+
+	xcodeRunner := &recordingXcodeRunner{stats: xcodeargs.RunStats{ExitCode: 42, Success: false}}
+	sessionClient := &countingSessionClient{}
+	invocationAPI := &countingInvocationSaver{}
+	relationAPI := &relationSenderMock{
+		PutInvocationRelationFunc: func(_ multiplatform.InvocationRelation) error { return nil },
+	}
+	localLogger := &localInvocationLoggerMock{
+		AppendFunc: func(_ invocations.Record) error { return nil },
+	}
+
+	r := &XcodebuildRunner{
+		Config:             xcelerate.Config{BuildCacheEnabled: true, ProxySocketPath: "/tmp/sock"},
+		Metadata:           common.CacheConfigMetadata{},
+		InvocationID:       invID,
+		Logger:             bundleTestLogger,
+		CacheLogger:        bundleTestLogger,
+		XcodeRunner:        xcodeRunner,
+		ProxySessionClient: sessionClient,
+		XcodeArgs:          argsMock,
+		invocationAPI:      invocationAPI,
+		relationAPI:        relationAPI,
+		localLogger:        localLogger,
+	}
+
+	stats := r.Run(context.Background())
+
+	assert.Equal(t, 42, stats.ExitCode, "wrapper must return xcodebuild exit code as-is")
+	assert.Equal(t, origArgs, xcodeRunner.lastArgs, "xcodebuild must receive the original argv unchanged")
+	assert.Zero(t, sessionClient.setCalls.Load(), "SetSession must not fire for query invocations")
+	assert.Zero(t, invocationAPI.putCalls.Load(), "PutInvocation must not fire for query invocations")
+	assert.Empty(t, relationAPI.PutInvocationRelationCalls(), "PutInvocationRelation must not fire for query invocations")
+	assert.Empty(t, localLogger.AppendCalls(), "local invocation log must not be written for query invocations")
+
+	marker := filepath.Join(home, ".local", "state", "xcelerate", "enrichment", "handled-invocations", invID)
+	_, err := os.Stat(marker)
+	assert.True(t, os.IsNotExist(err), "handled-invocation marker must not be written for query invocations")
+}
+
+func Test_Run_BuildAction_StillEmitsAnalyticsAndSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("BITRISE_INVOCATION_ID", "")
+
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc: func() bool { return true },
+		ArgsFunc:           func(_ map[string]string) []string { return []string{"xcodebuild"} },
+		CommandFunc:        func() string { return "xcodebuild -scheme App" },
+		ShortCommandFunc:   func() string { return "xcodebuild build" },
+	}
+
+	xcodeRunner := &recordingXcodeRunner{stats: xcodeargs.RunStats{Success: true}}
+	sessionClient := &countingSessionClient{}
+	invocationAPI := &countingInvocationSaver{}
+	relationAPI := &relationSenderMock{
+		PutInvocationRelationFunc: func(_ multiplatform.InvocationRelation) error { return nil },
+	}
+	localLogger := &localInvocationLoggerMock{
+		AppendFunc: func(_ invocations.Record) error { return nil },
+	}
+
+	r := &XcodebuildRunner{
+		Config:             xcelerate.Config{BuildCacheEnabled: true, ProxySocketPath: "/tmp/sock", Silent: true},
+		Metadata:           common.CacheConfigMetadata{},
+		InvocationID:       "build-inv-1",
+		Logger:             bundleTestLogger,
+		CacheLogger:        bundleTestLogger,
+		XcodeRunner:        xcodeRunner,
+		ProxySessionClient: sessionClient,
+		XcodeArgs:          argsMock,
+		invocationAPI:      invocationAPI,
+		relationAPI:        relationAPI,
+		localLogger:        localLogger,
+	}
+
+	_ = r.Run(context.Background())
+
+	assert.Equal(t, int32(1), sessionClient.setCalls.Load(), "SetSession must fire on the build path")
+	assert.Equal(t, int32(1), invocationAPI.putCalls.Load(), "PutInvocation must fire on the build path")
+	assert.Len(t, localLogger.AppendCalls(), 1, "local invocation log must be written on the build path")
+
+	marker := filepath.Join(home, ".local", "state", "xcelerate", "enrichment", "handled-invocations", "build-inv-1")
+	_, err := os.Stat(marker)
+	assert.NoError(t, err, "handled-invocation marker must be written on the build path")
 }

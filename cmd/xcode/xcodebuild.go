@@ -319,6 +319,12 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	toPass := c.assembleArgs()
 	c.Logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
 
+	// Query invocations have no session state or cache stats worth reporting;
+	// skip SetSession + analytics emit + marker write entirely.
+	if !c.XcodeArgs.HasBuildAction() {
+		return c.runPassthrough(ctx, toPass)
+	}
+
 	if c.ProxySessionClient != nil {
 		_, err := c.ProxySessionClient.SetSession(ctx, &session.SetSessionRequest{
 			InvocationId: c.InvocationID,
@@ -377,6 +383,21 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	c.appendLocalInvocationLog(*inv, runStats)
 	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+
+	return runStats
+}
+
+// runPassthrough forwards a query xcodebuild invocation without touching the
+// proxy or emitting analytics.
+func (c *XcodebuildRunner) runPassthrough(ctx context.Context, args []string) xcodeargs.RunStats {
+	c.Logger.TDebugf("xcodebuild wrapper passthrough for query invocation")
+
+	runStats := c.XcodeRunner.Run(ctx, args)
+	if runStats.Error != nil {
+		c.Logger.TErrorf(MsgInvocationFailed, time.Duration(runStats.DurationMS)*time.Millisecond, runStats.Error)
+	} else {
+		c.Logger.TDonef(MsgInvocationSuccess, time.Duration(runStats.DurationMS)*time.Millisecond)
+	}
 
 	return runStats
 }

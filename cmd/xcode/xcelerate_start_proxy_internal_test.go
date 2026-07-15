@@ -33,6 +33,9 @@ func newBundleTestLogger() *utilsMocks.Logger {
 		l.On(name, mock.Anything, mock.Anything, mock.Anything).Return()
 		l.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 		l.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+		l.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+		l.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+		l.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	}
 	l.On("EnableDebugLog", mock.Anything).Return()
 

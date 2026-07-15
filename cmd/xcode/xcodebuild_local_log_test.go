@@ -39,9 +39,10 @@ func runnerForLocalLogTest(t *testing.T, runStats xcodeargs.RunStats, ciProvider
 	}
 
 	xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
-		ArgsFunc:         func(_ map[string]string) []string { return nil },
-		CommandFunc:      func() string { return "xcodebuild -workspace Foo.xcworkspace" },
-		ShortCommandFunc: func() string { return "xcodebuild" },
+		HasBuildActionFunc: func() bool { return true },
+		ArgsFunc:           func(_ map[string]string) []string { return nil },
+		CommandFunc:        func() string { return "xcodebuild -workspace Foo.xcworkspace" },
+		ShortCommandFunc:   func() string { return "xcodebuild" },
 	}
 	xcodeRunner := &fakeXcodeRunner{stats: runStats}
 
