@@ -632,18 +632,8 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 	}
 }
 
-// assembleArgs composes the final argv passed to xcodebuild. When build cache
-// is enabled and prefix-map injection is on, it adds:
-//   - CLANG_ENABLE_PREFIX_MAPPING=YES
-//   - PROJECT_TEMP_DIR=<wrapper-owned dir> (unless user supplied one or
-//     --no-managed-derived-data was set)
-//   - a spliced OTHER_CFLAGS combining user tokens and the narrowest-first
-//     -fdepscan-prefix-map rules
-//   - -derivedDataPath <wrapper-owned dir> (same gating as PROJECT_TEMP_DIR)
-//
-// Any user-supplied OTHER_CFLAGS on argv is preserved: on local runs (no
-// CIProvider) we warn about the merge so the user can opt out via
-// --no-prefix-map; on CI we stay silent.
+// assembleArgs returns the final argv for xcodebuild: user args plus the
+// wrapper-owned build settings and prefix-map splicing when build cache is on.
 func (c *XcodebuildRunner) assembleArgs() []string {
 	additional := map[string]string{}
 

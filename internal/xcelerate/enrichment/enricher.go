@@ -17,7 +17,9 @@ type InvocationPutter interface {
 	PutInvocation(inv analytics.Invocation) error
 }
 
-// Xcode.app never calls SetSession so no pending match; mint a fresh id.
+// Enricher re-PUTs enriched analytics.Invocation for a manifest entry,
+// correlating to a pending record when available (matched path) or minting a
+// fresh UUID (orphan path).
 type Enricher struct {
 	Store            *Store
 	Client           InvocationPutter

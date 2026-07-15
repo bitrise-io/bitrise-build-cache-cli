@@ -60,7 +60,6 @@ func (w *Watcher) markHandled(uuid string) {
 	}
 }
 
-// First scan seeds seen without emitting so restart doesn't replay historic builds.
 func (w *Watcher) Run(ctx context.Context) {
 	if w.PollInterval == 0 {
 		w.PollInterval = DefaultPollInterval
@@ -86,9 +85,8 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
-// seedSeenFromStore hydrates w.seen from HandledStore and returns whether it
-// found any records. False means the caller should fall back to a silent
-// filesystem seed (first-ever install path).
+// seedSeenFromStore returns true when HandledStore contributed at least one
+// UUID; false lets Run fall back to a silent filesystem seed.
 func (w *Watcher) seedSeenFromStore() bool {
 	if w.HandledStore == nil {
 		return false
@@ -147,8 +145,6 @@ func (w *Watcher) scan(seedOnly bool) {
 
 func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 	if seedOnly {
-		// Seed pass doesn't emit and doesn't persist — this is the "first-ever install"
-		// silent bootstrap. Subsequent runs replay only what HandledStore hasn't recorded.
 		w.seen[entry.UUID] = struct{}{}
 
 		return
@@ -158,7 +154,6 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 		return
 	}
 
-	// Fast path preserves existing behavior when caller doesn't opt into correlation-aware retry.
 	if w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
 		if w.Handle != nil {
 			w.Handle(entry)
@@ -174,10 +169,9 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
-		case w.retries[entry.UUID] > 1:
+		case w.retries[entry.UUID] > 0:
 			w.retries[entry.UUID]--
 		default:
-			// Last chance exhausted: fire so Enricher can mint an orphan invocation.
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)

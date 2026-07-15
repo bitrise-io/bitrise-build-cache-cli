@@ -121,16 +121,21 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
+	// MaxCorrelationRetries=2 gives 2 retry scans held after the fresh sight,
+	// and orphan-fires on the next (4th total) scan.
 	w.scan(false)
 	assert.Empty(t, handled, "first sight: buckets the uuid for retry")
 	assert.Contains(t, w.retries, uuid)
 	assert.NotContains(t, w.seen, uuid)
 
 	w.scan(false)
-	assert.Empty(t, handled, "second scan: decrements, still held")
+	assert.Empty(t, handled, "retry scan 1: decrements 2->1, still held")
 
 	w.scan(false)
-	assert.Equal(t, []string{uuid}, handled, "third scan: exhausted, mints as orphan")
+	assert.Empty(t, handled, "retry scan 2: decrements 1->0, still held")
+
+	w.scan(false)
+	assert.Equal(t, []string{uuid}, handled, "retries exhausted: mints as orphan")
 	assert.Contains(t, w.seen, uuid)
 	assert.NotContains(t, w.retries, uuid)
 }
