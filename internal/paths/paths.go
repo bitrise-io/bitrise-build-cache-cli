@@ -47,6 +47,13 @@ const (
 	// the rich row instead of last-write-wins overwriting it.
 	xcelerateHandledInvocationsSubdir = "handled-invocations"
 
+	// xcelerateEnrichmentSubdir holds persisted state for the F2 enrichment watcher.
+	xcelerateEnrichmentSubdir = "enrichment"
+
+	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
+	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
+	handledManifestsFilename = "handled-manifests.ndjson"
+
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
 
@@ -267,6 +274,17 @@ func (p Paths) XcelerateHandledInvocationDir() string {
 // XcelerateHandledInvocationFile returns the marker path for a specific invocation ID.
 func (p Paths) XcelerateHandledInvocationFile(invocationID string) string {
 	return filepath.Join(p.XcelerateHandledInvocationDir(), invocationID)
+}
+
+// XcelerateEnrichmentDir returns ~/.local/state/xcelerate/enrichment.
+func (p Paths) XcelerateEnrichmentDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateEnrichmentSubdir)
+}
+
+// HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to
+// persist which xcactivitylog UUIDs have already been emitted across restarts.
+func (p Paths) HandledManifestsFile() string {
+	return filepath.Join(p.XcelerateEnrichmentDir(), handledManifestsFilename)
 }
 
 // CcacheLogDir returns ~/.local/state/ccache/logs.

@@ -27,8 +27,37 @@ type Watcher struct {
 	MatchProbe            func(entry ManifestEntry) bool
 	MaxCorrelationRetries int
 
+	// HandledStore persists the seen-UUID set across restarts. nil disables
+	// persistence (seen stays in-memory only) — this is the pre-persistence
+	// behavior and is still what tests use unless they set the field.
+	HandledStore *HandledManifestStore
+
+	// Now is a test seam for the timestamp written into HandledStore records.
+	// nil falls back to time.Now.
+	Now func() time.Time
+
 	seen    map[string]struct{}
 	retries map[string]int
+}
+
+func (w *Watcher) now() time.Time {
+	if w.Now != nil {
+		return w.Now()
+	}
+
+	return time.Now()
+}
+
+func (w *Watcher) markHandled(uuid string) {
+	w.seen[uuid] = struct{}{}
+
+	if w.HandledStore == nil {
+		return
+	}
+
+	if err := w.HandledStore.Append(HandledManifest{UUID: uuid, HandledAt: w.now()}); err != nil {
+		logOr(w.Logger).Debugf("Persist handled manifest %s failed: %s", uuid, err)
+	}
 }
 
 // First scan seeds seen without emitting so restart doesn't replay historic builds.
@@ -40,7 +69,9 @@ func (w *Watcher) Run(ctx context.Context) {
 	w.seen = make(map[string]struct{})
 	w.retries = make(map[string]int)
 
-	w.scan(true)
+	if !w.seedSeenFromStore() {
+		w.scan(true)
+	}
 
 	ticker := time.NewTicker(w.PollInterval)
 	defer ticker.Stop()
@@ -53,6 +84,34 @@ func (w *Watcher) Run(ctx context.Context) {
 			w.scan(false)
 		}
 	}
+}
+
+// seedSeenFromStore hydrates w.seen from HandledStore and returns whether it
+// found any records. False means the caller should fall back to a silent
+// filesystem seed (first-ever install path).
+func (w *Watcher) seedSeenFromStore() bool {
+	if w.HandledStore == nil {
+		return false
+	}
+
+	logger := logOr(w.Logger)
+
+	if err := w.HandledStore.PruneOlderThan(w.now(), HandledManifestMaxAge); err != nil {
+		logger.Debugf("Prune handled manifests failed: %s", err)
+	}
+
+	records, err := w.HandledStore.Load()
+	if err != nil {
+		logger.Debugf("Load handled manifests failed: %s", err)
+
+		return false
+	}
+
+	for _, r := range records {
+		w.seen[r.UUID] = struct{}{}
+	}
+
+	return len(records) > 0
 }
 
 func (w *Watcher) scan(seedOnly bool) {
@@ -88,6 +147,8 @@ func (w *Watcher) scan(seedOnly bool) {
 
 func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 	if seedOnly {
+		// Seed pass doesn't emit and doesn't persist — this is the "first-ever install"
+		// silent bootstrap. Subsequent runs replay only what HandledStore hasn't recorded.
 		w.seen[entry.UUID] = struct{}{}
 
 		return
@@ -99,11 +160,10 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 
 	// Fast path preserves existing behavior when caller doesn't opt into correlation-aware retry.
 	if w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
-		w.seen[entry.UUID] = struct{}{}
-
 		if w.Handle != nil {
 			w.Handle(entry)
 		}
+		w.markHandled(entry.UUID)
 
 		return
 	}
@@ -112,14 +172,14 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 		switch {
 		case w.MatchProbe(entry):
 			w.Handle(entry)
-			w.seen[entry.UUID] = struct{}{}
+			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
 		case w.retries[entry.UUID] > 1:
 			w.retries[entry.UUID]--
 		default:
 			// Last chance exhausted: fire so Enricher can mint an orphan invocation.
 			w.Handle(entry)
-			w.seen[entry.UUID] = struct{}{}
+			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
 		}
 
@@ -128,7 +188,7 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 
 	if w.MatchProbe(entry) {
 		w.Handle(entry)
-		w.seen[entry.UUID] = struct{}{}
+		w.markHandled(entry.UUID)
 
 		return
 	}

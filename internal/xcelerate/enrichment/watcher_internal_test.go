@@ -3,9 +3,11 @@
 package enrichment
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -326,4 +328,62 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 
 	assert.Equal(t, []string{"UUID-PACKAGE"}, handled,
 		"Logs/Package/ manifest (Xcode 26 package builds) must match the default glob")
+}
+
+func TestWatcher_scan_HydratesSeenFromHandledStoreOnStartup(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	// Pre-populate the HandledStore with the manifest's UUID so Run's
+	// startup Load treats it as already-seen and no emit fires.
+	storePath := filepath.Join(t.TempDir(), "handled.ndjson")
+	store := &HandledManifestStore{Path: storePath}
+	require.NoError(t, store.Append(HandledManifest{UUID: uuid, HandledAt: time.Now()}))
+
+	var handled []string
+	w := &Watcher{
+		HomeDir: home,
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+		HandledStore: store,
+		PollInterval: time.Hour, // never tick; only startup block runs
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel BEFORE Run so the ticker loop exits immediately after init
+
+	w.Run(ctx)
+
+	assert.Empty(t, handled, "startup must not emit a UUID already in HandledStore")
+	assert.Contains(t, w.seen, uuid, "seen must be hydrated from HandledStore")
+}
+
+func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	storePath := filepath.Join(t.TempDir(), "handled.ndjson")
+	store := &HandledManifestStore{Path: storePath}
+
+	w := &Watcher{
+		HomeDir:      home,
+		Handle:       func(ManifestEntry) {},
+		HandledStore: store,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false)
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+
+	var uuids []string
+	for _, r := range loaded {
+		uuids = append(uuids, r.UUID)
+	}
+	assert.Contains(t, uuids, uuid, "emitted UUID must be appended to HandledStore")
 }

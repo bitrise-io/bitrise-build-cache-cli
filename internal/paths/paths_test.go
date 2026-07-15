@@ -80,3 +80,10 @@ func TestPaths_xcelerateHandledInvocations(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/xcelerate/handled-invocations", p.XcelerateHandledInvocationDir())
 	assert.Equal(t, "/h/.local/state/xcelerate/handled-invocations/abc-123", p.XcelerateHandledInvocationFile("abc-123"))
 }
+
+func TestPaths_xcelerateEnrichment(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment", p.XcelerateEnrichmentDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-manifests.ndjson", p.HandledManifestsFile())
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,8 @@ const EnrichmentPendingMaxAge = time.Hour
 type Store struct {
 	Path string
 	Now  func() time.Time
+
+	mu sync.Mutex
 }
 
 func (s *Store) now() time.Time {
@@ -39,7 +42,10 @@ func (s *Store) now() time.Time {
 }
 
 func (s *Store) Append(rec PendingRecord) error {
-	existing, err := s.Load()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, err := s.loadLocked()
 	if err != nil {
 		return err
 	}
@@ -61,6 +67,13 @@ func (s *Store) Append(rec PendingRecord) error {
 }
 
 func (s *Store) Load() ([]PendingRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.loadLocked()
+}
+
+func (s *Store) loadLocked() ([]PendingRecord, error) {
 	f, err := os.Open(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -92,7 +105,10 @@ func (s *Store) Load() ([]PendingRecord, error) {
 }
 
 func (s *Store) Remove(invocationID string) error {
-	existing, err := s.Load()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, err := s.loadLocked()
 	if err != nil {
 		return err
 	}
@@ -111,9 +127,13 @@ func (s *Store) Remove(invocationID string) error {
 }
 
 func (s *Store) Save(records []PendingRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return s.writeAtomic(records)
 }
 
+//nolint:dupl // paired with HandledManifestStore.writeAtomicLocked; see comment there.
 func (s *Store) writeAtomic(records []PendingRecord) error {
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
 		return fmt.Errorf("mkdir pending dir: %w", err)

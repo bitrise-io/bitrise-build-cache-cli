@@ -3,8 +3,10 @@
 package enrichment_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -152,4 +154,31 @@ func TestPendingRecord_ExtraFieldsRoundtrip(t *testing.T) {
 	assert.JSONEq(t, string(rec.EnrichedPayload), string(got.EnrichedPayload))
 	assert.Equal(t, rec.FirstAttempt.UTC(), got.FirstAttempt.UTC())
 	assert.Equal(t, rec.LastAttempt.UTC(), got.LastAttempt.UTC())
+}
+
+func TestStore_ConcurrentAppends(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time { return now }}
+
+	const n = 10
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			require.NoError(t, s.Append(enrichment.PendingRecord{
+				InvocationID: fmt.Sprintf("inv-%d", i),
+				StartTime:    now,
+			}))
+		}()
+	}
+
+	wg.Wait()
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	assert.Len(t, loaded, n)
 }

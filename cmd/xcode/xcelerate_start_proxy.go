@@ -199,6 +199,7 @@ type analyticsBundle struct {
 	auth             configcommon.CacheAuthConfig
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
+	handledManifests *enrichment.HandledManifestStore
 	healthPath       string
 	homeDir          string
 	xcodeVersion     string
@@ -238,6 +239,7 @@ func newAnalyticsBundle(
 		logger.Warnf("Pending-invocation queue disabled — paths.Default: %s", err)
 	} else {
 		b.pending = &enrichment.Store{Path: pathResolver.PendingInvocationsFile()}
+		b.handledManifests = &enrichment.HandledManifestStore{Path: pathResolver.HandledManifestsFile()}
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
 	}
@@ -296,6 +298,7 @@ func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 		Logger:                logger,
 		MatchProbe:            matchProbe,
 		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
+		HandledStore:          b.handledManifests,
 	}
 }
 

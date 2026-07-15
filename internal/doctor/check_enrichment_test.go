@@ -57,10 +57,24 @@ func TestEnrichmentCheck_warnOnStalePending(t *testing.T) {
 	pendingPath := filepath.Join(tmp, "pending.ndjson")
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 
-	// Older-than-EnrichmentPendingMaxAge pending record.
-	store := &enrichment.Store{Path: pendingPath, Now: func() time.Time { return now.Add(-2 * enrichment.EnrichmentPendingMaxAge) }}
+	// Four pending records with staggered StartTimes; all older than
+	// EnrichmentPendingMaxAge so writeAtomic keeps them (Append prunes on time.Now
+	// relative to Store.Now, not the record's own StartTime).
+	store := &enrichment.Store{Path: pendingPath, Now: func() time.Time { return now.Add(-10 * enrichment.EnrichmentPendingMaxAge) }}
 	require.NoError(t, store.Append(enrichment.PendingRecord{
-		InvocationID: "stale",
+		InvocationID: "oldest",
+		StartTime:    now.Add(-5 * enrichment.EnrichmentPendingMaxAge),
+	}))
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "older",
+		StartTime:    now.Add(-4 * enrichment.EnrichmentPendingMaxAge),
+	}))
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "old",
+		StartTime:    now.Add(-3 * enrichment.EnrichmentPendingMaxAge),
+	}))
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "newest",
 		StartTime:    now.Add(-2 * enrichment.EnrichmentPendingMaxAge),
 	}))
 
@@ -74,6 +88,11 @@ func TestEnrichmentCheck_warnOnStalePending(t *testing.T) {
 	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "pending invocation queue stale")
+	assert.Contains(t, res.Detail, "oldest")
+	assert.Contains(t, res.Detail, "older")
+	assert.Contains(t, res.Detail, "old ")
+	assert.NotContains(t, res.Detail, "newest", "only oldest 3 should be enumerated")
+	assert.Contains(t, res.Detail, "https://app.bitrise.io/build-cache/invocations/xcode/")
 }
 
 func TestEnrichmentCheck_warnOnStaleLastSuccess(t *testing.T) {
@@ -98,6 +117,7 @@ func TestEnrichmentCheck_warnOnStaleLastSuccess(t *testing.T) {
 	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "no successful enrichment")
+	assert.Contains(t, res.Detail, "https://app.bitrise.io/build-cache/invocations/xcode/fresh")
 }
 
 func TestEnrichmentCheck_okWhenHealthy(t *testing.T) {
@@ -115,4 +135,26 @@ func TestEnrichmentCheck_okWhenHealthy(t *testing.T) {
 	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "healthy")
+}
+
+
+func TestEnrichmentCheck_warnOnConsecutiveErrors_includesLastErrorAt(t *testing.T) {
+	tmp := t.TempDir()
+	healthPath := filepath.Join(tmp, "health.json")
+	pendingPath := filepath.Join(tmp, "pending.ndjson")
+	now := func() time.Time { return time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC) }
+	errAt := time.Date(2026, 7, 14, 9, 55, 0, 0, time.UTC)
+
+	hw := &enrichment.HealthWriter{Path: healthPath}
+	require.NoError(t, hw.Update(func(s *enrichment.HealthSnapshot) {
+		s.ConsecutiveErrors = 5
+		s.LastError = "backend 503"
+		s.LastErrorAt = errAt
+	}))
+
+	res := diagnoseEnrichment(healthPath, pendingPath, now)
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "5 consecutive failures")
+	assert.Contains(t, res.Detail, "backend 503")
+	assert.Contains(t, res.Detail, "lastErrorAt="+errAt.Format(time.RFC3339))
 }

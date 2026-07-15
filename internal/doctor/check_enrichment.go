@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -15,6 +17,9 @@ import (
 const (
 	enrichmentMinConsecutiveErrorsToWarn = 3
 	enrichmentStaleLastSuccessAge        = 24 * time.Hour
+	enrichmentDashboardURLTemplate       = "https://app.bitrise.io/build-cache/invocations/xcode/%s"
+	enrichmentPendingDetailMax           = 3
+	enrichmentLastErrorSnippetMax        = 120
 )
 
 func (d *Doctor) enrichmentCheck() Check {
@@ -66,20 +71,26 @@ func diagnoseEnrichment(healthPath, pendingPath string, now func() time.Time) Re
 
 	switch {
 	case snap.ConsecutiveErrors >= enrichmentMinConsecutiveErrorsToWarn:
-		return Result{
-			State:  StateWarn,
-			Detail: fmt.Sprintf("%d consecutive failures — last: %s", snap.ConsecutiveErrors, snap.LastError),
+		detail := fmt.Sprintf("%d consecutive failures — last: %s", snap.ConsecutiveErrors, snap.LastError)
+		if !snap.LastErrorAt.IsZero() {
+			detail += "\n  lastErrorAt=" + snap.LastErrorAt.Format(time.RFC3339)
 		}
+
+		return Result{State: StateWarn, Detail: detail}
 	case oldestPending > enrichment.EnrichmentPendingMaxAge:
-		return Result{
-			State:  StateWarn,
-			Detail: fmt.Sprintf("pending invocation queue stale (oldest %s > %s)", oldestPending.Round(time.Second), enrichment.EnrichmentPendingMaxAge),
+		detail := fmt.Sprintf("pending invocation queue stale (oldest %s > %s)", oldestPending.Round(time.Second), enrichment.EnrichmentPendingMaxAge)
+		if extra := formatPendingDetail(pending); extra != "" {
+			detail += "\n" + extra
 		}
+
+		return Result{State: StateWarn, Detail: detail}
 	case !snap.LastSuccess.IsZero() && now().Sub(snap.LastSuccess) > enrichmentStaleLastSuccessAge && len(pending) > 0:
-		return Result{
-			State:  StateWarn,
-			Detail: fmt.Sprintf("no successful enrichment in %s and %d pending invocations", now().Sub(snap.LastSuccess).Round(time.Minute), len(pending)),
+		detail := fmt.Sprintf("no successful enrichment in %s and %d pending invocations", now().Sub(snap.LastSuccess).Round(time.Minute), len(pending))
+		if extra := formatPendingDetail(pending); extra != "" {
+			detail += "\n" + extra
 		}
+
+		return Result{State: StateWarn, Detail: detail}
 	}
 
 	return Result{State: StateOK, Detail: fmt.Sprintf("healthy (last success %s, %d pending)", snap.LastSuccess.Format(time.RFC3339), len(pending))}
@@ -99,4 +110,58 @@ func oldestPendingAge(records []enrichment.PendingRecord, now time.Time) time.Du
 	}
 
 	return oldest
+}
+
+func oldestPendingRecords(records []enrichment.PendingRecord, n int) []enrichment.PendingRecord {
+	if n <= 0 || len(records) == 0 {
+		return nil
+	}
+
+	sorted := make([]enrichment.PendingRecord, len(records))
+	copy(sorted, records)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].StartTime.Before(sorted[j].StartTime)
+	})
+
+	if len(sorted) > n {
+		sorted = sorted[:n]
+	}
+
+	return sorted
+}
+
+func formatPendingDetail(records []enrichment.PendingRecord) string {
+	top := oldestPendingRecords(records, enrichmentPendingDetailMax)
+	if len(top) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	for i, r := range top {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+
+		fmt.Fprintf(&b, "  - %s startedAt=%s attempts=%d",
+			r.InvocationID, r.StartTime.Format(time.RFC3339), r.Attempts)
+
+		if r.LastError != "" {
+			fmt.Fprintf(&b, " lastError=%s", truncateSingleLine(r.LastError, enrichmentLastErrorSnippetMax))
+		}
+
+		fmt.Fprintf(&b, " "+enrichmentDashboardURLTemplate, r.InvocationID)
+	}
+
+	return b.String()
+}
+
+func truncateSingleLine(s string, limit int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+
+	if len(s) > limit {
+		return s[:limit]
+	}
+
+	return s
 }
