@@ -47,27 +47,25 @@ func TestStore_AppendLoadRemove(t *testing.T) {
 	assert.Empty(t, loaded)
 }
 
-func TestStore_Append_PrunesOldEntries(t *testing.T) {
+func TestStore_Append_DoesNotEvictRetriedRecords(t *testing.T) {
 	dir := t.TempDir()
-	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
-	s := &enrichment.Store{
-		Path: filepath.Join(dir, "pending.ndjson"),
-		Now:  func() time.Time { return now },
-	}
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
 	require.NoError(t, s.Append(enrichment.PendingRecord{
-		InvocationID: "old",
-		StartTime:    now.Add(-2 * time.Hour),
+		InvocationID: "retried",
+		StartTime:    now.Add(-3 * time.Hour),
+		FirstAttempt: now.Add(-3 * time.Hour),
+		Attempts:     3,
 	}))
 	require.NoError(t, s.Append(enrichment.PendingRecord{
 		InvocationID: "fresh",
-		StartTime:    now.Add(-5 * time.Minute),
+		StartTime:    now,
 	}))
 
 	loaded, err := s.Load()
 	require.NoError(t, err)
-	require.Len(t, loaded, 1)
-	assert.Equal(t, "fresh", loaded[0].InvocationID)
+	require.Len(t, loaded, 2, "Append must not evict retried records; eviction is Retrier.Sweep's job")
 }
 
 func TestStore_Load_MissingFile(t *testing.T) {
@@ -181,4 +179,64 @@ func TestStore_ConcurrentAppends(t *testing.T) {
 	loaded, err := s.Load()
 	require.NoError(t, err)
 	assert.Len(t, loaded, n)
+}
+
+func TestStore_Mutate_HoldsLockAcrossLoadAndSave(t *testing.T) {
+	dir := t.TempDir()
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	require.NoError(t, s.Append(enrichment.PendingRecord{InvocationID: "a"}))
+	require.NoError(t, s.Append(enrichment.PendingRecord{InvocationID: "b"}))
+
+	require.NoError(t, s.Mutate(func(existing []enrichment.PendingRecord) []enrichment.PendingRecord {
+		out := existing[:0]
+		for _, r := range existing {
+			if r.InvocationID == "a" {
+				continue
+			}
+
+			out = append(out, r)
+		}
+
+		return out
+	}))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "b", loaded[0].InvocationID)
+}
+
+func TestStore_PruneOrphansOlderThan(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	// Old untouched orphan → prune.
+	require.NoError(t, s.Append(enrichment.PendingRecord{
+		InvocationID: "old-orphan",
+		StartTime:    now.Add(-48 * time.Hour),
+	}))
+	// Retried record older than cutoff → keep (Retrier owns retry aging).
+	require.NoError(t, s.Append(enrichment.PendingRecord{
+		InvocationID: "old-retried",
+		StartTime:    now.Add(-48 * time.Hour),
+		FirstAttempt: now.Add(-48 * time.Hour),
+		Attempts:     3,
+	}))
+	// Fresh untouched → keep.
+	require.NoError(t, s.Append(enrichment.PendingRecord{
+		InvocationID: "fresh",
+		StartTime:    now.Add(-time.Hour),
+	}))
+
+	require.NoError(t, s.PruneOrphansOlderThan(now, 24*time.Hour))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 2)
+	ids := []string{loaded[0].InvocationID, loaded[1].InvocationID}
+	assert.Contains(t, ids, "old-retried")
+	assert.Contains(t, ids, "fresh")
+	assert.NotContains(t, ids, "old-orphan")
 }

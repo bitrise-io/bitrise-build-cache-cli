@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,5 +164,133 @@ func TestRetrier_SweepClosesOnCtxCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Retrier.Run did not exit within 1s of ctx cancel")
+	}
+}
+
+func TestRetrier_StartupOrphanSweep_RemovesOldUntouched(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "old-orphan",
+		StartTime:    now.Add(-48 * time.Hour),
+	}))
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "fresh",
+		StartTime:    now.Add(-time.Hour),
+	}))
+
+	r := &enrichment.Retrier{
+		Store:    store,
+		Client:   &InvocationPutterMock{},
+		Interval: time.Hour,
+		MaxAge:   24 * time.Hour,
+		Now:      func() time.Time { return now },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		r.Run(ctx)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		loaded, err := store.Load()
+		require.NoError(t, err)
+		if len(loaded) == 1 && loaded[0].InvocationID == "fresh" {
+			cancel()
+			<-done
+
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	<-done
+	t.Fatal("startup orphan sweep did not remove old untouched record within 2s")
+}
+
+func TestRetrier_ConcurrentAppendAndSweep(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+
+	// Seed 5 retry records (Attempts > 0). Half will succeed, half will keep failing.
+	const seeded = 5
+	for i := 0; i < seeded; i++ {
+		id := "seed-" + string(rune('a'+i))
+		require.NoError(t, store.Append(enrichment.PendingRecord{
+			InvocationID:    id,
+			StartTime:       now.Add(-time.Minute),
+			FirstAttempt:    now.Add(-time.Minute),
+			LastAttempt:     now.Add(-time.Minute),
+			Attempts:        1,
+			EnrichedPayload: mustPayload(t, id),
+		}))
+	}
+
+	var (
+		putMu   sync.Mutex
+		putSucc = map[string]bool{"seed-a": true, "seed-c": true, "seed-e": true}
+	)
+	mock := &InvocationPutterMock{PutInvocationFunc: func(inv analytics.Invocation) error {
+		putMu.Lock()
+		defer putMu.Unlock()
+		if putSucc[inv.InvocationID] {
+			return nil
+		}
+
+		return errors.New("still down")
+	}}
+
+	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
+
+	// Kick off Sweep + 10 concurrent Appends (Attempts=0 records — orphan-slim path).
+	var wg sync.WaitGroup
+	wg.Add(11)
+	go func() {
+		defer wg.Done()
+		r.Sweep()
+	}()
+
+	const appended = 10
+	for i := 0; i < appended; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			id := fmt.Sprintf("app-%d", i)
+			require.NoError(t, store.Append(enrichment.PendingRecord{
+				InvocationID: id,
+				StartTime:    now,
+			}))
+		}()
+	}
+
+	wg.Wait()
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+
+	// 3 seeded succeeded → dropped; 2 seeded failed → kept.
+	// All 10 appended → kept.
+	// Total: 12.
+	assert.Len(t, loaded, appended+2, "concurrent Appends must not be dropped by a Sweep round; failed seeds must survive")
+
+	seen := map[string]bool{}
+	for _, r := range loaded {
+		seen[r.InvocationID] = true
+	}
+	assert.True(t, seen["seed-b"], "failed retry must survive")
+	assert.True(t, seen["seed-d"], "failed retry must survive")
+	assert.False(t, seen["seed-a"], "successful retry must be dropped")
+	assert.False(t, seen["seed-c"], "successful retry must be dropped")
+	assert.False(t, seen["seed-e"], "successful retry must be dropped")
+	for i := 0; i < appended; i++ {
+		assert.True(t, seen[fmt.Sprintf("app-%d", i)], "concurrently appended record must survive")
 	}
 }

@@ -57,25 +57,24 @@ func TestEnrichmentCheck_warnOnStalePending(t *testing.T) {
 	pendingPath := filepath.Join(tmp, "pending.ndjson")
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 
-	// Four pending records with staggered StartTimes; all older than
-	// EnrichmentPendingMaxAge so writeAtomic keeps them (Append prunes on time.Now
-	// relative to Store.Now, not the record's own StartTime).
-	store := &enrichment.Store{Path: pendingPath, Now: func() time.Time { return now.Add(-10 * enrichment.EnrichmentPendingMaxAge) }}
+	// Four pending records with staggered StartTimes, all older than the
+	// warn threshold (DefaultRetryMaxAge).
+	store := &enrichment.Store{Path: pendingPath}
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "oldest",
-		StartTime:    now.Add(-5 * enrichment.EnrichmentPendingMaxAge),
+		StartTime:    now.Add(-5 * enrichment.DefaultRetryMaxAge),
 	}))
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "older",
-		StartTime:    now.Add(-4 * enrichment.EnrichmentPendingMaxAge),
+		StartTime:    now.Add(-4 * enrichment.DefaultRetryMaxAge),
 	}))
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "old",
-		StartTime:    now.Add(-3 * enrichment.EnrichmentPendingMaxAge),
+		StartTime:    now.Add(-3 * enrichment.DefaultRetryMaxAge),
 	}))
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "newest",
-		StartTime:    now.Add(-2 * enrichment.EnrichmentPendingMaxAge),
+		StartTime:    now.Add(-2 * enrichment.DefaultRetryMaxAge),
 	}))
 
 	// Recent successful health so we don't hit the "no successful enrichment" branch.

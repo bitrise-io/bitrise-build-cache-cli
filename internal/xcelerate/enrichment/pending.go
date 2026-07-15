@@ -24,8 +24,6 @@ type PendingRecord struct {
 	EnrichedPayload json.RawMessage `json:"enriched_payload,omitempty"`
 }
 
-const EnrichmentPendingMaxAge = time.Hour
-
 type Store struct {
 	Path string
 	Now  func() time.Time
@@ -50,20 +48,7 @@ func (s *Store) Append(rec PendingRecord) error {
 		return err
 	}
 
-	cutoff := s.now().Add(-EnrichmentPendingMaxAge)
-	kept := existing[:0]
-
-	for _, r := range existing {
-		if r.StartTime.Before(cutoff) {
-			continue
-		}
-
-		kept = append(kept, r)
-	}
-
-	kept = append(kept, rec)
-
-	return s.writeAtomic(kept)
+	return s.writeAtomic(append(existing, rec))
 }
 
 func (s *Store) Load() ([]PendingRecord, error) {
@@ -71,6 +56,44 @@ func (s *Store) Load() ([]PendingRecord, error) {
 	defer s.mu.Unlock()
 
 	return s.loadLocked()
+}
+
+// Mutate runs fn under the store lock: it receives the current record slice,
+// returns the new slice, and the result is written atomically. Callers that
+// need read-modify-write against a shared file must go through this seam;
+// separate Load + Save calls race with concurrent Append/Sweep.
+func (s *Store) Mutate(fn func([]PendingRecord) []PendingRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+
+	return s.writeAtomic(fn(existing))
+}
+
+// PruneOrphansOlderThan drops records with Attempts == 0 whose StartTime is
+// older than maxAge. Retrier calls this at startup so a wrapper crash between
+// slim emit (appends untouched record) and F2 enrichment doesn't leave the
+// queue growing indefinitely. Records with Attempts > 0 are the Retrier's
+// concern (aged out by FirstAttempt) and left alone.
+func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) error {
+	return s.Mutate(func(existing []PendingRecord) []PendingRecord {
+		cutoff := now.Add(-maxAge)
+		kept := existing[:0]
+
+		for _, r := range existing {
+			if r.Attempts == 0 && !r.StartTime.IsZero() && r.StartTime.Before(cutoff) {
+				continue
+			}
+
+			kept = append(kept, r)
+		}
+
+		return kept
+	})
 }
 
 func (s *Store) loadLocked() ([]PendingRecord, error) {
@@ -105,25 +128,18 @@ func (s *Store) loadLocked() ([]PendingRecord, error) {
 }
 
 func (s *Store) Remove(invocationID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.Mutate(func(existing []PendingRecord) []PendingRecord {
+		kept := existing[:0]
+		for _, r := range existing {
+			if r.InvocationID == invocationID {
+				continue
+			}
 
-	existing, err := s.loadLocked()
-	if err != nil {
-		return err
-	}
-
-	kept := existing[:0]
-
-	for _, r := range existing {
-		if r.InvocationID == invocationID {
-			continue
+			kept = append(kept, r)
 		}
 
-		kept = append(kept, r)
-	}
-
-	return s.writeAtomic(kept)
+		return kept
+	})
 }
 
 func (s *Store) Save(records []PendingRecord) error {

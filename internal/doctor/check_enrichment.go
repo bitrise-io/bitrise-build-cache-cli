@@ -16,7 +16,10 @@ import (
 
 const (
 	enrichmentMinConsecutiveErrorsToWarn = 3
-	enrichmentStaleLastSuccessAge        = 24 * time.Hour
+	// enrichmentStaleLastSuccessAge aliases Retrier.MaxAge — after that long
+	// without a successful PUT and with pending records still queued, we surface
+	// a warning. Kept coupled so it never drifts from the retry give-up window.
+	enrichmentStaleLastSuccessAge = enrichment.DefaultRetryMaxAge
 	enrichmentDashboardURLTemplate       = "https://app.bitrise.io/build-cache/invocations/xcode/%s"
 	enrichmentPendingDetailMax           = 3
 	enrichmentLastErrorSnippetMax        = 120
@@ -77,8 +80,8 @@ func diagnoseEnrichment(healthPath, pendingPath string, now func() time.Time) Re
 		}
 
 		return Result{State: StateWarn, Detail: detail}
-	case oldestPending > enrichment.EnrichmentPendingMaxAge:
-		detail := fmt.Sprintf("pending invocation queue stale (oldest %s > %s)", oldestPending.Round(time.Second), enrichment.EnrichmentPendingMaxAge)
+	case oldestPending > enrichment.DefaultRetryMaxAge:
+		detail := fmt.Sprintf("pending invocation queue stale (oldest %s > %s)", oldestPending.Round(time.Second), enrichment.DefaultRetryMaxAge)
 		if extra := formatPendingDetail(pending); extra != "" {
 			detail += "\n" + extra
 		}

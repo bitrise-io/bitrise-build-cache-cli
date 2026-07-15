@@ -42,6 +42,12 @@ func (r *Retrier) Run(ctx context.Context) {
 		r.MaxAge = DefaultRetryMaxAge
 	}
 
+	if r.Store != nil {
+		if err := r.Store.PruneOrphansOlderThan(r.now(), r.MaxAge); err != nil {
+			logOr(r.Logger).Warnf("Retrier startup orphan sweep failed: %s", err)
+		}
+	}
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -55,6 +61,9 @@ func (r *Retrier) Run(ctx context.Context) {
 	}
 }
 
+// Sweep loads a snapshot, runs PutInvocation for each retried record outside
+// the store lock, then merges the outcomes back under Mutate so records
+// appended concurrently by Enricher/slim-emit survive.
 func (r *Retrier) Sweep() {
 	if r.Store == nil {
 		return
@@ -62,7 +71,7 @@ func (r *Retrier) Sweep() {
 
 	logger := logOr(r.Logger)
 
-	records, err := r.Store.Load()
+	snapshot, err := r.Store.Load()
 	if err != nil {
 		logger.Warnf("Retrier failed to load pending: %s", err)
 
@@ -70,17 +79,27 @@ func (r *Retrier) Sweep() {
 	}
 
 	now := r.now()
-	kept := records[:0]
+	maxAge := r.MaxAge
+	if maxAge == 0 {
+		maxAge = DefaultRetryMaxAge
+	}
 
-	for _, rec := range records {
+	type update struct {
+		drop     bool
+		attempts int
+		lastAt   time.Time
+		lastErr  string
+	}
+	updates := map[string]update{}
+
+	for _, rec := range snapshot {
 		if rec.Attempts == 0 {
-			kept = append(kept, rec)
-
 			continue
 		}
 
-		if !rec.FirstAttempt.IsZero() && now.Sub(rec.FirstAttempt) > r.MaxAge {
+		if !rec.FirstAttempt.IsZero() && now.Sub(rec.FirstAttempt) > maxAge {
 			logger.Warnf("Enrichment retry gave up on %s after %s (attempts=%d)", rec.InvocationID, now.Sub(rec.FirstAttempt).Round(time.Second), rec.Attempts)
+			updates[rec.InvocationID] = update{drop: true}
 
 			continue
 		}
@@ -88,25 +107,47 @@ func (r *Retrier) Sweep() {
 		var inv analytics.Invocation
 		if err := json.Unmarshal(rec.EnrichedPayload, &inv); err != nil {
 			logger.Warnf("Retrier failed to decode payload for %s: %s — dropping", rec.InvocationID, err)
+			updates[rec.InvocationID] = update{drop: true}
 
 			continue
 		}
 
 		if putErr := r.Client.PutInvocation(inv); putErr != nil {
-			rec.Attempts++
-			rec.LastAttempt = now
-			rec.LastError = putErr.Error()
-			kept = append(kept, rec)
-
-			logger.Warnf("Retrier PUT failed for %s (attempts=%d): %s", rec.InvocationID, rec.Attempts, putErr)
+			updates[rec.InvocationID] = update{attempts: rec.Attempts + 1, lastAt: now, lastErr: putErr.Error()}
+			logger.Warnf("Retrier PUT failed for %s (attempts=%d): %s", rec.InvocationID, rec.Attempts+1, putErr)
 
 			continue
 		}
 
 		logger.Debugf("Retrier PUT succeeded for %s (attempts=%d)", rec.InvocationID, rec.Attempts+1)
+		updates[rec.InvocationID] = update{drop: true}
 	}
 
-	if err := r.Store.Save(kept); err != nil {
+	if len(updates) == 0 {
+		return
+	}
+
+	if err := r.Store.Mutate(func(current []PendingRecord) []PendingRecord {
+		out := current[:0]
+		for _, rec := range current {
+			u, seen := updates[rec.InvocationID]
+			if !seen {
+				out = append(out, rec)
+
+				continue
+			}
+			if u.drop {
+				continue
+			}
+
+			rec.Attempts = u.attempts
+			rec.LastAttempt = u.lastAt
+			rec.LastError = u.lastErr
+			out = append(out, rec)
+		}
+
+		return out
+	}); err != nil {
 		logger.Warnf("Retrier failed to persist swept pending: %s", err)
 	}
 }

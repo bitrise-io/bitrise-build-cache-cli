@@ -183,39 +183,37 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 	}
 }
 
-// updatePendingRetry returns true when the record was found and updated (or the
-// load failed and we should abandon the operation); false means the caller
-// should fall through to appending a fresh record.
+// updatePendingRetry returns true when a record with invocationID existed and
+// its retry state was updated (or persisting failed and we should stop). false
+// means the caller should fall through to appending a fresh record.
 func (e *Enricher) updatePendingRetry(invocationID string, payload []byte, putErr error) bool {
 	logger := logOr(e.Logger)
-
-	existing, loadErr := e.Store.Load()
-	if loadErr != nil {
-		logger.Warnf("Failed to load pending for retry recording: %s", loadErr)
-
-		return true
-	}
-
 	now := e.now()
+	found := false
 
-	for i := range existing {
-		if existing[i].InvocationID != invocationID {
-			continue
-		}
-		if existing[i].FirstAttempt.IsZero() {
-			existing[i].FirstAttempt = now
-		}
-		existing[i].LastAttempt = now
-		existing[i].Attempts++
-		existing[i].LastError = putErr.Error()
-		existing[i].EnrichedPayload = payload
+	if err := e.Store.Mutate(func(existing []PendingRecord) []PendingRecord {
+		for i := range existing {
+			if existing[i].InvocationID != invocationID {
+				continue
+			}
+			if existing[i].FirstAttempt.IsZero() {
+				existing[i].FirstAttempt = now
+			}
+			existing[i].LastAttempt = now
+			existing[i].Attempts++
+			existing[i].LastError = putErr.Error()
+			existing[i].EnrichedPayload = payload
+			found = true
 
-		if err := e.Store.Save(existing); err != nil {
-			logger.Warnf("Failed to persist retry state for %s: %s", invocationID, err)
+			break
 		}
+
+		return existing
+	}); err != nil {
+		logger.Warnf("Failed to persist retry state for %s: %s", invocationID, err)
 
 		return true
 	}
 
-	return false
+	return found
 }
