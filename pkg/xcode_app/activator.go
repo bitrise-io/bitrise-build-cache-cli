@@ -17,6 +17,8 @@ import (
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
+const darwinGOOS = "darwin"
+
 var ErrUnsupportedPlatform = errors.New("xcode-app is only supported on macOS")
 
 var ErrXcelerateNotConfigured = errors.New("xcelerate config not found — run `bitrise-build-cache activate xcode` first")
@@ -52,7 +54,7 @@ type DisableResult struct {
 
 // Enable: on partial failure, follow-up Disable cleans up — each teardown step swallows already-gone.
 func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != darwinGOOS {
 		return EnableResult{}, ErrUnsupportedPlatform
 	}
 
@@ -143,7 +145,7 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 
 // Disable is idempotent against "never enabled" / "already disabled".
 func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != darwinGOOS {
 		return DisableResult{}, ErrUnsupportedPlatform
 	}
 
