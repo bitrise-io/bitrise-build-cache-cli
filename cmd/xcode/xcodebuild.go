@@ -356,11 +356,6 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		return
 	}
 
-	src := invocations.SourceLocal
-	if c.Metadata.CIProvider != "" {
-		src = invocations.SourceCI
-	}
-
 	startedAt := runStats.StartTime
 	finishedAt := startedAt.Add(time.Duration(runStats.DurationMS) * time.Millisecond)
 
@@ -373,7 +368,8 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 		ExitCode:     runStats.ExitCode,
-		Source:       src,
+		CIProvider:   c.Metadata.CIProvider,
+		Username:     inv.Username,
 	}
 
 	if err := logger.Append(rec); err != nil {

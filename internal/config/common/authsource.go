@@ -7,6 +7,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
 
+const sourceNameNone = "none"
+
 // AuthDescription is the shared description of a resolved credential, consumed
 // by status, doctor, and `auth status` so the source taxonomy and the
 // OAuth-login/expiry knowledge live in one place.
@@ -35,10 +37,10 @@ func SourceLabel(source AuthSource, isOAuthLogin bool) string {
 	case AuthSourceMultiplatform:
 		return "multiplatform config"
 	case AuthSourceNone:
-		return "none"
+		return sourceNameNone
 	}
 
-	return "none"
+	return sourceNameNone
 }
 
 // Label is the canonical source name for this description.

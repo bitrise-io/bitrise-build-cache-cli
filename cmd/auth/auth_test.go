@@ -57,6 +57,63 @@ func TestAuthTokenCmd_stderrIsBoundedOnError(t *testing.T) {
 	assert.NotEmpty(t, stderr.Bytes(), "error path must surface a one-line message on stderr")
 }
 
+func TestAuthUsernameCmd_stdoutIsBareResolvedName(t *testing.T) {
+	cmd := authUsernameCmd
+	t.Cleanup(func() { usernameSetValue = ""; cmd.Flags().Lookup("set").Changed = false })
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	t.Setenv("BITRISE_BUILD_CACHE_USERNAME", "alice")
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	assert.Equal(t, "alice\n", stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
+func TestAuthUsernameCmd_jsonEmitsNameAndSource(t *testing.T) {
+	cmd := authUsernameCmd
+	usernameJSONOut = true
+	t.Cleanup(func() { usernameJSONOut = false })
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+
+	t.Setenv("BITRISE_BUILD_CACHE_USERNAME", "dave")
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var got usernameOutput
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.Equal(t, "dave", got.Username)
+	assert.Equal(t, "env", got.Source)
+}
+
+func TestAuthUsernameCmd_setPersistsIntoStoreHoldingCreds(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("BITRISE_BUILD_CACHE_USERNAME", "")
+
+	// Seed keychain with token+workspace so it becomes the target store.
+	require.NoError(t, keychain.New().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+
+	envs := map[string]string{}
+	require.NoError(t, setLocalUsername(envs, "carol"))
+
+	creds, err := keychain.New().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "carol", creds.Username)
+	assert.Equal(t, "tok", creds.AuthToken, "token must survive a username-only set")
+	assert.Equal(t, "ws", creds.WorkspaceID, "workspace must survive a username-only set")
+
+	require.NoError(t, setLocalUsername(envs, ""))
+	creds, err = keychain.New().Load()
+	require.NoError(t, err)
+	assert.Empty(t, creds.Username)
+	assert.Equal(t, "tok", creds.AuthToken)
+}
+
 func TestScrubRawConfigAuthToken_stripsAuthAndKeepsRest(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
