@@ -82,12 +82,18 @@ assert_xcode_invocation_enriched() {
   if [[ -z "$full_command" ]]; then
     echo "FAIL: BE detail for $invocation_id has empty command (enrichment re-PUT missing)" >&2
     failed=1
+  elif [[ "$full_command" != *-scheme* ]]; then
+    echo "FAIL: BE detail for $invocation_id command=\"$full_command\" lacks -scheme flag (wrapper's rich payload got clobbered by slim/orphan emit)" >&2
+    failed=1
   else
     echo "OK: command=$full_command"
   fi
 
   if [[ -z "$short_command" ]]; then
     echo "FAIL: BE detail for $invocation_id has empty shortCommand" >&2
+    failed=1
+  elif [[ "$short_command" != build* ]]; then
+    echo "FAIL: BE detail for $invocation_id shortCommand=\"$short_command\" does not start with 'build' (wrapper's rich payload got clobbered)" >&2
     failed=1
   else
     echo "OK: shortCommand=$short_command"
