@@ -1238,7 +1238,7 @@ workflows:
             cp xcodebuild-B.log "$BITRISE_DEPLOY_DIR"/
             cp wrapper-B.log "$BITRISE_DEPLOY_DIR"/
 
-            "${BITRISE_SOURCE_DIR}/scripts/check_pattern.sh" "$BITRISE_DEPLOY_DIR/xcodebuild-B.log" 'CompilationCacheMetrics'
+            "$(dirname "$BITRISE_SOURCE_DIR")/scripts/check_pattern.sh" "$BITRISE_DEPLOY_DIR/xcodebuild-B.log" 'CompilationCacheMetrics'
 
             invocation_id_b=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper-B.log")
             if [[ -z "$invocation_id_b" ]]; then
