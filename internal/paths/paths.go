@@ -36,8 +36,16 @@ const (
 	// CcacheSocketName is the ccache IPC unix-socket filename (lives under the OS temp dir).
 	CcacheSocketName = "ccache-ipc.sock"
 
-	// xcelerateLogsRelative is the per-user xcelerate log dir.
-	xcelerateLogsRelative = ".local/state/xcelerate/logs"
+	// xcelerateStateRelative is the per-user xcelerate state root.
+	xcelerateStateRelative = ".local/state/xcelerate"
+
+	// xcelerateLogsSubdir is the per-user xcelerate log dir under XcelerateStateDir.
+	xcelerateLogsSubdir = "logs"
+
+	// xcelerateHandledInvocationsSubdir marks invocation IDs the wrapper already
+	// PUT a rich payload for, so the proxy's F1 slim emit can skip them and preserve
+	// the rich row instead of last-write-wins overwriting it.
+	xcelerateHandledInvocationsSubdir = "handled-invocations"
 
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
@@ -241,9 +249,24 @@ func (p Paths) CcacheSocketPath(tempDir string) string {
 	return filepath.Join(tempDir, CcacheSocketName)
 }
 
+// XcelerateStateDir returns ~/.local/state/xcelerate.
+func (p Paths) XcelerateStateDir() string {
+	return filepath.Join(p.Home, xcelerateStateRelative)
+}
+
 // XcelerateLogDir returns ~/.local/state/xcelerate/logs.
 func (p Paths) XcelerateLogDir() string {
-	return filepath.Join(p.Home, xcelerateLogsRelative)
+	return filepath.Join(p.XcelerateStateDir(), xcelerateLogsSubdir)
+}
+
+// XcelerateHandledInvocationDir returns ~/.local/state/xcelerate/handled-invocations.
+func (p Paths) XcelerateHandledInvocationDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateHandledInvocationsSubdir)
+}
+
+// XcelerateHandledInvocationFile returns the marker path for a specific invocation ID.
+func (p Paths) XcelerateHandledInvocationFile(invocationID string) string {
+	return filepath.Join(p.XcelerateHandledInvocationDir(), invocationID)
 }
 
 // CcacheLogDir returns ~/.local/state/ccache/logs.

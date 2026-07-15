@@ -168,6 +168,8 @@ func StartXcodeCacheProxy(
 
 	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger)
 
+	sweepStaleHandledMarkers(initialLogger)
+
 	emitter := bundle.emitter()
 
 	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
@@ -310,6 +312,14 @@ type slimInvocationEmitter struct {
 
 func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
 	b := e.bundle
+
+	if handledMarkerExists(meta.InvocationID) {
+		b.logger.Debugf("Slim emit skipped for %s: wrapper already handled", meta.InvocationID)
+		removeHandledMarker(meta.InvocationID)
+
+		return
+	}
+
 	endTime := meta.EndTime
 	if endTime.IsZero() {
 		endTime = time.Now()
@@ -398,4 +408,18 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 	}
 
 	return parsed
+}
+
+// sweepStaleHandledMarkers removes handled-invocation markers older than
+// handledMarkerMaxAge. Runs at proxy startup so a wrapper that wrote a marker
+// and then crashed before F1 fired does not leave the state dir growing.
+func sweepStaleHandledMarkers(logger log.Logger) {
+	p, err := paths.Default()
+	if err != nil {
+		logger.Debugf("Handled-invocation sweep skipped, cannot resolve paths: %v", err)
+
+		return
+	}
+
+	pruneHandledMarkers(p.XcelerateHandledInvocationDir(), handledMarkerMaxAge)
 }

@@ -286,7 +286,6 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 	assert.True(t, os.IsNotExist(err), "pending file must not exist when b.pending is nil")
 }
 
-
 func Test_resolveInactivityTimeout(t *testing.T) {
 	t.Run("unset returns zero", func(t *testing.T) {
 		got := resolveInactivityTimeout(map[string]string{}, bundleTestLogger)
@@ -319,4 +318,55 @@ func Test_resolveInactivityTimeout(t *testing.T) {
 		assert.Equal(t, time.Duration(0), got)
 		l.AssertCalled(t, "Warnf", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
+}
+
+func Test_slimInvocationEmitter_EmitSlim_skipsWhenMarkerPresent(t *testing.T) {
+	home := t.TempDir()
+	b := newBundleForTest(t, home, "")
+	// bundleForTest already t.Setenv("HOME", home); paths.Default() now resolves to it.
+	e := &slimInvocationEmitter{bundle: b}
+
+	invID := "handled-inv"
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
+	marker := p.XcelerateHandledInvocationFile(invID)
+	require.NoError(t, os.WriteFile(marker, nil, 0o644))
+
+	e.EmitSlim(context.Background(), proxy.SessionMeta{
+		InvocationID: invID,
+		StartTime:    time.Now(),
+		EndTime:      time.Now().Add(time.Second),
+	}, proxy.SessionStats{Hits: 1})
+
+	// Pending append must be skipped.
+	records, err := b.pending.Load()
+	require.NoError(t, err)
+	assert.Empty(t, records, "pending record must not be appended when wrapper handled")
+
+	// Marker must have been cleaned up.
+	_, err = os.Stat(marker)
+	assert.True(t, os.IsNotExist(err), "marker file must be removed after skip")
+}
+
+func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
+
+	stale := p.XcelerateHandledInvocationFile("stale")
+	fresh := p.XcelerateHandledInvocationFile("fresh")
+	require.NoError(t, os.WriteFile(stale, nil, 0o644))
+	require.NoError(t, os.WriteFile(fresh, nil, 0o644))
+
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(stale, old, old))
+
+	sweepStaleHandledMarkers(bundleTestLogger)
+
+	_, err := os.Stat(stale)
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(fresh)
+	assert.NoError(t, err)
 }

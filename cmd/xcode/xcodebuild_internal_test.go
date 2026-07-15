@@ -3,8 +3,11 @@
 package xcode
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -188,4 +191,82 @@ func Test_replaceOrAppendBuildSetting_valuePreservesEmbeddedEquals(t *testing.T)
 
 	require.Equal(t, []string{"xcodebuild", "KEY=a=b=c"}, out,
 		"only the first '=' separates key from value; the rest is preserved")
+}
+
+func Test_writeHandledMarker_createsFileUnderStateDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	writeHandledMarker(bundleTestLogger, "inv-abc")
+
+	marker := paths.FromHome(home).XcelerateHandledInvocationFile("inv-abc")
+	info, err := os.Stat(marker)
+	require.NoError(t, err, "marker file must exist after successful write")
+	assert.False(t, info.IsDir())
+}
+
+func Test_writeHandledMarker_emptyIDIsNoop(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	writeHandledMarker(bundleTestLogger, "")
+
+	// The dir itself may or may not exist; the assertion is that no marker file was written.
+	entries, err := os.ReadDir(paths.FromHome(home).XcelerateHandledInvocationDir())
+	if err != nil {
+		return // dir absent → definitely no marker written
+	}
+	assert.Empty(t, entries, "empty invocation ID must not write any marker file")
+}
+
+func Test_handledMarkerExists_trueWhenPresent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
+	require.NoError(t, os.WriteFile(p.XcelerateHandledInvocationFile("inv-1"), nil, 0o644))
+
+	assert.True(t, handledMarkerExists("inv-1"))
+	assert.False(t, handledMarkerExists("inv-2"))
+	assert.False(t, handledMarkerExists(""))
+}
+
+func Test_removeHandledMarker_deletesFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
+	marker := p.XcelerateHandledInvocationFile("inv-1")
+	require.NoError(t, os.WriteFile(marker, nil, 0o644))
+
+	removeHandledMarker("inv-1")
+
+	_, err := os.Stat(marker)
+	assert.True(t, os.IsNotExist(err))
+}
+
+func Test_pruneHandledMarkers_removesStaleKeepsFresh(t *testing.T) {
+	dir := t.TempDir()
+	stale := filepath.Join(dir, "stale")
+	fresh := filepath.Join(dir, "fresh")
+	require.NoError(t, os.WriteFile(stale, nil, 0o644))
+	require.NoError(t, os.WriteFile(fresh, nil, 0o644))
+
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(stale, old, old))
+
+	pruneHandledMarkers(dir, 24*time.Hour)
+
+	_, err := os.Stat(stale)
+	assert.True(t, os.IsNotExist(err), "stale marker must be removed")
+	_, err = os.Stat(fresh)
+	assert.NoError(t, err, "fresh marker must survive")
+}
+
+func Test_pruneHandledMarkers_missingDirIsNoop(t *testing.T) {
+	assert.NotPanics(t, func() {
+		pruneHandledMarkers(filepath.Join(t.TempDir(), "does-not-exist"), time.Hour)
+	})
 }

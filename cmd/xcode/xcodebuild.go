@@ -443,6 +443,8 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, h
 		return
 	}
 
+	writeHandledMarker(c.Logger, c.InvocationID)
+
 	c.Logger.TInfof(MsgInvocationSaved, c.InvocationID)
 
 	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
