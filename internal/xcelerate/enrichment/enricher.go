@@ -9,6 +9,7 @@ import (
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/handled"
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg enrichment_test . InvocationPutter
@@ -56,6 +57,18 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 	invocationID, matched := Correlate(entry, pending)
 	if !matched {
 		invocationID = uuid.NewString()
+	}
+
+	if matched && handled.MarkerExists(invocationID) {
+		logger.Debugf("Enrichment PUT skipped for %s: wrapper already handled", invocationID)
+		handled.RemoveMarker(invocationID)
+		if e.Store != nil {
+			if err := e.Store.Remove(invocationID); err != nil {
+				logger.Warnf("Failed to remove pending after skipping enrichment for %s: %s", invocationID, err)
+			}
+		}
+
+		return
 	}
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{

@@ -32,6 +32,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/handled"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
@@ -443,7 +444,7 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, h
 		return
 	}
 
-	writeHandledMarker(c.Logger, c.InvocationID)
+	handled.WriteMarker(c.Logger, c.InvocationID)
 
 	c.Logger.TInfof(MsgInvocationSaved, c.InvocationID)
 

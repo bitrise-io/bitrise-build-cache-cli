@@ -4,6 +4,7 @@ package enrichment_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
@@ -284,4 +286,117 @@ func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
 	assert.Equal(t, 1, loaded[0].Attempts)
 	assert.NotEmpty(t, loaded[0].EnrichedPayload)
 	assert.Equal(t, now, loaded[0].FirstAttempt.UTC())
+}
+
+func TestEnricher_MatchedWithHandledMarker_SkipsPUT(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	store := &enrichment.Store{Path: filepath.Join(home, "pending.ndjson")}
+
+	base := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "kept-id",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	// Wrapper wrote the marker for this invocation ID.
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
+	marker := p.XcelerateHandledInvocationFile("kept-id")
+	require.NoError(t, os.WriteFile(marker, nil, 0o644))
+
+	putCalls := 0
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error {
+			putCalls++
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich(enrichment.ManifestEntry{
+		Signature:  "Build MyScheme",
+		SchemeName: "MyScheme",
+		Status:     "S",
+		Start:      base.Add(2 * time.Second),
+		Stop:       base.Add(8 * time.Second),
+	})
+
+	assert.Zero(t, putCalls, "PUT must be skipped when the wrapper already handled the invocation")
+
+	_, err := os.Stat(marker)
+	assert.True(t, os.IsNotExist(err), "marker must be removed after enrichment observes it")
+
+	remaining, err := store.Load()
+	require.NoError(t, err)
+	assert.Empty(t, remaining, "pending record must be pruned once the wrapper is confirmed handler")
+}
+
+func TestEnricher_MatchedWithoutHandledMarker_PUTs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	store := &enrichment.Store{Path: filepath.Join(home, "pending.ndjson")}
+
+	base := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "kept-id",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich(enrichment.ManifestEntry{
+		Signature:  "Build MyScheme",
+		SchemeName: "MyScheme",
+		Status:     "S",
+		Start:      base.Add(2 * time.Second),
+		Stop:       base.Add(8 * time.Second),
+	})
+
+	assert.Equal(t, "kept-id", captured.InvocationID, "matched pending without marker must PUT the enriched payload")
+}
+
+func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Stray marker for an unrelated ID — the orphan mint path uses a fresh UUID
+	// so this marker must not accidentally block anything.
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
+	require.NoError(t, os.WriteFile(p.XcelerateHandledInvocationFile("stray"), nil, 0o644))
+
+	store := &enrichment.Store{Path: filepath.Join(home, "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Archive S",
+		Start:     time.Now(),
+		Stop:      time.Now().Add(time.Second),
+	})
+
+	assert.NotEmpty(t, captured.InvocationID)
+	assert.NotEqual(t, "stray", captured.InvocationID, "orphan mint must not accidentally reuse an unrelated marker ID")
 }

@@ -1,4 +1,4 @@
-package xcode
+package handled
 
 import (
 	"os"
@@ -10,18 +10,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// handledMarkerMaxAge bounds how long an orphaned marker can survive before
-// the proxy startup sweep removes it. Covers wrapper crashes between marker
-// write and proxy F1 fire.
-const handledMarkerMaxAge = 24 * time.Hour
+// MaxAge bounds how long an orphaned marker can survive before the proxy
+// startup sweep removes it. Covers wrapper crashes between marker write and
+// proxy F1 fire (or F2 enrichment).
+const MaxAge = 24 * time.Hour
 
-// writeHandledMarker records that the wrapper already PUT a rich payload for
-// invocationID; the proxy's slim emit checks this before doing its own PUT so
-// the rich row survives last-write-wins.
+// WriteMarker records that the wrapper already PUT a rich payload for
+// invocationID. Slim emit and F2 enrichment check this before doing their own
+// PUT so the rich row survives last-write-wins.
 //
-// Best-effort: any failure only downgrades to the pre-fix behaviour (slim PUT
-// overwrites), so we log at debug/warn and continue.
-func writeHandledMarker(logger log.Logger, invocationID string) {
+// Best-effort: any failure only downgrades to the pre-fix behaviour (rich row
+// gets clobbered), so we log at debug/warn and continue.
+func WriteMarker(logger log.Logger, invocationID string) {
 	if invocationID == "" {
 		return
 	}
@@ -50,10 +50,10 @@ func writeHandledMarker(logger log.Logger, invocationID string) {
 	_ = f.Close()
 }
 
-// handledMarkerExists returns true when the wrapper already recorded a rich
-// PUT for invocationID. Errors resolving paths silently fall back to false —
-// slim emit proceeds as before.
-func handledMarkerExists(invocationID string) bool {
+// MarkerExists returns true when the wrapper already recorded a rich PUT for
+// invocationID. Errors resolving paths silently fall back to false — callers
+// proceed with their own PUT as before.
+func MarkerExists(invocationID string) bool {
 	if invocationID == "" {
 		return false
 	}
@@ -68,9 +68,9 @@ func handledMarkerExists(invocationID string) bool {
 	return err == nil
 }
 
-// removeHandledMarker deletes the marker after the proxy observes it. Keeps
-// the state dir from accumulating one file per invocation.
-func removeHandledMarker(invocationID string) {
+// RemoveMarker deletes the marker after a consumer observes it. Keeps the
+// state dir from accumulating one file per invocation.
+func RemoveMarker(invocationID string) {
 	if invocationID == "" {
 		return
 	}
@@ -83,9 +83,9 @@ func removeHandledMarker(invocationID string) {
 	_ = os.Remove(p.XcelerateHandledInvocationFile(invocationID))
 }
 
-// pruneHandledMarkers removes marker files older than maxAge. Handles
-// wrapper-crashed-before-slim-fire cases so the state dir stays bounded.
-func pruneHandledMarkers(dir string, maxAge time.Duration) {
+// PruneStale removes marker files older than maxAge. Handles
+// wrapper-crashed-before-consumer-fired cases so the state dir stays bounded.
+func PruneStale(dir string, maxAge time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return

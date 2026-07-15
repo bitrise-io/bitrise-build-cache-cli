@@ -24,6 +24,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/handled"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
@@ -313,9 +314,9 @@ type slimInvocationEmitter struct {
 func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
 	b := e.bundle
 
-	if handledMarkerExists(meta.InvocationID) {
+	if handled.MarkerExists(meta.InvocationID) {
 		b.logger.Debugf("Slim emit skipped for %s: wrapper already handled", meta.InvocationID)
-		removeHandledMarker(meta.InvocationID)
+		handled.RemoveMarker(meta.InvocationID)
 
 		return
 	}
@@ -411,8 +412,9 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 }
 
 // sweepStaleHandledMarkers removes handled-invocation markers older than
-// handledMarkerMaxAge. Runs at proxy startup so a wrapper that wrote a marker
-// and then crashed before F1 fired does not leave the state dir growing.
+// handled.MaxAge. Runs at proxy startup so a wrapper that wrote a marker
+// and then crashed before its consumer (F1 slim emit or F2 enrichment)
+// observed it does not leave the state dir growing.
 func sweepStaleHandledMarkers(logger log.Logger) {
 	p, err := paths.Default()
 	if err != nil {
@@ -421,5 +423,5 @@ func sweepStaleHandledMarkers(logger log.Logger) {
 		return
 	}
 
-	pruneHandledMarkers(p.XcelerateHandledInvocationDir(), handledMarkerMaxAge)
+	handled.PruneStale(p.XcelerateHandledInvocationDir(), handled.MaxAge)
 }
