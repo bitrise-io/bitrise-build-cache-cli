@@ -101,7 +101,7 @@ func TestEnrichmentCheck_warnOnStaleLastSuccess(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 
 	// A pending entry within the freshness window.
-	store := &enrichment.Store{Path: pendingPath, Now: func() time.Time { return now }}
+	store := &enrichment.Store{Path: pendingPath}
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "fresh",
 		StartTime:    now.Add(-time.Minute),

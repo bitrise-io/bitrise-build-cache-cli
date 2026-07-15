@@ -83,9 +83,7 @@ func TestRetrier_RetriesFailedRecord(t *testing.T) {
 
 func TestRetrier_GivesUpAfterMaxAge(t *testing.T) {
 	dir := t.TempDir()
-	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time {
-		return time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
-	}}
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC) // 24h after FirstAttempt
 	firstAttempt := now.Add(-25 * time.Hour)
@@ -105,7 +103,7 @@ func TestRetrier_GivesUpAfterMaxAge(t *testing.T) {
 		return nil
 	}}
 
-	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
+	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour}
 	r.Sweep()
 
 	loaded, err := store.Load()
@@ -186,7 +184,6 @@ func TestRetrier_StartupOrphanSweep_RemovesOldUntouched(t *testing.T) {
 		Client:   &InvocationPutterMock{},
 		Interval: time.Hour,
 		MaxAge:   24 * time.Hour,
-		Now:      func() time.Time { return now },
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -248,7 +245,7 @@ func TestRetrier_ConcurrentAppendAndSweep(t *testing.T) {
 		return errors.New("still down")
 	}}
 
-	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
+	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour}
 
 	// Kick off Sweep + 10 concurrent Appends (Attempts=0 records — orphan-slim path).
 	var wg sync.WaitGroup

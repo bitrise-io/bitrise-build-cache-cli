@@ -19,10 +19,10 @@ const (
 	// enrichmentStaleLastSuccessAge aliases Retrier.MaxAge — after that long
 	// without a successful PUT and with pending records still queued, we surface
 	// a warning. Kept coupled so it never drifts from the retry give-up window.
-	enrichmentStaleLastSuccessAge = enrichment.DefaultRetryMaxAge
-	enrichmentDashboardURLTemplate       = "https://app.bitrise.io/build-cache/invocations/xcode/%s"
-	enrichmentPendingDetailMax           = 3
-	enrichmentLastErrorSnippetMax        = 120
+	enrichmentStaleLastSuccessAge  = enrichment.DefaultRetryMaxAge
+	enrichmentDashboardURLTemplate = "https://app.bitrise.io/build-cache/invocations/xcode/%s"
+	enrichmentPendingDetailMax     = 3
+	enrichmentLastErrorSnippetMax  = 120
 )
 
 func (d *Doctor) enrichmentCheck() Check {

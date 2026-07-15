@@ -26,17 +26,8 @@ type PendingRecord struct {
 
 type Store struct {
 	Path string
-	Now  func() time.Time
 
 	mu sync.Mutex
-}
-
-func (s *Store) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-
-	return time.Now()
 }
 
 func (s *Store) Append(rec PendingRecord) error {

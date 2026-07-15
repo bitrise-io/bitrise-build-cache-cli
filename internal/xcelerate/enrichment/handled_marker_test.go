@@ -1,6 +1,6 @@
 //go:build unit
 
-package handled_test
+package enrichment_test
 
 import (
 	"os"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/handled"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
 func newTestLogger() *utilsMocks.Logger {
@@ -36,7 +36,7 @@ func TestWriteMarker_createsFileUnderStateDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	handled.WriteMarker(newTestLogger(), "inv-abc")
+	enrichment.WriteMarker(newTestLogger(), "inv-abc")
 
 	marker := paths.FromHome(home).XcelerateHandledInvocationFile("inv-abc")
 	info, err := os.Stat(marker)
@@ -48,7 +48,7 @@ func TestWriteMarker_emptyIDIsNoop(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	handled.WriteMarker(newTestLogger(), "")
+	enrichment.WriteMarker(newTestLogger(), "")
 
 	entries, err := os.ReadDir(paths.FromHome(home).XcelerateHandledInvocationDir())
 	if err != nil {
@@ -65,9 +65,9 @@ func TestMarkerExists_trueWhenPresent(t *testing.T) {
 	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
 	require.NoError(t, os.WriteFile(p.XcelerateHandledInvocationFile("inv-1"), nil, 0o644))
 
-	assert.True(t, handled.MarkerExists("inv-1"))
-	assert.False(t, handled.MarkerExists("inv-2"))
-	assert.False(t, handled.MarkerExists(""))
+	assert.True(t, enrichment.MarkerExists("inv-1"))
+	assert.False(t, enrichment.MarkerExists("inv-2"))
+	assert.False(t, enrichment.MarkerExists(""))
 }
 
 func TestRemoveMarker_deletesFile(t *testing.T) {
@@ -79,7 +79,7 @@ func TestRemoveMarker_deletesFile(t *testing.T) {
 	marker := p.XcelerateHandledInvocationFile("inv-1")
 	require.NoError(t, os.WriteFile(marker, nil, 0o644))
 
-	handled.RemoveMarker("inv-1")
+	enrichment.RemoveMarker("inv-1")
 
 	_, err := os.Stat(marker)
 	assert.True(t, os.IsNotExist(err))
@@ -95,7 +95,7 @@ func TestPruneStale_removesStaleKeepsFresh(t *testing.T) {
 	old := time.Now().Add(-48 * time.Hour)
 	require.NoError(t, os.Chtimes(stale, old, old))
 
-	handled.PruneStale(dir, 24*time.Hour)
+	enrichment.PruneStale(dir, 24*time.Hour)
 
 	_, err := os.Stat(stale)
 	assert.True(t, os.IsNotExist(err), "stale marker must be removed")
@@ -105,6 +105,6 @@ func TestPruneStale_removesStaleKeepsFresh(t *testing.T) {
 
 func TestPruneStale_missingDirIsNoop(t *testing.T) {
 	assert.NotPanics(t, func() {
-		handled.PruneStale(filepath.Join(t.TempDir(), "does-not-exist"), time.Hour)
+		enrichment.PruneStale(filepath.Join(t.TempDir(), "does-not-exist"), time.Hour)
 	})
 }

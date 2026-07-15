@@ -77,8 +77,8 @@ func TestPaths_xcelerateHandledInvocations(t *testing.T) {
 
 	assert.Equal(t, "/h/.local/state/xcelerate", p.XcelerateStateDir())
 	assert.Equal(t, "/h/.local/state/xcelerate/logs", p.XcelerateLogDir())
-	assert.Equal(t, "/h/.local/state/xcelerate/handled-invocations", p.XcelerateHandledInvocationDir())
-	assert.Equal(t, "/h/.local/state/xcelerate/handled-invocations/abc-123", p.XcelerateHandledInvocationFile("abc-123"))
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-invocations", p.XcelerateHandledInvocationDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-invocations/abc-123", p.XcelerateHandledInvocationFile("abc-123"))
 }
 
 func TestPaths_xcelerateEnrichment(t *testing.T) {
@@ -86,4 +86,6 @@ func TestPaths_xcelerateEnrichment(t *testing.T) {
 
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment", p.XcelerateEnrichmentDir())
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-manifests.ndjson", p.HandledManifestsFile())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/pending-invocations.ndjson", p.PendingInvocationsFile())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/health.json", p.EnrichmentHealthFile())
 }

@@ -21,7 +21,6 @@ func TestStore_AppendLoadRemove(t *testing.T) {
 	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	s := &enrichment.Store{
 		Path: filepath.Join(dir, "pending.ndjson"),
-		Now:  func() time.Time { return now },
 	}
 
 	rec := enrichment.PendingRecord{
@@ -110,7 +109,7 @@ func TestStore_Remove_RecreatesMissingDir(t *testing.T) {
 func TestStore_Save_ReplacesFile(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
-	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time { return now }}
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
 	require.NoError(t, s.Append(enrichment.PendingRecord{InvocationID: "a", StartTime: now}))
 	require.NoError(t, s.Append(enrichment.PendingRecord{InvocationID: "b", StartTime: now}))
@@ -126,7 +125,7 @@ func TestStore_Save_ReplacesFile(t *testing.T) {
 func TestPendingRecord_ExtraFieldsRoundtrip(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
-	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time { return now }}
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
 	rec := enrichment.PendingRecord{
 		InvocationID:    "with-retry",
@@ -157,7 +156,7 @@ func TestPendingRecord_ExtraFieldsRoundtrip(t *testing.T) {
 func TestStore_ConcurrentAppends(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
-	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson"), Now: func() time.Time { return now }}
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
 	const n = 10
 	var wg sync.WaitGroup

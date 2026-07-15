@@ -5,7 +5,6 @@ package xcode
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -282,7 +281,7 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 		}, proxy.SessionStats{})
 	})
 	// Confirm the pending file was not created — pending==nil skips the append.
-	_, err := os.Stat(filepath.Join(home, paths.StateDirRelative, "xcelerate-pending-invocations.ndjson"))
+	_, err := os.Stat(paths.FromHome(home).PendingInvocationsFile())
 	assert.True(t, os.IsNotExist(err), "pending file must not exist when b.pending is nil")
 }
 

@@ -42,13 +42,14 @@ const (
 	// xcelerateLogsSubdir is the per-user xcelerate log dir under XcelerateStateDir.
 	xcelerateLogsSubdir = "logs"
 
-	// xcelerateHandledInvocationsSubdir marks invocation IDs the wrapper already
-	// PUT a rich payload for, so the proxy's F1 slim emit can skip them and preserve
-	// the rich row instead of last-write-wins overwriting it.
-	xcelerateHandledInvocationsSubdir = "handled-invocations"
-
-	// xcelerateEnrichmentSubdir holds persisted state for the F2 enrichment watcher.
+	// xcelerateEnrichmentSubdir holds every persisted-state artefact the
+	// F2 enrichment watcher, retry queue, and slim/handled-marker bookkeeping share.
 	xcelerateEnrichmentSubdir = "enrichment"
+
+	// xcelerateHandledInvocationsSubdir sits under XcelerateEnrichmentDir and marks
+	// invocation IDs the wrapper already PUT a rich payload for, so slim emit and
+	// F2 enrichment skip them instead of last-write-wins overwriting the rich row.
+	xcelerateHandledInvocationsSubdir = "handled-invocations"
 
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
@@ -63,9 +64,9 @@ const (
 	// invocationsSubdir holds the per-day NDJSON invocation log files.
 	invocationsSubdir = "invocations"
 
-	pendingInvocationsFilename = "xcelerate-pending-invocations.ndjson"
+	pendingInvocationsFilename = "pending-invocations.ndjson"
 
-	enrichmentHealthFilename = "xcelerate-enrichment-health.json"
+	enrichmentHealthFilename = "health.json"
 
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
@@ -159,11 +160,11 @@ func (p Paths) InvocationsFile(day string) string {
 }
 
 func (p Paths) PendingInvocationsFile() string {
-	return filepath.Join(p.StateDir(), pendingInvocationsFilename)
+	return filepath.Join(p.XcelerateEnrichmentDir(), pendingInvocationsFilename)
 }
 
 func (p Paths) EnrichmentHealthFile() string {
-	return filepath.Join(p.StateDir(), enrichmentHealthFilename)
+	return filepath.Join(p.XcelerateEnrichmentDir(), enrichmentHealthFilename)
 }
 
 // PlistPath returns the per-user LaunchAgent plist path for the given label.
@@ -266,9 +267,9 @@ func (p Paths) XcelerateLogDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateLogsSubdir)
 }
 
-// XcelerateHandledInvocationDir returns ~/.local/state/xcelerate/handled-invocations.
+// XcelerateHandledInvocationDir returns ~/.local/state/xcelerate/enrichment/handled-invocations.
 func (p Paths) XcelerateHandledInvocationDir() string {
-	return filepath.Join(p.XcelerateStateDir(), xcelerateHandledInvocationsSubdir)
+	return filepath.Join(p.XcelerateEnrichmentDir(), xcelerateHandledInvocationsSubdir)
 }
 
 // XcelerateHandledInvocationFile returns the marker path for a specific invocation ID.

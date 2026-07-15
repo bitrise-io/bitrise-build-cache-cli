@@ -1,4 +1,4 @@
-package handled
+package enrichment
 
 import (
 	"os"
@@ -10,17 +10,15 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// MaxAge bounds how long an orphaned marker can survive before the proxy
-// startup sweep removes it. Covers wrapper crashes between marker write and
-// proxy F1 fire (or F2 enrichment).
-const MaxAge = 24 * time.Hour
+// HandledMarkerMaxAge bounds how long an orphaned marker can survive before the
+// proxy startup sweep removes it. Covers wrapper crashes between marker write
+// and the consumer (F1 slim emit or F2 enrichment) firing.
+const HandledMarkerMaxAge = 24 * time.Hour
 
 // WriteMarker records that the wrapper already PUT a rich payload for
-// invocationID. Slim emit and F2 enrichment check this before doing their own
-// PUT so the rich row survives last-write-wins.
-//
-// Best-effort: any failure only downgrades to the pre-fix behaviour (rich row
-// gets clobbered), so we log at debug/warn and continue.
+// invocationID so slim emit and F2 enrichment skip their own PUT and preserve
+// the rich row from last-write-wins. Best-effort — failures downgrade to the
+// pre-fix behaviour and are logged only.
 func WriteMarker(logger log.Logger, invocationID string) {
 	if invocationID == "" {
 		return
@@ -50,9 +48,6 @@ func WriteMarker(logger log.Logger, invocationID string) {
 	_ = f.Close()
 }
 
-// MarkerExists returns true when the wrapper already recorded a rich PUT for
-// invocationID. Errors resolving paths silently fall back to false — callers
-// proceed with their own PUT as before.
 func MarkerExists(invocationID string) bool {
 	if invocationID == "" {
 		return false
@@ -68,8 +63,6 @@ func MarkerExists(invocationID string) bool {
 	return err == nil
 }
 
-// RemoveMarker deletes the marker after a consumer observes it. Keeps the
-// state dir from accumulating one file per invocation.
 func RemoveMarker(invocationID string) {
 	if invocationID == "" {
 		return
@@ -83,8 +76,6 @@ func RemoveMarker(invocationID string) {
 	_ = os.Remove(p.XcelerateHandledInvocationFile(invocationID))
 }
 
-// PruneStale removes marker files older than maxAge. Handles
-// wrapper-crashed-before-consumer-fired cases so the state dir stays bounded.
 func PruneStale(dir string, maxAge time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
