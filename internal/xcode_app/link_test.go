@@ -268,3 +268,111 @@ func TestUnlink_rejectsNonExistentPath(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestResolveWorkspaceFileRef_schemes(t *testing.T) {
+	const workspace = "/Users/foo/App.xcworkspace"
+	cases := []struct {
+		name     string
+		location string
+		wantPath string
+		wantOK   bool
+	}{
+		{
+			name:     "self returns the workspace itself",
+			location: "self:",
+			wantPath: workspace,
+			wantOK:   true,
+		},
+		{
+			name:     "group is workspace-relative",
+			location: "group:App.xcodeproj",
+			wantPath: "/Users/foo/App.xcodeproj",
+			wantOK:   true,
+		},
+		{
+			name:     "group with nested path is workspace-relative",
+			location: "group:modules/App.xcodeproj",
+			wantPath: "/Users/foo/modules/App.xcodeproj",
+			wantOK:   true,
+		},
+		{
+			name:     "container is workspace-relative",
+			location: "container:App.xcodeproj",
+			wantPath: "/Users/foo/App.xcodeproj",
+			wantOK:   true,
+		},
+		{
+			name:     "absolute keeps the leading slash",
+			location: "absolute:/Users/other/Standalone.xcodeproj",
+			wantPath: "/Users/other/Standalone.xcodeproj",
+			wantOK:   true,
+		},
+		{
+			name:     "unknown scheme returns ok=false",
+			location: "developer:Something.xcodeproj",
+			wantPath: "",
+			wantOK:   false,
+		},
+		{
+			name:     "malformed location returns ok=false",
+			location: "no-scheme",
+			wantPath: "",
+			wantOK:   false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := resolveWorkspaceFileRef(workspace, tc.location)
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.wantPath, got)
+		})
+	}
+}
+
+func TestLink_xcworkspaceHandlesGroupLocationPrefix(t *testing.T) {
+	// Real workspaces with <Group location="group:modules"> wrapping FileRefs
+	// whose own location is `group:Nested.xcodeproj` — the group's prefix must
+	// be joined so the resolver hits <workspace-dir>/modules/Nested.xcodeproj.
+	root := t.TempDir()
+	sub := filepath.Join(root, "modules")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	tempXcodeproj(t, sub, "Nested")
+
+	contents := `<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version="1.0">
+  <Group location="group:modules">
+    <FileRef location="group:Nested.xcodeproj"></FileRef>
+  </Group>
+</Workspace>`
+	wsPath := tempXcworkspace(t, root, "PrefixJoin", contents)
+
+	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath:          wsPath,
+		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
+	})
+	require.NoError(t, err)
+	require.Len(t, result.BridgeFiles, 1)
+	assert.True(t, strings.HasSuffix(result.BridgeFiles[0], filepath.Join("modules", BridgeXCConfigName)))
+}
+
+func TestLink_xcworkspaceSkipsMissingProjectPaths(t *testing.T) {
+	// A hand-edited workspace that references a project that doesn't exist on
+	// disk — link must silently drop it and continue with the real one.
+	root := t.TempDir()
+	tempXcodeproj(t, root, "Real")
+
+	contents := `<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version="1.0">
+  <FileRef location="group:Real.xcodeproj"></FileRef>
+  <FileRef location="group:DoesNotExist.xcodeproj"></FileRef>
+</Workspace>`
+	wsPath := tempXcworkspace(t, root, "MixedReality", contents)
+
+	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath:          wsPath,
+		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
+	})
+	require.NoError(t, err)
+	require.Len(t, result.BridgeFiles, 1, "missing project must be silently skipped")
+}

@@ -7,11 +7,13 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // BridgeXCConfigName is the sibling xcconfig written next to a .xcodeproj by
-// `xcode-app link`. It contains a single `#include` line pointing at the
-// user-global override xcconfig managed by `xcode-app enable`.
+// `xcode-app link`. Kept as a re-export of paths.XcodeAppBridgeXCConfigName so
+// callers of the link package don't have to import both.
 //
 // Rationale: macOS 26 stopped propagating `launchctl setenv XCODE_XCCONFIG_FILE`
 // to GUI-launched Xcode.app, so the user-global env override alone is not
@@ -19,10 +21,11 @@ import (
 // xcconfig is Apple-documented and stable. We write the bridge; the user
 // selects it as the base configuration once, and future GUI builds pick up
 // the include chain.
-//
-// The name is intentionally NOT dot-prefixed — Xcode's base-configuration
-// file picker hides dotfiles.
-const BridgeXCConfigName = "bitrise-build-cache-xcode.xcconfig"
+const BridgeXCConfigName = paths.XcodeAppBridgeXCConfigName
+
+// schemeGroup is the workspace FileRef / Group `location` scheme identifying
+// entries whose path is resolved relative to the containing workspace or group.
+const schemeGroup = "group"
 
 // LinkParams targets a single .xcodeproj or .xcworkspace.
 type LinkParams struct {
@@ -189,7 +192,7 @@ func resolveWorkspaceProjectDirs(osProxy osProxyForLink, workspacePath string) (
 		return nil, fmt.Errorf("parse %s: %w", contentsPath, err)
 	}
 
-	refs := collectFileRefs(ws.FileRefs, ws.Groups)
+	refs := collectFileRefs(ws.FileRefs, ws.Groups, "")
 
 	seen := make(map[string]struct{}, len(refs))
 	dirs := make([]string, 0, len(refs))
@@ -202,6 +205,13 @@ func resolveWorkspaceProjectDirs(osProxy osProxyForLink, workspacePath string) (
 		// Only wire bridges for .xcodeproj entries. FileRefs can also point at
 		// loose folders or non-project resources.
 		if !strings.EqualFold(filepath.Ext(resolved), ".xcodeproj") {
+			continue
+		}
+
+		// Skip silently if the resolved path is missing — hand-edited or
+		// tool-generated workspaces can carry FileRefs whose path shape doesn't
+		// exactly match what our resolver expects. Not-existing is not an error.
+		if _, err := osProxy.Stat(resolved); err != nil {
 			continue
 		}
 
@@ -220,14 +230,73 @@ func resolveWorkspaceProjectDirs(osProxy osProxyForLink, workspacePath string) (
 	return dirs, nil
 }
 
-func collectFileRefs(refs []workspaceFileRef, groups []workspaceGroup) []workspaceFileRef {
-	out := make([]workspaceFileRef, 0, len(refs))
-	out = append(out, refs...)
+// collectFileRefs flattens the FileRef entries under Workspace and any nested
+// Group nodes. Xcode workspaces in the wild disagree on whether a FileRef's
+// `group:<rest>` under a `<Group location="group:<prefix>">` is
+// workspace-relative or group-relative — Apple's docs say group-relative, but
+// some tool-generated workspaces write the full workspace-relative path
+// directly on the FileRef. To handle both, when a prefix is active we emit
+// two candidates per FileRef (prefixed + as-is); the stat check downstream
+// keeps whichever exists on disk.
+func collectFileRefs(refs []workspaceFileRef, groups []workspaceGroup, prefix string) []workspaceFileRef {
+	out := make([]workspaceFileRef, 0, len(refs)*2)
+	for _, r := range refs {
+		if prefix == "" {
+			out = append(out, r)
+
+			continue
+		}
+
+		prefixed := workspaceFileRef{Location: joinGroupPrefix(prefix, r.Location)}
+		out = append(out, prefixed)
+		if prefixed.Location != r.Location {
+			out = append(out, r)
+		}
+	}
 	for _, g := range groups {
-		out = append(out, collectFileRefs(g.FileRefs, g.Groups)...)
+		out = append(out, collectFileRefs(g.FileRefs, g.Groups, joinGroupLocation(prefix, g.Location))...)
 	}
 
 	return out
+}
+
+// joinGroupLocation combines a parent group prefix with a nested group's
+// `location` attribute, yielding the prefix descendants should see. Non-group
+// group locations (rare in practice) short-circuit — we only chain `group:`.
+func joinGroupLocation(parentPrefix, groupLocation string) string {
+	scheme, rest, ok := splitScheme(groupLocation)
+	if !ok || scheme != schemeGroup {
+		return parentPrefix
+	}
+
+	if parentPrefix == "" {
+		return rest
+	}
+
+	if rest == "" {
+		return parentPrefix
+	}
+
+	return parentPrefix + "/" + rest
+}
+
+// joinGroupPrefix prepends the accumulated group prefix to a FileRef location.
+// Only `group:` locations are relative to the enclosing group; other schemes
+// (self, container, absolute) are unaffected.
+func joinGroupPrefix(prefix, location string) string {
+	if prefix == "" {
+		return location
+	}
+	scheme, rest, ok := splitScheme(location)
+	if !ok || scheme != schemeGroup {
+		return location
+	}
+
+	if rest == "" {
+		return schemeGroup + ":" + prefix
+	}
+
+	return schemeGroup + ":" + prefix + "/" + rest
 }
 
 // resolveWorkspaceFileRef expands a contents.xcworkspacedata `<scheme>:<rest>`
@@ -245,7 +314,7 @@ func resolveWorkspaceFileRef(workspacePath, location string) (string, bool) {
 		// self: refers to the workspace's container. Return the workspace path;
 		// the ext-filter downstream drops it because it doesn't end in .xcodeproj.
 		return workspacePath, true
-	case "group":
+	case schemeGroup:
 		return filepath.Join(filepath.Dir(workspacePath), rest), true
 	case "container":
 		return filepath.Join(filepath.Dir(workspacePath), rest), true
