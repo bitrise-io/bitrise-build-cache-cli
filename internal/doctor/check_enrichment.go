@@ -96,7 +96,18 @@ func diagnoseEnrichment(healthPath, pendingPath string, now func() time.Time) Re
 		return Result{State: StateWarn, Detail: detail}
 	}
 
-	return Result{State: StateOK, Detail: fmt.Sprintf("healthy (last success %s, %d pending)", snap.LastSuccess.Format(time.RFC3339), len(pending))}
+	return Result{State: StateOK, Detail: fmt.Sprintf("healthy (last success %s, %d pending)", formatOptionalTime(snap.LastSuccess), len(pending))}
+}
+
+// formatOptionalTime renders t as RFC3339 or "never" when zero — avoids the
+// misleading "0001-01-01T00:00:00Z" leak when a status snapshot has no
+// successful attempt yet.
+func formatOptionalTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+
+	return t.Format(time.RFC3339)
 }
 
 func oldestPendingAge(records []enrichment.PendingRecord, now time.Time) time.Duration {
@@ -146,7 +157,7 @@ func formatPendingDetail(records []enrichment.PendingRecord) string {
 		}
 
 		fmt.Fprintf(&b, "  - %s startedAt=%s attempts=%d",
-			r.InvocationID, r.StartTime.Format(time.RFC3339), r.Attempts)
+			r.InvocationID, formatOptionalTime(r.StartTime), r.Attempts)
 
 		if r.LastError != "" {
 			fmt.Fprintf(&b, " lastError=%s", truncateSingleLine(r.LastError, enrichmentLastErrorSnippetMax))

@@ -83,6 +83,14 @@ const (
 	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `xcode-app enable`.
 	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
 
+	// XcodeAppBridgeXCConfigName is the sibling xcconfig written next to a
+	// .xcodeproj by `xcode-app link`. It contains a single `#include` pointing
+	// at the user-global override xcconfig managed by `xcode-app enable`.
+	//
+	// The name is intentionally NOT dot-prefixed — Xcode's base-configuration
+	// file picker hides dotfiles.
+	XcodeAppBridgeXCConfigName = "bitrise-build-cache-xcode.xcconfig"
+
 	// XcodeAppSetenvAgentLabel is the launchd label + plist basename for the xcode-app setenv agent.
 	XcodeAppSetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
 
