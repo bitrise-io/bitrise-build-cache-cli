@@ -3,6 +3,7 @@
 package xcode_app
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -35,69 +37,212 @@ func tempXcworkspace(t *testing.T, parent, name, contentsXML string) string {
 	return pth
 }
 
-func TestLink_writesBridgeNextToXcodeproj(t *testing.T) {
-	dir := t.TempDir()
-	proj := tempXcodeproj(t, dir, "MyApp")
+// writeXCConfig drops a .xcconfig at `dir/name` with the given body.
+func writeXCConfig(t *testing.T, dir, name, body string) string {
+	t.Helper()
 
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          proj,
-		OverrideXCConfigPath: "/Users/x/.bitrise-xcelerate/xcode-app.xcconfig",
-	})
-	require.NoError(t, err)
+	pth := filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(pth, []byte(body), 0o644))
 
-	require.Len(t, result.BridgeFiles, 1)
-	assert.Empty(t, result.AlreadyLinked)
-
-	bridgePath := filepath.Join(dir, BridgeXCConfigName)
-	assert.Equal(t, bridgePath, result.BridgeFiles[0])
-
-	content, err := os.ReadFile(bridgePath)
-	require.NoError(t, err)
-	assert.Contains(t, string(content), `#include? "/Users/x/.bitrise-xcelerate/xcode-app.xcconfig"`)
+	return pth
 }
 
-func TestLink_isIdempotent(t *testing.T) {
+func linkParams(t *testing.T, project, override string) LinkParams {
+	t.Helper()
+
+	return LinkParams{
+		ProjectPath:          project,
+		OverrideXCConfigPath: override,
+		StateDir:             filepath.Join(t.TempDir(), "linked-projects"),
+	}
+}
+
+func TestLink_appendsIncludeToProjectXCConfigs(t *testing.T) {
 	dir := t.TempDir()
 	proj := tempXcodeproj(t, dir, "MyApp")
 
-	params := LinkParams{
-		ProjectPath:          proj,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
+	pathA := writeXCConfig(t, dir, "App.xcconfig", "PRODUCT_NAME = MyApp\n")
+	pathB := writeXCConfig(t, dir, "App-release.xcconfig", "CONFIGURATION_BUILD_DIR = /tmp/out\n")
+
+	p := linkParams(t, proj, "/Users/x/.bitrise-xcelerate/xcode-app.xcconfig")
+	result, err := Link(utils.DefaultOsProxy{}, p)
+	require.NoError(t, err)
+
+	require.ElementsMatch(t, []string{pathA, pathB}, result.ModifiedXCConfigs)
+	assert.Empty(t, result.AlreadyLinked)
+	assert.Empty(t, result.BridgeFiles)
+
+	// Each file keeps its pre-existing content and gains our trailer.
+	for _, xcconfig := range []string{pathA, pathB} {
+		body, err := os.ReadFile(xcconfig)
+		require.NoError(t, err)
+		text := string(body)
+
+		assert.Contains(t, text, trailerCommentLine)
+		assert.Contains(t, text, `#include? "/Users/x/.bitrise-xcelerate/xcode-app.xcconfig"`)
 	}
 
-	first, err := Link(utils.DefaultOsProxy{}, params)
+	// State file was written; content matches what unlink will read back.
+	stateFile := filepath.Join(p.StateDir, paths.LinkedProjectStateFilename(proj))
+	raw, err := os.ReadFile(stateFile)
 	require.NoError(t, err)
-	require.Len(t, first.BridgeFiles, 1)
-
-	second, err := Link(utils.DefaultOsProxy{}, params)
-	require.NoError(t, err)
-	assert.Empty(t, second.BridgeFiles)
-	require.Len(t, second.AlreadyLinked, 1)
-	assert.Equal(t, first.BridgeFiles[0], second.AlreadyLinked[0])
+	var st linkedProjectState
+	require.NoError(t, json.Unmarshal(raw, &st))
+	assert.Equal(t, proj, st.ProjectPath)
+	assert.Equal(t, LinkModeInPlace, st.Mode)
+	assert.ElementsMatch(t, []string{pathA, pathB}, st.ModifiedXCConfigs)
 }
 
-func TestLink_rewritesWhenContentDiffers(t *testing.T) {
+func TestLink_isIdempotentInPlace(t *testing.T) {
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+	xc := writeXCConfig(t, dir, "App.xcconfig", "PRODUCT_NAME = MyApp\n")
+
+	p := linkParams(t, proj, "/abs/xcode-app.xcconfig")
+
+	_, err := Link(utils.DefaultOsProxy{}, p)
+	require.NoError(t, err)
+
+	firstBody, err := os.ReadFile(xc)
+	require.NoError(t, err)
+
+	second, err := Link(utils.DefaultOsProxy{}, p)
+	require.NoError(t, err)
+	assert.Empty(t, second.ModifiedXCConfigs)
+	require.Len(t, second.AlreadyLinked, 1)
+	assert.Equal(t, xc, second.AlreadyLinked[0])
+
+	// File byte-identical after second run.
+	after, err := os.ReadFile(xc)
+	require.NoError(t, err)
+	assert.Equal(t, string(firstBody), string(after))
+}
+
+func TestLink_rewritesTrailerOnOverrideChange(t *testing.T) {
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+	xc := writeXCConfig(t, dir, "App.xcconfig", "PRODUCT_NAME = MyApp\n")
+
+	pA := linkParams(t, proj, "/abs/original.xcconfig")
+	pA.StateDir = filepath.Join(t.TempDir(), "state")
+	_, err := Link(utils.DefaultOsProxy{}, pA)
+	require.NoError(t, err)
+
+	// Second link with a different override — trailer must be replaced, not
+	// stacked; there should be exactly one #include? line in the file.
+	pB := pA
+	pB.OverrideXCConfigPath = "/abs/new.xcconfig"
+	result, err := Link(utils.DefaultOsProxy{}, pB)
+	require.NoError(t, err)
+	require.Len(t, result.ModifiedXCConfigs, 1)
+
+	body, err := os.ReadFile(xc)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `#include? "/abs/new.xcconfig"`)
+	assert.NotContains(t, string(body), "original.xcconfig")
+
+	// Exactly one trailer.
+	assert.Equal(t, 1, strings.Count(string(body), trailerCommentLine))
+}
+
+func TestLink_upgradesLegacyIncludeToOptionalInclude(t *testing.T) {
 	dir := t.TempDir()
 	proj := tempXcodeproj(t, dir, "MyApp")
 
-	_, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          proj,
-		OverrideXCConfigPath: "/abs/original.xcconfig",
-	})
+	// Pre-existing content already carries the Bitrise trailer but with the
+	// non-optional `#include` form (legacy). link must detect and upgrade it.
+	body := "PRODUCT_NAME = MyApp\n\n" + trailerCommentLine + "\n#include \"/abs/xcode-app.xcconfig\"\n"
+	xc := writeXCConfig(t, dir, "App.xcconfig", body)
+
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, proj, "/abs/xcode-app.xcconfig"))
 	require.NoError(t, err)
 
-	// Now link with a different override; must rewrite.
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          proj,
-		OverrideXCConfigPath: "/abs/new.xcconfig",
-	})
+	// Regardless of the AlreadyLinked / ModifiedXCConfigs bookkeeping, the file
+	// MUST end up using `#include?` (optional include).
+	_ = result
+	after, err := os.ReadFile(xc)
 	require.NoError(t, err)
+	assert.Contains(t, string(after), `#include? "/abs/xcode-app.xcconfig"`)
+}
+
+func TestLink_fallsBackToBridgeWhenNoXCConfigs(t *testing.T) {
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, proj, "/abs/xcode-app.xcconfig"))
+	require.NoError(t, err)
+
 	require.Len(t, result.BridgeFiles, 1)
+	assert.Empty(t, result.ModifiedXCConfigs)
 
-	content, err := os.ReadFile(result.BridgeFiles[0])
+	bridge := filepath.Join(dir, BridgeXCConfigName)
+	assert.Equal(t, bridge, result.BridgeFiles[0])
+
+	body, err := os.ReadFile(bridge)
 	require.NoError(t, err)
-	assert.Contains(t, string(content), `#include? "/abs/new.xcconfig"`)
-	assert.NotContains(t, string(content), "original.xcconfig")
+	assert.Contains(t, string(body), `#include? "/abs/xcode-app.xcconfig"`)
+}
+
+func TestLink_skipsBridgeSiblingFromPriorLink(t *testing.T) {
+	// A stale sibling bridge from the old link behaviour is sitting in the dir.
+	// The new in-place link should delete the sibling and NOT treat the sibling
+	// as a valid xcconfig to append into.
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+
+	staleBridge := writeXCConfig(t, dir, BridgeXCConfigName, "#include? \"/old.xcconfig\"\n")
+	realXCConfig := writeXCConfig(t, dir, "App.xcconfig", "PRODUCT_NAME = MyApp\n")
+
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, proj, "/abs/xcode-app.xcconfig"))
+	require.NoError(t, err)
+
+	// Real xcconfig picked up.
+	require.ElementsMatch(t, []string{realXCConfig}, result.ModifiedXCConfigs)
+	assert.Empty(t, result.BridgeFiles)
+
+	// Stale sibling deleted.
+	_, err = os.Stat(staleBridge)
+	assert.True(t, os.IsNotExist(err), "expected stale sibling bridge to be removed")
+}
+
+func TestLink_skipsBuildArtefactDirs(t *testing.T) {
+	// xcconfigs inside .build/, DerivedData/, Pods/, Carthage/, .git/ must not
+	// be touched — those are dep-manager caches / build outputs, editing them
+	// would either be pointless or destructive.
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+
+	realXC := writeXCConfig(t, dir, "App.xcconfig", "PRODUCT_NAME = MyApp\n")
+
+	skip := []string{".build", "DerivedData", "Pods", "Carthage", ".git", "node_modules"}
+	for _, sub := range skip {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, sub), 0o755))
+		writeXCConfig(t, filepath.Join(dir, sub), "junk.xcconfig", "OTHER_LDFLAGS = -junk\n")
+	}
+
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, proj, "/abs/xcode-app.xcconfig"))
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{realXC}, result.ModifiedXCConfigs)
+
+	for _, sub := range skip {
+		body, err := os.ReadFile(filepath.Join(dir, sub, "junk.xcconfig"))
+		require.NoError(t, err)
+		assert.NotContains(t, string(body), trailerCommentLine, "expected %s/junk.xcconfig untouched", sub)
+	}
+}
+
+func TestLink_preservesFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+	xc := writeXCConfig(t, dir, "App.xcconfig", "PRODUCT_NAME = MyApp\n")
+	require.NoError(t, os.Chmod(xc, 0o600))
+
+	_, err := Link(utils.DefaultOsProxy{}, linkParams(t, proj, "/abs/xcode-app.xcconfig"))
+	require.NoError(t, err)
+
+	info, err := os.Stat(xc)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestLink_rejectsNonExistentPath(t *testing.T) {
@@ -145,14 +290,16 @@ func TestLink_rejectsEmptyOverridePath(t *testing.T) {
 func TestLink_xcworkspaceFansOutToReferencedProjects(t *testing.T) {
 	root := t.TempDir()
 
-	// Two projects under sibling subdirs. Bridges go next to each .xcodeproj,
-	// so two distinct parent dirs = two distinct bridge files.
 	dirOne := filepath.Join(root, "one")
 	dirTwo := filepath.Join(root, "two")
 	require.NoError(t, os.MkdirAll(dirOne, 0o755))
 	require.NoError(t, os.MkdirAll(dirTwo, 0o755))
 	tempXcodeproj(t, dirOne, "AppOne")
 	tempXcodeproj(t, dirTwo, "AppTwo")
+
+	// Each project has an xcconfig — should be modified in place.
+	xcOne := writeXCConfig(t, dirOne, "AppOne.xcconfig", "// one\n")
+	xcTwo := writeXCConfig(t, dirTwo, "AppTwo.xcconfig", "// two\n")
 
 	contents := `<?xml version="1.0" encoding="UTF-8"?>
 <Workspace version="1.0">
@@ -161,17 +308,9 @@ func TestLink_xcworkspaceFansOutToReferencedProjects(t *testing.T) {
 </Workspace>`
 	wsPath := tempXcworkspace(t, root, "MultiApp", contents)
 
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          wsPath,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
-	})
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, wsPath, "/abs/xcode-app.xcconfig"))
 	require.NoError(t, err)
-	require.Len(t, result.BridgeFiles, 2)
-
-	for _, b := range result.BridgeFiles {
-		_, err := os.Stat(b)
-		require.NoError(t, err, "expected bridge %s to exist", b)
-	}
+	require.ElementsMatch(t, []string{xcOne, xcTwo}, result.ModifiedXCConfigs)
 }
 
 func TestLink_xcworkspaceIgnoresNonXcodeprojFileRefs(t *testing.T) {
@@ -185,12 +324,10 @@ func TestLink_xcworkspaceIgnoresNonXcodeprojFileRefs(t *testing.T) {
 </Workspace>`
 	wsPath := tempXcworkspace(t, root, "Mixed", contents)
 
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          wsPath,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
-	})
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, wsPath, "/abs/xcode-app.xcconfig"))
 	require.NoError(t, err)
-	assert.Len(t, result.BridgeFiles, 1)
+	// No xcconfigs in the project dir → fallback sibling written for OnlyOne.
+	require.Len(t, result.BridgeFiles, 1)
 }
 
 func TestLink_xcworkspaceEmptyFileRefsIsError(t *testing.T) {
@@ -208,10 +345,7 @@ func TestLink_xcworkspaceEmptyFileRefsIsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "no .xcodeproj")
 }
 
-func TestLink_xcworkspaceHandlesFileRefsNestedUnderGroup(t *testing.T) {
-	// Real workspaces (esp. hand-edited ones) can nest FileRef entries under a
-	// <Group>. FileRef location is workspace-relative regardless of the
-	// wrapping <Group>, so a full relative path in `group:<path>` works.
+func TestLink_xcworkspaceHandlesGroupLocationPrefix(t *testing.T) {
 	root := t.TempDir()
 	sub := filepath.Join(root, "modules")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
@@ -220,46 +354,118 @@ func TestLink_xcworkspaceHandlesFileRefsNestedUnderGroup(t *testing.T) {
 	contents := `<?xml version="1.0" encoding="UTF-8"?>
 <Workspace version="1.0">
   <Group location="group:modules">
-    <FileRef location="group:modules/Nested.xcodeproj"></FileRef>
+    <FileRef location="group:Nested.xcodeproj"></FileRef>
   </Group>
 </Workspace>`
-	wsPath := tempXcworkspace(t, root, "Grouped", contents)
+	wsPath := tempXcworkspace(t, root, "PrefixJoin", contents)
 
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          wsPath,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
-	})
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, wsPath, "/abs/xcode-app.xcconfig"))
 	require.NoError(t, err)
+	// No xcconfigs under modules/ → sibling fallback next to Nested.xcodeproj.
 	require.Len(t, result.BridgeFiles, 1)
 	assert.True(t, strings.HasSuffix(result.BridgeFiles[0], filepath.Join("modules", BridgeXCConfigName)))
 }
 
-func TestUnlink_removesBridgeFile(t *testing.T) {
+func TestLink_xcworkspaceSkipsMissingProjectPaths(t *testing.T) {
+	root := t.TempDir()
+	tempXcodeproj(t, root, "Real")
+
+	contents := `<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version="1.0">
+  <FileRef location="group:Real.xcodeproj"></FileRef>
+  <FileRef location="group:DoesNotExist.xcodeproj"></FileRef>
+</Workspace>`
+	wsPath := tempXcworkspace(t, root, "MixedReality", contents)
+
+	result, err := Link(utils.DefaultOsProxy{}, linkParams(t, wsPath, "/abs/xcode-app.xcconfig"))
+	require.NoError(t, err)
+	// Only the real project is processed. No xcconfigs → sibling.
+	require.Len(t, result.BridgeFiles, 1)
+}
+
+func TestUnlink_stripsTrailerFromEachXCConfig(t *testing.T) {
 	dir := t.TempDir()
 	proj := tempXcodeproj(t, dir, "MyApp")
 
-	_, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          proj,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
+	origA := "PRODUCT_NAME = MyApp\n"
+	origB := "CONFIGURATION_BUILD_DIR = /tmp\n"
+	pathA := writeXCConfig(t, dir, "App.xcconfig", origA)
+	pathB := writeXCConfig(t, dir, "App-release.xcconfig", origB)
+
+	params := linkParams(t, proj, "/abs/xcode-app.xcconfig")
+	_, err := Link(utils.DefaultOsProxy{}, params)
+	require.NoError(t, err)
+
+	result, err := Unlink(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath: proj,
+		StateDir:    params.StateDir,
 	})
 	require.NoError(t, err)
+	assert.False(t, result.NoOp)
+	assert.ElementsMatch(t, []string{pathA, pathB}, result.ModifiedXCConfigs)
 
-	result, err := Unlink(utils.DefaultOsProxy{}, LinkParams{ProjectPath: proj})
+	// Files restored byte-identical.
+	afterA, err := os.ReadFile(pathA)
 	require.NoError(t, err)
-	require.Len(t, result.RemovedBridgeFiles, 1)
-	assert.Empty(t, result.MissingBridgeFiles)
+	assert.Equal(t, origA, string(afterA))
 
-	_, statErr := os.Stat(result.RemovedBridgeFiles[0])
+	afterB, err := os.ReadFile(pathB)
+	require.NoError(t, err)
+	assert.Equal(t, origB, string(afterB))
+
+	// State file cleared.
+	stateFile := filepath.Join(params.StateDir, paths.LinkedProjectStateFilename(proj))
+	_, statErr := os.Stat(stateFile)
 	assert.True(t, os.IsNotExist(statErr))
 }
 
-func TestUnlink_missingBridgeIsNotAnError(t *testing.T) {
+func TestUnlink_removesSiblingBridge(t *testing.T) {
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+
+	// Fallback path: no xcconfigs, sibling gets written.
+	params := linkParams(t, proj, "/abs/xcode-app.xcconfig")
+	first, err := Link(utils.DefaultOsProxy{}, params)
+	require.NoError(t, err)
+	require.Len(t, first.BridgeFiles, 1)
+
+	result, err := Unlink(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath: proj,
+		StateDir:    params.StateDir,
+	})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{first.BridgeFiles[0]}, result.RemovedBridgeFiles)
+
+	_, statErr := os.Stat(first.BridgeFiles[0])
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestUnlink_reportsNoOpWhenNothingToDo(t *testing.T) {
 	proj := tempXcodeproj(t, t.TempDir(), "MyApp")
 
-	result, err := Unlink(utils.DefaultOsProxy{}, LinkParams{ProjectPath: proj})
+	result, err := Unlink(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath: proj,
+		StateDir:    filepath.Join(t.TempDir(), "empty"),
+	})
 	require.NoError(t, err)
+	assert.True(t, result.NoOp)
+	assert.Empty(t, result.ModifiedXCConfigs)
 	assert.Empty(t, result.RemovedBridgeFiles)
-	require.Len(t, result.MissingBridgeFiles, 1)
+}
+
+func TestUnlink_scrapesBridgeWithoutStateFile(t *testing.T) {
+	// Simulate a state file wiped by hand but a sibling bridge left behind —
+	// unlink must still remove the bridge (defensive sweep).
+	dir := t.TempDir()
+	proj := tempXcodeproj(t, dir, "MyApp")
+	bridge := writeXCConfig(t, dir, BridgeXCConfigName, "#include? \"/old.xcconfig\"\n")
+
+	result, err := Unlink(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath: proj,
+		StateDir:    filepath.Join(t.TempDir(), "empty"),
+	})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{bridge}, result.RemovedBridgeFiles)
 }
 
 func TestUnlink_rejectsNonExistentPath(t *testing.T) {
@@ -330,49 +536,25 @@ func TestResolveWorkspaceFileRef_schemes(t *testing.T) {
 	}
 }
 
-func TestLink_xcworkspaceHandlesGroupLocationPrefix(t *testing.T) {
-	// Real workspaces with <Group location="group:modules"> wrapping FileRefs
-	// whose own location is `group:Nested.xcodeproj` — the group's prefix must
-	// be joined so the resolver hits <workspace-dir>/modules/Nested.xcodeproj.
-	root := t.TempDir()
-	sub := filepath.Join(root, "modules")
-	require.NoError(t, os.MkdirAll(sub, 0o755))
-	tempXcodeproj(t, sub, "Nested")
-
-	contents := `<?xml version="1.0" encoding="UTF-8"?>
-<Workspace version="1.0">
-  <Group location="group:modules">
-    <FileRef location="group:Nested.xcodeproj"></FileRef>
-  </Group>
-</Workspace>`
-	wsPath := tempXcworkspace(t, root, "PrefixJoin", contents)
-
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          wsPath,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
-	})
-	require.NoError(t, err)
-	require.Len(t, result.BridgeFiles, 1)
-	assert.True(t, strings.HasSuffix(result.BridgeFiles[0], filepath.Join("modules", BridgeXCConfigName)))
+func TestDetectTrailer_ignoresUnrelatedIncludes(t *testing.T) {
+	// A user-authored `#include?` that isn't preceded by our exact comment line
+	// must not be treated as our trailer. link would otherwise clobber it.
+	content := "PRODUCT_NAME = MyApp\n#include? \"/user/managed.xcconfig\"\n"
+	has, path, _ := detectTrailer(content)
+	assert.False(t, has)
+	assert.Empty(t, path)
 }
 
-func TestLink_xcworkspaceSkipsMissingProjectPaths(t *testing.T) {
-	// A hand-edited workspace that references a project that doesn't exist on
-	// disk — link must silently drop it and continue with the real one.
-	root := t.TempDir()
-	tempXcodeproj(t, root, "Real")
+func TestStripTrailer_isNoOpWhenAbsent(t *testing.T) {
+	orig := "PRODUCT_NAME = MyApp\n"
+	assert.Equal(t, orig, stripTrailerFromContent(orig))
+}
 
-	contents := `<?xml version="1.0" encoding="UTF-8"?>
-<Workspace version="1.0">
-  <FileRef location="group:Real.xcodeproj"></FileRef>
-  <FileRef location="group:DoesNotExist.xcodeproj"></FileRef>
-</Workspace>`
-	wsPath := tempXcworkspace(t, root, "MixedReality", contents)
-
-	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
-		ProjectPath:          wsPath,
-		OverrideXCConfigPath: "/abs/xcode-app.xcconfig",
-	})
-	require.NoError(t, err)
-	require.Len(t, result.BridgeFiles, 1, "missing project must be silently skipped")
+func TestAppendTrailer_startsFromCleanFileEndsWithSingleNewline(t *testing.T) {
+	// Even when the source has no trailing newline, the trailer starts on a
+	// fresh line and the whole file ends with a single newline.
+	out := appendTrailerToContent("A = 1", "/abs/xcode-app.xcconfig")
+	assert.True(t, strings.HasSuffix(out, "\n"))
+	// No double blank line at the join.
+	assert.NotContains(t, out, "\n\n\n")
 }

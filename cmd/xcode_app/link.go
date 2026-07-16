@@ -17,10 +17,11 @@ import (
 var linkCmd = &cobra.Command{
 	Use:   "link <path>",
 	Short: "Wire an Xcode project or workspace up to the Bitrise Build Cache override",
-	Long: `link writes a per-project bridge xcconfig next to the given .xcodeproj (or, for a .xcworkspace, next to every referenced .xcodeproj). ` +
-		`The bridge ` + "`#include`" + `s ~/.bitrise-xcelerate/xcode-app.xcconfig, so pointing Xcode's base configuration at the bridge picks up every cache flag. ` +
-		`Needed on macOS 26+: ` + "`launchctl setenv XCODE_XCCONFIG_FILE`" + ` no longer propagates to GUI-launched Xcode.app, so the ` + "`xcode-app enable`" + ` env override alone is not enough for GUI builds. ` +
-		`Idempotent — running twice is a no-op.`,
+	Long: `link appends ` + "`#include? \"<override>\"`" + ` to each in-tree .xcconfig under the project (or, for a .xcworkspace, each referenced project) so the cache engages automatically on the next Xcode build. ` +
+		`Cache engages on rebuild (Cmd+B) — no manual Xcode step needed. ` +
+		`Optional-include form (` + "`#include?`" + `) keeps the change safe to commit — teammates or CI without the CLI silently skip it. ` +
+		`When the project has no in-tree xcconfigs, falls back to writing a sibling bridge xcconfig (` + xa.BridgeXCConfigName + `) that the user must select as base configuration in Xcode. ` +
+		`Idempotent — re-running is safe.`,
 	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -37,23 +38,7 @@ var linkCmd = &cobra.Command{
 			return fmt.Errorf("xcode-app link: %w", err)
 		}
 
-		for _, b := range result.BridgeFiles {
-			logger.Donef("Wrote bridge xcconfig: %s", b)
-		}
-		for _, b := range result.AlreadyLinked {
-			logger.Infof("Bridge already up to date: %s", b)
-		}
-
-		logger.Infof("Bridge includes: %s", result.OverrideXCConfigPath)
-		logger.Infof("")
-		logger.Infof("Next step: set the bridge as the base configuration in Xcode.")
-		logger.Infof("  1. Open the project (or workspace) in Xcode.")
-		logger.Infof("  2. Select the project in the sidebar. In the Info tab, expand Configurations.")
-		logger.Infof("  3. For EACH configuration (Debug, Release, ...): set")
-		logger.Infof("     'Based on Configuration File' to '%s'.", strings.TrimSuffix(xa.BridgeXCConfigName, ".xcconfig"))
-		logger.Infof("  4. Close Xcode. Reopen. Build (Cmd+B).")
-		logger.Infof("")
-		logger.Infof("To remove the bridge: `bitrise-build-cache xcode-app unlink %s`.", args[0])
+		printLinkResult(logger, args[0], result)
 
 		return nil
 	},
@@ -62,10 +47,9 @@ var linkCmd = &cobra.Command{
 //nolint:gochecknoglobals
 var unlinkCmd = &cobra.Command{
 	Use:   "unlink <path>",
-	Short: "Remove the per-project Bitrise Build Cache bridge xcconfig",
-	Long: `unlink deletes the bridge xcconfig written by ` + "`xcode-app link`" + ` next to the given .xcodeproj (or, for a .xcworkspace, next to every referenced .xcodeproj). ` +
-		`Idempotent — a missing bridge is reported, not an error. ` +
-		`You still need to unset the base configuration in Xcode (Info tab, Configurations) manually.`,
+	Short: "Revert the Bitrise Build Cache include added by `xcode-app link`",
+	Long: `unlink strips the Bitrise cache trailer from each xcconfig that ` + "`link`" + ` touched, and removes any sibling bridge xcconfig from the fallback path. ` +
+		`Idempotent — nothing to revert reports a no-op.`,
 	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -82,19 +66,58 @@ var unlinkCmd = &cobra.Command{
 			return fmt.Errorf("xcode-app unlink: %w", err)
 		}
 
-		for _, b := range result.RemovedBridgeFiles {
-			logger.Donef("Removed bridge xcconfig: %s", b)
-		}
-		for _, b := range result.MissingBridgeFiles {
-			logger.Infof("No bridge to remove: %s", b)
-		}
-
-		if len(result.RemovedBridgeFiles) > 0 {
-			logger.Infof("Next step: in Xcode > project > Info tab > Configurations, clear 'Based on Configuration File' for each configuration that was pointing at the bridge.")
-		}
+		printUnlinkResult(logger, result)
 
 		return nil
 	},
+}
+
+func printLinkResult(logger log.Logger, requestedPath string, result xapkg.LinkResult) {
+	if len(result.ModifiedXCConfigs) > 0 {
+		logger.Donef("Auto-appended cache override include to %d project xcconfig file(s):", len(result.ModifiedXCConfigs))
+		for _, f := range result.ModifiedXCConfigs {
+			logger.Infof("  - %s", f)
+		}
+	}
+
+	for _, f := range result.AlreadyLinked {
+		logger.Infof("Already up to date: %s", f)
+	}
+
+	if len(result.BridgeFiles) > 0 {
+		for _, f := range result.BridgeFiles {
+			logger.Donef("Wrote sibling bridge xcconfig: %s", f)
+		}
+		logger.Infof("No in-tree xcconfig files were found — falling back to sibling-bridge mode.")
+		logger.Infof("Next step in Xcode > project > Info tab > Configurations: set 'Based on Configuration File' to '%s' for each configuration.", strings.TrimSuffix(xa.BridgeXCConfigName, ".xcconfig"))
+	}
+
+	logger.Infof("Include target: %s", result.OverrideXCConfigPath)
+	logger.Infof("Optional include (`#include?`) — teammates without the CLI silently skip the override.")
+
+	if len(result.ModifiedXCConfigs) > 0 || len(result.AlreadyLinked) > 0 {
+		logger.Infof("Rebuild via Cmd+B — cache engages automatically.")
+	}
+
+	logger.Infof("Revert with: `bitrise-build-cache xcode-app unlink %s`.", requestedPath)
+}
+
+func printUnlinkResult(logger log.Logger, result xapkg.UnlinkResult) {
+	for _, f := range result.ModifiedXCConfigs {
+		logger.Donef("Stripped cache override include from: %s", f)
+	}
+
+	for _, f := range result.RemovedBridgeFiles {
+		logger.Donef("Removed sibling bridge xcconfig: %s", f)
+	}
+
+	for _, f := range result.MissingBridgeFiles {
+		logger.Infof("No bridge to remove: %s", f)
+	}
+
+	if result.NoOp {
+		logger.Infof("Nothing to revert.")
+	}
 }
 
 func init() {

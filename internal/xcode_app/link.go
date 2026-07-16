@@ -1,31 +1,46 @@
 package xcode_app
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// BridgeXCConfigName is the sibling xcconfig written next to a .xcodeproj by
-// `xcode-app link`. Kept as a re-export of paths.XcodeAppBridgeXCConfigName so
-// callers of the link package don't have to import both.
-//
-// Rationale: macOS 26 stopped propagating `launchctl setenv XCODE_XCCONFIG_FILE`
-// to GUI-launched Xcode.app, so the user-global env override alone is not
-// enough for GUI builds. Per-project injection via a base-configuration
-// xcconfig is Apple-documented and stable. We write the bridge; the user
-// selects it as the base configuration once, and future GUI builds pick up
-// the include chain.
+// BridgeXCConfigName is the sibling xcconfig written next to a .xcodeproj when
+// `xcode-app link` falls back to sibling-bridge mode (no in-tree .xcconfig
+// files exist to append into).
 const BridgeXCConfigName = paths.XcodeAppBridgeXCConfigName
 
-// schemeGroup is the workspace FileRef / Group `location` scheme identifying
-// entries whose path is resolved relative to the containing workspace or group.
+// schemeGroup identifies workspace FileRef / Group entries whose path is
+// resolved relative to the containing workspace or group.
 const schemeGroup = "group"
+
+// trailerCommentLine is the exact comment we prepend to every in-place append;
+// detectTrailer / stripTrailerFromContent match it byte-for-byte so re-running
+// link only produces one trailer per xcconfig.
+const trailerCommentLine = "// Bitrise Build Cache — auto-appended by `bitrise-build-cache xcode-app link`. Remove via `unlink`."
+
+// trailerIncludeDirective is the include keyword we emit. `#include?` (optional
+// include) keeps the append committable — teammates or CI without the CLI
+// installed silently skip the include instead of failing the build with
+// `Unable to open base configuration reference file`.
+const trailerIncludeDirective = "#include?"
+
+// LinkMode records which strategy `link` used for a given project. Persisted
+// in the state file so `unlink` reverts the exact set of edits.
+type LinkMode string
+
+const (
+	LinkModeInPlace LinkMode = "inplace"
+	LinkModeSibling LinkMode = "sibling"
+)
 
 // LinkParams targets a single .xcodeproj or .xcworkspace.
 type LinkParams struct {
@@ -33,103 +48,358 @@ type LinkParams struct {
 	ProjectPath string
 
 	// OverrideXCConfigPath is the absolute path of the user-global override
-	// xcconfig (e.g. ~/.bitrise-xcelerate/xcode-app.xcconfig). The bridge file
-	// `#include`s this path. Must be absolute — Xcode's xcconfig loader does
-	// NOT expand `~` in include paths.
+	// xcconfig (e.g. ~/.bitrise-xcelerate/xcode-app.xcconfig). Must be absolute
+	// — Xcode's xcconfig loader does NOT expand `~` in include paths.
 	OverrideXCConfigPath string
+
+	// StateDir is the absolute dir that holds per-project link state JSON. Empty
+	// = the caller has opted out of state persistence (in-memory tests). In
+	// production, this points at Paths.LinkedProjectsDir().
+	StateDir string
 }
 
 type LinkResult struct {
-	// BridgeFiles are the absolute paths of every bridge xcconfig we wrote.
-	// One per referenced .xcodeproj (workspace fans out to multiple).
-	BridgeFiles []string
+	// ModifiedXCConfigs are the absolute paths of project xcconfig files we
+	// appended a trailer to (in-place mode).
+	ModifiedXCConfigs []string
 
-	// AlreadyLinked lists bridge files whose content already matched what we
-	// would have written — the link operation was a no-op for them.
+	// AlreadyLinked lists xcconfigs that already contained an up-to-date
+	// trailer — no-op for them.
 	AlreadyLinked []string
+
+	// BridgeFiles are absolute paths of sibling bridge xcconfigs written when a
+	// project has no in-tree .xcconfig files (fallback mode).
+	BridgeFiles []string
 }
 
 type UnlinkResult struct {
-	// RemovedBridgeFiles are absolute paths we deleted.
+	// ModifiedXCConfigs are absolute paths whose auto-appended trailer we stripped.
+	ModifiedXCConfigs []string
+
+	// RemovedBridgeFiles are absolute paths of sibling bridge xcconfigs deleted.
 	RemovedBridgeFiles []string
 
-	// MissingBridgeFiles are absolute paths that were already absent — nothing
-	// to remove. Not an error; report so the CLI can inform the user.
+	// MissingBridgeFiles are sibling bridge paths that were expected (per state)
+	// but already absent — reported, not an error.
 	MissingBridgeFiles []string
+
+	// NoOp is true when nothing about the project needed changing.
+	NoOp bool
 }
 
-// Link writes a bridge xcconfig next to each referenced .xcodeproj so the user
-// can point Xcode's base-configuration at it. Idempotent: rewriting a bridge
-// with identical content reports it under AlreadyLinked and skips the write.
+// linkedProjectState is the on-disk record `unlink` reads to know exactly which
+// xcconfigs to revert. Kept per-project (one file per .xcodeproj).
+type linkedProjectState struct {
+	ProjectPath       string    `json:"projectPath"`
+	Mode              LinkMode  `json:"mode"`
+	ModifiedXCConfigs []string  `json:"modifiedXCConfigs,omitempty"`
+	BridgeFile        string    `json:"bridgeFile,omitempty"`
+	LinkedAt          time.Time `json:"linkedAt"`
+}
+
+// Link wires each referenced .xcodeproj to the override xcconfig. Prefers
+// appending `#include? "<override>"` to existing in-tree .xcconfig files so
+// the cache engages automatically after the next Xcode build; falls back to
+// the legacy sibling-bridge behaviour only for projects with no xcconfigs.
 func Link(osProxy osProxyForLink, p LinkParams) (LinkResult, error) {
 	if err := validateOverrideXCConfigPath(p.OverrideXCConfigPath); err != nil {
 		return LinkResult{}, err
 	}
 
-	projectDirs, err := ResolveProjectDirs(osProxy, p.ProjectPath)
+	projectPaths, err := resolveProjectPaths(osProxy, p.ProjectPath)
 	if err != nil {
 		return LinkResult{}, err
 	}
 
-	body := renderBridge(p.OverrideXCConfigPath)
-
 	var result LinkResult
-	for _, dir := range projectDirs {
-		bridgePath := filepath.Join(dir, BridgeXCConfigName)
-
-		existing, found, err := osProxy.ReadFileIfExists(bridgePath)
+	for _, projPath := range projectPaths {
+		perProject, err := linkOneProject(osProxy, p, projPath)
 		if err != nil {
-			return result, fmt.Errorf("read %s: %w", bridgePath, err)
+			return result, err
 		}
 
-		if found && existing == body {
-			result.AlreadyLinked = append(result.AlreadyLinked, bridgePath)
-
-			continue
-		}
-
-		if err := osProxy.WriteFile(bridgePath, []byte(body), 0o644); err != nil { //nolint:gosec // xcconfig is read by Xcode
-			return result, fmt.Errorf("write %s: %w", bridgePath, err)
-		}
-
-		result.BridgeFiles = append(result.BridgeFiles, bridgePath)
+		result.ModifiedXCConfigs = append(result.ModifiedXCConfigs, perProject.ModifiedXCConfigs...)
+		result.AlreadyLinked = append(result.AlreadyLinked, perProject.AlreadyLinked...)
+		result.BridgeFiles = append(result.BridgeFiles, perProject.BridgeFiles...)
 	}
 
 	return result, nil
 }
 
-// Unlink deletes every bridge xcconfig next to each referenced .xcodeproj.
-// A missing bridge is not an error — it's reported under MissingBridgeFiles.
+func linkOneProject(osProxy osProxyForLink, p LinkParams, projectPath string) (LinkResult, error) {
+	dir := filepath.Dir(projectPath)
+
+	xcconfigs, err := findXCConfigs(dir)
+	if err != nil {
+		return LinkResult{}, fmt.Errorf("scan xcconfigs in %s: %w", dir, err)
+	}
+
+	// Prior sibling-bridge runs are stale under the new behaviour. Clean up so
+	// the project doesn't carry both an in-place include AND the old sibling
+	// (which could still be selected as a base config).
+	staleBridge := filepath.Join(dir, BridgeXCConfigName)
+	if _, found, ferr := osProxy.ReadFileIfExists(staleBridge); ferr == nil && found {
+		_ = osProxy.Remove(staleBridge)
+	}
+
+	var result LinkResult
+	switch {
+	case len(xcconfigs) > 0:
+		res, err := linkInPlace(osProxy, p, xcconfigs)
+		if err != nil {
+			return result, err
+		}
+
+		result = res
+		linkedFiles := make([]string, 0, len(result.ModifiedXCConfigs)+len(result.AlreadyLinked))
+		linkedFiles = append(linkedFiles, result.ModifiedXCConfigs...)
+		linkedFiles = append(linkedFiles, result.AlreadyLinked...)
+		if err := saveState(osProxy, p, linkedProjectState{
+			ProjectPath:       projectPath,
+			Mode:              LinkModeInPlace,
+			ModifiedXCConfigs: linkedFiles,
+			LinkedAt:          time.Now().UTC(),
+		}); err != nil {
+			return result, err
+		}
+	default:
+		res, err := linkSibling(osProxy, p, dir)
+		if err != nil {
+			return result, err
+		}
+
+		result = res
+		bridgeFile := ""
+		if len(result.BridgeFiles) > 0 {
+			bridgeFile = result.BridgeFiles[0]
+		}
+		if err := saveState(osProxy, p, linkedProjectState{
+			ProjectPath: projectPath,
+			Mode:        LinkModeSibling,
+			BridgeFile:  bridgeFile,
+			LinkedAt:    time.Now().UTC(),
+		}); err != nil {
+			return result, err
+		}
+	}
+
+	return result, nil
+}
+
+// linkInPlace appends (or refreshes) the Bitrise trailer on each xcconfig. Rewrites
+// the trailer whenever the override path drifts, so re-running `link` picks up a
+// new override.
+func linkInPlace(osProxy osProxyForLink, p LinkParams, xcconfigs []string) (LinkResult, error) {
+	var result LinkResult
+	for _, path := range xcconfigs {
+		existing, found, err := osProxy.ReadFileIfExists(path)
+		if err != nil {
+			return result, fmt.Errorf("read %s: %w", path, err)
+		}
+		if !found {
+			continue
+		}
+
+		mode, err := fileMode(osProxy, path)
+		if err != nil {
+			return result, err
+		}
+
+		hasTrailer, currentPath, currentDirective := detectTrailer(existing)
+		switch {
+		case hasTrailer && currentPath == p.OverrideXCConfigPath && currentDirective == trailerIncludeDirective:
+			result.AlreadyLinked = append(result.AlreadyLinked, path)
+		case hasTrailer:
+			// Trailer is stale — either override path drifted or the directive
+			// form is the legacy non-optional `#include`. Rewrite in both cases.
+			stripped := stripTrailerFromContent(existing)
+			if err := atomicWrite(osProxy, path, stripped+buildTrailer(p.OverrideXCConfigPath), mode); err != nil {
+				return result, err
+			}
+
+			result.ModifiedXCConfigs = append(result.ModifiedXCConfigs, path)
+		default:
+			if err := atomicWrite(osProxy, path, appendTrailerToContent(existing, p.OverrideXCConfigPath), mode); err != nil {
+				return result, err
+			}
+
+			result.ModifiedXCConfigs = append(result.ModifiedXCConfigs, path)
+		}
+	}
+
+	return result, nil
+}
+
+// linkSibling writes the legacy bitrise-build-cache-xcode.xcconfig next to
+// the project. Kept as the fallback for xcconfig-free projects — the user
+// still needs to select it as the base configuration in Xcode manually.
+func linkSibling(osProxy osProxyForLink, p LinkParams, projectDir string) (LinkResult, error) {
+	body := renderBridge(p.OverrideXCConfigPath)
+	bridgePath := filepath.Join(projectDir, BridgeXCConfigName)
+
+	existing, found, err := osProxy.ReadFileIfExists(bridgePath)
+	if err != nil {
+		return LinkResult{}, fmt.Errorf("read %s: %w", bridgePath, err)
+	}
+	if found && existing == body {
+		return LinkResult{BridgeFiles: []string{bridgePath}, AlreadyLinked: []string{bridgePath}}, nil
+	}
+
+	if err := atomicWrite(osProxy, bridgePath, body, 0o644); err != nil {
+		return LinkResult{}, err
+	}
+
+	return LinkResult{BridgeFiles: []string{bridgePath}}, nil
+}
+
+// Unlink reverts every edit `Link` made to the referenced project(s). Reads
+// the per-project state file so we know the exact set of xcconfig files to
+// touch even if the tree has shifted since link.
 func Unlink(osProxy osProxyForLink, p LinkParams) (UnlinkResult, error) {
-	projectDirs, err := ResolveProjectDirs(osProxy, p.ProjectPath)
+	projectPaths, err := resolveProjectPaths(osProxy, p.ProjectPath)
 	if err != nil {
 		return UnlinkResult{}, err
 	}
 
 	var result UnlinkResult
-	for _, dir := range projectDirs {
-		bridgePath := filepath.Join(dir, BridgeXCConfigName)
-
-		if err := osProxy.Remove(bridgePath); err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				result.MissingBridgeFiles = append(result.MissingBridgeFiles, bridgePath)
-
-				continue
-			}
-
-			return result, fmt.Errorf("remove %s: %w", bridgePath, err)
+	anyWork := false
+	for _, projPath := range projectPaths {
+		perProject, err := unlinkOneProject(osProxy, p, projPath)
+		if err != nil {
+			return result, err
 		}
 
-		result.RemovedBridgeFiles = append(result.RemovedBridgeFiles, bridgePath)
+		if len(perProject.ModifiedXCConfigs) > 0 || len(perProject.RemovedBridgeFiles) > 0 {
+			anyWork = true
+		}
+
+		result.ModifiedXCConfigs = append(result.ModifiedXCConfigs, perProject.ModifiedXCConfigs...)
+		result.RemovedBridgeFiles = append(result.RemovedBridgeFiles, perProject.RemovedBridgeFiles...)
+		result.MissingBridgeFiles = append(result.MissingBridgeFiles, perProject.MissingBridgeFiles...)
+	}
+
+	result.NoOp = !anyWork
+
+	return result, nil
+}
+
+func unlinkOneProject(osProxy osProxyForLink, p LinkParams, projectPath string) (UnlinkResult, error) {
+	var result UnlinkResult
+
+	state, hasState, err := loadState(osProxy, p, projectPath)
+	if err != nil {
+		return result, err
+	}
+
+	if hasState {
+		if err := revertRecordedState(osProxy, p, projectPath, state, &result); err != nil {
+			return result, err
+		}
+	}
+
+	if err := defensiveSweep(osProxy, projectPath, hasState, state, &result); err != nil {
+		return result, err
 	}
 
 	return result, nil
 }
 
-// ResolveProjectDirs returns the parent dirs of every .xcodeproj referenced by
-// the supplied path. For a .xcodeproj, that's the single containing dir. For a
-// .xcworkspace, we parse contents.xcworkspacedata and resolve each FileRef.
-func ResolveProjectDirs(osProxy osProxyForLink, projectPath string) ([]string, error) {
+// revertRecordedState strips the trailer from every xcconfig the state file
+// records, removes the sibling bridge if the state points at one, and clears
+// the state file itself.
+func revertRecordedState(osProxy osProxyForLink, p LinkParams, projectPath string, state linkedProjectState, result *UnlinkResult) error {
+	for _, path := range state.ModifiedXCConfigs {
+		stripped, err := stripTrailerFromFile(osProxy, path)
+		if err != nil {
+			return err
+		}
+		if stripped {
+			result.ModifiedXCConfigs = append(result.ModifiedXCConfigs, path)
+		}
+	}
+
+	if state.BridgeFile != "" {
+		outcome := removeBridgeIfPresent(osProxy, state.BridgeFile)
+		switch outcome {
+		case bridgeRemoved:
+			result.RemovedBridgeFiles = append(result.RemovedBridgeFiles, state.BridgeFile)
+		case bridgeMissing:
+			result.MissingBridgeFiles = append(result.MissingBridgeFiles, state.BridgeFile)
+		case bridgeUnchanged:
+			// Non-"not exist" error already surfaced by osProxy.Remove — swallow;
+			// unlink is best-effort for cleanup.
+		}
+	}
+
+	return removeStateFile(osProxy, p, projectPath)
+}
+
+// defensiveSweep catches leftovers from broken/interrupted prior runs: a stale
+// sibling bridge next to the project (removed even without a state file), and
+// (only when no state exists) any trailer we can find in the tree. Keeps unlink
+// repeatable even if state was manually deleted.
+func defensiveSweep(osProxy osProxyForLink, projectPath string, hasState bool, state linkedProjectState, result *UnlinkResult) error {
+	dir := filepath.Dir(projectPath)
+	bridge := filepath.Join(dir, BridgeXCConfigName)
+	if !hasState || state.BridgeFile == "" {
+		if outcome := removeBridgeIfPresent(osProxy, bridge); outcome == bridgeRemoved {
+			result.RemovedBridgeFiles = append(result.RemovedBridgeFiles, bridge)
+		}
+	}
+
+	if hasState {
+		return nil
+	}
+
+	xcconfigs, err := findXCConfigs(dir)
+	if err != nil {
+		return fmt.Errorf("scan xcconfigs in %s: %w", dir, err)
+	}
+	for _, path := range xcconfigs {
+		stripped, err := stripTrailerFromFile(osProxy, path)
+		if err != nil {
+			return err
+		}
+		if stripped {
+			result.ModifiedXCConfigs = append(result.ModifiedXCConfigs, path)
+		}
+	}
+
+	return nil
+}
+
+// stripTrailerFromFile is a no-op for a missing file and returns whether it
+// changed anything so callers can report only actual reverts to the user.
+func stripTrailerFromFile(osProxy osProxyForLink, path string) (bool, error) {
+	existing, found, err := osProxy.ReadFileIfExists(path)
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", path, err)
+	}
+	if !found {
+		return false, nil
+	}
+
+	stripped := stripTrailerFromContent(existing)
+	if stripped == existing {
+		return false, nil
+	}
+
+	mode, err := fileMode(osProxy, path)
+	if err != nil {
+		return false, err
+	}
+
+	if err := atomicWrite(osProxy, path, stripped, mode); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// resolveProjectPaths returns the absolute .xcodeproj paths referenced by the
+// input. For a single .xcodeproj that's just the input; for a .xcworkspace we
+// fan out to the resolved FileRef entries.
+func resolveProjectPaths(osProxy osProxyForLink, projectPath string) ([]string, error) {
 	if projectPath == "" {
 		return nil, errors.New("project path is empty")
 	}
@@ -149,9 +419,9 @@ func ResolveProjectDirs(osProxy osProxyForLink, projectPath string) ([]string, e
 
 	switch strings.ToLower(filepath.Ext(abs)) {
 	case ".xcodeproj":
-		return []string{filepath.Dir(abs)}, nil
+		return []string{abs}, nil
 	case ".xcworkspace":
-		return resolveWorkspaceProjectDirs(osProxy, abs)
+		return resolveWorkspaceProjectPaths(osProxy, abs)
 	default:
 		return nil, fmt.Errorf("%s: unsupported extension — expected .xcodeproj or .xcworkspace", abs)
 	}
@@ -176,7 +446,7 @@ type workspaceFileRef struct {
 	Location string `xml:"location,attr"`
 }
 
-func resolveWorkspaceProjectDirs(osProxy osProxyForLink, workspacePath string) ([]string, error) {
+func resolveWorkspaceProjectPaths(osProxy osProxyForLink, workspacePath string) ([]string, error) {
 	contentsPath := filepath.Join(workspacePath, "contents.xcworkspacedata")
 
 	raw, found, err := osProxy.ReadFileIfExists(contentsPath)
@@ -195,49 +465,39 @@ func resolveWorkspaceProjectDirs(osProxy osProxyForLink, workspacePath string) (
 	refs := collectFileRefs(ws.FileRefs, ws.Groups, "")
 
 	seen := make(map[string]struct{}, len(refs))
-	dirs := make([]string, 0, len(refs))
+	projects := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		resolved, ok := resolveWorkspaceFileRef(workspacePath, ref.Location)
 		if !ok {
 			continue
 		}
 
-		// Only wire bridges for .xcodeproj entries. FileRefs can also point at
-		// loose folders or non-project resources.
 		if !strings.EqualFold(filepath.Ext(resolved), ".xcodeproj") {
 			continue
 		}
 
-		// Skip silently if the resolved path is missing — hand-edited or
-		// tool-generated workspaces can carry FileRefs whose path shape doesn't
-		// exactly match what our resolver expects. Not-existing is not an error.
 		if _, err := osProxy.Stat(resolved); err != nil {
 			continue
 		}
 
-		dir := filepath.Dir(resolved)
-		if _, dup := seen[dir]; dup {
+		if _, dup := seen[resolved]; dup {
 			continue
 		}
-		seen[dir] = struct{}{}
-		dirs = append(dirs, dir)
+		seen[resolved] = struct{}{}
+		projects = append(projects, resolved)
 	}
 
-	if len(dirs) == 0 {
+	if len(projects) == 0 {
 		return nil, fmt.Errorf("%s: no .xcodeproj FileRefs found in workspace", workspacePath)
 	}
 
-	return dirs, nil
+	return projects, nil
 }
 
 // collectFileRefs flattens the FileRef entries under Workspace and any nested
-// Group nodes. Xcode workspaces in the wild disagree on whether a FileRef's
-// `group:<rest>` under a `<Group location="group:<prefix>">` is
-// workspace-relative or group-relative — Apple's docs say group-relative, but
-// some tool-generated workspaces write the full workspace-relative path
-// directly on the FileRef. To handle both, when a prefix is active we emit
-// two candidates per FileRef (prefixed + as-is); the stat check downstream
-// keeps whichever exists on disk.
+// Group nodes. Some tool-generated workspaces write workspace-relative paths
+// directly on nested FileRefs rather than group-relative ones — emit both
+// candidates and let the stat downstream keep whichever exists.
 func collectFileRefs(refs []workspaceFileRef, groups []workspaceGroup, prefix string) []workspaceFileRef {
 	out := make([]workspaceFileRef, 0, len(refs)*2)
 	for _, r := range refs {
@@ -260,9 +520,6 @@ func collectFileRefs(refs []workspaceFileRef, groups []workspaceGroup, prefix st
 	return out
 }
 
-// joinGroupLocation combines a parent group prefix with a nested group's
-// `location` attribute, yielding the prefix descendants should see. Non-group
-// group locations (rare in practice) short-circuit — we only chain `group:`.
 func joinGroupLocation(parentPrefix, groupLocation string) string {
 	scheme, rest, ok := splitScheme(groupLocation)
 	if !ok || scheme != schemeGroup {
@@ -280,9 +537,6 @@ func joinGroupLocation(parentPrefix, groupLocation string) string {
 	return parentPrefix + "/" + rest
 }
 
-// joinGroupPrefix prepends the accumulated group prefix to a FileRef location.
-// Only `group:` locations are relative to the enclosing group; other schemes
-// (self, container, absolute) are unaffected.
 func joinGroupPrefix(prefix, location string) string {
 	if prefix == "" {
 		return location
@@ -299,10 +553,6 @@ func joinGroupPrefix(prefix, location string) string {
 	return schemeGroup + ":" + prefix + "/" + rest
 }
 
-// resolveWorkspaceFileRef expands a contents.xcworkspacedata `<scheme>:<rest>`
-// location into an absolute filesystem path. Unknown schemes return ok=false
-// and are skipped rather than failing the whole workspace — hand-edited or
-// exotic workspaces can carry entries we shouldn't refuse to process.
 func resolveWorkspaceFileRef(workspacePath, location string) (string, bool) {
 	scheme, rest, ok := splitScheme(location)
 	if !ok {
@@ -311,8 +561,6 @@ func resolveWorkspaceFileRef(workspacePath, location string) (string, bool) {
 
 	switch scheme {
 	case "self":
-		// self: refers to the workspace's container. Return the workspace path;
-		// the ext-filter downstream drops it because it doesn't end in .xcodeproj.
 		return workspacePath, true
 	case schemeGroup:
 		return filepath.Join(filepath.Dir(workspacePath), rest), true
@@ -334,10 +582,196 @@ func splitScheme(location string) (string, string, bool) {
 	return location[:idx], location[idx+1:], true
 }
 
-// renderBridge produces the exact byte content of a bridge xcconfig. `#include?`
-// (optional include) lets the bridge stay committed — teammates or CI runs
-// without the CLI installed skip the override silently instead of failing the
-// build with `Unable to open base configuration reference file`.
+// findXCConfigs walks `root` recursively for `.xcconfig` files, skipping build
+// artefact dirs and the sibling bridge from prior link runs.
+func findXCConfigs(root string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Missing intermediates or permission blips: skip that subtree, keep going.
+			if errors.Is(err, fs.ErrNotExist) {
+				return filepath.SkipDir
+			}
+
+			return err
+		}
+
+		if d.IsDir() {
+			base := d.Name()
+			// Skip build artefacts, dep-manager caches, and Xcode package dirs
+			// we never want to walk into. `.git` is included so we don't pull
+			// in xcconfigs from unrelated worktrees.
+			switch base {
+			case ".build", "DerivedData", "Pods", "Carthage", ".git", "node_modules":
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
+		if !strings.EqualFold(filepath.Ext(path), ".xcconfig") {
+			return nil
+		}
+
+		if filepath.Base(path) == BridgeXCConfigName {
+			return nil
+		}
+
+		out = append(out, path)
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk %s: %w", root, err)
+	}
+
+	return out, nil
+}
+
+// detectTrailer returns (found, path, directive). The trailer is the two-line
+// block appended by linkInPlace: our exact comment line, then an include
+// directive with a quoted path. We still detect the legacy `#include` form
+// (no `?`) so re-running link upgrades it to `#include?` in place.
+func detectTrailer(content string) (bool, string, string) {
+	lines := strings.Split(content, "\n")
+	for i := range len(lines) - 1 {
+		if strings.TrimSpace(lines[i]) != trailerCommentLine {
+			continue
+		}
+
+		next := strings.TrimSpace(lines[i+1])
+		if path, directive, ok := parseIncludeLine(next); ok {
+			return true, path, directive
+		}
+	}
+
+	return false, "", ""
+}
+
+func parseIncludeLine(line string) (string, string, bool) {
+	for _, prefix := range []string{trailerIncludeDirective + " ", "#include "} {
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+
+		rest := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		if len(rest) < 2 || rest[0] != '"' || rest[len(rest)-1] != '"' {
+			return "", "", false
+		}
+
+		return rest[1 : len(rest)-1], strings.TrimSpace(prefix), true
+	}
+
+	return "", "", false
+}
+
+// stripTrailerFromContent removes the trailer block (blank line + comment +
+// include) if present. Preserves everything else byte-for-byte so a subsequent
+// unlink leaves the file identical to its pre-link state.
+func stripTrailerFromContent(content string) string {
+	lines := strings.Split(content, "\n")
+	for i := range len(lines) - 1 {
+		if strings.TrimSpace(lines[i]) != trailerCommentLine {
+			continue
+		}
+
+		if _, _, ok := parseIncludeLine(strings.TrimSpace(lines[i+1])); !ok {
+			continue
+		}
+
+		// Drop the trailer + any single preceding blank separator line we may
+		// have added; keep everything up to that point intact.
+		start := i
+		if start > 0 && strings.TrimSpace(lines[start-1]) == "" {
+			start--
+		}
+		end := i + 2
+
+		return strings.Join(append(append([]string{}, lines[:start]...), lines[end:]...), "\n")
+	}
+
+	return content
+}
+
+// appendTrailerToContent glues the trailer onto existing xcconfig content,
+// preceded by a blank separator line so the trailer stands apart visually.
+func appendTrailerToContent(existing, overridePath string) string {
+	trimmed := strings.TrimRight(existing, "\n")
+	if trimmed == "" {
+		return buildTrailer(overridePath)
+	}
+
+	return trimmed + "\n" + buildTrailer(overridePath)
+}
+
+func buildTrailer(overridePath string) string {
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(trailerCommentLine)
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "%s \"%s\"\n", trailerIncludeDirective, overridePath)
+
+	return b.String()
+}
+
+// atomicWrite writes to `path` via a temp file + rename so an interrupted run
+// never leaves a half-written xcconfig on disk.
+func atomicWrite(osProxy osProxyForLink, path, content string, mode fs.FileMode) error {
+	tmp := path + ".bitrise-build-cache.tmp"
+	if err := osProxy.WriteFile(tmp, []byte(content), mode); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+
+	if err := osProxy.Rename(tmp, path); err != nil {
+		_ = osProxy.Remove(tmp)
+
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+	}
+
+	return nil
+}
+
+// fileMode looks up the current permissions of `path` so atomicWrite preserves
+// them. Falls back to 0o644 (Xcode-readable) when the file doesn't exist yet.
+func fileMode(osProxy osProxyForLink, path string) (fs.FileMode, error) {
+	info, err := osProxy.Stat(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return 0o644, nil
+		}
+
+		return 0, fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	return info.Mode().Perm(), nil
+}
+
+type bridgeRemoveOutcome int
+
+const (
+	bridgeUnchanged bridgeRemoveOutcome = iota
+	bridgeRemoved
+	bridgeMissing
+)
+
+// removeBridgeIfPresent tries to delete bridgePath. Distinguishes "gone now"
+// from "already gone" from "unspecified failure" so the caller can surface the
+// right status to the user.
+func removeBridgeIfPresent(osProxy osProxyForLink, bridgePath string) bridgeRemoveOutcome {
+	err := osProxy.Remove(bridgePath)
+	if err == nil {
+		return bridgeRemoved
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return bridgeMissing
+	}
+
+	return bridgeUnchanged
+}
+
+// renderBridge produces the sibling-bridge body used by linkSibling. `#include?`
+// keeps the file safe to commit even when the override is missing on teammates'
+// machines.
 func renderBridge(overrideXCConfigPath string) string {
 	var b strings.Builder
 	b.WriteString("// Bitrise Build Cache — Xcode.app per-project bridge\n")
@@ -363,10 +797,78 @@ func validateOverrideXCConfigPath(p string) error {
 	return nil
 }
 
-// osProxyForLink is the subset of utils.OsProxy that link/unlink needs.
+// saveState writes the per-project link state. When StateDir is empty we skip
+// persistence — used by unit tests that don't want to fan out to $HOME.
+func saveState(osProxy osProxyForLink, p LinkParams, s linkedProjectState) error {
+	if p.StateDir == "" {
+		return nil
+	}
+
+	if err := osProxy.MkdirAll(p.StateDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", p.StateDir, err)
+	}
+
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode link state: %w", err)
+	}
+
+	statePath := stateFilePath(p.StateDir, s.ProjectPath)
+	if err := atomicWrite(osProxy, statePath, string(data)+"\n", 0o600); err != nil {
+		return fmt.Errorf("save link state %s: %w", statePath, err)
+	}
+
+	return nil
+}
+
+func loadState(osProxy osProxyForLink, p LinkParams, projectPath string) (linkedProjectState, bool, error) {
+	if p.StateDir == "" {
+		return linkedProjectState{}, false, nil
+	}
+
+	statePath := stateFilePath(p.StateDir, projectPath)
+	raw, found, err := osProxy.ReadFileIfExists(statePath)
+	if err != nil {
+		return linkedProjectState{}, false, fmt.Errorf("read %s: %w", statePath, err)
+	}
+	if !found {
+		return linkedProjectState{}, false, nil
+	}
+
+	var s linkedProjectState
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+		return linkedProjectState{}, false, fmt.Errorf("decode %s: %w", statePath, err)
+	}
+
+	return s, true, nil
+}
+
+func removeStateFile(osProxy osProxyForLink, p LinkParams, projectPath string) error {
+	if p.StateDir == "" {
+		return nil
+	}
+
+	statePath := stateFilePath(p.StateDir, projectPath)
+	if err := osProxy.Remove(statePath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove %s: %w", statePath, err)
+	}
+
+	return nil
+}
+
+// stateFilePath mirrors Paths.LinkedProjectStateFile — the 8-byte hex keeps
+// two projects sharing a basename isolated.
+func stateFilePath(stateDir, projectPath string) string {
+	return filepath.Join(stateDir, paths.LinkedProjectStateFilename(projectPath))
+}
+
+// osProxyForLink is the subset of utils.OsProxy that link/unlink needs. Kept
+// minimal so tests can hand in a small fake when they don't want the real fs.
 type osProxyForLink interface {
 	ReadFileIfExists(name string) (string, bool, error)
 	WriteFile(name string, data []byte, mode fs.FileMode) error
+	Rename(oldpath, newpath string) error
 	Remove(name string) error
+	MkdirAll(name string, mode fs.FileMode) error
 	Stat(name string) (fs.FileInfo, error)
 }
