@@ -53,7 +53,7 @@ func TestLink_writesBridgeNextToXcodeproj(t *testing.T) {
 
 	content, err := os.ReadFile(bridgePath)
 	require.NoError(t, err)
-	assert.Contains(t, string(content), `#include "/Users/x/.bitrise-xcelerate/xcode-app.xcconfig"`)
+	assert.Contains(t, string(content), `#include? "/Users/x/.bitrise-xcelerate/xcode-app.xcconfig"`)
 }
 
 func TestLink_isIdempotent(t *testing.T) {
@@ -96,7 +96,7 @@ func TestLink_rewritesWhenContentDiffers(t *testing.T) {
 
 	content, err := os.ReadFile(result.BridgeFiles[0])
 	require.NoError(t, err)
-	assert.Contains(t, string(content), `#include "/abs/new.xcconfig"`)
+	assert.Contains(t, string(content), `#include? "/abs/new.xcconfig"`)
 	assert.NotContains(t, string(content), "original.xcconfig")
 }
 

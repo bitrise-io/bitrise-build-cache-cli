@@ -334,16 +334,17 @@ func splitScheme(location string) (string, string, bool) {
 	return location[:idx], location[idx+1:], true
 }
 
-// renderBridge produces the exact byte content of a bridge xcconfig. Kept
-// tiny and deterministic — the entire file is a header comment plus one
-// `#include`.
+// renderBridge produces the exact byte content of a bridge xcconfig. `#include?`
+// (optional include) lets the bridge stay committed — teammates or CI runs
+// without the CLI installed skip the override silently instead of failing the
+// build with `Unable to open base configuration reference file`.
 func renderBridge(overrideXCConfigPath string) string {
 	var b strings.Builder
 	b.WriteString("// Bitrise Build Cache — Xcode.app per-project bridge\n")
 	b.WriteString("// Written by `bitrise-build-cache xcode-app link`.\n")
 	b.WriteString("// Removed by `bitrise-build-cache xcode-app unlink`.\n")
 	b.WriteString("// Do not edit by hand.\n")
-	fmt.Fprintf(&b, "#include \"%s\"\n", overrideXCConfigPath)
+	fmt.Fprintf(&b, "#include? \"%s\"\n", overrideXCConfigPath)
 
 	return b.String()
 }
