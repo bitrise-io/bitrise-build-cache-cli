@@ -80,7 +80,7 @@ var (
 				}
 
 				logger := log.NewLogger(
-					log.WithDebugLog(config.DebugLogging),
+					log.WithDebugLog(config.DebugLogging || common.IsDebugLogMode),
 					log.WithOutput(io.MultiWriter(os.Stdout, f)),
 				)
 
