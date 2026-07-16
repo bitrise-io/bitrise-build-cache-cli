@@ -20,6 +20,7 @@ func TestRenderOverride_writesRemoteServicePathAndKnownCacheKeys(t *testing.T) {
 	assert.Contains(t, got, "COMPILATION_CACHE_ENABLE_DETACHED_KEY_QUERIES = YES")
 	assert.Contains(t, got, "SWIFT_ENABLE_COMPILE_CACHE = YES")
 	assert.Contains(t, got, "CLANG_ENABLE_COMPILE_CACHE = YES")
+	assert.Contains(t, got, "COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES = swift c c++ objective-c objective-c++")
 }
 
 func TestRenderOverride_includesPreviousFileBeforeKeys(t *testing.T) {

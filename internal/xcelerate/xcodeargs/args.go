@@ -30,6 +30,7 @@ var CacheArgs = map[string]string{
 	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
+	"COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES":  "swift c c++ objective-c objective-c++",
 }
 
 var actions = []string{
