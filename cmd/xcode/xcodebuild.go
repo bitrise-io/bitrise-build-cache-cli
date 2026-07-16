@@ -104,36 +104,22 @@ TBD`,
 			config = xcelerate.DefaultConfig()
 		}
 
-		envs := utils.AllEnvs()
-		logFile, logPath, err := logFile(invocationID, osProxy, envs)
-		if err != nil && !config.Silent {
-			fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", err)
-		}
-		defer func() {
-			if logFile != nil {
-				_ = logFile.Close()
-			}
-		}()
-
 		xcelerateParams.OrigArgs = os.Args[1:]
 
 		silentLogging := config.Silent
 		if slices.Contains(xcelerateParams.OrigArgs, "-json") {
 			silentLogging = true
 		}
-		logOutput := wrapperLogWriter(logFile, logPath, silentLogging)
-		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
-		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
 
-		// Check for --no-bitrise-build-cache flag: override config and filter it out
+		// Strip wrapper-only flags from argv and capture disable-reasons before
+		// the logger exists — they get logged once the logger is wired below.
+		var disabledBy []string
 		if slices.Contains(xcelerateParams.OrigArgs, NoBitriseBuildCacheFlag) {
 			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
 				return s == NoBitriseBuildCacheFlag
 			})
 			config.BuildCacheEnabled = false
-			if !silentLogging {
-				logger.TInfof(MsgBuildCacheDisabledByFlag, NoBitriseBuildCacheFlag)
-			}
+			disabledBy = append(disabledBy, NoBitriseBuildCacheFlag)
 		}
 
 		noPrefixMap := slices.Contains(xcelerateParams.OrigArgs, NoPrefixMapFlag)
@@ -153,8 +139,40 @@ TBD`,
 		// Automatically disable cache for -create-xcframework as it's incompatible
 		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
 			config.BuildCacheEnabled = false
-			if !silentLogging {
-				logger.TInfof(MsgBuildCacheDisabledByFlag, CreateXCFrameworkFlag)
+			disabledBy = append(disabledBy, CreateXCFrameworkFlag)
+		}
+
+		// Preview xcodeArgs with a nil logger so we can decide whether this is a
+		// query invocation (no build action). Query invocations short-circuit
+		// before creating the per-invocation log file or spawning the proxy.
+		previewXcodeArgs := xcodeargs.NewDefault(cobraCmd, xcelerateParams.OrigArgs, log.NewLogger())
+		isBuildAction := previewXcodeArgs.HasBuildAction()
+
+		var (
+			logFileWC io.WriteCloser
+			logPath   string
+		)
+		if isBuildAction {
+			envs := utils.AllEnvs()
+			var logErr error
+			logFileWC, logPath, logErr = logFile(invocationID, osProxy, envs)
+			if logErr != nil && !config.Silent {
+				fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", logErr)
+			}
+			defer func() {
+				if logFileWC != nil {
+					_ = logFileWC.Close()
+				}
+			}()
+		}
+
+		logOutput := wrapperLogWriter(logFileWC, logPath, silentLogging)
+		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
+		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
+
+		if !silentLogging {
+			for _, flag := range disabledBy {
+				logger.TInfof(MsgBuildCacheDisabledByFlag, flag)
 			}
 		}
 
@@ -167,7 +185,7 @@ TBD`,
 		logger.EnableDebugLog(config.DebugLogging)
 
 		var proxySessionClient session.SessionClient
-		if config.BuildCacheEnabled {
+		if isBuildAction && config.BuildCacheEnabled {
 			logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
 
 			err := startProxy(
@@ -195,7 +213,7 @@ TBD`,
 			return string(o), err
 		}, logger)
 
-		xcodeRunner := xcodeargs.NewRunner(logger, config, logFile)
+		xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
 
 		runner := &XcodebuildRunner{
 			Config:             config,
