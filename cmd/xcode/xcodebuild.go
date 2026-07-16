@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"slices"
 	"strconv"
@@ -176,6 +177,7 @@ TBD`,
 				func(pid int, signum syscall.Signal) {
 					_ = syscall.Kill(pid, syscall.SIGKILL)
 				},
+				config.ProxySocketPath,
 			)
 			if err != nil {
 				return fmt.Errorf(errFmtFailedToStartProxy, err)
@@ -794,12 +796,36 @@ func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
 	return out
 }
 
+// isProxyReachable reports whether a unix-socket listener is answering at socketPath.
+// A short DialContext timeout is enough — the wrapper only needs to know a peer is
+// bound, not that any RPC round-trips. ECONNREFUSED / ENOENT / timeout all return false.
+func isProxyReachable(socketPath string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+
+	return true
+}
+
 func startProxy(
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
 	killFunc func(pid int, signum syscall.Signal),
+	socketPath string,
 ) error {
+	if socketPath != "" && isProxyReachable(socketPath) {
+		logger.TDonef("Xcelerate proxy already reachable at %s — reusing", socketPath)
+
+		return nil
+	}
+
 	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
 	content, exists, err := osProxy.ReadFileIfExists(pidFilePth)

@@ -4,10 +4,12 @@ package xcode
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +22,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
@@ -200,7 +204,6 @@ func Test_replaceOrAppendBuildSetting_valuePreservesEmbeddedEquals(t *testing.T)
 	require.Equal(t, []string{"xcodebuild", "KEY=a=b=c"}, out,
 		"only the first '=' separates key from value; the rest is preserved")
 }
-
 
 func Test_XcodebuildRunner_assembleArgs_skipsInjectionForNonBuildActions(t *testing.T) {
 	argv := []string{"-list", "-json", "-project", "foo.xcodeproj"}
@@ -394,4 +397,95 @@ func Test_Run_BuildAction_StillEmitsAnalyticsAndSession(t *testing.T) {
 	marker := filepath.Join(home, ".local", "state", "xcelerate", "enrichment", "handled-invocations", "build-inv-1")
 	_, err := os.Stat(marker)
 	assert.NoError(t, err, "handled-invocation marker must be written on the build path")
+}
+
+// shortSocketPath returns a per-test unix-socket path short enough for macOS
+// sun_path limits (~104 chars). t.TempDir() sits under /var/folders/.../T/... which
+// blows past that when nested — use /tmp with a random suffix.
+func shortSocketPath(t *testing.T, name string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "bbc-probe-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	return filepath.Join(dir, name)
+}
+
+func Test_isProxyReachable_trueWhenListening(t *testing.T) {
+	sock := shortSocketPath(t, "probe.sock")
+	l, err := net.Listen("unix", sock)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+
+	assert.True(t, isProxyReachable(sock))
+}
+
+func Test_isProxyReachable_falseWhenMissing(t *testing.T) {
+	sock := shortSocketPath(t, "does-not-exist.sock")
+
+	assert.False(t, isProxyReachable(sock))
+}
+
+func Test_isProxyReachable_falseWhenStaleSocketFile(t *testing.T) {
+	// A regular file at the socket path — the wrapper sees it exists but no peer is bound.
+	sock := shortSocketPath(t, "stale.sock")
+	require.NoError(t, os.WriteFile(sock, nil, 0o644))
+
+	assert.False(t, isProxyReachable(sock))
+}
+
+func Test_startProxy_shortCircuitsWhenSocketReachable(t *testing.T) {
+	sock := shortSocketPath(t, "reach.sock")
+	l, err := net.Listen("unix", sock)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+
+	var spawned atomic.Int32
+	commandFunc := func(_ context.Context, _ string, _ ...string) utils.Command {
+		spawned.Add(1)
+
+		return &utilsMocks.CommandMock{}
+	}
+
+	osProxy := &utilsMocks.OsProxyMock{
+		// If startProxy short-circuits before pid-file/exec logic, these should never be hit.
+		ReadFileIfExistsFunc: func(_ string) (string, bool, error) {
+			t.Fatalf("pid-file read must not run when socket is reachable")
+
+			return "", false, nil
+		},
+		UserHomeDirFunc: func() (string, error) { return t.TempDir(), nil },
+	}
+
+	err = startProxy(bundleTestLogger, osProxy, commandFunc, func(_ int, _ syscall.Signal) {}, sock)
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), spawned.Load(), "no proxy should be spawned when socket is already reachable")
+}
+
+func Test_startProxy_spawnsWhenSocketAbsentAndNoPidFile(t *testing.T) {
+	home := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".bitrise-xcelerate"), 0o755))
+	sock := shortSocketPath(t, "absent.sock")
+
+	var spawned atomic.Int32
+	commandFunc := func(_ context.Context, _ string, _ ...string) utils.Command {
+		spawned.Add(1)
+
+		return &utilsMocks.CommandMock{
+			StartFunc: func() error { return nil },
+			PIDFunc:   func() int { return 4242 },
+		}
+	}
+
+	osProxy := &utilsMocks.OsProxyMock{
+		ReadFileIfExistsFunc: func(_ string) (string, bool, error) { return "", false, nil },
+		UserHomeDirFunc:      func() (string, error) { return home, nil },
+		ExecutableFunc:       func() (string, error) { return "/usr/local/bin/bitrise-build-cache", nil },
+		MkdirAllFunc:         os.MkdirAll,
+		WriteFileFunc:        os.WriteFile,
+	}
+
+	err := startProxy(bundleTestLogger, osProxy, commandFunc, func(_ int, _ syscall.Signal) {}, sock)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), spawned.Load(), "proxy must be spawned when socket is not reachable and no pid file exists")
 }
