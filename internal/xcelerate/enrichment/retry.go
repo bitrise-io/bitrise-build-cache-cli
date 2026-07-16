@@ -84,11 +84,13 @@ func (r *Retrier) Sweep() {
 		maxAge = DefaultRetryMaxAge
 	}
 
+	// Store increments as deltas rather than snapshot-time totals so an
+	// Enricher-side bump landing between snapshot and merge is preserved.
 	type update struct {
-		drop     bool
-		attempts int
-		lastAt   time.Time
-		lastErr  string
+		drop          bool
+		attemptsDelta int
+		lastAt        time.Time
+		lastErr       string
 	}
 	updates := map[string]update{}
 
@@ -113,7 +115,7 @@ func (r *Retrier) Sweep() {
 		}
 
 		if putErr := r.Client.PutInvocation(inv); putErr != nil {
-			updates[rec.InvocationID] = update{attempts: rec.Attempts + 1, lastAt: now, lastErr: putErr.Error()}
+			updates[rec.InvocationID] = update{attemptsDelta: 1, lastAt: now, lastErr: putErr.Error()}
 			logger.Warnf("Retrier PUT failed for %s (attempts=%d): %s", rec.InvocationID, rec.Attempts+1, putErr)
 
 			continue
@@ -140,7 +142,7 @@ func (r *Retrier) Sweep() {
 				continue
 			}
 
-			rec.Attempts = u.attempts
+			rec.Attempts += u.attemptsDelta
 			rec.LastAttempt = u.lastAt
 			rec.LastError = u.lastErr
 			out = append(out, rec)
