@@ -10,14 +10,26 @@ import (
 
 const RemoteServicePathKey = "COMPILATION_CACHE_REMOTE_SERVICE_PATH"
 
-func RenderOverride(proxySocketPath, previousIncludePath string) (string, error) {
+func RenderOverride(proxySocketPath, previousIncludePath, homeDir string) (string, error) {
 	if strings.TrimSpace(proxySocketPath) == "" {
 		return "", fmt.Errorf("proxy socket path is empty")
+	}
+
+	if strings.TrimSpace(homeDir) == "" {
+		return "", fmt.Errorf("home directory is empty — required for -fdepscan-prefix-map to make CAS keys machine-independent")
 	}
 
 	// xcconfig `#include "<path>"` has no documented quote-escape — reject quotes rather than emit a silently malformed file.
 	if strings.ContainsRune(previousIncludePath, '"') {
 		return "", fmt.Errorf("previous XCODE_XCCONFIG_FILE path contains a quote character — cannot safely #include")
+	}
+
+	extras := map[string]string{
+		RemoteServicePathKey:                          proxySocketPath,
+		"CLANG_ENABLE_PREFIX_MAPPING":                 "YES",
+		"SWIFT_ENABLE_PREFIX_MAPPING":                 "YES",
+		"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS": "NO",
+		"OTHER_CFLAGS":                                fmt.Sprintf("$(inherited) -fdepscan-prefix-map=%s=/^home", homeDir),
 	}
 
 	var b strings.Builder
@@ -32,20 +44,23 @@ func RenderOverride(proxySocketPath, previousIncludePath string) (string, error)
 		fmt.Fprintf(&b, "#include \"%s\"\n\n", previousIncludePath)
 	}
 
-	keys := make([]string, 0, len(xcodeargs.CacheArgs)+1)
-	keys = append(keys, RemoteServicePathKey)
+	keys := make([]string, 0, len(xcodeargs.CacheArgs)+len(extras))
 	for k := range xcodeargs.CacheArgs {
+		keys = append(keys, k)
+	}
+	for k := range extras {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		switch k {
-		case RemoteServicePathKey:
-			fmt.Fprintf(&b, "%s = %s\n", k, proxySocketPath)
-		default:
-			fmt.Fprintf(&b, "%s = %s\n", k, xcodeargs.CacheArgs[k])
+		if v, ok := extras[k]; ok {
+			fmt.Fprintf(&b, "%s = %s\n", k, v)
+
+			continue
 		}
+
+		fmt.Fprintf(&b, "%s = %s\n", k, xcodeargs.CacheArgs[k])
 	}
 
 	return b.String(), nil
