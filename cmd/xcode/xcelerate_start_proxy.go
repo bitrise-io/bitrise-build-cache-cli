@@ -94,6 +94,12 @@ var (
 
 			initialLogger.TInfof("Xcelerate Proxy")
 
+			if isProxyReachable(config.ProxySocketPath) {
+				initialLogger.TInfof("Proxy already running on %s — exiting cleanly", config.ProxySocketPath)
+
+				return nil
+			}
+
 			if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove socket file, error: %w", err)
 			}

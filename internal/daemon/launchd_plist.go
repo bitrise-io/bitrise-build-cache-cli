@@ -25,6 +25,8 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 		<key>SuccessfulExit</key>
 		<false/>
 	</dict>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
 	<key>ProcessType</key>
 	<string>Background</string>
 	<key>StandardOutPath</key>

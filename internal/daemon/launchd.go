@@ -84,6 +84,9 @@ const launchctlBootoutNotLoaded = 5
 // `state = not running` after `launchctl bootstrap` and never fire, so a
 // follow-up `kickstart -k` is what actually gets the process running.
 func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath, label string) error {
+	target := guiTarget() + "/" + label
+	_, _, _, _ = b.Runner.Run(ctx, launchctlBin, "enable", target) //nolint:dogsled // clears prior throttle-induced disable; best-effort
+
 	_, stderr, code, runErr := b.Runner.Run(ctx, launchctlBin, "bootout", guiTarget(), plistPath)
 	if runErr != nil {
 		return fmt.Errorf("launchctl bootout (pre-bootstrap): %w", runErr)
@@ -102,7 +105,6 @@ func (b LaunchdBackend) bootstrap(ctx context.Context, plistPath, label string) 
 		return fmt.Errorf("launchctl bootstrap %s exited %d: %s", plistPath, code, strings.TrimSpace(stderr))
 	}
 
-	target := guiTarget() + "/" + label
 	_, stderr, code, err = b.Runner.Run(ctx, launchctlBin, "kickstart", "-k", target)
 	if err != nil {
 		return fmt.Errorf("launchctl kickstart %s: %w", target, err)

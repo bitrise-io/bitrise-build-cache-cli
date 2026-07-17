@@ -54,19 +54,18 @@ func TestInstall_launchd_writesPlistsAndBootstraps(t *testing.T) {
 		assert.True(t, filepath.IsAbs(st.ConfigPath))
 	}
 
-	// Every install does bootout-then-bootstrap-then-kickstart per service: 2 services * 3 calls.
-	// kickstart -k is required to actually start the process on macOS Sequoia; bootstrap alone
-	// doesn't reliably honour RunAtLoad. See ACI-5177.
-	assert.Len(t, runner.calls, 6)
-	// calls[*][0] = launchctl bin, calls[*][1] = subcommand.
-	assert.Equal(t, "bootout", runner.calls[0][1])
-	assert.Equal(t, "bootstrap", runner.calls[1][1])
-	assert.Equal(t, "kickstart", runner.calls[2][1])
-	assert.Equal(t, "-k", runner.calls[2][2])
-	assert.Equal(t, "bootout", runner.calls[3][1])
-	assert.Equal(t, "bootstrap", runner.calls[4][1])
-	assert.Equal(t, "kickstart", runner.calls[5][1])
-	assert.Equal(t, "-k", runner.calls[5][2])
+	// Every install runs enable-then-bootout-then-bootstrap-then-kickstart per service: 2 services * 4 calls.
+	assert.Len(t, runner.calls, 8)
+	assert.Equal(t, "enable", runner.calls[0][1])
+	assert.Equal(t, "bootout", runner.calls[1][1])
+	assert.Equal(t, "bootstrap", runner.calls[2][1])
+	assert.Equal(t, "kickstart", runner.calls[3][1])
+	assert.Equal(t, "-k", runner.calls[3][2])
+	assert.Equal(t, "enable", runner.calls[4][1])
+	assert.Equal(t, "bootout", runner.calls[5][1])
+	assert.Equal(t, "bootstrap", runner.calls[6][1])
+	assert.Equal(t, "kickstart", runner.calls[7][1])
+	assert.Equal(t, "-k", runner.calls[7][2])
 }
 
 func TestInstall_launchd_idempotent_secondRunOverwritesPlist(t *testing.T) {

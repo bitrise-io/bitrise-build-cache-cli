@@ -28,14 +28,16 @@ func TestUp_launchd_startsAllInstalledServices(t *testing.T) {
 	require.Len(t, result.Statuses, 2)
 	assert.Equal(t, "launchd", result.BackendName)
 
-	// Up runs bootout-then-bootstrap-then-kickstart per service on launchd (ACI-5177).
-	assert.Len(t, upRunner.calls, 6)
-	assert.Equal(t, "bootout", upRunner.calls[0][1])
-	assert.Equal(t, "bootstrap", upRunner.calls[1][1])
-	assert.Equal(t, "kickstart", upRunner.calls[2][1])
-	assert.Equal(t, "bootout", upRunner.calls[3][1])
-	assert.Equal(t, "bootstrap", upRunner.calls[4][1])
-	assert.Equal(t, "kickstart", upRunner.calls[5][1])
+	// Up runs enable-then-bootout-then-bootstrap-then-kickstart per service on launchd.
+	assert.Len(t, upRunner.calls, 8)
+	assert.Equal(t, "enable", upRunner.calls[0][1])
+	assert.Equal(t, "bootout", upRunner.calls[1][1])
+	assert.Equal(t, "bootstrap", upRunner.calls[2][1])
+	assert.Equal(t, "kickstart", upRunner.calls[3][1])
+	assert.Equal(t, "enable", upRunner.calls[4][1])
+	assert.Equal(t, "bootout", upRunner.calls[5][1])
+	assert.Equal(t, "bootstrap", upRunner.calls[6][1])
+	assert.Equal(t, "kickstart", upRunner.calls[7][1])
 }
 
 func TestUp_launchd_errorsWhenNotInstalled(t *testing.T) {
@@ -101,16 +103,18 @@ func TestRestart_launchd_callsDownThenUp(t *testing.T) {
 	_, err = Restart(context.Background(), LaunchdBackend{Runner: restartRunner}, paths, DefaultServices())
 	require.NoError(t, err)
 
-	// Restart is Down (2 boots-out) + Up (2 * bootout+bootstrap+kickstart) = 8 calls.
-	require.Len(t, restartRunner.calls, 8)
+	// Restart is Down (2 boots-out) + Up (2 * enable+bootout+bootstrap+kickstart) = 10 calls.
+	require.Len(t, restartRunner.calls, 10)
 	assert.Equal(t, "bootout", restartRunner.calls[0][1])
 	assert.Equal(t, "bootout", restartRunner.calls[1][1])
-	assert.Equal(t, "bootout", restartRunner.calls[2][1])
-	assert.Equal(t, "bootstrap", restartRunner.calls[3][1])
-	assert.Equal(t, "kickstart", restartRunner.calls[4][1])
-	assert.Equal(t, "bootout", restartRunner.calls[5][1])
-	assert.Equal(t, "bootstrap", restartRunner.calls[6][1])
-	assert.Equal(t, "kickstart", restartRunner.calls[7][1])
+	assert.Equal(t, "enable", restartRunner.calls[2][1])
+	assert.Equal(t, "bootout", restartRunner.calls[3][1])
+	assert.Equal(t, "bootstrap", restartRunner.calls[4][1])
+	assert.Equal(t, "kickstart", restartRunner.calls[5][1])
+	assert.Equal(t, "enable", restartRunner.calls[6][1])
+	assert.Equal(t, "bootout", restartRunner.calls[7][1])
+	assert.Equal(t, "bootstrap", restartRunner.calls[8][1])
+	assert.Equal(t, "kickstart", restartRunner.calls[9][1])
 }
 
 func TestUp_systemd_startsAllInstalledServices(t *testing.T) {
