@@ -5,8 +5,6 @@
 package paths
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -85,24 +83,11 @@ const (
 	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `xcode-app enable`.
 	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
 
-	// XcodeAppBridgeXCConfigName is the sibling xcconfig written next to a
-	// .xcodeproj by `xcode-app link`. It contains a single `#include` pointing
-	// at the user-global override xcconfig managed by `xcode-app enable`.
-	//
-	// The name is intentionally NOT dot-prefixed — Xcode's base-configuration
-	// file picker hides dotfiles.
-	XcodeAppBridgeXCConfigName = "bitrise-build-cache-xcode.xcconfig"
-
 	// XcodeAppSetenvAgentLabel is the launchd label + plist basename for the xcode-app setenv agent.
 	XcodeAppSetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
 
 	// XcodeAppStateFileName holds the prior XCODE_XCCONFIG_FILE captured at enable time.
 	XcodeAppStateFileName = "xcode-app-state.json"
-
-	// linkedProjectsSubdir sits under XcelerateRoot and holds per-project link-state
-	// JSON files (one per .xcodeproj that `xcode-app link` has touched), so `unlink`
-	// can revert the exact set of xcconfig files it appended trailers to.
-	linkedProjectsSubdir = "linked-projects"
 
 	// xcodeManagedDerivedDataTool is the per-workspace DD root managed by the wrapper.
 	xcodeManagedDerivedDataTool = "xcode-dd"
@@ -250,28 +235,6 @@ func (p Paths) XcodeAppStateFile() string {
 // XcodeAppSetenvAgentPlistFile returns the LaunchAgent plist path for the xcode-app setenv agent.
 func (p Paths) XcodeAppSetenvAgentPlistFile() string {
 	return p.PlistPath(XcodeAppSetenvAgentLabel)
-}
-
-// LinkedProjectsDir returns ~/.bitrise-xcelerate/linked-projects.
-func (p Paths) LinkedProjectsDir() string {
-	return filepath.Join(p.XcelerateRoot(), linkedProjectsSubdir)
-}
-
-// LinkedProjectStateFilename returns just the "<hex>.state.json" basename for
-// a project path. Same input → same filename; different absolute paths hash to
-// distinct files so two projects sharing a basename stay isolated.
-// Kept separate from LinkedProjectStateFile so callers (e.g. the xcode_app
-// package's own in-memory tests) can derive filenames without a Paths root.
-func LinkedProjectStateFilename(projectPath string) string {
-	sum := sha256.Sum256([]byte(projectPath))
-
-	return hex.EncodeToString(sum[:8]) + ".state.json"
-}
-
-// LinkedProjectStateFile returns the state file path for a project, joining
-// LinkedProjectStateFilename onto LinkedProjectsDir.
-func (p Paths) LinkedProjectStateFile(projectPath string) string {
-	return filepath.Join(p.LinkedProjectsDir(), LinkedProjectStateFilename(projectPath))
 }
 
 // XcelerateBinDir returns ~/.bitrise-xcelerate/bin.

@@ -81,7 +81,12 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 		logger.Infof("Preserving prior XCODE_XCCONFIG_FILE override: %s", previous)
 	}
 
-	body, err := xa.RenderOverride(cfg.ProxySocketPath, previous)
+	homeDir, err := osProxy.UserHomeDir()
+	if err != nil {
+		return EnableResult{}, fmt.Errorf("resolve user home dir: %w", err)
+	}
+
+	body, err := xa.RenderOverride(cfg.ProxySocketPath, previous, homeDir)
 	if err != nil {
 		return EnableResult{}, fmt.Errorf("render override xcconfig: %w", err)
 	}
