@@ -61,6 +61,11 @@ var enableCmd = &cobra.Command{
 			logger.Infof("Next launch of Xcode will pick up the override.")
 		}
 
+		logger.Infof("")
+		logger.Infof("If you're on macOS 26+ and use GUI-launched Xcode.app, launchctl setenv does NOT propagate — also run")
+		logger.Infof("  bitrise-build-cache xcode-app link <path/to/YourApp.xcodeproj>")
+		logger.Infof("per project, then set the emitted bridge xcconfig as the base configuration in Xcode.")
+
 		return nil
 	},
 }
