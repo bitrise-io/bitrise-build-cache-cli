@@ -142,11 +142,9 @@ TBD`,
 			disabledBy = append(disabledBy, CreateXCFrameworkFlag)
 		}
 
-		// Preview xcodeArgs with a nil logger so we can decide whether this is a
-		// query invocation (no build action). Query invocations short-circuit
-		// before creating the per-invocation log file or spawning the proxy.
-		previewXcodeArgs := xcodeargs.NewDefault(cobraCmd, xcelerateParams.OrigArgs, log.NewLogger())
-		isBuildAction := previewXcodeArgs.HasBuildAction()
+		// Query invocations short-circuit before creating the per-invocation log
+		// file or spawning the proxy.
+		isBuildAction := xcodeargs.HasBuildAction(xcelerateParams.OrigArgs)
 
 		var (
 			logFileWC io.WriteCloser

@@ -128,24 +128,24 @@ func (p Default) Command() string {
 // HasBuildAction reports whether argv triggers a real xcodebuild build. An
 // explicit build-action keyword wins; otherwise argv is a build unless a
 // query-only action (-list, -version, -showBuildSettings, ...) is present.
-func (p Default) HasBuildAction() bool {
-	for _, arg := range p.OriginalArgs {
-		for _, a := range buildActions {
-			if arg == a {
-				return true
-			}
+func HasBuildAction(argv []string) bool {
+	for _, arg := range argv {
+		if slices.Contains(buildActions, arg) {
+			return true
 		}
 	}
 
-	for _, arg := range p.OriginalArgs {
-		for _, q := range queryActions {
-			if arg == q {
-				return false
-			}
+	for _, arg := range argv {
+		if slices.Contains(queryActions, arg) {
+			return false
 		}
 	}
 
 	return true
+}
+
+func (p Default) HasBuildAction() bool {
+	return HasBuildAction(p.OriginalArgs)
 }
 
 func (p Default) ShortCommand() string {
