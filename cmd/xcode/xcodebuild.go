@@ -378,12 +378,6 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	hitRate := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
-	if !shouldSaveInvocation(c.XcodeArgs) {
-		c.Logger.TDebugf("Save invocation skipped")
-
-		return runStats
-	}
-
 	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
@@ -641,15 +635,6 @@ func resolveBenchmarkPhase(logger log.Logger) string {
 	return ""
 }
 
-func shouldSaveInvocation(xcodeArgs xcodeargs.XcodeArgs) bool {
-	// nolint: staticcheck
-	if xcodeArgs.Command() == "-version" {
-		return false
-	}
-
-	return true
-}
-
 // createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
 // connection, it returns nil.
 func createProxySessionClient(config xcelerate.Config, logger log.Logger) (session.SessionClient, func()) {
@@ -792,13 +777,13 @@ func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, pr
 }
 
 func (c *XcodebuildRunner) logPrefixMapSources(ps xcodeargs.PrefixMapPaths, s prefixMapSources) {
-	c.Logger.Debugf(
-		"Prefix map: home=%s (%s), projectDir=%s (%s), derivedDataPath=%s (%s), projectTempDir=%s (%s)",
+	c.Logger.Debugf("Prefix map: %s", fmt.Sprintf(
+		"home=%s (%s), projectDir=%s (%s), derivedDataPath=%s (%s), projectTempDir=%s (%s)",
 		ps.Home, s.Home,
 		ps.ProjectDir, s.ProjectDir,
 		ps.DerivedDataPath, s.DerivedDataPath,
 		ps.ProjectTempDir, s.ProjectTempDir,
-	)
+	))
 }
 
 func (c *XcodebuildRunner) resolvePaths() paths.Paths {
