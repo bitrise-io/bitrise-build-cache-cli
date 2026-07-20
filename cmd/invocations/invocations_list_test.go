@@ -144,16 +144,45 @@ func TestList_tableRendersMissingHitRateAsDash(t *testing.T) {
 	buf := runList(t, p, sourceLocal, false)
 	lines := strings.Split(buf.String(), "\n")
 
-	var failedRow string
+	var failedFields []string
 	for _, ln := range lines {
 		if strings.Contains(ln, "loc-fail") {
-			failedRow = ln
+			for _, field := range strings.Split(ln, "  ") {
+				trimmed := strings.TrimSpace(field)
+				if trimmed != "" {
+					failedFields = append(failedFields, trimmed)
+				}
+			}
 
 			break
 		}
 	}
-	require.NotEmpty(t, failedRow, "expected a row for loc-fail")
-	assert.Contains(t, failedRow, "-")
+	require.NotEmpty(t, failedFields, "expected a row for loc-fail")
+	assert.Contains(t, failedFields, "-", "hit rate column should render as '-' when unset")
+	assert.Contains(t, failedFields, "failed")
+}
+
+func TestList_endToEndViaRunE(t *testing.T) {
+	p := seedRecords(t)
+
+	t.Setenv("HOME", p.Home)
+
+	prev := listFlags
+	listFlags.limit = 10
+	listFlags.source = sourceLocal
+	listFlags.json = true
+
+	t.Cleanup(func() { listFlags = prev })
+
+	buf := &bytes.Buffer{}
+	listCmd.SetOut(buf)
+	listCmd.SetErr(buf)
+
+	require.NoError(t, listCmd.RunE(listCmd, nil))
+
+	var got []invpkg.Record
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	assert.Len(t, got, 2, "should include both local records via paths.Default() resolution")
 }
 
 func TestMatcherFor_rejectsUnknownSource(t *testing.T) {

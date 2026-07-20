@@ -164,13 +164,13 @@ func (r *Reader) RecentMatching(n int, match func(Record) bool) ([]Record, error
 		}
 
 		if match != nil {
-			filtered := recs[:0]
+			kept := make([]Record, 0, len(recs))
 			for _, rec := range recs {
 				if match(rec) {
-					filtered = append(filtered, rec)
+					kept = append(kept, rec)
 				}
 			}
-			recs = filtered
+			recs = kept
 		}
 
 		out = append(recs, out...)

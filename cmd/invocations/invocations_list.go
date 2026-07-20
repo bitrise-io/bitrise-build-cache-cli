@@ -98,13 +98,29 @@ func writeTable(out io.Writer, records []invpkg.Record) error {
 	}
 
 	for _, rec := range records {
+		duration := "-"
+		if !rec.FinishedAt.IsZero() {
+			duration = rec.FinishedAt.Sub(rec.StartedAt).Round(time.Second).String()
+		}
+
+		// hit_rate is omitted when zero — cannot distinguish unset from a real 0%
+		hitRate := "-"
+		if rec.HitRate > 0 {
+			hitRate = fmt.Sprintf("%.0f%%", rec.HitRate*100)
+		}
+
+		status := "success"
+		if rec.ExitCode != 0 {
+			status = "failed"
+		}
+
 		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			rec.InvocationID,
 			rec.Tool,
 			rec.Command,
-			formatDuration(rec),
-			formatHitRate(rec.HitRate),
-			formatStatus(rec.ExitCode),
+			duration,
+			hitRate,
+			status,
 			rec.StartedAt.Format(time.RFC3339),
 		); err != nil {
 			return fmt.Errorf("write row: %w", err)
@@ -116,30 +132,6 @@ func writeTable(out io.Writer, records []invpkg.Record) error {
 	}
 
 	return nil
-}
-
-func formatDuration(rec invpkg.Record) string {
-	if rec.FinishedAt.IsZero() {
-		return "-"
-	}
-
-	return rec.FinishedAt.Sub(rec.StartedAt).Round(time.Second).String()
-}
-
-func formatHitRate(hr float32) string {
-	if hr == 0 {
-		return "-"
-	}
-
-	return fmt.Sprintf("%.0f%%", hr*100)
-}
-
-func formatStatus(exitCode int) string {
-	if exitCode == 0 {
-		return "success"
-	}
-
-	return "failed"
 }
 
 //nolint:gochecknoinits

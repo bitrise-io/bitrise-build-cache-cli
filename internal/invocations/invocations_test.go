@@ -224,6 +224,31 @@ func TestReader_RecentMatching_respectsLimitAfterFilter(t *testing.T) {
 	assert.Equal(t, []string{"d", "e"}, ids)
 }
 
+func TestReader_RecentMatching_crossFileNewestWins(t *testing.T) {
+	day1 := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+	day2 := time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC)
+
+	w, p := newTestWriter(t, day1)
+	require.NoError(t, w.Append(Record{InvocationID: "d1-local-1"}))
+	require.NoError(t, w.Append(Record{InvocationID: "d1-local-2"}))
+	require.NoError(t, w.Append(Record{InvocationID: "d1-local-3"}))
+
+	w.Clock = func() time.Time { return day2 }
+	require.NoError(t, w.Append(Record{InvocationID: "d2-local-1"}))
+	require.NoError(t, w.Append(Record{InvocationID: "d2-ci", CIProvider: "bitrise"}))
+
+	r := NewReader(p)
+
+	got, err := r.RecentMatching(3, func(rec Record) bool { return rec.IsLocal() })
+	require.NoError(t, err)
+
+	ids := make([]string, len(got))
+	for i, rec := range got {
+		ids[i] = rec.InvocationID
+	}
+	assert.Equal(t, []string{"d1-local-2", "d1-local-3", "d2-local-1"}, ids)
+}
+
 func TestSweep_deletesOldFiles(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
