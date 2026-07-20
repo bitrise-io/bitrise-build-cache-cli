@@ -10,6 +10,7 @@ import (
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/doctor"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/file"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
+	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/invocations"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/reactnative"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/update"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
