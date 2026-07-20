@@ -26,7 +26,7 @@ func seedRecords(t *testing.T) paths.Paths {
 	w.Clock = func() time.Time { return day }
 
 	require.NoError(t, w.Append(invpkg.Record{
-		InvocationID: "loc-1",
+		InvocationID: "inv-1",
 		Command:      "xcodebuild build",
 		Tool:         invpkg.ToolXcode,
 		CLIVersion:   "v3.0.0",
@@ -36,7 +36,7 @@ func seedRecords(t *testing.T) paths.Paths {
 		HitRate:      0.5,
 	}))
 	require.NoError(t, w.Append(invpkg.Record{
-		InvocationID: "loc-fail",
+		InvocationID: "inv-fail",
 		Command:      "xcodebuild test",
 		Tool:         invpkg.ToolXcode,
 		CLIVersion:   "v3.0.0",
@@ -44,36 +44,21 @@ func seedRecords(t *testing.T) paths.Paths {
 		FinishedAt:   day.Add(time.Minute + 10*time.Second),
 		ExitCode:     65,
 	}))
-	require.NoError(t, w.Append(invpkg.Record{
-		InvocationID: "ci-1",
-		Command:      "xcodebuild build",
-		Tool:         invpkg.ToolXcode,
-		CLIVersion:   "v3.0.0",
-		StartedAt:    day.Add(2 * time.Minute),
-		FinishedAt:   day.Add(2*time.Minute + 20*time.Second),
-		ExitCode:     0,
-		CIProvider:   "bitrise",
-		HitRate:      0.9,
-	}))
 
 	return p
 }
 
-func runList(t *testing.T, p paths.Paths, source string, jsonOut bool) *bytes.Buffer {
+func runList(t *testing.T, p paths.Paths, jsonOut bool) *bytes.Buffer {
 	t.Helper()
 
 	buf := &bytes.Buffer{}
 	prev := listFlags
 	listFlags.limit = 10
-	listFlags.source = source
 	listFlags.json = jsonOut
 
 	t.Cleanup(func() { listFlags = prev })
 
-	match, err := matcherFor(source)
-	require.NoError(t, err)
-
-	records, err := invpkg.NewReader(p).RecentMatching(listFlags.limit, match)
+	records, err := invpkg.NewReader(p).Recent(listFlags.limit)
 	require.NoError(t, err)
 
 	if jsonOut {
@@ -85,68 +70,38 @@ func runList(t *testing.T, p paths.Paths, source string, jsonOut bool) *bytes.Bu
 	return buf
 }
 
-func TestList_defaultSourceIsLocal(t *testing.T) {
+func TestList_tableIncludesAllRecords(t *testing.T) {
 	p := seedRecords(t)
 
-	buf := runList(t, p, sourceLocal, false)
-	out := buf.String()
+	out := runList(t, p, false).String()
 
-	assert.Contains(t, out, "loc-1")
-	assert.Contains(t, out, "loc-fail")
-	assert.NotContains(t, out, "ci-1")
+	assert.Contains(t, out, "inv-1")
+	assert.Contains(t, out, "inv-fail")
 	assert.Contains(t, out, "50%")
 	assert.Contains(t, out, "success")
 	assert.Contains(t, out, "failed")
 }
 
-func TestList_sourceCIOnlyReturnsCIRecords(t *testing.T) {
-	p := seedRecords(t)
-
-	buf := runList(t, p, sourceCI, false)
-	out := buf.String()
-
-	assert.Contains(t, out, "ci-1")
-	assert.NotContains(t, out, "loc-1")
-	assert.Contains(t, out, "90%")
-}
-
-func TestList_sourceAllReturnsBoth(t *testing.T) {
-	p := seedRecords(t)
-
-	buf := runList(t, p, sourceAll, false)
-	out := buf.String()
-
-	assert.Contains(t, out, "loc-1")
-	assert.Contains(t, out, "loc-fail")
-	assert.Contains(t, out, "ci-1")
-}
-
 func TestList_jsonOutputRoundtrips(t *testing.T) {
 	p := seedRecords(t)
 
-	buf := runList(t, p, sourceAll, true)
-
 	var got []invpkg.Record
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-	assert.Len(t, got, 3)
+	require.NoError(t, json.Unmarshal(runList(t, p, true).Bytes(), &got))
+	assert.Len(t, got, 2)
 }
 
 func TestList_jsonEmptyIsEmptyArray(t *testing.T) {
-	p := paths.FromHome(t.TempDir())
-
-	buf := runList(t, p, sourceLocal, true)
-	assert.Equal(t, "[]\n", buf.String())
+	assert.Equal(t, "[]\n", runList(t, paths.FromHome(t.TempDir()), true).String())
 }
 
 func TestList_tableRendersMissingHitRateAsDash(t *testing.T) {
 	p := seedRecords(t)
 
-	buf := runList(t, p, sourceLocal, false)
-	lines := strings.Split(buf.String(), "\n")
+	lines := strings.Split(runList(t, p, false).String(), "\n")
 
 	var failedFields []string
 	for _, ln := range lines {
-		if strings.Contains(ln, "loc-fail") {
+		if strings.Contains(ln, "inv-fail") {
 			for _, field := range strings.Split(ln, "  ") {
 				trimmed := strings.TrimSpace(field)
 				if trimmed != "" {
@@ -157,7 +112,7 @@ func TestList_tableRendersMissingHitRateAsDash(t *testing.T) {
 			break
 		}
 	}
-	require.NotEmpty(t, failedFields, "expected a row for loc-fail")
+	require.NotEmpty(t, failedFields, "expected a row for inv-fail")
 	assert.Contains(t, failedFields, "-", "hit rate column should render as '-' when unset")
 	assert.Contains(t, failedFields, "failed")
 }
@@ -169,7 +124,6 @@ func TestList_endToEndViaRunE(t *testing.T) {
 
 	prev := listFlags
 	listFlags.limit = 10
-	listFlags.source = sourceLocal
 	listFlags.json = true
 
 	t.Cleanup(func() { listFlags = prev })
@@ -182,11 +136,5 @@ func TestList_endToEndViaRunE(t *testing.T) {
 
 	var got []invpkg.Record
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-	assert.Len(t, got, 2, "should include both local records via paths.Default() resolution")
-}
-
-func TestMatcherFor_rejectsUnknownSource(t *testing.T) {
-	_, err := matcherFor("bogus")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bogus")
+	assert.Len(t, got, 2, "paths.Default() should resolve to the seeded HOME")
 }

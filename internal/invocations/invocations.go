@@ -141,12 +141,6 @@ func NewReader(p paths.Paths) *Reader {
 }
 
 func (r *Reader) Recent(n int) ([]Record, error) {
-	return r.RecentMatching(n, nil)
-}
-
-// RecentMatching returns up to n most-recent records where match(r) is true.
-// A nil match includes every record.
-func (r *Reader) RecentMatching(n int, match func(Record) bool) ([]Record, error) {
 	if n <= 0 {
 		return nil, nil
 	}
@@ -162,17 +156,6 @@ func (r *Reader) RecentMatching(n int, match func(Record) bool) ([]Record, error
 		if err != nil {
 			return nil, err
 		}
-
-		if match != nil {
-			kept := make([]Record, 0, len(recs))
-			for _, rec := range recs {
-				if match(rec) {
-					kept = append(kept, rec)
-				}
-			}
-			recs = kept
-		}
-
 		out = append(recs, out...)
 
 		if len(out) >= n {
