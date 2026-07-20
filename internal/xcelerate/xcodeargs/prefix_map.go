@@ -12,6 +12,16 @@ import (
 // silently drop whatever OTHER_CFLAGS the user's project already had.
 const inheritedMarker = "$(inherited)"
 
+// bitriseVirtualPathPrefix marks a prefix-map rule as wrapper-injected. Any
+// -fdepscan-prefix-map=<abs>=<virtual> token whose <virtual> starts with this
+// prefix is one we (or a parent xcodebuild wrapper invocation) added, and
+// must be dropped before splicing the fresh suffix — otherwise nested /
+// recursive xcodebuild invocations accumulate stale rules with ambiguous
+// precedence.
+const bitriseVirtualPathPrefix = "/^"
+
+const prefixMapFlag = "-fdepscan-prefix-map="
+
 // Build-setting keys and derivedDataPath flag literal used by the wrapper
 // when injecting prefix-map rules.
 const (
@@ -66,7 +76,7 @@ func BuildOtherCFlagsValue(p PrefixMapPaths) string {
 // non-empty suffix still emits $(inherited) so the target/xcconfig chain is
 // not lost.
 func MergeOtherCFlagsValue(userValue, suffix string) string {
-	userTokens := stripInherited(strings.Fields(userValue))
+	userTokens := stripInheritedAndBitriseInjected(strings.Fields(userValue))
 	suffixTrimmed := strings.TrimSpace(suffix)
 
 	if len(userTokens) == 0 && suffixTrimmed == "" {
@@ -82,16 +92,36 @@ func MergeOtherCFlagsValue(userValue, suffix string) string {
 	return strings.Join(parts, " ")
 }
 
-func stripInherited(tokens []string) []string {
+func stripInheritedAndBitriseInjected(tokens []string) []string {
 	out := make([]string, 0, len(tokens))
 	for _, t := range tokens {
 		if t == inheritedMarker {
+			continue
+		}
+		if isBitrisePrefixMapRule(t) {
 			continue
 		}
 		out = append(out, t)
 	}
 
 	return out
+}
+
+// isBitrisePrefixMapRule reports whether an OTHER_CFLAGS token is a
+// wrapper-injected prefix-map rule. Matches -fdepscan-prefix-map=<abs>=<virt>
+// where <virt> begins with bitriseVirtualPathPrefix ("/^"). User-authored
+// prefix-map rules with different virtual namespaces are preserved.
+func isBitrisePrefixMapRule(token string) bool {
+	rest, ok := strings.CutPrefix(token, prefixMapFlag)
+	if !ok {
+		return false
+	}
+	_, virtual, ok := strings.Cut(rest, "=")
+	if !ok {
+		return false
+	}
+
+	return strings.HasPrefix(virtual, bitriseVirtualPathPrefix)
 }
 
 // DerivedDataPath returns the last -derivedDataPath value from OriginalArgs,

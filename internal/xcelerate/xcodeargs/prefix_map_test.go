@@ -174,6 +174,18 @@ func TestMergeOtherCFlagsValue(t *testing.T) {
 			"",
 			"$(inherited) -Werror",
 		},
+		{
+			"prior Bitrise-injected prefix-map rules stripped before splicing suffix",
+			"$(inherited) -Werror -fdepscan-prefix-map=/old/src=/^src -fdepscan-prefix-map=/old/dd=/^dd",
+			"-fdepscan-prefix-map=/new/src=/^src -fdepscan-prefix-map=/new/dd=/^dd",
+			"$(inherited) -Werror -fdepscan-prefix-map=/new/src=/^src -fdepscan-prefix-map=/new/dd=/^dd",
+		},
+		{
+			"user-authored prefix-map rules (non-Bitrise virtual namespace) preserved",
+			"$(inherited) -fdepscan-prefix-map=/some/abs=/user/virt",
+			"-fdepscan-prefix-map=/new/src=/^src",
+			"$(inherited) -fdepscan-prefix-map=/some/abs=/user/virt -fdepscan-prefix-map=/new/src=/^src",
+		},
 	}
 
 	for _, c := range cases {
