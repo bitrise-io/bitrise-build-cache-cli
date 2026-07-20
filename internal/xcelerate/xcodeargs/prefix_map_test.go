@@ -114,7 +114,6 @@ func TestDefault_ProjectDir(t *testing.T) {
 		argv []string
 		want string
 	}{
-		{"absent → empty", []string{"build"}, ""},
 		{
 			"-project flag → parent dir",
 			[]string{"-project", "/work/app/App.xcodeproj"},
@@ -209,6 +208,15 @@ func TestDefault_UserOtherCFlags(t *testing.T) {
 			assert.Equal(t, c.want, d.UserOtherCFlags())
 		})
 	}
+}
+
+func TestDefault_ProjectDir_neitherFlagFallsBackToCwd(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+
+	d := xcodeargs.Default{OriginalArgs: []string{"build"}}
+
+	assert.Equal(t, tmp, d.ProjectDir(), "no -project/-workspace: xcodebuild auto-discovers in CWD, so CWD is the project dir")
 }
 
 func TestDefault_ProjectDir_relativeWorkspaceResolvesToAbs(t *testing.T) {

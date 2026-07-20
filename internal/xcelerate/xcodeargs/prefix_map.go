@@ -2,6 +2,7 @@ package xcodeargs
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -118,10 +119,12 @@ func (p Default) ProjectTempDir() string {
 }
 
 // ProjectDir returns the parent directory of the -project or -workspace value
-// on OriginalArgs. -project wins when both are present. Missing → empty.
-// Relative -project/-workspace values are resolved against the current working
-// directory before taking the parent — a bare `App.xcworkspace` would otherwise
-// give `.`, which clang rejects as a -fdepscan-prefix-map= input.
+// on OriginalArgs. -project wins when both are present. When neither flag is
+// present xcodebuild auto-discovers a single .xcworkspace/.xcodeproj in CWD,
+// so CWD is the project dir. Relative -project/-workspace values are resolved
+// against the current working directory before taking the parent — a bare
+// `App.xcworkspace` would otherwise give `.`, which clang rejects as a
+// -fdepscan-prefix-map= input.
 func (p Default) ProjectDir() string {
 	if v := findLastFlagValue(p.OriginalArgs, "project"); v != "" {
 		return absOrEmpty(filepath.Dir(v))
@@ -130,7 +133,12 @@ func (p Default) ProjectDir() string {
 		return absOrEmpty(filepath.Dir(v))
 	}
 
-	return ""
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	return absOrEmpty(cwd)
 }
 
 // absOrEmpty resolves a possibly-relative path to an absolute one against the
