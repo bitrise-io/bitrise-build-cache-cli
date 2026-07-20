@@ -32,7 +32,7 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 	Long:         `Restore the contents of the Gradle configuration cache folder (used by Gradle to store task graph produced by the configuration phase) from Bitrise Build Cache.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		common.LogCurrentUserInfo(logger)
 

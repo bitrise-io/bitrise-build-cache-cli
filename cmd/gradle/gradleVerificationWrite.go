@@ -42,7 +42,7 @@ Missing dependencies of Bitrise build cache are appended.
 `,
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		logger.TInfof("Adding Gradle verification dependencies")
 

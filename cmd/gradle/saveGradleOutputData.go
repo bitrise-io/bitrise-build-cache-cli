@@ -23,7 +23,7 @@ var saveGradleOutputDataCmd = &cobra.Command{ //nolint:gochecknoglobals
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Save Gradle output data to cache, for running diagnostics builds")
 

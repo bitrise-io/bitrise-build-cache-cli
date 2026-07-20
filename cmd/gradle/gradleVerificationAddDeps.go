@@ -24,7 +24,7 @@ This command will:
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		//
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Add Bitrise Build Cache for Gradle plugins")
 		//
