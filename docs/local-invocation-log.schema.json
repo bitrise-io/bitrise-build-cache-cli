@@ -22,6 +22,7 @@
     "finished_at":   { "type": "string", "format": "date-time" },
     "exit_code":     { "type": "integer" },
     "ci_provider":   { "type": "string" },
-    "username":      { "type": "string" }
+    "username":      { "type": "string" },
+    "hit_rate":      { "type": "number", "minimum": 0, "maximum": 1 }
   }
 }

@@ -38,6 +38,7 @@ type Record struct {
 	ExitCode     int       `json:"exit_code"`
 	CIProvider   string    `json:"ci_provider,omitempty"`
 	Username     string    `json:"username,omitempty"`
+	HitRate      float32   `json:"hit_rate,omitempty"`
 }
 
 // IsLocal reports whether the record was produced outside a known CI provider.
@@ -140,6 +141,12 @@ func NewReader(p paths.Paths) *Reader {
 }
 
 func (r *Reader) Recent(n int) ([]Record, error) {
+	return r.RecentMatching(n, nil)
+}
+
+// RecentMatching returns up to n most-recent records where match(r) is true.
+// A nil match includes every record.
+func (r *Reader) RecentMatching(n int, match func(Record) bool) ([]Record, error) {
 	if n <= 0 {
 		return nil, nil
 	}
@@ -155,6 +162,17 @@ func (r *Reader) Recent(n int) ([]Record, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		if match != nil {
+			filtered := recs[:0]
+			for _, rec := range recs {
+				if match(rec) {
+					filtered = append(filtered, rec)
+				}
+			}
+			recs = filtered
+		}
+
 		out = append(recs, out...)
 
 		if len(out) >= n {

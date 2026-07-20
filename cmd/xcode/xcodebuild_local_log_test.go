@@ -36,6 +36,7 @@ func runnerForLocalLogTest(t *testing.T, runStats xcodeargs.RunStats, ciProvider
 		logMock.On(name, mock.Anything).Return()
 		logMock.On(name, mock.Anything, mock.Anything).Return()
 		logMock.On(name, mock.Anything, mock.Anything, mock.Anything).Return()
+		logMock.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	}
 
 	xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
@@ -72,6 +73,7 @@ func TestXcodebuildRunner_appendLocalInvocationLog_writesRecord(t *testing.T) {
 		Success:          true,
 		XcodeVersion:     "16.0",
 		XcodeBuildNumber: "16A123",
+		CacheStats:       xcodeargs.CompCacheStats{Hits: 3, TotalTasks: 4},
 	}
 
 	sut, logger := runnerForLocalLogTest(t, runStats, "")
@@ -91,6 +93,7 @@ func TestXcodebuildRunner_appendLocalInvocationLog_writesRecord(t *testing.T) {
 	assert.Equal(t, 0, got.ExitCode)
 	assert.Empty(t, got.CIProvider)
 	assert.True(t, got.IsLocal())
+	assert.InDelta(t, 0.75, got.HitRate, 0.001)
 }
 
 func TestXcodebuildRunner_appendLocalInvocationLog_recordsCIProvider(t *testing.T) {

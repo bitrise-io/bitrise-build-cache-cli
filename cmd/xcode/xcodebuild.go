@@ -369,6 +369,7 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		ExitCode:     runStats.ExitCode,
 		CIProvider:   c.Metadata.CIProvider,
 		Username:     inv.Username,
+		HitRate:      inv.HitRate,
 	}
 
 	if err := logger.Append(rec); err != nil {

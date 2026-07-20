@@ -171,6 +171,59 @@ func TestReader_Recent_emptyDir(t *testing.T) {
 	assert.Empty(t, recs)
 }
 
+func TestReader_RecentMatching_filtersBySource(t *testing.T) {
+	day := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+
+	w, p := newTestWriter(t, day)
+	require.NoError(t, w.Append(Record{InvocationID: "local-1"}))
+	require.NoError(t, w.Append(Record{InvocationID: "ci-1", CIProvider: "bitrise"}))
+	require.NoError(t, w.Append(Record{InvocationID: "local-2"}))
+	require.NoError(t, w.Append(Record{InvocationID: "ci-2", CIProvider: "github"}))
+
+	r := NewReader(p)
+
+	localOnly, err := r.RecentMatching(10, func(rec Record) bool { return rec.IsLocal() })
+	require.NoError(t, err)
+	ids := make([]string, len(localOnly))
+	for i, rec := range localOnly {
+		ids[i] = rec.InvocationID
+	}
+	assert.Equal(t, []string{"local-1", "local-2"}, ids)
+
+	ciOnly, err := r.RecentMatching(10, func(rec Record) bool { return !rec.IsLocal() })
+	require.NoError(t, err)
+	ids = ids[:0]
+	for _, rec := range ciOnly {
+		ids = append(ids, rec.InvocationID)
+	}
+	assert.Equal(t, []string{"ci-1", "ci-2"}, ids)
+
+	all, err := r.RecentMatching(10, nil)
+	require.NoError(t, err)
+	assert.Len(t, all, 4)
+}
+
+func TestReader_RecentMatching_respectsLimitAfterFilter(t *testing.T) {
+	day := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+
+	w, p := newTestWriter(t, day)
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		require.NoError(t, w.Append(Record{InvocationID: id}))
+	}
+	require.NoError(t, w.Append(Record{InvocationID: "ci", CIProvider: "bitrise"}))
+
+	r := NewReader(p)
+
+	got, err := r.RecentMatching(2, func(rec Record) bool { return rec.IsLocal() })
+	require.NoError(t, err)
+
+	ids := make([]string, len(got))
+	for i, rec := range got {
+		ids[i] = rec.InvocationID
+	}
+	assert.Equal(t, []string{"d", "e"}, ids)
+}
+
 func TestSweep_deletesOldFiles(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
@@ -219,6 +272,7 @@ func TestRecord_jsonRoundtrip(t *testing.T) {
 		ExitCode:     0,
 		CIProvider:   "bitrise",
 		Username:     "bob",
+		HitRate:      0.75,
 	}
 
 	b, err := json.Marshal(rec)
@@ -235,6 +289,14 @@ func TestRecord_finishedAtOmittedWhenZero(t *testing.T) {
 	b, err := json.Marshal(rec)
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), "finished_at", "zero FinishedAt should be omitted via omitzero")
+}
+
+func TestRecord_hitRateOmittedWhenZero(t *testing.T) {
+	rec := Record{InvocationID: "i", StartedAt: time.Now().UTC()}
+
+	b, err := json.Marshal(rec)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "hit_rate", "zero HitRate should be omitted so canonical fixtures stay byte-identical")
 }
 
 func TestSweep_emptyDirIsNoop(t *testing.T) {

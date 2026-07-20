@@ -29,6 +29,7 @@ One JSON object per line. UTF-8, LF-terminated. Records ≤ 4 KiB land atomicall
 | `exit_code` | int | yes | Real exit code where available; 0 = success. |
 | `ci_provider` | string | no | Detected CI provider id (e.g. `bitrise`); empty/omitted ⇒ local run. |
 | `username` | string | no | Resolved local-invocation display name (env → keychain → config file → OS username). |
+| `hit_rate` | number ∈ [0, 1] | no | Cache hit rate for the invocation. Omitted when zero / unknown — readers cannot distinguish "no hit" from "not reported". |
 
 Unknown fields are ignored by readers — additive schema changes are backward compatible.
 
