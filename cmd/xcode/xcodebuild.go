@@ -721,8 +721,14 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	return append(toPass, extraArgv...)
 }
 
+const (
+	prefixMapSourceArgv    = "argv"
+	prefixMapSourceManaged = "managed"
+	prefixMapSourceAuto    = "auto"
+)
+
 // prefixMapSources records where each path in PrefixMapPaths came from so the
-// wrapper can log an origin trail. Values: "argv", "managed", "auto", "".
+// wrapper can log an origin trail. Values: argv, managed, auto, or "".
 type prefixMapSources struct {
 	Home            string
 	ProjectDir      string
@@ -740,35 +746,22 @@ func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, pr
 
 	sources := prefixMapSources{}
 	if home != "" {
-		sources.Home = "auto"
+		sources.Home = prefixMapSourceAuto
 	}
 	if projectDir != "" {
-		sources.ProjectDir = "argv"
+		sources.ProjectDir = prefixMapSourceArgv
 	}
 
 	dd := c.XcodeArgs.DerivedDataPath()
 	ptd := c.XcodeArgs.ProjectTempDir()
 	if dd != "" {
-		sources.DerivedDataPath = "argv"
+		sources.DerivedDataPath = prefixMapSourceArgv
 	}
 	if ptd != "" {
-		sources.ProjectTempDir = "argv"
+		sources.ProjectTempDir = prefixMapSourceArgv
 	}
 
-	if !c.NoManagedDD && projectDir != "" {
-		sha := workspaceSHA(projectDir)
-		p := c.resolvePaths()
-		if p.Home != "" {
-			if dd == "" {
-				dd = p.XcodeManagedDerivedDataDir(sha)
-				sources.DerivedDataPath = "managed"
-			}
-			if ptd == "" {
-				ptd = p.XcodeManagedProjectTempDir(sha)
-				sources.ProjectTempDir = "managed"
-			}
-		}
-	}
+	c.fillManagedPrefixMapPaths(projectDir, &dd, &ptd, &sources)
 
 	return xcodeargs.PrefixMapPaths{
 		Home:            home,
@@ -776,6 +769,30 @@ func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, pr
 		DerivedDataPath: dd,
 		ProjectTempDir:  ptd,
 	}, sources
+}
+
+// fillManagedPrefixMapPaths populates dd/ptd with wrapper-owned paths under
+// ~/.bitrise/cache/xcode-{dd,ptd}/<sha> when the user did not supply them and
+// managed fallback is enabled. No-op when NoManagedDD, when projectDir is
+// unknown, or when paths.Default() cannot resolve $HOME.
+func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd *string, sources *prefixMapSources) {
+	if c.NoManagedDD || projectDir == "" {
+		return
+	}
+	p := c.resolvePaths()
+	if p.Home == "" {
+		return
+	}
+
+	sha := workspaceSHA(projectDir)
+	if *dd == "" {
+		*dd = p.XcodeManagedDerivedDataDir(sha)
+		sources.DerivedDataPath = prefixMapSourceManaged
+	}
+	if *ptd == "" {
+		*ptd = p.XcodeManagedProjectTempDir(sha)
+		sources.ProjectTempDir = prefixMapSourceManaged
+	}
 }
 
 func (c *XcodebuildRunner) logPrefixMapSources(ps xcodeargs.PrefixMapPaths, s prefixMapSources) {

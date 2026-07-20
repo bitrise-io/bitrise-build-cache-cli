@@ -146,10 +146,10 @@ func Test_XcodebuildRunner_resolvePrefixMapPaths_sourcesTracked(t *testing.T) {
 
 	_, sources := r.resolvePrefixMapPaths()
 
-	assert.Equal(t, "auto", sources.Home)
-	assert.Equal(t, "argv", sources.ProjectDir)
-	assert.Equal(t, "argv", sources.DerivedDataPath, "user-supplied DD wins as argv")
-	assert.Equal(t, "managed", sources.ProjectTempDir, "blank PTD falls to managed")
+	assert.Equal(t, prefixMapSourceAuto, sources.Home)
+	assert.Equal(t, prefixMapSourceArgv, sources.ProjectDir)
+	assert.Equal(t, prefixMapSourceArgv, sources.DerivedDataPath, "user-supplied DD wins as argv")
+	assert.Equal(t, prefixMapSourceManaged, sources.ProjectTempDir, "blank PTD falls to managed")
 }
 
 func Test_XcodebuildRunner_resolvePaths_returnsInjectedPathsWhenSet(t *testing.T) {
