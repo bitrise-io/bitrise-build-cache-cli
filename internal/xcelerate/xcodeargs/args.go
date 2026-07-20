@@ -2,6 +2,7 @@
 package xcodeargs
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -31,32 +32,6 @@ var CacheArgs = map[string]string{
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
 	"COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES":  "swift c c++ objective-c objective-c++",
-}
-
-var actions = []string{
-	"build",
-	"build-for-testing",
-	"analyze",
-	"archive",
-	"test",
-	"test-without-building",
-	"docbuild",
-	"installsrc",
-	"installhdrs",
-	"install",
-	"clean",
-	"-showsdks",
-	"-showBuildSettings",
-	"-showdestinations",
-	"-showTestPlans",
-	"-version",
-	"-list",
-	"-exportArchive",
-	"-exportLocalizations",
-	"-importLocalizations",
-	"-exportNotarizedApp",
-	"-resolvePackageDependencies",
-	"-create-xcframework",
 }
 
 // buildActions is the subset of xcodebuild action keywords that trigger an
@@ -94,6 +69,8 @@ var queryActions = []string{
 	"-resolvePackageDependencies",
 	"-create-xcframework",
 }
+
+var actions = slices.Concat(buildActions, queryActions)
 
 type Default struct {
 	Cmds         []*cobra.Command
