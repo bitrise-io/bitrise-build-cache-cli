@@ -1267,7 +1267,7 @@ workflows:
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
     # Force F1 (slim emit) to fire well after F2's manifest sighting; exercises
     # the correlation retry bucket that this workflow is designed to prove.
-    - BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
+    - TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
     steps:
     - bundle::feature-e2e-setup: {}
     - script:

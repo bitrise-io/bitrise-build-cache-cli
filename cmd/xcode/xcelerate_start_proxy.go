@@ -400,9 +400,9 @@ func getLogDir(osProxy utils.OsProxy) (string, error) {
 	return logDir, nil
 }
 
-// resolveInactivityTimeout parses BITRISE_XCELERATE_INACTIVITY_TIMEOUT off the
-// injected env map. Returns zero when the var is unset, empty, or unparseable —
-// zero lets proxy.inactivityDuration() fall back to its default.
+// resolveInactivityTimeout parses TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT off
+// the injected env map. Returns zero when the var is unset, empty, or
+// unparseable — zero lets proxy.inactivityDuration() fall back to its default.
 func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Duration {
 	raw := envs[xcelerate.EnvInactivityTimeout]
 	if raw == "" {
