@@ -81,7 +81,7 @@ func Test_XcodebuildRunner_resolvePrefixMapPaths_userSuppliedWins(t *testing.T) 
 	}
 	r := newRunnerForResolveTest(argsMock, "/h", false)
 
-	got := r.resolvePrefixMapPaths()
+	got, _ := r.resolvePrefixMapPaths()
 
 	assert.Equal(t, "/work/app", got.ProjectDir)
 	assert.Equal(t, "/user/dd", got.DerivedDataPath, "user-supplied DerivedDataPath wins")
@@ -98,7 +98,7 @@ func Test_XcodebuildRunner_resolvePrefixMapPaths_wrapperOwnedWhenUserBlank(t *te
 	}
 	r := newRunnerForResolveTest(argsMock, "/h", false)
 
-	got := r.resolvePrefixMapPaths()
+	got, _ := r.resolvePrefixMapPaths()
 
 	assert.Equal(t, "/work/app", got.ProjectDir)
 	sha := workspaceSHA("/work/app")
@@ -114,7 +114,7 @@ func Test_XcodebuildRunner_resolvePrefixMapPaths_noManagedDDSkipsWrapperOwned(t 
 	}
 	r := newRunnerForResolveTest(argsMock, "/h", true)
 
-	got := r.resolvePrefixMapPaths()
+	got, _ := r.resolvePrefixMapPaths()
 
 	assert.Equal(t, "/work/app", got.ProjectDir)
 	assert.Empty(t, got.DerivedDataPath, "NoManagedDD must skip wrapper-owned DerivedDataPath")
@@ -129,11 +129,27 @@ func Test_XcodebuildRunner_resolvePrefixMapPaths_emptyProjectDirSkipsWrapperOwne
 	}
 	r := newRunnerForResolveTest(argsMock, "/h", false)
 
-	got := r.resolvePrefixMapPaths()
+	got, _ := r.resolvePrefixMapPaths()
 
 	assert.Empty(t, got.ProjectDir)
 	assert.Empty(t, got.DerivedDataPath, "no project dir means no workspace SHA, so no managed dirs")
 	assert.Empty(t, got.ProjectTempDir)
+}
+
+func Test_XcodebuildRunner_resolvePrefixMapPaths_sourcesTracked(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		ProjectDirFunc:      func() string { return "/work/app" },
+		DerivedDataPathFunc: func() string { return "/user/dd" },
+		ProjectTempDirFunc:  func() string { return "" },
+	}
+	r := newRunnerForResolveTest(argsMock, "/h", false)
+
+	_, sources := r.resolvePrefixMapPaths()
+
+	assert.Equal(t, "auto", sources.Home)
+	assert.Equal(t, "argv", sources.ProjectDir)
+	assert.Equal(t, "argv", sources.DerivedDataPath, "user-supplied DD wins as argv")
+	assert.Equal(t, "managed", sources.ProjectTempDir, "blank PTD falls to managed")
 }
 
 func Test_XcodebuildRunner_resolvePaths_returnsInjectedPathsWhenSet(t *testing.T) {

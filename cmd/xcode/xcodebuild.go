@@ -706,7 +706,8 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	var mergedOtherCFlags string
 
 	if !c.Config.DisablePrefixMapping && !c.NoPrefixMap {
-		ps := c.resolvePrefixMapPaths()
+		ps, sources := c.resolvePrefixMapPaths()
+		c.logPrefixMapSources(ps, sources)
 		suffix := xcodeargs.BuildOtherCFlagsValue(ps)
 
 		additional[xcodeargs.ClangEnablePrefixMappingKey] = "YES"
@@ -735,25 +736,50 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	return append(toPass, extraArgv...)
 }
 
+// prefixMapSources records where each path in PrefixMapPaths came from so the
+// wrapper can log an origin trail. Values: "argv", "managed", "auto", "".
+type prefixMapSources struct {
+	Home            string
+	ProjectDir      string
+	DerivedDataPath string
+	ProjectTempDir  string
+}
+
 // resolvePrefixMapPaths determines the four absolute paths that feed the
 // narrowest-first prefix-map rules. User-supplied DerivedDataPath /
 // PROJECT_TEMP_DIR take precedence; otherwise the wrapper-owned dirs under
 // ~/.bitrise/cache/xcode-{dd,ptd}/<sha> are used unless c.NoManagedDD is set.
-func (c *XcodebuildRunner) resolvePrefixMapPaths() xcodeargs.PrefixMapPaths {
+func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, prefixMapSources) {
 	projectDir := c.XcodeArgs.ProjectDir()
 	home, _ := os.UserHomeDir()
 
+	sources := prefixMapSources{}
+	if home != "" {
+		sources.Home = "auto"
+	}
+	if projectDir != "" {
+		sources.ProjectDir = "argv"
+	}
+
 	dd := c.XcodeArgs.DerivedDataPath()
 	ptd := c.XcodeArgs.ProjectTempDir()
+	if dd != "" {
+		sources.DerivedDataPath = "argv"
+	}
+	if ptd != "" {
+		sources.ProjectTempDir = "argv"
+	}
 
 	if !c.NoManagedDD && projectDir != "" {
 		sha := workspaceSHA(projectDir)
 		p := c.resolvePaths()
 		if dd == "" {
 			dd = p.XcodeManagedDerivedDataDir(sha)
+			sources.DerivedDataPath = "managed"
 		}
 		if ptd == "" {
 			ptd = p.XcodeManagedProjectTempDir(sha)
+			sources.ProjectTempDir = "managed"
 		}
 	}
 
@@ -762,7 +788,17 @@ func (c *XcodebuildRunner) resolvePrefixMapPaths() xcodeargs.PrefixMapPaths {
 		ProjectDir:      projectDir,
 		DerivedDataPath: dd,
 		ProjectTempDir:  ptd,
-	}
+	}, sources
+}
+
+func (c *XcodebuildRunner) logPrefixMapSources(ps xcodeargs.PrefixMapPaths, s prefixMapSources) {
+	c.Logger.Debugf(
+		"Prefix map: home=%s (%s), projectDir=%s (%s), derivedDataPath=%s (%s), projectTempDir=%s (%s)",
+		ps.Home, s.Home,
+		ps.ProjectDir, s.ProjectDir,
+		ps.DerivedDataPath, s.DerivedDataPath,
+		ps.ProjectTempDir, s.ProjectTempDir,
+	)
 }
 
 func (c *XcodebuildRunner) resolvePaths() paths.Paths {
