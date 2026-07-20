@@ -67,7 +67,7 @@ var listCmd = &cobra.Command{
 func matcherFor(source string) (func(invpkg.Record) bool, error) {
 	switch source {
 	case sourceAll:
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil matcher is the documented "no filter" contract of Reader.RecentMatching
 	case sourceLocal:
 		return func(r invpkg.Record) bool { return r.IsLocal() }, nil
 	case sourceCI:
