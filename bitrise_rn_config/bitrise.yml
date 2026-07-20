@@ -415,14 +415,14 @@ workflows:
         - repository_url: https://github.com/ccache/ccache.git
         - clone_into_dir: ./_tmp
         - branch: master
-    - change-workdir@1:
+    - change-workdir@2.0.0:
         inputs:
         - path: _tmp
     - script@1:
         title: build ccache
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/build_ccache.sh
-    - change-workdir@1:
+    - change-workdir@2.0.0:
         inputs:
         - path: build
     - save-cache@1:
@@ -446,14 +446,14 @@ workflows:
         - repository_url: https://github.com/ccache/ccache.git
         - clone_into_dir: ./_tmp
         - branch: master
-    - change-workdir@1:
+    - change-workdir@2.0.0:
         inputs:
         - path: _tmp
     - script@1:
         title: build ccache
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/build_ccache.sh
-    - change-workdir@1:
+    - change-workdir@2.0.0:
         inputs:
         - path: build
     - save-cache@1:
