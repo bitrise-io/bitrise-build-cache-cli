@@ -72,7 +72,7 @@ assert_xcode_invocation_enriched() {
   fi
 
   local json
-  json=$(_bbc_fetch_xcode_invocation_detail "$invocation_id")
+  json=$(_bbc_fetch_xcode_invocation_detail "$invocation_id") || return 1
 
   local full_command short_command xcode_version tool_build_number
   full_command=$(_bbc_first_nonempty "$json" '.command')
@@ -137,7 +137,7 @@ assert_xcode_invocation_hit_rate_at_least() {
   fi
 
   local json
-  json=$(_bbc_fetch_xcode_invocation_detail "$invocation_id")
+  json=$(_bbc_fetch_xcode_invocation_detail "$invocation_id") || return 1
 
   local hit_rate
   hit_rate=$(_bbc_first_nonempty "$json" '.cacheHitRate' '.cache_hit_rate' '.hitRate' '.hit_rate')

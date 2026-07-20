@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	sessionproto "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
@@ -105,6 +106,12 @@ func TestSetSession_ResetsLastActivity(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, p.LastActivity().IsZero(), "SetSession must zero lastActivity from any prior session")
+}
+
+func TestIsSessionServiceMethod(t *testing.T) {
+	assert.True(t, proxy.IsSessionServiceMethod("/session.Session/SetSession"))
+	assert.False(t, proxy.IsSessionServiceMethod("/llvmcas.CASDBService/GetValue"))
+	assert.False(t, proxy.IsSessionServiceMethod(""))
 }
 
 func TestInactivityDuration_ZeroFallsBackToDefault(t *testing.T) {

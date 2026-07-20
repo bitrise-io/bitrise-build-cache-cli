@@ -184,9 +184,12 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 	}
 }
 
-// updatePendingRetry returns true when a record with invocationID existed and
-// its retry state was updated (or persisting failed and we should stop). false
-// means the caller should fall through to appending a fresh record.
+// updatePendingRetry returns true when a record with invocationID existed on
+// disk. false means the caller should fall through to appending a fresh
+// record. On persist failure we return whatever found was in the callback:
+// if the record existed, the untouched on-disk copy is still there for the
+// next Retrier sweep; if it didn't, the caller must Append so no failure is
+// silently dropped.
 func (e *Enricher) updatePendingRetry(invocationID string, payload []byte, putErr error) bool {
 	logger := logOr(e.Logger)
 	now := e.now()
@@ -212,8 +215,6 @@ func (e *Enricher) updatePendingRetry(invocationID string, payload []byte, putEr
 		return existing
 	}); err != nil {
 		logger.Warnf("Failed to persist retry state for %s: %s", invocationID, err)
-
-		return true
 	}
 
 	return found

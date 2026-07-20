@@ -758,13 +758,15 @@ func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, pr
 	if !c.NoManagedDD && projectDir != "" {
 		sha := workspaceSHA(projectDir)
 		p := c.resolvePaths()
-		if dd == "" {
-			dd = p.XcodeManagedDerivedDataDir(sha)
-			sources.DerivedDataPath = "managed"
-		}
-		if ptd == "" {
-			ptd = p.XcodeManagedProjectTempDir(sha)
-			sources.ProjectTempDir = "managed"
+		if p.Home != "" {
+			if dd == "" {
+				dd = p.XcodeManagedDerivedDataDir(sha)
+				sources.DerivedDataPath = "managed"
+			}
+			if ptd == "" {
+				ptd = p.XcodeManagedProjectTempDir(sha)
+				sources.ProjectTempDir = "managed"
+			}
 		}
 	}
 

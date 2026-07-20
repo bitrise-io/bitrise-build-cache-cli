@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,7 +106,9 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 			}
 
 			resp, err := handler(ctx, req)
-			proxy.touchSession() //nolint:contextcheck // timer callback fires after RPC ctx is done
+			if !isSessionServiceMethod(info.FullMethod) {
+				proxy.touchSession() //nolint:contextcheck // timer callback fires after RPC ctx is done
+			}
 
 			return resp, err
 		}),
@@ -167,6 +170,15 @@ func (p *Proxy) inactivityDuration() time.Duration {
 	}
 
 	return defaultInactivityTimeout
+}
+
+// isSessionServiceMethod reports whether the fully-qualified gRPC method belongs
+// to the session control plane (SetSession / RegisterInvocationRelation …).
+// Control-plane calls are not cache activity: bumping lastActivity for them
+// would overwrite the explicit reset SetSession does at line 232 and lose the
+// "fresh session, no RPCs yet" signal that meta.EndTime relies on.
+func isSessionServiceMethod(fullMethod string) bool {
+	return strings.HasPrefix(fullMethod, "/"+session.Session_ServiceDesc.ServiceName+"/")
 }
 
 // touchSession records RPC activity on the current session and arms the
