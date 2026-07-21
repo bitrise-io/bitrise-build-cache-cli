@@ -7,6 +7,17 @@ builds — this page covers the GUI case.
 For the underlying CLI install + auth, see
 [`docs/install.md`](install.md) first.
 
+> **Xcode 26+ IDE remote-CAS limitation.** On macOS 26 / Xcode 26.x, IDE
+> (⌘B) builds engage the **local** compile-cache plugin only — remote CAS
+> (the `xcelerate-proxy` socket) is not dialed even after `xcode-app enable`
+> and `xcode-app link`. Root cause: Xcode's build system recognises only
+> `COMPILATION_CACHE_ENABLE_CACHING` / `_DEFAULT` /
+> `_ENABLE_DIAGNOSTIC_REMARKS` as build settings, and silently drops
+> `COMPILATION_CACHE_REMOTE_SERVICE_PATH` before writing `.cas-config`.
+> Remote CAS still engages for `xcodebuild` CLI (with the wrapper installed
+> via `activate xcode`). Full write-up:
+> [`xcode-app-ide-remote-cas-findings-2026-07-21.md`](xcode-app-ide-remote-cas-findings-2026-07-21.md).
+
 ---
 
 ## TL;DR
@@ -57,6 +68,16 @@ xcconfig but below `xcodebuild` CLI args.
 
 The xcelerate-proxy daemon is also installed + started so Xcode.app has a
 socket to dial.
+
+> **On Xcode 26+ IDE, the socket is never dialed.** The env propagates and
+> settings resolve, but Xcode's build system drops
+> `COMPILATION_CACHE_REMOTE_SERVICE_PATH` before writing the per-target
+> `.cas-config` — so the compile-cache plugin has no remote endpoint.
+> `xcode-app link` (below) engages the local plugin (real IDE speedup); the
+> remote path today is `xcodebuild` CLI with the `activate xcode` wrapper.
+> See
+> [`xcode-app-ide-remote-cas-findings-2026-07-21.md`](xcode-app-ide-remote-cas-findings-2026-07-21.md)
+> for the full test matrix and mitigation options.
 
 ---
 
@@ -236,7 +257,7 @@ as a Run Script action. Full recipe (paste-in script + hard-block variant
 | Symptom                                                            | First thing to try                                                                                  |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | `enable` errors with `xcelerate config not found`                  | Run `bitrise-build-cache activate xcode` first — that writes the proxy socket path enable depends on. |
-| `enable` succeeds but builds aren't using the cache                | Relaunched Xcode? `launchctl setenv` only reaches processes launched after `enable` ran.            |
+| `enable` succeeds but builds aren't using the cache                | Relaunched Xcode? `launchctl setenv` only reaches processes launched after `enable` ran. **On Xcode 26+ IDE, remote CAS won't engage regardless — see the limitation banner at the top of this page.** |
 | `launchctl getenv XCODE_XCCONFIG_FILE` prints nothing              | Either the initial `launchctl setenv` failed or the LaunchAgent bootstrap did. Re-run `enable` and read the error in its output. |
 | Proxy socket missing (`test -S` fails on the path in `config.json`) | Re-run `bitrise-build-cache xcode-app enable` (it ensures the daemon service is installed + up), or `bitrise-build-cache daemon up`. Override expects the proxy listening. |
 | Your project's existing `XCODE_XCCONFIG_FILE` was overwritten      | `disable` restores it. If state got out of sync, manually `launchctl setenv` to the prior path.     |

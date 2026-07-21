@@ -22,7 +22,8 @@ var enableCmd = &cobra.Command{
 		`and starts the xcelerate-proxy daemon service. ` +
 		`If you already have ` + "`XCODE_XCCONFIG_FILE`" + ` set, your previous file is chained in via ` + "`#include`" + `. ` +
 		`Detects running Xcode and nudges you to relaunch so the new env takes effect. ` +
-		`Run ` + "`bitrise-build-cache activate xcode`" + ` first to write the xcelerate config that supplies the proxy socket path.`,
+		`Run ` + "`bitrise-build-cache activate xcode`" + ` first to write the xcelerate config that supplies the proxy socket path. ` +
+		`Xcode.app IDE builds on macOS 26+ do NOT engage remote CAS via this env — Xcode's build system drops COMPILATION_CACHE_REMOTE_SERVICE_PATH before writing .cas-config. Remote engages via ` + "`xcodebuild`" + ` CLI (wrapper installed by ` + "`activate xcode`" + `). See docs/xcode-app-ide-remote-cas-findings-2026-07-21.md.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -62,9 +63,9 @@ var enableCmd = &cobra.Command{
 		}
 
 		logger.Infof("")
-		logger.Infof("If you're on macOS 26+ and use GUI-launched Xcode.app, launchctl setenv does NOT propagate — also run")
-		logger.Infof("  bitrise-build-cache xcode-app link <path/to/YourApp.xcodeproj>")
-		logger.Infof("per project, then set the emitted bridge xcconfig as the base configuration in Xcode.")
+		logger.Warnf("Xcode.app IDE builds on macOS 26+ do NOT engage remote CAS through this env — Xcode's build system strips COMPILATION_CACHE_REMOTE_SERVICE_PATH before writing .cas-config.")
+		logger.Infof("Remote CAS still engages for `xcodebuild` CLI (wrapper installed via `activate xcode`).")
+		logger.Infof("For IDE builds, `bitrise-build-cache xcode-app link <path/to/YourApp.xcodeproj>` engages the LOCAL compile cache (real speedup, no cross-machine reuse). See docs/xcode-app-ide-remote-cas-findings-2026-07-21.md.")
 
 		return nil
 	},

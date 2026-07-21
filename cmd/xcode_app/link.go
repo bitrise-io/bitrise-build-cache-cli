@@ -17,8 +17,9 @@ import (
 var linkCmd = &cobra.Command{
 	Use:   "link <path>",
 	Short: "Wire an Xcode project or workspace up to the Bitrise Build Cache override",
-	Long: `link appends ` + "`#include? \"<override>\"`" + ` to each in-tree .xcconfig under the project (or, for a .xcworkspace, each referenced project) so the cache engages automatically on the next Xcode build. ` +
-		`Cache engages on rebuild (Cmd+B) — no manual Xcode step needed. ` +
+	Long: `link appends ` + "`#include? \"<override>\"`" + ` to each in-tree .xcconfig under the project (or, for a .xcworkspace, each referenced project) so Xcode picks up the override on the next build. ` +
+		`Engages the local compile-cache plugin — real speedup on incremental IDE builds. ` +
+		`Does NOT engage remote CAS on Xcode 26+ IDE builds; Xcode drops COMPILATION_CACHE_REMOTE_SERVICE_PATH before writing .cas-config. See docs/xcode-app-ide-remote-cas-findings-2026-07-21.md. Remote engages via ` + "`xcodebuild`" + ` CLI (wrapper installed by ` + "`activate xcode`" + `). ` +
 		`Optional-include form (` + "`#include?`" + `) keeps the change safe to commit — teammates or CI without the CLI silently skip it. ` +
 		`When the project has no in-tree xcconfigs, falls back to writing a sibling bridge xcconfig (` + xa.BridgeXCConfigName + `) that the user must select as base configuration in Xcode. ` +
 		`Idempotent — re-running is safe.`,
@@ -96,7 +97,7 @@ func printLinkResult(logger log.Logger, requestedPath string, result xapkg.LinkR
 	logger.Infof("Optional include (`#include?`) — teammates without the CLI silently skip the override.")
 
 	if len(result.ModifiedXCConfigs) > 0 || len(result.AlreadyLinked) > 0 {
-		logger.Infof("Rebuild via Cmd+B — cache engages automatically.")
+		logger.Infof("Rebuild via Cmd+B — local compile cache engages. Remote CAS on Xcode 26+ IDE is NOT engaged (Xcode's build system strips COMPILATION_CACHE_REMOTE_SERVICE_PATH); use `xcodebuild` CLI for remote.")
 	}
 
 	logger.Infof("Revert with: `bitrise-build-cache xcode-app unlink %s`.", requestedPath)
