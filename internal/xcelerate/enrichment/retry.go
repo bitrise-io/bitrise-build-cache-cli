@@ -42,12 +42,6 @@ func (r *Retrier) Run(ctx context.Context) {
 		r.MaxAge = DefaultRetryMaxAge
 	}
 
-	if r.Store != nil {
-		if err := r.Store.PruneOrphansOlderThan(r.now(), r.MaxAge); err != nil {
-			logOr(r.Logger).Warnf("Retrier startup orphan sweep failed: %s", err)
-		}
-	}
-
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

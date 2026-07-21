@@ -94,10 +94,6 @@ func (w *Watcher) seedSeenFromStore() bool {
 
 	logger := logOr(w.Logger)
 
-	if err := w.HandledStore.PruneOlderThan(w.now(), HandledManifestMaxAge); err != nil {
-		logger.Debugf("Prune handled manifests failed: %s", err)
-	}
-
 	records, err := w.HandledStore.Load()
 	if err != nil {
 		logger.Debugf("Load handled manifests failed: %s", err)

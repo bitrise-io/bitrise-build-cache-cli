@@ -340,14 +340,15 @@ func Test_slimInvocationEmitter_EmitSlim_skipsWhenMarkerPresent(t *testing.T) {
 		EndTime:      time.Now().Add(time.Second),
 	}, proxy.SessionStats{Hits: 1})
 
-	// Pending append must be skipped.
+	// Pending is now appended even when the marker exists so F2 can Correlate the wrapper build.
 	records, err := b.pending.Load()
 	require.NoError(t, err)
-	assert.Empty(t, records, "pending record must not be appended when wrapper handled")
+	require.Len(t, records, 1, "pending record must be appended so F2 can correlate the wrapper build back to this InvocationID")
+	assert.Equal(t, invID, records[0].InvocationID)
 
-	// Marker must have been cleaned up.
+	// Marker survives — startup PruneAll reclaims it after HandledMarkerMaxAge.
 	_, err = os.Stat(marker)
-	assert.True(t, os.IsNotExist(err), "marker file must be removed after skip")
+	require.NoError(t, err, "marker must survive F1 observation so F2 can honour it")
 }
 
 func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
@@ -365,7 +366,7 @@ func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
 	old := time.Now().Add(-48 * time.Hour)
 	require.NoError(t, os.Chtimes(stale, old, old))
 
-	sweepStaleHandledMarkers(bundleTestLogger)
+	pruneEnrichmentState(bundleTestLogger)
 
 	_, err := os.Stat(stale)
 	assert.True(t, os.IsNotExist(err))

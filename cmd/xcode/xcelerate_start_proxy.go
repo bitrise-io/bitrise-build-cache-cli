@@ -174,7 +174,7 @@ func StartXcodeCacheProxy(
 
 	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger)
 
-	sweepStaleHandledMarkers(initialLogger)
+	pruneEnrichmentState(initialLogger)
 
 	emitter := bundle.emitter()
 
@@ -419,17 +419,14 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 	return parsed
 }
 
-// sweepStaleHandledMarkers removes handled-invocation markers older than
-// enrichment.HandledMarkerMaxAge. Runs at proxy startup so a wrapper that wrote a marker
-// and then crashed before its consumer (F1 slim emit or F2 enrichment)
-// observed it does not leave the state dir growing.
-func sweepStaleHandledMarkers(logger log.Logger) {
+// pruneEnrichmentState runs the enrichment package's PruneAll: handled-invocation markers, handled-manifest UUIDs, and orphan pending records — one entry point, called once at proxy startup.
+func pruneEnrichmentState(logger log.Logger) {
 	p, err := paths.Default()
 	if err != nil {
-		logger.Debugf("Handled-invocation sweep skipped, cannot resolve paths: %v", err)
+		logger.Debugf("Enrichment prune skipped, cannot resolve paths: %v", err)
 
 		return
 	}
 
-	enrichment.PruneStale(p.XcelerateHandledInvocationDir(), enrichment.HandledMarkerMaxAge)
+	enrichment.PruneAll(p, time.Now(), logger)
 }
