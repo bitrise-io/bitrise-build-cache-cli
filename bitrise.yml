@@ -833,6 +833,118 @@ workflows:
               assert_build_performance "$BITRISE_APP_SLUG"
               assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
     - deploy-to-bitrise-io@2: {}
+  feature-e2e-bazel-bitrisedc-credhelper:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g2.linux.medium
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+    - BRANCH: master
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script@1:
+        title: Change apt sources to enzu mirror
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+
+              sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
+    - apt-get-install:
+        inputs:
+          - packages: 'bc'
+          - upgrade: "no"
+    - script@1:
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -exo pipefail
+            ../scripts/install_bazel.sh
+        title: Install bazel
+    - script:
+        title: Simulate local dev by unsetting Bitrise CI detection env vars
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            # DetectCIProvider() returns "" only when BITRISE_IO is unset (or BITRISE_BUILD_SLUG is unset).
+            # Unset BITRISE_IO for the remainder of the workflow so the CLI treats this run as local dev,
+            # which triggers the `--credential_helper` codepath in the bazelrc template.
+            # BITRISE_BUILD_CACHE_AUTH_TOKEN / BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN are preserved so the
+            # helper can still resolve a valid Bearer token when Bazel spawns it.
+            envman unset --key BITRISE_IO
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+    - script:
+        title: Assert local credential_helper path
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            # Local path must use --credential_helper and MUST NOT write any Bearer literal.
+            grep -F -- '--credential_helper=' "$HOME/.bazelrc" || {
+              echo "FAIL: --credential_helper= not present in ~/.bazelrc"
+              cat "$HOME/.bazelrc"
+              exit 1
+            }
+            if grep -F -- 'Bearer ' "$HOME/.bazelrc"; then
+              echo "FAIL: ~/.bazelrc still contains a Bearer literal"
+              exit 1
+            fi
+            if grep -F -- 'authorization=' "$HOME/.bazelrc"; then
+              echo "FAIL: ~/.bazelrc still contains an authorization= header"
+              exit 1
+            fi
+    - script:
+        title: Build and capture logs
+        inputs:
+        - content: |-
+            set -exo pipefail
+            (/usr/local/bin/bazel build //src:bazel-dev --announce_rc --copt='-w' 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Check for cache invocations
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -exo pipefail
+
+            # Local-dev branch: no x-ci-provider / x-app-id headers (both are gated on Bitrise-CI metadata
+            # populated only when DetectCIProvider() == "bitrise"). The host-metadata headers still appear.
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/logs.txt" \
+              '--credential_helper=' \
+              '--remote_cache=grpcs:\/\/bitrise-accelerate\.services\.bitrise\.io' \
+              'Invocation ID: ' \
+              '--bes_header=x-os=Linux' \
+              '--bes_header=x-cpu-cores=[0-9]+' \
+              '--bes_header=x-mem-size=[0-9]+' \
+              '--bes_header=x-locale=\w+' \
+              '--bes_header=x-default-charset=\w+'
+
+              source ../_e2e/scripts/extract_invocation_id.sh
+
+              invocation_id=$(extract_invocation_id_bazel "$BITRISE_DEPLOY_DIR/logs.txt")
+              if [[ -z "$invocation_id" ]]; then
+                fatal "Invocation ID not found in logs"
+              fi
+
+              echo "Found Invocation ID: $invocation_id"
+              envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+          - content: |-
+              source ../_e2e/scripts/assert_invocations.sh
+
+              assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
+              assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
+              assert_invocation_targets_bazel "$INVOCATION_ID"
+              assert_build_performance "$BITRISE_APP_SLUG"
+              assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
+    - deploy-to-bitrise-io@2: {}
 
   feature-e2e-bazel-public-no-rbe:
     meta:
@@ -2012,6 +2124,7 @@ pipelines:
       pr-release-check-linux: {}
       pr-release-check-mac: {}
       feature-e2e-bazel-bitrisedc-no-rbe: {}
+      feature-e2e-bazel-bitrisedc-credhelper: {}
       feature-e2e-bazel-public-no-rbe: {}
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
