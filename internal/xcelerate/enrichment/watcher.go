@@ -144,18 +144,24 @@ func (w *Watcher) scan(seedOnly bool) {
 }
 
 func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
+	logger := logOr(w.Logger)
+
 	if seedOnly {
 		w.seen[entry.UUID] = struct{}{}
+		logger.Debugf("Watcher: seed-only mark uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
 
 		return
 	}
 
 	if _, ok := w.seen[entry.UUID]; ok {
+		logger.Debugf("Watcher: skip already-seen uuid=%s", entry.UUID)
+
 		return
 	}
 
 	if w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
 		if w.Handle != nil {
+			logger.Debugf("Watcher: handle-and-mark (no retry bucket) uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
 			w.Handle(entry)
 		}
 		w.markHandled(entry.UUID)
@@ -166,12 +172,15 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 	if _, pending := w.retries[entry.UUID]; pending {
 		switch {
 		case w.MatchProbe(entry):
+			logger.Debugf("Watcher: pending match resolved uuid=%s attempts_left=%d scheme=%s", entry.UUID, w.retries[entry.UUID], entry.SchemeName)
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
 		case w.retries[entry.UUID] > 0:
 			w.retries[entry.UUID]--
+			logger.Debugf("Watcher: pending still unmatched, decrement uuid=%s attempts_left=%d", entry.UUID, w.retries[entry.UUID])
 		default:
+			logger.Debugf("Watcher: pending retries exhausted, minting orphan uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
@@ -181,6 +190,7 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 	}
 
 	if w.MatchProbe(entry) {
+		logger.Debugf("Watcher: first-pass match uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
 		w.Handle(entry)
 		w.markHandled(entry.UUID)
 
@@ -188,4 +198,5 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 	}
 
 	w.retries[entry.UUID] = w.MaxCorrelationRetries
+	logger.Debugf("Watcher: unmatched, opening retry bucket uuid=%s attempts_left=%d", entry.UUID, w.MaxCorrelationRetries)
 }

@@ -78,6 +78,8 @@ func (r *Retrier) Sweep() {
 		return
 	}
 
+	logger.Debugf("Retrier: sweep start, pending=%d", len(snapshot))
+
 	now := r.now()
 	maxAge := r.MaxAge
 	if maxAge == 0 {
@@ -121,7 +123,7 @@ func (r *Retrier) Sweep() {
 			continue
 		}
 
-		logger.Debugf("Retrier PUT succeeded for %s (attempts=%d)", rec.InvocationID, rec.Attempts+1)
+		logger.Infof("Retrier PUT succeeded for %s (attempts=%d)", rec.InvocationID, rec.Attempts+1)
 		updates[rec.InvocationID] = update{drop: true}
 	}
 

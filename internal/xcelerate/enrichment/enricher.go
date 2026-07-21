@@ -99,7 +99,7 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 
 	e.markSuccess()
 
-	logger.Debugf("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
+	logger.Infof("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
 
 	if matched && e.Store != nil {
 		if err := e.Store.Remove(invocationID); err != nil {
