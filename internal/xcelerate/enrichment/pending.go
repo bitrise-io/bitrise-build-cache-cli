@@ -31,15 +31,9 @@ type Store struct {
 }
 
 func (s *Store) Append(rec PendingRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	existing, err := s.loadLocked()
-	if err != nil {
-		return err
-	}
-
-	return s.writeAtomic(append(existing, rec))
+	return s.Mutate(func(existing []PendingRecord) []PendingRecord {
+		return append(existing, rec)
+	})
 }
 
 func (s *Store) Load() ([]PendingRecord, error) {
@@ -131,13 +125,6 @@ func (s *Store) Remove(invocationID string) error {
 
 		return kept
 	})
-}
-
-func (s *Store) Save(records []PendingRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.writeAtomic(records)
 }
 
 //nolint:dupl // paired with HandledManifestStore.writeAtomicLocked; see comment there.
