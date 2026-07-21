@@ -328,7 +328,7 @@ func TestEnricher_MatchedWithHandledMarker_SkipsPUT(t *testing.T) {
 	assert.Zero(t, putCalls, "PUT must be skipped when the wrapper already handled the invocation")
 
 	_, err := os.Stat(marker)
-	assert.True(t, os.IsNotExist(err), "marker must be removed after enrichment observes it")
+	require.NoError(t, err, "marker survives enrichment observation — startup sweep reclaims it")
 
 	remaining, err := store.Load()
 	require.NoError(t, err)

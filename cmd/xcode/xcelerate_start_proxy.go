@@ -322,13 +322,6 @@ type slimInvocationEmitter struct {
 func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
 	b := e.bundle
 
-	if enrichment.MarkerExists(meta.InvocationID) {
-		b.logger.Debugf("Slim emit skipped for %s: wrapper already handled", meta.InvocationID)
-		enrichment.RemoveMarker(meta.InvocationID)
-
-		return
-	}
-
 	endTime := meta.EndTime
 	if endTime.IsZero() {
 		endTime = time.Now()
@@ -336,6 +329,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	duration := endTime.Sub(meta.StartTime).Milliseconds()
 	hitRate := stats.HitRate()
 
+	// Pending has to survive the marker check so F2's manifest scan can correlate the wrapper build back to this InvocationID — otherwise F2 mints a duplicate orphan.
 	if b.pending != nil {
 		if err := b.pending.Append(enrichment.PendingRecord{
 			InvocationID: meta.InvocationID,
@@ -345,6 +339,12 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 		}); err != nil {
 			b.logger.Warnf("Failed to queue pending invocation %s: %s", meta.InvocationID, err)
 		}
+	}
+
+	if enrichment.MarkerExists(meta.InvocationID) {
+		b.logger.Debugf("Slim emit skipped for %s: wrapper already handled", meta.InvocationID)
+
+		return
 	}
 
 	go func() {
