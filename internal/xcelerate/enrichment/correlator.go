@@ -5,6 +5,9 @@ import "time"
 // xcactivitylog lands after the proxy socket has gone idle.
 const correlationSlack = 30 * time.Second
 
+// Max-time-overlap heuristic: two concurrent builds with overlapping windows can
+// attach the manifest to the wrong InvocationID. Fine for the serial case; revisit
+// if we see mis-attribution in production.
 func Correlate(entry ManifestEntry, pending []PendingRecord) (string, bool) {
 	if entry.Start.IsZero() || entry.Stop.IsZero() {
 		return "", false
