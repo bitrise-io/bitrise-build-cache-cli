@@ -2,6 +2,7 @@ package bazel
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -88,6 +89,10 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	params.Cache.PushEnabled = true
 	params.RBE.Enabled = rbeEnabled
 	params.Timestamps = timestamps
+
+	if cliPath, exeErr := os.Executable(); exeErr == nil {
+		params.CLIPath = cliPath
+	}
 
 	inventory, err := params.TemplateInventory(logger, envProvider, func(cmd string, params ...string) (string, error) {
 		output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx

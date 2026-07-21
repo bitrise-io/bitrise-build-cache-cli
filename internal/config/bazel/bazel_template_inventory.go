@@ -18,6 +18,12 @@ type CommonTemplateInventory struct {
 	WorkflowName string
 	BuildID      string
 	Timestamps   bool
+	// CLIPath is the absolute path of the bitrise-build-cache binary. On local
+	// dev (empty CIProvider) it drives `build --credential_helper=<CLIPath>`
+	// so the auth token is resolved per-build via `bazel credential-helper`
+	// instead of being written literally into `~/.bazelrc`. Empty on CI —
+	// the CI branch keeps the literal `Bearer <token>` header for perf.
+	CLIPath      string
 	HostMetadata HostMetadataInventory
 }
 
