@@ -24,12 +24,19 @@ func RenderOverride(proxySocketPath, previousIncludePath, homeDir string) (strin
 		return "", fmt.Errorf("previous XCODE_XCCONFIG_FILE path contains a quote character — cannot safely #include")
 	}
 
+	// Narrowest-first mirrors xcodeargs.BuildOtherCFlagsValue so nested paths (obj → dd → src → home) get virtualised regardless of clang's match order. Xcode expands $(PROJECT_TEMP_DIR), $(BUILD_DIR)/.., $(SRCROOT) at build-plan time.
+	otherCFlags := "$(inherited)" +
+		" -fdepscan-prefix-map=$(PROJECT_TEMP_DIR)=/^obj" +
+		" -fdepscan-prefix-map=$(BUILD_DIR)/..=/^dd" +
+		" -fdepscan-prefix-map=$(SRCROOT)=/^src" +
+		" -fdepscan-prefix-map=" + homeDir + "=/^home"
+
 	extras := map[string]string{
 		RemoteServicePathKey:                          proxySocketPath,
 		"CLANG_ENABLE_PREFIX_MAPPING":                 "YES",
 		"SWIFT_ENABLE_PREFIX_MAPPING":                 "YES",
 		"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS": "NO",
-		"OTHER_CFLAGS":                                fmt.Sprintf("$(inherited) -fdepscan-prefix-map=%s=/^home", homeDir),
+		"OTHER_CFLAGS":                                otherCFlags,
 	}
 
 	var b strings.Builder

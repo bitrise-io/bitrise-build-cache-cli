@@ -24,7 +24,7 @@ func TestRenderOverride_writesRemoteServicePathAndKnownCacheKeys(t *testing.T) {
 	assert.Contains(t, got, "CLANG_ENABLE_PREFIX_MAPPING = YES")
 	assert.Contains(t, got, "SWIFT_ENABLE_PREFIX_MAPPING = YES")
 	assert.Contains(t, got, "COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS = NO")
-	assert.Contains(t, got, "OTHER_CFLAGS = $(inherited) -fdepscan-prefix-map=/Users/alice=/^home")
+	assert.Contains(t, got, "OTHER_CFLAGS = $(inherited) -fdepscan-prefix-map=$(PROJECT_TEMP_DIR)=/^obj -fdepscan-prefix-map=$(BUILD_DIR)/..=/^dd -fdepscan-prefix-map=$(SRCROOT)=/^src -fdepscan-prefix-map=/Users/alice=/^home")
 }
 
 func TestRenderOverride_emptyHomeDirIsError(t *testing.T) {
