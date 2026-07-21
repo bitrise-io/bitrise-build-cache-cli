@@ -63,19 +63,6 @@ func MarkerExists(invocationID string) bool {
 	return err == nil
 }
 
-func RemoveMarker(invocationID string) {
-	if invocationID == "" {
-		return
-	}
-
-	p, err := paths.Default()
-	if err != nil {
-		return
-	}
-
-	_ = os.Remove(p.XcelerateHandledInvocationFile(invocationID))
-}
-
 func PruneStale(dir string, maxAge time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

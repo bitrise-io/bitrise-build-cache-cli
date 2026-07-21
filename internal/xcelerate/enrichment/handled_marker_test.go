@@ -70,21 +70,6 @@ func TestMarkerExists_trueWhenPresent(t *testing.T) {
 	assert.False(t, enrichment.MarkerExists(""))
 }
 
-func TestRemoveMarker_deletesFile(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	p := paths.FromHome(home)
-	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
-	marker := p.XcelerateHandledInvocationFile("inv-1")
-	require.NoError(t, os.WriteFile(marker, nil, 0o644))
-
-	enrichment.RemoveMarker("inv-1")
-
-	_, err := os.Stat(marker)
-	assert.True(t, os.IsNotExist(err))
-}
-
 func TestPruneStale_removesStaleKeepsFresh(t *testing.T) {
 	dir := t.TempDir()
 	stale := filepath.Join(dir, "stale")

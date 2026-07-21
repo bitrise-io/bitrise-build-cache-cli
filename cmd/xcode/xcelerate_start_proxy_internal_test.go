@@ -366,7 +366,7 @@ func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
 	old := time.Now().Add(-48 * time.Hour)
 	require.NoError(t, os.Chtimes(stale, old, old))
 
-	pruneEnrichmentState(bundleTestLogger)
+	enrichment.PruneAll(paths.FromHome(home), time.Now(), bundleTestLogger)
 
 	_, err := os.Stat(stale)
 	assert.True(t, os.IsNotExist(err))

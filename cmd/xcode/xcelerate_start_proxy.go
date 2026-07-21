@@ -174,7 +174,11 @@ func StartXcodeCacheProxy(
 
 	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger)
 
-	pruneEnrichmentState(initialLogger)
+	if p, err := paths.Default(); err == nil {
+		enrichment.PruneAll(p, time.Now(), initialLogger)
+	} else {
+		initialLogger.Debugf("Enrichment prune skipped, cannot resolve paths: %v", err)
+	}
 
 	emitter := bundle.emitter()
 
@@ -419,14 +423,3 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 	return parsed
 }
 
-// pruneEnrichmentState runs the enrichment package's PruneAll: handled-invocation markers, handled-manifest UUIDs, and orphan pending records — one entry point, called once at proxy startup.
-func pruneEnrichmentState(logger log.Logger) {
-	p, err := paths.Default()
-	if err != nil {
-		logger.Debugf("Enrichment prune skipped, cannot resolve paths: %v", err)
-
-		return
-	}
-
-	enrichment.PruneAll(p, time.Now(), logger)
-}

@@ -245,7 +245,7 @@ func TestRetrier_ConcurrentAppendAndSweep(t *testing.T) {
 		return errors.New("still down")
 	}}
 
-	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour}
+	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
 
 	// Kick off Sweep + 10 concurrent Appends (Attempts=0 records — orphan-slim path).
 	var wg sync.WaitGroup
