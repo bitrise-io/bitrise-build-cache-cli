@@ -189,30 +189,30 @@ assert_xcode_no_orphan_invocations_for_build() {
     return 1
   fi
 
-  local ids
-  ids=$(printf '%s' "$response" | jq -r '.items[]? | (.invocationId // .invocation_id // "")' | grep -v '^$' || true)
-
-  local count
-  count=$(printf '%s\n' "$ids" | grep -c . || true)
-  if [[ "$count" -ne 1 ]]; then
-    echo "FAIL: expected exactly 1 xcode invocation for build ${build_slug}, but found ${count}" >&2
-    echo "invocation ids seen:" >&2
-    printf '%s\n' "$ids" >&2
-    echo "--- BE list payload ---" >&2
-    printf '%s' "$response" | jq '.' >&2 || printf '%s\n' "$response" >&2
-
-    return 1
-  fi
-
-  if ! printf '%s\n' "$ids" | grep -qxF "$expected_id"; then
+  # Only count invocations that share the wrapper's build command — F2 legitimately enriches Xcode side-events (SPM "Resolve Packages", tooling probes) into separate invocation rows that must not be misread as wrapper orphans.
+  local wrapper_shape
+  wrapper_shape=$(printf '%s' "$response" | jq -r --arg id "$expected_id" '.items[]? | select((.invocationId // .invocation_id) == $id) | .shortCommand // .command // ""')
+  if [[ -z "$wrapper_shape" ]]; then
     echo "FAIL: wrapper invocation ${expected_id} missing from BE list for build ${build_slug}" >&2
-    echo "invocation ids seen:" >&2
-    printf '%s\n' "$ids" >&2
+    printf '%s' "$response" | jq '.' >&2 || printf '%s\n' "$response" >&2
+
+    return 1
+  fi
+
+  local wrapper_matches
+  wrapper_matches=$(printf '%s' "$response" | jq -r --arg shape "$wrapper_shape" '.items[]? | select((.shortCommand // .command // "") == $shape) | (.invocationId // .invocation_id)')
+
+  local wrapper_count
+  wrapper_count=$(printf '%s\n' "$wrapper_matches" | grep -c . || true)
+  if [[ "$wrapper_count" -ne 1 ]]; then
+    echo "FAIL: expected exactly 1 xcode invocation matching wrapper command '${wrapper_shape}' for build ${build_slug}, but found ${wrapper_count}" >&2
+    echo "wrapper-shape invocation ids:" >&2
+    printf '%s\n' "$wrapper_matches" >&2
     echo "--- BE list payload ---" >&2
     printf '%s' "$response" | jq '.' >&2 || printf '%s\n' "$response" >&2
 
     return 1
   fi
 
-  echo "OK: exactly 1 xcode invocation (${expected_id}) present in BE list for build ${build_slug}"
+  echo "OK: exactly 1 wrapper-shape xcode invocation (${expected_id}, command='${wrapper_shape}') present in BE list for build ${build_slug}"
 }
