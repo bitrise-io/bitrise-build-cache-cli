@@ -36,7 +36,7 @@ func (d *Doctor) authBackendCheck() Check {
 
 			probe := d.BackendProbe
 			if probe == nil {
-				probe = defaultBackendProbe
+				probe = defaultBackendProbe(d.Debug)
 			}
 
 			probeCtx, cancel := context.WithTimeout(ctx, backendProbeTimeout)
@@ -79,7 +79,13 @@ func backendErrorFixable(err error) bool {
 	return false
 }
 
-func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error) {
+func defaultBackendProbe(debug bool) BackendProbeFunc {
+	return func(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error) {
+		return runBackendProbe(ctx, cfg, envs, debug)
+	}
+}
+
+func runBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string, debug bool) (time.Duration, error) {
 	endpoint := common.SelectCacheEndpointURL("", envs)
 	host, insecureGRPC, err := kv.ParseURLGRPC(endpoint)
 	if err != nil {
@@ -93,7 +99,7 @@ func defaultBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs m
 		Host:        host,
 		ClientName:  "doctor-backend-probe",
 		AuthConfig:  cfg,
-		Logger:      log.NewLogger(),
+		Logger:      log.NewLogger(log.WithDebugLog(debug)),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("dial %s: %w", host, err)

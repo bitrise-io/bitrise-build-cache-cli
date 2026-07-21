@@ -85,6 +85,7 @@ type Doctor struct {
 	ActivatedTools     func() map[toolconfig.Tool]bool
 	BackendProbe       BackendProbeFunc
 	Now                func() time.Time
+	Debug              bool
 }
 
 func NewDoctor() *Doctor {

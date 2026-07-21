@@ -43,7 +43,7 @@ func (d *Doctor) cliVersionCheck() Check {
 				State:   StateWarn,
 				Detail:  fmt.Sprintf("current=%s, latest=%s", current, latest),
 				Fixable: true,
-				Fixer:   UpdateFixer{},
+				Fixer:   UpdateFixer{Debug: d.Debug},
 			}
 		},
 	}

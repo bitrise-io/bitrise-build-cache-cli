@@ -12,13 +12,14 @@ import (
 
 type UpdateFixer struct {
 	Update func(ctx context.Context) error
+	Debug  bool
 }
 
 //nolint:contextcheck // Fixer.Fix is ctx-less by design; Background is correct here.
 func (f UpdateFixer) Fix() (string, error) {
 	run := f.Update
 	if run == nil {
-		run = defaultUpdate
+		run = defaultUpdate(f.Debug)
 	}
 
 	if err := run(context.Background()); err != nil {
@@ -28,18 +29,20 @@ func (f UpdateFixer) Fix() (string, error) {
 	return "ran update", nil
 }
 
-func defaultUpdate(ctx context.Context) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve cli executable: %w", err)
-	}
+func defaultUpdate(debug bool) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("resolve cli executable: %w", err)
+		}
 
-	if err := updater.Update(ctx, updater.Options{
-		Executable: exe,
-		Logger:     log.NewLogger(),
-	}); err != nil {
-		return fmt.Errorf("updater: %w", err)
-	}
+		if err := updater.Update(ctx, updater.Options{
+			Executable: exe,
+			Logger:     log.NewLogger(log.WithDebugLog(debug)),
+		}); err != nil {
+			return fmt.Errorf("updater: %w", err)
+		}
 
-	return nil
+		return nil
+	}
 }
