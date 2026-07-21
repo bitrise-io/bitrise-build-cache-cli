@@ -146,6 +146,13 @@ func (w *Watcher) scan(seedOnly bool) {
 func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 	logger := logOr(w.Logger)
 
+	// Age gate: HandledStore prunes seen-UUIDs after HandledManifestMaxAge, so an entry older than that on-disk would otherwise be replayed as a fresh orphan on restart.
+	if !entry.Stop.IsZero() && entry.Stop.Before(w.now().Add(-HandledManifestMaxAge)) {
+		logger.Debugf("Watcher: skip stale entry uuid=%s stop=%s", entry.UUID, entry.Stop.Format(time.RFC3339))
+
+		return
+	}
+
 	if seedOnly {
 		w.seen[entry.UUID] = struct{}{}
 		logger.Debugf("Watcher: seed-only mark uuid=%s scheme=%s", entry.UUID, entry.SchemeName)

@@ -373,10 +373,13 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "handled.ndjson")
 	store := &HandledManifestStore{Path: storePath}
 
+	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
+
 	w := &Watcher{
 		HomeDir:      home,
 		Handle:       func(ManifestEntry) {},
 		HandledStore: store,
+		Now:          func() time.Time { return fixtureNow },
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -391,4 +394,24 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 		uuids = append(uuids, r.UUID)
 	}
 	assert.Contains(t, uuids, uuid, "emitted UUID must be appended to HandledStore")
+}
+
+func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+
+	handles := 0
+
+	w := &Watcher{
+		HomeDir: home,
+		Handle:  func(ManifestEntry) { handles++ },
+		Now:     func() time.Time { return time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC) },
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false)
+
+	assert.Zero(t, handles, "entries older than HandledManifestMaxAge must be skipped, not resurrected as orphans")
+	assert.Empty(t, w.seen, "stale entries must not be marked seen either")
 }

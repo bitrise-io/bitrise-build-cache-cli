@@ -32,9 +32,13 @@ func TestWatcher_EmitsOnlyNewEntries(t *testing.T) {
 		collected []string
 	)
 
+	// Fixture timestamps are Cocoa reference date + 762345688 ≈ 2025-02-27; pin Now so the age gate treats those entries as recent.
+	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
+
 	w := &enrichment.Watcher{
 		HomeDir:      home,
 		PollInterval: 20 * time.Millisecond,
+		Now:          func() time.Time { return fixtureNow },
 		Handle: func(e enrichment.ManifestEntry) {
 			mu.Lock()
 			defer mu.Unlock()
