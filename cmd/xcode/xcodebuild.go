@@ -665,10 +665,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		return c.XcodeArgs.Args(additional)
 	}
 
-	// Query-only invocations (-list, -version, -showBuildSettings on its own, ...)
-	// reject -derivedDataPath and don't need cache wiring. Run() short-circuits
-	// these into runPassthrough before assembleArgs; this branch is defensive
-	// only — return argv unchanged with no cache-flag injection.
+	// Query-only invocations (-list, -version, -showBuildSettings on its own, ...) reject -derivedDataPath and don't need cache wiring. Primary short-circuit is in Run() after assembleArgs returns; this branch is defensive.
 	if !c.XcodeArgs.HasBuildAction() {
 		return c.XcodeArgs.Args(additional)
 	}
