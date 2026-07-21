@@ -38,6 +38,7 @@ type Record struct {
 	ExitCode     int       `json:"exit_code"`
 	CIProvider   string    `json:"ci_provider,omitempty"`
 	Username     string    `json:"username,omitempty"`
+	HitRate      float32   `json:"hit_rate,omitempty"`
 }
 
 // IsLocal reports whether the record was produced outside a known CI provider.

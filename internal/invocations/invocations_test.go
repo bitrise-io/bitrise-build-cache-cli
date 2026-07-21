@@ -171,6 +171,7 @@ func TestReader_Recent_emptyDir(t *testing.T) {
 	assert.Empty(t, recs)
 }
 
+
 func TestSweep_deletesOldFiles(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
@@ -219,6 +220,7 @@ func TestRecord_jsonRoundtrip(t *testing.T) {
 		ExitCode:     0,
 		CIProvider:   "bitrise",
 		Username:     "bob",
+		HitRate:      0.75,
 	}
 
 	b, err := json.Marshal(rec)
@@ -235,6 +237,14 @@ func TestRecord_finishedAtOmittedWhenZero(t *testing.T) {
 	b, err := json.Marshal(rec)
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), "finished_at", "zero FinishedAt should be omitted via omitzero")
+}
+
+func TestRecord_hitRateOmittedWhenZero(t *testing.T) {
+	rec := Record{InvocationID: "i", StartedAt: time.Now().UTC()}
+
+	b, err := json.Marshal(rec)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "hit_rate", "zero HitRate should be omitted so canonical fixtures stay byte-identical")
 }
 
 func TestSweep_emptyDirIsNoop(t *testing.T) {
