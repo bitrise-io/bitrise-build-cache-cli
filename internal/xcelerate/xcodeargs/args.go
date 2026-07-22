@@ -22,7 +22,13 @@ type XcodeArgs interface {
 	UserOtherCFlags() string
 }
 
+// Xcode 26 gates the compile-cache plugin behind the master toggle
+// COMPILATION_CACHE_ENABLE_CACHING. Without it, SwiftBuild resolves the
+// individual COMPILATION_CACHE_* keys but never emits -cache-compile-job on
+// swiftc argv, so the plugin never loads and the remote CAS stays dark for
+// projects whose target defaults don't already have caching on.
 var CacheArgs = map[string]string{
+	"COMPILATION_CACHE_ENABLE_CACHING":              "YES",
 	"COMPILATION_CACHE_ENABLE_PLUGIN":               "YES",
 	"COMPILATION_CACHE_ENABLE_INTEGRATED_QUERIES":   "YES",
 	"COMPILATION_CACHE_ENABLE_DETACHED_KEY_QUERIES": "YES",
