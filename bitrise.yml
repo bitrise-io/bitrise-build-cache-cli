@@ -1385,6 +1385,8 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    # Workflow name too new to be classified `established` by the BE benchmark endpoint; e2e needs cache on to produce proxy logs to assert against.
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
