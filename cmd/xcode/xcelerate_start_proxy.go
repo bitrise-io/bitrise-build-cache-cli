@@ -422,4 +422,3 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 
 	return parsed
 }
-
