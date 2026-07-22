@@ -15,21 +15,26 @@ const (
 )
 
 type Client struct {
-	httpClient  *retryablehttp.Client
-	baseURL     string
-	accessToken string
-	logger      log.Logger
+	httpClient    *retryablehttp.Client
+	baseURL       string
+	tokenSupplier func() string
+	logger        log.Logger
 }
 
-func NewClient(baseURL string, accessToken string, logger log.Logger) (*Client, error) {
+// NewClient wires a supplier so each request reads a freshly-resolved token.
+func NewClient(baseURL string, tokenSupplier func() string, logger log.Logger) (*Client, error) {
 	httpClient := retryhttp.NewClient(logger)
 	httpClient.RetryMax = maxHTTPClientRetries
 
+	if tokenSupplier == nil {
+		tokenSupplier = func() string { return "" }
+	}
+
 	return &Client{
-		httpClient:  httpClient,
-		baseURL:     baseURL,
-		accessToken: accessToken,
-		logger:      logger,
+		httpClient:    httpClient,
+		baseURL:       baseURL,
+		tokenSupplier: tokenSupplier,
+		logger:        logger,
 	}, nil
 }
 
