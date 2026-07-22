@@ -63,3 +63,14 @@ func TestUsernamePersistable(t *testing.T) {
 	assert.True(t, usernamePersistable(configcommon.AuthSourceMultiplatform))
 	assert.False(t, usernamePersistable(configcommon.AuthSourceJWT))
 }
+
+func TestDebugFlag_ORsGlobal_ActivateInteractive(t *testing.T) {
+	t.Cleanup(func() { IsDebugLogMode = false })
+
+	IsDebugLogMode = true
+	params := struct{ DebugLogging bool }{DebugLogging: false}
+
+	params.DebugLogging = DebugEnabled(params.DebugLogging)
+
+	assert.True(t, params.DebugLogging, "global -d must OR into interactive params.DebugLogging")
+}

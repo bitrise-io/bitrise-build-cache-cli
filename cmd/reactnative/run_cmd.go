@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
@@ -20,7 +21,8 @@ var runCmd = &cobra.Command{
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r := rnpkg.NewRunner(rnpkg.RunnerParams{
-			ExecFn: defaultExecFn,
+			ExecFn:       defaultExecFn,
+			DebugLogging: common.DebugEnabled(false),
 		})
 
 		return r.Run(cmd.Context(), args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())

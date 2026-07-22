@@ -199,7 +199,7 @@ func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[strin
 
 func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
 	params := xcelerate.DefaultParams()
-	params.DebugLogging = IsDebugLogMode
+	params.DebugLogging = DebugEnabled(params.DebugLogging)
 	params.PushEnabled = pushEnabled
 
 	if err := xcelerate.Activate(
