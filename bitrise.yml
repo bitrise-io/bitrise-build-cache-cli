@@ -935,16 +935,33 @@ workflows:
               echo "Found Invocation ID: $invocation_id"
               envman add --key INVOCATION_ID --value "$invocation_id"
     - script:
-        title: Assert invocation from API
+        title: Assert invocation records ciProvider=unknown
         inputs:
           - content: |-
-              source ../_e2e/scripts/assert_invocations.sh
+              #!/usr/bin/env bash
+              set -exo pipefail
+              # Shared helpers hard-code ciProvider == "bitrise"; this workflow unset
+              # BITRISE_IO to exercise the local-dev credential_helper branch, so the
+              # invocation is recorded with ciProvider == "unknown". Fetch it directly.
+              : "${MONOLITH_API_PAT:?}"
+              : "${WORKSPACE_SLUG:?}"
+              : "${INVOCATION_ID:?}"
 
-              assert_bitrise_invocation_in_list "$INVOCATION_ID" "bazel"
-              assert_bitrise_invocation_detail "$INVOCATION_ID" "bazel"
-              assert_invocation_targets_bazel "$INVOCATION_ID"
-              assert_build_performance "$BITRISE_APP_SLUG"
-              assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "bazel"
+              url="https://app.bitrise.io/build-cache/$WORKSPACE_SLUG/invocations/bazel/$INVOCATION_ID.json"
+              echo "Fetching invocation from $url"
+              inv=$(curl --retry 3 -sS -H "Authorization: token $MONOLITH_API_PAT" "$url")
+
+              echo "$inv" | jq -e --arg id "$INVOCATION_ID" '
+                .invocationId == $id
+                and .tool == "bazel"
+                and .ciProvider == "unknown"
+                and (.cacheHitRate | tonumber) > 0
+              ' > /dev/null || {
+                echo "FAIL: invocation assertions failed. Response:"
+                echo "$inv" | jq .
+                exit 1
+              }
+              echo "Invocation $INVOCATION_ID OK (ciProvider=unknown, cacheHitRate>0)"
     - deploy-to-bitrise-io@2: {}
 
   feature-e2e-bazel-public-no-rbe:
