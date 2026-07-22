@@ -37,7 +37,7 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
-		// Apply a stored OAuth login: refresh its PAT into the auth env vars
+		// Apply a stored OAuth login: refresh its PAT in the credential store
 		// (no-op when env/CI creds are set). Before the version check so it
 		// still runs for check-skipped commands.
 		switch cmd.Name() {
@@ -63,7 +63,8 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		"xcodebuild",
 		"start-proxy", "stop-proxy",
 		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
-		"register-invocation", "register-child-invocation":
+		"register-invocation", "register-child-invocation",
+		"get":
 		return true
 	case "token", "username":
 		return true

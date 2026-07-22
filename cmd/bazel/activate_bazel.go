@@ -66,6 +66,10 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	}
 	bazelrcPath := filepath.Join(homeDir, ".bazelrc")
 
+	if cliPath, exeErr := os.Executable(); exeErr == nil {
+		activateBazelParams.CLIPath = cliPath
+	}
+
 	// Run main logic
 	if err := ActivateBazelCmdFn(
 		logger,

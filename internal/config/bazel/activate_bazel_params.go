@@ -29,6 +29,10 @@ type ActivateBazelParams struct {
 	BES        BESParams
 	RBE        RBEParams
 	Timestamps bool
+	// CLIPath is the absolute path of the bitrise-build-cache binary. Passed to
+	// the bazelrc template so local `.bazelrc` can reference the binary via
+	// `--credential_helper=<CLIPath>` instead of embedding the auth token.
+	CLIPath string
 }
 
 func DefaultActivateBazelParams() ActivateBazelParams {
@@ -103,6 +107,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		WorkflowName: cacheConfig.BitriseWorkflowName,
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
+		CLIPath:      params.CLIPath,
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,

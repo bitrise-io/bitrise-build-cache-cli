@@ -1,7 +1,22 @@
+{{- /*
+Local dev (CLIPath present, CIProvider empty) resolves the auth token per
+build via the CLI's credential-helper hook (Bazel invokes `<CLIPath> get`
+per the EngFlow spec) — no plain-text token on disk. CI keeps the literal
+`Bearer <token>` header for perf and to avoid spawning the CLI on every
+RPC. When neither CLIPath nor CIProvider is available (defensive), the
+literal-header branch is used so activation still produces a working
+config.
+*/ -}}
+{{- $useHelper := and .Common.CLIPath (not .Common.CIProvider) -}}
+{{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
+build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}
+{{ end }}
 {{- if .Cache.Enabled -}}
 build --remote_cache={{ .Cache.EndpointURLWithPort }}
 build --remote_timeout=600s
+{{- if not $useHelper }}
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
+{{- end }}
 build --remote_header=x-flare-buildtool=bazel
 build --remote_header=x-flare-builduser={{ .Common.CIProvider }}
 {{- if .Cache.IsPushEnabled }}
@@ -13,7 +28,9 @@ build --noremote_upload_local_results
 
 {{- if .BES.Enabled }}
 build --bes_backend={{ .BES.EndpointURLWithPort }}
+{{- if not $useHelper }}
 build --bes_header=authorization="Bearer {{ .Common.AuthToken }}"
+{{- end }}
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
