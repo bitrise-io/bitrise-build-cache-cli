@@ -2,6 +2,7 @@
 package xcodeargs
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -9,11 +10,16 @@ import (
 	"github.com/spf13/pflag"
 )
 
-//go:generate moq -out mocks/args_mock.go -pkg mocks . XcodeArgs
+//go:generate moq -stub -out mocks/args_mock.go -pkg mocks . XcodeArgs
 type XcodeArgs interface {
 	Args(additional map[string]string) []string
 	Command() string
 	ShortCommand() string
+	HasBuildAction() bool
+	DerivedDataPath() string
+	ProjectTempDir() string
+	ProjectDir() string
+	UserOtherCFlags() string
 }
 
 var CacheArgs = map[string]string{
@@ -25,16 +31,14 @@ var CacheArgs = map[string]string{
 	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
+	"COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES":  "swift c c++ objective-c objective-c++",
 }
 
-// PrefixMapArgs canonicalize the rotating dir roots in clang cache keys so a non-stable
-// checkout/DerivedData path still reuses cache. Suppressed by --disable-prefix-mapping.
-var PrefixMapArgs = map[string]string{
-	"CLANG_ENABLE_PREFIX_MAPPING": "YES",
-	"OTHER_CFLAGS":                "$(inherited) -fdepscan-prefix-map=$(SRCROOT)=/^src -fdepscan-prefix-map=$(OBJROOT)=/^obj -fdepscan-prefix-map=$(SYMROOT)=/^sym -fdepscan-prefix-map=$(BUILT_PRODUCTS_DIR)=/^built -fdepscan-prefix-map=$(HOME)=/^home",
-}
-
-var actions = []string{
+// buildActions is the subset of xcodebuild action keywords that trigger an
+// actual build (i.e. produce build products). -derivedDataPath / PROJECT_TEMP_DIR
+// / OTHER_CFLAGS injection is only valid when one of these is in argv, or when
+// argv contains no action keyword at all (xcodebuild(1): `build` is the default).
+var buildActions = []string{
 	"build",
 	"build-for-testing",
 	"analyze",
@@ -46,6 +50,12 @@ var actions = []string{
 	"installhdrs",
 	"install",
 	"clean",
+}
+
+// queryActions are the xcodebuild action keywords that do not build. If one
+// of these is in argv and no build action is present, xcodebuild rejects
+// -derivedDataPath — skip injection.
+var queryActions = []string{
 	"-showsdks",
 	"-showBuildSettings",
 	"-showdestinations",
@@ -59,6 +69,8 @@ var actions = []string{
 	"-resolvePackageDependencies",
 	"-create-xcframework",
 }
+
+var actions = slices.Concat(buildActions, queryActions)
 
 type Default struct {
 	Cmds         []*cobra.Command
@@ -111,6 +123,29 @@ func (p Default) nonCommands() []string {
 
 func (p Default) Command() string {
 	return strings.TrimSpace(strings.Join(p.nonCommands(), " "))
+}
+
+// HasBuildAction reports whether argv triggers a real xcodebuild build. An
+// explicit build-action keyword wins; otherwise argv is a build unless a
+// query-only action (-list, -version, -showBuildSettings, ...) is present.
+func HasBuildAction(argv []string) bool {
+	for _, arg := range argv {
+		if slices.Contains(buildActions, arg) {
+			return true
+		}
+	}
+
+	for _, arg := range argv {
+		if slices.Contains(queryActions, arg) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (p Default) HasBuildAction() bool {
+	return HasBuildAction(p.OriginalArgs)
 }
 
 func (p Default) ShortCommand() string {

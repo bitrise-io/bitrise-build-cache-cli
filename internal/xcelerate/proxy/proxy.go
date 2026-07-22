@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,9 +57,21 @@ type Proxy struct {
 	skipGetCapabilitiesCall []grpc.ServiceDesc
 	logger                  log.Logger
 	loggerFactory           LoggerFactory
+
+	emitter        InvocationEmitter
+	currentSession *SessionMeta
+	grpcServer     *grpc.Server
+
+	// InactivityTimeout is the idle window after which the current session is
+	// slim-emitted. Zero falls back to defaultInactivityTimeout.
+	InactivityTimeout time.Duration
+	inactivityTimer   *time.Timer
+	lastActivity      time.Time
 }
 
-func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory) *grpc.Server {
+const defaultInactivityTimeout = 10 * time.Second
+
+func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
 	// Note: Gradle plugin uses a client balancer, with multiple channels (min 2), each with multiple connections.
 	// For a simple implementation, we only have one channel with multiple connections.
 	numChan := max(2, runtime.NumCPU()/6)
@@ -71,6 +85,7 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 		sessionState:  newSessionState(),
 		logger:        logger,
 		loggerFactory: loggerFactory,
+		emitter:       emitter,
 		ccSemaphore:   make(chan struct{}, ccLimit),
 		skipGetCapabilitiesCall: []grpc.ServiceDesc{
 			session.Session_ServiceDesc, // skip GetCapabilities call for session service methods
@@ -90,7 +105,12 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 				return nil, err
 			}
 
-			return handler(ctx, req)
+			resp, err := handler(ctx, req)
+			if !isSessionServiceMethod(info.FullMethod) {
+				proxy.touchSession() //nolint:contextcheck // timer callback fires after RPC ctx is done
+			}
+
+			return resp, err
 		}),
 	)
 
@@ -98,18 +118,131 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	llvmkv.RegisterKeyValueDBServer(grpcServer, proxy)
 	session.RegisterSessionServer(grpcServer, proxy)
 
-	return grpcServer
+	proxy.grpcServer = grpcServer
+
+	return proxy
 }
 
-func (p *Proxy) SetSession(_ context.Context, request *session.SetSessionRequest) (*emptypb.Empty, error) {
+// Serve delegates to the underlying gRPC server.
+func (p *Proxy) Serve(l net.Listener) error {
+	//nolint:wrapcheck
+	return p.grpcServer.Serve(l)
+}
+
+// GracefulStop stops the underlying gRPC server after in-flight RPCs finish.
+func (p *Proxy) GracefulStop() {
+	p.grpcServer.GracefulStop()
+}
+
+// FlushCurrentSession emits the currently-open session (if any) via the configured emitter.
+// Caller is responsible for invoking this on shutdown — SetSession() already emits the
+// previous session before starting a new one.
+func (p *Proxy) FlushCurrentSession(ctx context.Context) {
 	p.sessionMutex.Lock()
 	defer p.sessionMutex.Unlock()
+
+	p.emitCurrentSessionLocked(ctx)
+}
+
+// emitCurrentSessionLocked snapshots + emits under the caller-held sessionMutex.
+func (p *Proxy) emitCurrentSessionLocked(ctx context.Context) {
+	if p.emitter == nil || p.currentSession == nil {
+		return
+	}
+
+	if p.inactivityTimer != nil {
+		p.inactivityTimer.Stop()
+		p.inactivityTimer = nil
+	}
+
+	meta := *p.currentSession
+	meta.EndTime = p.lastActivity
+	stats := p.sessionState.getStats().toPublic()
+
+	p.emitter.EmitSlim(ctx, meta, stats)
+
+	p.currentSession = nil
+}
+
+func (p *Proxy) inactivityDuration() time.Duration {
+	if p.InactivityTimeout > 0 {
+		return p.InactivityTimeout
+	}
+
+	return defaultInactivityTimeout
+}
+
+// isSessionServiceMethod reports whether the fully-qualified gRPC method belongs
+// to the session control plane (SetSession / RegisterInvocationRelation …).
+// Control-plane calls are not cache activity: bumping lastActivity for them
+// would overwrite the explicit reset SetSession does at line 232 and lose the
+// "fresh session, no RPCs yet" signal that meta.EndTime relies on.
+func isSessionServiceMethod(fullMethod string) bool {
+	return strings.HasPrefix(fullMethod, "/"+session.Session_ServiceDesc.ServiceName+"/")
+}
+
+// touchSession records RPC activity on the current session and arms the
+// inactivity timer on the first touch.
+func (p *Proxy) touchSession() {
+	p.sessionMutex.Lock()
+	defer p.sessionMutex.Unlock()
+
+	if p.currentSession == nil {
+		return
+	}
+
+	p.lastActivity = time.Now()
+
+	if p.inactivityTimer == nil {
+		target := p.currentSession
+		p.inactivityTimer = time.AfterFunc(p.inactivityDuration(), func() {
+			p.onInactivity(target)
+		})
+	}
+}
+
+// onInactivity fires when the timer elapses. Re-schedules itself if touchSession
+// bumped lastActivity in the meantime; emits otherwise.
+func (p *Proxy) onInactivity(target *SessionMeta) {
+	p.sessionMutex.Lock()
+	defer p.sessionMutex.Unlock()
+
+	if p.currentSession != target {
+		return
+	}
+
+	elapsed := time.Since(p.lastActivity)
+	if remaining := p.inactivityDuration() - elapsed; remaining > 0 {
+		p.inactivityTimer = time.AfterFunc(remaining, func() {
+			p.onInactivity(target)
+		})
+
+		return
+	}
+
+	p.emitCurrentSessionLocked(context.Background())
+}
+
+func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionRequest) (*emptypb.Empty, error) {
+	p.sessionMutex.Lock()
+	defer p.sessionMutex.Unlock()
+
+	p.emitCurrentSessionLocked(ctx)
 
 	p.capabilitiesCalled = false
 
 	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
 
 	p.sessionState = newSessionState()
+	p.currentSession = &SessionMeta{
+		InvocationID: request.GetInvocationId(),
+		AppSlug:      request.GetAppSlug(),
+		BuildSlug:    request.GetBuildSlug(),
+		StepSlug:     request.GetStepSlug(),
+		StartTime:    time.Now(),
+	}
+	p.lastActivity = time.Time{}
+	p.inactivityTimer = nil
 
 	logger, err := p.loggerFactory(request.GetInvocationId())
 	if err != nil {

@@ -3,6 +3,8 @@ package xcode
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"maps"
@@ -30,6 +32,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
@@ -39,6 +42,8 @@ const (
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
 	NoBitriseBuildCacheFlag     = "--no-bitrise-build-cache"
+	NoPrefixMapFlag             = "--no-prefix-map"
+	NoManagedDerivedDataFlag    = "--no-managed-derived-data"
 	CreateXCFrameworkFlag       = "-create-xcframework"
 	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
@@ -97,43 +102,73 @@ TBD`,
 			config = xcelerate.DefaultConfig()
 		}
 
-		envs := utils.AllEnvs()
-		logFile, logPath, err := logFile(invocationID, osProxy, envs)
-		if err != nil && !config.Silent {
-			fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", err)
-		}
-		defer func() {
-			if logFile != nil {
-				_ = logFile.Close()
-			}
-		}()
-
 		xcelerateParams.OrigArgs = os.Args[1:]
 
 		silentLogging := config.Silent
 		if slices.Contains(xcelerateParams.OrigArgs, "-json") {
 			silentLogging = true
 		}
-		logOutput := wrapperLogWriter(logFile, logPath, silentLogging)
-		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
-		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
 
-		// Check for --no-bitrise-build-cache flag: override config and filter it out
+		// Strip wrapper-only flags from argv and capture disable-reasons before
+		// the logger exists — they get logged once the logger is wired below.
+		var disabledBy []string
 		if slices.Contains(xcelerateParams.OrigArgs, NoBitriseBuildCacheFlag) {
 			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
 				return s == NoBitriseBuildCacheFlag
 			})
 			config.BuildCacheEnabled = false
-			if !silentLogging {
-				logger.TInfof(MsgBuildCacheDisabledByFlag, NoBitriseBuildCacheFlag)
-			}
+			disabledBy = append(disabledBy, NoBitriseBuildCacheFlag)
+		}
+
+		noPrefixMap := slices.Contains(xcelerateParams.OrigArgs, NoPrefixMapFlag)
+		if noPrefixMap {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoPrefixMapFlag
+			})
+		}
+
+		noManagedDD := slices.Contains(xcelerateParams.OrigArgs, NoManagedDerivedDataFlag)
+		if noManagedDD {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoManagedDerivedDataFlag
+			})
 		}
 
 		// Automatically disable cache for -create-xcframework as it's incompatible
 		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
 			config.BuildCacheEnabled = false
-			if !silentLogging {
-				logger.TInfof(MsgBuildCacheDisabledByFlag, CreateXCFrameworkFlag)
+			disabledBy = append(disabledBy, CreateXCFrameworkFlag)
+		}
+
+		// Query invocations short-circuit before creating the per-invocation log
+		// file or spawning the proxy.
+		isBuildAction := xcodeargs.HasBuildAction(xcelerateParams.OrigArgs)
+
+		var (
+			logFileWC io.WriteCloser
+			logPath   string
+		)
+		if isBuildAction {
+			envs := utils.AllEnvs()
+			var logErr error
+			logFileWC, logPath, logErr = logFile(invocationID, osProxy, envs)
+			if logErr != nil && !config.Silent {
+				fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", logErr)
+			}
+			defer func() {
+				if logFileWC != nil {
+					_ = logFileWC.Close()
+				}
+			}()
+		}
+
+		logOutput := wrapperLogWriter(logFileWC, logPath, silentLogging)
+		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
+		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
+
+		if !silentLogging {
+			for _, flag := range disabledBy {
+				logger.TInfof(MsgBuildCacheDisabledByFlag, flag)
 			}
 		}
 
@@ -146,7 +181,7 @@ TBD`,
 		logger.EnableDebugLog(config.DebugLogging)
 
 		var proxySessionClient session.SessionClient
-		if config.BuildCacheEnabled {
+		if isBuildAction && config.BuildCacheEnabled {
 			logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
 
 			err := startProxy(
@@ -173,7 +208,7 @@ TBD`,
 			return string(o), err
 		}, logger)
 
-		xcodeRunner := xcodeargs.NewRunner(logger, config, logFile)
+		xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
 
 		runner := &XcodebuildRunner{
 			Config:             config,
@@ -184,6 +219,8 @@ TBD`,
 			XcodeRunner:        xcodeRunner,
 			ProxySessionClient: proxySessionClient,
 			XcodeArgs:          xcodeArgs,
+			NoPrefixMap:        noPrefixMap,
+			NoManagedDD:        noManagedDD,
 		}
 		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
@@ -271,6 +308,16 @@ type XcodebuildRunner struct {
 	ProxySessionClient session.SessionClient
 	XcodeArgs          xcodeargs.XcodeArgs
 
+	// NoPrefixMap suppresses prefix-map injection for this invocation only
+	// (per-invocation counterpart to Config.DisablePrefixMapping).
+	NoPrefixMap bool
+	// NoManagedDD suppresses the wrapper-owned -derivedDataPath and PROJECT_TEMP_DIR
+	// substitution; user-supplied values are still honoured either way.
+	NoManagedDD bool
+
+	// Paths is the on-disk root resolver. If zero, paths.Default() is used.
+	Paths paths.Paths
+
 	// invocationAPI saves invocations. If nil, a production analytics client is created.
 	invocationAPI invocationSaver
 	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
@@ -284,8 +331,14 @@ type XcodebuildRunner struct {
 //
 //nolint:nestif
 func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
-	toPass := getArgsToPass(c.Config, c.XcodeArgs)
+	toPass := c.assembleArgs()
 	c.Logger.TDebugf(MsgArgsPassedToXcodebuild, toPass)
+
+	// Query invocations have no session state or cache stats worth reporting;
+	// skip SetSession + analytics emit + marker write entirely.
+	if !c.XcodeArgs.HasBuildAction() {
+		return c.runPassthrough(ctx, toPass)
+	}
 
 	if c.ProxySessionClient != nil {
 		_, err := c.ProxySessionClient.SetSession(ctx, &session.SetSessionRequest{
@@ -322,12 +375,6 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	hitRate := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
-	if !shouldSaveInvocation(c.XcodeArgs) {
-		c.Logger.TDebugf("Save invocation skipped")
-
-		return runStats
-	}
-
 	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
@@ -345,6 +392,21 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	c.appendLocalInvocationLog(*inv, runStats)
 	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+
+	return runStats
+}
+
+// runPassthrough forwards a query xcodebuild invocation without touching the
+// proxy or emitting analytics.
+func (c *XcodebuildRunner) runPassthrough(ctx context.Context, args []string) xcodeargs.RunStats {
+	c.Logger.TDebugf("xcodebuild wrapper passthrough for query invocation")
+
+	runStats := c.XcodeRunner.Run(ctx, args)
+	if runStats.Error != nil {
+		c.Logger.TErrorf(MsgInvocationFailed, time.Duration(runStats.DurationMS)*time.Millisecond, runStats.Error)
+	} else {
+		c.Logger.TDonef(MsgInvocationSuccess, time.Duration(runStats.DurationMS)*time.Millisecond)
+	}
 
 	return runStats
 }
@@ -408,6 +470,8 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, h
 
 		return
 	}
+
+	enrichment.WriteMarker(c.Logger, c.InvocationID)
 
 	c.Logger.TInfof(MsgInvocationSaved, c.InvocationID)
 
@@ -565,15 +629,6 @@ func resolveBenchmarkPhase(logger log.Logger) string {
 	return ""
 }
 
-func shouldSaveInvocation(xcodeArgs xcodeargs.XcodeArgs) bool {
-	// nolint: staticcheck
-	if xcodeArgs.Command() == "-version" {
-		return false
-	}
-
-	return true
-}
-
 // createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the
 // connection, it returns nil.
 func createProxySessionClient(config xcelerate.Config, logger log.Logger) (session.SessionClient, func()) {
@@ -595,29 +650,198 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 	}
 }
 
-func getArgsToPass(config xcelerate.Config, xcodeArgs xcodeargs.XcodeArgs) []string {
+// assembleArgs returns the final argv for xcodebuild: user args plus the
+// wrapper-owned build settings and prefix-map splicing when build cache is on.
+func (c *XcodebuildRunner) assembleArgs() []string {
 	additional := map[string]string{}
 
-	if !config.BuildCacheEnabled {
-		return xcodeArgs.Args(additional)
+	if !c.Config.BuildCacheEnabled {
+		return c.XcodeArgs.Args(additional)
 	}
 
-	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = config.ProxySocketPath
-	if config.BuildCacheSkipFlags {
-		return xcodeArgs.Args(additional)
+	// Query-only invocations (-list, -version, -showBuildSettings on its own, ...) reject -derivedDataPath and don't need cache wiring. Primary short-circuit is in Run() after assembleArgs returns; this branch is defensive.
+	if !c.XcodeArgs.HasBuildAction() {
+		return c.XcodeArgs.Args(additional)
+	}
+
+	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = c.Config.ProxySocketPath
+	if c.Config.BuildCacheSkipFlags {
+		return c.XcodeArgs.Args(additional)
 	}
 
 	maps.Copy(additional, xcodeargs.CacheArgs)
-	if !config.DisablePrefixMapping {
-		maps.Copy(additional, xcodeargs.PrefixMapArgs)
-	}
+
 	diagnosticRemarks := "NO"
-	if config.DebugLogging {
+	if c.Config.DebugLogging {
 		diagnosticRemarks = "YES"
 	}
 	additional["COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS"] = diagnosticRemarks
 
-	return xcodeArgs.Args(additional)
+	var extraArgv []string
+	var userOtherCFlagsToSplice string
+	var mergedOtherCFlags string
+
+	if !c.Config.DisablePrefixMapping && !c.NoPrefixMap {
+		ps, sources := c.resolvePrefixMapPaths()
+		c.logPrefixMapSources(ps, sources)
+		suffix := xcodeargs.BuildOtherCFlagsValue(ps)
+
+		additional[xcodeargs.ClangEnablePrefixMappingKey] = "YES"
+
+		if ps.ProjectTempDir != "" {
+			additional[xcodeargs.ProjectTempDirKey] = ps.ProjectTempDir
+		}
+
+		userOtherCFlagsToSplice = c.XcodeArgs.UserOtherCFlags()
+		mergedOtherCFlags = xcodeargs.MergeOtherCFlagsValue(userOtherCFlagsToSplice, suffix)
+
+		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" {
+			extraArgv = append(extraArgv, xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath)
+		}
+	}
+
+	toPass := c.XcodeArgs.Args(additional)
+
+	if mergedOtherCFlags != "" {
+		toPass = replaceOrAppendBuildSetting(toPass, xcodeargs.OtherCFlagsKey, mergedOtherCFlags)
+		if userOtherCFlagsToSplice != "" && c.Metadata.CIProvider == "" {
+			c.Logger.TWarnf("Merged user OTHER_CFLAGS with Bitrise prefix-map rules; pass --no-prefix-map to opt out.")
+		}
+	}
+
+	return append(toPass, extraArgv...)
+}
+
+const (
+	prefixMapSourceArgv    = "argv"
+	prefixMapSourceManaged = "managed"
+	prefixMapSourceAuto    = "auto"
+)
+
+// prefixMapSources records where each path in PrefixMapPaths came from so the
+// wrapper can log an origin trail. Values: argv, managed, auto, or "".
+type prefixMapSources struct {
+	Home            string
+	ProjectDir      string
+	DerivedDataPath string
+	ProjectTempDir  string
+}
+
+// resolvePrefixMapPaths determines the four absolute paths that feed the
+// narrowest-first prefix-map rules. User-supplied DerivedDataPath /
+// PROJECT_TEMP_DIR take precedence; otherwise the wrapper-owned dirs under
+// ~/.bitrise/cache/xcode-{dd,ptd}/<sha> are used unless c.NoManagedDD is set.
+func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, prefixMapSources) {
+	projectDir := c.XcodeArgs.ProjectDir()
+	home, _ := os.UserHomeDir()
+
+	sources := prefixMapSources{}
+	if home != "" {
+		sources.Home = prefixMapSourceAuto
+	}
+	if projectDir != "" {
+		sources.ProjectDir = prefixMapSourceArgv
+	}
+
+	dd := c.XcodeArgs.DerivedDataPath()
+	ptd := c.XcodeArgs.ProjectTempDir()
+	if dd != "" {
+		sources.DerivedDataPath = prefixMapSourceArgv
+	}
+	if ptd != "" {
+		sources.ProjectTempDir = prefixMapSourceArgv
+	}
+
+	c.fillManagedPrefixMapPaths(projectDir, &dd, &ptd, &sources)
+
+	return xcodeargs.PrefixMapPaths{
+		Home:            home,
+		ProjectDir:      projectDir,
+		DerivedDataPath: dd,
+		ProjectTempDir:  ptd,
+	}, sources
+}
+
+// fillManagedPrefixMapPaths populates dd/ptd with wrapper-owned paths under
+// ~/.bitrise/cache/xcode-{dd,ptd}/<sha> when the user did not supply them and
+// managed fallback is enabled. No-op when NoManagedDD, when projectDir is
+// unknown, or when paths.Default() cannot resolve $HOME.
+func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd *string, sources *prefixMapSources) {
+	if c.NoManagedDD || projectDir == "" {
+		return
+	}
+	p := c.resolvePaths()
+	if p.Home == "" {
+		return
+	}
+
+	sha := workspaceSHA(projectDir)
+	if *dd == "" {
+		*dd = p.XcodeManagedDerivedDataDir(sha)
+		sources.DerivedDataPath = prefixMapSourceManaged
+	}
+	if *ptd == "" {
+		*ptd = p.XcodeManagedProjectTempDir(sha)
+		sources.ProjectTempDir = prefixMapSourceManaged
+	}
+}
+
+func (c *XcodebuildRunner) logPrefixMapSources(ps xcodeargs.PrefixMapPaths, s prefixMapSources) {
+	c.Logger.Debugf("Prefix map: %s", fmt.Sprintf(
+		"home=%s (%s), projectDir=%s (%s), derivedDataPath=%s (%s), projectTempDir=%s (%s)",
+		ps.Home, s.Home,
+		ps.ProjectDir, s.ProjectDir,
+		ps.DerivedDataPath, s.DerivedDataPath,
+		ps.ProjectTempDir, s.ProjectTempDir,
+	))
+}
+
+func (c *XcodebuildRunner) resolvePaths() paths.Paths {
+	if c.Paths.Home != "" {
+		return c.Paths
+	}
+	p, err := paths.Default()
+	if err != nil {
+		c.Logger.Warnf("Could not resolve user home for managed DerivedData: %v", err)
+
+		return paths.Paths{}
+	}
+
+	return p
+}
+
+// workspaceSHA derives a stable per-checkout key from the workspace directory's
+// absolute path — same path yields the same DD/PTD dir; different absolute paths
+// stay isolated so concurrent xcodebuild runs against parallel checkouts do not
+// stomp on each other's DerivedData.
+func workspaceSHA(projectDir string) string {
+	sum := sha256.Sum256([]byte(projectDir))
+
+	return hex.EncodeToString(sum[:8])
+}
+
+// replaceOrAppendBuildSetting substitutes any existing "KEY=..." entry in argv
+// with the supplied value, or appends it when absent. The caller is responsible
+// for pre-computing the merged value.
+func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
+	out := make([]string, 0, len(argv)+1)
+	replaced := false
+	for _, arg := range argv {
+		if strings.HasPrefix(arg, key+"=") {
+			if !replaced {
+				out = append(out, key+"="+value)
+				replaced = true
+			}
+
+			continue
+		}
+		out = append(out, arg)
+	}
+	if !replaced {
+		out = append(out, key+"="+value)
+	}
+
+	return out
 }
 
 func startProxy(

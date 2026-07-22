@@ -1137,11 +1137,17 @@ workflows:
         inputs:
            - content: |-
                source ../_e2e/scripts/assert_invocations.sh
+               source ../scripts/assert_xcode_invocation_fields.sh
 
                assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
                assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
                assert_build_performance "$BITRISE_APP_SLUG"
                assert_invocation_in_build_performance "$BITRISE_APP_SLUG" "$INVOCATION_ID" "xcode"
+
+               # ACI-5045 / ACI-5207: assert xcactivitylog enrichment re-PUT populated
+               # scheme + fullCommand + xcodeVersion + toolBuildNumber on the BE payload.
+               # Non-empty scheme also acts as a proxy for "enrichment landed" — slim emit never sets it.
+               assert_xcode_invocation_enriched "$INVOCATION_ID"
     - script:
         title: Assert invocations list subcommand emits the fresh record
         inputs:
@@ -1178,6 +1184,190 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - deploy-to-bitrise-io: {}
+
+  e2e-xcode-cas-key-stable:
+    description: |
+      ACI-5045: proves the compilation cache lookup key is stable across
+      checkouts at different absolute paths. Two clones of the same repo
+      at the same commit are built back-to-back with the same activation;
+      the second build must reuse the first's uploads. If the CAS key were
+      still path-sensitive (pre-prefix-map), the second build would miss
+      everything and hitRate would be ~0.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - CHECKOUT_B_DIR: $HOME/checkoutB
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Clone the sample repo into a second absolute path
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # feature-e2e-setup already cloned checkout A into ./_tmp and cd'd there.
+            # Clone the same commit into a completely different absolute path.
+            rm -rf "$CHECKOUT_B_DIR"
+            git clone "$TEST_APP_URL" "$CHECKOUT_B_DIR"
+            git -C "$CHECKOUT_B_DIR" checkout "$COMMIT"
+
+            # Sanity: paths must differ; commits must match.
+            [[ "$PWD" != "$CHECKOUT_B_DIR" ]] || { echo "FAIL: checkout paths must differ"; exit 1; }
+            a_sha=$(git rev-parse HEAD)
+            b_sha=$(git -C "$CHECKOUT_B_DIR" rev-parse HEAD)
+            [[ "$a_sha" == "$b_sha" ]] || { echo "FAIL: checkout SHAs differ: A=$a_sha B=$b_sha"; exit 1; }
+            echo "OK: two checkouts at $a_sha (A=$PWD, B=$CHECKOUT_B_DIR)"
+    - script:
+        title: activate xcode using CLI
+        inputs:
+        - content: |-
+            set -eo pipefail
+
+            ../bitrise-build-cache-cli -d activate xcode --cache
+    - script:
+        title: Build checkout A (warm-up — expected mostly misses)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper-A.log | tee xcodebuild-A.log | xcpretty
+
+            cp xcodebuild-A.log "$BITRISE_DEPLOY_DIR"/
+            cp wrapper-A.log "$BITRISE_DEPLOY_DIR"/
+    - script:
+        title: Build checkout B and assert CAS-key stability (retries once on cold-cache miss)
+        retry_times: 1
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            source ../_e2e/scripts/error.sh
+            source ../_e2e/scripts/extract_invocation_id.sh
+            source ../scripts/assert_xcode_invocation_fields.sh
+
+            cd "$CHECKOUT_B_DIR"
+
+            rm -rf "$HOME/.bitrise/cache/xcode-dd" "$HOME/.bitrise/cache/xcode-ptd"
+
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper-B.log | tee xcodebuild-B.log | xcpretty
+
+            cp xcodebuild-B.log "$BITRISE_DEPLOY_DIR"/
+            cp wrapper-B.log "$BITRISE_DEPLOY_DIR"/
+
+            "$(dirname "$BITRISE_SOURCE_DIR")/scripts/check_pattern.sh" "$BITRISE_DEPLOY_DIR/xcodebuild-B.log" 'CompilationCacheMetrics'
+
+            invocation_id_b=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper-B.log")
+            if [[ -z "$invocation_id_b" ]]; then
+              fatal "checkout B invocation ID not found in wrapper-B.log"
+            fi
+            echo "Checkout B invocation ID: $invocation_id_b"
+
+            assert_xcode_invocation_hit_rate_at_least "$invocation_id_b" 80
+    - deploy-to-bitrise-io: {}
+
+  e2e-xcode-f1-f2-race:
+    description: |
+      Proves the F1 (slim-emit)/F2 (xcactivitylog watcher) timing race is
+      handled by the retry bucket in the enrichment watcher: F2 must not
+      mint an orphan invocation when it sees the manifest before F1's slim
+      record lands. We force F1 slow (30s inactivity window) so F2's 5s
+      poll definitely observes the manifest first; the retry bucket must
+      then defer, wait for the slim record, and enrich the wrapper's own
+      InvocationID — not a fresh UUID.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    # Force F1 (slim emit) to fire well after F2's manifest sighting; exercises
+    # the correlation retry bucket that this workflow is designed to prove.
+    - TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: activate xcode using CLI
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -eo pipefail
+
+              ../bitrise-build-cache-cli -d activate xcode --cache
+    - script:
+        title: build app
+        inputs:
+          - content: |-
+              set -eo pipefail
+
+              xcodebuild build \
+                -workspace ComposableArchitecture.xcworkspace \
+                -scheme ComposableArchitecture \
+                -destination "generic/platform=iOS" \
+                -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
+    - script:
+        title: gather info + extract invocation id
+        inputs:
+          - content: |-
+              set -exo pipefail
+
+              cp ~/.bitrise-xcelerate/config.json $BITRISE_DEPLOY_DIR
+              cp ~/.local/state/xcelerate/logs/* $BITRISE_DEPLOY_DIR 2>/dev/null || true
+              cp xcodebuild.log $BITRISE_DEPLOY_DIR
+              cp wrapper.log $BITRISE_DEPLOY_DIR
+
+              source ../_e2e/scripts/error.sh
+              source ../_e2e/scripts/extract_invocation_id.sh
+
+              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
+              if [[ -z "$invocation_id" ]]; then
+                fatal "Invocation ID not found in logs"
+              fi
+
+              echo "Found Invocation ID: $invocation_id"
+              envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Wait for slim emit + enrichment race window
+        inputs:
+        - content: |-
+            set -eo pipefail
+            # F1 idle window is 30s + slack for slim PUT; F2 polls every 5s and
+            # retries up to DefaultMaxCorrelationRetries. 60s gives both a comfortable
+            # completion window while still catching regressions in either direction.
+            echo "Sleeping 60s to let F1 slim-emit and F2 enrichment converge…"
+            sleep 60
+    - script:
+        title: Assert wrapper invocation was enriched (no orphan)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            source ../_e2e/scripts/assert_invocations.sh
+            source ../scripts/assert_xcode_invocation_fields.sh
+
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
+
+            # Enriched fields present on OUR id proves the watcher correlated
+            # against the slim record instead of minting an orphan under a new UUID.
+            assert_xcode_invocation_enriched "$INVOCATION_ID"
+
+            # Belt-and-braces: list all xcode invocations for this build; must be
+            # exactly one, and it must be the wrapper's InvocationID. Two would
+            # mean F2 gave up and minted an orphan.
+            assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
   e2e-daemon-install-macos:
@@ -2065,6 +2255,8 @@ pipelines:
         - gradle-configuration-e2e-linux-save
         parallel: 3
       e2e-xcode-comp-cache: {}
+      e2e-xcode-cas-key-stable: {}
+      e2e-xcode-f1-f2-race: {}
       e2e-daemon-install-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}

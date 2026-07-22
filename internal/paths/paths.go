@@ -36,8 +36,24 @@ const (
 	// CcacheSocketName is the ccache IPC unix-socket filename (lives under the OS temp dir).
 	CcacheSocketName = "ccache-ipc.sock"
 
-	// xcelerateLogsRelative is the per-user xcelerate log dir.
-	xcelerateLogsRelative = ".local/state/xcelerate/logs"
+	// xcelerateStateRelative is the per-user xcelerate state root.
+	xcelerateStateRelative = ".local/state/xcelerate"
+
+	// xcelerateLogsSubdir is the per-user xcelerate log dir under XcelerateStateDir.
+	xcelerateLogsSubdir = "logs"
+
+	// xcelerateEnrichmentSubdir holds every persisted-state artefact the
+	// F2 enrichment watcher, retry queue, and slim/handled-marker bookkeeping share.
+	xcelerateEnrichmentSubdir = "enrichment"
+
+	// xcelerateHandledInvocationsSubdir sits under XcelerateEnrichmentDir and marks
+	// invocation IDs the wrapper already PUT a rich payload for, so slim emit and
+	// F2 enrichment skip them instead of last-write-wins overwriting the rich row.
+	xcelerateHandledInvocationsSubdir = "handled-invocations"
+
+	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
+	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
+	handledManifestsFilename = "handled-manifests.ndjson"
 
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
@@ -47,6 +63,10 @@ const (
 
 	// invocationsSubdir holds the per-day NDJSON invocation log files.
 	invocationsSubdir = "invocations"
+
+	pendingInvocationsFilename = "pending-invocations.ndjson"
+
+	enrichmentHealthFilename = "health.json"
 
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
@@ -60,8 +80,18 @@ const (
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
 
+	// xcodeManagedDerivedDataTool is the per-workspace DD root managed by the wrapper.
+	xcodeManagedDerivedDataTool = "xcode-dd"
+
+	// xcodeManagedProjectTempDirTool is the per-workspace PROJECT_TEMP_DIR root managed by the wrapper.
+	xcodeManagedProjectTempDirTool = "xcode-ptd"
+
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
+
+	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
+	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
+	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
 
 // CLIBinaryName is the on-disk name of the CLI executable (daemon plist entry, PATH lookup).
@@ -118,6 +148,14 @@ func (p Paths) InvocationsDir() string {
 
 func (p Paths) InvocationsFile(day string) string {
 	return filepath.Join(p.InvocationsDir(), day+".ndjson")
+}
+
+func (p Paths) PendingInvocationsFile() string {
+	return filepath.Join(p.XcelerateEnrichmentDir(), pendingInvocationsFilename)
+}
+
+func (p Paths) EnrichmentHealthFile() string {
+	return filepath.Join(p.XcelerateEnrichmentDir(), enrichmentHealthFilename)
 }
 
 // PlistPath returns the per-user LaunchAgent plist path for the given label.
@@ -195,9 +233,35 @@ func (p Paths) CcacheSocketPath(tempDir string) string {
 	return filepath.Join(tempDir, CcacheSocketName)
 }
 
+// XcelerateStateDir returns ~/.local/state/xcelerate.
+func (p Paths) XcelerateStateDir() string {
+	return filepath.Join(p.Home, xcelerateStateRelative)
+}
+
 // XcelerateLogDir returns ~/.local/state/xcelerate/logs.
 func (p Paths) XcelerateLogDir() string {
-	return filepath.Join(p.Home, xcelerateLogsRelative)
+	return filepath.Join(p.XcelerateStateDir(), xcelerateLogsSubdir)
+}
+
+// XcelerateHandledInvocationDir returns ~/.local/state/xcelerate/enrichment/handled-invocations.
+func (p Paths) XcelerateHandledInvocationDir() string {
+	return filepath.Join(p.XcelerateEnrichmentDir(), xcelerateHandledInvocationsSubdir)
+}
+
+// XcelerateHandledInvocationFile returns the marker path for a specific invocation ID.
+func (p Paths) XcelerateHandledInvocationFile(invocationID string) string {
+	return filepath.Join(p.XcelerateHandledInvocationDir(), invocationID)
+}
+
+// XcelerateEnrichmentDir returns ~/.local/state/xcelerate/enrichment.
+func (p Paths) XcelerateEnrichmentDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateEnrichmentSubdir)
+}
+
+// HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to
+// persist which xcactivitylog UUIDs have already been emitted across restarts.
+func (p Paths) HandledManifestsFile() string {
+	return filepath.Join(p.XcelerateEnrichmentDir(), handledManifestsFilename)
 }
 
 // CcacheLogDir returns ~/.local/state/ccache/logs.
@@ -208,4 +272,16 @@ func (p Paths) CcacheLogDir() string {
 // GradleInitScriptFile returns the absolute path of the generated gradle init script.
 func (p Paths) GradleInitScriptFile() string {
 	return filepath.Join(p.Home, gradleInitScriptRelative)
+}
+
+// XcodeManagedDerivedDataDir returns the wrapper-owned DerivedData dir for a given
+// workspace-sha, layered under BitriseCacheDir("xcode-dd").
+func (p Paths) XcodeManagedDerivedDataDir(workspaceSHA string) string {
+	return filepath.Join(p.BitriseCacheDir(xcodeManagedDerivedDataTool), workspaceSHA)
+}
+
+// XcodeManagedProjectTempDir returns the wrapper-owned PROJECT_TEMP_DIR dir for a given
+// workspace-sha, layered under BitriseCacheDir("xcode-ptd").
+func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
+	return filepath.Join(p.BitriseCacheDir(xcodeManagedProjectTempDirTool), workspaceSHA)
 }

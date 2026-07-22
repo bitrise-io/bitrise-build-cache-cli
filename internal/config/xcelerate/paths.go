@@ -44,6 +44,12 @@ func ConfigFile(osProxy utils.OsProxy) string {
 // EnvProxySocketPath overrides the default xcelerate proxy socket location when set.
 const EnvProxySocketPath = "BITRISE_XCELERATE_PROXY_SOCKET_PATH"
 
+// EnvInactivityTimeout overrides the xcelerate proxy inactivity window that
+// triggers a slim invocation emit. Value is a time.ParseDuration string.
+// Test-only knob: sole caller is the e2e-xcode-f1-f2-race workflow, which
+// forces F1 slow so F2's poll observes the manifest first.
+const EnvInactivityTimeout = "TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT"
+
 // ResolveProxySocketPath returns the proxy unix socket path in the same order
 // activate uses: explicit override → BITRISE_XCELERATE_PROXY_SOCKET_PATH env var
 // → <temp-dir>/xcelerate-proxy.sock.

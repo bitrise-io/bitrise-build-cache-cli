@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
@@ -18,10 +19,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
 )
@@ -76,7 +81,7 @@ var (
 				}
 
 				logger := log.NewLogger(
-					log.WithDebugLog(config.DebugLogging),
+					log.WithDebugLog(config.DebugLogging || common.IsDebugLogMode),
 					log.WithOutput(io.MultiWriter(os.Stdout, f)),
 				)
 
@@ -174,15 +179,203 @@ func StartXcodeCacheProxy(
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	srv := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory)
+	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger)
+
+	if p, err := paths.Default(); err == nil {
+		enrichment.PruneAll(p, time.Now(), initialLogger)
+	} else {
+		initialLogger.Debugf("Enrichment prune skipped, cannot resolve paths: %v", err)
+	}
+
+	emitter := bundle.emitter()
+
+	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
+
+	if bundle.enrichmentEnabled() {
+		go bundle.watcher(initialLogger).Run(ctx)
+		go bundle.retrier(initialLogger).Run(ctx)
+	}
 
 	go func() {
 		<-ctx.Done()
-		srv.Stop()
+		p.GracefulStop()
 	}()
 
+	serveErr := p.Serve(listener)
+
+	p.FlushCurrentSession(context.WithoutCancel(ctx))
+
 	//nolint:wrapcheck
-	return srv.Serve(listener)
+	return serveErr
+}
+
+type analyticsBundle struct {
+	client           *analytics.Client
+	auth             configcommon.CacheAuthConfig
+	metadata         configcommon.CacheConfigMetadata
+	pending          *enrichment.Store
+	handledManifests *enrichment.HandledManifestStore
+	healthPath       string
+	homeDir          string
+	xcodeVersion     string
+	xcodeBuildNumber string
+	logger           log.Logger
+}
+
+func newAnalyticsBundle(
+	ctx context.Context,
+	config xcelerate.Config,
+	envProvider map[string]string,
+	commandFunc configcommon.CommandFunc,
+	logger log.Logger,
+) *analyticsBundle {
+	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	if err != nil {
+		logger.Warnf("Xcode analytics disabled — client init failed: %s", err)
+
+		return &analyticsBundle{logger: logger}
+	}
+
+	b := &analyticsBundle{
+		client:   client,
+		auth:     config.AuthConfig,
+		metadata: configcommon.NewMetadata(envProvider, commandFunc, logger),
+		logger:   logger,
+	}
+
+	if version, buildNumber, err := xcodeversion.Resolve(ctx, config.OriginalXcodebuildPath, commandFunc); err != nil {
+		logger.Debugf("Xcode version resolution failed — enriched invocations will omit it: %s", err)
+	} else {
+		b.xcodeVersion = version
+		b.xcodeBuildNumber = buildNumber
+	}
+
+	if pathResolver, err := paths.Default(); err != nil {
+		logger.Warnf("Pending-invocation queue disabled — paths.Default: %s", err)
+	} else {
+		b.pending = &enrichment.Store{Path: pathResolver.PendingInvocationsFile()}
+		b.handledManifests = &enrichment.HandledManifestStore{Path: pathResolver.HandledManifestsFile()}
+		b.healthPath = pathResolver.EnrichmentHealthFile()
+		b.homeDir = pathResolver.Home
+	}
+
+	return b
+}
+
+func (b *analyticsBundle) emitter() proxy.InvocationEmitter {
+	if b.client == nil {
+		return nil
+	}
+
+	return &slimInvocationEmitter{bundle: b}
+}
+
+func (b *analyticsBundle) enrichmentEnabled() bool {
+	return b.client != nil && b.pending != nil && b.homeDir != ""
+}
+
+func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
+	enricher := &enrichment.Enricher{
+		Store:            b.pending,
+		Client:           b.client,
+		Auth:             b.auth,
+		Metadata:         b.metadata,
+		XcodeVersion:     b.xcodeVersion,
+		XcodeBuildNumber: b.xcodeBuildNumber,
+		Logger:           logger,
+	}
+	if b.healthPath != "" {
+		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
+	}
+
+	matchProbe := func(entry enrichment.ManifestEntry) bool {
+		if b.pending == nil {
+			return false
+		}
+
+		records, err := b.pending.Load()
+		if err != nil {
+			return false
+		}
+
+		_, matched := enrichment.Correlate(entry, records)
+
+		return matched
+	}
+
+	return &enrichment.Watcher{
+		HomeDir: b.homeDir,
+		Globs: []string{
+			enrichment.DefaultDerivedDataGlob,
+			paths.XcodeManagedDerivedDataManifestGlobRelative,
+		},
+		Handle:                enricher.Enrich,
+		Logger:                logger,
+		MatchProbe:            matchProbe,
+		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
+		HandledStore:          b.handledManifests,
+	}
+}
+
+func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
+	return &enrichment.Retrier{
+		Store:  b.pending,
+		Client: b.client,
+		Logger: logger,
+	}
+}
+
+type slimInvocationEmitter struct {
+	bundle *analyticsBundle
+}
+
+func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
+	b := e.bundle
+
+	endTime := meta.EndTime
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+	duration := endTime.Sub(meta.StartTime).Milliseconds()
+	hitRate := stats.HitRate()
+
+	// Pending has to survive the marker check so F2's manifest scan can correlate the wrapper build back to this InvocationID — otherwise F2 mints a duplicate orphan.
+	if b.pending != nil {
+		if err := b.pending.Append(enrichment.PendingRecord{
+			InvocationID: meta.InvocationID,
+			StartTime:    meta.StartTime,
+			Duration:     duration,
+			HitRate:      hitRate,
+		}); err != nil {
+			b.logger.Warnf("Failed to queue pending invocation %s: %s", meta.InvocationID, err)
+		}
+	}
+
+	if enrichment.MarkerExists(meta.InvocationID) {
+		b.logger.Debugf("Slim emit skipped for %s: wrapper already handled", meta.InvocationID)
+
+		return
+	}
+
+	go func() {
+		inv := analytics.NewInvocation(analytics.InvocationRunStats{
+			InvocationDate: meta.StartTime,
+			InvocationID:   meta.InvocationID,
+			Duration:       duration,
+			HitRate:        hitRate,
+		}, b.auth, b.metadata)
+
+		if err := b.client.PutInvocation(*inv); err != nil {
+			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
+
+			return
+		}
+
+		b.logger.Debugf("Slim invocation emitted: %s (hit-rate %.02f%%)", meta.InvocationID, hitRate*100)
+	}()
+
+	_ = ctx
 }
 
 func getProxyLogFile(osProxy utils.OsProxy, invocationID string) (string, error) {
@@ -216,4 +409,23 @@ func getLogDir(osProxy utils.OsProxy) (string, error) {
 	}
 
 	return logDir, nil
+}
+
+// resolveInactivityTimeout parses TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT off
+// the injected env map. Returns zero when the var is unset, empty, or
+// unparseable — zero lets proxy.inactivityDuration() fall back to its default.
+func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Duration {
+	raw := envs[xcelerate.EnvInactivityTimeout]
+	if raw == "" {
+		return 0
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		logger.Warnf("Ignoring invalid %s=%q: %s", xcelerate.EnvInactivityTimeout, raw, err)
+
+		return 0
+	}
+
+	return parsed
 }

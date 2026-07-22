@@ -26,6 +26,8 @@ func TestGeneratePlist_xcelerateProxy(t *testing.T) {
 	assert.Contains(t, got, "<key>KeepAlive</key>")
 	assert.Contains(t, got, "<key>SuccessfulExit</key>")
 	assert.Contains(t, got, "<key>RunAtLoad</key>")
+	assert.Contains(t, got, "<key>ThrottleInterval</key>")
+	assert.Contains(t, got, "<integer>10</integer>")
 	assert.Contains(t, got, "<string>Background</string>")
 }
 

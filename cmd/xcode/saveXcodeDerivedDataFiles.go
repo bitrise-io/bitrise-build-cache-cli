@@ -29,7 +29,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 	Long:         `Save the contents of the DerivedData folder (used by Xcode to store intermediate build files) into Bitrise Build Cache.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger()
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		common.LogCurrentUserInfo(logger)
 

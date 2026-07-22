@@ -272,11 +272,6 @@ if is_mac; then
     echo "keychain marker '$marker' not found after restore" >&2; exit 1
   }
 
-  # Zsolt's review ask on r3552344471: also verify BC still works post-restore.
-  # xcode-app enable/disable is on a WIP branch, not on main, so we can't check
-  # its plist. Instead, prove that the xcelerate config from SCENARIO A's
-  # `activate xcode` survived the disk-restore + the wrapper still authenticates
-  # and writes a fresh invocation ndjson after the restore.
   step "xcelerate config survived the restore"
   remote_bash "test -f \$HOME/.bitrise-xcelerate/config.json"
 

@@ -64,3 +64,29 @@ func TestPaths_invocations(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/bitrise-build-cache/invocations/2026-06-25.ndjson",
 		p.InvocationsFile("2026-06-25"))
 }
+
+func TestPaths_xcodeManagedDirs(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.bitrise/cache/xcode-dd/abc123", p.XcodeManagedDerivedDataDir("abc123"))
+	assert.Equal(t, "/h/.bitrise/cache/xcode-ptd/abc123", p.XcodeManagedProjectTempDir("abc123"))
+}
+
+func TestPaths_xcelerateHandledInvocations(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.local/state/xcelerate", p.XcelerateStateDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/logs", p.XcelerateLogDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-invocations", p.XcelerateHandledInvocationDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-invocations/abc-123", p.XcelerateHandledInvocationFile("abc-123"))
+}
+
+func TestPaths_xcelerateEnrichment(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment", p.XcelerateEnrichmentDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-manifests.ndjson", p.HandledManifestsFile())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/pending-invocations.ndjson", p.PendingInvocationsFile())
+	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/health.json", p.EnrichmentHealthFile())
+}
+

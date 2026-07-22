@@ -31,6 +31,10 @@ Authentication is via two env vars (PAT + workspace ID) — see the [post-instal
 
 > The CLI configures the environment it's running in. If you're running commands in Docker containers, run the CLI inside the same container as Gradle/Bazel/Xcode/ccache.
 
+### Xcode.app (GUI builds)
+
+Pressing ▶ in Xcode.app bypasses the `xcodebuild` wrapper — remote build cache engages only through the wrapper installed by `bitrise-build-cache activate xcode`. For a scheme-level pre-build health check that catches a broken wrapper setup before ⌘B burns minutes on a no-cache build, see [`docs/xcode-scheme-self-check.md`](docs/xcode-scheme-self-check.md). macOS only.
+
 
 ## What does the CLI do on a high level?
 
