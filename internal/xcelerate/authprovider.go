@@ -73,7 +73,7 @@ func (p *AuthProvider) Get() common.CacheAuthConfig {
 	fresh, err := p.resolver()
 	if err != nil {
 		if p.logger != nil {
-			p.logger.Warnf("Auth refresh failed, keeping previous credentials: %s", err)
+			p.logger.Warnf("xcelerate auth token refresh failed, using cached value: %s", err)
 		}
 		p.fetchedAt = p.nowFn()
 
@@ -82,6 +82,11 @@ func (p *AuthProvider) Get() common.CacheAuthConfig {
 
 	p.cached = fresh
 	p.fetchedAt = p.nowFn()
+
+	if p.logger != nil {
+		// CI: asserted by feature-e2e-xcelerate-auth-refresh workflow
+		p.logger.Infof("xcelerate auth token refreshed via credential source")
+	}
 
 	return p.cached
 }

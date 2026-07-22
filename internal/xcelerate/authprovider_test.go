@@ -3,6 +3,7 @@
 package xcelerate_test
 
 import (
+	"bytes"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -98,4 +99,41 @@ func TestAuthProvider_ResolverErrorKeepsCached(t *testing.T) {
 	got := p.Get()
 
 	require.Equal(t, seed, got)
+}
+
+func TestAuthProvider_LogsGreppableLineOnRefresh(t *testing.T) {
+	seed := common.CacheAuthConfig{AuthToken: "seed-tok", WorkspaceID: "ws-1"}
+	fresh := common.CacheAuthConfig{AuthToken: "fresh-tok", WorkspaceID: "ws-2"}
+	resolver := func() (common.CacheAuthConfig, error) {
+		return fresh, nil
+	}
+
+	var out bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&out))
+
+	p := xcelerate.NewAuthProvider(seed, resolver, 5*time.Millisecond, logger)
+
+	time.Sleep(10 * time.Millisecond)
+
+	assert.Equal(t, fresh, p.Get())
+
+	// Greppable line used by the feature-e2e-xcelerate-auth-refresh workflow.
+	assert.Contains(t, out.String(), "xcelerate auth token refreshed via credential source")
+}
+
+func TestAuthProvider_LogsGreppableLineOnResolverError(t *testing.T) {
+	seed := common.CacheAuthConfig{AuthToken: "seed-tok", WorkspaceID: "ws-1"}
+	resolver := func() (common.CacheAuthConfig, error) {
+		return common.CacheAuthConfig{}, errors.New("boom")
+	}
+
+	var out bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&out))
+
+	p := xcelerate.NewAuthProvider(seed, resolver, 5*time.Millisecond, logger)
+
+	time.Sleep(10 * time.Millisecond)
+
+	assert.Equal(t, seed, p.Get())
+	assert.Contains(t, out.String(), "xcelerate auth token refresh failed, using cached value")
 }

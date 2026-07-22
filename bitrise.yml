@@ -1370,6 +1370,95 @@ workflows:
             assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
+  feature-e2e-xcelerate-auth-refresh:
+    description: |
+      ACI-5095: proves the AuthProvider 60s TTL refresh path actually fires in
+      a running xcelerate proxy. Activates xcode, runs one xcodebuild to drive
+      RPCs through the proxy, sleeps 70s past the TTL, runs a second xcodebuild
+      to force at least one AuthProvider.Get() after the TTL boundary, then
+      greps the proxy per-invocation log for the greppable Info line emitted
+      by internal/xcelerate/authprovider.go on successful refresh.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.0.x-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: activate xcode using CLI
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+
+            ../bitrise-build-cache-cli -d activate xcode --cache
+    - script:
+        title: Build (round 1 — pre-TTL)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper-1.log | tee xcodebuild-1.log | xcpretty
+
+            cp wrapper-1.log "$BITRISE_DEPLOY_DIR"/
+    - script:
+        title: Sleep past 60s AuthProvider TTL
+        inputs:
+        - content: |-
+            set -eo pipefail
+            echo "Sleeping 70s to cross the 60s AuthProvider TTL boundary…"
+            sleep 70
+    - script:
+        title: Build (round 2 — post-TTL, triggers refresh)
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            xcodebuild build \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture \
+              -destination "generic/platform=iOS" \
+              -skipMacroValidation 2> wrapper-2.log | tee xcodebuild-2.log | xcpretty
+
+            cp wrapper-2.log "$BITRISE_DEPLOY_DIR"/
+    - script:
+        title: Assert AuthProvider refresh log line
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            LOG_DIR="$HOME/.local/state/xcelerate/logs"
+            mkdir -p "$BITRISE_DEPLOY_DIR/xcelerate-logs"
+            cp -R "$LOG_DIR"/* "$BITRISE_DEPLOY_DIR/xcelerate-logs/" 2>/dev/null || true
+
+            shopt -s nullglob
+            LOG_FILES=("$LOG_DIR"/proxy-*-out.log)
+            if [[ ${#LOG_FILES[@]} -eq 0 ]]; then
+              echo "FAIL: no xcelerate proxy per-invocation log files under $LOG_DIR"
+              ls -la "$LOG_DIR" || true
+              exit 1
+            fi
+
+            if ! grep -F -l -- 'xcelerate auth token refreshed via credential source' "${LOG_FILES[@]}"; then
+              echo "FAIL: no auth-refresh log line found — TTL refresh did not fire"
+              for f in "${LOG_FILES[@]}"; do
+                echo "=== $f ==="
+                cat "$f"
+              done
+              exit 1
+            fi
+
+            echo "PASS: AuthProvider refresh log line observed."
+    - deploy-to-bitrise-io: {}
+
   e2e-daemon-install-macos:
     description: |
       Validate `daemon install` / `up` / `down` / `restart` / `uninstall`
@@ -2257,6 +2346,7 @@ pipelines:
       e2e-xcode-comp-cache: {}
       e2e-xcode-cas-key-stable: {}
       e2e-xcode-f1-f2-race: {}
+      feature-e2e-xcelerate-auth-refresh: {}
       e2e-daemon-install-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
