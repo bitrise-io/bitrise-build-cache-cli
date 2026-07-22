@@ -63,7 +63,8 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		"xcodebuild",
 		"start-proxy", "stop-proxy",
 		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
-		"register-invocation", "register-child-invocation":
+		"register-invocation", "register-child-invocation",
+		"get":
 		return true
 	case "token", "username":
 		return true

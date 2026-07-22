@@ -1,9 +1,10 @@
 {{- /*
 Local dev (CLIPath present, CIProvider empty) resolves the auth token per
-build via `bazel credential-helper` — no plain-text token on disk. CI keeps
-the literal `Bearer <token>` header for perf and to avoid spawning the CLI
-on every RPC. When neither CLIPath nor CIProvider is available (defensive),
-the literal-header branch is used so activation still produces a working
+build via the CLI's credential-helper hook (Bazel invokes `<CLIPath> get`
+per the EngFlow spec) — no plain-text token on disk. CI keeps the literal
+`Bearer <token>` header for perf and to avoid spawning the CLI on every
+RPC. When neither CLIPath nor CIProvider is available (defensive), the
+literal-header branch is used so activation still produces a working
 config.
 */ -}}
 {{- $useHelper := and .Common.CLIPath (not .Common.CIProvider) -}}
