@@ -400,3 +400,37 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 	assert.NotEmpty(t, captured.InvocationID)
 	assert.NotEqual(t, "stray", captured.InvocationID, "orphan mint must not accidentally reuse an unrelated marker ID")
 }
+
+func TestEnricher_DurationIsFromManifest(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	// Pending record carries a wrapper-side duration (2500 ms). The manifest span
+	// (42 s) must take priority — the F2 re-PUT is the authoritative duration.
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "manifest-authoritative",
+		StartTime:    base,
+		Duration:     2500,
+	}))
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Status:    "S",
+		Start:     base.Add(1 * time.Second),
+		Stop:      base.Add(43 * time.Second),
+	})
+
+	assert.Equal(t, "manifest-authoritative", captured.InvocationID)
+	assert.Equal(t, int64(42_000), captured.DurationMs, "F2 duration must come from Stop-Start of the manifest entry, not the wrapper's provisional value")
+}

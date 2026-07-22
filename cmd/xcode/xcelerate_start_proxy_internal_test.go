@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 )
@@ -372,4 +373,46 @@ func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 	_, err = os.Stat(fresh)
 	assert.NoError(t, err)
+}
+
+func Test_slimInvocationEmitter_EmitSlim_omitsDurationOnPUT(t *testing.T) {
+	home := t.TempDir()
+	b := newBundleForTest(t, home, "")
+
+	captured := make(chan analytics.Invocation, 1)
+	b.putter = &capturingInvocationPutter{sink: captured}
+
+	e := &slimInvocationEmitter{bundle: b}
+
+	start := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	stop := start.Add(2500 * time.Millisecond)
+	e.EmitSlim(context.Background(), proxy.SessionMeta{
+		InvocationID: "inv-drop-duration",
+		StartTime:    start,
+		EndTime:      stop,
+	}, proxy.SessionStats{Hits: 3, Misses: 1})
+
+	select {
+	case inv := <-captured:
+		assert.Equal(t, "inv-drop-duration", inv.InvocationID)
+		assert.Equal(t, int64(0), inv.DurationMs, "F1 slim PUT must omit Duration; F2 manifest span is authoritative")
+		assert.InDelta(t, 0.75, inv.HitRate, 1e-6)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for slim PUT")
+	}
+
+	records, err := b.pending.Load()
+	require.NoError(t, err)
+	require.Len(t, records, 1, "pending record must still carry Duration for the correlator")
+	assert.Equal(t, int64(2500), records[0].Duration)
+}
+
+type capturingInvocationPutter struct {
+	sink chan<- analytics.Invocation
+}
+
+func (c *capturingInvocationPutter) PutInvocation(inv analytics.Invocation) error {
+	c.sink <- inv
+
+	return nil
 }

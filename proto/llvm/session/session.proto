@@ -8,6 +8,7 @@ import "google/protobuf/empty.proto";
 
 service Session {
   rpc SetSession (SetSessionRequest) returns (google.protobuf.Empty) {}
+  rpc EndSession (EndSessionRequest) returns (google.protobuf.Empty) {}
   rpc GetSessionStats (google.protobuf.Empty) returns (GetSessionStatsResponse) {}
 }
 
@@ -16,6 +17,11 @@ message SetSessionRequest {
   string app_slug = 2;
   string build_slug = 3;
   string step_slug = 4;
+}
+
+message EndSessionRequest {
+  string invocation_id = 1;
+  int64  end_time_unix_ms = 2;
 }
 
 message GetSessionStatsResponse {

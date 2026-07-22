@@ -21,6 +21,9 @@ var _ session.SessionClient = &SessionClientMock{}
 //
 //		// make and configure a mocked session.SessionClient
 //		mockedSessionClient := &SessionClientMock{
+//			EndSessionFunc: func(ctx context.Context, in *session.EndSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+//				panic("mock out the EndSession method")
+//			},
 //			GetSessionStatsFunc: func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.GetSessionStatsResponse, error) {
 //				panic("mock out the GetSessionStats method")
 //			},
@@ -34,6 +37,9 @@ var _ session.SessionClient = &SessionClientMock{}
 //
 //	}
 type SessionClientMock struct {
+	// EndSessionFunc mocks the EndSession method.
+	EndSessionFunc func(ctx context.Context, in *session.EndSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+
 	// GetSessionStatsFunc mocks the GetSessionStats method.
 	GetSessionStatsFunc func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.GetSessionStatsResponse, error)
 
@@ -42,6 +48,15 @@ type SessionClientMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// EndSession holds details about calls to the EndSession method.
+		EndSession []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// In is the in argument value.
+			In *session.EndSessionRequest
+			// Opts is the opts argument value.
+			Opts []grpc.CallOption
+		}
 		// GetSessionStats holds details about calls to the GetSessionStats method.
 		GetSessionStats []struct {
 			// Ctx is the ctx argument value.
@@ -61,8 +76,53 @@ type SessionClientMock struct {
 			Opts []grpc.CallOption
 		}
 	}
+	lockEndSession      sync.RWMutex
 	lockGetSessionStats sync.RWMutex
 	lockSetSession      sync.RWMutex
+}
+
+// EndSession calls EndSessionFunc.
+func (mock *SessionClientMock) EndSession(ctx context.Context, in *session.EndSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	callInfo := struct {
+		Ctx  context.Context
+		In   *session.EndSessionRequest
+		Opts []grpc.CallOption
+	}{
+		Ctx:  ctx,
+		In:   in,
+		Opts: opts,
+	}
+	mock.lockEndSession.Lock()
+	mock.calls.EndSession = append(mock.calls.EndSession, callInfo)
+	mock.lockEndSession.Unlock()
+	if mock.EndSessionFunc == nil {
+		var (
+			emptyOut *emptypb.Empty
+			errOut   error
+		)
+		return emptyOut, errOut
+	}
+	return mock.EndSessionFunc(ctx, in, opts...)
+}
+
+// EndSessionCalls gets all the calls that were made to EndSession.
+// Check the length with:
+//
+//	len(mockedSessionClient.EndSessionCalls())
+func (mock *SessionClientMock) EndSessionCalls() []struct {
+	Ctx  context.Context
+	In   *session.EndSessionRequest
+	Opts []grpc.CallOption
+} {
+	var calls []struct {
+		Ctx  context.Context
+		In   *session.EndSessionRequest
+		Opts []grpc.CallOption
+	}
+	mock.lockEndSession.RLock()
+	calls = mock.calls.EndSession
+	mock.lockEndSession.RUnlock()
+	return calls
 }
 
 // GetSessionStats calls GetSessionStatsFunc.

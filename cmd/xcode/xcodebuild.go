@@ -366,6 +366,16 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}
 
 	runStats := c.XcodeRunner.Run(ctx, toPass)
+
+	if c.ProxySessionClient != nil {
+		if _, err := c.ProxySessionClient.EndSession(ctx, &session.EndSessionRequest{
+			InvocationId:  c.InvocationID,
+			EndTimeUnixMs: time.Now().UnixMilli(),
+		}); err != nil {
+			c.Logger.TDebugf("EndSession call failed: %v", err)
+		}
+	}
+
 	if runStats.Error != nil {
 		c.Logger.TErrorf(MsgInvocationFailed, time.Duration(runStats.DurationMS)*time.Millisecond, runStats.Error)
 	} else {

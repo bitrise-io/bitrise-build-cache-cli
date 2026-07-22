@@ -221,6 +221,9 @@ type analyticsBundle struct {
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
+
+	// putter overrides the analytics PUT sink for tests; nil falls back to b.client.
+	putter invocationSaver
 }
 
 func newAnalyticsBundle(
@@ -358,15 +361,20 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 		return
 	}
 
+	putter := b.resolvePutter()
+	if putter == nil {
+		return
+	}
+
 	go func() {
+		// Duration omitted: F2's manifest span or the wrapper's own PUT is authoritative.
 		inv := analytics.NewInvocation(analytics.InvocationRunStats{
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,
-			Duration:       duration,
 			HitRate:        hitRate,
 		}, b.auth, b.metadata)
 
-		if err := b.client.PutInvocation(*inv); err != nil {
+		if err := putter.PutInvocation(*inv); err != nil {
 			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
 
 			return
@@ -376,6 +384,18 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	}()
 
 	_ = ctx
+}
+
+func (b *analyticsBundle) resolvePutter() invocationSaver {
+	if b.putter != nil {
+		return b.putter
+	}
+
+	if b.client == nil {
+		return nil
+	}
+
+	return b.client
 }
 
 func getProxyLogFile(osProxy utils.OsProxy, invocationID string) (string, error) {

@@ -117,8 +117,8 @@ func TestIsSessionServiceMethod(t *testing.T) {
 func TestInactivityDuration_ZeroFallsBackToDefault(t *testing.T) {
 	p := newProxyForEmit(t, &capturingEmitter{})
 
-	// Field zero → default (10s per proxy.go).
-	assert.Equal(t, 10*time.Second, p.InactivityDuration())
+	// Field zero → defaultInactivityTimeout (5m per proxy.go).
+	assert.Equal(t, 5*time.Minute, p.InactivityDuration())
 }
 
 func TestInactivityDuration_ConfiguredValueWins(t *testing.T) {

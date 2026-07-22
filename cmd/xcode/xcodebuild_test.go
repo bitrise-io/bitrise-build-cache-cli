@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -449,4 +450,54 @@ func findBuildSetting(argv []string, key string) string { //nolint:unparam // ke
 	}
 
 	return last
+}
+
+func Test_xcodebuildCmdFn_callsEndSessionAfterRun(t *testing.T) {
+	invocationID := uuid.NewString()
+
+	sessionClientMock := &mocks.SessionClientMock{
+		GetSessionStatsFunc: func(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*session.GetSessionStatsResponse, error) {
+			return &session.GetSessionStatsResponse{}, nil
+		},
+		SetSessionFunc: func(_ context.Context, _ *session.SetSessionRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+			return &emptypb.Empty{}, nil
+		},
+		EndSessionFunc: func(_ context.Context, _ *session.EndSessionRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+			return &emptypb.Empty{}, nil
+		},
+	}
+
+	xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc: func() bool { return true },
+		ArgsFunc:           func(_ map[string]string) []string { return []string{"xcodebuild"} },
+		CommandFunc:        func() string { return "xcodebuild" },
+		ShortCommandFunc:   func() string { return "xcodebuild" },
+	}
+
+	xcodeRunner := &mocks.XcodeRunnerMock{
+		RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats { return xcodeargs.RunStats{} },
+	}
+
+	SUT := &xcode.XcodebuildRunner{
+		Config:             xcelerate.Config{},
+		Metadata:           common.CacheConfigMetadata{},
+		InvocationID:       invocationID,
+		Logger:             mockLogger,
+		CacheLogger:        mockLogger,
+		XcodeRunner:        xcodeRunner,
+		ProxySessionClient: sessionClientMock,
+		XcodeArgs:          &xcodeArgProvider,
+	}
+
+	beforeMs := time.Now().UnixMilli()
+	_ = SUT.Run(context.Background())
+	afterMs := time.Now().UnixMilli()
+
+	calls := sessionClientMock.EndSessionCalls()
+	require.Len(t, calls, 1, "wrapper must signal EndSession exactly once after XcodeRunner.Run returns")
+	assert.Equal(t, invocationID, calls[0].In.GetInvocationId())
+
+	gotMs := calls[0].In.GetEndTimeUnixMs()
+	assert.GreaterOrEqual(t, gotMs, beforeMs, "EndTimeUnixMs must be captured at or after the wrapper started EndSession")
+	assert.LessOrEqual(t, gotMs, afterMs, "EndTimeUnixMs must be captured at or before the wrapper returned")
 }
