@@ -2,8 +2,9 @@ package reactnative
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
+	osexec "os/exec"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
@@ -40,12 +43,23 @@ func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
 	return fmt.Sprintf("https://app.bitrise.io/build-cache/%s/invocations/react-native/%s", workspaceSlug, invocationID)
 }
 
+//go:generate moq -stub -out post_run_deps_local_log_mock_test.go -pkg reactnative . localInvocationLogger
+
+type localInvocationLogger interface {
+	Append(rec invocations.Record) error
+}
+
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
 type postRunDeps struct {
 	logger     log.Logger
 	authConfig common.CacheAuthConfig
 	client     *ccacheanalytics.Client
+
+	// localLogger appends the wrapper's parent record to the shared local
+	// invocation log. If nil, resolveLocalLogger builds paths.Default +
+	// invocations.NewWriter at call time (production default).
+	localLogger localInvocationLogger
 }
 
 func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) *postRunDeps {
@@ -180,6 +194,8 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	if err := agg.Cleanup(); err != nil {
 		d.logger.TWarnf("Failed to clean up child stats ledger: %v", err)
 	}
+
+	d.appendLocalInvocationLog(wrapperInvocationID, command, metadata, summary, duration, execErr)
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +206,7 @@ func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 	envs := utils.AllEnvs()
 
 	return common.NewMetadata(envs, func(name string, args ...string) (string, error) {
-		out, err := exec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
+		out, err := osexec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
 
 		return string(out), err
 	}, d.logger)
@@ -202,6 +218,75 @@ func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
 	}
 
 	return nil
+}
+
+// appendLocalInvocationLog writes the wrapper's parent record to the shared
+// local invocation log. Failure is warn-only; the analytics emit above already
+// covers the CI-observable path, and the local log is purely a debug aid.
+func (d *postRunDeps) appendLocalInvocationLog(
+	wrapperInvocationID string,
+	command string,
+	metadata common.CacheConfigMetadata,
+	summary childstats.Summary,
+	duration time.Duration,
+	execErr error,
+) {
+	logger := d.resolveLocalLogger()
+	if logger == nil {
+		return
+	}
+
+	finishedAt := time.Now().UTC()
+
+	rec := invocations.Record{
+		InvocationID: wrapperInvocationID,
+		Command:      command,
+		Tool:         invocations.ToolRN,
+		CLIVersion:   metadata.CLIVersion,
+		StartedAt:    finishedAt.Add(-duration),
+		FinishedAt:   finishedAt,
+		ExitCode:     exitCodeFromErr(execErr),
+		CIProvider:   metadata.CIProvider,
+		Username:     metadata.HostMetadata.Username,
+	}
+	if summary.ChildCount > 0 {
+		rec.HitRate = summary.MeanHitRate
+	}
+
+	if err := logger.Append(rec); err != nil {
+		d.logger.Warnf("Failed to append local invocation log: %v", err)
+	}
+}
+
+func (d *postRunDeps) resolveLocalLogger() localInvocationLogger {
+	if d.localLogger != nil {
+		return d.localLogger
+	}
+
+	p, err := paths.Default()
+	if err != nil {
+		d.logger.Warnf("Skipping local invocation log: %v", err)
+
+		return nil
+	}
+
+	w := invocations.NewWriter(p)
+	w.Logger = d.logger
+
+	return w
+}
+
+func exitCodeFromErr(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	var exitErr *osexec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+
+	return 1
 }
 
 // ---------------------------------------------------------------------------

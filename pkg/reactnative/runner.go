@@ -28,8 +28,13 @@ const MsgRNNotActivated = "Bitrise Build Cache for React Native is not activated
 // Public API
 // ---------------------------------------------------------------------------
 
-// ExecFunc runs a command with the given environment, executable name, and arguments.
-type ExecFunc func(environ []string, name string, args ...string) error
+// ExecFunc runs a command with the given environment, executable name, and
+// arguments. It returns the child process's exit code (0 on success, the
+// child's exit status on non-zero exit, or 1 on launch failure) alongside any
+// launch error. Exit-code propagation is the caller's responsibility —
+// implementations must NOT call os.Exit, so any post-run hook set up around
+// ExecFn can complete before the process terminates.
+type ExecFunc func(environ []string, name string, args ...string) (int, error)
 
 // RunnerParams holds the configuration for creating a Runner.
 type RunnerParams struct {
@@ -112,15 +117,18 @@ func NewRunner(params RunnerParams) *Runner {
 	return r
 }
 
-// Run injects a BITRISE_INVOCATION_ID into environ and delegates execution to ExecFn.
-// If wrapperInvocationID is empty, a random UUID is used.
+// Run injects a BITRISE_INVOCATION_ID into environ and delegates execution to
+// ExecFn. If wrapperInvocationID is empty, a random UUID is used. Returns the
+// child's exit code (0 on success, forwarded on non-zero) alongside any launch
+// error; the caller is responsible for propagating the exit code via os.Exit
+// so that the post-run hook can complete before the process dies.
 //
 // When `activate react-native` was never run on this machine (or the
 // activation didn't carry a workspace ID through), the wrapped command is
 // still executed but every build-cache-related side-effect — ccache helper
 // plumbing, invocation ID injection, analytics — is skipped. The user's
 // build never fails just because the cache wasn't activated.
-func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) error {
+func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) (int, error) {
 	configcommon.LogCLIVersion(r.logger)
 
 	// Strip leading "--" separator (cobra passes it through with DisableFlagParsing)
@@ -129,7 +137,7 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("missing arguments")
+		return 1, fmt.Errorf("missing arguments")
 	}
 
 	name, cmdArgs := args[0], args[1:]
@@ -158,14 +166,14 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 	r.maybeInjectEASWorkingDir(envMap, name, cmdArgs)
 
 	start := time.Now()
-	execErr := r.execFn(mapToEnviron(envMap), name, cmdArgs...)
+	exitCode, execErr := r.execFn(mapToEnviron(envMap), name, cmdArgs...)
 	duration := time.Since(start)
 
 	if r.postRun != nil {
 		r.postRun.run(context.Background(), wrapperInvocationID, args, duration, execErr) //nolint:contextcheck // intentionally detached: post-run analytics must complete even if parent ctx is cancelled
 	}
 
-	return execErr
+	return exitCode, execErr
 }
 
 // isReactNativeReady reports whether `activate react-native` was run on this

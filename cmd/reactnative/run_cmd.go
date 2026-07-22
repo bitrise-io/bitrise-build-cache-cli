@@ -23,7 +23,27 @@ var runCmd = &cobra.Command{
 			ExecFn: defaultExecFn,
 		})
 
-		return r.Run(cmd.Context(), args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())
+		exitCode, err := r.Run(cmd.Context(), args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())
+
+		// The post-run hook (local invocation log + BE analytics) has already
+		// fired inside Runner.Run by this point, so it's safe to terminate
+		// the process. A non-zero child exit is not a wrapper error — the
+		// child already wrote its own output — so we skip cobra's error path
+		// and exit directly with the child's status.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitCode)
+		}
+
+		if err != nil {
+			return err //nolint:wrapcheck // Runner.Run already returns wrapped errors
+		}
+
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+
+		return nil
 	},
 }
 
@@ -31,7 +51,7 @@ func init() {
 	reactNativeCmd.AddCommand(runCmd)
 }
 
-func defaultExecFn(environ []string, name string, cmdArgs ...string) error {
+func defaultExecFn(environ []string, name string, cmdArgs ...string) (int, error) {
 	cmd := exec.Command(name, cmdArgs...) //nolint:gosec,noctx // exec context intentionally not used: the child process should not be cancelled by the CLI's context
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -41,11 +61,11 @@ func defaultExecFn(environ []string, name string, cmdArgs ...string) error {
 	if err := cmd.Run(); err != nil {
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) {
-			os.Exit(exitError.ExitCode())
+			return exitError.ExitCode(), err //nolint:wrapcheck // ExitError intentionally propagated so post-run hook sees failure
 		}
 
-		return fmt.Errorf("failed to run: %w", err)
+		return 1, fmt.Errorf("failed to run: %w", err)
 	}
 
-	return nil
+	return 0, nil
 }
