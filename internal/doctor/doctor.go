@@ -177,7 +177,6 @@ func (d *Doctor) checks(opts Options) []Check {
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
 		d.logDirsCheck(),
-		d.xcelerateXcconfigCheck(),
 	)
 
 	if !opts.SkipUpdateCheck {

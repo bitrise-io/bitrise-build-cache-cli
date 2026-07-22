@@ -1,8 +1,8 @@
 # Xcode Scheme Self-Check (Pre-Build `doctor`)
 
-Run `bitrise-build-cache doctor` from your Xcode scheme's **Build → Pre-actions**, so every ⌘B / Run / Test verifies the local Build Cache setup *before* `swiftc` starts. Catches missing proxy, stale auth, downed daemon, or misconfigured `xcconfig` before a full uncached build burns minutes.
+Run `bitrise-build-cache doctor` from your Xcode scheme's **Build → Pre-actions**, so every ⌘B / Run / Test verifies the local Build Cache setup *before* `swiftc` starts. Catches missing proxy, stale auth, or downed daemon before a full uncached build burns minutes.
 
-For CLI + auth setup and the compile-cache override, read [`install.md`](install.md) and [`xcode-app.md`](xcode-app.md) first — this page assumes both are done.
+For CLI + auth setup, read [`install.md`](install.md) first — this page assumes it's done and that you've run `bitrise-build-cache activate xcode` (which installs the `xcodebuild` wrapper and writes the `xcelerate` config).
 
 ---
 
@@ -10,9 +10,8 @@ For CLI + auth setup and the compile-cache override, read [`install.md`](install
 
 You are:
 
-- Building in **Xcode.app** (⌘B / Run / Test) rather than `xcodebuild` CLI.
-- Have already run `bitrise-build-cache activate xcode` and `bitrise-build-cache xcode-app enable`.
-- Want a fast fail at build start when the cache setup drifts (daemon not running, PAT rotated, config wiped).
+- Driving builds through the `xcodebuild` CLI wrapper installed by `bitrise-build-cache activate xcode` (either directly, or via Xcode.app's Product menu when it's picked up the wrapper).
+- Want a fast fail at build start when the cache setup drifts (daemon not running, PAT rotated, `xcelerate` config wiped).
 
 Skip on Bitrise CI — the `xcodebuild` wrapper step already probes health there.
 

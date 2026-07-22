@@ -90,17 +90,3 @@ func TestPaths_xcelerateEnrichment(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/health.json", p.EnrichmentHealthFile())
 }
 
-func TestPaths_linkedProjects(t *testing.T) {
-	p := FromHome("/h")
-
-	assert.Equal(t, "/h/.bitrise-xcelerate/linked-projects", p.LinkedProjectsDir())
-
-	// Same absolute path → identical state file; different paths → different files.
-	one := p.LinkedProjectStateFile("/Users/a/App.xcodeproj")
-	two := p.LinkedProjectStateFile("/Users/a/App.xcodeproj")
-	three := p.LinkedProjectStateFile("/Users/b/App.xcodeproj")
-	assert.Equal(t, one, two)
-	assert.NotEqual(t, one, three)
-	assert.True(t, filepath.Dir(one) == p.LinkedProjectsDir())
-	assert.Regexp(t, `^/h/\.bitrise-xcelerate/linked-projects/[0-9a-f]{16}\.state\.json$`, one)
-}

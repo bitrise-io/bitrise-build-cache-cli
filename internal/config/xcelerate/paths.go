@@ -41,16 +41,6 @@ func ConfigFile(osProxy utils.OsProxy) string {
 	return PathFor(osProxy, xcelerateConfigFileName)
 }
 
-// XcodeAppOverrideXCConfigFile returns the absolute path of ~/.bitrise-xcelerate/xcode-app.xcconfig.
-func XcodeAppOverrideXCConfigFile(osProxy utils.OsProxy) string {
-	return PathFor(osProxy, paths.XcodeAppOverrideXCConfigFileName)
-}
-
-// XcodeAppStateFile returns the absolute path of ~/.bitrise-xcelerate/xcode-app-state.json.
-func XcodeAppStateFile(osProxy utils.OsProxy) string {
-	return PathFor(osProxy, paths.XcodeAppStateFileName)
-}
-
 // EnvProxySocketPath overrides the default xcelerate proxy socket location when set.
 const EnvProxySocketPath = "BITRISE_XCELERATE_PROXY_SOCKET_PATH"
 
