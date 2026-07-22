@@ -20,6 +20,12 @@ var getCmd = &cobra.Command{
 	Hidden:        true,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	// Bazel spawns the helper N times in parallel with a tight per-invocation
+	// timeout — override the root PersistentPreRun (version check, stored-auth
+	// hydration) with a no-op so the helper fast-paths straight to Run. The
+	// helper resolves credentials via configcommon.ResolveAuthConfig(envs),
+	// which walks env → keychain → file without needing hydration to have run.
+	PersistentPreRun: func(*cobra.Command, []string) {},
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := bazelcredhelper.Run(cmd.InOrStdin(), cmd.OutOrStdout(), utils.AllEnvs()); err != nil {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())

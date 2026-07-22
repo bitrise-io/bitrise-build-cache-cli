@@ -885,9 +885,10 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            # Local path must use --credential_helper and MUST NOT write any Bearer literal.
-            grep -F -- '--credential_helper=' "$HOME/.bazelrc" || {
-              echo "FAIL: --credential_helper= not present in ~/.bazelrc"
+            # Local path must use --credential_helper scoped to *.services.bitrise.io
+            # and MUST NOT write any Bearer literal.
+            grep -F -- '--credential_helper=*.services.bitrise.io=' "$HOME/.bazelrc" || {
+              echo "FAIL: --credential_helper=*.services.bitrise.io= not present in ~/.bazelrc"
               cat "$HOME/.bazelrc"
               exit 1
             }

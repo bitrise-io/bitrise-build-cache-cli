@@ -329,7 +329,7 @@ build --bes_header='x-cpu-cores=8'
 build --bes_header='x-mem-size=1024'
 `
 
-const expectedLocalHelperConfig = `build --credential_helper=/usr/local/bin/bitrise-build-cache
+const expectedLocalHelperConfig = `build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache
 build --remote_cache=grpcs://cache.services.bitrise.io:443
 build --remote_timeout=600s
 build --remote_header=x-flare-buildtool=bazel
@@ -366,7 +366,7 @@ build --remote_header='x-ci-provider=bitrise'
 build --bes_header='x-ci-provider=bitrise'
 `
 
-const expectedHelperCacheDisabled = `build --credential_helper=/usr/local/bin/bitrise-build-cache
+const expectedHelperCacheDisabled = `build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache
 
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/

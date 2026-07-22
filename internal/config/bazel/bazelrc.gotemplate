@@ -9,7 +9,7 @@ config.
 */ -}}
 {{- $useHelper := and .Common.CLIPath (not .Common.CIProvider) -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
-build --credential_helper={{ .Common.CLIPath }}
+build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}
 {{ end }}
 {{- if .Cache.Enabled -}}
 build --remote_cache={{ .Cache.EndpointURLWithPort }}
