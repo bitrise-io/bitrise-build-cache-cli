@@ -46,7 +46,7 @@ This command will:
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof(activateXcode)
 
-		activateXcodeParams.DebugLogging = common.IsDebugLogMode
+		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		if err := xcelerate.Activate(

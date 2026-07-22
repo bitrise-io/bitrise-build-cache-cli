@@ -23,8 +23,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
@@ -37,6 +38,13 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
+
+// mergeDebugFlag ORs the CLI -d/--debug global into the config-derived flag.
+func mergeDebugFlag(cfg xcelerate.Config) xcelerate.Config {
+	cfg.DebugLogging = common.DebugEnabled(cfg.DebugLogging)
+
+	return cfg
+}
 
 const (
 	startedProxy = "Started xcelerate_proxy pid = %d"
@@ -101,6 +109,8 @@ TBD`,
 			log.NewLogger().Errorf(ErrReadConfig, err)
 			config = xcelerate.DefaultConfig()
 		}
+
+		config = mergeDebugFlag(config)
 
 		xcelerateParams.OrigArgs = os.Args[1:]
 
@@ -202,7 +212,7 @@ TBD`,
 			defer cleanup()
 		}
 
-		metadata := common.NewMetadata(utils.AllEnvs(), func(cmd string, args ...string) (string, error) {
+		metadata := configcommon.NewMetadata(utils.AllEnvs(), func(cmd string, args ...string) (string, error) {
 			o, err := utils.DefaultCommandFunc()(cobraCmd.Context(), cmd, args...).CombinedOutput()
 
 			return string(o), err
@@ -300,7 +310,7 @@ type localInvocationLogger interface {
 // Run as its main entry point.
 type XcodebuildRunner struct {
 	Config             xcelerate.Config
-	Metadata           common.CacheConfigMetadata
+	Metadata           configcommon.CacheConfigMetadata
 	InvocationID       string
 	Logger             log.Logger
 	CacheLogger        log.Logger
@@ -614,13 +624,13 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 // 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE env var (set during activation)
 // 2. ~/.local/state/xcelerate/benchmark/benchmark-phase-xcode.json (file fallback)
 func resolveBenchmarkPhase(logger log.Logger) string {
-	if phase := os.Getenv(common.BenchmarkPhaseEnvVar(common.BuildToolXcode)); phase != "" {
+	if phase := os.Getenv(configcommon.BenchmarkPhaseEnvVar(configcommon.BuildToolXcode)); phase != "" {
 		logger.Debugf("Benchmark phase from env: %s", phase)
 
 		return phase
 	}
 
-	if phase := common.ReadBenchmarkPhaseFile(common.BuildToolXcode, logger); phase != "" {
+	if phase := configcommon.ReadBenchmarkPhaseFile(configcommon.BuildToolXcode, logger); phase != "" {
 		logger.Debugf("Benchmark phase from file: %s", phase)
 
 		return phase

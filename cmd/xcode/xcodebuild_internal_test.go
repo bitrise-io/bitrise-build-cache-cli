@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	cmdcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -411,3 +412,13 @@ func Test_Run_BuildAction_StillEmitsAnalyticsAndSession(t *testing.T) {
 	assert.NoError(t, err, "handled-invocation marker must be written on the build path")
 }
 
+func TestDebugFlag_ORsGlobal_Xcodebuild(t *testing.T) {
+	t.Cleanup(func() { cmdcommon.IsDebugLogMode = false })
+
+	cmdcommon.IsDebugLogMode = true
+	cfg := xcelerate.Config{DebugLogging: false}
+
+	merged := mergeDebugFlag(cfg)
+
+	assert.True(t, merged.DebugLogging, "global -d must OR into config.DebugLogging")
+}

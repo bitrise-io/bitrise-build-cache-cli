@@ -41,6 +41,8 @@ type RunnerParams struct {
 	OsProxy utils.OsProxy
 	// DecoderFactory overrides the default decoder factory. If nil, utils.DefaultDecoderFactory{} is used.
 	DecoderFactory utils.DecoderFactory
+	// DebugLogging ORs with the on-disk multiplatform config's DebugLogging.
+	DebugLogging bool
 }
 
 //go:generate moq -stub -out post_run_runner_mock_test.go -pkg reactnative . postRunRunner
@@ -81,15 +83,7 @@ func NewRunner(params RunnerParams) *Runner {
 
 	logger := params.Logger
 	if logger == nil {
-		// Honour DebugLogging from the multiplatform analytics config so
-		// `activate react-native --debug` propagates to the runner and to any
-		// component (e.g. the analytics client) that uses this logger.
-		debug := false
-		if cfg, err := multiplatformconfig.ReadConfig(osProxy, decoderFactory); err == nil {
-			debug = cfg.DebugLogging
-		}
-
-		logger = log.NewLogger(log.WithDebugLog(debug))
+		logger = log.NewLogger(log.WithDebugLog(resolveDebugLogging(params.DebugLogging, osProxy, decoderFactory)))
 	}
 
 	var ccacheConfig *ccacheconfig.Config
@@ -267,4 +261,14 @@ func (r *Runner) zeroCcacheStats(ctx context.Context) {
 	if _, _, err := (exec.ExecRunner{}).RunCheck(ctx, path, "-z"); err != nil {
 		r.logger.TWarnf("Failed to reset ccache stats: %v", err)
 	}
+}
+
+// resolveDebugLogging ORs params.DebugLogging with the on-disk multiplatform config's DebugLogging.
+func resolveDebugLogging(paramsDebug bool, osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) bool {
+	debug := paramsDebug
+	if cfg, err := multiplatformconfig.ReadConfig(osProxy, decoderFactory); err == nil {
+		debug = debug || cfg.DebugLogging
+	}
+
+	return debug
 }
