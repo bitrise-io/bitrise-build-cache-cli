@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -31,6 +29,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -57,7 +56,6 @@ const (
 
 	errFmtExecutable         = "executable: %w"
 	errFmtFailedToStartProxy = "failed to start proxy: %w"
-	errFmtFailedToCreatePID  = "failed to create pid file: %w"
 )
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/session_client.go ./../../proto/llvm/session SessionClient
@@ -193,7 +191,6 @@ TBD`,
 				func(pid int, signum syscall.Signal) {
 					_ = syscall.Kill(pid, syscall.SIGKILL)
 				},
-				config.ProxySocketPath,
 			)
 			if err != nil {
 				return fmt.Errorf(errFmtFailedToStartProxy, err)
@@ -420,11 +417,6 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		return
 	}
 
-	src := invocations.SourceLocal
-	if c.Metadata.CIProvider != "" {
-		src = invocations.SourceCI
-	}
-
 	startedAt := runStats.StartTime
 	finishedAt := startedAt.Add(time.Duration(runStats.DurationMS) * time.Millisecond)
 
@@ -437,7 +429,9 @@ func (c *XcodebuildRunner) appendLocalInvocationLog(inv analytics.Invocation, ru
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 		ExitCode:     runStats.ExitCode,
-		Source:       src,
+		CIProvider:   c.Metadata.CIProvider,
+		Username:     inv.Username,
+		HitRate:      inv.HitRate,
 	}
 
 	if err := logger.Append(rec); err != nil {
@@ -850,65 +844,18 @@ func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
 	return out
 }
 
-// isProxyReachable reports whether a unix-socket listener is answering at socketPath.
-// A short DialContext timeout is enough — the wrapper only needs to know a peer is
-// bound, not that any RPC round-trips. ECONNREFUSED / ENOENT / timeout all return false.
-func isProxyReachable(socketPath string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "unix", socketPath)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-
-	return true
-}
-
 func startProxy(
 	logger log.Logger,
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
-	killFunc func(pid int, signum syscall.Signal),
-	socketPath string,
+	_ func(pid int, signum syscall.Signal),
 ) error {
-	if socketPath != "" && isProxyReachable(socketPath) {
-		logger.TDonef("Xcelerate proxy already reachable at %s — reusing", socketPath)
-
-		return nil
-	}
-
 	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
-	content, exists, err := osProxy.ReadFileIfExists(pidFilePth)
-	if err != nil {
-		return fmt.Errorf("failed to read pid file: %w", err)
-	}
-	if exists {
-		pid, err := strconv.Atoi(strings.TrimSpace(content))
-		if err != nil {
-			return fmt.Errorf("failed to parse pid file content: %w", err)
-		}
+	if pid, alive := proxypid.Read(osProxy, pidFilePth, nil); alive {
+		logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
-		logger.TInfof("Attempting to connect to an already running proxy (pid: %d)", pid)
-
-		process, err := osProxy.FindProcess(pid)
-		if err != nil {
-			return fmt.Errorf("failed to find process: %w", err)
-		}
-
-		if err := process.Signal(syscall.Signal(0)); err == nil {
-			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
-
-			return nil
-		}
-
-		logger.TWarnf("Removing stale pid file (pid: %d)", pid)
-		if err := osProxy.Remove(pidFilePth); err != nil {
-			return fmt.Errorf("failed to remove stale pid file: %w", err)
-		}
+		return nil
 	}
 
 	exe, err := osProxy.Executable()
@@ -931,14 +878,7 @@ func startProxy(
 		return fmt.Errorf(errFmtFailedToStartProxy, err)
 	}
 
-	pid := cmd.PID()
-	if err := osProxy.WriteFile(pidFilePth, []byte(strconv.Itoa(pid)), 0o644); err != nil {
-		killFunc(pid, syscall.SIGKILL)
-
-		return fmt.Errorf(errFmtFailedToCreatePID, err)
-	}
-
-	logger.TDonef(startedProxy, pid)
+	logger.TDonef(startedProxy, cmd.PID())
 
 	return nil
 }

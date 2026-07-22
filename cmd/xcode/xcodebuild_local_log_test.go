@@ -36,6 +36,7 @@ func runnerForLocalLogTest(t *testing.T, runStats xcodeargs.RunStats, ciProvider
 		logMock.On(name, mock.Anything).Return()
 		logMock.On(name, mock.Anything, mock.Anything).Return()
 		logMock.On(name, mock.Anything, mock.Anything, mock.Anything).Return()
+		logMock.On(name, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	}
 
 	xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
@@ -73,6 +74,7 @@ func TestXcodebuildRunner_appendLocalInvocationLog_writesRecord(t *testing.T) {
 		Success:          true,
 		XcodeVersion:     "16.0",
 		XcodeBuildNumber: "16A123",
+		CacheStats:       xcodeargs.CompCacheStats{Hits: 3, TotalTasks: 4},
 	}
 
 	sut, logger := runnerForLocalLogTest(t, runStats, "")
@@ -90,10 +92,12 @@ func TestXcodebuildRunner_appendLocalInvocationLog_writesRecord(t *testing.T) {
 	assert.Equal(t, start, got.StartedAt)
 	assert.Equal(t, start.Add(1500*time.Millisecond), got.FinishedAt)
 	assert.Equal(t, 0, got.ExitCode)
-	assert.Equal(t, invocations.SourceLocal, got.Source)
+	assert.Empty(t, got.CIProvider)
+	assert.True(t, got.IsLocal())
+	assert.InDelta(t, 0.75, got.HitRate, 0.001)
 }
 
-func TestXcodebuildRunner_appendLocalInvocationLog_marksCISource(t *testing.T) {
+func TestXcodebuildRunner_appendLocalInvocationLog_recordsCIProvider(t *testing.T) {
 	runStats := xcodeargs.RunStats{StartTime: time.Now().UTC(), Success: true}
 
 	sut, logger := runnerForLocalLogTest(t, runStats, "bitrise")
@@ -102,7 +106,8 @@ func TestXcodebuildRunner_appendLocalInvocationLog_marksCISource(t *testing.T) {
 
 	calls := logger.AppendCalls()
 	require.Len(t, calls, 1)
-	assert.Equal(t, invocations.SourceCI, calls[0].Rec.Source)
+	assert.Equal(t, "bitrise", calls[0].Rec.CIProvider)
+	assert.False(t, calls[0].Rec.IsLocal())
 }
 
 func TestXcodebuildRunner_appendLocalInvocationLog_appendErrorIsNonFatal(t *testing.T) {

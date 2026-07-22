@@ -1149,6 +1149,35 @@ workflows:
                # Non-empty scheme also acts as a proxy for "enrichment landed" — slim emit never sets it.
                assert_xcode_invocation_enriched "$INVOCATION_ID"
     - script:
+        title: Assert invocations list subcommand emits the fresh record
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            record=$(../bitrise-build-cache-cli invocations list --json --limit 5 \
+              | jq --arg id "$INVOCATION_ID" '.[] | select(.invocation_id == $id)')
+
+            if [[ -z "$record" ]]; then
+              echo "invocation $INVOCATION_ID not in local NDJSON log"
+              ../bitrise-build-cache-cli invocations list --json --limit 5
+              exit 1
+            fi
+
+            started=$(jq -r '.started_at' <<<"$record")
+            [[ "$started" != "0001-01-01T00:00:00Z" && -n "$started" ]] || { echo "started_at is zero: $started"; echo "$record"; exit 1; }
+
+            finished=$(jq '.finished_at' <<<"$record")
+            [[ "$finished" != "null" ]] || { echo "finished_at missing from record"; echo "$record"; exit 1; }
+
+            cli=$(jq -r '.cli_version' <<<"$record")
+            [[ -n "$cli" ]] || { echo "cli_version empty"; echo "$record"; exit 1; }
+
+            tool=$(jq -r '.tool' <<<"$record")
+            [[ "$tool" == "xcode" ]] || { echo "tool != xcode: $tool"; echo "$record"; exit 1; }
+
+            echo "Local NDJSON record looks healthy:"
+            echo "$record"
+    - script:
         title: Check for cache usage
         inputs:
         - content: |-

@@ -40,7 +40,7 @@ func TestWriter_Append_writesDailyNDJSON(t *testing.T) {
 		CLIVersion:   "v2.8.6",
 		StartedAt:    at,
 		ExitCode:     0,
-		Source:       SourceLocal,
+		Username:     "alice",
 	}
 	require.NoError(t, w.Append(rec))
 
@@ -87,7 +87,7 @@ func TestWriter_Append_writesOversizedRecordVerbatim(t *testing.T) {
 		Tool:         ToolXcode,
 		CLIVersion:   "v2.8.6",
 		StartedAt:    at,
-		Source:       SourceLocal,
+		Username:     "alice",
 	}
 	require.NoError(t, w.Append(rec))
 
@@ -118,7 +118,7 @@ func TestWriter_Append_concurrentWritesParseable(t *testing.T) {
 					Tool:         ToolXcode,
 					CLIVersion:   "v2.8.6",
 					StartedAt:    at,
-					Source:       SourceLocal,
+					Username:     "alice",
 				})
 			}
 		}(i)
@@ -171,6 +171,7 @@ func TestReader_Recent_emptyDir(t *testing.T) {
 	assert.Empty(t, recs)
 }
 
+
 func TestSweep_deletesOldFiles(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
@@ -217,7 +218,9 @@ func TestRecord_jsonRoundtrip(t *testing.T) {
 		StartedAt:    start,
 		FinishedAt:   start.Add(45 * time.Second),
 		ExitCode:     0,
-		Source:       SourceCI,
+		CIProvider:   "bitrise",
+		Username:     "bob",
+		HitRate:      0.75,
 	}
 
 	b, err := json.Marshal(rec)
@@ -234,6 +237,14 @@ func TestRecord_finishedAtOmittedWhenZero(t *testing.T) {
 	b, err := json.Marshal(rec)
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), "finished_at", "zero FinishedAt should be omitted via omitzero")
+}
+
+func TestRecord_hitRateOmittedWhenZero(t *testing.T) {
+	rec := Record{InvocationID: "i", StartedAt: time.Now().UTC()}
+
+	b, err := json.Marshal(rec)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "hit_rate", "zero HitRate should be omitted so canonical fixtures stay byte-identical")
 }
 
 func TestSweep_emptyDirIsNoop(t *testing.T) {
@@ -306,7 +317,7 @@ func TestCanonicalRecord_byteEqualToCheckedInFixture(t *testing.T) {
 		StartedAt:    time.Date(2026, 6, 25, 13, 14, 15, 0, time.UTC),
 		FinishedAt:   time.Date(2026, 6, 25, 13, 15, 0, 0, time.UTC),
 		ExitCode:     0,
-		Source:       SourceLocal,
+		Username:     "alice",
 	}
 
 	encoded, err := encodeRecord(rec)

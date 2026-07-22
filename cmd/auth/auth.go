@@ -610,6 +610,74 @@ var authTokenCmd = &cobra.Command{
 	},
 }
 
+// nolint:gochecknoglobals
+var (
+	usernameSetValue string
+	usernameJSONOut  bool
+)
+
+// usernameOutput is the --json shape of the resolved display name.
+type usernameOutput struct {
+	Username string `json:"username"`
+	Source   string `json:"source"`
+}
+
+// nolint:gochecknoglobals
+var authUsernameCmd = &cobra.Command{
+	Use:           "username",
+	Short:         "Resolve and print (or with --set, persist) the local-invocation display name",
+	Long:          "Without --set: resolves the display name via the same precedence chain as the rest of the CLI (env var → OS keychain → multiplatform config → OS username fallback) and prints it to stdout — a bare line, or with --json an object {\"username\", \"source\"}. Intended for build-time consumers (Gradle init script) that need the resolved name without re-implementing the lookup — always exits 0, printing an empty value when nothing is configured.\n\nWith --set <name>: persists the display name into the credential store that already holds your auth (keychain or the CI-safe config file), leaving the token and workspace untouched. --set \"\" clears the stored override. The BITRISE_BUILD_CACHE_USERNAME env var still takes precedence for a single run.",
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		envs := utils.AllEnvs()
+		if cmd.Flags().Changed("set") {
+			if err := setLocalUsername(envs, strings.TrimSpace(usernameSetValue)); err != nil {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
+
+				return err
+			}
+
+			return nil
+		}
+
+		name, src := configcommon.ResolveUsername(envs)
+		out := cmd.OutOrStdout()
+		if usernameJSONOut {
+			enc := json.NewEncoder(out)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(usernameOutput{Username: name, Source: src.String()}); err != nil {
+				return fmt.Errorf("encode username json: %w", err)
+			}
+
+			return nil
+		}
+
+		if _, err := fmt.Fprintln(out, name); err != nil {
+			return fmt.Errorf("write username: %w", err)
+		}
+
+		return nil
+	},
+}
+
+func setLocalUsername(envs map[string]string, name string) error {
+	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+
+	kind, err := store.SetUsername(envs, name)
+	if err != nil {
+		return err //nolint:wrapcheck // already user-facing (store wraps with the target backend)
+	}
+
+	if name == "" {
+		logger.TInfof("Cleared local-invocation display name in %s (falling back to %s or the OS username).", kind, configcommon.EnvUsername)
+	} else {
+		logger.TInfof("✅ Local-invocation display name set to %q in %s.", name, kind)
+	}
+
+	return nil
+}
+
 func maskToken(token string) string {
 	const tailLen = 4
 	if len(token) <= tailLen {
@@ -629,10 +697,14 @@ func init() {
 
 	authClearCmd.Flags().StringVar(&clearStorage, "storage", "", "Which backend to clear: keychain | file | auto (default auto clears both).")
 
+	authUsernameCmd.Flags().StringVar(&usernameSetValue, "set", "", "Persist this display name into the store holding your credentials (token/workspace untouched). Empty clears the stored override. Omit the flag to print the resolved name instead.")
+	authUsernameCmd.Flags().BoolVar(&usernameJSONOut, "json", false, "Print the resolved name as JSON {username, source} instead of a bare line. Ignored with --set.")
+
 	authCmd.AddCommand(authSetCmd)
 	authCmd.AddCommand(authStatusCmd)
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
+	authCmd.AddCommand(authUsernameCmd)
 	authCmd.AddCommand(common.LoginCmd)
 	authCmd.AddCommand(common.LogoutCmd)
 

@@ -17,13 +17,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-type Source string
-
-const (
-	SourceLocal Source = "local"
-	SourceCI    Source = "ci"
-)
-
 type Tool string
 
 const (
@@ -43,8 +36,13 @@ type Record struct {
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at,omitzero"`
 	ExitCode     int       `json:"exit_code"`
-	Source       Source    `json:"source"`
+	CIProvider   string    `json:"ci_provider,omitempty"`
+	Username     string    `json:"username,omitempty"`
+	HitRate      float32   `json:"hit_rate,omitempty"`
 }
+
+// IsLocal reports whether the record was produced outside a known CI provider.
+func (r Record) IsLocal() bool { return r.CIProvider == "" }
 
 const (
 	dayLayout        = "2006-01-02"

@@ -9,8 +9,7 @@
     "tool",
     "cli_version",
     "started_at",
-    "exit_code",
-    "source"
+    "exit_code"
   ],
   "additionalProperties": true,
   "properties": {
@@ -22,6 +21,8 @@
     "started_at":    { "type": "string", "format": "date-time" },
     "finished_at":   { "type": "string", "format": "date-time" },
     "exit_code":     { "type": "integer" },
-    "source":        { "type": "string", "enum": ["local", "ci"] }
+    "ci_provider":   { "type": "string" },
+    "username":      { "type": "string" },
+    "hit_rate":      { "type": "number", "minimum": 0, "maximum": 1 }
   }
 }

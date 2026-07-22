@@ -21,6 +21,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -94,11 +95,17 @@ var (
 
 			initialLogger.TInfof("Xcelerate Proxy")
 
-			if isProxyReachable(config.ProxySocketPath) {
-				initialLogger.TInfof("Proxy already running on %s — exiting cleanly", config.ProxySocketPath)
+			release, err := proxypid.Acquire(osProxy, xcelerate.PathFor(osProxy, paths.ProxyPidFileName), nil)
+			if err != nil {
+				initialLogger.Infof("Skipping proxy startup: %s", err)
 
 				return nil
 			}
+			defer func() {
+				if err := release(); err != nil {
+					initialLogger.Warnf("Failed to release proxy pid lock: %s", err)
+				}
+			}()
 
 			if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove socket file, error: %w", err)
