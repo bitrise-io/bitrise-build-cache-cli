@@ -32,20 +32,14 @@ type AuthProvider struct {
 	nowFn     func() time.Time
 }
 
-// NewAuthProvider constructs a provider seeded with initial so the first Get
-// returns without calling resolver. Subsequent Gets refresh once ttl elapses.
-func NewAuthProvider(initial common.CacheAuthConfig, resolver AuthResolver, ttl time.Duration, logger log.Logger) *AuthProvider {
-	p := &AuthProvider{
+// NewAuthProvider constructs a provider that fetches lazily on first Get.
+func NewAuthProvider(resolver AuthResolver, ttl time.Duration, logger log.Logger) *AuthProvider {
+	return &AuthProvider{
 		resolver: resolver,
 		ttl:      ttl,
 		logger:   logger,
-		cached:   initial,
-		seeded:   true,
 		nowFn:    time.Now,
 	}
-	p.fetchedAt = p.nowFn()
-
-	return p
 }
 
 // Get returns a cached CacheAuthConfig, refreshing if stale.
@@ -81,6 +75,7 @@ func (p *AuthProvider) Get() common.CacheAuthConfig {
 	}
 
 	p.cached = fresh
+	p.seeded = true
 	p.fetchedAt = p.nowFn()
 
 	if p.logger != nil {

@@ -164,7 +164,6 @@ func StartXcodeCacheProxy(
 	loggerFactory proxy.LoggerFactory,
 ) error {
 	authProvider := xceleratepkg.NewAuthProvider(
-		config.AuthConfig,
 		func() (configcommon.CacheAuthConfig, error) {
 			cfg, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 			if err != nil {

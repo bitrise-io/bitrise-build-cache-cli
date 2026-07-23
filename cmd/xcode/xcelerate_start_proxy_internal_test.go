@@ -59,7 +59,7 @@ func newBundleForTest(t *testing.T, home string, xcodebuildPath string) *analyti
 		OriginalXcodebuildPath: xcodebuildPath,
 	}
 
-	ap := xceleratepkg.NewAuthProvider(cfg.AuthConfig, nil, time.Hour, bundleTestLogger)
+	ap := xceleratepkg.NewAuthProvider(nil, time.Hour, bundleTestLogger)
 
 	return newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger, ap)
 }
@@ -100,7 +100,7 @@ func Test_newAnalyticsBundle_xcodeResolveError_leavesVersionEmptyWithoutPanic(t 
 		return "", assert.AnError
 	}
 
-	ap := xceleratepkg.NewAuthProvider(cfg.AuthConfig, nil, time.Hour, bundleTestLogger)
+	ap := xceleratepkg.NewAuthProvider(nil, time.Hour, bundleTestLogger)
 	b := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, errCmd, bundleTestLogger, ap)
 
 	require.NotNil(t, b)
