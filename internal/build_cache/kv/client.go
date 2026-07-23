@@ -22,13 +22,25 @@ import (
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../../proto/kv_storage KVStorageClient
 
+// AuthSource returns the credentials to use for a single RPC. Implementations
+// may cache and refresh transparently; kv.Client re-reads on every call.
+type AuthSource interface {
+	Get() common.CacheAuthConfig
+}
+
+type staticAuthSource struct {
+	cfg common.CacheAuthConfig
+}
+
+func (s staticAuthSource) Get() common.CacheAuthConfig { return s.cfg }
+
 type Client struct {
 	conn                *grpc.ClientConn // nil when test-injected via BitriseKVClient / CapabilitiesClient.
 	bitriseKVClient     kv_storage.KVStorageClient
 	capabilitiesClient  remoteexecution.CapabilitiesClient
 	casClient           remoteexecution.ContentAddressableStorageClient
 	clientName          string
-	authConfig          common.CacheAuthConfig
+	authSource          AuthSource
 	cacheConfigMetadata common.CacheConfigMetadata
 	logger              log.Logger
 	cacheOperationID    string
@@ -46,6 +58,7 @@ type NewClientParams struct {
 	DialTimeout         time.Duration
 	ClientName          string
 	AuthConfig          common.CacheAuthConfig
+	AuthSource          AuthSource // preferred; falls back to AuthConfig when nil
 	CacheConfigMetadata common.CacheConfigMetadata
 	Logger              log.Logger
 	CacheOperationID    string
@@ -91,13 +104,18 @@ func NewClient(p NewClientParams) (*Client, error) {
 		p.UploadRetryWait = 1 * time.Second
 	}
 
+	authSource := p.AuthSource
+	if authSource == nil {
+		authSource = staticAuthSource{cfg: p.AuthConfig}
+	}
+
 	return &Client{
 		conn:                conn,
 		bitriseKVClient:     bitriseKVClient,
 		capabilitiesClient:  capabilitiesClient,
 		casClient:           remoteexecution.NewContentAddressableStorageClient(conn),
 		clientName:          p.ClientName,
-		authConfig:          p.AuthConfig,
+		authSource:          authSource,
 		logger:              p.Logger,
 		cacheConfigMetadata: p.CacheConfigMetadata,
 		cacheOperationID:    p.CacheOperationID,

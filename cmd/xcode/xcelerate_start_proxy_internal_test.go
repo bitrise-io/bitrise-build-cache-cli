@@ -58,7 +58,9 @@ func newBundleForTest(t *testing.T, home string, xcodebuildPath string) *analyti
 		OriginalXcodebuildPath: xcodebuildPath,
 	}
 
-	return newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger)
+	ap := common.NewExpiryAwareResolver(context.Background(), map[string]string{}, nil, bundleTestLogger)
+
+	return newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger, ap)
 }
 
 func Test_newAnalyticsBundle_populatesFieldsHappyPath(t *testing.T) {
@@ -97,7 +99,8 @@ func Test_newAnalyticsBundle_xcodeResolveError_leavesVersionEmptyWithoutPanic(t 
 		return "", assert.AnError
 	}
 
-	b := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, errCmd, bundleTestLogger)
+	ap := common.NewExpiryAwareResolver(context.Background(), map[string]string{}, nil, bundleTestLogger)
+	b := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, errCmd, bundleTestLogger, ap)
 
 	require.NotNil(t, b)
 	assert.Empty(t, b.xcodeVersion)

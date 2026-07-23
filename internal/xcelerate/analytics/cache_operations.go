@@ -44,7 +44,7 @@ func (c *Client) PutCacheOperation(op *CacheOperation) error {
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.tokenSupplier()))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

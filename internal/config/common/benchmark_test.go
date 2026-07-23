@@ -31,6 +31,7 @@ func TestGetBenchmarkPhase_BitriseProvider(t *testing.T) {
 		AuthToken:   "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
 
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
@@ -60,6 +61,7 @@ func TestGetBenchmarkPhase_ExternalProvider(t *testing.T) {
 		AuthToken:   "test-token",
 		WorkspaceID: "ws-456",
 	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
 
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:           CIProviderGitHubActions,
@@ -80,6 +82,7 @@ func TestGetBenchmarkPhase_EmptyIdentifiers(t *testing.T) {
 		AuthToken:   "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
 
 	// Bitrise with empty app ID
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
@@ -102,6 +105,7 @@ func TestGetBenchmarkPhase_EmptyWorkspaceID(t *testing.T) {
 	client := NewBenchmarkPhaseClient("http://unused", CacheAuthConfig{
 		AuthToken: "test-token",
 	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
 
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:   CIProviderBitrise,
@@ -125,6 +129,7 @@ func TestGetBenchmarkPhase_HTTPError(t *testing.T) {
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.httpClient.RetryMax = 0
+	client.Getenv = func(string) string { return "" }
 
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
@@ -150,6 +155,7 @@ func TestGetBenchmarkPhase_MalformedJSON(t *testing.T) {
 		AuthToken:   "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
 
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,
@@ -160,6 +166,68 @@ func TestGetBenchmarkPhase_MalformedJSON(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to decode response")
 	assert.Empty(t, phase)
+}
+
+func TestGetBenchmarkPhase_RespectsEnvVarOverride(t *testing.T) {
+	t.Parallel()
+
+	beCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		beCalled = true
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(benchmarkResponse{Phase: "baseline"}) //nolint:errcheck
+	}))
+	defer server.Close()
+
+	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
+		AuthToken:   "test-token",
+		WorkspaceID: "ws-123",
+	}, log.NewLogger())
+	client.Getenv = func(k string) string {
+		if k == BenchmarkPhaseEnvVar(BuildToolXcode) {
+			return "established"
+		}
+
+		return ""
+	}
+
+	phase, err := client.GetBenchmarkPhase(BuildToolXcode, CacheConfigMetadata{
+		CIProvider:          CIProviderBitrise,
+		BitriseAppID:        "app-1",
+		BitriseWorkflowName: "primary",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "established", phase)
+	assert.False(t, beCalled, "BE endpoint must not be queried when env var is pre-set")
+}
+
+func TestGetBenchmarkPhase_QueriesBEWhenEnvUnset(t *testing.T) {
+	t.Parallel()
+
+	beCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		beCalled = true
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(benchmarkResponse{Phase: "warmup"}) //nolint:errcheck
+	}))
+	defer server.Close()
+
+	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
+		AuthToken:   "test-token",
+		WorkspaceID: "ws-123",
+	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
+
+	phase, err := client.GetBenchmarkPhase(BuildToolXcode, CacheConfigMetadata{
+		CIProvider:          CIProviderBitrise,
+		BitriseAppID:        "app-1",
+		BitriseWorkflowName: "primary",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "warmup", phase)
+	assert.True(t, beCalled, "BE endpoint must be queried when env var is unset")
 }
 
 func TestGetBenchmarkPhase_EmptyPhase(t *testing.T) {
@@ -175,6 +243,7 @@ func TestGetBenchmarkPhase_EmptyPhase(t *testing.T) {
 		AuthToken:   "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
 
 	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
 		CIProvider:          CIProviderBitrise,

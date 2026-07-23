@@ -82,7 +82,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 			op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
 
-			xaClient, clientErr := xa.NewClient(consts.XcodeAnalyticsServiceEndpoint, authConfig.AuthToken, logger)
+			xaClient, clientErr := xa.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return authConfig.AuthToken }, logger)
 			if clientErr != nil {
 				return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
 			}

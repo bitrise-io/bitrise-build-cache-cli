@@ -266,16 +266,17 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 }
 
 func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
+	auth := c.authSource.Get()
 	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", c.authConfig.AuthToken),
+		"authorization", fmt.Sprintf("bearer %s", auth.AuthToken),
 		"x-flare-buildtool", c.clientName)
 
 	if c.cacheOperationID != "" {
 		md.Set("x-cache-operation-id", c.cacheOperationID)
 	}
 
-	if c.authConfig.WorkspaceID != "" {
-		md.Set("x-org-id", c.authConfig.WorkspaceID)
+	if auth.WorkspaceID != "" {
+		md.Set("x-org-id", auth.WorkspaceID)
 	}
 	if c.cacheConfigMetadata.BitriseAppID != "" {
 		md.Set("x-app-id", c.cacheConfigMetadata.BitriseAppID)

@@ -20,6 +20,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -162,10 +163,23 @@ func StartXcodeCacheProxy(
 	initialLogger log.Logger,
 	loggerFactory proxy.LoggerFactory,
 ) error {
+	oauthCfg := oauth.NewConfigFromEnv(envProvider)
+	oauthCfg.Logger = initialLogger
+	refreshFn := func(ctx context.Context) (string, string, error) {
+		creds, err := oauthCfg.EnsureFresh(ctx)
+		if err != nil {
+			return "", "", fmt.Errorf("ensure fresh oauth credentials: %w", err)
+		}
+
+		return creds.PAT, creds.WorkspaceID, nil
+	}
+	authProvider := configcommon.NewExpiryAwareResolver(context.WithoutCancel(ctx), envProvider, refreshFn, initialLogger)
+
 	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
 		ClientName:         common.ClientNameXcode,
 		AuthConfig:         config.AuthConfig,
+		AuthSource:         authProvider,
 		Envs:               envProvider,
 		CommandFunc:        commandFunc,
 		Logger:             initialLogger,
@@ -179,7 +193,7 @@ func StartXcodeCacheProxy(
 		return fmt.Errorf("create kv client: %w", err)
 	}
 
-	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger)
+	bundle := newAnalyticsBundle(ctx, config, envProvider, commandFunc, initialLogger, authProvider)
 
 	if p, err := paths.Default(); err == nil {
 		enrichment.PruneAll(p, time.Now(), initialLogger)
@@ -212,7 +226,7 @@ func StartXcodeCacheProxy(
 
 type analyticsBundle struct {
 	client           *analytics.Client
-	auth             configcommon.CacheAuthConfig
+	authProvider     *configcommon.ExpiryAwareResolver
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
 	handledManifests *enrichment.HandledManifestStore
@@ -229,8 +243,10 @@ func newAnalyticsBundle(
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
 	logger log.Logger,
+	authProvider *configcommon.ExpiryAwareResolver,
 ) *analyticsBundle {
-	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	tokenSupplier := func() string { return authProvider.Get().TokenInGradleFormat() }
+	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, tokenSupplier, logger)
 	if err != nil {
 		logger.Warnf("Xcode analytics disabled — client init failed: %s", err)
 
@@ -238,10 +254,10 @@ func newAnalyticsBundle(
 	}
 
 	b := &analyticsBundle{
-		client:   client,
-		auth:     config.AuthConfig,
-		metadata: configcommon.NewMetadata(envProvider, commandFunc, logger),
-		logger:   logger,
+		client:       client,
+		authProvider: authProvider,
+		metadata:     configcommon.NewMetadata(envProvider, commandFunc, logger),
+		logger:       logger,
 	}
 
 	if version, buildNumber, err := xcodeversion.Resolve(ctx, config.OriginalXcodebuildPath, commandFunc); err != nil {
@@ -279,7 +295,7 @@ func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
 	enricher := &enrichment.Enricher{
 		Store:            b.pending,
 		Client:           b.client,
-		Auth:             b.auth,
+		Auth:             b.authProvider.Get(),
 		Metadata:         b.metadata,
 		XcodeVersion:     b.xcodeVersion,
 		XcodeBuildNumber: b.xcodeBuildNumber,
@@ -364,7 +380,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 			InvocationID:   meta.InvocationID,
 			Duration:       duration,
 			HitRate:        hitRate,
-		}, b.auth, b.metadata)
+		}, b.authProvider.Get(), b.metadata)
 
 		if err := b.client.PutInvocation(*inv); err != nil {
 			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)

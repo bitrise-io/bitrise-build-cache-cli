@@ -25,6 +25,7 @@ type CreateKVClientParams struct {
 	ClientName         string
 	InvocationID       string
 	AuthConfig         common.CacheAuthConfig
+	AuthSource         kv.AuthSource // preferred; falls back to AuthConfig when nil
 	Envs               map[string]string
 	CommandFunc        common.CommandFunc
 	Logger             log.Logger
@@ -53,6 +54,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		DialTimeout:         5 * time.Second,
 		ClientName:          params.ClientName,
 		AuthConfig:          params.AuthConfig,
+		AuthSource:          params.AuthSource,
 		Logger:              params.Logger,
 		CacheConfigMetadata: common.NewMetadata(params.Envs, params.CommandFunc, params.Logger),
 		CacheOperationID:    params.CacheOperationID,

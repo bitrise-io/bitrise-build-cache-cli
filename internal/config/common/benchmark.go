@@ -44,6 +44,8 @@ type BenchmarkPhaseClient struct {
 	baseURL    string
 	authConfig CacheAuthConfig
 	logger     log.Logger
+	// Getenv resolves env vars; nil means os.Getenv. Exposed so tests can inject.
+	Getenv func(string) string
 }
 
 // NewBenchmarkPhaseClient creates a new BenchmarkPhaseClient.
@@ -64,6 +66,15 @@ func NewBenchmarkPhaseClient(baseURL string, authConfig CacheAuthConfig, logger 
 // The buildTool parameter specifies the build tool (gradle, xcode, bazel).
 // Returns empty string if no benchmark phase is active or if the build can't be identified.
 func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata CacheConfigMetadata) (string, error) {
+	getenv := c.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if v := getenv(BenchmarkPhaseEnvVar(buildTool)); v != "" {
+		// Respect user-provided override (e.g. e2e workflows that need a specific phase).
+		return v, nil
+	}
+
 	params := url.Values{}
 
 	if c.authConfig.WorkspaceID == "" {
