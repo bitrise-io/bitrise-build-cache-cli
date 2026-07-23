@@ -20,6 +20,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -162,18 +163,17 @@ func StartXcodeCacheProxy(
 	initialLogger log.Logger,
 	loggerFactory proxy.LoggerFactory,
 ) error {
-	authProvider := configcommon.NewCachingAuthResolver(
-		60*time.Second,
-		func() (configcommon.CacheAuthConfig, error) {
-			cfg, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
-			if err != nil {
-				return configcommon.CacheAuthConfig{}, fmt.Errorf("resolve auth config: %w", err)
-			}
+	oauthCfg := oauth.NewConfigFromEnv(envProvider)
+	oauthCfg.Logger = initialLogger
+	refreshFn := func(ctx context.Context) (string, string, error) {
+		creds, err := oauthCfg.EnsureFresh(ctx)
+		if err != nil {
+			return "", "", fmt.Errorf("ensure fresh oauth credentials: %w", err)
+		}
 
-			return cfg, nil
-		},
-		initialLogger,
-	)
+		return creds.PAT, creds.WorkspaceID, nil
+	}
+	authProvider := configcommon.NewExpiryAwareResolver(ctx, envProvider, refreshFn, initialLogger)
 
 	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
@@ -226,7 +226,7 @@ func StartXcodeCacheProxy(
 
 type analyticsBundle struct {
 	client           *analytics.Client
-	authProvider     *configcommon.CachingAuthResolver
+	authProvider     *configcommon.ExpiryAwareResolver
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
 	handledManifests *enrichment.HandledManifestStore
@@ -243,7 +243,7 @@ func newAnalyticsBundle(
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
 	logger log.Logger,
-	authProvider *configcommon.CachingAuthResolver,
+	authProvider *configcommon.ExpiryAwareResolver,
 ) *analyticsBundle {
 	tokenSupplier := func() string { return authProvider.Get().TokenInGradleFormat() }
 	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, tokenSupplier, logger)

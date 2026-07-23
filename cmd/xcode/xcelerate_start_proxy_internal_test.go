@@ -58,7 +58,7 @@ func newBundleForTest(t *testing.T, home string, xcodebuildPath string) *analyti
 		OriginalXcodebuildPath: xcodebuildPath,
 	}
 
-	ap := common.NewCachingAuthResolver(time.Hour, nil, bundleTestLogger)
+	ap := common.NewExpiryAwareResolver(context.Background(), map[string]string{}, nil, bundleTestLogger)
 
 	return newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger, ap)
 }
@@ -99,7 +99,7 @@ func Test_newAnalyticsBundle_xcodeResolveError_leavesVersionEmptyWithoutPanic(t 
 		return "", assert.AnError
 	}
 
-	ap := common.NewCachingAuthResolver(time.Hour, nil, bundleTestLogger)
+	ap := common.NewExpiryAwareResolver(context.Background(), map[string]string{}, nil, bundleTestLogger)
 	b := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, errCmd, bundleTestLogger, ap)
 
 	require.NotNil(t, b)
