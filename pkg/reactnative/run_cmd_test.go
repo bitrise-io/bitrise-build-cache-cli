@@ -54,16 +54,17 @@ func TestRunner_Run(t *testing.T) {
 		var capturedArgs []string
 
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(_ []string, name string, args ...string) error {
+			ExecFn: func(_ []string, name string, args ...string) (int, error) {
 				capturedName = name
 				capturedArgs = args
 
-				return nil
+				return 0, nil
 			},
 		})
-		err := r.Run(ctx, []string{"bash", "-c", "echo hello"}, "", []string{})
+		exitCode, err := r.Run(ctx, []string{"bash", "-c", "echo hello"}, "", []string{})
 
 		require.NoError(t, err)
+		assert.Equal(t, 0, exitCode)
 		assert.Equal(t, "bash", capturedName)
 		assert.Equal(t, []string{"-c", "echo hello"}, capturedArgs)
 	})
@@ -72,15 +73,16 @@ func TestRunner_Run(t *testing.T) {
 		var capturedEnviron []string
 
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(environ []string, _ string, _ ...string) error {
+			ExecFn: func(environ []string, _ string, _ ...string) (int, error) {
 				capturedEnviron = environ
 
-				return nil
+				return 0, nil
 			},
 		})
-		err := r.Run(ctx, []string{"true"}, "", []string{"EXISTING=value"})
+		exitCode, err := r.Run(ctx, []string{"true"}, "", []string{"EXISTING=value"})
 
 		require.NoError(t, err)
+		assert.Equal(t, 0, exitCode)
 		assert.Contains(t, capturedEnviron, "EXISTING=value")
 
 		var invocationIDEntry string
@@ -99,17 +101,17 @@ func TestRunner_Run(t *testing.T) {
 		extractID := func() string {
 			var id string
 			r := newTestRunner(RunnerParams{
-				ExecFn: func(environ []string, _ string, _ ...string) error {
+				ExecFn: func(environ []string, _ string, _ ...string) (int, error) {
 					for _, e := range environ {
 						if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
 							id = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 						}
 					}
 
-					return nil
+					return 0, nil
 				},
 			})
-			_ = r.Run(ctx, []string{"true"}, "", []string{})
+			_, _ = r.Run(ctx, []string{"true"}, "", []string{})
 
 			return id
 		}
@@ -124,20 +126,22 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("error from execFn is propagated", func(t *testing.T) {
 		execErr := errors.New("exec failed")
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(_ []string, _ string, _ ...string) error { return execErr },
+			ExecFn: func(_ []string, _ string, _ ...string) (int, error) { return 1, execErr },
 		})
 
-		err := r.Run(ctx, []string{"true"}, "", []string{})
+		exitCode, err := r.Run(ctx, []string{"true"}, "", []string{})
 		assert.ErrorIs(t, err, execErr)
+		assert.Equal(t, 1, exitCode)
 	})
 
 	t.Run("missing args returns error", func(t *testing.T) {
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(_ []string, _ string, _ ...string) error { return nil },
+			ExecFn: func(_ []string, _ string, _ ...string) (int, error) { return 0, nil },
 		})
 
-		err := r.Run(ctx, []string{}, "", []string{})
+		exitCode, err := r.Run(ctx, []string{}, "", []string{})
 		assert.Error(t, err)
+		assert.Equal(t, 1, exitCode)
 	})
 
 	t.Run("provided invocation ID is used as-is", func(t *testing.T) {
@@ -145,36 +149,48 @@ func TestRunner_Run(t *testing.T) {
 		var capturedEnvID string
 
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(environ []string, _ string, _ ...string) error {
+			ExecFn: func(environ []string, _ string, _ ...string) (int, error) {
 				for _, e := range environ {
 					if strings.HasPrefix(e, "BITRISE_INVOCATION_ID=") {
 						capturedEnvID = strings.TrimPrefix(e, "BITRISE_INVOCATION_ID=")
 					}
 				}
 
-				return nil
+				return 0, nil
 			},
 		})
-		err := r.Run(ctx, []string{"true"}, fixedID, []string{})
+		exitCode, err := r.Run(ctx, []string{"true"}, fixedID, []string{})
 
 		require.NoError(t, err)
+		assert.Equal(t, 0, exitCode)
 		assert.Equal(t, fixedID, capturedEnvID)
+	})
+
+	t.Run("non-zero exit code without error is propagated", func(t *testing.T) {
+		r := newTestRunner(RunnerParams{
+			ExecFn: func(_ []string, _ string, _ ...string) (int, error) { return 42, nil },
+		})
+
+		exitCode, err := r.Run(ctx, []string{"true"}, "", []string{})
+		require.NoError(t, err)
+		assert.Equal(t, 42, exitCode)
 	})
 }
 
 func TestRunner_PostRunHook(t *testing.T) {
 	activateRNHome(t)
 	ctx := context.Background()
-	noOpExec := func(_ []string, _ string, _ ...string) error { return nil }
+	noOpExec := func(_ []string, _ string, _ ...string) (int, error) { return 0, nil }
 
 	t.Run("calls postRun with invocation ID and args", func(t *testing.T) {
 		mock := &postRunRunnerMock{}
 		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
 		r.postRun = mock
 
-		err := r.Run(ctx, []string{"yarn", "build"}, "inv-123", []string{})
+		exitCode, err := r.Run(ctx, []string{"yarn", "build"}, "inv-123", []string{})
 
 		require.NoError(t, err)
+		assert.Equal(t, 0, exitCode)
 		require.Len(t, mock.runCalls(), 1)
 
 		call := mock.runCalls()[0]
@@ -187,12 +203,13 @@ func TestRunner_PostRunHook(t *testing.T) {
 		execErr := errors.New("build failed")
 		mock := &postRunRunnerMock{}
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(_ []string, _ string, _ ...string) error { return execErr },
+			ExecFn: func(_ []string, _ string, _ ...string) (int, error) { return 3, execErr },
 		})
 		r.postRun = mock
 
-		_ = r.Run(ctx, []string{"yarn", "build"}, "inv-456", []string{})
+		exitCode, _ := r.Run(ctx, []string{"yarn", "build"}, "inv-456", []string{})
 
+		assert.Equal(t, 3, exitCode)
 		require.Len(t, mock.runCalls(), 1)
 		assert.ErrorIs(t, mock.runCalls()[0].ExecErr, execErr)
 	})
@@ -202,7 +219,7 @@ func TestRunner_PostRunHook(t *testing.T) {
 		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
 		r.postRun = mock
 
-		err := r.Run(ctx, []string{"true"}, "", []string{})
+		_, err := r.Run(ctx, []string{"true"}, "", []string{})
 
 		require.NoError(t, err)
 		require.Len(t, mock.runCalls(), 1)
@@ -213,7 +230,7 @@ func TestRunner_PostRunHook(t *testing.T) {
 		r := newTestRunner(RunnerParams{ExecFn: noOpExec})
 		// postRun is already nil from newTestRunner
 
-		err := r.Run(ctx, []string{"true"}, "inv", []string{})
+		_, err := r.Run(ctx, []string{"true"}, "inv", []string{})
 
 		require.NoError(t, err)
 		// no panic — nil postRun is handled gracefully
@@ -222,11 +239,11 @@ func TestRunner_PostRunHook(t *testing.T) {
 	t.Run("postRun is called even when exec fails", func(t *testing.T) {
 		mock := &postRunRunnerMock{}
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(_ []string, _ string, _ ...string) error { return errors.New("failed") },
+			ExecFn: func(_ []string, _ string, _ ...string) (int, error) { return 1, errors.New("failed") },
 		})
 		r.postRun = mock
 
-		_ = r.Run(ctx, []string{"true"}, "inv", []string{})
+		_, _ = r.Run(ctx, []string{"true"}, "inv", []string{})
 
 		require.Len(t, mock.runCalls(), 1)
 	})
@@ -245,20 +262,21 @@ func TestRunner_BypassWhenNotActivated(t *testing.T) {
 
 		mock := &postRunRunnerMock{}
 		r := NewRunner(RunnerParams{
-			ExecFn: func(environ []string, name string, args ...string) error {
+			ExecFn: func(environ []string, name string, args ...string) (int, error) {
 				capturedName = name
 				capturedArgs = args
 				capturedEnviron = environ
 
-				return nil
+				return 0, nil
 			},
 		})
 		r.socket = nil
 		r.postRun = mock
 
-		err := r.Run(ctx, []string{"yarn", "build"}, "given-id", []string{"EXISTING=value"})
+		exitCode, err := r.Run(ctx, []string{"yarn", "build"}, "given-id", []string{"EXISTING=value"})
 
 		require.NoError(t, err)
+		assert.Equal(t, 0, exitCode)
 		assert.Equal(t, "yarn", capturedName)
 		assert.Equal(t, []string{"build"}, capturedArgs)
 		assert.Equal(t, []string{"EXISTING=value"}, capturedEnviron, "environ must be unchanged when bypassed")
@@ -288,16 +306,16 @@ func TestRunner_BypassWhenNotActivated(t *testing.T) {
 		var capturedEnviron []string
 		mock := &postRunRunnerMock{}
 		r := NewRunner(RunnerParams{
-			ExecFn: func(environ []string, _ string, _ ...string) error {
+			ExecFn: func(environ []string, _ string, _ ...string) (int, error) {
 				capturedEnviron = environ
 
-				return nil
+				return 0, nil
 			},
 		})
 		r.socket = nil
 		r.postRun = mock
 
-		err := r.Run(ctx, []string{"yarn", "build"}, "given-id", []string{"EXISTING=value"})
+		_, err := r.Run(ctx, []string{"yarn", "build"}, "given-id", []string{"EXISTING=value"})
 
 		require.NoError(t, err)
 		for _, e := range capturedEnviron {
@@ -316,13 +334,14 @@ func TestRunner_Run_EASWorkingDir(t *testing.T) {
 
 		var captured []string
 		r := newTestRunner(RunnerParams{
-			ExecFn: func(env []string, _ string, _ ...string) error {
+			ExecFn: func(env []string, _ string, _ ...string) (int, error) {
 				captured = env
 
-				return nil
+				return 0, nil
 			},
 		})
-		require.NoError(t, r.Run(ctx, args, "", environ))
+		_, err := r.Run(ctx, args, "", environ)
+		require.NoError(t, err)
 
 		return captured
 	}

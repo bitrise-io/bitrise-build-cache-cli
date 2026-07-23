@@ -1,6 +1,6 @@
 # Local invocation log
 
-Shared on-disk log of every build-tool invocation the user runs locally — read by `doctor`, `status`, and (future) rebuild tooling, written by the CLI today and by the gradle plugin / RN wrappers in follow-up patches.
+Shared on-disk log of every build-tool invocation the user runs locally — read by `doctor`, `status`, and (future) rebuild tooling, written by the CLI (xcodebuild wrapper, ccache helper, react-native wrapper) and — in follow-up patches — the gradle plugin.
 
 ## Path layout
 
