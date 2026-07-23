@@ -69,7 +69,6 @@ func (p *AuthProvider) Get() common.CacheAuthConfig {
 		if p.logger != nil {
 			p.logger.Warnf("xcelerate auth token refresh failed, using cached value: %s", err)
 		}
-		p.fetchedAt = p.nowFn()
 
 		return p.cached
 	}
