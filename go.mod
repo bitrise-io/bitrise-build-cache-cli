@@ -3,7 +3,7 @@ module github.com/bitrise-io/bitrise-build-cache-cli/v3
 go 1.25.0
 
 require (
-	cloud.google.com/go/longrunning v0.13.0
+	cloud.google.com/go/longrunning v1.2.0
 	github.com/bazelbuild/remote-apis v0.0.0-20260331222004-becdd8f9ff81
 	github.com/beevik/etree v1.6.0
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.50
@@ -23,9 +23,9 @@ require (
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/mod v0.38.0
 	golang.org/x/term v0.45.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478
+	google.golang.org/genproto/googleapis/api v0.0.0-20260630182238-925bb5da69e7
 	google.golang.org/genproto/googleapis/bytestream v0.0.0-20251103181224-f26f9409b101
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260630182238-925bb5da69e7
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	howett.net/plist v1.0.1
