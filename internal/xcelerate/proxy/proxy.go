@@ -69,7 +69,7 @@ type Proxy struct {
 	lastActivity      time.Time
 }
 
-const defaultInactivityTimeout = 10 * time.Second
+const defaultInactivityTimeout = 5 * time.Minute
 
 func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
 	// Note: Gradle plugin uses a client balancer, with multiple channels (min 2), each with multiple connections.
@@ -221,6 +221,35 @@ func (p *Proxy) onInactivity(target *SessionMeta) {
 	}
 
 	p.emitCurrentSessionLocked(context.Background())
+}
+
+// EndSession flushes the currently-open session if its InvocationID matches
+// req.GetInvocationId(). Mismatched or absent session is a silent no-op — the
+// wrapper calls this after xcodebuild exits and the ordering vs SetSession
+// swap is not guaranteed.
+func (p *Proxy) EndSession(ctx context.Context, req *session.EndSessionRequest) (*emptypb.Empty, error) {
+	p.sessionMutex.Lock()
+	defer p.sessionMutex.Unlock()
+
+	if p.currentSession == nil {
+		p.logger.TDebugf("EndSession no-op for %s: no active session", req.GetInvocationId())
+
+		return &emptypb.Empty{}, nil
+	}
+
+	if p.currentSession.InvocationID != req.GetInvocationId() {
+		p.logger.TDebugf("EndSession no-op: got %s, active %s", req.GetInvocationId(), p.currentSession.InvocationID)
+
+		return &emptypb.Empty{}, nil
+	}
+
+	if endMs := req.GetEndTimeUnixMs(); endMs > 0 {
+		p.lastActivity = time.UnixMilli(endMs)
+	}
+
+	p.emitCurrentSessionLocked(ctx)
+
+	return &emptypb.Empty{}, nil
 }
 
 func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionRequest) (*emptypb.Empty, error) {

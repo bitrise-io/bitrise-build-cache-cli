@@ -43,12 +43,12 @@ const (
 	xcelerateLogsSubdir = "logs"
 
 	// xcelerateEnrichmentSubdir holds every persisted-state artefact the
-	// F2 enrichment watcher, retry queue, and slim/handled-marker bookkeeping share.
+	// enrichment watcher, retry queue, and slim/handled-marker bookkeeping share.
 	xcelerateEnrichmentSubdir = "enrichment"
 
 	// xcelerateHandledInvocationsSubdir sits under XcelerateEnrichmentDir and marks
 	// invocation IDs the wrapper already PUT a rich payload for, so slim emit and
-	// F2 enrichment skip them instead of last-write-wins overwriting the rich row.
+	// enrichment watcher skip them instead of last-write-wins overwriting the rich row.
 	xcelerateHandledInvocationsSubdir = "handled-invocations"
 
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs

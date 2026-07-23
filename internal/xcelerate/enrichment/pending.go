@@ -1,4 +1,4 @@
-// Package enrichment re-PUTs Xcode invocations with LogStoreManifest metadata (F2).
+// Package enrichment re-PUTs Xcode invocations with LogStoreManifest metadata (the watcher path).
 package enrichment
 
 import (
@@ -61,7 +61,7 @@ func (s *Store) Mutate(fn func([]PendingRecord) []PendingRecord) error {
 
 // PruneOrphansOlderThan drops records with Attempts == 0 whose StartTime is
 // older than maxAge. Retrier calls this at startup so a wrapper crash between
-// slim emit (appends untouched record) and F2 enrichment doesn't leave the
+// slim emit (appends untouched record) and enrichment doesn't leave the
 // queue growing indefinitely. Records with Attempts > 0 are the Retrier's
 // concern (aged out by FirstAttempt) and left alone.
 func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) error {

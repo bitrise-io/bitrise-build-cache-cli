@@ -235,6 +235,9 @@ type analyticsBundle struct {
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
+
+	// putter overrides the analytics PUT sink for tests; nil falls back to b.client.
+	putter invocationSaver
 }
 
 func newAnalyticsBundle(
@@ -356,7 +359,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	duration := endTime.Sub(meta.StartTime).Milliseconds()
 	hitRate := stats.HitRate()
 
-	// Pending has to survive the marker check so F2's manifest scan can correlate the wrapper build back to this InvocationID — otherwise F2 mints a duplicate orphan.
+	// Pending has to survive the marker check so the enrichment watcher's manifest scan can correlate the wrapper build back to this InvocationID — otherwise the watcher mints a duplicate orphan.
 	if b.pending != nil {
 		if err := b.pending.Append(enrichment.PendingRecord{
 			InvocationID: meta.InvocationID,
@@ -374,15 +377,20 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 		return
 	}
 
+	putter := b.resolvePutter()
+	if putter == nil {
+		return
+	}
+
 	go func() {
+		// Duration omitted: manifest span (from the enrichment watcher, wrapper-less builds only) or the wrapper's own PUT is authoritative.
 		inv := analytics.NewInvocation(analytics.InvocationRunStats{
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,
-			Duration:       duration,
 			HitRate:        hitRate,
 		}, b.authProvider.Get(), b.metadata)
 
-		if err := b.client.PutInvocation(*inv); err != nil {
+		if err := putter.PutInvocation(*inv); err != nil {
 			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
 
 			return
@@ -392,6 +400,18 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	}()
 
 	_ = ctx
+}
+
+func (b *analyticsBundle) resolvePutter() invocationSaver {
+	if b.putter != nil {
+		return b.putter
+	}
+
+	if b.client == nil {
+		return nil
+	}
+
+	return b.client
 }
 
 func getProxyLogFile(osProxy utils.OsProxy, invocationID string) (string, error) {

@@ -1408,12 +1408,12 @@ workflows:
             assert_xcode_invocation_hit_rate_at_least "$invocation_id_b" 80
     - deploy-to-bitrise-io: {}
 
-  e2e-xcode-f1-f2-race:
+  e2e-xcode-wrapper-watcher-race:
     description: |
-      Proves the F1 (slim-emit)/F2 (xcactivitylog watcher) timing race is
-      handled by the retry bucket in the enrichment watcher: F2 must not
-      mint an orphan invocation when it sees the manifest before F1's slim
-      record lands. We force F1 slow (30s inactivity window) so F2's 5s
+      Proves the slim-emit vs xcactivitylog-watcher timing race is
+      handled by the retry bucket in the enrichment watcher: the watcher must not
+      mint an orphan invocation when it sees the manifest before the wrapper's slim
+      record lands. We force slim-emit slow (30s inactivity window) so the watcher's 5s
       poll definitely observes the manifest first; the retry bucket must
       then defer, wait for the slim record, and enrich the wrapper's own
       InvocationID — not a fresh UUID.
@@ -1424,9 +1424,12 @@ workflows:
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
     - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
-    # Force F1 (slim emit) to fire well after F2's manifest sighting; exercises
+    # Force slim emit to fire well after the watcher's manifest sighting; exercises
     # the correlation retry bucket that this workflow is designed to prove.
     - TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
+    # Newly-renamed workflow slug; BE benchmark-phase treats it as new -> baseline.
+    # Env-var override keeps cache on so the hit-rate assertion is meaningful.
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -1474,10 +1477,10 @@ workflows:
         inputs:
         - content: |-
             set -eo pipefail
-            # F1 idle window is 30s + slack for slim PUT; F2 polls every 5s and
+            # Slim-emit idle window is 30s + slack for the PUT; watcher polls every 5s and
             # retries up to DefaultMaxCorrelationRetries. 60s gives both a comfortable
             # completion window while still catching regressions in either direction.
-            echo "Sleeping 60s to let F1 slim-emit and F2 enrichment converge…"
+            echo "Sleeping 60s to let slim-emit and enrichment watcher converge…"
             sleep 60
     - script:
         title: Assert wrapper invocation was enriched (no orphan)
@@ -1496,7 +1499,7 @@ workflows:
 
             # Belt-and-braces: list all xcode invocations for this build; must be
             # exactly one, and it must be the wrapper's InvocationID. Two would
-            # mean F2 gave up and minted an orphan.
+            # mean the watcher gave up and minted an orphan.
             assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
@@ -2451,7 +2454,7 @@ pipelines:
         parallel: 3
       e2e-xcode-comp-cache: {}
       e2e-xcode-cas-key-stable: {}
-      e2e-xcode-f1-f2-race: {}
+      e2e-xcode-wrapper-watcher-race: {}
       e2e-daemon-install-macos: {}
       e2e-scenarios-linux: {}
       e2e-scenarios-macos: {}

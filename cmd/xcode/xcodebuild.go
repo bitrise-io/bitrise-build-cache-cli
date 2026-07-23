@@ -403,6 +403,16 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	c.appendLocalInvocationLog(*inv, runStats)
 	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
+	// Signal build-done AFTER the wrapper's own PUT + marker write so the proxy's slim emit sees the marker and skips.
+	if c.ProxySessionClient != nil {
+		if _, err := c.ProxySessionClient.EndSession(ctx, &session.EndSessionRequest{
+			InvocationId:  c.InvocationID,
+			EndTimeUnixMs: time.Now().UnixMilli(),
+		}); err != nil {
+			c.Logger.TDebugf("EndSession call failed: %v", err)
+		}
+	}
+
 	return runStats
 }
 
