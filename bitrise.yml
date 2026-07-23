@@ -1427,6 +1427,9 @@ workflows:
     # Force slim emit to fire well after the watcher's manifest sighting; exercises
     # the correlation retry bucket that this workflow is designed to prove.
     - TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
+    # Newly-renamed workflow slug; BE benchmark-phase treats it as new -> baseline.
+    # Env-var override keeps cache on so the hit-rate assertion is meaningful.
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
