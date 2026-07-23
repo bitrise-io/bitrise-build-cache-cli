@@ -173,7 +173,7 @@ func StartXcodeCacheProxy(
 
 		return creds.PAT, creds.WorkspaceID, nil
 	}
-	authProvider := configcommon.NewExpiryAwareResolver(ctx, envProvider, refreshFn, initialLogger)
+	authProvider := configcommon.NewExpiryAwareResolver(context.WithoutCancel(ctx), envProvider, refreshFn, initialLogger)
 
 	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
