@@ -23,10 +23,10 @@ require (
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/mod v0.38.0
 	golang.org/x/term v0.45.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9
+	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478
 	google.golang.org/genproto/googleapis/bytestream v0.0.0-20251103181224-f26f9409b101
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9
-	google.golang.org/grpc v1.80.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	howett.net/plist v1.0.1
 )
