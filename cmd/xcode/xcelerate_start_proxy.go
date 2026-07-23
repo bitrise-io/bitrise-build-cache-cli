@@ -343,7 +343,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	duration := endTime.Sub(meta.StartTime).Milliseconds()
 	hitRate := stats.HitRate()
 
-	// Pending has to survive the marker check so F2's manifest scan can correlate the wrapper build back to this InvocationID — otherwise F2 mints a duplicate orphan.
+	// Pending has to survive the marker check so the enrichment watcher's manifest scan can correlate the wrapper build back to this InvocationID — otherwise the watcher mints a duplicate orphan.
 	if b.pending != nil {
 		if err := b.pending.Append(enrichment.PendingRecord{
 			InvocationID: meta.InvocationID,
@@ -367,7 +367,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	}
 
 	go func() {
-		// Duration omitted: F2's manifest span or the wrapper's own PUT is authoritative.
+		// Duration omitted: manifest span (from the enrichment watcher, wrapper-less builds only) or the wrapper's own PUT is authoritative.
 		inv := analytics.NewInvocation(analytics.InvocationRunStats{
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,

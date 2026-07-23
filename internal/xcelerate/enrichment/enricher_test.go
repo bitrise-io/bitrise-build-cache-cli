@@ -407,7 +407,7 @@ func TestEnricher_DurationIsFromManifest(t *testing.T) {
 
 	base := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
 	// Pending record carries a wrapper-side duration (2500 ms). The manifest span
-	// (42 s) must take priority — the F2 re-PUT is the authoritative duration.
+	// (42 s) must take priority — the watcher re-PUT is the authoritative duration for wrapper-less builds (this test's path).
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "manifest-authoritative",
 		StartTime:    base,
@@ -432,5 +432,5 @@ func TestEnricher_DurationIsFromManifest(t *testing.T) {
 	})
 
 	assert.Equal(t, "manifest-authoritative", captured.InvocationID)
-	assert.Equal(t, int64(42_000), captured.DurationMs, "F2 duration must come from Stop-Start of the manifest entry, not the wrapper's provisional value")
+	assert.Equal(t, int64(42_000), captured.DurationMs, "watcher duration must come from Stop-Start of the manifest entry, not the pending record's wrapper-side value")
 }

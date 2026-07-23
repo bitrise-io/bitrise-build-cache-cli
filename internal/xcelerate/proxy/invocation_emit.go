@@ -31,7 +31,7 @@ type SessionStats struct {
 }
 
 // InvocationEmitter emits a slim analytics invocation for a closed proxy session.
-// F2 (enrichment from xcodebuild) PUTs to the same InvocationID and overwrites this row.
+// The enrichment watcher may re-PUT to the same InvocationID for wrapper-less builds; wrapper builds skip via the handled-invocation marker.
 type InvocationEmitter interface {
 	EmitSlim(ctx context.Context, meta SessionMeta, stats SessionStats)
 }

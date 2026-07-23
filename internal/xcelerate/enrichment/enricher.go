@@ -62,7 +62,7 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 
 	if matched && MarkerExists(invocationID) {
 		logger.Debugf("Enrichment PUT skipped for %s: wrapper already handled", invocationID)
-		// Marker stays — PruneAll reclaims it after HandledMarkerMaxAge. Consume-on-read here broke the wrapper path (F1 removed the marker before F2 could see it).
+		// Marker stays — PruneAll reclaims it after HandledMarkerMaxAge. Consume-on-read here broke the wrapper path (slim emit removed the marker before the watcher could see it).
 		if e.Store != nil {
 			if err := e.Store.Remove(invocationID); err != nil {
 				logger.Warnf("Failed to remove pending after skipping enrichment for %s: %s", invocationID, err)

@@ -341,15 +341,15 @@ func Test_slimInvocationEmitter_EmitSlim_skipsWhenMarkerPresent(t *testing.T) {
 		EndTime:      time.Now().Add(time.Second),
 	}, proxy.SessionStats{Hits: 1})
 
-	// Pending is now appended even when the marker exists so F2 can Correlate the wrapper build.
+	// Pending is now appended even when the marker exists so the watcher can correlate the wrapper build.
 	records, err := b.pending.Load()
 	require.NoError(t, err)
-	require.Len(t, records, 1, "pending record must be appended so F2 can correlate the wrapper build back to this InvocationID")
+	require.Len(t, records, 1, "pending record must be appended so the watcher can correlate the wrapper build back to this InvocationID")
 	assert.Equal(t, invID, records[0].InvocationID)
 
 	// Marker survives — startup PruneAll reclaims it after HandledMarkerMaxAge.
 	_, err = os.Stat(marker)
-	require.NoError(t, err, "marker must survive F1 observation so F2 can honour it")
+	require.NoError(t, err, "marker must survive slim-emit observation so the watcher can honour it")
 }
 
 func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
@@ -395,7 +395,7 @@ func Test_slimInvocationEmitter_EmitSlim_omitsDurationOnPUT(t *testing.T) {
 	select {
 	case inv := <-captured:
 		assert.Equal(t, "inv-drop-duration", inv.InvocationID)
-		assert.Equal(t, int64(0), inv.DurationMs, "F1 slim PUT must omit Duration; F2 manifest span is authoritative")
+		assert.Equal(t, int64(0), inv.DurationMs, "slim PUT must omit Duration; manifest span is authoritative for wrapper-less builds")
 		assert.InDelta(t, 0.75, inv.HitRate, 1e-6)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for slim PUT")

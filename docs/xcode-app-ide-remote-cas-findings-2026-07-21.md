@@ -13,7 +13,7 @@ All builds cold (`DerivedData`, `CompilationCache.noindex`, `ModuleCache.noindex
 `SDKStatCaches.noindex` wiped; Xcode.app fully quit and relaunched between
 runs so env inheritance is deterministic).
 
-| Setup | Local plugin (CAS grows) | Remote CAS RPC to proxy | F2 enrichment PUT |
+| Setup | Local plugin (CAS grows) | Remote CAS RPC to proxy | enrichment watcher PUT |
 | --- | --- | --- | --- |
 | `link` only, no env | **~950 MB** ✓ | **0 uploads** ✗ | ✓ |
 | `enable` only, no link | 48 KB ✗ | 0 uploads ✗ | ✓ |
@@ -21,7 +21,7 @@ runs so env inheritance is deterministic).
 | `xcodebuild` CLI + env inline | ~950 MB ✓ | **many uploads** ✓ | ✓ |
 
 Only the CLI path opens the remote socket. **No IDE variant engages remote
-CAS.** F2 enrichment PUTs fire regardless (xcactivitylog manifest processing
+CAS.** enrichment watcher PUTs fire regardless (xcactivitylog manifest processing
 is independent of RPC).
 
 ## Root cause
@@ -100,8 +100,8 @@ that reference `xcelerate-cas-*` uploads either:
   cross-session retry noise from an earlier wrapper run's queued CAS uploads
   that failed on a 20 s timeout batch cancellation")
 
-The "Scenario B ✅" marks in the July 13 manual-testing docs used F2
-enrichment PUT presence as proof — but F2 fires regardless of remote CAS
+The "Scenario B ✅" marks in the July 13 manual-testing docs used enrichment-watcher
+PUT presence as proof — but the watcher fires regardless of remote CAS
 engagement. Hit rate on those BE rows was 0.
 
 ## Options to actually engage IDE remote CAS
@@ -135,8 +135,8 @@ Ranked by effort and reliability. None validated today.
 
 ## What we shipped in PR #423 that these findings don't invalidate
 
-- **F1/F2 enrichment** — F2 verified processing IDE builds today (BE rows
-  posted via xcactivitylog manifest). F1's slim-emit + wrapper marker still
+- **Enrichment watcher** — the watcher verified processing IDE builds today (BE rows
+  posted via xcactivitylog manifest). Wrapper-side slim-emit + marker still
   applies to `xcodebuild` CLI wrapper mode.
 - **4-path `-fdepscan-prefix-map`** — applies to both local and remote CAS
   key generation. Still correct for CLI mode where remote engages.

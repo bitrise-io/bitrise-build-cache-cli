@@ -12,11 +12,11 @@ import (
 
 // HandledMarkerMaxAge bounds how long an orphaned marker can survive before the
 // proxy startup sweep removes it. Covers wrapper crashes between marker write
-// and the consumer (F1 slim emit or F2 enrichment) firing.
+// and the consumer (slim emit or enrichment watcher) firing.
 const HandledMarkerMaxAge = 24 * time.Hour
 
 // WriteMarker records that the wrapper already PUT a rich payload for
-// invocationID so slim emit and F2 enrichment skip their own PUT and preserve
+// invocationID so slim emit and enrichment watcher skip their own PUT and preserve
 // the rich row from last-write-wins. Best-effort — failures downgrade to the
 // pre-fix behaviour and are logged only.
 func WriteMarker(logger log.Logger, invocationID string) {
