@@ -23,7 +23,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
-	xceleratepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
@@ -163,7 +162,8 @@ func StartXcodeCacheProxy(
 	initialLogger log.Logger,
 	loggerFactory proxy.LoggerFactory,
 ) error {
-	authProvider := xceleratepkg.NewAuthProvider(
+	authProvider := configcommon.NewCachingAuthResolver(
+		60*time.Second,
 		func() (configcommon.CacheAuthConfig, error) {
 			cfg, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
 			if err != nil {
@@ -172,7 +172,6 @@ func StartXcodeCacheProxy(
 
 			return cfg, nil
 		},
-		60*time.Second,
 		initialLogger,
 	)
 
@@ -227,7 +226,7 @@ func StartXcodeCacheProxy(
 
 type analyticsBundle struct {
 	client           *analytics.Client
-	authProvider     *xceleratepkg.AuthProvider
+	authProvider     *configcommon.CachingAuthResolver
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
 	handledManifests *enrichment.HandledManifestStore
@@ -244,7 +243,7 @@ func newAnalyticsBundle(
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
 	logger log.Logger,
-	authProvider *xceleratepkg.AuthProvider,
+	authProvider *configcommon.CachingAuthResolver,
 ) *analyticsBundle {
 	tokenSupplier := func() string { return authProvider.Get().TokenInGradleFormat() }
 	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, tokenSupplier, logger)

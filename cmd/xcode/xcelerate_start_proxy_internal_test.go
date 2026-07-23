@@ -16,7 +16,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	xceleratepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 )
@@ -59,7 +58,7 @@ func newBundleForTest(t *testing.T, home string, xcodebuildPath string) *analyti
 		OriginalXcodebuildPath: xcodebuildPath,
 	}
 
-	ap := xceleratepkg.NewAuthProvider(nil, time.Hour, bundleTestLogger)
+	ap := common.NewCachingAuthResolver(time.Hour, nil, bundleTestLogger)
 
 	return newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger, ap)
 }
@@ -100,7 +99,7 @@ func Test_newAnalyticsBundle_xcodeResolveError_leavesVersionEmptyWithoutPanic(t 
 		return "", assert.AnError
 	}
 
-	ap := xceleratepkg.NewAuthProvider(nil, time.Hour, bundleTestLogger)
+	ap := common.NewCachingAuthResolver(time.Hour, nil, bundleTestLogger)
 	b := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, errCmd, bundleTestLogger, ap)
 
 	require.NotNil(t, b)
