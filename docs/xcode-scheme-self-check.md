@@ -36,7 +36,7 @@ set -eu
 LOG="${TMPDIR:-/tmp}/bitrise-build-cache-doctor.log"
 
 # Xcode strips PATH down to a minimal set. Extend to common CLI install dirs.
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.bitrise/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 if ! command -v bitrise-build-cache >/dev/null 2>&1; then
     # CLI not installed — nothing to check. Silent no-op.

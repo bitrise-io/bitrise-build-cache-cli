@@ -56,7 +56,7 @@ func TestExpiryAwareResolver_RefreshFnError_FallsBackToPlainResolve(t *testing.T
 	}
 
 	var out bytes.Buffer
-	logger := log.NewLogger(log.WithOutput(&out))
+	logger := log.NewLogger(log.WithOutput(&out), log.WithDebugLog(true))
 
 	r := newExpiryAwareResolver(context.Background(), map[string]string{}, refresh, resolve, logger)
 

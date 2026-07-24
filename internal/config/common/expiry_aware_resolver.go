@@ -50,7 +50,7 @@ func (r *ExpiryAwareResolver) Get() CacheAuthConfig {
 	pat, wsid, err := r.refreshFn(r.ctx)
 	if err != nil {
 		if r.logger != nil {
-			r.logger.Warnf("ExpiryAwareResolver: refreshFn failed, serving previous credentials: %s", err)
+			r.logger.Debugf("ExpiryAwareResolver: refreshFn failed, serving previous credentials: %s", err)
 		}
 
 		return cfg

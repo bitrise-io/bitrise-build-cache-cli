@@ -55,6 +55,12 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 		}
 	}
 
+	if entry.Command() == CommandUnknown {
+		logger.Debugf("Enrichment PUT skipped for manifest %s: side-effect (sig=%q scheme=%q)", entry.UUID, entry.Signature, entry.SchemeName)
+
+		return
+	}
+
 	invocationID, matched := Correlate(entry, pending)
 	if !matched {
 		invocationID = uuid.NewString()
