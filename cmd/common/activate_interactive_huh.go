@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/charmbracelet/huh"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
