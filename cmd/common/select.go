@@ -3,7 +3,7 @@ package common
 import (
 	"fmt"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 )
 
 // selectFromList shows a huh single-select and returns the chosen 0-based index.
