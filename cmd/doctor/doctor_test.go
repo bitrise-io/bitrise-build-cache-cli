@@ -39,7 +39,7 @@ func render(t *testing.T, items []doctorpkg.ReportItem, fixed bool) string {
 
 	r := doctorpkg.Report{Items: items, Version: "v2.8.6"}
 	var buf bytes.Buffer
-	writeHuman(&buf, r, fixed, effectiveOverall(r), false)
+	writeHuman(&buf, r, fixed, doctorpkg.EffectiveOverall(r), false)
 
 	return buf.String()
 }

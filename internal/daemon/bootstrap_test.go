@@ -21,7 +21,7 @@ func TestIsTransientBinaryPath(t *testing.T) {
 	}
 
 	for path, want := range cases {
-		assert.Equal(t, want, isTransientBinaryPath(path), "path=%q", path)
+		assert.Equal(t, want, IsTransientBinaryPath(path), "path=%q", path)
 	}
 }
 

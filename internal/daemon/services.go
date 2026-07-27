@@ -4,6 +4,11 @@ const LabelPrefix = "io.bitrise.build-cache."
 
 const UnitPrefix = "bitrise-build-cache-"
 
+const (
+	ServiceXcelerateProxy = "xcelerate-proxy"
+	ServiceCcacheHelper   = "ccache-helper"
+)
+
 type Service struct {
 	Name string
 	Args []string
@@ -20,11 +25,11 @@ func (s Service) UnitName() string {
 func DefaultServices() []Service {
 	return []Service{
 		{
-			Name: "xcelerate-proxy",
+			Name: ServiceXcelerateProxy,
 			Args: []string{"xcelerate", "start-proxy"},
 		},
 		{
-			Name: "ccache-helper",
+			Name: ServiceCcacheHelper,
 			Args: []string{"ccache", "storage-helper", "start"},
 		},
 	}

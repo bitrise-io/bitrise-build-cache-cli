@@ -46,7 +46,7 @@ var doctorCmd = &cobra.Command{
 			SkipBackendProbe: skipBackendProbeFlag,
 		})
 
-		overall := effectiveOverall(report)
+		overall := doctorpkg.EffectiveOverall(report)
 
 		if jsonOutput {
 			if err := writeJSON(out, report); err != nil {
@@ -62,37 +62,6 @@ var doctorCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func itemDisplay(it doctorpkg.ReportItem) (doctorpkg.State, string) {
-	if it.FixResult != nil {
-		return doctorpkg.StateOK, "fixed: " + *it.FixResult
-	}
-
-	return it.Result.State, it.Result.Detail
-}
-
-func effectiveState(it doctorpkg.ReportItem) doctorpkg.State {
-	if it.FixResult != nil {
-		return doctorpkg.StateOK
-	}
-
-	return it.Result.State
-}
-
-func effectiveOverall(r doctorpkg.Report) doctorpkg.State {
-	worst := doctorpkg.StateOK
-	for _, it := range r.Items {
-		switch effectiveState(it) {
-		case doctorpkg.StateError:
-			return doctorpkg.StateError
-		case doctorpkg.StateWarn:
-			worst = doctorpkg.StateWarn
-		case doctorpkg.StateOK:
-		}
-	}
-
-	return worst
 }
 
 // colorEnabled honours NO_COLOR (https://no-color.org) and falls back to TTY detection.
@@ -128,7 +97,7 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, overall doctorpkg.S
 	}
 	fmt.Fprintf(w, "CLI version: %s\n\n", r.Version)
 
-	issues, healthy := partitionItems(r.Items)
+	issues, healthy := doctorpkg.Partition(r.Items)
 
 	if len(issues) > 0 {
 		fmt.Fprintln(w, "Issues:")
@@ -151,22 +120,8 @@ func writeHuman(w io.Writer, r doctorpkg.Report, fixed bool, overall doctorpkg.S
 	fmt.Fprintf(w, "Overall: %s%s%s\n", c.forState(overall), overall, c.reset)
 }
 
-func partitionItems(items []doctorpkg.ReportItem) ([]doctorpkg.ReportItem, []doctorpkg.ReportItem) {
-	var issues, healthy []doctorpkg.ReportItem
-
-	for _, it := range items {
-		if effectiveState(it) == doctorpkg.StateOK {
-			healthy = append(healthy, it)
-		} else {
-			issues = append(issues, it)
-		}
-	}
-
-	return issues, healthy
-}
-
 func writeItem(w io.Writer, c colorPalette, it doctorpkg.ReportItem, fixed bool) {
-	state, detail := itemDisplay(it)
+	state, detail := doctorpkg.ItemDisplay(it)
 	fmt.Fprintf(w, "  %s %-22s %s\n", c.icon(state), it.Name, detail)
 
 	switch {

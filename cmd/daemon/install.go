@@ -3,40 +3,14 @@ package daemon
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 )
-
-// transientBinPrefixes mark filesystem locations whose contents the OS may prune between logins;
-// embedding such a path in a LaunchAgent/systemd unit would leave the supervisor pointing at a missing binary.
-//
-//nolint:gochecknoglobals
-var transientBinPrefixes = []string{
-	"/tmp/",
-	"/var/folders/",
-	"/private/var/folders/",
-	"/private/tmp/",
-}
-
-func isTransientBinaryPath(exe string) bool {
-	for _, prefix := range transientBinPrefixes {
-		if strings.HasPrefix(exe, prefix) {
-			return true
-		}
-	}
-
-	return false
-}
 
 //nolint:gochecknoglobals
 var installCmd = &cobra.Command{
@@ -54,23 +28,10 @@ var installCmd = &cobra.Command{
 			return err
 		}
 
-		// Do NOT EvalSymlinks — embedding the symlinked path lets CLI upgrades land without rerunning install.
-		exe, err := os.Executable()
+		exe, err := daemonpkg.ResolveSupervisedBinary(logger)
 		if err != nil {
-			return fmt.Errorf("resolve CLI executable path: %w", err)
+			return err //nolint:wrapcheck // already context-rich
 		}
-
-		if isTransientBinaryPath(exe) {
-			stable, copyErr := daemonpkg.CopyCLIToStableBin(exe)
-			if copyErr != nil {
-				return fmt.Errorf("copy CLI to stable dir before daemon install: %w", copyErr)
-			}
-
-			logger.Donef("Copied CLI binary to %s (was on a transient path: %s)", stable, exe)
-			exe = stable
-		}
-
-		warnIfShadowedBinary(logger, exe)
 
 		result, err := daemonpkg.Install(cmd.Context(), backend, paths, daemonpkg.DefaultServices(), exe)
 		if err != nil {
@@ -106,33 +67,6 @@ var installCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func warnIfShadowedBinary(logger log.Logger, pinned string) {
-	onPath, err := exec.LookPath(paths.CLIBinaryName)
-	if err != nil {
-		return
-	}
-	if resolvePath(pinned) == resolvePath(onPath) {
-		return
-	}
-
-	logger.Warnf("Pinning %s into the supervisor config, but `%s` on your $PATH resolves to %s.", pinned, paths.CLIBinaryName, onPath)
-	logger.Warnf("Interactive commands and the daemon would use different binaries — likely different CLI versions too.")
-	logger.Warnf("To pin the PATH binary instead, rerun via its full path: %s daemon install", onPath)
-}
-
-func resolvePath(p string) string {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return p
-	}
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		return abs
-	}
-
-	return resolved
 }
 
 func init() {
