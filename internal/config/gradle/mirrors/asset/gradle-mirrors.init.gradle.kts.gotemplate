@@ -68,28 +68,29 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                 log("beforeProject(${getPath()}) fired, configuring buildscript repositories")
             }
             configureMirror.execute(getBuildscript().getRepositories())
+            {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
+            // Redirect Robolectric's android-all download to the mirror on every Test task. Each project
+            // configures its own tasks: reaching across projects from the root breaks Isolated Projects.
+            // Registered here rather than in afterProject so a project that sets the property itself is
+            // applied last and still wins.
+            if (getParent() == null) {
+                log("registering robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on Test tasks, per project")
+            }
+            val roboProbes{{ .ID }} = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"
+            tasks.withType(Test::class.java).configureEach {
+                systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
+                if (roboProbes{{ .ID }}) {
+                    TestFailureLogging.enable(this)
+                    RobolectricDiagnostics.probe(this, "{{ $.CLIVersion }}")
+                }
+            }
+            {{- end }}{{ end }}
         })
         gradle.afterProject(Action {
             if (getParent() == null) {
                 log("afterProject(${getPath()}) fired, configuring project repositories")
             }
             configureMirror.execute(getRepositories())
-            {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
-            // Redirect Robolectric's android-all download to the mirror on every Test task. afterProject
-            // fires per project, so each one configures its own tasks — reaching across projects from the
-            // root would break Gradle Isolated Projects.
-            if (getParent() == null) {
-                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on all Test tasks")
-            }
-            val roboProbes = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"
-            tasks.withType(Test::class.java).configureEach {
-                systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
-                if (roboProbes) {
-                    TestFailureLogging.enable(this)
-                    RobolectricDiagnostics.probe(this, "{{ $.CLIVersion }}")
-                }
-            }
-            {{- end }}{{ end }}
         })
     }
 }

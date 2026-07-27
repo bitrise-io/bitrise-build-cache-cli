@@ -83,10 +83,13 @@ func TestActivate(t *testing.T) {
 				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
 				// Core: robolectric android-all redirect set unconditionally as part of the mirror install,
 				// configured per project so it stays Isolated-Projects-compatible
-				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on all Test tasks")`,
-				`val roboProbes = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"`,
+				`log("registering robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on Test tasks, per project")`,
+				// Suffixed per mirror: two UseAsRobolectricRepo entries would otherwise emit conflicting
+				// declarations in the same scope and the init script would not compile
+				`val roboProbesCentral = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"`,
 				`tasks.withType(Test::class.java).configureEach {`,
 				`systemProperty("robolectric.dependency.repo.url", "https://repository-manager.services.bitrise.io:8090/maven/central")`,
+				`if (roboProbesCentral) {`,
 				`TestFailureLogging.enable(this)`,
 				`RobolectricDiagnostics.probe(this, "v0.0.0-test")`,
 				// Generic FULL-on-FAILED logging extracted into its own object
