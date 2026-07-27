@@ -81,7 +81,8 @@ func TestActivate(t *testing.T) {
 				`log("prepending pluginManagement mirror https://repository-manager.services.bitrise.io:8090/maven/gradle-plugins")`,
 				`val loggedReplacements = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()`,
 				`if (loggedReplacements.add("${getName()}|${getUrl()}|$mirrorUrl"))`,
-				// Core: robolectric android-all redirect set unconditionally as part of the mirror install
+				// Core: robolectric android-all redirect set unconditionally as part of the mirror install,
+				// configured per project so it stays Isolated-Projects-compatible
 				`log("setting robolectric.dependency.repo.url=\"https://repository-manager.services.bitrise.io:8090/maven/central\" on all Test tasks")`,
 				`val roboProbes = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"`,
 				`tasks.withType(Test::class.java).configureEach {`,
@@ -94,7 +95,7 @@ func TestActivate(t *testing.T) {
 				`events("failed")`,
 				// Robolectric-specific classpath probe
 				`object RobolectricDiagnostics {`,
-				`test.doFirst { emitClasspathProbe(test, cliVersion) }`,
+				`test.doFirst { emitClasspathProbe(this as Test, cliVersion) }`,
 				// Classpath fingerprint (noncompatWidthPixels field check + bytecode-agent inventory, robolectric#9630)
 				`val hasField = String(bytes, Charsets.ISO_8859_1).contains("noncompatWidthPixels")`,
 				`"${jar.name}(${jar.length()},noncompatWidthPixels:$field)"`,
@@ -119,6 +120,10 @@ func TestActivate(t *testing.T) {
 				"getJavaLauncher",
 				"BITRISE_ROBOLECTRIC_VERBOSE_LOGGING",
 				"finalizedBy",
+				// Cross-project access — breaks Gradle Isolated Projects
+				"allprojects",
+				"subprojects",
+				"getRootProject()",
 			},
 		},
 		{
