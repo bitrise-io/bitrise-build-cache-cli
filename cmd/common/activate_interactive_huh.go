@@ -23,23 +23,25 @@ func (*huhWizard) Run(ctx context.Context) error {
 	kc := keychain.New()
 	envs := utils.AllEnvs()
 
-	storedCreds, loadErr := kc.Load()
-	switch {
-	case loadErr == nil, errors.Is(loadErr, keychain.ErrNotFound):
-	default:
-		logger.Warnf("Could not read the OS keychain (%v). Wizard treats it as empty.", loadErr)
-		storedCreds = keychain.Credentials{}
-	}
-
-	stored, source := wizardStartingCreds(envs, storedCreds)
+	// Resolved before the form: the sign-in prints logs, opens a browser and
+	// reads stdin, none of which composes with huh's full-screen form.
+	auth := wizardAuthResolver{
+		Logger:   logger,
+		Keychain: kc,
+		Envs:     envs,
+		Prompt:   wizardPromptReader(),
+	}.Resolve(ctx)
+	storedCreds := auth.Stored
+	source := auth.Source
 	storedUsername := storedCreds.Username
 
 	var (
 		selectedTools []string
-		workspaceID   = stored.WorkspaceID
-		authToken     = stored.AuthToken
+		workspaceID   = auth.Config.WorkspaceID
+		authToken     = auth.Config.AuthToken
 		username      = storedUsername
 		pushEnabled   bool
+		startDaemon   = true
 	)
 
 	groups := []*huh.Group{
@@ -64,7 +66,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		),
 	}
 
-	if source == configcommon.AuthSourceNone {
+	if auth.NeedsManualPrompt() {
 		groups = append(groups, authprompt.Group(&workspaceID, &authToken))
 	}
 
@@ -88,6 +90,16 @@ func (*huhWizard) Run(ctx context.Context) error {
 				Negative("No, pull only").
 				Value(&pushEnabled),
 		),
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Keep the cache proxies running in the background?").
+				Description("Registers them with the OS supervisor (LaunchAgents on macOS, systemd --user on Linux) and starts them, so you don't have to run them per terminal session.").
+				Affirmative("Yes, install + start").
+				Negative("No, I'll start them myself").
+				Value(&startDaemon),
+		).WithHideFunc(func() bool {
+			return len(daemonServicesForTools(selectedTools)) == 0
+		}),
 	)
 
 	if err := huh.NewForm(groups...).Run(); err != nil {
@@ -96,7 +108,9 @@ func (*huhWizard) Run(ctx context.Context) error {
 
 	switch source {
 	case configcommon.AuthSourceKeychain:
-		logger.TInfof("Using credentials from the OS keychain.")
+		if !auth.SignedInNow {
+			logger.TInfof("Using credentials from the OS keychain.")
+		}
 		if username != storedUsername {
 			if err := persistCredentials(kc, storedCreds, workspaceID, authToken, username); err != nil {
 				logger.Warnf("Could not update the OS keychain with the new display name (%v).", err)
@@ -137,19 +151,35 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[configcommon.EnvWorkspaceID] = workspaceID
 	envs[configcommon.EnvAuthToken] = authToken
 
-	return runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled)
+	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled); err != nil {
+		return err
+	}
+
+	if startDaemon {
+		startDaemonForTools(ctx, logger, selectedTools)
+	}
+
+	return nil
 }
 
 // wizardStartingCreds enforces keychain-first precedence for the wizard:
 // keychain wins over env vars (so a populated keychain isn't silently overridden
 // by stale shell-rc env vars), then we fall back to ResolveAuthConfig for the
 // env / JWT / multiplatform sources, returning AuthSourceNone if none are set.
-func wizardStartingCreds(envs map[string]string, storedCreds keychain.Credentials) (configcommon.CacheAuthConfig, configcommon.AuthSource) {
+func wizardStartingCreds(
+	envs map[string]string,
+	storedCreds keychain.Credentials,
+	resolve func(map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource, error),
+) (configcommon.CacheAuthConfig, configcommon.AuthSource) {
 	if storedCreds.AuthToken != "" && storedCreds.WorkspaceID != "" {
 		return configcommon.CacheAuthConfig{AuthToken: storedCreds.AuthToken, WorkspaceID: storedCreds.WorkspaceID}, configcommon.AuthSourceKeychain
 	}
 
-	cfg, src, err := configcommon.ResolveAuthConfig(envs)
+	if resolve == nil {
+		resolve = configcommon.ResolveAuthConfig
+	}
+
+	cfg, src, err := resolve(envs)
 	if err != nil {
 		return configcommon.CacheAuthConfig{}, configcommon.AuthSourceNone
 	}

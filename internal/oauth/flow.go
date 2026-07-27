@@ -46,6 +46,11 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Cred
 	authURL := c.authorizeURL(challenge, state, cs.redirectURI())
 	c.infof("Opening your browser to sign in to Bitrise.")
 	c.infof("If it doesn't open automatically, visit:\n\n  %s\n", authURL)
+	if c.PasteReader != nil {
+		c.infof("If the browser can't reach %s after signing in (a connection error —", cs.redirectURI())
+		c.infof("expected on a remote/RDE machine, where localhost is not the CLI's host),")
+		c.infof("copy the URL from the browser's address bar, paste it here and press Enter.")
+	}
 	if openBrowser != nil {
 		if err := openBrowser(authURL); err != nil {
 			c.warnf("Couldn't open the browser automatically: %s", err)
@@ -55,7 +60,7 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Cred
 	c.debugf("Waiting for the browser sign-in to complete")
 	waitCtx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
-	code, err := cs.wait(waitCtx)
+	code, err := c.awaitCallback(waitCtx, cs)
 	if err != nil {
 		return Credentials{}, err
 	}

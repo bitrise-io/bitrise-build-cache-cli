@@ -82,28 +82,47 @@ func runLogin(cmd *cobra.Command) error {
 		return fmt.Errorf("not an interactive terminal: pass --workspace <slug> to sign in non-interactively")
 	}
 
-	cfg := oauth.NewConfigFromEnv(envs)
-	cfg.Logger = logger
-	creds, err := cfg.Login(ctx, oauth.OpenBrowser)
-	if err != nil {
-		return fmt.Errorf("sign in: %w", err)
+	if _, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage); err != nil {
+		return err
 	}
 
-	workspace := loginWorkspace
+	if shadow := shadowingAuthEnv(); shadow != "" {
+		logger.Warnf("%s is set and takes precedence over the login just saved.", shadow)
+		logger.Warnf("Build-cache commands will use it, not this login — unset it to use the stored login.")
+	}
+
+	return nil
+}
+
+// loginAndStore runs the browser OAuth flow, resolves the workspace and persists
+// the credential. workspace empty → interactive picker; storage empty → default
+// target for the environment. Shared by `auth login` and the interactive wizard.
+func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, workspace, storage string) (oauth.Credentials, error) {
+	cfg := oauth.NewConfigFromEnv(envs)
+	cfg.Logger = logger
+	if isInteractiveStdin() {
+		cfg.PasteReader = os.Stdin
+	}
+
+	creds, err := cfg.Login(ctx, oauth.OpenBrowser)
+	if err != nil {
+		return oauth.Credentials{}, fmt.Errorf("sign in: %w", err)
+	}
+
 	if workspace == "" {
 		workspace, err = pickWorkspace(ctx, envs, creds.PAT)
 		if err != nil {
-			return err
+			return oauth.Credentials{}, err
 		}
 	}
 	creds.WorkspaceID = workspace
 
-	target, err := store.Select(envs, loginStorage)
+	target, err := store.Select(envs, storage)
 	if err != nil {
-		return err //nolint:wrapcheck
+		return oauth.Credentials{}, err //nolint:wrapcheck
 	}
 	if err := oauth.SaveTo(target, creds); err != nil {
-		return fmt.Errorf("save credentials: %w", err)
+		return oauth.Credentials{}, fmt.Errorf("save credentials: %w", err)
 	}
 
 	switch target.Kind() {
@@ -113,12 +132,7 @@ func runLogin(cmd *cobra.Command) error {
 		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the multiplatform config file (CI-safe).", workspace)
 	}
 
-	if shadow := shadowingAuthEnv(); shadow != "" {
-		logger.Warnf("%s is set and takes precedence over the login just saved.", shadow)
-		logger.Warnf("Build-cache commands will use it, not this login — unset it to use the stored login.")
-	}
-
-	return nil
+	return creds, nil
 }
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".
