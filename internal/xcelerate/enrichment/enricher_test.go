@@ -94,6 +94,46 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 	assert.False(t, captured.Success)
 }
 
+func TestEnricher_CommandUnknown_SkipsPUT(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Now()
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "wrapper-id",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	var puts int
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error {
+			puts++
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	for _, sig := range []string{"Resolve Packages", "Update Signing", "Sync Localizations"} {
+		e.Enrich(enrichment.ManifestEntry{
+			UUID:      "side-effect-" + sig,
+			Signature: sig,
+			Status:    "S",
+			Start:     base.Add(1 * time.Second),
+			Stop:      base.Add(2 * time.Second),
+		})
+	}
+
+	assert.Zero(t, puts, "side-effect manifests must not trigger PutInvocation")
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	assert.Len(t, loaded, 1, "side-effect early-return must not consume time-overlapping pending records")
+	assert.Equal(t, "wrapper-id", loaded[0].InvocationID)
+}
+
 func TestEnricher_PutFailure_DoesNotRemovePending(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}

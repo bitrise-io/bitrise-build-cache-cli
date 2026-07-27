@@ -42,6 +42,7 @@ type Check struct {
 type Report struct {
 	Items   []ReportItem `json:"items"`
 	Version string       `json:"cli_version"`
+	Overall State        `json:"overall"`
 }
 
 type ReportItem struct {
@@ -51,9 +52,9 @@ type ReportItem struct {
 	FixError  string  `json:"fix_error,omitempty"`
 }
 
-func (r Report) Overall() State {
+func computeOverall(items []ReportItem) State {
 	worst := StateOK
-	for _, it := range r.Items {
+	for _, it := range items {
 		switch it.Result.State {
 		case StateError:
 			return StateError
@@ -158,7 +159,7 @@ func (d *Doctor) Run(ctx context.Context, opts Options) Report {
 		items = append(items, item)
 	}
 
-	return Report{Items: items, Version: d.CLIVersion}
+	return Report{Items: items, Version: d.CLIVersion, Overall: computeOverall(items)}
 }
 
 func (d *Doctor) checks(opts Options) []Check {
