@@ -68,28 +68,29 @@ class InternalRepositoryPlugin : Plugin<Gradle> {
                 log("beforeProject(${getPath()}) fired, configuring buildscript repositories")
             }
             configureMirror.execute(getBuildscript().getRepositories())
+            {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
+            // Redirect Robolectric's android-all download to the mirror on every Test task. Each project
+            // configures its own tasks: reaching across projects from the root breaks Isolated Projects.
+            // Registered here rather than in afterProject so a project that sets the property itself is
+            // applied last and still wins.
+            if (getParent() == null) {
+                log("registering robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on Test tasks, per project")
+            }
+            val roboProbes{{ .ID }} = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"
+            tasks.withType(Test::class.java).configureEach {
+                systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
+                if (roboProbes{{ .ID }}) {
+                    TestFailureLogging.enable(this)
+                    RobolectricDiagnostics.probe(this, "{{ $.CLIVersion }}")
+                }
+            }
+            {{- end }}{{ end }}
         })
         gradle.afterProject(Action {
             if (getParent() == null) {
                 log("afterProject(${getPath()}) fired, configuring project repositories")
             }
             configureMirror.execute(getRepositories())
-            {{- range .Mirrors }}{{ if .UseAsRobolectricRepo }}
-            // Redirect Robolectric's android-all download to the mirror on every Test task (root-only, once).
-            if (getParent() == null) {
-                val roboProbes = System.getenv("BITRISE_ROBOLECTRIC_JAR_AUDIT") != "false"
-                log("setting robolectric.dependency.repo.url=\"{{ .MirrorURL }}\" on all Test tasks")
-                getRootProject().allprojects {
-                    tasks.withType(Test::class.java).configureEach {
-                        systemProperty("robolectric.dependency.repo.url", "{{ .MirrorURL }}")
-                        if (roboProbes) {
-                            TestFailureLogging.enable(this)
-                            RobolectricDiagnostics.probe(this, "{{ $.CLIVersion }}")
-                        }
-                    }
-                }
-            }
-            {{- end }}{{ end }}
         })
     }
 }
@@ -112,7 +113,9 @@ object TestFailureLogging {
 // fail a customer build.
 object RobolectricDiagnostics {
     fun probe(test: Test, cliVersion: String) {
-        test.doFirst { emitClasspathProbe(test, cliVersion) }
+        // Take the task from the action receiver: capturing `test` would put a Task in a task action,
+        // which the configuration cache cannot serialize.
+        test.doFirst { emitClasspathProbe(this as Test, cliVersion) }
     }
 
     // A stub android.jar / mockable-android MISSING noncompatWidthPixels shadows android-all's instrumented
