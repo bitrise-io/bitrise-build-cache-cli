@@ -77,7 +77,12 @@ func collectLogDirState(candidates []string) logDirsSummary {
 	return s
 }
 
-func resultFromLogDirsSummary(s logDirsSummary) Result {
+func resultFromLogDirsSummary(candidates []string) Result {
+	if len(candidates) == 0 {
+		return Result{State: StateOK, Detail: "no activated tool writes logs"}
+	}
+
+	s := collectLogDirState(candidates)
 	if s.Fatal != nil {
 		return Result{State: StateError, Detail: s.Fatal.Error()}
 	}
@@ -110,7 +115,7 @@ func (d *Doctor) logDirsCheck() Check {
 	return Check{
 		Name: "log-dirs",
 		Diagnose: func(_ context.Context) Result {
-			return resultFromLogDirsSummary(collectLogDirState(d.StateDirCandidates))
+			return resultFromLogDirsSummary(d.stateDirCandidates())
 		},
 	}
 }

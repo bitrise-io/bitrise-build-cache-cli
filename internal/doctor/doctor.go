@@ -77,13 +77,15 @@ type Options struct {
 }
 
 type Doctor struct {
-	OsProxy            utils.OsProxy
-	Envs               map[string]string
-	CLIVersion         string
-	HTTPClient         *http.Client
-	AuthLoader         common.AuthLoader
-	Keyring            keychain.Backend
-	LookPath           func(string) (string, error)
+	OsProxy    utils.OsProxy
+	Envs       map[string]string
+	CLIVersion string
+	HTTPClient *http.Client
+	AuthLoader common.AuthLoader
+	Keyring    keychain.Backend
+	LookPath   func(string) (string, error)
+	// StateDirCandidates are the log dirs to check; nil derives them from the
+	// activated tools, so an Xcode-only setup isn't asked about ccache's.
 	StateDirCandidates []string
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 	ActivatedTools     func() map[toolconfig.Tool]bool
@@ -96,16 +98,15 @@ func NewDoctor() *Doctor {
 	osProxy := utils.DefaultOsProxy{}
 
 	return &Doctor{
-		OsProxy:            osProxy,
-		Envs:               utils.AllEnvs(),
-		CLIVersion:         common.GetCLIVersion(nil),
-		HTTPClient:         &http.Client{Timeout: 3 * time.Second},
-		AuthLoader:         keychain.New(),
-		Keyring:            keychain.NewBackend(),
-		LookPath:           exec.LookPath,
-		StateDirCandidates: defaultStateDirCandidates(),
-		LatestReleaseTag:   fetchLatestGitHubRelease,
-		ActivatedTools:     defaultActivatedTools,
+		OsProxy:          osProxy,
+		Envs:             utils.AllEnvs(),
+		CLIVersion:       common.GetCLIVersion(nil),
+		HTTPClient:       &http.Client{Timeout: 3 * time.Second},
+		AuthLoader:       keychain.New(),
+		Keyring:          keychain.NewBackend(),
+		LookPath:         exec.LookPath,
+		LatestReleaseTag: fetchLatestGitHubRelease,
+		ActivatedTools:   defaultActivatedTools,
 	}
 }
 
@@ -131,7 +132,13 @@ func defaultActivatedTools() map[toolconfig.Tool]bool {
 	return out
 }
 
-func defaultStateDirCandidates() []string {
+// stateDirCandidates resolves the log dirs to check, limited to the tools that
+// are actually activated.
+func (d *Doctor) stateDirCandidates() []string {
+	if d.StateDirCandidates != nil {
+		return d.StateDirCandidates
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
@@ -139,7 +146,15 @@ func defaultStateDirCandidates() []string {
 
 	p := paths.FromHome(home)
 
-	return []string{p.XcelerateLogDir(), p.CcacheLogDir()}
+	var out []string
+	if d.toolActivated(toolconfig.Xcelerate) {
+		out = append(out, p.XcelerateLogDir())
+	}
+	if d.toolActivated(toolconfig.Ccache) {
+		out = append(out, p.CcacheLogDir())
+	}
+
+	return out
 }
 
 func (d *Doctor) Run(ctx context.Context, opts Options) Report {
