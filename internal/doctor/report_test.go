@@ -47,11 +47,16 @@ func TestIssueLines(t *testing.T) {
 	}}
 
 	assert.Equal(t, []string{
-		"xcelerate-proxy: not running",
-		"log-dirs: not writable",
+		"warn xcelerate-proxy: not running",
+		"error log-dirs: not writable",
 	}, IssueLines(r), "OK and fixed items are not issues")
 
 	assert.Nil(t, IssueLines(Report{Items: []ReportItem{{Name: "auth", Result: Result{State: StateOK}}}}))
+
+	assert.Equal(t, []string{"ok auth: fine", "warn proxy: down"}, Lines([]ReportItem{
+		{Name: "auth", Result: Result{State: StateOK, Detail: "fine"}},
+		{Name: "proxy", Result: Result{State: StateWarn, Detail: "down"}},
+	}), "Lines keeps the healthy items, for debug logging")
 }
 
 func TestEffectiveOverall(t *testing.T) {

@@ -58,19 +58,25 @@ func Partition(items []ReportItem) (issues, healthy []ReportItem) { //nolint:non
 	return issues, healthy
 }
 
-// IssueLines renders one plain "<check>: <detail>" line per not-OK item, for
-// callers that report through a logger instead of the doctor command's table.
-func IssueLines(r Report) []string {
-	issues, _ := Partition(r.Items)
-	if len(issues) == 0 {
+// Lines renders one plain "<state> <check>: <detail>" line per item, for callers
+// that report through a logger instead of the doctor command's table.
+func Lines(items []ReportItem) []string {
+	if len(items) == 0 {
 		return nil
 	}
 
-	lines := make([]string, 0, len(issues))
-	for _, it := range issues {
-		_, detail := ItemDisplay(it)
-		lines = append(lines, it.Name+": "+detail)
+	lines := make([]string, 0, len(items))
+	for _, it := range items {
+		state, detail := ItemDisplay(it)
+		lines = append(lines, string(state)+" "+it.Name+": "+detail)
 	}
 
 	return lines
+}
+
+// IssueLines is Lines restricted to the items that aren't OK.
+func IssueLines(r Report) []string {
+	issues, _ := Partition(r.Items)
+
+	return Lines(issues)
 }

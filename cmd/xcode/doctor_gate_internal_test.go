@@ -30,7 +30,7 @@ func newTestDoctor(report func(doctorpkg.Options) doctorpkg.Report) (*xcodeDocto
 	var out strings.Builder
 	opts := &[]doctorpkg.Options{}
 
-	d := newXcodeDoctor(log.NewLogger(log.WithOutput(&out)))
+	d := newXcodeDoctor(log.NewLogger(log.WithOutput(&out)), false)
 	d.RunChecks = func(_ context.Context, o doctorpkg.Options) doctorpkg.Report {
 		*opts = append(*opts, o)
 
@@ -66,6 +66,28 @@ func TestXcodeDoctor_HealthySetupIsSilent(t *testing.T) {
 	d.ReportAtEnd(context.Background())
 
 	assert.Empty(t, out.String())
+}
+
+// A clean run still has to leave a trace at debug level, so a build log shows
+// the checks ran at all.
+func TestXcodeDoctor_HealthySetupLogsAtDebug(t *testing.T) {
+	var out strings.Builder
+	logger := log.NewLogger(log.WithOutput(&out))
+	logger.EnableDebugLog(true)
+
+	d := newXcodeDoctor(logger, false)
+	d.RunChecks = func(context.Context, doctorpkg.Options) doctorpkg.Report {
+		return okReport("auth")
+	}
+
+	d.CheckAtStart(context.Background())
+	d.ReportAtEnd(context.Background())
+
+	logged := out.String()
+	assert.Contains(t, logged, "Running health checks")
+	assert.Contains(t, logged, "ok auth: fine")
+	assert.Contains(t, logged, "Health check result: ok")
+	assert.Contains(t, logged, "No health-check issues to repeat")
 }
 
 func TestXcodeDoctor_ReportAtEndRepeatsStartIssues(t *testing.T) {

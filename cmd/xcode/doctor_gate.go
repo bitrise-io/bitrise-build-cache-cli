@@ -37,14 +37,15 @@ type buildHealthReporter interface {
 // xcodeDoctor runs the Xcode-relevant subset of the doctor checks around a build.
 type xcodeDoctor struct {
 	Logger log.Logger
+	Debug  bool
 	// RunChecks defaults to a real doctor run; injected in tests.
 	RunChecks func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
 
 	startIssues []string
 }
 
-func newXcodeDoctor(logger log.Logger) *xcodeDoctor {
-	return &xcodeDoctor{Logger: logger}
+func newXcodeDoctor(logger log.Logger, debug bool) *xcodeDoctor {
+	return &xcodeDoctor{Logger: logger, Debug: debug}
 }
 
 // CheckAtStart reports the issues that could degrade or break this build. The
@@ -69,6 +70,8 @@ func (d *xcodeDoctor) CheckAtStart(ctx context.Context) {
 // xcodebuild log lines back.
 func (d *xcodeDoctor) ReportAtEnd(_ context.Context) {
 	if len(d.startIssues) == 0 {
+		d.Logger.Debugf("No health-check issues to repeat at the end of this build")
+
 		return
 	}
 
@@ -98,9 +101,22 @@ func (d *xcodeDoctor) OnInvocationSaveFailure(ctx context.Context) {
 	d.print(msgDoctorIssuesFound, issues)
 }
 
+// run diagnoses and always debug-logs the full report, so a build log shows the
+// checks ran even when they all passed.
 func (d *xcodeDoctor) run(ctx context.Context, timeout time.Duration, opts doctorpkg.Options) doctorpkg.Report {
 	d.Logger.Debugf("Running health checks %v (backend probe skipped: %t)", opts.Only, opts.SkipBackendProbe)
 
+	report := d.diagnose(ctx, timeout, opts)
+
+	for _, l := range doctorpkg.Lines(report.Items) {
+		d.Logger.Debugf("  %s", l)
+	}
+	d.Logger.Debugf("Health check result: %s", doctorpkg.EffectiveOverall(report))
+
+	return report
+}
+
+func (d *xcodeDoctor) diagnose(ctx context.Context, timeout time.Duration, opts doctorpkg.Options) doctorpkg.Report {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -109,7 +125,7 @@ func (d *xcodeDoctor) run(ctx context.Context, timeout time.Duration, opts docto
 	}
 
 	doc := doctorpkg.NewDoctor()
-	doc.Debug = false
+	doc.Debug = d.Debug
 
 	return doc.Run(runCtx, opts)
 }
