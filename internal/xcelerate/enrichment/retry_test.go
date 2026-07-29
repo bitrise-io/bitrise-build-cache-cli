@@ -165,23 +165,38 @@ func TestRetrier_SweepClosesOnCtxCancel(t *testing.T) {
 	}
 }
 
-func TestRetrier_StartupOrphanSweep_RemovesOldUntouched(t *testing.T) {
+// Records are shaped as Enricher.Append writes them (Attempts=1 + FirstAttempt);
+// Sweep ages out by FirstAttempt and skips Attempts==0 entirely, so a record
+// without them is a shape production never produces.
+func TestRetrier_StartupSweep_DropsRecordPastMaxAge(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
 	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
 	require.NoError(t, store.Append(enrichment.PendingRecord{
-		InvocationID: "old-orphan",
-		StartTime:    now.Add(-48 * time.Hour),
+		InvocationID:    "old-orphan",
+		StartTime:       now.Add(-48 * time.Hour),
+		FirstAttempt:    now.Add(-48 * time.Hour),
+		Attempts:        1,
+		EnrichedPayload: mustPayload(t, "old-orphan"),
 	}))
 	require.NoError(t, store.Append(enrichment.PendingRecord{
-		InvocationID: "fresh",
-		StartTime:    now.Add(-time.Hour),
+		InvocationID:    "fresh",
+		StartTime:       now.Add(-time.Hour),
+		FirstAttempt:    now.Add(-time.Hour),
+		Attempts:        1,
+		EnrichedPayload: mustPayload(t, "fresh"),
 	}))
+
+	// The PUT has to keep failing, otherwise the fresh record succeeds and is
+	// dropped too, leaving nothing to prove the age-out was selective.
+	client := &InvocationPutterMock{PutInvocationFunc: func(_ analytics.Invocation) error {
+		return errors.New("backend down")
+	}}
 
 	r := &enrichment.Retrier{
 		Store:    store,
-		Client:   &InvocationPutterMock{},
+		Client:   client,
 		Interval: time.Hour,
 		MaxAge:   24 * time.Hour,
 		// Pinned to the same instant the records are dated from; on the real
@@ -211,7 +226,7 @@ func TestRetrier_StartupOrphanSweep_RemovesOldUntouched(t *testing.T) {
 
 	cancel()
 	<-done
-	t.Fatal("startup orphan sweep did not remove old untouched record within 2s")
+	t.Fatal("startup sweep did not drop the past-MaxAge record within 2s")
 }
 
 func TestRetrier_ConcurrentAppendAndSweep(t *testing.T) {

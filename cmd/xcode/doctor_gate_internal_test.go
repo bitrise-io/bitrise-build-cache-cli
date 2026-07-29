@@ -30,7 +30,7 @@ func newTestDoctor(report func(doctorpkg.Options) doctorpkg.Report) (*xcodeDocto
 	var out strings.Builder
 	opts := &[]doctorpkg.Options{}
 
-	d := newXcodeDoctor(log.NewLogger(log.WithOutput(&out)), false)
+	d := newXcodeDoctor(log.NewLogger(log.WithOutput(&out)), false, true)
 	d.RunChecks = func(_ context.Context, o doctorpkg.Options) doctorpkg.Report {
 		*opts = append(*opts, o)
 
@@ -57,6 +57,29 @@ func TestXcodeDoctor_StartCheckSkipsNetworkCalls(t *testing.T) {
 	assert.Contains(t, out.String(), "xcelerate-proxy: not running (no socket file)")
 }
 
+// With the cache off (a baseline benchmark phase, or --no-bitrise-build-cache)
+// no proxy is started, so reporting it as down would be noise — but the
+// analytics PUT still needs auth, so auth must stay in the set.
+func TestXcodeDoctor_CacheOffDropsProxyCheckButKeepsAuth(t *testing.T) {
+	var out strings.Builder
+	var opts []doctorpkg.Options
+
+	d := newXcodeDoctor(log.NewLogger(log.WithOutput(&out)), false, false)
+	d.RunChecks = func(_ context.Context, o doctorpkg.Options) doctorpkg.Report {
+		opts = append(opts, o)
+
+		return warnReport("auth", "no credentials found")
+	}
+
+	d.CheckAtStart(context.Background())
+
+	require.Len(t, opts, 1)
+	assert.Equal(t, doctorpkg.XcodeAnalyticsOnlyCheckNames, opts[0].Only)
+	assert.NotContains(t, opts[0].Only, "xcelerate-proxy")
+	assert.Contains(t, opts[0].Only, "auth")
+	assert.Contains(t, out.String(), "auth: no credentials found")
+}
+
 func TestXcodeDoctor_HealthySetupIsSilent(t *testing.T) {
 	d, out, _ := newTestDoctor(func(doctorpkg.Options) doctorpkg.Report {
 		return okReport("auth")
@@ -75,7 +98,7 @@ func TestXcodeDoctor_HealthySetupLogsAtDebug(t *testing.T) {
 	logger := log.NewLogger(log.WithOutput(&out))
 	logger.EnableDebugLog(true)
 
-	d := newXcodeDoctor(logger, false)
+	d := newXcodeDoctor(logger, false, true)
 	d.RunChecks = func(context.Context, doctorpkg.Options) doctorpkg.Report {
 		return okReport("auth")
 	}

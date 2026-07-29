@@ -45,6 +45,11 @@ func (r *Retrier) Run(ctx context.Context) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	// Sweep once before waiting out the first tick: a restart is exactly when
+	// orphans from the previous process are sitting in the store, and holding
+	// them for a full interval leaves them visible to the doctor's pending check.
+	r.Sweep()
+
 	for {
 		select {
 		case <-ctx.Done():

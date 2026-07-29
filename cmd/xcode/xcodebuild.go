@@ -239,10 +239,8 @@ TBD`,
 			NoPrefixMap:        noPrefixMap,
 			NoManagedDD:        noManagedDD,
 		}
-		// With the cache off there's no proxy to report on, and analytics failures
-		// still get diagnosed via the runner's save-failure hook.
-		if !noDoctor && config.BuildCacheEnabled {
-			runner.Doctor = newXcodeDoctor(logger, config.DebugLogging)
+		if !noDoctor {
+			runner.Doctor = newXcodeDoctor(logger, config.DebugLogging, config.BuildCacheEnabled)
 		}
 		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)

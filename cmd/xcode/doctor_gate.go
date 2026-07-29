@@ -38,14 +38,25 @@ type buildHealthReporter interface {
 type xcodeDoctor struct {
 	Logger log.Logger
 	Debug  bool
+	// CacheEnabled selects the check set: with the cache off there's no proxy to
+	// report on, but auth still gates the analytics PUT.
+	CacheEnabled bool
 	// RunChecks defaults to a real doctor run; injected in tests.
 	RunChecks func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
 
 	startIssues []string
 }
 
-func newXcodeDoctor(logger log.Logger, debug bool) *xcodeDoctor {
-	return &xcodeDoctor{Logger: logger, Debug: debug}
+func newXcodeDoctor(logger log.Logger, debug, cacheEnabled bool) *xcodeDoctor {
+	return &xcodeDoctor{Logger: logger, Debug: debug, CacheEnabled: cacheEnabled}
+}
+
+func (d *xcodeDoctor) startCheckNames() []string {
+	if d.CacheEnabled {
+		return doctorpkg.XcodeCheckNames
+	}
+
+	return doctorpkg.XcodeAnalyticsOnlyCheckNames
 }
 
 // CheckAtStart reports the issues that could degrade or break this build. The
@@ -53,7 +64,7 @@ func newXcodeDoctor(logger log.Logger, debug bool) *xcodeDoctor {
 // much overhead; OnInvocationSaveFailure covers the expired-token case instead.
 func (d *xcodeDoctor) CheckAtStart(ctx context.Context) {
 	report := d.run(ctx, doctorLocalTimeout, doctorpkg.Options{
-		Only:             doctorpkg.XcodeCheckNames,
+		Only:             d.startCheckNames(),
 		SkipUpdateCheck:  true,
 		SkipBackendProbe: true,
 	})
