@@ -8,6 +8,7 @@ import (
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 )
 
 const (
@@ -24,6 +25,8 @@ const (
 	msgDoctorIssuesRecap   = "Reminder — the health check at the start of this build reported:"
 	msgDoctorProbingAuth   = "Checking whether an expired auth token caused the failure above..."
 	msgDoctorProbeNoIssues = "Auth looks healthy, so the failure above is not a token problem."
+	msgDoctorCASErrors     = "The compilation cache reported %d error(s) during this build — those lookups never completed, so the files compiled locally instead."
+	msgDoctorCASErrorsHint = "Check `bitrise-build-cache doctor` and the proxy log; `xcelerate stop-proxy` makes the next build start a fresh proxy."
 )
 
 //go:generate moq -stub -out doctor_gate_mock_test.go -pkg xcode . buildHealthReporter
@@ -31,7 +34,7 @@ const (
 // buildHealthReporter surfaces local setup problems around an xcodebuild run.
 type buildHealthReporter interface {
 	CheckAtStart(ctx context.Context)
-	ReportAtEnd(ctx context.Context)
+	ReportAtEnd(ctx context.Context, stats xcodeargs.CompCacheStats)
 	OnInvocationSaveFailure(ctx context.Context)
 }
 
@@ -83,8 +86,13 @@ func (d *xcodeDoctor) CheckAtStart(ctx context.Context) {
 }
 
 // ReportAtEnd repeats the start-of-build issues, which by now are thousands of
-// xcodebuild log lines back.
-func (d *xcodeDoctor) ReportAtEnd(_ context.Context) {
+// xcodebuild log lines back, and reports cache errors no setup check can see.
+func (d *xcodeDoctor) ReportAtEnd(_ context.Context, stats xcodeargs.CompCacheStats) {
+	if stats.CASErrors > 0 {
+		d.Logger.Warnf(msgDoctorCASErrors, stats.CASErrors)
+		d.Logger.Warnf(msgDoctorCASErrorsHint)
+	}
+
 	if len(d.startIssues) == 0 {
 		d.Logger.Debugf("No health-check issues to repeat at the end of this build")
 

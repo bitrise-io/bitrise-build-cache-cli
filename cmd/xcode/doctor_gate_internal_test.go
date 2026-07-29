@@ -13,6 +13,7 @@ import (
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 )
 
 func warnReport(name, detail string) doctorpkg.Report {
@@ -87,7 +88,7 @@ func TestXcodeDoctor_HealthySetupIsSilent(t *testing.T) {
 	})
 
 	d.CheckAtStart(context.Background())
-	d.ReportAtEnd(context.Background())
+	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
 
 	assert.Empty(t, out.String())
 }
@@ -105,7 +106,7 @@ func TestXcodeDoctor_HealthySetupLogsAtDebug(t *testing.T) {
 	}
 
 	d.CheckAtStart(context.Background())
-	d.ReportAtEnd(context.Background())
+	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
 
 	logged := out.String()
 	assert.Contains(t, logged, "Running health checks")
@@ -121,7 +122,7 @@ func TestXcodeDoctor_ReportAtEndRepeatsStartIssues(t *testing.T) {
 
 	d.CheckAtStart(context.Background())
 	out.Reset()
-	d.ReportAtEnd(context.Background())
+	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
 
 	assert.Len(t, *opts, 1, "the end-of-build recap must not re-run the checks")
 	assert.Contains(t, out.String(), msgDoctorIssuesRecap)
@@ -155,8 +156,35 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 	assert.Nil(t, (*opts)[0].PinAuth, "the start check makes no backend call to pin")
 
 	out.Reset()
-	d.ReportAtEnd(context.Background())
+	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
 	assert.Empty(t, out.String(), "the probe verdict supersedes the start-of-build report")
+}
+
+func TestXcodeDoctor_ReportAtEndWarnsOnCASErrors(t *testing.T) {
+	d, out, _ := newTestDoctor(func(doctorpkg.Options) doctorpkg.Report {
+		return okReport("auth")
+	})
+
+	d.CheckAtStart(context.Background())
+	out.Reset()
+	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002})
+
+	assert.Contains(t, out.String(), "4002 error(s)")
+	assert.Contains(t, out.String(), "compiled locally")
+	assert.Contains(t, out.String(), "stop-proxy")
+}
+
+// A cold first build is 0% with no errors and must stay silent.
+func TestXcodeDoctor_ReportAtEndSilentOnColdCacheWithoutErrors(t *testing.T) {
+	d, out, _ := newTestDoctor(func(doctorpkg.Options) doctorpkg.Report {
+		return okReport("auth")
+	})
+
+	d.CheckAtStart(context.Background())
+	out.Reset()
+	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 0})
+
+	assert.Empty(t, out.String())
 }
 
 func TestXcodeDoctor_SaveFailureWithHealthyAuth(t *testing.T) {

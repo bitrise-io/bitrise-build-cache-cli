@@ -431,7 +431,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}
 
 	if c.Doctor != nil {
-		c.Doctor.ReportAtEnd(ctx)
+		c.Doctor.ReportAtEnd(ctx, runStats.CacheStats)
 	}
 
 	return runStats
