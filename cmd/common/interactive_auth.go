@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // wizardAuth is the credential state the wizard proceeds with.
@@ -38,7 +39,8 @@ type wizardAuthResolver struct {
 	Logger   log.Logger
 	Keychain keychainStore
 	Envs     map[string]string
-	// Prompt is where the sign-in confirmation is read from; nil auto-confirms.
+	// Prompt is where the sign-in confirmation is read from; nil means this
+	// session can't confirm one, so no browser is launched.
 	Prompt io.Reader
 
 	EnsureFresh func(ctx context.Context) (oauth.Credentials, error)
@@ -130,18 +132,25 @@ func (r wizardAuthResolver) login(ctx context.Context) (oauth.Credentials, error
 }
 
 // confirmWizardLogin announces the sign-in and waits for an explicit Enter, so
-// the browser is never launched out of nowhere.
+// the browser is never launched out of nowhere. A nil prompt means there's no
+// stream to confirm on (accessible mode owns stdin) — declining there keeps a
+// scripted run from opening a browser and then blocking on a callback that
+// nothing will ever deliver.
 func confirmWizardLogin(logger log.Logger, prompt io.Reader) bool {
 	logger.Println()
 	logger.TInfof("No Bitrise credentials found on this machine.")
 	logger.Infof("Neither %s + %s are set, nor is there a stored login.", configcommon.EnvAuthToken, configcommon.EnvWorkspaceID)
+
+	if prompt == nil {
+		logger.Infof("Not asking for a browser sign-in here — this session can't confirm it.")
+		logger.Infof("Run `%s auth login` for the browser flow, or enter a token below.", paths.CLIBinaryName)
+
+		return false
+	}
+
 	logger.Infof("The next step signs you in to Bitrise in your browser.")
 	logger.Println()
 	logger.Infof("Press Enter to open the browser, or 's' + Enter to skip and type a token by hand.")
-
-	if prompt == nil {
-		return true
-	}
 
 	line, err := bufio.NewReader(prompt).ReadString('\n')
 	if err != nil && line == "" {
@@ -168,8 +177,9 @@ func loadWizardKeychain(logger log.Logger, kc keychainStore) keychain.Credential
 	}
 }
 
-// wizardPromptReader is stdin when huh isn't reading it: the TERM=dumb
-// accessible path pipes its answers in, and that stream belongs to the form.
+// wizardPromptReader is stdin when huh isn't reading it. The TERM=dumb
+// accessible path pipes its answers in and that stream belongs to the form, so
+// there's nothing left to confirm a browser sign-in on.
 func wizardPromptReader() io.Reader {
 	if os.Getenv("TERM") == "dumb" {
 		return nil

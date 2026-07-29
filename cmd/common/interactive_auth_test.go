@@ -78,6 +78,24 @@ func TestResolveWizardAuth_EnvVarsSkipSignIn(t *testing.T) {
 	assert.False(t, auth.SignedInNow)
 }
 
+// Accessible mode (TERM=dumb) hands stdin to huh, so there's nothing to confirm
+// a sign-in on. Launching a browser there would block on a callback that never
+// arrives — the manual token prompt has to win instead.
+func TestResolveWizardAuth_NoPromptStreamSkipsSignIn(t *testing.T) {
+	r := newResolver(&stubKeychain{}, map[string]string{}, "")
+	r.Prompt = nil
+	r.Login = func(context.Context) (oauth.Credentials, error) {
+		t.Fatal("must not open a browser when the sign-in can't be confirmed")
+
+		return oauth.Credentials{}, nil
+	}
+
+	auth := r.Resolve(context.Background())
+
+	assert.True(t, auth.NeedsManualPrompt())
+	assert.False(t, auth.SignedInNow)
+}
+
 func TestResolveWizardAuth_DeclinedSignInFallsBackToManualPrompt(t *testing.T) {
 	r := newResolver(&stubKeychain{}, map[string]string{}, "s\n")
 	r.Login = func(context.Context) (oauth.Credentials, error) {
@@ -225,5 +243,6 @@ func TestConfirmWizardLogin(t *testing.T) {
 		assert.Equal(t, tc.want, confirmWizardLogin(silentLogger(), strings.NewReader(tc.input)), "input=%q", tc.input)
 	}
 
-	assert.True(t, confirmWizardLogin(silentLogger(), nil), "no prompt stream: proceed")
+	assert.False(t, confirmWizardLogin(silentLogger(), nil),
+		"no stream to confirm on: must not open a browser and then block on a callback")
 }

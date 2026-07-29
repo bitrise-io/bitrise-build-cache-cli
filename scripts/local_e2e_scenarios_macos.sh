@@ -60,4 +60,36 @@ ls ~/Library/LaunchAgents/io.bitrise.build-cache.*.plist 2>/dev/null | grep -q .
 launchctl list | grep -q io.bitrise.build-cache && fail "launchctl still lists services after uninstall" || true
 pass "daemon uninstall ok"
 
+# The wizard is the path most local users take, so assert it reaches launchd —
+# not just that `daemon install` does. TERM=dumb drives huh's accessible mode
+# from a pipe, so this needs no TTY.
+log "activate --interactive selecting Xcode registers the proxy with launchd"
+FAKE_TOKEN=${FAKE_TOKEN:-bitpat_fake-token-for-ci-e2e}
+FAKE_WS=${FAKE_WS:-fake-workspace-id}
+# Seeded so the wizard resolves credentials from the keychain and never reaches
+# the browser sign-in path.
+"$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
+
+# Accessible-mode answers: 3 = toggle Xcode (1-indexed: Gradle/Bazel/Xcode/ccache),
+# 0 = confirm selection, '' = keep display name, n = no cache push,
+# y = yes to keeping the proxies running.
+TERM=dumb "$CLI" activate --interactive <<'EOF'
+3
+0
+
+n
+y
+EOF
+
+[ -f ~/Library/LaunchAgents/io.bitrise.build-cache.xcelerate-proxy.plist ] \
+  || fail "wizard did not write the xcelerate-proxy plist"
+launchctl list | grep -q io.bitrise.build-cache.xcelerate-proxy \
+  || fail "wizard did not register xcelerate-proxy with launchd"
+# Xcode alone must not drag in the ccache helper.
+[ ! -f ~/Library/LaunchAgents/io.bitrise.build-cache.ccache-helper.plist ] \
+  || fail "wizard registered ccache-helper for an Xcode-only selection"
+pass "wizard installed + started only the services Xcode needs"
+
+"$CLI" daemon uninstall >/dev/null
+
 printf '\n\033[32mmacOS daemon e2e scenarios passed.\033[0m\n'

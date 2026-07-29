@@ -65,6 +65,16 @@ echo "$DOCTOR_JSON" | jq -e '.cli_version' >/dev/null || fail "doctor JSON missi
 STATES=$(echo "$DOCTOR_JSON" | jq -r '[.items[].result.state] | join(",")')
 pass "doctor JSON contract ok (states=$STATES)"
 
+# Only gradle + bazel are activated here (the cleanup above removed
+# ~/.bitrise/cache/ccache), so the ccache log dir must not be probed — a warning
+# about it would repeat on every Xcode build via the wrapper's health check.
+log "log-dirs check is scoped to activated tools"
+LOGDIRS_DETAIL=$(echo "$DOCTOR_JSON" | jq -r '.items[] | select(.name == "log-dirs") | .result.detail')
+[ -n "$LOGDIRS_DETAIL" ] || fail "doctor JSON has no log-dirs item"
+echo "$LOGDIRS_DETAIL" | grep -qi ccache \
+  && fail "log-dirs probed the ccache dir without ccache activated (got: $LOGDIRS_DETAIL)"
+pass "log-dirs ignores non-activated tools ($LOGDIRS_DETAIL)"
+
 log "drift-nudge fires after simulated CLI-version bump"
 mkdir -p ~/.local/state/bitrise-build-cache
 "$CLI" doctor --no-backend-probe --no-update-check >/dev/null 2>&1 || true
