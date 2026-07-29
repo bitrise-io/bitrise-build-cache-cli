@@ -14,6 +14,11 @@ import (
 // keypress. Capping it keeps the frame (and the redraw) constant.
 const selectHeight = 12
 
+// selectChromeLines is the title + description huh subtracts from a field's
+// Height to size its option viewport. Without allowing for them, a 4-option list
+// with both title and description renders only 2 rows.
+const selectChromeLines = 2
+
 // ErrAborted reports that the user cancelled an interactive prompt. Callers
 // report it and stop, rather than treating it as a failure.
 var ErrAborted = errors.New("cancelled by user")

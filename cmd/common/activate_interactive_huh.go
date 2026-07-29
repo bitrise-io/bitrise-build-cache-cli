@@ -44,6 +44,13 @@ func (*huhWizard) Run(ctx context.Context) error {
 		startDaemon   = true
 	)
 
+	toolOptions := []huh.Option[string]{
+		huh.NewOption("Gradle", string(toolGradle)),
+		huh.NewOption("Bazel", string(toolBazel)),
+		huh.NewOption("Xcode", string(toolXcode)),
+		huh.NewOption("ccache (C/C++)", string(toolCcache)),
+	}
+
 	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
 	// group hide funcs, so the daemon question below can only be conditional if
 	// the group doesn't exist yet when the tools are unknown.
@@ -51,12 +58,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 		huh.NewMultiSelect[string]().
 			Title("Which build tools should I set up?").
 			Description("Use space to toggle, enter to confirm.").
-			Options(
-				huh.NewOption("Gradle", string(toolGradle)),
-				huh.NewOption("Bazel", string(toolBazel)),
-				huh.NewOption("Xcode", string(toolXcode)),
-				huh.NewOption("ccache (C/C++)", string(toolCcache)),
-			).
+			Options(toolOptions...).
+			Height(len(toolOptions) + selectChromeLines).
 			Validate(func(s []string) error {
 				if len(s) == 0 {
 					return errors.New("pick at least one tool")
