@@ -25,6 +25,12 @@ func writeFixtureManifest(t *testing.T, home string) {
 	require.NoError(t, os.WriteFile(filepath.Join(derived, "LogStoreManifest.plist"), fixture, 0o644))
 }
 
+// fixtureNow pins the clock near the fixture manifest's own timestamps. The
+// scan age gate drops entries whose Stop is older than HandledManifestMaxAge, so
+// without this every test using the fixture starts failing once the committed
+// timestamps age past that window.
+var fixtureNow = time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC) //nolint:gochecknoglobals
+
 // pickUUID returns any UUID present in the fixture manifest — the test only cares
 // about state transitions, not which specific entry.
 func pickUUID(t *testing.T, home string) string {
@@ -43,6 +49,7 @@ func TestWatcher_scan_MatchedEntry_FiresImmediately(t *testing.T) {
 
 	var calls int
 	w := &Watcher{
+		Now:                   func() time.Time { return fixtureNow },
 		HomeDir:               home,
 		Handle:                func(ManifestEntry) { calls++ },
 		MatchProbe:            func(ManifestEntry) bool { return true },
@@ -67,6 +74,7 @@ func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
 	var scans int
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			if e.UUID == uuid {
@@ -107,6 +115,7 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			if e.UUID == uuid {
@@ -147,6 +156,7 @@ func TestWatcher_scan_ZeroRetries_MintsImmediately(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			if e.UUID == uuid {
@@ -172,6 +182,7 @@ func TestWatcher_scan_NilMatchProbe_FiresImmediately(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			if e.UUID == uuid {
@@ -197,6 +208,7 @@ func TestWatcher_scan_SeedOnlyDoesNotPopulateRetries(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			handled = append(handled, e.UUID)
@@ -220,6 +232,7 @@ func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
 	uuid := pickUUID(t, home)
 
 	w := &Watcher{
+		Now:                   func() time.Time { return fixtureNow },
 		HomeDir:               home,
 		Handle:                func(ManifestEntry) {},
 		MatchProbe:            func(ManifestEntry) bool { return false },
@@ -275,6 +288,7 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Globs: []string{
 			DefaultDerivedDataGlob,
@@ -300,6 +314,7 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Globs:   nil,
 		Handle: func(e ManifestEntry) {
@@ -321,6 +336,7 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			handled = append(handled, e.UUID)
@@ -348,6 +364,7 @@ func TestWatcher_scan_HydratesSeenFromHandledStoreOnStartup(t *testing.T) {
 
 	var handled []string
 	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(e ManifestEntry) {
 			handled = append(handled, e.UUID)
@@ -372,8 +389,6 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 
 	storePath := filepath.Join(t.TempDir(), "handled.ndjson")
 	store := &HandledManifestStore{Path: storePath}
-
-	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
 
 	w := &Watcher{
 		HomeDir:      home,

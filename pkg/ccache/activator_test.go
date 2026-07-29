@@ -186,6 +186,10 @@ func TestActivator_Activate(t *testing.T) {
 	})
 
 	t.Run("returns error when auth config is missing", func(t *testing.T) {
+		// Earlier subtests persist credentials into the shared mock keyring, and
+		// ResolveAuthConfig would find them — reset so "missing" really is missing.
+		keyring.MockInit()
+
 		a, _ := newTestActivator(t, ccachepkg.ActivatorParams{
 			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
 			Envs:        map[string]string{},

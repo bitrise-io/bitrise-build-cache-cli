@@ -184,6 +184,9 @@ func TestRetrier_StartupOrphanSweep_RemovesOldUntouched(t *testing.T) {
 		Client:   &InvocationPutterMock{},
 		Interval: time.Hour,
 		MaxAge:   24 * time.Hour,
+		// Pinned to the same instant the records are dated from; on the real
+		// clock both records age past MaxAge and the sweep takes the fresh one too.
+		Now: func() time.Time { return now },
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

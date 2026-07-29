@@ -92,4 +92,22 @@ pass "wizard installed + started only the services Xcode needs"
 
 "$CLI" daemon uninstall >/dev/null
 
+# Proves the health check reports real problems, not just that it runs. A build
+# action is required — query actions (-list, -showsdks) skip the check by design —
+# but the build itself may fail immediately, since the check runs before it.
+log "xcodebuild wrapper health check surfaces broken auth"
+"$CLI" auth clear >/dev/null 2>&1 || true
+GATE_DIR=$(mktemp -d)
+GATE_OUT=$(cd "$GATE_DIR" && env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISE_BUILD_CACHE_WORKSPACE_ID \
+  ~/.bitrise-xcelerate/bin/xcodebuild build -scheme BitriseHealthCheckProbe 2>&1 || true)
+rm -rf "$GATE_DIR"
+
+echo "$GATE_OUT" | grep -q "health check found issues" \
+  || { echo "$GATE_OUT" | tail -30; fail "wrapper did not report health check issues with auth cleared"; }
+echo "$GATE_OUT" | grep -qE "auth: no credentials found" \
+  || { echo "$GATE_OUT" | tail -30; fail "health check did not name the missing auth"; }
+pass "health check reported the broken auth around the build"
+
+"$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
+
 printf '\n\033[32mmacOS daemon e2e scenarios passed.\033[0m\n'
