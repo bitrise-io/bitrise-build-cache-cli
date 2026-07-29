@@ -74,6 +74,9 @@ type Options struct {
 	// Only, when non-empty, restricts the run to checks with these names
 	// (see XcodeCheckNames, AuthProbeCheckNames).
 	Only []string
+	// PinAuth carries the credential the backend probe should test, for callers
+	// diagnosing one specific request's failure. See Doctor.AuthOverride.
+	PinAuth *common.CacheAuthConfig
 }
 
 type Doctor struct {
@@ -90,8 +93,13 @@ type Doctor struct {
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 	ActivatedTools     func() map[toolconfig.Tool]bool
 	BackendProbe       BackendProbeFunc
-	Now                func() time.Time
-	Debug              bool
+	// AuthOverride pins which credential the backend probe tests. Callers
+	// diagnosing a specific request's failure set the credential that request
+	// used, so the probe can't pass on a different one the machine happens to
+	// have (a CI JWT, say, when the request used a stored token).
+	AuthOverride *common.CacheAuthConfig
+	Now          func() time.Time
+	Debug        bool
 }
 
 func NewDoctor() *Doctor {

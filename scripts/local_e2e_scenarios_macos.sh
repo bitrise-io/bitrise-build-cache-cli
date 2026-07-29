@@ -98,14 +98,19 @@ pass "wizard installed + started only the services Xcode needs"
 log "xcodebuild wrapper health check surfaces broken auth"
 "$CLI" auth clear >/dev/null 2>&1 || true
 GATE_DIR=$(mktemp -d)
+# The CI JWT is env-injected and is a legitimate credential, so it has to go too
+# or the check correctly reports healthy and proves nothing.
 GATE_OUT=$(cd "$GATE_DIR" && env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISE_BUILD_CACHE_WORKSPACE_ID \
+  -u BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN \
   ~/.bitrise-xcelerate/bin/xcodebuild build -scheme BitriseHealthCheckProbe 2>&1 || true)
 rm -rf "$GATE_DIR"
 
 echo "$GATE_OUT" | grep -q "health check found issues" \
-  || { echo "$GATE_OUT" | tail -30; fail "wrapper did not report health check issues with auth cleared"; }
-echo "$GATE_OUT" | grep -qE "auth: no credentials found" \
-  || { echo "$GATE_OUT" | tail -30; fail "health check did not name the missing auth"; }
+  || { echo "$GATE_OUT" | tail -40; fail "wrapper did not report health check issues with auth cleared"; }
+# Either the start-of-build auth check or the save-failure backend probe may name
+# it, depending on which credential source is left; both are the gate working.
+echo "$GATE_OUT" | grep -qE "(auth|auth-backend): " \
+  || { echo "$GATE_OUT" | tail -40; fail "health check did not name the auth problem"; }
 pass "health check reported the broken auth around the build"
 
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null

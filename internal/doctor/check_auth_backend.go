@@ -30,6 +30,17 @@ func (d *Doctor) authBackendCheck() Check {
 		Name: "auth-backend",
 		Diagnose: func(ctx context.Context) Result {
 			cfg, source, err := common.ResolveAuthConfig(d.Envs)
+			if d.AuthOverride != nil {
+				cfg, source, err = *d.AuthOverride, common.AuthSourceNone, nil
+				if cfg.AuthToken == "" || cfg.WorkspaceID == "" {
+					return Result{
+						State:   StateError,
+						Detail:  "the credential this build used is empty — it cannot authenticate",
+						Fixable: true,
+						Fixer:   AuthPromptFixer{},
+					}
+				}
+			}
 			if err != nil {
 				return Result{State: StateOK, Detail: "skipped (source=none, no credentials resolvable: " + err.Error() + ")"}
 			}

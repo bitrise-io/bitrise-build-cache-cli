@@ -240,7 +240,7 @@ TBD`,
 			NoManagedDD:        noManagedDD,
 		}
 		if !noDoctor {
-			runner.Doctor = newXcodeDoctor(logger, config.DebugLogging, config.BuildCacheEnabled)
+			runner.Doctor = newXcodeDoctor(logger, config.DebugLogging, config.BuildCacheEnabled, config.AuthConfig)
 		}
 		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)

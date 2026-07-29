@@ -6,6 +6,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 )
 
@@ -41,14 +42,18 @@ type xcodeDoctor struct {
 	// CacheEnabled selects the check set: with the cache off there's no proxy to
 	// report on, but auth still gates the analytics PUT.
 	CacheEnabled bool
+	// AuthConfig is the credential this invocation's analytics PUT uses. The
+	// save-failure probe tests exactly this one, so it can't come back healthy on
+	// a different credential the machine happens to have.
+	AuthConfig configcommon.CacheAuthConfig
 	// RunChecks defaults to a real doctor run; injected in tests.
 	RunChecks func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
 
 	startIssues []string
 }
 
-func newXcodeDoctor(logger log.Logger, debug, cacheEnabled bool) *xcodeDoctor {
-	return &xcodeDoctor{Logger: logger, Debug: debug, CacheEnabled: cacheEnabled}
+func newXcodeDoctor(logger log.Logger, debug, cacheEnabled bool, authConfig configcommon.CacheAuthConfig) *xcodeDoctor {
+	return &xcodeDoctor{Logger: logger, Debug: debug, CacheEnabled: cacheEnabled, AuthConfig: authConfig}
 }
 
 func (d *xcodeDoctor) startCheckNames() []string {
@@ -100,6 +105,7 @@ func (d *xcodeDoctor) OnInvocationSaveFailure(ctx context.Context) {
 	report := d.run(ctx, doctorProbeTimeout, doctorpkg.Options{
 		Only:            doctorpkg.AuthProbeCheckNames,
 		SkipUpdateCheck: true,
+		PinAuth:         &d.AuthConfig,
 	})
 
 	issues := doctorpkg.IssueLines(report)
@@ -137,6 +143,7 @@ func (d *xcodeDoctor) diagnose(ctx context.Context, timeout time.Duration, opts 
 
 	doc := doctorpkg.NewDoctor()
 	doc.Debug = d.Debug
+	doc.AuthOverride = opts.PinAuth
 
 	return doc.Run(runCtx, opts)
 }
