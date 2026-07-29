@@ -57,6 +57,14 @@ if [ -z "$IS_CI" ] && [ -f ~/.bazelrc ] && grep -q "$FAKE_TOKEN" ~/.bazelrc; the
 fi
 pass "bazel sidecar ok"
 
+# A phase written into a shell rc file outlives the build, and GetBenchmarkPhase
+# short-circuits on the env var before calling the API — so one baseline result
+# would pin the phase and keep the cache disabled for good.
+log "activation leaves no benchmark phase in shell rc files"
+RC_HITS=$(grep -l BENCHMARK_PHASE ~/.bashrc ~/.zshrc ~/.profile ~/.zprofile 2>/dev/null || true)
+[ -z "$RC_HITS" ] || fail "benchmark phase written into shell rc file(s): $RC_HITS"
+pass "no benchmark phase pinned in rc files"
+
 log "doctor --no-backend-probe --no-update-check --json"
 DOCTOR_JSON=$("$CLI" doctor --no-backend-probe --no-update-check --json 2>&1 | sed -n '/^{/,/^}/p')
 if [ -z "$DOCTOR_JSON" ]; then fail "doctor produced no JSON"; fi

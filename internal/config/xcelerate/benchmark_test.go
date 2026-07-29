@@ -15,8 +15,7 @@ import (
 
 type noopExporter struct{}
 
-func (n *noopExporter) Export(_, _ string)          {}
-func (n *noopExporter) ExportToShellRC(_, _ string) {}
+func (n *noopExporter) Export(_, _ string) {}
 
 func TestApplyBenchmarkPhase(t *testing.T) {
 	t.Run("baseline phase disables cache", func(t *testing.T) {

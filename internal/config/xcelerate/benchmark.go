@@ -7,9 +7,14 @@ import (
 )
 
 // EnvExporter abstracts environment variable export for testability.
+//
+// Deliberately no shell-RC export: the phase is per-build, and a shell RC entry
+// outlives the build. Once written, GetBenchmarkPhase short-circuits on the env
+// var before it ever asks the API again, so a single baseline result would pin
+// the phase — and keep the cache disabled — forever. CI reads the phase from
+// envman / GITHUB_ENV, or from the phase file when both are out of reach.
 type EnvExporter interface {
 	Export(key, value string)
-	ExportToShellRC(blockName, content string)
 }
 
 // ApplyBenchmarkPhase queries the benchmark phase and overrides xcode params accordingly.
@@ -40,7 +45,6 @@ func ApplyBenchmarkPhase(
 
 	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolXcode)
 	exporter.Export(envVar, phase)
-	exporter.ExportToShellRC("Bitrise Benchmark Phase", "export "+envVar+"="+phase)
 	common.WriteBenchmarkPhaseFile(common.BuildToolXcode, phase, logger)
 
 	// The user-facing summary is logged once at the end of activation by

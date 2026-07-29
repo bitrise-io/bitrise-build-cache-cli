@@ -3,6 +3,8 @@ package gradleconfig
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -12,12 +14,12 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 )
 
 type noopExporter struct{}
 
-func (n *noopExporter) Export(_, _ string)          {}
-func (n *noopExporter) ExportToShellRC(_, _ string) {}
+func (n *noopExporter) Export(_, _ string) {}
 
 func Test_ApplyBenchmarkPhase(t *testing.T) {
 	prep := func() log.Logger {
@@ -107,6 +109,29 @@ func Test_ApplyBenchmarkPhase(t *testing.T) {
 
 		assert.True(t, params.Cache.Enabled)
 		assert.False(t, params.Analytics.Enabled)
+	})
+
+	// A phase in a shell RC file outlives the build that produced it, and
+	// GetBenchmarkPhase short-circuits on the env var before calling the API — so
+	// one baseline result would pin the phase and keep the cache off for good.
+	t.Run("does not touch shell rc files", func(t *testing.T) {
+		logger := prep()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		params := ActivateGradleParams{Cache: CacheParams{Enabled: true}}
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
+		ApplyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, envexport.New(map[string]string{"HOME": home}, logger))
+
+		for _, rc := range []string{".bashrc", ".zshrc", ".profile", ".zprofile"} {
+			_, err := os.Stat(filepath.Join(home, rc))
+			assert.True(t, os.IsNotExist(err), "%s must not be written by benchmark phasing", rc)
+		}
 	})
 
 	t.Run("error falls back to original params", func(t *testing.T) {
