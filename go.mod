@@ -3,6 +3,7 @@ module github.com/bitrise-io/bitrise-build-cache-cli/v3
 go 1.25.8
 
 require (
+	charm.land/bubbles/v2 v2.0.0
 	charm.land/huh/v2 v2.0.3
 	cloud.google.com/go/longrunning v1.2.0
 	github.com/bazelbuild/remote-apis v0.0.0-20260331222004-becdd8f9ff81
@@ -32,7 +33,6 @@ require (
 )
 
 require (
-	charm.land/bubbles/v2 v2.0.0 // indirect
 	charm.land/bubbletea/v2 v2.0.2 // indirect
 	charm.land/lipgloss/v2 v2.0.1 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect

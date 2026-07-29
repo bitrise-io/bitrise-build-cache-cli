@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -83,6 +84,12 @@ func runLogin(cmd *cobra.Command) error {
 	}
 
 	if _, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage); err != nil {
+		if errors.Is(err, ErrAborted) {
+			logger.Infof("Sign-in cancelled. Nothing was saved.")
+
+			return nil
+		}
+
 		return err
 	}
 

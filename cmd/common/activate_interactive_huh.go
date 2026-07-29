@@ -198,14 +198,6 @@ func persistWizardCredentials(logger log.Logger, kc keychainStore, auth wizardAu
 	}
 }
 
-func runForm(groups ...*huh.Group) error {
-	if err := huh.NewForm(groups...).Run(); err != nil {
-		return fmt.Errorf("interactive wizard: %w", err)
-	}
-
-	return nil
-}
-
 // wizardStartingCreds enforces keychain-first precedence for the wizard:
 // keychain wins over env vars (so a populated keychain isn't silently overridden
 // by stale shell-rc env vars), then we fall back to ResolveAuthConfig for the

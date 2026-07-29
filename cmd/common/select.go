@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 
 	"charm.land/huh/v2"
@@ -16,13 +17,19 @@ func selectFromList(prompt string, items []string) (int, error) {
 	}
 
 	choice := 0
-	if err := huh.NewSelect[int]().
+	err := huh.NewSelect[int]().
 		Title(prompt).
 		Options(options...).
+		Height(selectHeight).
 		Value(&choice).
-		Run(); err != nil {
+		WithKeyMap(interactiveKeyMap()).
+		Run()
+	switch {
+	case err == nil:
+		return choice, nil
+	case errors.Is(err, huh.ErrUserAborted):
+		return 0, ErrAborted
+	default:
 		return 0, fmt.Errorf("interactive selection: %w", err)
 	}
-
-	return choice, nil
 }

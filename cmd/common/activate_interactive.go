@@ -54,7 +54,17 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
   TERM=dumb bitrise-build-cache activate --interactive`)
 		}
 
-		return (&huhWizard{}).Run(cmd.Context())
+		if err := (&huhWizard{}).Run(cmd.Context()); err != nil {
+			if errors.Is(err, ErrAborted) {
+				log.NewLogger(log.WithDebugLog(IsDebugLogMode)).Infof("Setup cancelled. No build tools were activated.")
+
+				return nil
+			}
+
+			return err
+		}
+
+		return nil
 	}
 }
 
