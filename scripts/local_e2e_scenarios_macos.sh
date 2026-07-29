@@ -115,4 +115,104 @@ pass "health check reported the broken auth around the build"
 
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
 
+# A cache backend that accepts connections and never answers. Verified to make
+# xcodebuild emit CAS errors, which no setup check can see — the setup is fine,
+# the backend isn't. grpc:// (not grpcs://) keeps it TLS-free.
+log "end-of-build report names compilation-cache errors"
+BH_PORT=59777
+BH_DIR=$(mktemp -d)
+cat > "$BH_DIR/hole.go" <<'GOEOF'
+package main
+
+import (
+	"net"
+	"os"
+)
+
+func main() {
+	l, err := net.Listen("tcp", os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	// Accept and hold: the peer waits for a reply that never comes, rather than
+	// seeing a connection reset.
+	var held []net.Conn
+	for {
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		held = append(held, c)
+	}
+}
+GOEOF
+# Refuse to run against a port someone else holds: a stale listener would serve
+# the build and the assertions would pass without this scenario having done
+# anything.
+nc -z 127.0.0.1 "$BH_PORT" 2>/dev/null \
+  && fail "port $BH_PORT is already in use — refusing to test against someone else's listener"
+
+# Built rather than `go run`: go run execs a child, so $! would be the wrapper
+# and the teardown would orphan the listener holding the port.
+go build -o "$BH_DIR/hole" "$BH_DIR/hole.go" || fail "could not build the black-hole backend"
+"$BH_DIR/hole" "127.0.0.1:$BH_PORT" &
+BH_PID=$!
+disown "$BH_PID" 2>/dev/null || true
+for _ in $(seq 1 30); do
+  nc -z 127.0.0.1 "$BH_PORT" 2>/dev/null && break
+  sleep 0.5
+done
+nc -z 127.0.0.1 "$BH_PORT" 2>/dev/null \
+  || fail "black-hole backend never bound $BH_PORT (pid $BH_PID)"
+
+# A one-file package is enough to drive real compilation, and so real cache
+# lookups. The auto-generated scheme is "<name>-Package", and a package with no
+# platforms declared yields no usable scheme at all.
+mkdir -p "$BH_DIR/pkg/Sources/Tiny"
+cat > "$BH_DIR/pkg/Package.swift" <<'PKGEOF'
+// swift-tools-version:5.9
+import PackageDescription
+let package = Package(
+    name: "Tiny",
+    platforms: [.macOS(.v13)],
+    targets: [.target(name: "Tiny")]
+)
+PKGEOF
+printf 'public struct Tiny { public init() {}; public func f() -> Int { 41 + 1 } }\n' \
+  > "$BH_DIR/pkg/Sources/Tiny/Tiny.swift"
+
+"$CLI" xcelerate stop-proxy >/dev/null 2>&1 || true
+"$CLI" activate xcode --cache --cache-push=false \
+  --cache-endpoint "grpc://127.0.0.1:$BH_PORT" >/dev/null
+
+# Watchdog: every cache lookup waits out a deadline against the black hole, so
+# this build is slow by construction. macOS has no timeout(1), and an unbounded
+# hang here would burn the whole workflow slot.
+( cd "$BH_DIR/pkg" && ~/.bitrise-xcelerate/bin/xcodebuild build \
+  -scheme Tiny-Package -destination "platform=macOS" \
+  -derivedDataPath "$BH_DIR/dd" > "$BH_DIR/build.log" 2>&1 ) &
+BUILD_PID=$!
+( sleep 300; kill -TERM "$BUILD_PID" 2>/dev/null ) & WATCHDOG_PID=$!
+disown "$WATCHDOG_PID" 2>/dev/null || true
+wait "$BUILD_PID" 2>/dev/null || true
+kill "$WATCHDOG_PID" 2>/dev/null || true
+BH_OUT=$(cat "$BH_DIR/build.log" 2>/dev/null || true)
+
+kill "$BH_PID" 2>/dev/null || true
+for _ in $(seq 1 10); do
+  nc -z 127.0.0.1 "$BH_PORT" 2>/dev/null || break
+  sleep 0.5
+done
+nc -z 127.0.0.1 "$BH_PORT" 2>/dev/null \
+  && fail "black-hole backend outlived the scenario on port $BH_PORT"
+"$CLI" xcelerate stop-proxy >/dev/null 2>&1 || true
+"$CLI" activate xcode --cache --cache-push=false >/dev/null
+rm -rf "$BH_DIR"
+
+echo "$BH_OUT" | grep -q "CAS error" \
+  || { echo "$BH_OUT" | tail -30; fail "unreachable backend produced no CAS errors — the probe setup is wrong"; }
+echo "$BH_OUT" | grep -qE "compilation cache reported [0-9]+ error" \
+  || { echo "$BH_OUT" | tail -30; fail "end-of-build report did not name the compilation-cache errors"; }
+pass "compilation-cache errors surfaced in the end-of-build report"
+
 printf '\n\033[32mmacOS daemon e2e scenarios passed.\033[0m\n'
