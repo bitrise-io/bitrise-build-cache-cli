@@ -3,12 +3,37 @@
 package common
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
+	"charm.land/huh/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 )
+
+// huh's accessible mode walks every group unconditionally, ignoring hide funcs —
+// so a conditional question has to be built conditionally, not hidden. If this
+// ever starts passing, the wizard can go back to one form with a hide func.
+func TestHuhAccessibleModeIgnoresGroupHideFunc(t *testing.T) {
+	var answer bool
+
+	group := huh.NewGroup(
+		huh.NewConfirm().Title("should be hidden").Value(&answer),
+	).WithHideFunc(func() bool { return true })
+
+	var out bytes.Buffer
+	require.NoError(t, huh.NewForm(group).
+		WithAccessible(true).
+		WithOutput(&out).
+		WithInput(strings.NewReader("n\n")).
+		Run())
+
+	assert.Contains(t, out.String(), "should be hidden",
+		"huh accessible mode prompts hidden groups; the wizard must not rely on WithHideFunc")
+}
 
 func TestDaemonServicesForTools(t *testing.T) {
 	names := func(tools ...string) []string {

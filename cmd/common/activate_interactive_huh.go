@@ -44,27 +44,32 @@ func (*huhWizard) Run(ctx context.Context) error {
 		startDaemon   = true
 	)
 
-	groups := []*huh.Group{
-		huh.NewGroup(
-			huh.NewMultiSelect[string]().
-				Title("Which build tools should I set up?").
-				Description("Use space to toggle, enter to confirm.").
-				Options(
-					huh.NewOption("Gradle", string(toolGradle)),
-					huh.NewOption("Bazel", string(toolBazel)),
-					huh.NewOption("Xcode", string(toolXcode)),
-					huh.NewOption("ccache (C/C++)", string(toolCcache)),
-				).
-				Validate(func(s []string) error {
-					if len(s) == 0 {
-						return errors.New("pick at least one tool")
-					}
+	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
+	// group hide funcs, so the daemon question below can only be conditional if
+	// the group doesn't exist yet when the tools are unknown.
+	if err := runForm(huh.NewGroup(
+		huh.NewMultiSelect[string]().
+			Title("Which build tools should I set up?").
+			Description("Use space to toggle, enter to confirm.").
+			Options(
+				huh.NewOption("Gradle", string(toolGradle)),
+				huh.NewOption("Bazel", string(toolBazel)),
+				huh.NewOption("Xcode", string(toolXcode)),
+				huh.NewOption("ccache (C/C++)", string(toolCcache)),
+			).
+			Validate(func(s []string) error {
+				if len(s) == 0 {
+					return errors.New("pick at least one tool")
+				}
 
-					return nil
-				}).
-				Value(&selectedTools),
-		),
+				return nil
+			}).
+			Value(&selectedTools),
+	)); err != nil {
+		return err
 	}
+
+	var groups []*huh.Group
 
 	if auth.NeedsManualPrompt() {
 		groups = append(groups, authprompt.Group(&workspaceID, &authToken))
@@ -90,63 +95,32 @@ func (*huhWizard) Run(ctx context.Context) error {
 				Negative("No, pull only").
 				Value(&pushEnabled),
 		),
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Keep the cache proxies running in the background?").
-				Description("Registers them with the OS supervisor (LaunchAgents on macOS, systemd --user on Linux) and starts them, so you don't have to run them per terminal session.").
-				Affirmative("Yes, install + start").
-				Negative("No, I'll start them myself").
-				Value(&startDaemon),
-		).WithHideFunc(func() bool {
-			return len(daemonServicesForTools(selectedTools)) == 0
-		}),
 	)
 
-	if err := huh.NewForm(groups...).Run(); err != nil {
-		return fmt.Errorf("interactive wizard: %w", err)
+	needsDaemon := len(daemonServicesForTools(selectedTools)) > 0
+	if needsDaemon {
+		groups = append(groups,
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Keep the cache proxies running in the background?").
+					Description("Registers them with the OS supervisor (LaunchAgents on macOS, systemd --user on Linux) and starts them, so you don't have to run them per terminal session.").
+					Affirmative("Yes, install + start").
+					Negative("No, I'll start them myself").
+					Value(&startDaemon),
+			),
+		)
 	}
 
-	switch source {
-	case configcommon.AuthSourceKeychain:
-		if !auth.SignedInNow {
-			logger.TInfof("Using credentials from the OS keychain.")
-		}
-		if username != storedUsername {
-			if err := persistCredentials(kc, storedCreds, workspaceID, authToken, username); err != nil {
-				logger.Warnf("Could not update the OS keychain with the new display name (%v).", err)
-			} else {
-				logger.Infof("Updated display name for local invocations.")
-			}
-		}
-	case configcommon.AuthSourceEnvVars:
-		if err := persistCredentials(kc, storedCreds, workspaceID, authToken, username); err != nil {
-			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
-		} else {
-			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
-			if username != "" {
-				logger.Infof("Saved display name %q for local invocations.", username)
-			}
-			logger.Infof("You can now remove them from your shell rc files.")
-		}
-	case configcommon.AuthSourceJWT:
-		// Per-build, don't persist.
-		logger.TInfof("Using credentials resolved by the CLI.")
-	case configcommon.AuthSourceMultiplatform, configcommon.AuthSourceFile:
-		if err := persistCredentials(kc, storedCreds, workspaceID, authToken, username); err != nil {
-			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with disk values for this run only.", err)
-		} else {
-			logger.TInfof("Migrated credentials from the config file to the OS keychain.")
-			if username != "" {
-				logger.Infof("Saved display name %q for local invocations.", username)
-			}
-		}
-	case configcommon.AuthSourceNone:
-		if err := persistCredentials(kc, storedCreds, workspaceID, authToken, username); err != nil {
-			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
-		} else {
-			logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
-		}
+	if err := runForm(groups...); err != nil {
+		return err
 	}
+
+	persistWizardCredentials(logger, kc, auth, wizardCredentials{
+		WorkspaceID:    workspaceID,
+		AuthToken:      authToken,
+		Username:       username,
+		StoredUsername: storedUsername,
+	})
 
 	envs[configcommon.EnvWorkspaceID] = workspaceID
 	envs[configcommon.EnvAuthToken] = authToken
@@ -155,8 +129,78 @@ func (*huhWizard) Run(ctx context.Context) error {
 		return err
 	}
 
-	if startDaemon {
+	if needsDaemon && startDaemon {
 		startDaemonForTools(ctx, logger, selectedTools)
+	}
+
+	return nil
+}
+
+// wizardCredentials are the credential values the form ended up with.
+type wizardCredentials struct {
+	WorkspaceID    string
+	AuthToken      string
+	Username       string
+	StoredUsername string
+}
+
+// persistWizardCredentials saves the wizard's credentials to the keychain, with
+// a message describing what moved where. A failure is non-fatal: activation can
+// still proceed with the values resolved for this run.
+func persistWizardCredentials(logger log.Logger, kc keychainStore, auth wizardAuth, creds wizardCredentials) {
+	save := func() error {
+		return persistCredentials(kc, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
+	}
+
+	logUsername := func() {
+		if creds.Username != "" {
+			logger.Infof("Saved display name %q for local invocations.", creds.Username)
+		}
+	}
+
+	switch auth.Source {
+	case configcommon.AuthSourceKeychain:
+		if !auth.SignedInNow {
+			logger.TInfof("Using credentials from the OS keychain.")
+		}
+		if creds.Username == creds.StoredUsername {
+			return
+		}
+		if err := save(); err != nil {
+			logger.Warnf("Could not update the OS keychain with the new display name (%v).", err)
+		} else {
+			logger.Infof("Updated display name for local invocations.")
+		}
+	case configcommon.AuthSourceEnvVars:
+		if err := save(); err != nil {
+			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
+		} else {
+			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
+			logUsername()
+			logger.Infof("You can now remove them from your shell rc files.")
+		}
+	case configcommon.AuthSourceJWT:
+		// Per-build, don't persist.
+		logger.TInfof("Using credentials resolved by the CLI.")
+	case configcommon.AuthSourceMultiplatform, configcommon.AuthSourceFile:
+		if err := save(); err != nil {
+			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with disk values for this run only.", err)
+		} else {
+			logger.TInfof("Migrated credentials from the config file to the OS keychain.")
+			logUsername()
+		}
+	case configcommon.AuthSourceNone:
+		if err := save(); err != nil {
+			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
+		} else {
+			logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
+		}
+	}
+}
+
+func runForm(groups ...*huh.Group) error {
+	if err := huh.NewForm(groups...).Run(); err != nil {
+		return fmt.Errorf("interactive wizard: %w", err)
 	}
 
 	return nil
