@@ -11,8 +11,13 @@ import (
 // selectHeight caps how many options a picker renders at once. huh only applies
 // its own default to dynamic OptionsFunc fields, so a static Options() list is
 // rendered in full — an 81-workspace account repainted an 82-line frame on every
-// keypress. Capping it keeps the frame (and the redraw) constant.
+// keypress. Capping it makes the frame constant; the redraw stays linear in the
+// option count, because optionsView renders them all before the viewport trims.
 const selectHeight = 12
+
+// selectWidth is set because huh derives maxWidth from the field width, and an
+// unset one leaves it negative.
+const selectWidth = 72
 
 // selectChromeLines is the title + description huh subtracts from a field's
 // Height to size its option viewport. Without allowing for them, a 4-option list

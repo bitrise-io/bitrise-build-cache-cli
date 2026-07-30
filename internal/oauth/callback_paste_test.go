@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParsePastedCallback(t *testing.T) {
@@ -103,6 +104,7 @@ func TestLogin_PastedCallback(t *testing.T) {
 	pr, pw := io.Pipe()
 	cfg := m.config()
 	cfg.PasteReader = pr
+	cfg.PasteGrace = time.Millisecond
 
 	creds, err := cfg.Login(context.Background(), pasteOpener(pw, ""))
 	if err != nil {
@@ -120,6 +122,7 @@ func TestLogin_PastedGarbageThenURL(t *testing.T) {
 	pr, pw := io.Pipe()
 	cfg := m.config()
 	cfg.PasteReader = pr
+	cfg.PasteGrace = time.Millisecond
 
 	creds, err := cfg.Login(context.Background(), pasteOpener(pw, "https://app.bitrise.io/dashboard\n"))
 	if err != nil {
@@ -137,6 +140,7 @@ func TestLogin_PastedStateMismatch(t *testing.T) {
 	pr, pw := io.Pipe()
 	cfg := m.config()
 	cfg.PasteReader = pr
+	cfg.PasteGrace = time.Millisecond
 
 	_, err := cfg.Login(context.Background(), func(rawURL string) error {
 		u, parseErr := url.Parse(rawURL)

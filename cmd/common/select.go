@@ -17,13 +17,15 @@ func selectFromList(prompt string, items []string) (int, error) {
 	}
 
 	choice := 0
-	err := huh.NewSelect[int]().
+	sel := huh.NewSelect[int]().
 		Title(prompt).
 		Options(options...).
 		Height(selectHeight).
-		Value(&choice).
-		WithKeyMap(interactiveKeyMap()).
-		Run()
+		Value(&choice)
+	sel.WithKeyMap(interactiveKeyMap())
+	sel.WithWidth(selectWidth)
+
+	err := sel.Run()
 	switch {
 	case err == nil:
 		return choice, nil
