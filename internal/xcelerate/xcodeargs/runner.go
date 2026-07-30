@@ -36,6 +36,8 @@ type RunStats struct {
 type CompCacheStats struct {
 	Hits       int64
 	TotalTasks int64
+	// CASErrors is anomalous at any count: a cold cache misses cleanly, it doesn't error.
+	CASErrors int64
 }
 
 type DefaultRunner struct {
@@ -45,6 +47,8 @@ type DefaultRunner struct {
 }
 
 var compCacheStatLineRegex = regexp.MustCompile(`^note:\s+(\d+)\s+hits\s*/\s*(\d+)\s+cacheable`)
+
+var casErrorLineRegex = regexp.MustCompile(`(?i)\bCAS error\b`)
 
 type loglineCapturer func(line string)
 
@@ -110,6 +114,10 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 
 func (runner *DefaultRunner) hitRateCapturer(runStats *RunStats) loglineCapturer {
 	return func(line string) {
+		if casErrorLineRegex.MatchString(line) {
+			runStats.CacheStats.CASErrors++
+		}
+
 		matches := compCacheStatLineRegex.FindStringSubmatch(line)
 		if len(matches) == 3 {
 			hit := matches[1]

@@ -3,6 +3,7 @@
 package xcode
 
 import (
+	"context"
 	"testing"
 
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
@@ -109,7 +110,7 @@ func Test_saveInvocationAndRelation(t *testing.T) {
 			relationAPI:   relMock,
 		}
 
-		runner.saveInvocationAndRelation(testInvocation(), 0, 0)
+		runner.saveInvocationAndRelation(context.Background(), testInvocation(), 0, 0)
 
 		assert.True(t, relationCalled)
 	})
@@ -134,7 +135,7 @@ func Test_saveInvocationAndRelation(t *testing.T) {
 			relationAPI:   relMock,
 		}
 
-		runner.saveInvocationAndRelation(testInvocation(), 0, 0)
+		runner.saveInvocationAndRelation(context.Background(), testInvocation(), 0, 0)
 
 		assert.False(t, relationCalled)
 	})
@@ -159,7 +160,7 @@ func Test_saveInvocationAndRelation(t *testing.T) {
 			relationAPI:   relMock,
 		}
 
-		runner.saveInvocationAndRelation(testInvocation(), 0, 0)
+		runner.saveInvocationAndRelation(context.Background(), testInvocation(), 0, 0)
 
 		assert.False(t, relationCalled)
 	})

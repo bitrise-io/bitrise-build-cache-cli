@@ -31,6 +31,20 @@ func (d *Doctor) authBackendCheck() Check {
 		Diagnose: func(ctx context.Context) Result {
 			cfg, source, err := common.ResolveAuthConfig(d.Envs)
 			srcLabel := sourceLabel(source)
+			if d.AuthOverride != nil {
+				cfg, err = *d.AuthOverride, nil
+				// A pinned credential has no AuthSource of its own; saying "none"
+				// would read as "nothing resolvable", which is not what happened.
+				srcLabel = "the credential this build used"
+				if cfg.AuthToken == "" || cfg.WorkspaceID == "" {
+					return Result{
+						State:   StateError,
+						Detail:  "the credential this build used is empty — it cannot authenticate",
+						Fixable: true,
+						Fixer:   AuthPromptFixer{Prompt: d.AuthFixPrompt},
+					}
+				}
+			}
 			if err != nil {
 				return Result{State: StateOK, Detail: "skipped (source=none, no credentials resolvable: " + err.Error() + ")"}
 			}

@@ -145,6 +145,13 @@ TBD`,
 			})
 		}
 
+		noDoctor := slices.Contains(xcelerateParams.OrigArgs, NoDoctorFlag) || os.Getenv(EnvSkipDoctor) != ""
+		if noDoctor {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoDoctorFlag
+			})
+		}
+
 		// Automatically disable cache for -create-xcframework as it's incompatible
 		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
 			config.BuildCacheEnabled = false
@@ -232,6 +239,15 @@ TBD`,
 			XcodeArgs:          xcodeArgs,
 			NoPrefixMap:        noPrefixMap,
 			NoManagedDD:        noManagedDD,
+		}
+		if !noDoctor {
+			runner.Doctor = &xcodeDoctor{
+				Logger:       logger,
+				Debug:        config.DebugLogging,
+				CacheEnabled: config.BuildCacheEnabled,
+				AuthConfig:   config.AuthConfig,
+				InvocationID: invocationID,
+			}
 		}
 		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
@@ -326,6 +342,9 @@ type XcodebuildRunner struct {
 	// substitution; user-supplied values are still honoured either way.
 	NoManagedDD bool
 
+	// Doctor reports local setup problems around the build; nil disables it.
+	Doctor buildHealthReporter
+
 	// Paths is the on-disk root resolver. If zero, paths.Default() is used.
 	Paths paths.Paths
 
@@ -349,6 +368,10 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	// skip SetSession + analytics emit + marker write entirely.
 	if !c.XcodeArgs.HasBuildAction() {
 		return c.runPassthrough(ctx, toPass)
+	}
+
+	if c.Doctor != nil {
+		c.Doctor.CheckAtStart(ctx)
 	}
 
 	if c.ProxySessionClient != nil {
@@ -402,7 +425,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.appendLocalInvocationLog(*inv, runStats)
-	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+	c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
 	// Signal build-done AFTER the wrapper's own PUT + marker write so the proxy's slim emit sees the marker and skips.
 	if c.ProxySessionClient != nil {
@@ -412,6 +435,10 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		}); err != nil {
 			c.Logger.TDebugf("EndSession call failed: %v", err)
 		}
+	}
+
+	if c.Doctor != nil {
+		c.Doctor.ReportAtEnd(ctx, runStats.CacheStats)
 	}
 
 	return runStats
@@ -478,7 +505,7 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 	return w
 }
 
-func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {
+func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv analytics.Invocation, hits, total int64) {
 	saver, err := c.resolveInvocationAPI()
 	if err != nil {
 		c.Logger.Errorf("Failed to create analytics client: %v", err)
@@ -488,6 +515,9 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, h
 
 	if err := saver.PutInvocation(inv); err != nil {
 		c.Logger.Errorf("Failed to send invocation analytics: %v", err)
+		if c.Doctor != nil {
+			c.Doctor.OnInvocationSaveFailure(ctx)
+		}
 
 		return
 	}
