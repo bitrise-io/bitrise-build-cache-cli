@@ -53,6 +53,9 @@ type xcodeDoctor struct {
 	RunChecks func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
 
 	startIssues []string
+	// probeReported records that OnInvocationSaveFailure already reported, so the
+	// end-of-build recap can say why it is staying quiet.
+	probeReported bool
 }
 
 func newXcodeDoctor(logger log.Logger, debug, cacheEnabled bool, authConfig configcommon.CacheAuthConfig) *xcodeDoctor {
@@ -93,20 +96,21 @@ func (d *xcodeDoctor) ReportAtEnd(_ context.Context, stats xcodeargs.CompCacheSt
 		d.Logger.Warnf(msgDoctorCASErrorsHint)
 	}
 
-	if len(d.startIssues) == 0 {
-		d.Logger.Debugf("No health-check issues to repeat at the end of this build")
-
-		return
+	switch {
+	case d.probeReported:
+		d.Logger.Debugf("Health issues were reported by the auth check above; not repeating them")
+	case len(d.startIssues) == 0:
+		d.Logger.Debugf("Health check found no issues at the start of this build")
+	default:
+		d.print(msgDoctorIssuesRecap, d.startIssues)
 	}
-
-	d.print(msgDoctorIssuesRecap, d.startIssues)
 }
 
 // OnInvocationSaveFailure diagnoses a failed analytics PUT, which an expired
 // token would explain. This runs the backend probe, so its verdict supersedes
 // the buffered start-of-build report.
 func (d *xcodeDoctor) OnInvocationSaveFailure(ctx context.Context) {
-	d.startIssues = nil
+	d.startIssues, d.probeReported = nil, true
 
 	d.Logger.TInfof(msgDoctorProbingAuth)
 

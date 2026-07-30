@@ -112,7 +112,7 @@ func TestXcodeDoctor_HealthySetupLogsAtDebug(t *testing.T) {
 	assert.Contains(t, logged, "Running health checks")
 	assert.Contains(t, logged, "ok auth: fine")
 	assert.Contains(t, logged, "Health check result: ok")
-	assert.Contains(t, logged, "No health-check issues to repeat")
+	assert.Contains(t, logged, "found no issues at the start")
 }
 
 func TestXcodeDoctor_ReportAtEndRepeatsStartIssues(t *testing.T) {
@@ -157,7 +157,10 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 
 	out.Reset()
 	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
-	assert.Empty(t, out.String(), "the probe verdict supersedes the start-of-build report")
+	assert.NotContains(t, out.String(), msgDoctorIssuesRecap,
+		"the probe verdict supersedes the start-of-build report")
+	assert.NotContains(t, out.String(), "found no issues",
+		"issues were found — the recap must not claim otherwise")
 }
 
 func TestXcodeDoctor_ReportAtEndWarnsOnCASErrors(t *testing.T) {
