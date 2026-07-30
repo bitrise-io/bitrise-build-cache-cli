@@ -55,7 +55,10 @@ func KeyMap() *huh.KeyMap {
 // RunForm runs the groups as one abortable form, translating huh's abort into
 // ErrAborted so callers don't have to know about huh.
 func RunForm(groups ...*huh.Group) error {
-	err := huh.NewForm(groups...).WithKeyMap(KeyMap()).Run()
+	return translateFormErr(huh.NewForm(groups...).WithKeyMap(KeyMap()).Run())
+}
+
+func translateFormErr(err error) error {
 	switch {
 	case err == nil:
 		return nil
