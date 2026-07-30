@@ -9,8 +9,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -156,6 +158,20 @@ type wizardCredentials struct {
 // a message describing what moved where. A failure is non-fatal: activation can
 // still proceed with the values resolved for this run.
 func persistWizardCredentials(logger log.Logger, kc keychainStore, auth wizardAuth, creds wizardCredentials) {
+	persistWizardCredentialsTo(logger, kc, storeClearFile, auth, creds)
+}
+
+func storeClearFile() error {
+	return store.NewFile().Clear() //nolint:wrapcheck // already context-rich
+}
+
+func persistWizardCredentialsTo(
+	logger log.Logger,
+	kc keychainStore,
+	clearFile func() error,
+	auth wizardAuth,
+	creds wizardCredentials,
+) {
 	save := func() error {
 		return persistCredentials(kc, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
 	}
@@ -193,10 +209,21 @@ func persistWizardCredentials(logger log.Logger, kc keychainStore, auth wizardAu
 	case configcommon.AuthSourceMultiplatform, configcommon.AuthSourceFile:
 		if err := save(); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with disk values for this run only.", err)
-		} else {
-			logger.TInfof("Migrated credentials from the config file to the OS keychain.")
-			logUsername()
+
+			return
 		}
+
+		// Move, not copy: leaving the file copy in place keeps a plaintext token
+		// on disk even though the keychain now holds it.
+		if err := clearFile(); err != nil {
+			logger.Warnf("Copied credentials into the OS keychain, but could not remove the config-file copy (%v).", err)
+			logger.Warnf("The token is still on disk at %s — remove it with `auth clear --storage=file`.", multiplatformconfig.FilePath(utils.DefaultOsProxy{}))
+
+			return
+		}
+
+		logger.TInfof("Moved credentials from the config file into the OS keychain.")
+		logUsername()
 	case configcommon.AuthSourceNone:
 		if err := save(); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
