@@ -11,6 +11,7 @@ require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.50
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.36
 	github.com/dustin/go-humanize v1.0.1
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
@@ -55,7 +56,6 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect

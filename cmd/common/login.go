@@ -170,23 +170,16 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 //
 // An explicit --storage choice is honoured: the caller asked for that backend.
 func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds oauth.Credentials) (store.Kind, error) {
-	err := oauth.SaveTo(target, creds)
-	if err == nil {
-		return target.Kind(), nil
+	outcome, err := oauth.SaveToWithFallback(target, creds, storage == "")
+	if err != nil {
+		return outcome.Kind, fmt.Errorf("save credentials: %w", err)
 	}
 
-	if target.Kind() != store.KindKeychain || storage != "" {
-		return target.Kind(), fmt.Errorf("save credentials: %w", err)
+	if outcome.FellBack {
+		logger.Warnf("Could not write to the OS keychain (%s).", outcome.KeychainErr)
 	}
 
-	logger.Warnf("Could not write to the OS keychain (%s).", err)
-
-	fallback := store.NewFile()
-	if fbErr := oauth.SaveTo(fallback, creds); fbErr != nil {
-		return fallback.Kind(), fmt.Errorf("save credentials to the keychain (%w) and to the config file (%w)", err, fbErr)
-	}
-
-	return fallback.Kind(), nil
+	return outcome.Kind, nil
 }
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".

@@ -177,12 +177,13 @@ func (c *Client) findMissing(ctx context.Context,
 		if err != nil {
 			c.logger.Errorf("Error in FindMissingBlobs attempt %d: %s", attempt, err)
 
-			st, ok := status.FromError(err)
-			if ok && st.Code() == codes.Unauthenticated {
-				return ErrCacheUnauthenticated, false
+			// A rejected token is never accepted on a retry; anything else may be
+			// transient and is worth another attempt.
+			if isUnauthenticated(err) {
+				return ErrCacheUnauthenticated, true
 			}
 
-			return fmt.Errorf("find missing blobs: %w", err), true
+			return fmt.Errorf("find missing blobs: %w", err), false
 		}
 
 		return nil, false

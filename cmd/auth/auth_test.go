@@ -5,15 +5,18 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -328,4 +331,57 @@ func TestAuthSetCmd_preservesOAuthFieldsOnUsernameEdit(t *testing.T) {
 	assert.Equal(t, "alice", creds.Username)
 	assert.Equal(t, "refresh-abc", creds.RefreshToken, "OAuth refresh token must survive auth set --username")
 	assert.Equal(t, "jwt-xyz", creds.JWT)
+}
+
+// The keychain-unavailable case is not cosmetic: aborting on it left a Linux
+// host with no way to remove the credentials it actually has, since the file
+// store is only reached after the keychain.
+func TestClearTargets_UnavailableKeychainDoesNotBlockTheFileStore(t *testing.T) {
+	var out bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&out))
+
+	file := &fakeStore{kind: store.KindFile}
+	err := clearTargets(logger, []store.Store{
+		&fakeStore{kind: store.KindKeychain, clearErr: errors.Join(keychain.ErrUnavailable, errors.New("no secret service"))},
+		file,
+	})
+
+	require.NoError(t, err)
+	assert.True(t, file.cleared, "the file store must still be cleared")
+	assert.Contains(t, out.String(), "Skipped the OS keychain")
+}
+
+func TestClearTargets_RealFailureIsReported(t *testing.T) {
+	var out bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&out))
+
+	file := &fakeStore{kind: store.KindFile}
+	err := clearTargets(logger, []store.Store{
+		&fakeStore{kind: store.KindKeychain, clearErr: errors.New("keychain is locked")},
+		file,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keychain is locked")
+	assert.True(t, file.cleared, "one backend failing must not skip the other")
+}
+
+type fakeStore struct {
+	kind     store.Kind
+	clearErr error
+	cleared  bool
+}
+
+func (s *fakeStore) Kind() store.Kind { return s.kind }
+func (s *fakeStore) Load() (keychain.Credentials, error) {
+	return keychain.Credentials{}, store.ErrNotFound
+}
+func (s *fakeStore) Save(keychain.Credentials) error { return nil }
+func (s *fakeStore) Clear() error {
+	if s.clearErr != nil {
+		return s.clearErr
+	}
+	s.cleared = true
+
+	return nil
 }

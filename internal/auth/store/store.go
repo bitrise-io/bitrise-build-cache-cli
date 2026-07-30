@@ -78,6 +78,39 @@ func SaveExclusive(target Store, creds keychain.Credentials) error {
 	return nil
 }
 
+// SaveOutcome reports which backend a save ended up in. KeychainErr is set only
+// when the keychain was tried and refused, so callers can explain the fallback.
+type SaveOutcome struct {
+	Kind        Kind
+	FellBack    bool
+	KeychainErr error
+}
+
+// SaveExclusiveWithFallback saves to target, dropping to the file store when the
+// keychain refuses the write: a host with no secret-service (headless Linux,
+// containers) would otherwise have no way to store credentials at all, short of
+// knowing to pass --storage=file.
+//
+// allowFallback is false when the caller picked the backend explicitly — they
+// asked for that one, so silently using another would be wrong.
+func SaveExclusiveWithFallback(target Store, creds keychain.Credentials, allowFallback bool) (SaveOutcome, error) {
+	err := SaveExclusive(target, creds)
+	if err == nil {
+		return SaveOutcome{Kind: target.Kind()}, nil
+	}
+
+	if target.Kind() != KindKeychain || !allowFallback {
+		return SaveOutcome{Kind: target.Kind()}, err
+	}
+
+	fallback := NewFile()
+	if fbErr := SaveExclusive(fallback, creds); fbErr != nil {
+		return SaveOutcome{Kind: fallback.Kind()}, fmt.Errorf("save to the keychain (%w) and to the config file (%w)", err, fbErr)
+	}
+
+	return SaveOutcome{Kind: fallback.Kind(), FellBack: true, KeychainErr: err}, nil
+}
+
 func NewKeychain() Store {
 	return keychainStore{kc: keychain.New()}
 }
@@ -96,9 +129,12 @@ type keychainStore struct {
 
 func (s keychainStore) Kind() Kind { return KindKeychain }
 
+// A machine with no keychain reads as empty rather than failing, so every
+// credential lookup falls through to the next backend. `auth status` and the
+// doctor call the keychain directly and keep the distinction.
 func (s keychainStore) Load() (keychain.Credentials, error) {
 	creds, err := s.kc.Load()
-	if errors.Is(err, keychain.ErrNotFound) {
+	if errors.Is(err, keychain.ErrNotFound) || errors.Is(err, keychain.ErrUnavailable) {
 		return keychain.Credentials{}, ErrNotFound
 	}
 

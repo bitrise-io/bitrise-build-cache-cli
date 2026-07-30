@@ -121,7 +121,9 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true
 			}
-			if ok && st.Code() == codes.Unauthenticated {
+			// isUnauthenticated over a bare status check: the stream can surface the
+			// rejection wrapped, and retrying a rejected token only adds latency.
+			if isUnauthenticated(copyErr) {
 				return ErrCacheUnauthenticated, true
 			}
 

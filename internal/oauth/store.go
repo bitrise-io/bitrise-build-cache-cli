@@ -111,6 +111,23 @@ func SaveTo(s store.Store, c Credentials) error {
 	return nil
 }
 
+// SaveToWithFallback is SaveTo, dropping to the config file when the keychain
+// refuses the write — a completed sign-in shouldn't be thrown away because the
+// machine has no keychain. The whole credential goes to the fallback, refresh
+// token included, so the login stays refreshable there.
+func SaveToWithFallback(s store.Store, c Credentials, allowFallback bool) (store.SaveOutcome, error) {
+	if c.PAT == "" {
+		return store.SaveOutcome{Kind: s.Kind()}, errors.New("refusing to save credentials with empty PAT")
+	}
+
+	outcome, err := store.SaveExclusiveWithFallback(s, c.toKeychain(), allowFallback)
+	if err != nil {
+		return outcome, fmt.Errorf("save credentials: %w", err)
+	}
+
+	return outcome, nil
+}
+
 func Clear() error {
 	return ClearFrom(store.NewKeychain(), store.NewFile())
 }
