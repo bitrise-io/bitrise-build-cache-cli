@@ -1,4 +1,4 @@
-package common
+package interactive
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -57,7 +58,7 @@ This is narrower than ` + "`auth clear`" + `:
   auth clear    removes every stored credential — the browser login and any
                 manually set token — from both the keychain and the config file.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		creds, source, err := oauth.LoadWithSource()
 		if err != nil {
@@ -96,7 +97,7 @@ func init() { //nolint:gochecknoinits
 func runLogin(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	envs := utils.AllEnvs()
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 	if loginWorkspace == "" && !isInteractiveStdin() {
 		return fmt.Errorf("not an interactive terminal: pass --workspace <slug> to sign in non-interactively")
@@ -219,24 +220,6 @@ func pickWorkspace(ctx context.Context, envs map[string]string, pat string) (str
 	}
 
 	return workspaces[idx].Slug, nil
-}
-
-// Skip on Bitrise CI where JWT is env-injected; self-hosted CI with a stored PAT still refreshes.
-func hydrateStoredAuth(ctx context.Context) {
-	envs := utils.AllEnvs()
-	if envs[configcommon.EnvJWT] != "" {
-		return
-	}
-	_, source, _ := configcommon.ResolveAuthConfig(envs)
-	if source != configcommon.AuthSourceKeychain && source != configcommon.AuthSourceFile {
-		return
-	}
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
-	cfg := oauth.NewConfigFromEnv(utils.AllEnvs())
-	cfg.Logger = logger
-	if _, err := cfg.EnsureFresh(ctx); err != nil {
-		logger.Debugf("OAuth login not applied: %s", err)
-	}
 }
 
 // isInteractiveStdin reports whether stdin is a terminal (not a pipe/file/CI).

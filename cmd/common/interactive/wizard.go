@@ -1,4 +1,4 @@
-package common
+package interactive
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
@@ -19,7 +20,7 @@ import (
 type huhWizard struct{}
 
 func (*huhWizard) Run(ctx context.Context) error {
-	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 	logger.TInfof("Bitrise Build Cache - interactive local setup")
 
 	kc := keychain.New()

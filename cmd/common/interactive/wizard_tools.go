@@ -1,4 +1,4 @@
-package common
+package interactive
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
@@ -35,10 +36,10 @@ const (
 )
 
 func init() { //nolint:gochecknoinits
-	ActivateCmd.Flags().BoolVar(&interactiveFlag, "interactive", false,
+	common.ActivateCmd.Flags().BoolVar(&interactiveFlag, "interactive", false,
 		"Launch an interactive guided local setup. Prompts for the tool and credentials instead of reading them from environment variables.")
-	ActivateCmd.SilenceUsage = true
-	ActivateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+	common.ActivateCmd.SilenceUsage = true
+	common.ActivateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !interactiveFlag {
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
 		}
@@ -56,7 +57,7 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 
 		if err := (&huhWizard{}).Run(cmd.Context()); err != nil {
 			if errors.Is(err, ErrAborted) {
-				log.NewLogger(log.WithDebugLog(IsDebugLogMode)).Infof("Setup cancelled. No build tools were activated.")
+				log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)).Infof("Setup cancelled. No build tools were activated.")
 
 				return nil
 			}
@@ -114,7 +115,7 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 		logger,
 		gradleHome,
 		envs,
-		IsDebugLogMode,
+		common.IsDebugLogMode,
 		params.TemplateInventory,
 		func(inventory gradleconfig.TemplateInventory, path string) error {
 			return inventory.WriteToGradleInit(
@@ -172,7 +173,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 		return string(out), fmt.Errorf("run cmd: %w", err2)
 	}
 
-	inventory, err := params.TemplateInventory(logger, envs, commandFunc, IsDebugLogMode)
+	inventory, err := params.TemplateInventory(logger, envs, commandFunc, common.IsDebugLogMode)
 	if err != nil {
 		return fmt.Errorf("build Bazel template inventory: %w", err)
 	}
@@ -202,7 +203,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
 	activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 		PushEnabled:  pushEnabled,
-		DebugLogging: IsDebugLogMode,
+		DebugLogging: common.IsDebugLogMode,
 		Envs:         envs,
 		Logger:       logger,
 	})
@@ -216,7 +217,7 @@ func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[strin
 
 func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
 	params := xcelerate.DefaultParams()
-	params.DebugLogging = DebugEnabled(params.DebugLogging)
+	params.DebugLogging = common.DebugEnabled(params.DebugLogging)
 	params.PushEnabled = pushEnabled
 
 	if err := xcelerate.Activate(

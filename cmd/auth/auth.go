@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
@@ -754,8 +755,8 @@ func init() {
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
 	authCmd.AddCommand(authUsernameCmd)
-	authCmd.AddCommand(common.LoginCmd)
-	authCmd.AddCommand(common.LogoutCmd)
+	authCmd.AddCommand(interactive.LoginCmd)
+	authCmd.AddCommand(interactive.LogoutCmd)
 
 	common.RootCmd.AddCommand(authCmd)
 }

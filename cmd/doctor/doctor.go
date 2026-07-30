@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
@@ -68,7 +69,7 @@ with --no-update-check / --no-backend-probe.`,
 
 		d := doctorpkg.NewDoctor()
 		d.Debug = common.IsDebugLogMode
-		d.AuthFixPrompt = common.FixAuthPrompt(cmd.Context(), log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)))
+		d.AuthFixPrompt = interactive.FixAuthPrompt(cmd.Context(), log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)))
 
 		opts := doctorpkg.Options{
 			SkipUpdateCheck:  skipUpdateCheckFlag,
