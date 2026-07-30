@@ -20,20 +20,39 @@ func PersistActivateCreds(logger log.Logger, envs map[string]string, auth config
 	}
 	target := SelectAuto(envs)
 	if target.Kind() == KindFile {
-		c := keychain.Credentials{AuthToken: auth.AuthToken, WorkspaceID: auth.WorkspaceID}
+		c := mergeActivateCreds(target, auth)
 		mpCfg.Credentials = &c
 		mpCfg.AuthConfig = auth
 		logger.Infof("Saved auth credentials to the multiplatform config file (CI-safe — fastlane setup_ci swaps the keychain)")
 
 		return
 	}
-	if err := target.Save(keychain.Credentials{AuthToken: auth.AuthToken, WorkspaceID: auth.WorkspaceID}); err != nil {
+	if err := target.Save(mergeActivateCreds(target, auth)); err != nil {
 		logger.Warnf("Keychain save failed (%v); falling back to multiplatform authConfig", err)
 		mpCfg.AuthConfig = auth
 
 		return
 	}
 	logger.Infof("Saved auth credentials to the OS keychain")
+}
+
+// mergeActivateCreds keeps the OAuth fields and username of an existing entry
+// when activate re-persists the same token. Replacing the entry outright would
+// drop the refresh token, which both breaks `auth logout` and leaves the login
+// unable to refresh — degrading it to a bare, short-lived PAT.
+//
+// A different token means a different credential, so the OAuth fields are not
+// carried over: they would not describe the token being stored.
+func mergeActivateCreds(target Store, auth configcommon.CacheAuthConfig) keychain.Credentials {
+	existing, err := target.Load()
+	if err != nil || existing.AuthToken != auth.AuthToken {
+		return keychain.Credentials{AuthToken: auth.AuthToken, WorkspaceID: auth.WorkspaceID}
+	}
+
+	existing.AuthToken = auth.AuthToken
+	existing.WorkspaceID = auth.WorkspaceID
+
+	return existing
 }
 
 // SetUsername writes name into the store that already holds credentials so a

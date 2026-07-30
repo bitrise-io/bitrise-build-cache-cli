@@ -156,6 +156,13 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	params := bazelconfig.DefaultActivateBazelParams()
 	params.Cache.PushEnabled = pushEnabled
 
+	// Without this the bazelrc falls back to a literal Bearer token: it leaks the
+	// credential onto disk, and an OAuth PAT baked in that way expires with no way
+	// to refresh. The helper re-resolves per build, which does refresh.
+	if cliPath, exeErr := os.Executable(); exeErr == nil {
+		params.CLIPath = cliPath
+	}
+
 	commandFunc := func(cmd string, args ...string) (string, error) {
 		out, err2 := exec.Command(cmd, args...).CombinedOutput() //nolint:noctx
 		if err2 == nil {

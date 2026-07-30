@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 )
@@ -275,4 +276,61 @@ func TestResolvedAuthNote(t *testing.T) {
 func TestSelectChrome_GrowsWithTheDescription(t *testing.T) {
 	assert.Equal(t, 2, selectChrome("one line"))
 	assert.Equal(t, 4, selectChrome("one line\n\nplus a note"))
+}
+
+type failingStore struct {
+	kind      store.Kind
+	saveErr   error
+	saved     bool
+	savedCred keychain.Credentials
+}
+
+func (f *failingStore) Kind() store.Kind { return f.kind }
+
+func (f *failingStore) Load() (keychain.Credentials, error) {
+	return keychain.Credentials{}, store.ErrNotFound
+}
+
+func (f *failingStore) Save(c keychain.Credentials) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	f.saved, f.savedCred = true, c
+
+	return nil
+}
+
+func (f *failingStore) Clear() error { return nil }
+
+// A locked keychain must not throw away a completed sign-in.
+func TestSaveLoginWithFallback_FallsBackToTheConfigFile(t *testing.T) {
+	target := &failingStore{kind: store.KindKeychain, saveErr: assert.AnError}
+	creds := oauth.Credentials{PAT: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}
+
+	kind, err := saveLoginWithFallback(silentLogger(), target, "", creds)
+
+	require.NoError(t, err)
+	assert.Equal(t, store.KindFile, kind, "the fallback backend should be reported, not the one that failed")
+}
+
+// An explicit --storage choice is the caller's decision; don't silently move it.
+func TestSaveLoginWithFallback_HonoursExplicitStorage(t *testing.T) {
+	target := &failingStore{kind: store.KindKeychain, saveErr: assert.AnError}
+
+	_, err := saveLoginWithFallback(silentLogger(), target, "keychain",
+		oauth.Credentials{PAT: "pat-1", WorkspaceID: "ws-1", RefreshToken: "r"})
+
+	require.Error(t, err)
+}
+
+func TestSaveLoginWithFallback_NoFallbackNeeded(t *testing.T) {
+	target := &failingStore{kind: store.KindKeychain}
+	creds := oauth.Credentials{PAT: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}
+
+	kind, err := saveLoginWithFallback(silentLogger(), target, "", creds)
+
+	require.NoError(t, err)
+	assert.Equal(t, store.KindKeychain, kind)
+	assert.True(t, target.saved)
+	assert.Equal(t, "refresh-1", target.savedCred.RefreshToken, "the refresh token must be persisted")
 }

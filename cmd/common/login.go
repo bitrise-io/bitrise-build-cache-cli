@@ -46,23 +46,38 @@ keep using BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID.`,
 // LogoutCmd removes the stored OAuth credential.
 var LogoutCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "logout",
-	Short: "Remove the stored Bitrise build-cache login",
+	Short: "Sign out of the browser login (leaves a manually set token in place)",
+	Long: `Sign out of the browser (OAuth) login: removes the stored login and its
+refresh token, so build-cache commands stop using it.
+
+This is narrower than ` + "`auth clear`" + `:
+
+  auth logout   removes only the browser login. A token you set yourself with
+                ` + "`auth set`" + ` is left alone, and stays in use.
+  auth clear    removes every stored credential — the browser login and any
+                manually set token — from both the keychain and the config file.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
 
-		creds, err := oauth.Load()
+		creds, source, err := oauth.LoadWithSource()
 		if err != nil {
 			return fmt.Errorf("read stored login: %w", err)
 		}
-		if !creds.IsOAuthManaged() {
-			logger.Infof("No stored login to remove. (A manual 'auth set' credential, if any, is left untouched — use 'auth clear' for that.)")
 
-			return nil
+		switch {
+		case source == nil:
+			logger.Infof("Not signed in, and no credentials are stored — nothing to do.")
+			logger.Infof("`auth clear` is the command for removing a manually set token.")
+		case !creds.IsOAuthManaged():
+			logger.Infof("Not signed in via the browser, so there is no login to remove.")
+			logger.Infof("A manually set token is stored in the %s and is left untouched — use `auth clear` to remove that.", source.Kind())
+		default:
+			if err := oauth.Clear(); err != nil {
+				return fmt.Errorf("clear stored login: %w", err)
+			}
+			logger.Infof("Signed out — the browser login was removed from the %s.", source.Kind())
+			logger.Infof("Any token set with `auth set` is unaffected.")
 		}
-		if err := oauth.Clear(); err != nil {
-			return fmt.Errorf("clear stored login: %w", err)
-		}
-		logger.Infof("Signed out.")
 
 		return nil
 	},
@@ -128,11 +143,13 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	if err != nil {
 		return oauth.Credentials{}, err //nolint:wrapcheck
 	}
-	if err := oauth.SaveTo(target, creds); err != nil {
-		return oauth.Credentials{}, fmt.Errorf("save credentials: %w", err)
+
+	kind, err := saveLoginWithFallback(logger, target, storage, creds)
+	if err != nil {
+		return oauth.Credentials{}, err
 	}
 
-	switch target.Kind() {
+	switch kind {
 	case store.KindKeychain:
 		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the OS keychain.", workspace)
 	case store.KindFile:
@@ -140,6 +157,32 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	}
 
 	return creds, nil
+}
+
+// saveLoginWithFallback stores the login, dropping to the multiplatform config
+// when the keychain refuses the write — a locked or unavailable keychain
+// shouldn't throw away a completed sign-in. The whole credential goes to the
+// fallback, refresh token included, so the login stays refreshable there.
+//
+// An explicit --storage choice is honoured: the caller asked for that backend.
+func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds oauth.Credentials) (store.Kind, error) {
+	err := oauth.SaveTo(target, creds)
+	if err == nil {
+		return target.Kind(), nil
+	}
+
+	if target.Kind() != store.KindKeychain || storage != "" {
+		return target.Kind(), fmt.Errorf("save credentials: %w", err)
+	}
+
+	logger.Warnf("Could not write to the OS keychain (%s).", err)
+
+	fallback := store.NewFile()
+	if fbErr := oauth.SaveTo(fallback, creds); fbErr != nil {
+		return fallback.Kind(), fmt.Errorf("save credentials to the keychain (%w) and to the config file (%w)", err, fbErr)
+	}
+
+	return fallback.Kind(), nil
 }
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".

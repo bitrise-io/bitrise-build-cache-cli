@@ -20,6 +20,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -557,9 +558,20 @@ var (
 
 // nolint:gochecknoglobals
 var authClearCmd = &cobra.Command{
-	Use:          "clear",
-	Short:        "Remove Bitrise Build Cache credentials from the OS keychain and the multiplatform config file",
-	Long:         "By default clears the OS keychain + the multiplatform config file. Legacy per-tool copies (xcelerate/ccache/gradle-init) are scrubbed via `auth set`, not here. Use --storage=keychain|file to target one backend.",
+	Use:   "clear",
+	Short: "Remove every stored credential, including the browser login",
+	Long: `Removes every stored Bitrise Build Cache credential — a token set with ` + "`auth set`" + `
+and a browser (OAuth) login alike — from the OS keychain and the multiplatform
+config file.
+
+This is broader than ` + "`auth logout`" + `:
+
+  auth clear    removes everything stored, both kinds of credential.
+  auth logout   removes only the browser login, leaving a manually set token in
+                place and still in use.
+
+Legacy per-tool copies (xcelerate/ccache/gradle-init) are scrubbed via ` + "`auth set`" + `,
+not here. Use --storage=keychain|file to target one backend.`,
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -576,11 +588,20 @@ var authClearCmd = &cobra.Command{
 			return fmt.Errorf("unknown --storage %q (want keychain|file|auto)", clearStorage)
 		}
 
+		hadLogin := false
+		if creds, _, err := oauth.LoadWithSource(); err == nil && creds.IsOAuthManaged() {
+			hadLogin = true
+		}
+
 		for _, t := range targets {
 			if err := t.Clear(); err != nil {
 				return fmt.Errorf("clear %s: %w", t.Kind(), err)
 			}
 			logger.TInfof("✅ Credentials removed from %s", t.Kind())
+		}
+
+		if hadLogin {
+			logger.Infof("That included the browser login — `auth login` to sign in again.")
 		}
 
 		return nil

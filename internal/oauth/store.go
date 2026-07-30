@@ -62,7 +62,15 @@ func LoadWithSource() (Credentials, store.Store, error) {
 	return loadFrom(store.NewKeychain(), store.NewFile())
 }
 
+// loadFrom prefers an OAuth-managed credential over a manual one wherever it
+// lives: a plain `auth set` PAT in an earlier backend would otherwise hide a
+// login stored in a later one, so logout and refresh would both miss it.
 func loadFrom(backends ...store.Store) (Credentials, store.Store, error) {
+	var (
+		firstCreds Credentials
+		firstStore store.Store
+	)
+
 	for _, s := range backends {
 		kc, err := s.Load()
 		switch {
@@ -72,7 +80,17 @@ func loadFrom(backends ...store.Store) (Credentials, store.Store, error) {
 			return Credentials{}, nil, fmt.Errorf("load credentials: %w", err)
 		}
 
-		return fromKeychain(kc), s, nil
+		creds := fromKeychain(kc)
+		if creds.IsOAuthManaged() {
+			return creds, s, nil
+		}
+		if firstStore == nil {
+			firstCreds, firstStore = creds, s
+		}
+	}
+
+	if firstStore != nil {
+		return firstCreds, firstStore, nil
 	}
 
 	return Credentials{}, nil, nil
