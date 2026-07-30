@@ -71,12 +71,6 @@ type Options struct {
 	ApplyFixes       bool
 	SkipUpdateCheck  bool
 	SkipBackendProbe bool
-	// Only, when non-empty, restricts the run to checks with these names
-	// (see XcodeCheckNames, AuthProbeCheckNames).
-	Only []string
-	// PinAuth carries the credential the backend probe should test, for callers
-	// diagnosing one specific request's failure. See Doctor.AuthOverride.
-	PinAuth *common.CacheAuthConfig
 }
 
 type Doctor struct {
@@ -97,13 +91,8 @@ type Doctor struct {
 	// the token prompt; the doctor command supplies one that offers a browser
 	// sign-in first.
 	AuthFixPrompt func() (workspaceID, authToken string, err error)
-	// AuthOverride pins which credential the backend probe tests. Callers
-	// diagnosing a specific request's failure set the credential that request
-	// used, so the probe can't pass on a different one the machine happens to
-	// have (a CI JWT, say, when the request used a stored token).
-	AuthOverride *common.CacheAuthConfig
-	Now          func() time.Time
-	Debug        bool
+	Now           func() time.Time
+	Debug         bool
 
 	// checksOverride replaces the real check set in tests.
 	checksOverride []Check
@@ -257,7 +246,7 @@ func Fixable(items []ReportItem) []ReportItem {
 
 func (d *Doctor) checks(opts Options) []Check {
 	if d.checksOverride != nil {
-		return filterChecks(d.checksOverride, opts.Only)
+		return d.checksOverride
 	}
 
 	checks := []Check{
@@ -281,25 +270,5 @@ func (d *Doctor) checks(opts Options) []Check {
 		checks = append(checks, d.cliVersionCheck())
 	}
 
-	return filterChecks(checks, opts.Only)
-}
-
-func filterChecks(checks []Check, only []string) []Check {
-	if len(only) == 0 {
-		return checks
-	}
-
-	wanted := make(map[string]bool, len(only))
-	for _, n := range only {
-		wanted[n] = true
-	}
-
-	out := make([]Check, 0, len(only))
-	for _, c := range checks {
-		if wanted[c.Name] {
-			out = append(out, c)
-		}
-	}
-
-	return out
+	return checks
 }

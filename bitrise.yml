@@ -1323,17 +1323,6 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
-    - script:
-        title: Assert the wrapper ran its health check around the build
-        inputs:
-        - content: |-
-            set -exo pipefail
-
-            # Only reachable via a build action — query invocations (-list, -showsdks)
-            # skip the health check by design. `activate xcode -d` above put the
-            # wrapper in debug mode, so the report lands in wrapper.log.
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Running health checks'
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Health check result:'
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-cas-key-stable:
