@@ -2,6 +2,7 @@ package kv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -164,7 +165,7 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 
 			return nil, false
 		}
-		if ok && st.Code() == codes.Unauthenticated {
+		if isUnauthenticated(err) {
 			return ErrCacheUnauthenticated, true
 		}
 		if err != nil {
@@ -174,6 +175,15 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 		}
 
 		if err := kvWriter.Close(); err != nil {
+			// A rejected token is not going to be accepted on a retry, and the
+			// stream often only surfaces Unauthenticated on close — so without this
+			// every upload burns the full retry budget before giving up.
+			if isUnauthenticated(err) {
+				c.logger.TWarnf("Failed to upload stream %s: %s", key, err)
+
+				return ErrCacheUnauthenticated, true
+			}
+
 			c.logger.TWarnf("Failed to upload stream %s: attempt %d: %s", key, attempt+1, err)
 
 			return fmt.Errorf("close upload: %w", err), false
@@ -189,4 +199,18 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 
 		return nil, false
 	})
+}
+
+// isUnauthenticated reports whether err is the backend rejecting the token,
+// whether it arrives as a gRPC status or as our own sentinel.
+func isUnauthenticated(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrCacheUnauthenticated) {
+		return true
+	}
+	st, ok := status.FromError(err)
+
+	return ok && st.Code() == codes.Unauthenticated
 }

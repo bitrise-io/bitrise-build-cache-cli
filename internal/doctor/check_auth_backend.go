@@ -30,8 +30,12 @@ func (d *Doctor) authBackendCheck() Check {
 		Name: "auth-backend",
 		Diagnose: func(ctx context.Context) Result {
 			cfg, source, err := common.ResolveAuthConfig(d.Envs)
+			srcLabel := sourceLabel(source)
 			if d.AuthOverride != nil {
-				cfg, source, err = *d.AuthOverride, common.AuthSourceNone, nil
+				cfg, err = *d.AuthOverride, nil
+				// A pinned credential has no AuthSource of its own; saying "none"
+				// would read as "nothing resolvable", which is not what happened.
+				srcLabel = "the credential this build used"
 				if cfg.AuthToken == "" || cfg.WorkspaceID == "" {
 					return Result{
 						State:   StateError,
@@ -57,7 +61,7 @@ func (d *Doctor) authBackendCheck() Check {
 			if err != nil {
 				res := Result{
 					State:   backendErrorState(err),
-					Detail:  backendErrorDetail(err, cfg, source, latency),
+					Detail:  backendErrorDetail(err, cfg, srcLabel, latency),
 					Fixable: backendErrorFixable(err),
 				}
 				if res.Fixable {
@@ -69,7 +73,7 @@ func (d *Doctor) authBackendCheck() Check {
 
 			return Result{
 				State:  StateOK,
-				Detail: fmt.Sprintf("latency %dms, source=%s, workspace=%s", latency.Milliseconds(), sourceLabel(source), cfg.WorkspaceID),
+				Detail: fmt.Sprintf("latency %dms, source=%s, workspace=%s", latency.Milliseconds(), srcLabel, cfg.WorkspaceID),
 			}
 		},
 	}
@@ -111,6 +115,10 @@ func runBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs map[s
 		ClientName:  "doctor-backend-probe",
 		AuthConfig:  cfg,
 		Logger:      log.NewLogger(log.WithDebugLog(debug)),
+		// One attempt: a rejected token will not be accepted on a retry, and the
+		// default of 3 turns a diagnostic into seconds of failure logging.
+		UploadRetry:     1,
+		UploadRetryWait: time.Millisecond,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("dial %s: %w", host, err)
@@ -167,8 +175,8 @@ func backendErrorState(err error) State {
 	return StateError
 }
 
-func backendErrorDetail(err error, cfg common.CacheAuthConfig, source common.AuthSource, latency time.Duration) string {
-	prefix := fmt.Sprintf("latency %dms, source=%s, workspace=%s — ", latency.Milliseconds(), sourceLabel(source), cfg.WorkspaceID)
+func backendErrorDetail(err error, cfg common.CacheAuthConfig, srcLabel string, latency time.Duration) string {
+	prefix := fmt.Sprintf("latency %dms, source=%s, workspace=%s — ", latency.Milliseconds(), srcLabel, cfg.WorkspaceID)
 
 	// The kv client converts gRPC Unauthenticated into a plain sentinel error
 	// before returning, so status.FromError can't see it. Check the sentinel first.

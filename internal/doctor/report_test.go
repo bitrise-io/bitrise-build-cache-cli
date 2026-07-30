@@ -167,3 +167,22 @@ func TestRun_OnlyRunsSelectedChecks(t *testing.T) {
 	require.Len(t, report.Items, 1)
 	assert.Equal(t, "log-dirs", report.Items[0].Name)
 }
+
+// A pinned credential has no AuthSource, and reporting "source=none" reads as
+// "nothing resolvable" — the opposite of what happened.
+func TestAuthBackendCheck_PinnedCredentialIsNamedInTheDetail(t *testing.T) {
+	pinned := common.CacheAuthConfig{AuthToken: "tok", WorkspaceID: "ws-1"}
+
+	d := NewDoctor()
+	d.Envs = map[string]string{}
+	d.AuthOverride = &pinned
+	d.BackendProbe = func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
+		return time.Millisecond, nil
+	}
+
+	res := d.authBackendCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "the credential this build used")
+	assert.NotContains(t, res.Detail, "source=none")
+}

@@ -21,7 +21,7 @@ const (
 	doctorProbeTimeout = 15 * time.Second
 
 	msgDoctorIssuesFound   = "Bitrise Build Cache health check found issues that can affect this build:"
-	msgDoctorRepairHint    = "Run `bitrise-build-cache doctor --fix` to repair."
+	msgDoctorRepairHint    = "Run `bitrise-build-cache doctor --fix --interactive` to repair."
 	msgDoctorIssuesRecap   = "Reminder — the health check at the start of this build reported:"
 	msgDoctorProbingAuth   = "Checking whether an expired auth token caused the failure above..."
 	msgDoctorProbeNoIssues = "Auth looks healthy, so the failure above is not a token problem."
