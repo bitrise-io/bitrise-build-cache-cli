@@ -246,3 +246,33 @@ func TestConfirmWizardLogin(t *testing.T) {
 	assert.False(t, confirmWizardLogin(silentLogger(), nil),
 		"no stream to confirm on: must not open a browser and then block on a callback")
 }
+
+func TestResolvedAuthNote(t *testing.T) {
+	kc := &stubKeychain{creds: keychain.Credentials{AuthToken: "t", WorkspaceID: "ws-1"}}
+
+	note := resolvedAuthNote(wizardAuth{
+		Config: configcommon.CacheAuthConfig{AuthToken: "t", WorkspaceID: "ws-1"},
+		Source: configcommon.AuthSourceKeychain,
+	}, kc)
+	assert.Contains(t, note, "Signing in was not needed")
+	assert.Contains(t, note, "keychain")
+	assert.Contains(t, note, "ws-1", "the note should name the workspace being used")
+
+	envNote := resolvedAuthNote(wizardAuth{
+		Config: configcommon.CacheAuthConfig{AuthToken: "t", WorkspaceID: "ws-2"},
+		Source: configcommon.AuthSourceEnvVars,
+	}, kc)
+	assert.Contains(t, envNote, "environment variables")
+
+	assert.Empty(t, resolvedAuthNote(wizardAuth{Source: configcommon.AuthSourceNone}, kc),
+		"nothing to report when the token prompt is about to ask")
+	assert.Empty(t, resolvedAuthNote(wizardAuth{
+		Source:      configcommon.AuthSourceKeychain,
+		SignedInNow: true,
+	}, kc), "no note after a sign-in the user just performed")
+}
+
+func TestSelectChrome_GrowsWithTheDescription(t *testing.T) {
+	assert.Equal(t, 2, selectChrome("one line"))
+	assert.Equal(t, 4, selectChrome("one line\n\nplus a note"))
+}

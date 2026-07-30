@@ -51,15 +51,20 @@ func (*huhWizard) Run(ctx context.Context) error {
 		huh.NewOption("ccache (C/C++)", string(toolCcache)),
 	}
 
+	toolsDescription := "Use space to toggle, enter to confirm."
+	if note := resolvedAuthNote(auth, kc); note != "" {
+		toolsDescription += "\n\n" + note
+	}
+
 	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
 	// group hide funcs, so the daemon question below can only be conditional if
 	// the group doesn't exist yet when the tools are unknown.
 	if err := runForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Which build tools should I set up?").
-			Description("Use space to toggle, enter to confirm.").
+			Description(toolsDescription).
 			Options(toolOptions...).
-			Height(len(toolOptions) + selectChromeLines).
+			Height(len(toolOptions) + selectChrome(toolsDescription)).
 			Validate(func(s []string) error {
 				if len(s) == 0 {
 					return errors.New("pick at least one tool")

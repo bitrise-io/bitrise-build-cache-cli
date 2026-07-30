@@ -3,6 +3,7 @@ package common
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/huh/v2"
@@ -19,10 +20,13 @@ const selectHeight = 12
 // unset one leaves it negative.
 const selectWidth = 72
 
-// selectChromeLines is the title + description huh subtracts from a field's
-// Height to size its option viewport. Without allowing for them, a 4-option list
-// with both title and description renders only 2 rows.
-const selectChromeLines = 2
+// selectChrome is the number of lines huh subtracts from a field's Height to size
+// its option viewport: one title plus however many the description occupies.
+// Without allowing for them, a 4-option list with a title and a one-line
+// description renders only 2 rows.
+func selectChrome(description string) int {
+	return 1 + strings.Count(description, "\n") + 1
+}
 
 // ErrAborted reports that the user cancelled an interactive prompt. Callers
 // report it and stop, rather than treating it as a failure.

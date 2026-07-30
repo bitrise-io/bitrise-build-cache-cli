@@ -165,6 +165,19 @@ func confirmWizardLogin(logger log.Logger, prompt io.Reader) bool {
 	return true
 }
 
+// resolvedAuthNote describes credentials the wizard found without asking, so the
+// first screen says where they came from. Empty when the user just signed in
+// (they know) or when none were found (the token prompt follows instead).
+func resolvedAuthNote(auth wizardAuth, loader configcommon.AuthLoader) string {
+	if auth.SignedInNow || auth.NeedsManualPrompt() {
+		return ""
+	}
+
+	desc := configcommon.DescribeResolvedWith(auth.Config, auth.Source, loader)
+
+	return "Signing in was not needed — using " + desc.Detail() + "."
+}
+
 func loadWizardKeychain(logger log.Logger, kc keychainStore) keychain.Credentials {
 	creds, err := kc.Load()
 	switch {
