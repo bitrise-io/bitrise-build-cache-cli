@@ -18,6 +18,7 @@ import (
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -105,10 +106,31 @@ func Activate(
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
+	exportSwiftPackagesPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
+
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
 
 	return nil
+}
+
+// exportSwiftPackagesPath publishes the SPM checkout dir the xcodebuild wrapper will pass as
+// -clonedSourcePackagesDirPath, so cache steps can target it. Without this the wrapper's
+// DerivedData relocation silently moves SPM checkouts out of whatever path a cache step was
+// configured with, and every build re-resolves its packages from origin.
+func exportSwiftPackagesPath(logger log.Logger, config Config, envs map[string]string) {
+	if !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
+		return
+	}
+
+	p, err := paths.Default()
+	if err != nil {
+		logger.Debugf("Skipping %s export: %v", EnvSwiftPackagesPath, err)
+
+		return
+	}
+
+	envexport.New(envs, logger).Export(EnvSwiftPackagesPath, p.XcodeManagedSwiftPackagesDir())
 }
 
 // ---------------------------------------------------------------------------

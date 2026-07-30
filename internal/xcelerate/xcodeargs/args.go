@@ -17,6 +17,7 @@ type XcodeArgs interface {
 	ShortCommand() string
 	HasBuildAction() bool
 	DerivedDataPath() string
+	ClonedSourcePackagesDirPath() string
 	ProjectTempDir() string
 	ProjectDir() string
 	UserOtherCFlags() string

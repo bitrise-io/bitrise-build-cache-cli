@@ -321,6 +321,63 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 		assert.Contains(t, other, "-fdepscan-prefix-map=/work/app=/^src")
 		assert.Contains(t, other, "/^dd")
 		assert.Contains(t, other, "/^obj")
+
+		// SPM checkouts follow the relocated DerivedData, so they get a stable managed dir too.
+		require.Contains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		spmIdx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		require.Less(t, spmIdx+1, len(captured))
+		assert.Equal(t, "/h/.bitrise/cache/xcode-spm", captured[spmIdx+1],
+			"SPM dir must not be workspace-sha scoped")
+		assert.Contains(t, other, "-fdepscan-prefix-map=/h/.bitrise/cache/xcode-spm=/^spm")
+	})
+
+	t.Run("respects user-supplied clonedSourcePackagesDirPath (no injection)", func(t *testing.T) {
+		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc:              func() bool { return true },
+			ArgsFunc:                        func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			ProjectDirFunc:                  func() string { return "/work/app" },
+			DerivedDataPathFunc:             func() string { return "" },
+			ProjectTempDirFunc:              func() string { return "" },
+			ClonedSourcePackagesDirPathFunc: func() string { return "/user/spm" },
+			UserOtherCFlagsFunc:             func() string { return "" },
+			CommandFunc:                     func() string { return "xcodebuild" },
+			ShortCommandFunc:                func() string { return "xcodebuild" },
+		}
+		var captured []string
+		r := newRunnerWithArgs(xcelerate.Config{
+			BuildCacheEnabled: true,
+			ProxySocketPath:   "/tmp/proxy.sock",
+		}, argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag,
+			"user's -clonedSourcePackagesDirPath must be left alone")
+		other := findBuildSetting(captured, xcodeargs.OtherCFlagsKey)
+		assert.Contains(t, other, "-fdepscan-prefix-map=/user/spm=/^spm")
+	})
+
+	t.Run("does not relocate SPM when user supplies DerivedDataPath", func(t *testing.T) {
+		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc:  func() bool { return true },
+			ArgsFunc:            func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			ProjectDirFunc:      func() string { return "/work/app" },
+			DerivedDataPathFunc: func() string { return "/user/dd" },
+			ProjectTempDirFunc:  func() string { return "" },
+			UserOtherCFlagsFunc: func() string { return "" },
+			CommandFunc:         func() string { return "xcodebuild" },
+			ShortCommandFunc:    func() string { return "xcodebuild" },
+		}
+		var captured []string
+		r := newRunnerWithArgs(xcelerate.Config{
+			BuildCacheEnabled: true,
+			ProxySocketPath:   "/tmp/proxy.sock",
+		}, argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag,
+			"SPM checkouts already sit under the user's DerivedData")
 	})
 
 	t.Run("respects user-supplied DerivedDataPath (no injection)", func(t *testing.T) {
