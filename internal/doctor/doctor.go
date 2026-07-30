@@ -216,7 +216,7 @@ func ApplyFixesUnattended(report *Report) {
 			continue
 		}
 		if NeedsTerminal(f) {
-			report.Items[i].FixError = "needs a terminal to ask for credentials — rerun `doctor --fix` from one"
+			report.Items[i].FixError = "needs a prompt — rerun with `--fix --interactive`"
 
 			continue
 		}

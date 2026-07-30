@@ -27,6 +27,7 @@ const (
 //nolint:gochecknoglobals
 var (
 	fixFlag              bool
+	interactiveFlag      bool
 	jsonOutput           bool
 	skipUpdateCheckFlag  bool
 	skipBackendProbeFlag bool
@@ -34,12 +35,36 @@ var (
 
 //nolint:gochecknoglobals
 var doctorCmd = &cobra.Command{
-	Use:          "doctor",
-	Short:        "Diagnose + optionally repair the local Bitrise Build Cache setup",
-	Long:         `doctor runs every health check the CLI knows about — auth, proxy, ccache helper, keychain, log dirs, CLI version — and optionally repairs the safe ones with --fix. Network calls (GitHub release lookup, Build Cache backend probe) can be skipped with --no-update-check / --no-backend-probe.`,
+	Use:   "doctor",
+	Short: "Diagnose + optionally repair the local Bitrise Build Cache setup",
+	Long: `doctor runs every health check the CLI knows about — auth, proxy, ccache helper,
+keychain, log dirs, CLI version — and can repair some of them.
+
+  doctor                      diagnose only, change nothing.
+  doctor --fix                repair everything repairable without asking, like
+                              ` + "`lint --fix`" + `. Repairs that need a prompt (setting
+                              credentials) are skipped and reported as such.
+  doctor --fix --interactive  show the results, then choose what to repair, with
+                              errors preselected. This is the one that can set up
+                              credentials, offering a browser sign-in first.
+
+Network calls (GitHub release lookup, Build Cache backend probe) can be skipped
+with --no-update-check / --no-backend-probe.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		out := cmd.OutOrStdout()
+
+		// --interactive is about choosing repairs, so it implies --fix.
+		if interactiveFlag {
+			fixFlag = true
+
+			if jsonOutput {
+				return errors.New("--interactive cannot be combined with --json: there is nowhere to ask")
+			}
+			if !interactiveStdout(out) {
+				return errors.New("--interactive needs a terminal. Use --fix on its own to repair everything unprompted")
+			}
+		}
 
 		d := doctorpkg.NewDoctor()
 		d.Debug = common.IsDebugLogMode
@@ -65,26 +90,23 @@ var doctorCmd = &cobra.Command{
 			return doctorExit(report)
 		}
 
-		if !fixFlag {
+		switch {
+		case interactiveFlag:
+			// The recap comes first so the choice is an informed one.
+			writeHuman(out, report, false, doctorpkg.EffectiveOverall(report), colorEnabled(out))
+
+			if err := applyChosenFixes(out, &report, colorEnabled(out)); err != nil {
+				return err
+			}
+		case fixFlag:
+			// Unprompted, like `lint --fix`: repair what can be repaired silently.
+			doctorpkg.ApplyFixesUnattended(&report)
+		default:
 			writeHuman(out, report, false, doctorpkg.EffectiveOverall(report), colorEnabled(out))
 
 			return doctorExit(report)
 		}
 
-		// Unattended: repair and report once, as a script expects.
-		if !interactiveStdout(out) {
-			doctorpkg.ApplyFixesUnattended(&report)
-			writeHuman(out, report, true, doctorpkg.EffectiveOverall(report), colorEnabled(out))
-
-			return doctorExit(report)
-		}
-
-		// Interactive: the recap comes first so the choice is an informed one.
-		writeHuman(out, report, false, doctorpkg.EffectiveOverall(report), colorEnabled(out))
-
-		if err := applyChosenFixes(out, &report, colorEnabled(out)); err != nil {
-			return err
-		}
 		writeHuman(out, report, true, doctorpkg.EffectiveOverall(report), colorEnabled(out))
 
 		return doctorExit(report)
@@ -100,8 +122,7 @@ func doctorExit(r doctorpkg.Report) error {
 }
 
 // applyChosenFixes asks which of the fixable issues to repair, with errors
-// preselected, and applies only those. Falls back to fixing everything fixable
-// when there is no terminal to ask on, so scripted `doctor --fix` keeps working.
+// preselected, and applies only those.
 func applyChosenFixes(out io.Writer, report *doctorpkg.Report, colored bool) error {
 	fixable := doctorpkg.Fixable(report.Items)
 	if len(fixable) == 0 {
@@ -257,7 +278,7 @@ func writeItem(w io.Writer, c colorPalette, it doctorpkg.ReportItem, fixed bool)
 	case it.FixError != "":
 		fmt.Fprintf(w, "      %s↳ fix failed:%s %s\n", c.red, c.reset, it.FixError)
 	case !fixed && it.Result.Fixable:
-		fmt.Fprintf(w, "      %s↳%s rerun with --fix to repair\n", c.yellow, c.reset)
+		fmt.Fprintf(w, "      %s↳%s rerun with `--fix --interactive` to choose what to repair\n", c.yellow, c.reset)
 	}
 }
 
@@ -305,7 +326,10 @@ func (c colorPalette) forState(state doctorpkg.State) string {
 }
 
 func init() {
-	doctorCmd.Flags().BoolVar(&fixFlag, "fix", false, "Apply safe repairs in addition to diagnosing")
+	doctorCmd.Flags().BoolVar(&fixFlag, "fix", false,
+		"Repair everything that can be repaired without asking. Fixes needing a prompt (credentials) are skipped — use --interactive for those.")
+	doctorCmd.Flags().BoolVar(&interactiveFlag, "interactive", false,
+		"Choose which issues to repair, with errors preselected. Implies --fix and needs a terminal.")
 	doctorCmd.Flags().BoolVar(&jsonOutput, "json", false, "Emit report as JSON instead of human-readable text")
 	doctorCmd.Flags().BoolVar(&skipUpdateCheckFlag, "no-update-check", false, "Skip the GitHub release lookup")
 	doctorCmd.Flags().BoolVar(&skipBackendProbeFlag, "no-backend-probe", false, "Skip the Build Cache backend auth probe (sentinel KV PUT)")

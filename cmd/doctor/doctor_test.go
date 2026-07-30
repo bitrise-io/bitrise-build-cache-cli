@@ -125,8 +125,8 @@ func TestWriteHuman_fixableHintOnlyWithoutFix(t *testing.T) {
 	items := []doctorpkg.ReportItem{warnItem("xcelerate-proxy", true)}
 
 	withoutFix := render(t, items, false)
-	assert.Contains(t, withoutFix, "rerun with --fix to repair")
+	assert.Contains(t, withoutFix, "--fix --interactive")
 
 	withFix := render(t, items, true)
-	assert.NotContains(t, withFix, "rerun with --fix to repair")
+	assert.NotContains(t, withFix, "--fix --interactive")
 }

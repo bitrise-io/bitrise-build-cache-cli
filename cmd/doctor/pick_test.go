@@ -3,6 +3,7 @@
 package doctor
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,4 +68,26 @@ func TestFixOptions_Empty(t *testing.T) {
 	options, selected := fixOptions(nil, palette(false))
 	assert.Empty(t, options)
 	assert.Empty(t, selected)
+}
+
+// The report is where users learn how to repair, so it has to point at the mode
+// that can actually ask them things.
+func TestWriteItem_AdvertisesTheInteractiveFix(t *testing.T) {
+	var buf strings.Builder
+	writeItem(&buf, palette(false), item("auth", doctorpkg.StateError, "no credentials found", true), false)
+
+	assert.Contains(t, buf.String(), "--fix --interactive")
+}
+
+// After a fix ran, the hint would be noise.
+func TestWriteItem_NoHintOnceFixed(t *testing.T) {
+	var buf strings.Builder
+	it := item("log-dirs", doctorpkg.StateWarn, "missing", true)
+	fixed := "created"
+	it.FixResult = &fixed
+
+	writeItem(&buf, palette(false), it, true)
+
+	assert.NotContains(t, buf.String(), "--interactive")
+	assert.Contains(t, buf.String(), "fixed: created")
 }
