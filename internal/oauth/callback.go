@@ -119,14 +119,25 @@ func (cs *callbackServer) deliver(w http.ResponseWriter, res callbackResult) {
 	_, _ = io.WriteString(w, successPage)
 }
 
-// parsePastedCallback accepts what a user can realistically copy out of the
+// PastedCallback is the outcome of parsing one line of user input as a callback
+// URL. Retry means the line was unusable — bad paste, wrong line — as opposed to
+// a sign-in the provider rejected, so the caller can ask for another line instead
+// of failing the login.
+type PastedCallback struct {
+	Code  string
+	Err   error
+	Retry bool
+}
+
+// ParsePastedCallback accepts what a user can realistically copy out of the
 // browser when the loopback redirect couldn't be reached: the full callback URL,
-// a bare `?a=b&c=d` query string, or just the params. retry reports that the
-// input was unusable rather than a rejected sign-in, so the caller can ask again.
-func parsePastedCallback(input, wantState string) (res callbackResult, retry bool) { //nolint:nonamedreturns // the bool needs a label to read at call sites
+// a bare `?a=b&c=d` query string, or just the params. It applies the same state
+// and error checks as the loopback handler, so a CallbackFallback cannot skip
+// them.
+func ParsePastedCallback(input, wantState string) PastedCallback {
 	s := strings.Trim(strings.TrimSpace(input), `"'`)
 	if s == "" {
-		return callbackResult{err: errors.New("empty input")}, true
+		return PastedCallback{Err: errors.New("empty input"), Retry: true}
 	}
 
 	if i := strings.Index(s, "?"); i >= 0 {
@@ -135,13 +146,15 @@ func parsePastedCallback(input, wantState string) (res callbackResult, retry boo
 
 	q, err := url.ParseQuery(s)
 	if err != nil {
-		return callbackResult{err: fmt.Errorf("parse pasted callback URL: %w", err)}, true
+		return PastedCallback{Err: fmt.Errorf("parse pasted callback URL: %w", err), Retry: true}
 	}
 	if q.Get("code") == "" && q.Get("error") == "" {
-		return callbackResult{err: errors.New("no code or error parameter in it")}, true
+		return PastedCallback{Err: errors.New("no code or error parameter in it"), Retry: true}
 	}
 
-	return parseCallbackParams(q, wantState), false
+	res := parseCallbackParams(q, wantState)
+
+	return PastedCallback{Code: res.code, Err: res.err}
 }
 
 func joinNonEmpty(a, b string) string {

@@ -127,7 +127,7 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	cfg := oauth.NewConfigFromEnv(envs)
 	cfg.Logger = logger
 	if isInteractiveStdin() {
-		cfg.PasteReader = os.Stdin
+		cfg.CallbackFallback = callbackPaster{Reader: os.Stdin, Logger: logger}.Fallback
 	}
 
 	creds, err := cfg.Login(ctx, oauth.OpenBrowser)

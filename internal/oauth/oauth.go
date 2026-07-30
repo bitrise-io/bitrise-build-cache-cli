@@ -5,7 +5,6 @@
 package oauth
 
 import (
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -41,14 +40,10 @@ type Config struct {
 	Resource          string // audience/resource indicator pinned into the JWT
 	HTTPClient        *http.Client
 	Logger            log.Logger // optional; nil disables logging
-	// PasteReader enables the manual callback-URL fallback for hosts where the
-	// browser can't reach the CLI's loopback listener (remote/RDE sessions):
-	// lines read from it are parsed as pasted callback URLs. Nil disables the
+	// CallbackFallback supplies the authorization code when the browser can't
+	// reach the CLI's loopback listener (remote/RDE sessions). Nil disables the
 	// fallback (the default; non-interactive callers).
-	PasteReader io.Reader
-	// PasteGrace overrides how long the loopback gets before PasteReader is
-	// touched. Zero means pasteGrace.
-	PasteGrace time.Duration
+	CallbackFallback CallbackFallback
 }
 
 func (c Config) debugf(format string, args ...any) { //nolint:unparam // variadic for symmetry with infof/warnf and future callers
