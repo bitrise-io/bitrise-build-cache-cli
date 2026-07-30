@@ -11,9 +11,8 @@ import (
 
 // ErrUnavailable means this machine has no usable OS keychain at all: a Linux box
 // with no secret-service on the session bus (headless, containers, most CI), or a
-// platform go-keyring has no backend for. It is not a failed operation — there is
-// simply nowhere to read from or write to, so callers treat the backend as absent
-// rather than broken.
+// platform go-keyring has no backend for. Nothing failed — there is nowhere to
+// read from or write to — so callers treat the backend as absent, not broken.
 var ErrUnavailable = errors.New("no usable OS keychain on this machine")
 
 // dbusSessionBusMissing is godbus's message when there is no session bus to talk
@@ -32,8 +31,7 @@ func classify(err error) error {
 }
 
 // Unavailable reports whether err means there is no keychain service to talk to.
-// Exported for callers holding a raw Backend, whose errors don't pass through
-// classify.
+// Exported for callers holding a raw Backend, which doesn't pass through classify.
 func Unavailable(err error) bool {
 	if err == nil {
 		return false

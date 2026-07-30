@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -62,12 +63,12 @@ func (*huhWizard) Run(ctx context.Context) error {
 	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
 	// group hide funcs, so the daemon question below can only be conditional if
 	// the group doesn't exist yet when the tools are unknown.
-	if err := runForm(huh.NewGroup(
+	if err := tui.RunForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Which build tools should I set up?").
 			Description(toolsDescription).
 			Options(toolOptions...).
-			Height(len(toolOptions) + selectChrome(toolsDescription)).
+			Height(len(toolOptions) + tui.Chrome(toolsDescription)).
 			Validate(func(s []string) error {
 				if len(s) == 0 {
 					return errors.New("pick at least one tool")
@@ -77,7 +78,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 			}).
 			Value(&selectedTools),
 	)); err != nil {
-		return err
+		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
 	var groups []*huh.Group
@@ -122,8 +123,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 		)
 	}
 
-	if err := runForm(groups...); err != nil {
-		return err
+	if err := tui.RunForm(groups...); err != nil {
+		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
 	persistWizardCredentials(logger, kc, auth, wizardCredentials{

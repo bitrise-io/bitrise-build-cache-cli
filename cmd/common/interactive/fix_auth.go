@@ -28,7 +28,7 @@ func FixAuthPrompt(ctx context.Context, logger log.Logger) func() (string, strin
 				Negative("Enter a token").
 				Value(&useBrowser),
 		)); err != nil {
-			return "", "", err //nolint:wrapcheck // ErrAborted, or already wrapped
+			return "", "", err //nolint:wrapcheck // tui.ErrAborted, or already wrapped
 		}
 
 		if !useBrowser {

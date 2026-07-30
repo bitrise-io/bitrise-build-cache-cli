@@ -15,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
 
 func silentLogger() log.Logger {
@@ -274,8 +275,8 @@ func TestResolvedAuthNote(t *testing.T) {
 }
 
 func TestSelectChrome_GrowsWithTheDescription(t *testing.T) {
-	assert.Equal(t, 2, selectChrome("one line"))
-	assert.Equal(t, 4, selectChrome("one line\n\nplus a note"))
+	assert.Equal(t, 2, tui.Chrome("one line"))
+	assert.Equal(t, 4, tui.Chrome("one line\n\nplus a note"))
 }
 
 type failingStore struct {

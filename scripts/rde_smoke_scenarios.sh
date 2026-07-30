@@ -303,7 +303,7 @@ fi
 scenario "SCENARIO D — auth login accepts a pasted callback URL"
 
 step "login prints the paste hint and rejects a mismatched state"
-# expect drives a pty so PasteReader is armed. We paste a callback URL built
+# expect drives a pty so the paste fallback is armed. We paste a callback URL built
 # from the printed authorize URL but with a deliberately wrong state — proving
 # the paste was read and validated without needing a real authorization code.
 remote_bash "cat > /tmp/paste.exp <<'PEXP'

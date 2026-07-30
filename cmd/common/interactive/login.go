@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -104,7 +105,7 @@ func runLogin(cmd *cobra.Command) error {
 	}
 
 	if _, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage); err != nil {
-		if errors.Is(err, ErrAborted) {
+		if errors.Is(err, tui.ErrAborted) {
 			logger.Infof("Sign-in cancelled. Nothing was saved.")
 
 			return nil

@@ -20,8 +20,8 @@ type deadlineReader interface {
 	SetReadDeadline(t time.Time) error
 }
 
-// callbackPaster reads a callback URL the user pastes into the terminal, for
-// hosts where the browser can't reach the CLI's loopback listener.
+// callbackPaster covers the hosts where the browser can't reach the CLI's
+// loopback listener (remote/RDE sessions).
 type callbackPaster struct {
 	Reader io.Reader
 	Logger log.Logger
@@ -30,8 +30,6 @@ type callbackPaster struct {
 	Grace time.Duration
 }
 
-// Fallback adapts the paster to what the OAuth flow expects.
-//
 // The reader is armed only after the grace period, because a blocked read on a
 // terminal cannot be cancelled — SetReadDeadline is unsupported on a character
 // device — so an armed reader that outlives the sign-in would race whatever
@@ -70,9 +68,6 @@ func (p callbackPaster) Fallback(ctx context.Context, state string) (string, err
 	}
 }
 
-// read parses each line as a callback URL, delivering the first conclusive one (a
-// code, or an authorization error from the provider) and nudging the user on
-// anything unparseable.
 func (p callbackPaster) read(state string, out chan<- oauth.PastedCallback) {
 	scanner := bufio.NewScanner(p.Reader)
 	for scanner.Scan() {
@@ -94,12 +89,9 @@ func (p callbackPaster) read(state string, out chan<- oauth.PastedCallback) {
 	}
 }
 
-// stop unblocks the reader's pending read so it can't linger and steal keystrokes
-// from later prompts, then restores blocking reads.
-//
-// It reports failure loudly: a reader left blocked on a shared stdin competes for
-// every byte with the next prompt, which looks like dropped keystrokes rather
-// than an error.
+// stop unblocks the reader's pending read, then restores blocking reads. Failure
+// is reported loudly: a reader left blocked on a shared stdin competes for every
+// byte with the next prompt, which looks like dropped keystrokes, not an error.
 func (p callbackPaster) stop(done <-chan struct{}) {
 	select {
 	case <-done:

@@ -19,6 +19,7 @@ import (
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
@@ -56,7 +57,7 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 		}
 
 		if err := (&huhWizard{}).Run(cmd.Context()); err != nil {
-			if errors.Is(err, ErrAborted) {
+			if errors.Is(err, tui.ErrAborted) {
 				log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)).Infof("Setup cancelled. No build tools were activated.")
 
 				return nil
