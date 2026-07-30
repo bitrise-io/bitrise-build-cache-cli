@@ -72,7 +72,11 @@ This is narrower than ` + "`auth clear`" + `:
 			logger.Infof("Not signed in via the browser, so there is no login to remove.")
 			logger.Infof("A manually set token is stored in the %s and is left untouched — use `auth clear` to remove that.", source.Kind())
 		default:
-			if err := oauth.Clear(); err != nil {
+			// Only the backend holding the login: oauth.Clear() wipes both, which
+			// would take a manually set token in the other one with it — and
+			// PersistActivateCreds writes without SaveExclusive, so both can be
+			// populated at once.
+			if err := oauth.ClearFrom(source); err != nil {
 				return fmt.Errorf("clear stored login: %w", err)
 			}
 			logger.Infof("Signed out — the browser login was removed from the %s.", source.Kind())

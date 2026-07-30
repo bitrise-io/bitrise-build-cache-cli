@@ -1,58 +1,23 @@
 package common
 
 import (
-	"errors"
-	"fmt"
-	"strings"
-
-	"charm.land/bubbles/v2/key"
 	"charm.land/huh/v2"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
 
-// selectHeight caps how many options a picker renders at once. huh only applies
-// its own default to dynamic OptionsFunc fields, so a static Options() list is
-// rendered in full — an 81-workspace account repainted an 82-line frame on every
-// keypress. Capping it makes the frame constant; the redraw stays linear in the
-// option count, because optionsView renders them all before the viewport trims.
-const selectHeight = 12
+// ErrAborted is re-exported so callers in this package keep one name for it.
+var ErrAborted = tui.ErrAborted
 
-// selectWidth is set because huh derives maxWidth from the field width, and an
-// unset one leaves it negative.
-const selectWidth = 72
+const (
+	selectHeight = tui.SelectHeight
+	selectWidth  = tui.SelectWidth
+)
 
-// selectChrome is the number of lines huh subtracts from a field's Height to size
-// its option viewport: one title plus however many the description occupies.
-// Without allowing for them, a 4-option list with a title and a one-line
-// description renders only 2 rows.
-func selectChrome(description string) int {
-	return 1 + strings.Count(description, "\n") + 1
-}
+func selectChrome(description string) int { return tui.Chrome(description) }
 
-// ErrAborted reports that the user cancelled an interactive prompt. Callers
-// report it and stop, rather than treating it as a failure.
-var ErrAborted = errors.New("cancelled by user")
+func interactiveKeyMap() *huh.KeyMap { return tui.KeyMap() }
 
-// interactiveKeyMap is huh's default map with esc added alongside ctrl+c as an
-// abort, so every screen can be left the same way. Safe because esc's other
-// bindings (set/clear filter) are only enabled while filtering is on, which none
-// of our fields turn on.
-func interactiveKeyMap() *huh.KeyMap {
-	km := huh.NewDefaultKeyMap()
-	km.Quit = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
-
-	return km
-}
-
-// runForm runs the groups as one abortable form, translating huh's abort into
-// ErrAborted so callers don't have to know about huh.
 func runForm(groups ...*huh.Group) error {
-	err := huh.NewForm(groups...).WithKeyMap(interactiveKeyMap()).Run()
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, huh.ErrUserAborted):
-		return ErrAborted
-	default:
-		return fmt.Errorf("interactive wizard: %w", err)
-	}
+	return tui.RunForm(groups...) //nolint:wrapcheck // tui returns ErrAborted or an already-wrapped error
 }

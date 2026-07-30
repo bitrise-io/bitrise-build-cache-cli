@@ -10,6 +10,9 @@ type AuthPromptFixer struct {
 	Prompt func() (workspaceID, authToken string, err error)
 }
 
+// NeedsTerminal marks this fixer as one that must ask the user something.
+func (f AuthPromptFixer) NeedsTerminal() bool { return true }
+
 func (f AuthPromptFixer) Fix() (string, error) {
 	prompt := f.Prompt
 	if prompt == nil {

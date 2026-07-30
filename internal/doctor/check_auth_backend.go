@@ -37,7 +37,7 @@ func (d *Doctor) authBackendCheck() Check {
 						State:   StateError,
 						Detail:  "the credential this build used is empty — it cannot authenticate",
 						Fixable: true,
-						Fixer:   AuthPromptFixer{},
+						Fixer:   AuthPromptFixer{Prompt: d.AuthFixPrompt},
 					}
 				}
 			}
@@ -61,7 +61,7 @@ func (d *Doctor) authBackendCheck() Check {
 					Fixable: backendErrorFixable(err),
 				}
 				if res.Fixable {
-					res.Fixer = AuthPromptFixer{}
+					res.Fixer = AuthPromptFixer{Prompt: d.AuthFixPrompt}
 				}
 
 				return res

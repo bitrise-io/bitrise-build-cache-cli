@@ -288,7 +288,11 @@ type failingStore struct {
 func (f *failingStore) Kind() store.Kind { return f.kind }
 
 func (f *failingStore) Load() (keychain.Credentials, error) {
-	return keychain.Credentials{}, store.ErrNotFound
+	if !f.saved {
+		return keychain.Credentials{}, store.ErrNotFound
+	}
+
+	return f.savedCred, nil
 }
 
 func (f *failingStore) Save(c keychain.Credentials) error {
@@ -300,7 +304,11 @@ func (f *failingStore) Save(c keychain.Credentials) error {
 	return nil
 }
 
-func (f *failingStore) Clear() error { return nil }
+func (f *failingStore) Clear() error {
+	f.saved, f.savedCred = false, keychain.Credentials{}
+
+	return nil
+}
 
 // A locked keychain must not throw away a completed sign-in.
 func TestSaveLoginWithFallback_FallsBackToTheConfigFile(t *testing.T) {

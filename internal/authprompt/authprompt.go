@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
 
 func Group(workspaceID, authToken *string) *huh.Group {
@@ -67,11 +68,7 @@ func PromptAndSave() (workspaceID, authToken string, err error) {
 }
 
 func defaultRunForm(group *huh.Group) error {
-	if err := huh.NewForm(group).Run(); err != nil {
-		return fmt.Errorf("huh form: %w", err)
-	}
-
-	return nil
+	return tui.RunForm(group) //nolint:wrapcheck // tui already returns ErrAborted / a wrapped error
 }
 
 func nonEmpty(label string) func(string) error {
