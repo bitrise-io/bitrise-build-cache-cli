@@ -116,8 +116,6 @@ func Activate(
 
 // exportDerivedDataPath publishes where the wrapper relocates DerivedData to, so cache steps can
 // target the SPM checkouts under it instead of the default location the build no longer uses.
-// Exported as a glob because the per-workspace sha is only known once the wrapper sees the
-// xcodebuild args, and it matches the shape the cache steps' own defaults already use.
 func exportDerivedDataPath(logger log.Logger, config Config, envs map[string]string) {
 	if !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
 		return
@@ -130,7 +128,7 @@ func exportDerivedDataPath(logger log.Logger, config Config, envs map[string]str
 		return
 	}
 
-	envexport.New(envs, logger).Export(EnvDerivedDataPath, filepath.Join(p.XcodeManagedDerivedDataRoot(), "**"))
+	envexport.New(envs, logger).Export(EnvDerivedDataPath, p.XcodeManagedDerivedDataRoot())
 }
 
 // ---------------------------------------------------------------------------
