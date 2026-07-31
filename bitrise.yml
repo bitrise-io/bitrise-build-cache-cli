@@ -1339,21 +1339,24 @@ workflows:
         inputs:
         - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
     - script:
-        title: 'ACI-5253: rebuild and assert SPM downloaded nothing'
+        title: 'ACI-5253: assert SPM resolves offline from the restored checkouts'
         inputs:
         - content: |-
-            set -eo pipefail
+            set -exo pipefail
 
-            xcodebuild build \
+            # Discovered rather than recomputed, so the test does not restate the workspace-sha rule.
+            spm_dir=$(echo "${BITRISE_XCODE_DERIVED_DATA_PATH:?}"/*/SourcePackages)
+            [ -d "$spm_dir" ] || { echo "restore left no SourcePackages under $BITRISE_XCODE_DERIVED_DATA_PATH"; exit 1; }
+
+            # -resolvePackageDependencies is a query action, so the wrapper does not point it at the
+            # managed DerivedData for us.
+            xcodebuild -resolvePackageDependencies \
               -workspace ComposableArchitecture.xcworkspace \
               -scheme ComposableArchitecture \
-              -destination "generic/platform=iOS" \
-              -skipMacroValidation 2> wrapper-warm.log | tee xcodebuild-warm.log | xcpretty
-
-            cp wrapper-warm.log xcodebuild-warm.log "$BITRISE_DEPLOY_DIR"
+              -clonedSourcePackagesDirPath "$spm_dir" 2>&1 | tee "$BITRISE_DEPLOY_DIR/spm-resolve.log"
 
             # A "Fetching from" line means the cache steps archived a dir the build never reads.
-            if grep -n 'Fetching from' xcodebuild-warm.log; then
+            if grep -n 'Fetching from' "$BITRISE_DEPLOY_DIR/spm-resolve.log"; then
               echo "SPM re-fetched packages despite the restored checkouts"
               exit 1
             fi
