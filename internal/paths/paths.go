@@ -280,8 +280,7 @@ func (p Paths) XcodeManagedDerivedDataDir(workspaceSHA string) string {
 	return filepath.Join(p.XcodeManagedDerivedDataRoot(), workspaceSHA)
 }
 
-// XcodeManagedDerivedDataRoot returns the parent of every per-workspace DerivedData dir. SPM
-// checkouts live at <root>/<workspace-sha>/SourcePackages, so this is what cache steps glob.
+// XcodeManagedDerivedDataRoot returns the parent of every per-workspace DerivedData dir.
 func (p Paths) XcodeManagedDerivedDataRoot() string {
 	return p.BitriseCacheDir(xcodeManagedDerivedDataTool)
 }

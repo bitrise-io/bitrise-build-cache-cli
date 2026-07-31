@@ -733,13 +733,8 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	return append(toPass, extraArgv...)
 }
 
-// sourcePackagesArgvForQueryAction points a package-resolving query action at the SPM checkout dir
-// the build itself uses. Without it `xcodebuild -list` and `-resolvePackageDependencies` fetch a
-// second copy of every package into the default DerivedData, which no build ever reads.
-//
-// This injects xcodebuild's own default location relative to the DerivedData in play, so no new
-// path reaches a compile command and compilation cache keys are untouched. -derivedDataPath is not
-// an option here: xcodebuild rejects it on these actions unless -scheme is also present.
+// sourcePackagesArgvForQueryAction points a resolving query action at the checkout dir the build
+// uses. The value is xcodebuild's own default there, so no new path reaches a compile command.
 func (c *XcodebuildRunner) sourcePackagesArgvForQueryAction() []string {
 	if !c.XcodeArgs.ResolvesPackages() || c.XcodeArgs.ClonedSourcePackagesDirPath() != "" {
 		return nil

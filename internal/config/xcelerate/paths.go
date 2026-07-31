@@ -44,9 +44,8 @@ func ConfigFile(osProxy utils.OsProxy) string {
 // EnvProxySocketPath overrides the default xcelerate proxy socket location when set.
 const EnvProxySocketPath = "BITRISE_XCELERATE_PROXY_SOCKET_PATH"
 
-// EnvDerivedDataPath is exported by `activate xcode` with the root the wrapper relocates
-// DerivedData under. Builds live at <root>/<workspace-sha>, so consumers glob for the workspaces
-// they want. Advisory only — the wrapper computes its own paths rather than reading this back.
+// EnvDerivedDataPath is exported by `activate xcode`; builds live at <root>/<workspace-sha>.
+// Advisory only — the wrapper computes its own paths rather than reading it back.
 const EnvDerivedDataPath = "BITRISE_XCODE_DERIVED_DATA_PATH"
 
 // EnvInactivityTimeout overrides the xcelerate proxy inactivity window that

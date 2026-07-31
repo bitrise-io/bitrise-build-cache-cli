@@ -1348,9 +1348,7 @@ workflows:
             spm_dir=$(echo "${BITRISE_XCODE_DERIVED_DATA_PATH:?}"/*/SourcePackages)
             [ -d "$spm_dir" ] || { echo "restore left no SourcePackages under $BITRISE_XCODE_DERIVED_DATA_PATH"; exit 1; }
 
-            # No -clonedSourcePackagesDirPath on purpose: the wrapper injects it for resolving query
-            # actions, so this also covers that injection. Without it the resolve would read the
-            # default DerivedData, find nothing and re-fetch.
+            # No -clonedSourcePackagesDirPath: the wrapper injects it, so this covers that too.
             xcodebuild -resolvePackageDependencies \
               -workspace ComposableArchitecture.xcworkspace \
               -scheme ComposableArchitecture 2>&1 | tee "$BITRISE_DEPLOY_DIR/spm-resolve.log"

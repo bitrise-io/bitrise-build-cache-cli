@@ -30,8 +30,7 @@ const (
 	ProjectTempDirKey           = "PROJECT_TEMP_DIR"
 	DerivedDataPathFlag         = "-derivedDataPath"
 
-	// ClonedSourcePackagesDirPathFlag is injected on package-resolving query actions.
-	// -derivedDataPath cannot be: xcodebuild rejects it without -scheme.
+	// Used instead of -derivedDataPath on query actions, which reject that without -scheme.
 	ClonedSourcePackagesDirPathFlag = "-clonedSourcePackagesDirPath"
 )
 

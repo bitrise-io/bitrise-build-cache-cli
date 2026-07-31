@@ -548,7 +548,6 @@ func Test_queryActionSourcePackages(t *testing.T) {
 		require.Contains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 		idx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 		require.Less(t, idx+1, len(captured))
-		// xcodebuild's own default relative to the managed DerivedData, so no new path is introduced.
 		assert.Contains(t, captured[idx+1], "/h/.bitrise/cache/xcode-dd/")
 		assert.True(t, strings.HasSuffix(captured[idx+1], "/SourcePackages"), captured[idx+1])
 	})
@@ -588,7 +587,6 @@ func Test_queryActionSourcePackages(t *testing.T) {
 
 		_ = r.Run(context.Background())
 
-		// Injecting the checkout dir must not promote a query action into a reported build.
 		assert.Empty(t, sessionMock.SetSessionCalls(), "query invocations must not open a proxy session")
 		assert.Empty(t, sessionMock.EndSessionCalls(), "query invocations must not end a proxy session")
 		assert.Empty(t, receivedAdditional, "query invocations must get no cache build settings")

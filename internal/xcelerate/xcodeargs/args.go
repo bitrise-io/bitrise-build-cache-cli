@@ -156,14 +156,7 @@ func (p Default) HasBuildAction() bool {
 	return HasBuildAction(p.OriginalArgs)
 }
 
-// packageResolvingQueryActions are query actions that still resolve the Swift package graph, so
-// their checkouts must land where the build reads them rather than in the default DerivedData.
-//
-// Both accept -clonedSourcePackagesDirPath and write their checkouts to it (verified on Xcode
-// 26.4.1). -derivedDataPath cannot be used instead: xcodebuild rejects it on these actions unless
-// -scheme is also present. The flag has existed since Xcode 11, and the oldest stack running Xcode
-// build cache in the last 90 days is 16.0 (457 invocations across a handful of workspaces, against
-// ~550k on 26.x), so it is available everywhere this runs.
+// packageResolvingQueryActions still populate SPM checkouts despite not building.
 var packageResolvingQueryActions = []string{
 	"-resolvePackageDependencies",
 	"-list",

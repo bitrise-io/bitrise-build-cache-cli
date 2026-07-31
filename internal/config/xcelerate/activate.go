@@ -115,7 +115,7 @@ func Activate(
 }
 
 // exportDerivedDataPath publishes where the wrapper relocates DerivedData to, so cache steps can
-// target the SPM checkouts under it instead of the default location the build no longer uses.
+// target the SPM checkouts under it.
 func exportDerivedDataPath(logger log.Logger, config Config, envs map[string]string) {
 	if !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
 		return
