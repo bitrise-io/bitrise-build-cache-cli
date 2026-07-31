@@ -109,7 +109,7 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 	params.Cache.Enabled = true
 	params.Cache.PushEnabled = pushEnabled
 
-	params.CLIPath = clibin.Resolve(logger, clibin.PreferPATH)
+	params.CLIPath = clibin.Resolve(logger)
 
 	if err := gradleconfig.Activate(
 		logger,
@@ -160,7 +160,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	// Without this the bazelrc falls back to a literal Bearer token: it leaks the
 	// credential onto disk, and an OAuth PAT baked in that way expires with no way
 	// to refresh. The helper re-resolves per build, which does refresh.
-	params.CLIPath = clibin.Resolve(logger, clibin.CopyToStableDir)
+	params.CLIPath = clibin.Resolve(logger)
 
 	commandFunc := func(cmd string, args ...string) (string, error) {
 		out, err2 := exec.Command(cmd, args...).CombinedOutput() //nolint:noctx

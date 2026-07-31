@@ -84,7 +84,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	activateGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
 	activateGradleParams.TestDistro.Enabled = false
 
-	activateGradleParams.CLIPath = clibin.Resolve(logger, clibin.PreferPATH)
+	activateGradleParams.CLIPath = clibin.Resolve(logger)
 
 	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {

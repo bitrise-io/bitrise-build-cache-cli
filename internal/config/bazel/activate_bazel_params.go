@@ -6,6 +6,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 type CacheParams struct {
@@ -29,9 +30,10 @@ type ActivateBazelParams struct {
 	BES        BESParams
 	RBE        RBEParams
 	Timestamps bool
-	// CLIPath is the absolute path of the bitrise-build-cache binary. Passed to
-	// the bazelrc template so local `.bazelrc` can reference the binary via
-	// `--credential_helper=<CLIPath>` instead of embedding the auth token.
+	// CLIPath is how the generated bazelrc names the CLI in
+	// `--credential_helper=<CLIPath>`, instead of embedding the auth token. An
+	// absolute path normally; empty means fall back to the bare binary name,
+	// which Bazel looks up in $PATH.
 	CLIPath string
 }
 
@@ -107,7 +109,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		WorkflowName: cacheConfig.BitriseWorkflowName,
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
-		CLIPath:      params.CLIPath,
+		CLIPath:      credentialHelperPath(params.CLIPath),
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,
@@ -197,4 +199,15 @@ func (params ActivateBazelParams) rbeTemplateInventory(
 		Enabled:             true,
 		EndpointURLWithPort: rbeEndpoint,
 	}
+}
+
+// credentialHelperPath keeps the helper reachable when the caller has no usable
+// absolute path: Bazel resolves a bare name through $PATH, which also survives a
+// CLI upgrade that moves the binary.
+func credentialHelperPath(cliPath string) string {
+	if cliPath != "" {
+		return cliPath
+	}
+
+	return paths.CLIBinaryName
 }

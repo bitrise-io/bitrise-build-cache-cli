@@ -67,7 +67,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	}
 	bazelrcPath := filepath.Join(homeDir, ".bazelrc")
 
-	activateBazelParams.CLIPath = clibin.Resolve(logger, clibin.CopyToStableDir)
+	activateBazelParams.CLIPath = clibin.Resolve(logger)
 
 	// Run main logic
 	if err := ActivateBazelCmdFn(

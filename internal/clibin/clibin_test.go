@@ -88,32 +88,16 @@ func TestResolve_TestBinaryIsItselfOnATransientPath(t *testing.T) {
 		"expected the test binary at %s to look transient; if this fails the two cases below prove nothing", exe)
 }
 
-func TestResolve_CopiesOffATransientPath(t *testing.T) {
+func TestResolve_TransientPathResolvesToTheBareName(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	got := Resolve(newTestLogger(), CopyToStableDir)
-
-	stable, err := StablePath()
-	require.NoError(t, err)
-	// Not asserting the result looks non-transient: t.TempDir() puts HOME under
-	// /var/folders on macOS, so the stable path is only stable for a real home.
-	assert.Equal(t, stable, got)
-
-	info, err := os.Stat(got)
-	require.NoError(t, err, "the pinned path has to exist after this command exits")
-	assert.NotZero(t, info.Size())
-}
-
-func TestResolve_PreferPATHLeavesTheBareNameToTheCaller(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	got := Resolve(newTestLogger(), PreferPATH)
+	got := Resolve(newTestLogger())
 
 	assert.Empty(t, got, "an empty path is how callers fall back to the $PATH lookup")
 
 	stable, err := StablePath()
 	require.NoError(t, err)
-	assert.NoFileExists(t, stable, "PreferPATH must not copy anything")
+	assert.NoFileExists(t, stable, "resolving must not copy the binary anywhere")
 }
 
 func newTestLogger() log.Logger {

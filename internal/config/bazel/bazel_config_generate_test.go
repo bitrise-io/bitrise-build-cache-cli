@@ -1,6 +1,7 @@
 package bazelconfig
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -177,6 +178,32 @@ func Test_Generate(t *testing.T) {
 				},
 			},
 			want:    expectedLocalHelperConfig,
+			wantErr: "",
+		},
+		{
+			// The bare name is what `activate` passes when the running binary is on a
+			// temporary path. Dropping the helper here would silently fall back to
+			// writing the token into ~/.bazelrc.
+			name: "Local dev with the bare binary name resolves the helper via $PATH",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "",
+					CLIPath:     "bitrise-build-cache",
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    strings.ReplaceAll(expectedLocalHelperConfig, "/usr/local/bin/bitrise-build-cache", "bitrise-build-cache"),
 			wantErr: "",
 		},
 		{

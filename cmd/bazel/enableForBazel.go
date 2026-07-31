@@ -90,7 +90,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	params.RBE.Enabled = rbeEnabled
 	params.Timestamps = timestamps
 
-	params.CLIPath = clibin.Resolve(logger, clibin.CopyToStableDir)
+	params.CLIPath = clibin.Resolve(logger)
 
 	inventory, err := params.TemplateInventory(logger, envProvider, func(cmd string, params ...string) (string, error) {
 		output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx

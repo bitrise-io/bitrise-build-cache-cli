@@ -51,7 +51,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			logger.Warnf("Could not relocate preboot Gradle mirrors init script: %s", merr)
 		}
 
-		activateGradleParams.CLIPath = clibin.Resolve(logger, clibin.PreferPATH)
+		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
 		if err := gradleconfig.Activate(
 			logger,
