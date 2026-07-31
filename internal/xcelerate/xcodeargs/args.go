@@ -17,6 +17,8 @@ type XcodeArgs interface {
 	ShortCommand() string
 	HasBuildAction() bool
 	DerivedDataPath() string
+	ClonedSourcePackagesDirPath() string
+	ResolvesPackages() bool
 	ProjectTempDir() string
 	ProjectDir() string
 	UserOtherCFlags() string
@@ -152,6 +154,25 @@ func HasBuildAction(argv []string) bool {
 
 func (p Default) HasBuildAction() bool {
 	return HasBuildAction(p.OriginalArgs)
+}
+
+// packageResolvingQueryActions are query actions that still resolve the Swift package graph, so
+// their checkouts must land where the build reads them rather than in the default DerivedData.
+// Verified against Xcode 26.4.1: both accept -clonedSourcePackagesDirPath and both write checkouts.
+var packageResolvingQueryActions = []string{
+	"-resolvePackageDependencies",
+	"-list",
+}
+
+// ResolvesPackages reports whether a non-build invocation still populates SPM checkouts.
+func (p Default) ResolvesPackages() bool {
+	for _, arg := range p.OriginalArgs {
+		if slices.Contains(packageResolvingQueryActions, arg) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (p Default) ShortCommand() string {

@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -681,7 +682,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 
 	// Query-only invocations (-list, -version, -showBuildSettings on its own, ...) reject -derivedDataPath and don't need cache wiring. Primary short-circuit is in Run() after assembleArgs returns; this branch is defensive.
 	if !c.XcodeArgs.HasBuildAction() {
-		return c.XcodeArgs.Args(additional)
+		return append(c.XcodeArgs.Args(additional), c.sourcePackagesArgvForQueryAction()...)
 	}
 
 	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = c.Config.ProxySocketPath
@@ -730,6 +731,37 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	}
 
 	return append(toPass, extraArgv...)
+}
+
+// sourcePackagesArgvForQueryAction points a package-resolving query action at the SPM checkout dir
+// the build itself uses. Without it `xcodebuild -list` and `-resolvePackageDependencies` fetch a
+// second copy of every package into the default DerivedData, which no build ever reads.
+//
+// This injects xcodebuild's own default location relative to the DerivedData in play, so no new
+// path reaches a compile command and compilation cache keys are untouched. -derivedDataPath is not
+// an option here: xcodebuild rejects it on these actions unless -scheme is also present.
+func (c *XcodebuildRunner) sourcePackagesArgvForQueryAction() []string {
+	if !c.XcodeArgs.ResolvesPackages() || c.XcodeArgs.ClonedSourcePackagesDirPath() != "" {
+		return nil
+	}
+	if c.Config.BuildCacheSkipFlags || c.Config.DisablePrefixMapping || c.NoPrefixMap {
+		return nil
+	}
+
+	dd := c.XcodeArgs.DerivedDataPath()
+	if dd == "" {
+		projectDir := c.XcodeArgs.ProjectDir()
+		if c.NoManagedDD || projectDir == "" {
+			return nil
+		}
+		p := c.resolvePaths()
+		if p.Home == "" {
+			return nil
+		}
+		dd = p.XcodeManagedDerivedDataDir(workspaceSHA(projectDir))
+	}
+
+	return []string{xcodeargs.ClonedSourcePackagesDirPathFlag, filepath.Join(dd, "SourcePackages")}
 }
 
 const (

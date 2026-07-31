@@ -4,6 +4,7 @@ package xcode_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -500,4 +501,84 @@ func Test_xcodebuildCmdFn_callsEndSessionAfterRun(t *testing.T) {
 	gotMs := calls[0].In.GetEndTimeUnixMs()
 	assert.GreaterOrEqual(t, gotMs, beforeMs, "EndTimeUnixMs must be captured at or after the wrapper started EndSession")
 	assert.LessOrEqual(t, gotMs, afterMs, "EndTimeUnixMs must be captured at or before the wrapper returned")
+}
+
+func Test_queryActionSourcePackages(t *testing.T) {
+	newRunner := func(argsMock *xcodeargsMocks.XcodeArgsMock, capturedArgs *[]string) *xcode.XcodebuildRunner {
+		return &xcode.XcodebuildRunner{
+			Config:       xcelerate.Config{BuildCacheEnabled: true, ProxySocketPath: "/tmp/p.sock"},
+			Metadata:     common.CacheConfigMetadata{},
+			InvocationID: uuid.NewString(),
+			Logger:       mockLogger,
+			CacheLogger:  mockLogger,
+			XcodeRunner: &mocks.XcodeRunnerMock{
+				RunFunc: func(_ context.Context, args []string) xcodeargs.RunStats {
+					*capturedArgs = append([]string(nil), args...)
+
+					return xcodeargs.RunStats{}
+				},
+			},
+			ProxySessionClient: &mocks.SessionClientMock{},
+			XcodeArgs:          argsMock,
+			Paths:              paths.FromHome("/h"),
+		}
+	}
+
+	newArgs := func(resolves bool, userSPM, userDD string) *xcodeargsMocks.XcodeArgsMock {
+		return &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc:              func() bool { return false },
+			ResolvesPackagesFunc:            func() bool { return resolves },
+			ClonedSourcePackagesDirPathFunc: func() string { return userSPM },
+			DerivedDataPathFunc:             func() string { return userDD },
+			ProjectDirFunc:                  func() string { return "/work/app" },
+			ProjectTempDirFunc:              func() string { return "" },
+			UserOtherCFlagsFunc:             func() string { return "" },
+			ArgsFunc:                        func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			CommandFunc:                     func() string { return "xcodebuild" },
+			ShortCommandFunc:                func() string { return "xcodebuild" },
+		}
+	}
+
+	t.Run("points a resolving query action at the managed checkout dir", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(true, "", ""), &captured)
+
+		_ = r.Run(context.Background())
+
+		require.Contains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		idx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		require.Less(t, idx+1, len(captured))
+		// xcodebuild's own default relative to the managed DerivedData, so no new path is introduced.
+		assert.Contains(t, captured[idx+1], "/h/.bitrise/cache/xcode-dd/")
+		assert.True(t, strings.HasSuffix(captured[idx+1], "/SourcePackages"), captured[idx+1])
+	})
+
+	t.Run("follows a user-supplied derivedDataPath", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(true, "", "/user/dd"), &captured)
+
+		_ = r.Run(context.Background())
+
+		idx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		require.GreaterOrEqual(t, idx, 0)
+		assert.Equal(t, "/user/dd/SourcePackages", captured[idx+1])
+	})
+
+	t.Run("leaves a user-supplied clonedSourcePackagesDirPath alone", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(true, "/user/spm", ""), &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+	})
+
+	t.Run("no-op for query actions that do not resolve packages", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(false, "", ""), &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+	})
 }
