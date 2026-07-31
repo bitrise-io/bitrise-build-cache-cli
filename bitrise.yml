@@ -1230,6 +1230,23 @@ workflows:
               ../bitrise-build-cache-cli -d activate xcode \
                 --cache
     - script:
+        title: 'ACI-5253: assert activate exports the SPM checkout dir'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Exported so cache steps have a stable path to target: the wrapper moves DerivedData
+            # under ~/.bitrise/cache, dragging SPM checkouts out of the default location with it.
+            expected="$HOME/.bitrise/cache/xcode-spm"
+            if [[ "$BITRISE_XCODE_SOURCE_PACKAGES_PATH" != "$expected" ]]; then
+              echo "BITRISE_XCODE_SOURCE_PACKAGES_PATH=$BITRISE_XCODE_SOURCE_PACKAGES_PATH, want $expected"
+              exit 1
+            fi
+    - restore-cache:
+        title: 'ACI-5253: restore SPM checkouts'
+        inputs:
+        - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
+    - script:
         title: build app
         inputs:
           - content: |-
@@ -1323,6 +1340,55 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - script:
+        title: 'ACI-5253: assert SPM checkouts landed in the exported dir'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            grep -q -- '-clonedSourcePackagesDirPath' "$BITRISE_DEPLOY_DIR/wrapper.log" \
+              || { echo "wrapper did not pass -clonedSourcePackagesDirPath to xcodebuild"; exit 1; }
+
+            checkouts="$BITRISE_XCODE_SOURCE_PACKAGES_PATH/checkouts"
+            [[ -d "$checkouts" ]] || { echo "no checkouts under $BITRISE_XCODE_SOURCE_PACKAGES_PATH"; exit 1; }
+            [[ -n "$(ls -A "$checkouts")" ]] || { echo "$checkouts is empty"; exit 1; }
+            echo "Relocated SPM checkouts: $(ls -A "$checkouts" | wc -l) package(s)"
+
+            # The bug this guards: checkouts staying in the default DerivedData location, where the
+            # wrapper's -derivedDataPath means the build never reads them and cache steps archive
+            # a directory that is never used.
+            stale=$(find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 3 -type d -name checkouts 2>/dev/null | head -1)
+            if [[ -n "$stale" && -n "$(ls -A "$stale" 2>/dev/null)" ]]; then
+              echo "SPM checkouts also present in the default DerivedData location: $stale"
+              exit 1
+            fi
+    - save-cache:
+        title: 'ACI-5253: save SPM checkouts from the exported dir'
+        inputs:
+        - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
+        - paths: $BITRISE_XCODE_SOURCE_PACKAGES_PATH
+    - script:
+        title: 'ACI-5253: drop the checkouts so the restore below has to repopulate them'
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf "$BITRISE_XCODE_SOURCE_PACKAGES_PATH"
+    - restore-cache:
+        title: 'ACI-5253: restore SPM checkouts round-trip'
+        inputs:
+        - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
+    - script:
+        title: 'ACI-5253: assert the round-trip repopulated the exported dir'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Proves the exported path is usable verbatim by the generic cache steps, and that
+            # restore replays the archive to the location the next build will actually read.
+            checkouts="$BITRISE_XCODE_SOURCE_PACKAGES_PATH/checkouts"
+            [[ -d "$checkouts" && -n "$(ls -A "$checkouts")" ]] \
+              || { echo "restore did not repopulate $checkouts"; exit 1; }
+            echo "Round-trip restored $(ls -A "$checkouts" | wc -l) package(s)"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-cas-key-stable:
