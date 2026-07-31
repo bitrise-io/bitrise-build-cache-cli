@@ -573,6 +573,28 @@ func Test_queryActionSourcePackages(t *testing.T) {
 		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 	})
 
+	t.Run("stays a query invocation: no session, no analytics, no cache settings", func(t *testing.T) {
+		var captured []string
+		var receivedAdditional map[string]string
+		argsMock := newArgs(true, "", "")
+		argsMock.ArgsFunc = func(additional map[string]string) []string {
+			receivedAdditional = additional
+
+			return []string{"xcodebuild"}
+		}
+		sessionMock := &mocks.SessionClientMock{}
+		r := newRunner(argsMock, &captured)
+		r.ProxySessionClient = sessionMock
+
+		_ = r.Run(context.Background())
+
+		// Injecting the checkout dir must not promote a query action into a reported build.
+		assert.Empty(t, sessionMock.SetSessionCalls(), "query invocations must not open a proxy session")
+		assert.Empty(t, sessionMock.EndSessionCalls(), "query invocations must not end a proxy session")
+		assert.Empty(t, receivedAdditional, "query invocations must get no cache build settings")
+		assert.NotContains(t, captured, "COMPILATION_CACHE_REMOTE_SERVICE_PATH")
+	})
+
 	t.Run("no-op for query actions that do not resolve packages", func(t *testing.T) {
 		var captured []string
 		r := newRunner(newArgs(false, "", ""), &captured)
