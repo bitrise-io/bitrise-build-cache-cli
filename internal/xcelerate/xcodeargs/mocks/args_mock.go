@@ -21,9 +21,6 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //			ArgsFunc: func(additional map[string]string) []string {
 //				panic("mock out the Args method")
 //			},
-//			ClonedSourcePackagesDirPathFunc: func() string {
-//				panic("mock out the ClonedSourcePackagesDirPath method")
-//			},
 //			CommandFunc: func() string {
 //				panic("mock out the Command method")
 //			},
@@ -55,9 +52,6 @@ type XcodeArgsMock struct {
 	// ArgsFunc mocks the Args method.
 	ArgsFunc func(additional map[string]string) []string
 
-	// ClonedSourcePackagesDirPathFunc mocks the ClonedSourcePackagesDirPath method.
-	ClonedSourcePackagesDirPathFunc func() string
-
 	// CommandFunc mocks the Command method.
 	CommandFunc func() string
 
@@ -86,9 +80,6 @@ type XcodeArgsMock struct {
 			// Additional is the additional argument value.
 			Additional map[string]string
 		}
-		// ClonedSourcePackagesDirPath holds details about calls to the ClonedSourcePackagesDirPath method.
-		ClonedSourcePackagesDirPath []struct {
-		}
 		// Command holds details about calls to the Command method.
 		Command []struct {
 		}
@@ -111,15 +102,14 @@ type XcodeArgsMock struct {
 		UserOtherCFlags []struct {
 		}
 	}
-	lockArgs                        sync.RWMutex
-	lockClonedSourcePackagesDirPath sync.RWMutex
-	lockCommand                     sync.RWMutex
-	lockDerivedDataPath             sync.RWMutex
-	lockHasBuildAction              sync.RWMutex
-	lockProjectDir                  sync.RWMutex
-	lockProjectTempDir              sync.RWMutex
-	lockShortCommand                sync.RWMutex
-	lockUserOtherCFlags             sync.RWMutex
+	lockArgs            sync.RWMutex
+	lockCommand         sync.RWMutex
+	lockDerivedDataPath sync.RWMutex
+	lockHasBuildAction  sync.RWMutex
+	lockProjectDir      sync.RWMutex
+	lockProjectTempDir  sync.RWMutex
+	lockShortCommand    sync.RWMutex
+	lockUserOtherCFlags sync.RWMutex
 }
 
 // Args calls ArgsFunc.
@@ -154,36 +144,6 @@ func (mock *XcodeArgsMock) ArgsCalls() []struct {
 	mock.lockArgs.RLock()
 	calls = mock.calls.Args
 	mock.lockArgs.RUnlock()
-	return calls
-}
-
-// ClonedSourcePackagesDirPath calls ClonedSourcePackagesDirPathFunc.
-func (mock *XcodeArgsMock) ClonedSourcePackagesDirPath() string {
-	callInfo := struct {
-	}{}
-	mock.lockClonedSourcePackagesDirPath.Lock()
-	mock.calls.ClonedSourcePackagesDirPath = append(mock.calls.ClonedSourcePackagesDirPath, callInfo)
-	mock.lockClonedSourcePackagesDirPath.Unlock()
-	if mock.ClonedSourcePackagesDirPathFunc == nil {
-		var (
-			sOut string
-		)
-		return sOut
-	}
-	return mock.ClonedSourcePackagesDirPathFunc()
-}
-
-// ClonedSourcePackagesDirPathCalls gets all the calls that were made to ClonedSourcePackagesDirPath.
-// Check the length with:
-//
-//	len(mockedXcodeArgs.ClonedSourcePackagesDirPathCalls())
-func (mock *XcodeArgsMock) ClonedSourcePackagesDirPathCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockClonedSourcePackagesDirPath.RLock()
-	calls = mock.calls.ClonedSourcePackagesDirPath
-	mock.lockClonedSourcePackagesDirPath.RUnlock()
 	return calls
 }
 

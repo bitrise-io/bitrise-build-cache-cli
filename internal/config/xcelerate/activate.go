@@ -106,7 +106,7 @@ func Activate(
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
-	exportSwiftPackagesPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
+	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
@@ -114,21 +114,23 @@ func Activate(
 	return nil
 }
 
-// exportSwiftPackagesPath publishes the SPM checkout dir the wrapper relocates to, so cache steps
-// have something to target instead of the default DerivedData path the build no longer uses.
-func exportSwiftPackagesPath(logger log.Logger, config Config, envs map[string]string) {
+// exportDerivedDataPath publishes where the wrapper relocates DerivedData to, so cache steps can
+// target the SPM checkouts under it instead of the default location the build no longer uses.
+// Exported as a glob because the per-workspace sha is only known once the wrapper sees the
+// xcodebuild args, and it matches the shape the cache steps' own defaults already use.
+func exportDerivedDataPath(logger log.Logger, config Config, envs map[string]string) {
 	if !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
 		return
 	}
 
 	p, err := paths.Default()
 	if err != nil {
-		logger.Debugf("Skipping %s export: %v", EnvSwiftPackagesPath, err)
+		logger.Debugf("Skipping %s export: %v", EnvDerivedDataPath, err)
 
 		return
 	}
 
-	envexport.New(envs, logger).Export(EnvSwiftPackagesPath, p.XcodeManagedSwiftPackagesRoot())
+	envexport.New(envs, logger).Export(EnvDerivedDataPath, filepath.Join(p.XcodeManagedDerivedDataRoot(), "**"))
 }
 
 // ---------------------------------------------------------------------------

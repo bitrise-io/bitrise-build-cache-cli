@@ -25,22 +25,20 @@ const prefixMapFlag = "-fdepscan-prefix-map="
 // Build-setting keys and derivedDataPath flag literal used by the wrapper
 // when injecting prefix-map rules.
 const (
-	ClangEnablePrefixMappingKey     = "CLANG_ENABLE_PREFIX_MAPPING"
-	OtherCFlagsKey                  = "OTHER_CFLAGS"
-	ProjectTempDirKey               = "PROJECT_TEMP_DIR"
-	DerivedDataPathFlag             = "-derivedDataPath"
-	ClonedSourcePackagesDirPathFlag = "-clonedSourcePackagesDirPath"
+	ClangEnablePrefixMappingKey = "CLANG_ENABLE_PREFIX_MAPPING"
+	OtherCFlagsKey              = "OTHER_CFLAGS"
+	ProjectTempDirKey           = "PROJECT_TEMP_DIR"
+	DerivedDataPathFlag         = "-derivedDataPath"
 )
 
 // PrefixMapPaths is the set of absolute paths whose values will be rewritten
 // to stable virtual names in clang's CAS cache keys via -fdepscan-prefix-map.
 // Empty fields produce no rule.
 type PrefixMapPaths struct {
-	Home             string
-	ProjectDir       string
-	DerivedDataPath  string
-	ProjectTempDir   string
-	SwiftPackagesDir string
+	Home            string
+	ProjectDir      string
+	DerivedDataPath string
+	ProjectTempDir  string
 }
 
 // BuildOtherCFlagsValue returns the suffix to append after "$(inherited) " in
@@ -53,7 +51,6 @@ func BuildOtherCFlagsValue(p PrefixMapPaths) string {
 	rules := []rule{
 		{p.ProjectTempDir, "/^obj"},
 		{p.DerivedDataPath, "/^dd"},
-		{p.SwiftPackagesDir, "/^spm"},
 		{p.ProjectDir, "/^src"},
 		{p.Home, "/^home"},
 	}
@@ -134,12 +131,6 @@ func isBitrisePrefixMapRule(token string) bool {
 // working directory — clang rejects non-absolute inputs to -fdepscan-prefix-map=.
 func (p Default) DerivedDataPath() string {
 	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "derivedDataPath"))
-}
-
-// ClonedSourcePackagesDirPath returns the last -clonedSourcePackagesDirPath value from
-// OriginalArgs, in both the space and `=` forms. Missing → empty.
-func (p Default) ClonedSourcePackagesDirPath() string {
-	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "clonedSourcePackagesDirPath"))
 }
 
 // ProjectTempDir returns the last PROJECT_TEMP_DIR=... build-setting value

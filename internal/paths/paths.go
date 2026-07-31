@@ -86,9 +86,6 @@ const (
 	// xcodeManagedProjectTempDirTool is the per-workspace PROJECT_TEMP_DIR root managed by the wrapper.
 	xcodeManagedProjectTempDirTool = "xcode-ptd"
 
-	// xcodeManagedSwiftPackagesTool is the SPM checkout root managed by the wrapper.
-	xcodeManagedSwiftPackagesTool = "xcode-spm"
-
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 
@@ -280,25 +277,17 @@ func (p Paths) GradleInitScriptFile() string {
 // XcodeManagedDerivedDataDir returns the wrapper-owned DerivedData dir for a given
 // workspace-sha, layered under BitriseCacheDir("xcode-dd").
 func (p Paths) XcodeManagedDerivedDataDir(workspaceSHA string) string {
-	return filepath.Join(p.BitriseCacheDir(xcodeManagedDerivedDataTool), workspaceSHA)
+	return filepath.Join(p.XcodeManagedDerivedDataRoot(), workspaceSHA)
+}
+
+// XcodeManagedDerivedDataRoot returns the parent of every per-workspace DerivedData dir. SPM
+// checkouts live at <root>/<workspace-sha>/SourcePackages, so this is what cache steps glob.
+func (p Paths) XcodeManagedDerivedDataRoot() string {
+	return p.BitriseCacheDir(xcodeManagedDerivedDataTool)
 }
 
 // XcodeManagedProjectTempDir returns the wrapper-owned PROJECT_TEMP_DIR dir for a given
 // workspace-sha, layered under BitriseCacheDir("xcode-ptd").
 func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 	return filepath.Join(p.BitriseCacheDir(xcodeManagedProjectTempDirTool), workspaceSHA)
-}
-
-// XcodeManagedSwiftPackagesDir returns the wrapper-owned SPM checkout dir for a given
-// workspace-sha, passed to xcodebuild as -clonedSourcePackagesDirPath. Scoped per workspace like
-// the DerivedData and PROJECT_TEMP_DIR roots: sharing one mutable checkout tree across workspaces
-// lets a later build re-resolve over an earlier build's sources and lose its compilation cache.
-func (p Paths) XcodeManagedSwiftPackagesDir(workspaceSHA string) string {
-	return filepath.Join(p.XcodeManagedSwiftPackagesRoot(), workspaceSHA)
-}
-
-// XcodeManagedSwiftPackagesRoot returns the parent of every per-workspace SPM checkout dir. This is
-// what gets exported for cache steps, so one archive covers every workspace in the repo.
-func (p Paths) XcodeManagedSwiftPackagesRoot() string {
-	return p.BitriseCacheDir(xcodeManagedSwiftPackagesTool)
 }

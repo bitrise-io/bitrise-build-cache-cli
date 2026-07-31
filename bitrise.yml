@@ -1327,13 +1327,14 @@ workflows:
         title: 'ACI-5253: save the SPM checkouts the build actually used'
         inputs:
         - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
-        - paths: $BITRISE_XCODE_SOURCE_PACKAGES_PATH
+        - paths: $BITRISE_XCODE_DERIVED_DATA_PATH/SourcePackages
     - script:
         title: 'ACI-5253: drop the checkouts so the restore has to repopulate them'
         inputs:
         - content: |-
             set -exo pipefail
-            rm -rf "${BITRISE_XCODE_SOURCE_PACKAGES_PATH:?activate must export the SPM checkout dir}"
+            # shellcheck disable=SC2086 # the exported value is a glob and must expand
+            rm -rf ${BITRISE_XCODE_DERIVED_DATA_PATH:?activate must export the DerivedData glob}/SourcePackages
     - restore-cache:
         title: 'ACI-5253: restore the SPM checkouts'
         inputs:

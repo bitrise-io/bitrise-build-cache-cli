@@ -718,10 +718,6 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" {
 			extraArgv = append(extraArgv, xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath)
 		}
-
-		if ps.SwiftPackagesDir != "" && c.XcodeArgs.ClonedSourcePackagesDirPath() == "" {
-			extraArgv = append(extraArgv, xcodeargs.ClonedSourcePackagesDirPathFlag, ps.SwiftPackagesDir)
-		}
 	}
 
 	toPass := c.XcodeArgs.Args(additional)
@@ -745,11 +741,10 @@ const (
 // prefixMapSources records where each path in PrefixMapPaths came from so the
 // wrapper can log an origin trail. Values: argv, managed, auto, or "".
 type prefixMapSources struct {
-	Home             string
-	ProjectDir       string
-	DerivedDataPath  string
-	ProjectTempDir   string
-	SwiftPackagesDir string
+	Home            string
+	ProjectDir      string
+	DerivedDataPath string
+	ProjectTempDir  string
 }
 
 // resolvePrefixMapPaths determines the four absolute paths that feed the
@@ -770,33 +765,28 @@ func (c *XcodebuildRunner) resolvePrefixMapPaths() (xcodeargs.PrefixMapPaths, pr
 
 	dd := c.XcodeArgs.DerivedDataPath()
 	ptd := c.XcodeArgs.ProjectTempDir()
-	spm := c.XcodeArgs.ClonedSourcePackagesDirPath()
 	if dd != "" {
 		sources.DerivedDataPath = prefixMapSourceArgv
 	}
 	if ptd != "" {
 		sources.ProjectTempDir = prefixMapSourceArgv
 	}
-	if spm != "" {
-		sources.SwiftPackagesDir = prefixMapSourceArgv
-	}
 
-	c.fillManagedPrefixMapPaths(projectDir, &dd, &ptd, &spm, &sources)
+	c.fillManagedPrefixMapPaths(projectDir, &dd, &ptd, &sources)
 
 	return xcodeargs.PrefixMapPaths{
-		Home:             home,
-		ProjectDir:       projectDir,
-		DerivedDataPath:  dd,
-		ProjectTempDir:   ptd,
-		SwiftPackagesDir: spm,
+		Home:            home,
+		ProjectDir:      projectDir,
+		DerivedDataPath: dd,
+		ProjectTempDir:  ptd,
 	}, sources
 }
 
-// fillManagedPrefixMapPaths populates dd/ptd/spm with wrapper-owned paths under
-// ~/.bitrise/cache/xcode-{dd,ptd,spm} when the user did not supply them and
+// fillManagedPrefixMapPaths populates dd/ptd with wrapper-owned paths under
+// ~/.bitrise/cache/xcode-{dd,ptd}/<sha> when the user did not supply them and
 // managed fallback is enabled. No-op when NoManagedDD, when projectDir is
 // unknown, or when paths.Default() cannot resolve $HOME.
-func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd, spm *string, sources *prefixMapSources) {
+func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd *string, sources *prefixMapSources) {
 	if c.NoManagedDD || projectDir == "" {
 		return
 	}
@@ -814,21 +804,15 @@ func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd,
 		*ptd = p.XcodeManagedProjectTempDir(sha)
 		sources.ProjectTempDir = prefixMapSourceManaged
 	}
-	// A user-supplied -derivedDataPath already puts the checkouts somewhere they control.
-	if *spm == "" && sources.DerivedDataPath == prefixMapSourceManaged {
-		*spm = p.XcodeManagedSwiftPackagesDir(sha)
-		sources.SwiftPackagesDir = prefixMapSourceManaged
-	}
 }
 
 func (c *XcodebuildRunner) logPrefixMapSources(ps xcodeargs.PrefixMapPaths, s prefixMapSources) {
 	c.Logger.Debugf("Prefix map: %s", fmt.Sprintf(
-		"home=%s (%s), projectDir=%s (%s), derivedDataPath=%s (%s), projectTempDir=%s (%s), swiftPackagesDir=%s (%s)",
+		"home=%s (%s), projectDir=%s (%s), derivedDataPath=%s (%s), projectTempDir=%s (%s)",
 		ps.Home, s.Home,
 		ps.ProjectDir, s.ProjectDir,
 		ps.DerivedDataPath, s.DerivedDataPath,
 		ps.ProjectTempDir, s.ProjectTempDir,
-		ps.SwiftPackagesDir, s.SwiftPackagesDir,
 	))
 }
 
