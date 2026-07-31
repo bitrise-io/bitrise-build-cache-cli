@@ -20,6 +20,10 @@ func init() {
 	mockLogger.On("Infof", mock.Anything).Return()
 	mockLogger.On("TInfof", mock.Anything, mock.Anything).Return()
 	mockLogger.On("TInfof", mock.Anything).Return()
+	// The test binary itself lives on a transient path, so CLI-path resolution
+	// warns about $PATH here.
+	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything).Return()
 }
 
 // TestMain points HOME at a throwaway dir. Several paths under test resolve

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	mirrorsconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle/mirrors"
@@ -50,9 +51,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			logger.Warnf("Could not relocate preboot Gradle mirrors init script: %s", merr)
 		}
 
-		if cliPath, exeErr := os.Executable(); exeErr == nil {
-			activateGradleParams.CLIPath = cliPath
-		}
+		activateGradleParams.CLIPath = clibin.Resolve(logger, clibin.PreferPATH)
 
 		if err := gradleconfig.Activate(
 			logger,

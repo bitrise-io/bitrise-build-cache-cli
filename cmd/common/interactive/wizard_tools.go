@@ -15,6 +15,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -108,9 +109,7 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 	params.Cache.Enabled = true
 	params.Cache.PushEnabled = pushEnabled
 
-	if cliPath, exeErr := os.Executable(); exeErr == nil {
-		params.CLIPath = cliPath
-	}
+	params.CLIPath = clibin.Resolve(logger, clibin.PreferPATH)
 
 	if err := gradleconfig.Activate(
 		logger,
@@ -161,9 +160,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	// Without this the bazelrc falls back to a literal Bearer token: it leaks the
 	// credential onto disk, and an OAuth PAT baked in that way expires with no way
 	// to refresh. The helper re-resolves per build, which does refresh.
-	if cliPath, exeErr := os.Executable(); exeErr == nil {
-		params.CLIPath = cliPath
-	}
+	params.CLIPath = clibin.Resolve(logger, clibin.CopyToStableDir)
 
 	commandFunc := func(cmd string, args ...string) (string, error) {
 		out, err2 := exec.Command(cmd, args...).CombinedOutput() //nolint:noctx

@@ -2,12 +2,12 @@ package gradle
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -84,9 +84,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 	activateGradleParams.Analytics.Enabled = paramIsGradleMetricsEnabled
 	activateGradleParams.TestDistro.Enabled = false
 
-	if cliPath, exeErr := os.Executable(); exeErr == nil {
-		activateGradleParams.CLIPath = cliPath
-	}
+	activateGradleParams.CLIPath = clibin.Resolve(logger, clibin.PreferPATH)
 
 	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
 	if err != nil {

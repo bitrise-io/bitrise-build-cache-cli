@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
@@ -66,9 +67,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	}
 	bazelrcPath := filepath.Join(homeDir, ".bazelrc")
 
-	if cliPath, exeErr := os.Executable(); exeErr == nil {
-		activateBazelParams.CLIPath = cliPath
-	}
+	activateBazelParams.CLIPath = clibin.Resolve(logger, clibin.CopyToStableDir)
 
 	// Run main logic
 	if err := ActivateBazelCmdFn(

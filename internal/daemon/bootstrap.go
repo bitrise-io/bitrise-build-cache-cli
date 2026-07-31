@@ -6,33 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
-
-// transientBinPrefixes mark filesystem locations whose contents the OS may prune between logins;
-// embedding such a path in a LaunchAgent/systemd unit would leave the supervisor pointing at a missing binary.
-//
-//nolint:gochecknoglobals
-var transientBinPrefixes = []string{
-	"/tmp/",
-	"/var/folders/",
-	"/private/var/folders/",
-	"/private/tmp/",
-}
-
-func IsTransientBinaryPath(exe string) bool {
-	for _, prefix := range transientBinPrefixes {
-		if strings.HasPrefix(exe, prefix) {
-			return true
-		}
-	}
-
-	return false
-}
 
 // ResolveSupervisedBinary returns the CLI path safe to pin into a supervisor
 // config, copying the running binary out of a transient location if needed.
@@ -43,8 +22,8 @@ func ResolveSupervisedBinary(logger log.Logger) (string, error) {
 		return "", fmt.Errorf("resolve CLI executable path: %w", err)
 	}
 
-	if IsTransientBinaryPath(exe) {
-		stable, copyErr := CopyCLIToStableBin(exe)
+	if clibin.IsTransientPath(exe) {
+		stable, copyErr := clibin.CopyToStable(exe)
 		if copyErr != nil {
 			return "", fmt.Errorf("copy CLI to stable dir before daemon install: %w", copyErr)
 		}
