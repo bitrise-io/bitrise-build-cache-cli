@@ -25,8 +25,14 @@ import (
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
+// wizardWorkspaceFlag lets a run that can't prompt still name its workspace.
+const wizardWorkspaceFlag = "--workspace"
+
 //nolint:gochecknoglobals
-var interactiveFlag bool
+var (
+	interactiveFlag      bool
+	interactiveWorkspace string
+)
 
 type interactiveTool string
 
@@ -38,6 +44,8 @@ const (
 )
 
 func init() { //nolint:gochecknoinits
+	common.ActivateCmd.Flags().StringVar(&interactiveWorkspace, "workspace", "",
+		"Workspace (organization) slug to activate for. Skips the workspace picker, which a sign-in that has taken over standard input can't show.")
 	common.ActivateCmd.Flags().BoolVar(&interactiveFlag, "interactive", false,
 		"Launch an interactive guided local setup. Prompts for the tool and credentials instead of reading them from environment variables.")
 	common.ActivateCmd.SilenceUsage = true

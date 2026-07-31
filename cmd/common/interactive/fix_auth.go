@@ -35,22 +35,23 @@ func FixAuthPrompt(ctx context.Context, logger log.Logger) func() (string, strin
 			return authprompt.PromptAndSave() //nolint:wrapcheck // caller reports it
 		}
 
-		creds, err := loginAndStore(ctx, logger, utils.AllEnvs(), "", "")
-		if err != nil {
-			if errors.Is(err, tui.ErrAborted) {
-				return "", "", err //nolint:wrapcheck // sentinel
-			}
-
+		// No workspace flag to offer: `doctor --fix --interactive` takes none, so a
+		// sign-in that leaves stdin unusable has to stop rather than point at one.
+		out, err := loginAndStore(ctx, logger, utils.AllEnvs(), "", "", "")
+		switch {
+		case errors.Is(err, tui.ErrAborted), errors.Is(err, ErrStdinUnusable):
+			return "", "", err //nolint:wrapcheck // sentinel
+		case err != nil:
 			logger.Warnf("Browser sign-in did not complete (%s).", err)
 			logger.Infof("Falling back to entering a token.")
 
 			return authprompt.PromptAndSave() //nolint:wrapcheck // caller reports it
 		}
 
-		if creds.PAT == "" {
+		if out.Creds.PAT == "" {
 			return "", "", fmt.Errorf("sign-in returned no token")
 		}
 
-		return creds.WorkspaceID, creds.PAT, nil
+		return out.Creds.WorkspaceID, out.Creds.PAT, nil
 	}
 }

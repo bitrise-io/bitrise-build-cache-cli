@@ -24,5 +24,8 @@ func (f AuthPromptFixer) Fix() (string, error) {
 		return "", fmt.Errorf("auth prompt: %w", err)
 	}
 
-	return "saved credentials to OS keychain (workspace=" + workspaceID + ")", nil
+	// Deliberately no backend here: the prompt may have stored to the keychain or
+	// to the config file (on CI, or when the keychain refuses the write), and this
+	// signature can't tell which. `auth status` reports where it actually landed.
+	return "saved credentials (workspace=" + workspaceID + ")", nil
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -28,7 +29,20 @@ type callbackPaster struct {
 	// Grace overrides how long the loopback gets before Reader is touched; zero
 	// means pasteGrace. Tests set it so they don't wait out the real one.
 	Grace time.Duration
+	// WorkspaceFlag is the flag the calling command accepts to skip its prompt;
+	// empty means the caller has none to offer.
+	WorkspaceFlag string
+
+	// unusable records that the reader was armed and could not be stopped, so it
+	// still holds stdin. Every terminal lands here — Go treats character devices
+	// as non-pollable, so SetReadDeadline is rejected — which makes this the
+	// normal outcome once the grace period elapses, not an edge case.
+	unusable atomic.Bool
 }
+
+// StdinUnusable reports whether a reader is still holding stdin. Callers must not
+// prompt after that: the two reads compete for every keystroke.
+func (p *callbackPaster) StdinUnusable() bool { return p.unusable.Load() }
 
 // The reader is armed only after the grace period, because a blocked read on a
 // terminal cannot be cancelled — SetReadDeadline is unsupported on a character
@@ -37,7 +51,7 @@ type callbackPaster struct {
 // browser that reaches the listener) never touches stdin, and the paste case has
 // the reader finish on its own once it consumes the line. Terminal input is
 // buffered, so a user who pastes during the grace period is still read.
-func (p callbackPaster) Fallback(ctx context.Context, state string) (string, error) {
+func (p *callbackPaster) Fallback(ctx context.Context, state string) (string, error) {
 	graceFor := p.Grace
 	if graceFor <= 0 {
 		graceFor = pasteGrace
@@ -68,7 +82,7 @@ func (p callbackPaster) Fallback(ctx context.Context, state string) (string, err
 	}
 }
 
-func (p callbackPaster) read(state string, out chan<- oauth.PastedCallback) {
+func (p *callbackPaster) read(state string, out chan<- oauth.PastedCallback) {
 	scanner := bufio.NewScanner(p.Reader)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -92,7 +106,7 @@ func (p callbackPaster) read(state string, out chan<- oauth.PastedCallback) {
 // stop unblocks the reader's pending read, then restores blocking reads. Failure
 // is reported loudly: a reader left blocked on a shared stdin competes for every
 // byte with the next prompt, which looks like dropped keystrokes, not an error.
-func (p callbackPaster) stop(done <-chan struct{}) {
+func (p *callbackPaster) stop(done <-chan struct{}) {
 	select {
 	case <-done:
 		return // already finished, nothing to unblock
@@ -116,12 +130,23 @@ func (p callbackPaster) stop(done <-chan struct{}) {
 	_ = dr.SetReadDeadline(time.Time{})
 }
 
-func (p callbackPaster) warnUnreliable(reason string) {
+// warnUnreliable marks stdin as spoken for and says so. The caller is expected to
+// check StdinUnusable and stop prompting; the warning is for the case where it
+// doesn't, and for the log.
+func (p *callbackPaster) warnUnreliable(reason string) {
+	p.unusable.Store(true)
+
 	p.warnf("Could not stop reading standard input (%s).", reason)
-	p.warnf("Later prompts in this command may drop keystrokes — pass --workspace to skip the picker.")
+	if p.WorkspaceFlag == "" {
+		p.warnf("Prompts in this command are no longer reliable, so it will stop rather than drop keystrokes.")
+
+		return
+	}
+
+	p.warnf("Prompts in this command are no longer reliable — rerun with %s to skip them.", p.WorkspaceFlag)
 }
 
-func (p callbackPaster) warnf(format string, args ...any) {
+func (p *callbackPaster) warnf(format string, args ...any) {
 	if p.Logger != nil {
 		p.Logger.Warnf(format, args...)
 	}

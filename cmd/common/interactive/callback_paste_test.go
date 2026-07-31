@@ -50,7 +50,7 @@ func TestCallbackPaster_ReturnsTheCodeFromAPastedURL(t *testing.T) {
 		_, _ = io.WriteString(pw, "http://127.0.0.1:1/callback?code=auth-code&state=st-1\n")
 	}()
 
-	paster := callbackPaster{Reader: pr, Grace: time.Millisecond}
+	paster := &callbackPaster{Reader: pr, Grace: time.Millisecond}
 	code, err := paster.Fallback(t.Context(), "st-1")
 
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestCallbackPaster_NudgesOnGarbageThenAcceptsTheURL(t *testing.T) {
 		_, _ = io.WriteString(pw, "http://127.0.0.1:1/callback?code=auth-code&state=st-1\n")
 	}()
 
-	paster := callbackPaster{Reader: pr, Grace: time.Millisecond, Logger: log.NewLogger(log.WithOutput(&out))}
+	paster := &callbackPaster{Reader: pr, Grace: time.Millisecond, Logger: log.NewLogger(log.WithOutput(&out))}
 	code, err := paster.Fallback(t.Context(), "st-1")
 
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestCallbackPaster_StateMismatchIsFinal(t *testing.T) {
 		_, _ = io.WriteString(pw, "http://127.0.0.1:1/callback?code=abc&state=WRONG\n")
 	}()
 
-	paster := callbackPaster{Reader: pr, Grace: time.Millisecond}
+	paster := &callbackPaster{Reader: pr, Grace: time.Millisecond}
 	_, err := paster.Fallback(t.Context(), "st-1")
 
 	require.Error(t, err)
@@ -96,7 +96,7 @@ func TestCallbackPaster_DoesNotTouchTheReaderDuringTheGrace(t *testing.T) {
 	reader := newBlockingReader(os.ErrNoDeadline)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	paster := callbackPaster{Reader: reader, Grace: time.Hour}
+	paster := &callbackPaster{Reader: reader, Grace: time.Hour}
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
@@ -109,26 +109,78 @@ func TestCallbackPaster_DoesNotTouchTheReaderDuringTheGrace(t *testing.T) {
 	assert.Equal(t, int64(0), reader.reads.Load(), "stdin was read before the grace elapsed")
 }
 
-// A reader that rejects deadlines (every terminal: SetReadDeadline returns
-// "file type does not support deadline" on a character device) cannot be
-// stopped, so that has to be reported rather than silently ignored.
-func TestCallbackPaster_WarnsWhenItCannotStopTheReader(t *testing.T) {
+// Every terminal lands here — Go treats character devices as non-pollable, so
+// SetReadDeadline is rejected — which is why the state has to be reported to the
+// caller and not just logged.
+func TestCallbackPaster_MarksStdinUnusableWhenItCannotStopTheReader(t *testing.T) {
 	var out strings.Builder
 
-	paster := callbackPaster{Reader: newBlockingReader(os.ErrNoDeadline), Logger: log.NewLogger(log.WithOutput(&out))}
+	paster := &callbackPaster{
+		Reader:        newBlockingReader(os.ErrNoDeadline),
+		Logger:        log.NewLogger(log.WithOutput(&out)),
+		WorkspaceFlag: "--workspace",
+	}
+	require.False(t, paster.StdinUnusable(), "nothing has been armed yet")
+
 	paster.stop(make(chan struct{})) // never closed: the reader is still blocked
 
+	assert.True(t, paster.StdinUnusable(), "the caller has to be able to see this, not just read the log")
 	assert.Contains(t, out.String(), "Could not stop reading standard input")
-	assert.Contains(t, out.String(), "--workspace", "the warning should offer a way around it")
+	assert.Contains(t, out.String(), "--workspace")
+}
+
+// `activate --interactive` used to be told to pass a flag it doesn't have.
+func TestCallbackPaster_OmitsTheFlagAdviceWhenTheCallerHasNoFlag(t *testing.T) {
+	var out strings.Builder
+
+	paster := &callbackPaster{
+		Reader: newBlockingReader(os.ErrNoDeadline),
+		Logger: log.NewLogger(log.WithOutput(&out)),
+	}
+	paster.stop(make(chan struct{}))
+
+	assert.True(t, paster.StdinUnusable())
+	assert.NotContains(t, out.String(), "--workspace", "the caller can't offer that flag")
+	assert.Contains(t, out.String(), "stop rather than drop keystrokes")
 }
 
 func TestCallbackPaster_QuietWhenReaderAlreadyDone(t *testing.T) {
 	var out strings.Builder
 
-	paster := callbackPaster{Reader: newBlockingReader(os.ErrNoDeadline), Logger: log.NewLogger(log.WithOutput(&out))}
+	paster := &callbackPaster{Reader: newBlockingReader(os.ErrNoDeadline), Logger: log.NewLogger(log.WithOutput(&out))}
 	done := make(chan struct{})
 	close(done)
 	paster.stop(done)
 
 	assert.Empty(t, out.String(), "a finished reader needs no interruption")
+}
+
+// The scenario from review: a sign-in slow enough to arm the reader (SSO + MFA
+// routinely exceeds the grace), on a reader that behaves like a real terminal and
+// so cannot be stopped. Before, the workspace picker ran next and dropped
+// keystrokes; now the state reaches the caller.
+func TestCallbackPaster_SlowSignInOnATerminalReaderReportsUnusableStdin(t *testing.T) {
+	var out strings.Builder
+
+	// os.ErrNoDeadline is what every tty returns, verified under a pty.
+	reader := newBlockingReader(os.ErrNoDeadline)
+	paster := &callbackPaster{
+		Reader:        reader,
+		Logger:        log.NewLogger(log.WithOutput(&out)),
+		Grace:         time.Millisecond,
+		WorkspaceFlag: "--workspace",
+	}
+
+	// The loopback wins, but only after the grace has already armed the reader.
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := paster.Fallback(ctx, "st-1")
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Positive(t, reader.reads.Load(), "the grace elapsed, so the reader must have been armed")
+	assert.True(t, paster.StdinUnusable(), "an armed reader that can't be stopped still holds stdin")
 }

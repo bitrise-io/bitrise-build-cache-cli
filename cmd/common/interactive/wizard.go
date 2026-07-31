@@ -30,11 +30,24 @@ func (*huhWizard) Run(ctx context.Context) error {
 	// Resolved before the form: the sign-in prints logs, opens a browser and
 	// reads stdin, none of which composes with huh's full-screen form.
 	auth := wizardAuthResolver{
-		Logger:   logger,
-		Keychain: kc,
-		Envs:     envs,
-		Prompt:   wizardPromptReader(),
+		Logger:    logger,
+		Keychain:  kc,
+		Envs:      envs,
+		Prompt:    wizardPromptReader(),
+		Workspace: interactiveWorkspace,
 	}.Resolve(ctx)
+
+	// A sign-in that took over stdin makes every form below unreliable, and the
+	// credential is already saved — so stop and let a second run, which finds that
+	// credential and skips the sign-in, do the setup with a clean stdin.
+	if auth.StdinUnusable {
+		logger.Println()
+		logger.TInfof("Credentials are saved, but the sign-in left standard input unusable for prompts.")
+		logger.Infof("Run `bitrise-build-cache activate --interactive` again to finish — it won't sign in a second time.")
+
+		return nil
+	}
+
 	storedCreds := auth.Stored
 	source := auth.Source
 	storedUsername := storedCreds.Username
@@ -184,6 +197,22 @@ func persistWizardCredentialsTo(
 		}
 	}
 
+	if auth.SignedInNow {
+		// loginAndStore already persisted this credential, in auth.Kind — which is
+		// the config file on a host with no usable keychain. Only a changed display
+		// name is left to write, and it goes to that same backend.
+		if creds.Username == creds.StoredUsername {
+			return
+		}
+		if err := persistCredentials(storeForKind(kc, auth.Kind), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
+			logger.Warnf("Could not save the display name to the %s (%v).", auth.Kind, err)
+		} else {
+			logger.Infof("Updated display name for local invocations.")
+		}
+
+		return
+	}
+
 	switch auth.Source {
 	case configcommon.AuthSourceKeychain:
 		if !auth.SignedInNow {
@@ -277,4 +306,14 @@ func persistCredentials(kc keychainStore, existing keychain.Credentials, workspa
 	}
 
 	return nil
+}
+
+// storeForKind picks the backend to write to, keeping the injected keychain so
+// tests stay off the real one.
+func storeForKind(kc keychainStore, kind store.Kind) keychainStore {
+	if kind == store.KindFile {
+		return store.NewFile()
+	}
+
+	return kc
 }

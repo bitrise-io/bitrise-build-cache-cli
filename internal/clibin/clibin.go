@@ -61,6 +61,7 @@ func Resolve(logger log.Logger) string {
 	exe, err := os.Executable()
 	if err != nil {
 		logger.Warnf("Could not resolve the CLI's own path (%s); generated configs will look for `%s` on $PATH.", err, paths.CLIBinaryName)
+		warnIfNotOnPATH(logger)
 
 		return ""
 	}
@@ -75,8 +76,16 @@ func Resolve(logger log.Logger) string {
 	return ""
 }
 
+// OnPATH reports whether a bare `bitrise-build-cache` resolves to anything, so a
+// caller can tell a usable fallback from one that would never spawn.
+func OnPATH() bool {
+	_, err := exec.LookPath(paths.CLIBinaryName)
+
+	return err == nil
+}
+
 func warnIfNotOnPATH(logger log.Logger) {
-	if _, err := exec.LookPath(paths.CLIBinaryName); err == nil {
+	if OnPATH() {
 		return
 	}
 

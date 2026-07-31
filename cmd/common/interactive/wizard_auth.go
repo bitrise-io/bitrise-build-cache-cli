@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -25,6 +26,13 @@ type wizardAuth struct {
 	// login so persisting a display name later can't drop the OAuth tokens.
 	Stored      keychain.Credentials
 	SignedInNow bool
+	// Kind is the backend Config lives in. Only meaningful with SignedInNow: a
+	// keychain-less host stores a fresh login in the config file, and a later
+	// display-name write has to go to the same place.
+	Kind store.Kind
+	// StdinUnusable means the sign-in left a reader holding stdin, so the wizard
+	// must not run any further form.
+	StdinUnusable bool
 }
 
 // NeedsManualPrompt reports that no credential could be resolved, so the wizard
@@ -42,6 +50,9 @@ type wizardAuthResolver struct {
 	// Prompt is where the sign-in confirmation is read from; nil means this
 	// session can't confirm one, so no browser is launched.
 	Prompt io.Reader
+	// Workspace skips the workspace picker, which a sign-in that has taken over
+	// stdin cannot show.
+	Workspace string
 
 	EnsureFresh func(ctx context.Context) (oauth.Credentials, error)
 	Login       func(ctx context.Context) (oauth.Credentials, error)
@@ -55,7 +66,7 @@ type wizardAuthResolver struct {
 // so the browser never opens unannounced. Returning AuthSourceNone leaves the
 // manual token prompt as the fallback rather than failing the wizard.
 func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
-	storedCreds := loadWizardKeychain(r.Logger, r.Keychain)
+	storedCreds := loadStoredCredentials(r.Logger, r.Keychain)
 	cfg, source := wizardStartingCreds(r.Envs, storedCreds, r.ResolveAuth)
 	auth := wizardAuth{Config: cfg, Source: source, Stored: storedCreds}
 
@@ -63,7 +74,7 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 		refreshed, err := r.ensureFresh(ctx)
 		if err == nil {
 			auth.Config.AuthToken, auth.Config.WorkspaceID = refreshed.PAT, refreshed.WorkspaceID
-			auth.Stored = loadWizardKeychain(r.Logger, r.Keychain)
+			auth.Stored = loadStoredCredentials(r.Logger, r.Keychain)
 
 			return auth
 		}
@@ -76,35 +87,68 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 		return auth
 	}
 
-	creds, ok := r.signIn(ctx)
+	out, ok := r.signIn(ctx)
 	if !ok {
 		return auth
 	}
 
-	auth.Config = configcommon.CacheAuthConfig{AuthToken: creds.PAT, WorkspaceID: creds.WorkspaceID}
-	auth.Source = configcommon.AuthSourceKeychain
-	auth.Stored = loadWizardKeychain(r.Logger, r.Keychain)
+	auth.Config = configcommon.CacheAuthConfig{AuthToken: out.Creds.PAT, WorkspaceID: out.Creds.WorkspaceID}
+	auth.Source = authSourceForKind(out.Kind)
+	auth.Kind = out.Kind
+	auth.Stored = loadStoredCredentials(r.Logger, r.storeFor(out.Kind))
 	auth.SignedInNow = true
+	auth.StdinUnusable = out.StdinUnusable
 
 	return auth
 }
 
-// signIn confirms with the user, then runs the browser sign-in. ok is false when
-// the user declined or the flow failed.
-func (r wizardAuthResolver) signIn(ctx context.Context) (oauth.Credentials, bool) {
-	if !confirmWizardLogin(r.Logger, r.Prompt) {
-		return oauth.Credentials{}, false
+// authSourceForKind keeps the wizard's view of where the credential lives in step
+// with where the sign-in actually put it — the keychain normally, the config file
+// on CI or on a host with no usable keychain.
+func authSourceForKind(kind store.Kind) configcommon.AuthSource {
+	if kind == store.KindFile {
+		return configcommon.AuthSourceFile
 	}
 
-	creds, err := r.login(ctx)
-	if err != nil {
+	return configcommon.AuthSourceKeychain
+}
+
+// storeFor returns the backend to read and update, honouring an injected keychain
+// so tests stay off the real one.
+func (r wizardAuthResolver) storeFor(kind store.Kind) keychainStore {
+	if kind == store.KindFile {
+		return store.NewFile()
+	}
+	if r.Keychain != nil {
+		return r.Keychain
+	}
+
+	return store.NewKeychain()
+}
+
+// signIn confirms with the user, then runs the browser sign-in. ok is false when
+// the user declined or the flow failed.
+func (r wizardAuthResolver) signIn(ctx context.Context) (loginOutcome, bool) {
+	if !confirmWizardLogin(r.Logger, r.Prompt) {
+		return loginOutcome{}, false
+	}
+
+	out, err := r.login(ctx)
+	switch {
+	case errors.Is(err, ErrStdinUnusable):
+		// The credential was saved; what's gone is the ability to prompt. Falling
+		// back to the token prompt would just drop keystrokes.
+		out.StdinUnusable = true
+
+		return out, true
+	case err != nil:
 		r.Logger.Warnf("Browser sign-in did not complete (%v).", err)
 		r.Logger.Infof("Falling back to entering a Bitrise personal access token by hand.")
 
-		return oauth.Credentials{}, false
+		return loginOutcome{}, false
 	}
 
-	return creds, true
+	return out, true
 }
 
 func (r wizardAuthResolver) ensureFresh(ctx context.Context) (oauth.Credentials, error) {
@@ -123,12 +167,14 @@ func (r wizardAuthResolver) ensureFresh(ctx context.Context) (oauth.Credentials,
 	return creds, nil
 }
 
-func (r wizardAuthResolver) login(ctx context.Context) (oauth.Credentials, error) {
+func (r wizardAuthResolver) login(ctx context.Context) (loginOutcome, error) {
 	if r.Login != nil {
-		return r.Login(ctx)
+		creds, err := r.Login(ctx)
+
+		return loginOutcome{Creds: creds, Kind: store.KindKeychain}, err
 	}
 
-	return loginAndStore(ctx, r.Logger, r.Envs, "", "")
+	return loginAndStore(ctx, r.Logger, r.Envs, r.Workspace, "", wizardWorkspaceFlag)
 }
 
 // confirmWizardLogin announces the sign-in and waits for an explicit Enter, so
@@ -178,7 +224,7 @@ func resolvedAuthNote(auth wizardAuth, loader configcommon.AuthLoader) string {
 	return "Signing in was not needed — using " + desc.Detail() + "."
 }
 
-func loadWizardKeychain(logger log.Logger, kc keychainStore) keychain.Credentials {
+func loadStoredCredentials(logger log.Logger, kc keychainStore) keychain.Credentials {
 	creds, err := kc.Load()
 	switch {
 	case err == nil, errors.Is(err, keychain.ErrNotFound):

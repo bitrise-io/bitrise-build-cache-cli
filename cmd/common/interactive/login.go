@@ -104,13 +104,15 @@ func runLogin(cmd *cobra.Command) error {
 		return fmt.Errorf("not an interactive terminal: pass --workspace <slug> to sign in non-interactively")
 	}
 
-	if _, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage); err != nil {
-		if errors.Is(err, tui.ErrAborted) {
-			logger.Infof("Sign-in cancelled. Nothing was saved.")
+	out, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage, "--workspace")
+	switch {
+	case errors.Is(err, tui.ErrAborted):
+		logger.Infof("Sign-in cancelled. Nothing was saved.")
 
-			return nil
-		}
-
+		return nil
+	case errors.Is(err, ErrStdinUnusable):
+		return reportStdinUnusable(ctx, logger, envs, out, "bitrise-build-cache auth login --workspace <slug>")
+	case err != nil:
 		return err
 	}
 
@@ -122,37 +124,64 @@ func runLogin(cmd *cobra.Command) error {
 	return nil
 }
 
+// ErrStdinUnusable means the sign-in left the paste reader holding stdin and it
+// could not be stopped, so no further prompt in this process can be trusted with
+// keystrokes. Callers report a way to continue without one.
+var ErrStdinUnusable = errors.New("standard input is no longer usable for prompts")
+
+// loginOutcome is what a completed sign-in leaves behind. Kind matters because a
+// keychain-less host stores the login in the config file instead, and callers
+// that go on to describe or update the credential have to target the right one.
+type loginOutcome struct {
+	Creds oauth.Credentials
+	Kind  store.Kind
+	// StdinUnusable means a paste reader is still holding stdin, so no prompt in
+	// this process can be trusted with keystrokes.
+	StdinUnusable bool
+}
+
 // loginAndStore runs the browser OAuth flow, resolves the workspace and persists
 // the credential. workspace empty → interactive picker; storage empty → default
 // target for the environment. Shared by `auth login` and the interactive wizard.
-func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, workspace, storage string) (oauth.Credentials, error) {
+//
+// workspaceFlag names the flag a caller can use to supply the workspace without
+// a prompt; it appears in ErrStdinUnusable guidance and differs per command.
+func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, workspace, storage, workspaceFlag string) (loginOutcome, error) {
 	cfg := oauth.NewConfigFromEnv(envs)
 	cfg.Logger = logger
+
+	paster := &callbackPaster{Reader: os.Stdin, Logger: logger, WorkspaceFlag: workspaceFlag}
 	if isInteractiveStdin() {
-		cfg.CallbackFallback = callbackPaster{Reader: os.Stdin, Logger: logger}.Fallback
+		cfg.CallbackFallback = paster.Fallback
 	}
 
 	creds, err := cfg.Login(ctx, oauth.OpenBrowser)
 	if err != nil {
-		return oauth.Credentials{}, fmt.Errorf("sign in: %w", err)
+		return loginOutcome{}, fmt.Errorf("sign in: %w", err)
 	}
 
 	if workspace == "" {
+		// A picker here would race the paste reader for every keystroke, which is
+		// the failure this reports instead of reproducing.
+		if paster.StdinUnusable() {
+			return loginOutcome{}, fmt.Errorf("%w: cannot show the workspace picker", ErrStdinUnusable)
+		}
+
 		workspace, err = pickWorkspace(ctx, envs, creds.PAT)
 		if err != nil {
-			return oauth.Credentials{}, err
+			return loginOutcome{}, err
 		}
 	}
 	creds.WorkspaceID = workspace
 
 	target, err := store.Select(envs, storage)
 	if err != nil {
-		return oauth.Credentials{}, err //nolint:wrapcheck
+		return loginOutcome{}, err //nolint:wrapcheck
 	}
 
 	kind, err := saveLoginWithFallback(logger, target, storage, creds)
 	if err != nil {
-		return oauth.Credentials{}, err
+		return loginOutcome{}, err
 	}
 
 	switch kind {
@@ -162,7 +191,12 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the multiplatform config file (CI-safe).", workspace)
 	}
 
-	return creds, nil
+	out := loginOutcome{Creds: creds, Kind: kind, StdinUnusable: paster.StdinUnusable()}
+	if out.StdinUnusable {
+		return out, fmt.Errorf("%w: the credential was saved", ErrStdinUnusable)
+	}
+
+	return out, nil
 }
 
 // saveLoginWithFallback stores the login, dropping to the multiplatform config
@@ -231,4 +265,26 @@ func isInteractiveStdin() bool {
 	}
 
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// reportStdinUnusable explains how to finish without a prompt, listing the
+// workspaces when the credential is good enough to ask the API for them — the
+// user needs a slug to pass, and the picker that would have shown it is exactly
+// what is unavailable.
+func reportStdinUnusable(ctx context.Context, logger log.Logger, envs map[string]string, out loginOutcome, rerun string) error {
+	logger.Warnf("The sign-in took long enough that the CLI had started reading standard input, and it cannot stop.")
+	logger.Warnf("Any prompt now would drop keystrokes, so this command stops here.")
+
+	if out.Creds.PAT != "" {
+		if workspaces, err := bitriseapi.ListWorkspaces(ctx, bitriseapi.ResolveAPIBaseURL(envs), out.Creds.PAT); err == nil {
+			logger.Infof("Workspaces you can use:")
+			for _, ws := range workspaces {
+				logger.Infof("  %s (%s)", ws.Name, ws.Slug)
+			}
+		}
+	}
+
+	logger.Infof("Run: %s", rerun)
+
+	return ErrStdinUnusable
 }

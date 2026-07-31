@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -204,10 +205,18 @@ func (params ActivateBazelParams) rbeTemplateInventory(
 // credentialHelperPath keeps the helper reachable when the caller has no usable
 // absolute path: Bazel resolves a bare name through $PATH, which also survives a
 // CLI upgrade that moves the binary.
+//
+// It stays empty when that bare name resolves to nothing, because the template
+// reads an empty CLIPath as "embed the token instead" — a config with a token on
+// disk still authenticates, whereas a helper that can never be spawned fails
+// every build.
 func credentialHelperPath(cliPath string) string {
-	if cliPath != "" {
+	switch {
+	case cliPath != "":
 		return cliPath
+	case clibin.OnPATH():
+		return paths.CLIBinaryName
 	}
 
-	return paths.CLIBinaryName
+	return ""
 }

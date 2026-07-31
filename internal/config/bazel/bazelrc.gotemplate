@@ -4,8 +4,9 @@ build via the CLI's credential-helper hook (Bazel invokes `<CLIPath> get`
 per the EngFlow spec) — no plain-text token on disk. CLIPath is an absolute
 path, or the bare binary name, which Bazel looks up in $PATH. CI keeps the
 literal `Bearer <token>` header for perf and to avoid spawning the CLI on
-every RPC. An empty CLIPath still falls back to the literal header rather
-than emitting a helper flag with no path.
+every RPC. CLIPath is empty when the CLI is neither at a usable path nor on
+$PATH, and that also takes the literal-header branch: a token on disk
+still authenticates, a helper that can't be spawned fails every build.
 */ -}}
 {{- $useHelper := and .Common.CLIPath (not .Common.CIProvider) -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
