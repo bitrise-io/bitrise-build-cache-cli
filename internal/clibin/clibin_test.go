@@ -88,16 +88,51 @@ func TestResolve_TestBinaryIsItselfOnATransientPath(t *testing.T) {
 		"expected the test binary at %s to look transient; if this fails the two cases below prove nothing", exe)
 }
 
-func TestResolve_TransientPathResolvesToTheBareName(t *testing.T) {
+// $PATH wins even for a binary with a perfectly usable path: an absolute path in
+// a generated config goes stale as soon as an upgrade moves the binary.
+func TestResolvePath(t *testing.T) {
+	const stable = "/usr/local/bin/bitrise-build-cache"
+	transient := filepath.Join(os.TempDir(), "go-build123", "b001", "exe", "main")
+
+	cases := []struct {
+		name   string
+		exe    string
+		onPATH bool
+		want   string
+	}{
+		{name: "on PATH wins over a stable path", exe: stable, onPATH: true, want: ""},
+		{name: "on PATH wins over a transient path", exe: transient, onPATH: true, want: ""},
+		{name: "not on PATH falls back to the real path", exe: stable, onPATH: false, want: stable},
+		{name: "not on PATH and transient leaves nothing usable", exe: transient, onPATH: false, want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, resolvePath(tc.exe, tc.onPATH))
+		})
+	}
+}
+
+// End to end through the process state: with the CLI on $PATH, the caller is told
+// to use the bare name and nothing is copied anywhere.
+func TestResolve_PrefersPATH(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	fakeBin := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "bitrise-build-cache"), []byte("#!/bin/sh\n"), 0o755))
+	t.Setenv("PATH", fakeBin)
 
-	got := Resolve(newTestLogger())
-
-	assert.Empty(t, got, "an empty path is how callers fall back to the $PATH lookup")
+	assert.Empty(t, Resolve(newTestLogger()))
 
 	stable, err := StablePath()
 	require.NoError(t, err)
 	assert.NoFileExists(t, stable, "resolving must not copy the binary anywhere")
+}
+
+func TestResolve_TransientPathWithNothingOnPATH(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir()) // empty dir: nothing answers to the name
+
+	assert.Empty(t, Resolve(newTestLogger()), "no usable path and no $PATH entry")
 }
 
 func newTestLogger() log.Logger {
