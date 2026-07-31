@@ -44,9 +44,8 @@ func ConfigFile(osProxy utils.OsProxy) string {
 // EnvProxySocketPath overrides the default xcelerate proxy socket location when set.
 const EnvProxySocketPath = "BITRISE_XCELERATE_PROXY_SOCKET_PATH"
 
-// EnvSwiftPackagesPath is exported by `activate xcode` with the SPM checkout dir the xcodebuild
-// wrapper passes as -clonedSourcePackagesDirPath. Read-only signal for cache steps; the wrapper
-// does not consult it.
+// EnvSwiftPackagesPath is exported by `activate xcode` for cache steps to target. Advisory only —
+// the wrapper computes the path itself rather than reading this back.
 const EnvSwiftPackagesPath = "BITRISE_XCODE_SOURCE_PACKAGES_PATH"
 
 // EnvInactivityTimeout overrides the xcelerate proxy inactivity window that

@@ -114,10 +114,8 @@ func Activate(
 	return nil
 }
 
-// exportSwiftPackagesPath publishes the SPM checkout dir the xcodebuild wrapper will pass as
-// -clonedSourcePackagesDirPath, so cache steps can target it. Without this the wrapper's
-// DerivedData relocation silently moves SPM checkouts out of whatever path a cache step was
-// configured with, and every build re-resolves its packages from origin.
+// exportSwiftPackagesPath publishes the SPM checkout dir the wrapper relocates to, so cache steps
+// have something to target instead of the default DerivedData path the build no longer uses.
 func exportSwiftPackagesPath(logger log.Logger, config Config, envs map[string]string) {
 	if !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
 		return

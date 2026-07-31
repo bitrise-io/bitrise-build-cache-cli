@@ -86,9 +86,8 @@ const (
 	// xcodeManagedProjectTempDirTool is the per-workspace PROJECT_TEMP_DIR root managed by the wrapper.
 	xcodeManagedProjectTempDirTool = "xcode-ptd"
 
-	// xcodeManagedSwiftPackagesTool is the SPM checkout root managed by the wrapper. Deliberately
-	// not per-workspace: SPM checkouts are keyed by Package.resolved, not by workspace, so a shared
-	// root survives workspace-sha changes and can be cached under one stable path.
+	// xcodeManagedSwiftPackagesTool is the SPM checkout root managed by the wrapper. Not
+	// workspace-scoped: SPM keys checkouts by Package.resolved, so one root stays cacheable.
 	xcodeManagedSwiftPackagesTool = "xcode-spm"
 
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
@@ -292,8 +291,7 @@ func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 }
 
 // XcodeManagedSwiftPackagesDir returns the wrapper-owned SPM checkout dir passed to xcodebuild as
-// -clonedSourcePackagesDirPath. Unlike the DerivedData and PROJECT_TEMP_DIR roots this is not
-// workspace-sha scoped, so it stays valid across branches and is exported for cache steps to use.
+// -clonedSourcePackagesDirPath.
 func (p Paths) XcodeManagedSwiftPackagesDir() string {
 	return p.BitriseCacheDir(xcodeManagedSwiftPackagesTool)
 }

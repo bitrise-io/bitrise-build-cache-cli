@@ -814,8 +814,7 @@ func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd,
 		*ptd = p.XcodeManagedProjectTempDir(sha)
 		sources.ProjectTempDir = prefixMapSourceManaged
 	}
-	// Only relocate SPM checkouts when we also relocated DerivedData: with a user-supplied
-	// -derivedDataPath the checkouts already sit somewhere the user controls and can cache.
+	// A user-supplied -derivedDataPath already puts the checkouts somewhere they control.
 	if *spm == "" && sources.DerivedDataPath == prefixMapSourceManaged {
 		*spm = p.XcodeManagedSwiftPackagesDir()
 		sources.SwiftPackagesDir = prefixMapSourceManaged
