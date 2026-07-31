@@ -816,7 +816,7 @@ func (c *XcodebuildRunner) fillManagedPrefixMapPaths(projectDir string, dd, ptd,
 	}
 	// A user-supplied -derivedDataPath already puts the checkouts somewhere they control.
 	if *spm == "" && sources.DerivedDataPath == prefixMapSourceManaged {
-		*spm = p.XcodeManagedSwiftPackagesDir()
+		*spm = p.XcodeManagedSwiftPackagesDir(sha)
 		sources.SwiftPackagesDir = prefixMapSourceManaged
 	}
 }

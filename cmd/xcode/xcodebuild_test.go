@@ -326,9 +326,9 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 		require.Contains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 		spmIdx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 		require.Less(t, spmIdx+1, len(captured))
-		assert.Equal(t, "/h/.bitrise/cache/xcode-spm", captured[spmIdx+1],
-			"SPM dir must not be workspace-sha scoped")
-		assert.Contains(t, other, "-fdepscan-prefix-map=/h/.bitrise/cache/xcode-spm=/^spm")
+		assert.Contains(t, captured[spmIdx+1], "/h/.bitrise/cache/xcode-spm/")
+		// The sha is absorbed by the mapping, so two checkouts of one repo share a virtual path.
+		assert.Contains(t, other, "="+captured[spmIdx+1]+"=/^spm")
 	})
 
 	t.Run("respects user-supplied clonedSourcePackagesDirPath (no injection)", func(t *testing.T) {

@@ -70,7 +70,8 @@ func TestPaths_xcodeManagedDirs(t *testing.T) {
 
 	assert.Equal(t, "/h/.bitrise/cache/xcode-dd/abc123", p.XcodeManagedDerivedDataDir("abc123"))
 	assert.Equal(t, "/h/.bitrise/cache/xcode-ptd/abc123", p.XcodeManagedProjectTempDir("abc123"))
-	assert.Equal(t, "/h/.bitrise/cache/xcode-spm", p.XcodeManagedSwiftPackagesDir())
+	assert.Equal(t, "/h/.bitrise/cache/xcode-spm/abc123", p.XcodeManagedSwiftPackagesDir("abc123"))
+	assert.Equal(t, "/h/.bitrise/cache/xcode-spm", p.XcodeManagedSwiftPackagesRoot())
 }
 
 func TestPaths_xcelerateHandledInvocations(t *testing.T) {

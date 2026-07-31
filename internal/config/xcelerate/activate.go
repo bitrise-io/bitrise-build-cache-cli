@@ -128,7 +128,7 @@ func exportSwiftPackagesPath(logger log.Logger, config Config, envs map[string]s
 		return
 	}
 
-	envexport.New(envs, logger).Export(EnvSwiftPackagesPath, p.XcodeManagedSwiftPackagesDir())
+	envexport.New(envs, logger).Export(EnvSwiftPackagesPath, p.XcodeManagedSwiftPackagesRoot())
 }
 
 // ---------------------------------------------------------------------------
