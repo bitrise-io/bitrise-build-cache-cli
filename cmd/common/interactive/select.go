@@ -1,9 +1,12 @@
-package common
+package interactive
 
 import (
+	"errors"
 	"fmt"
 
 	"charm.land/huh/v2"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
 
 // selectFromList shows a huh single-select and returns the chosen 0-based index.
@@ -16,13 +19,21 @@ func selectFromList(prompt string, items []string) (int, error) {
 	}
 
 	choice := 0
-	if err := huh.NewSelect[int]().
+	sel := huh.NewSelect[int]().
 		Title(prompt).
 		Options(options...).
-		Value(&choice).
-		Run(); err != nil {
+		Height(tui.SelectHeight).
+		Value(&choice)
+	sel.WithKeyMap(tui.KeyMap())
+	sel.WithWidth(tui.SelectWidth)
+
+	err := sel.Run()
+	switch {
+	case err == nil:
+		return choice, nil
+	case errors.Is(err, huh.ErrUserAborted):
+		return 0, tui.ErrAborted
+	default:
 		return 0, fmt.Errorf("interactive selection: %w", err)
 	}
-
-	return choice, nil
 }

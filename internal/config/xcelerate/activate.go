@@ -180,6 +180,14 @@ func copyCLIToXcelerateBinDir(ctx context.Context, osProxy utils.OsProxy, logger
 
 	target := filepath.Join(binPath, cliBasename)
 
+	// Already the pinned copy: there is nothing to copy, and the rename this
+	// guards is what made terminating the running CLI necessary in the first place.
+	if src == target {
+		logger.TDonef("CLI already in place at %s", target)
+
+		return nil
+	}
+
 	if err := makeSureCLIIsNotRunning(ctx, target, logger); err != nil {
 		return fmt.Errorf("failed to ensure cli is not running: %w", err)
 	}
@@ -231,6 +239,13 @@ func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logg
 	}
 
 	for _, p := range processes {
+		// Since activate pins the bin dir onto PATH, target is what
+		// `bitrise-build-cache-cli` resolves to on any machine that has activated
+		// before — so without this the second activation terminates itself.
+		if int(p.Pid) == os.Getpid() {
+			continue
+		}
+
 		exe, err := p.ExeWithContext(ctx)
 		if err != nil {
 			continue

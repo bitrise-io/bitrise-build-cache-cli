@@ -74,35 +74,43 @@ type Options struct {
 }
 
 type Doctor struct {
-	OsProxy            utils.OsProxy
-	Envs               map[string]string
-	CLIVersion         string
-	HTTPClient         *http.Client
-	AuthLoader         common.AuthLoader
-	Keyring            keychain.Backend
-	LookPath           func(string) (string, error)
+	OsProxy    utils.OsProxy
+	Envs       map[string]string
+	CLIVersion string
+	HTTPClient *http.Client
+	AuthLoader common.AuthLoader
+	Keyring    keychain.Backend
+	LookPath   func(string) (string, error)
+	// StateDirCandidates are the log dirs to check; nil derives them from the
+	// activated tools, so an Xcode-only setup isn't asked about ccache's.
 	StateDirCandidates []string
 	LatestReleaseTag   func(ctx context.Context, c *http.Client) (string, error)
 	ActivatedTools     func() map[toolconfig.Tool]bool
 	BackendProbe       BackendProbeFunc
-	Now                func() time.Time
-	Debug              bool
+	// AuthFixPrompt collects credentials for the auth fixer. Nil falls back to
+	// the token prompt; the doctor command supplies one that offers a browser
+	// sign-in first.
+	AuthFixPrompt func() (workspaceID, authToken string, err error)
+	Now           func() time.Time
+	Debug         bool
+
+	// checksOverride replaces the real check set in tests.
+	checksOverride []Check
 }
 
 func NewDoctor() *Doctor {
 	osProxy := utils.DefaultOsProxy{}
 
 	return &Doctor{
-		OsProxy:            osProxy,
-		Envs:               utils.AllEnvs(),
-		CLIVersion:         common.GetCLIVersion(nil),
-		HTTPClient:         &http.Client{Timeout: 3 * time.Second},
-		AuthLoader:         keychain.New(),
-		Keyring:            keychain.NewBackend(),
-		LookPath:           exec.LookPath,
-		StateDirCandidates: defaultStateDirCandidates(),
-		LatestReleaseTag:   fetchLatestGitHubRelease,
-		ActivatedTools:     defaultActivatedTools,
+		OsProxy:          osProxy,
+		Envs:             utils.AllEnvs(),
+		CLIVersion:       common.GetCLIVersion(nil),
+		HTTPClient:       &http.Client{Timeout: 3 * time.Second},
+		AuthLoader:       keychain.New(),
+		Keyring:          keychain.NewBackend(),
+		LookPath:         exec.LookPath,
+		LatestReleaseTag: fetchLatestGitHubRelease,
+		ActivatedTools:   defaultActivatedTools,
 	}
 }
 
@@ -128,7 +136,13 @@ func defaultActivatedTools() map[toolconfig.Tool]bool {
 	return out
 }
 
-func defaultStateDirCandidates() []string {
+// stateDirCandidates resolves the log dirs to check, limited to the tools that
+// are actually activated.
+func (d *Doctor) stateDirCandidates() []string {
+	if d.StateDirCandidates != nil {
+		return d.StateDirCandidates
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
@@ -136,33 +150,105 @@ func defaultStateDirCandidates() []string {
 
 	p := paths.FromHome(home)
 
-	return []string{p.XcelerateLogDir(), p.CcacheLogDir()}
+	var out []string
+	if d.toolActivated(toolconfig.Xcelerate) {
+		out = append(out, p.XcelerateLogDir())
+	}
+	if d.toolActivated(toolconfig.Ccache) {
+		out = append(out, p.CcacheLogDir())
+	}
+
+	return out
 }
 
 func (d *Doctor) Run(ctx context.Context, opts Options) Report {
+	report := d.Diagnose(ctx, opts)
+	if !opts.ApplyFixes {
+		return report
+	}
+
+	for i := range report.Items {
+		ApplyFix(&report.Items[i])
+	}
+	report.Overall = computeOverall(report.Items)
+
+	return report
+}
+
+// Diagnose runs the checks without fixing anything, so a caller can show the
+// results and decide what to repair before touching the machine.
+func (d *Doctor) Diagnose(ctx context.Context, opts Options) Report {
 	checks := d.checks(opts)
 	items := make([]ReportItem, 0, len(checks))
 
 	for _, c := range checks {
-		res := c.Diagnose(ctx)
-		item := ReportItem{Name: c.Name, Result: res}
-
-		if opts.ApplyFixes && res.Fixer != nil {
-			detail, fxerr := res.Fixer.Fix()
-			if fxerr != nil {
-				item.FixError = fxerr.Error()
-			} else {
-				item.FixResult = &detail
-			}
-		}
-
-		items = append(items, item)
+		items = append(items, ReportItem{Name: c.Name, Result: c.Diagnose(ctx)})
 	}
 
 	return Report{Items: items, Version: d.CLIVersion, Overall: computeOverall(items)}
 }
 
+// NeedsTerminal reports whether a fixer has to prompt, so a scripted run can
+// skip it instead of letting it fail on a missing TTY.
+func NeedsTerminal(f Fixer) bool {
+	t, ok := f.(interface{ NeedsTerminal() bool })
+
+	return ok && t.NeedsTerminal()
+}
+
+// ApplyFixesUnattended repairs everything fixable without prompting, noting the
+// fixers it had to skip for needing a terminal.
+func ApplyFixesUnattended(report *Report) {
+	for i := range report.Items {
+		f := report.Items[i].Result.Fixer
+		if f == nil {
+			continue
+		}
+		if NeedsTerminal(f) {
+			report.Items[i].FixError = "needs a prompt — rerun with `--fix --interactive`"
+
+			continue
+		}
+
+		ApplyFix(&report.Items[i])
+	}
+	report.Overall = computeOverall(report.Items)
+}
+
+// ApplyFix runs an item's fixer and records the outcome on the item. No-op for
+// items without one.
+func ApplyFix(item *ReportItem) {
+	if item.Result.Fixer == nil {
+		return
+	}
+
+	detail, err := item.Result.Fixer.Fix()
+	if err != nil {
+		item.FixError = err.Error()
+
+		return
+	}
+
+	item.FixResult = &detail
+}
+
+// Fixable lists the items that have a fixer, in check order.
+func Fixable(items []ReportItem) []ReportItem {
+	out := make([]ReportItem, 0, len(items))
+	for _, it := range items {
+		if it.Result.Fixer != nil {
+			out = append(out, it)
+		}
+	}
+
+	return out
+}
+
 func (d *Doctor) checks(opts Options) []Check {
+	if d.checksOverride != nil {
+		return d.checksOverride
+	}
+
 	checks := []Check{
 		d.authCheck(),
 		d.keychainSmokeCheck(),

@@ -1,6 +1,6 @@
 //go:build unit
 
-package common
+package interactive
 
 import (
 	"testing"
@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
 func TestActivateCmd_HasInteractiveFlag(t *testing.T) {
-	flag := ActivateCmd.Flags().Lookup("interactive")
+	flag := common.ActivateCmd.Flags().Lookup("interactive")
 	require.NotNil(t, flag, "--interactive flag should be registered on activate command")
 	assert.Equal(t, "false", flag.DefValue)
 }
@@ -65,12 +66,12 @@ func TestUsernamePersistable(t *testing.T) {
 }
 
 func TestDebugFlag_ORsGlobal_ActivateInteractive(t *testing.T) {
-	t.Cleanup(func() { IsDebugLogMode = false })
+	t.Cleanup(func() { common.IsDebugLogMode = false })
 
-	IsDebugLogMode = true
+	common.IsDebugLogMode = true
 	params := struct{ DebugLogging bool }{DebugLogging: false}
 
-	params.DebugLogging = DebugEnabled(params.DebugLogging)
+	params.DebugLogging = common.DebugEnabled(params.DebugLogging)
 
 	assert.True(t, params.DebugLogging, "global -d must OR into interactive params.DebugLogging")
 }

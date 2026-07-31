@@ -3,6 +3,7 @@ module github.com/bitrise-io/bitrise-build-cache-cli/v3
 go 1.25.8
 
 require (
+	charm.land/bubbles/v2 v2.0.0
 	charm.land/huh/v2 v2.0.3
 	cloud.google.com/go/longrunning v1.2.0
 	github.com/bazelbuild/remote-apis v0.0.0-20260331222004-becdd8f9ff81
@@ -10,6 +11,7 @@ require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.50
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.36
 	github.com/dustin/go-humanize v1.0.1
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
@@ -32,7 +34,6 @@ require (
 )
 
 require (
-	charm.land/bubbles/v2 v2.0.0 // indirect
 	charm.land/bubbletea/v2 v2.0.2 // indirect
 	charm.land/lipgloss/v2 v2.0.1 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -55,7 +56,6 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect

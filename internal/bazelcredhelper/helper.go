@@ -46,7 +46,11 @@ func Run(in io.Reader, out io.Writer, envs map[string]string) error {
 
 	cfg, _, err := configcommon.ResolveAuthConfig(envs)
 	if err != nil {
-		return fmt.Errorf("resolve auth config: %w", err)
+		// Bazel shows only the helper's stderr, once per failing RPC, and the
+		// wrapped error names env vars alone even though the keychain and the
+		// config file were checked too — so say where to go from here.
+		return fmt.Errorf("no Bitrise Build Cache credentials in the environment, the OS keychain or the config file (%w); "+
+			"run `bitrise-build-cache doctor --fix --interactive` to sign in or store a token", err)
 	}
 
 	resp := GetCredentialsResponse{

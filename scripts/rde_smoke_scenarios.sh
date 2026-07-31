@@ -290,6 +290,62 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
+# SCENARIO D — auth login callback-URL paste fallback (ACI-5241)
+#              The reason the paste path exists: an RDE session's browser runs
+#              on the user's laptop, not the VM, so it can never reach the CLI's
+#              127.0.0.1 callback listener. Needs a real pty (the fallback only
+#              arms when stdin is a terminal), so this is RDE/expect-only.
+#
+#              No IdP round-trip: the authorize URL the CLI prints carries the
+#              state + redirect_uri, which is everything needed to drive the
+#              paste parser and its rejection paths.
+# ═════════════════════════════════════════════════════════════════════════════
+scenario "SCENARIO D — auth login accepts a pasted callback URL"
+
+step "login prints the paste hint and rejects a mismatched state"
+# expect drives a pty so the paste fallback is armed. We paste a callback URL built
+# from the printed authorize URL but with a deliberately wrong state — proving
+# the paste was read and validated without needing a real authorization code.
+remote_bash "cat > /tmp/paste.exp <<'PEXP'
+set timeout 30
+log_user 1
+spawn env NO_COLOR=1 [file join \$env(HOME) .bitrise/bin/bitrise-build-cache] auth login --workspace ${WORKSPACE_SLUG}
+set redirect \"\"
+expect {
+  -re {redirect_uri=http%3A%2F%2F127.0.0.1%3A([0-9]+)%2Fcallback} {
+    set port \$expect_out(1,string)
+    set redirect \"http://127.0.0.1:\$port/callback\"
+    exp_continue
+  }
+  -re {copy the URL from the browser} {
+    if {\$redirect eq \"\"} { puts stderr \"hint printed before the authorize URL\"; exit 3 }
+    send -- \"\$redirect?code=dummy-code&state=WRONG-STATE\r\"
+    exp_continue
+  }
+  -re {state mismatch} { exit 0 }
+  eof { puts stderr \"login exited without reporting a state mismatch\"; exit 4 }
+  timeout { puts stderr \"login did not print the paste hint within 30s\"; exit 2 }
+}
+PEXP
+expect -f /tmp/paste.exp"
+
+step "an unusable paste is nudged instead of aborting the login"
+remote_bash "cat > /tmp/paste_junk.exp <<'PEXP'
+set timeout 30
+log_user 1
+spawn env NO_COLOR=1 [file join \$env(HOME) .bitrise/bin/bitrise-build-cache] auth login --workspace ${WORKSPACE_SLUG}
+expect {
+  -re {copy the URL from the browser} { send -- \"https://app.bitrise.io/dashboard\r\"; exp_continue }
+  -re {doesn't look like the callback URL} { exit 0 }
+  eof { puts stderr \"login exited instead of nudging on an unusable paste\"; exit 4 }
+  timeout { puts stderr \"no nudge for the unusable paste within 30s\"; exit 2 }
+}
+PEXP
+expect -f /tmp/paste_junk.exp"
+
+scenario_ok
+
+# ═════════════════════════════════════════════════════════════════════════════
 # NOT YET IMPLEMENTED — RDE-only scenarios worth adding later:
 #
 #   * ACI-5036 doctor as Xcode scheme pre-action: needs an xcodeproj +

@@ -78,7 +78,7 @@ func (k *Keychain) Load() (Credentials, error) {
 	case errors.Is(err, keyring.ErrNotFound):
 		return Credentials{}, ErrNotFound
 	case err != nil:
-		return Credentials{}, fmt.Errorf("keychain read: %w", err)
+		return Credentials{}, fmt.Errorf("keychain read: %w", classify(err))
 	}
 
 	var c Credentials
@@ -96,7 +96,7 @@ func (k *Keychain) Save(c Credentials) error {
 	}
 
 	if err := k.Backend.Set(serviceName, accountName, string(raw)); err != nil {
-		return fmt.Errorf("keychain write: %w", err)
+		return fmt.Errorf("keychain write: %w", classify(err))
 	}
 
 	return nil
@@ -121,6 +121,6 @@ func (k *Keychain) Clear() error {
 	case err == nil, errors.Is(err, keyring.ErrNotFound):
 		return nil
 	default:
-		return fmt.Errorf("keychain delete: %w", err)
+		return fmt.Errorf("keychain delete: %w", classify(err))
 	}
 }

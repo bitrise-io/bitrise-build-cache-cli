@@ -14,12 +14,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -75,11 +77,15 @@ var authSetCmd = &cobra.Command{
 		existing.AuthToken = setToken
 		existing.WorkspaceID = setWorkspaceID
 		existing.Username = setUsername
-		if err := store.SaveExclusive(target, existing); err != nil {
+		outcome, err := store.SaveExclusiveWithFallback(target, existing, setStorage == "")
+		if err != nil {
 			return fmt.Errorf("save credentials: %w", err)
 		}
+		if outcome.FellBack {
+			logger.Warnf("Could not write to the OS keychain (%s).", outcome.KeychainErr)
+		}
 
-		switch target.Kind() {
+		switch outcome.Kind {
 		case store.KindKeychain:
 			logger.TInfof("✅ Credentials saved to the OS keychain")
 		case store.KindFile:
@@ -92,9 +98,9 @@ var authSetCmd = &cobra.Command{
 			logger.TInfof("Display name for local invocations set to %q.", setUsername)
 		}
 
-		switch scrubbed, err := scrubDiskCredentials(target.Kind()); {
+		switch scrubbed, err := scrubDiskCredentials(outcome.Kind); {
 		case err != nil:
-			logger.Warnf("Saved to %s, but could not strip plain-text credentials from disk: %v", target.Kind(), err)
+			logger.Warnf("Saved to %s, but could not strip plain-text credentials from disk: %v", outcome.Kind, err)
 			logger.Warnf("Run `bitrise-build-cache auth status` to audit remaining sources.")
 		case len(scrubbed) > 0:
 			scrubbedPaths := make([]string, len(scrubbed))
@@ -457,6 +463,10 @@ func probeKeychain() credAudit {
 	switch {
 	case errors.Is(err, keychain.ErrNotFound):
 		return credAudit{state: sourceAbsent}
+	case errors.Is(err, keychain.ErrUnavailable):
+		// Not a failure to report in red: this host has no keychain, so the config
+		// file below is where credentials are supposed to be.
+		return credAudit{state: sourceAbsent, note: "no OS keychain on this machine — credentials are kept in the config file instead"}
 	case err != nil:
 		return credAudit{state: sourceReadError, err: err}
 	}
@@ -557,9 +567,20 @@ var (
 
 // nolint:gochecknoglobals
 var authClearCmd = &cobra.Command{
-	Use:          "clear",
-	Short:        "Remove Bitrise Build Cache credentials from the OS keychain and the multiplatform config file",
-	Long:         "By default clears the OS keychain + the multiplatform config file. Legacy per-tool copies (xcelerate/ccache/gradle-init) are scrubbed via `auth set`, not here. Use --storage=keychain|file to target one backend.",
+	Use:   "clear",
+	Short: "Remove every stored credential, including the browser login",
+	Long: `Removes every stored Bitrise Build Cache credential — a token set with ` + "`auth set`" + `
+and a browser (OAuth) login alike — from the OS keychain and the multiplatform
+config file.
+
+This is broader than ` + "`auth logout`" + `:
+
+  auth clear    removes everything stored, both kinds of credential.
+  auth logout   removes only the browser login, leaving a manually set token in
+                place and still in use.
+
+Legacy per-tool copies (xcelerate/ccache/gradle-init) are scrubbed via ` + "`auth set`" + `,
+not here. Use --storage=keychain|file to target one backend.`,
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -576,15 +597,44 @@ var authClearCmd = &cobra.Command{
 			return fmt.Errorf("unknown --storage %q (want keychain|file|auto)", clearStorage)
 		}
 
-		for _, t := range targets {
-			if err := t.Clear(); err != nil {
-				return fmt.Errorf("clear %s: %w", t.Kind(), err)
-			}
-			logger.TInfof("✅ Credentials removed from %s", t.Kind())
+		hadLogin := false
+		if creds, _, err := oauth.LoadWithSource(); err == nil && creds.IsOAuthManaged() {
+			hadLogin = true
+		}
+
+		if err := clearTargets(logger, targets); err != nil {
+			return err
+		}
+
+		if hadLogin {
+			logger.Infof("That included the browser login — `auth login` to sign in again.")
 		}
 
 		return nil
 	},
+}
+
+// clearTargets clears every backend it can, rather than stopping at the first
+// failure — a machine with no keychain would otherwise never get as far as the
+// config file, leaving the user no way to remove their credentials.
+func clearTargets(logger log.Logger, targets []store.Store) error {
+	var failures []error
+
+	for _, t := range targets {
+		switch err := t.Clear(); {
+		case err == nil:
+			logger.TInfof("✅ Credentials removed from %s", t.Kind())
+		case errors.Is(err, keychain.ErrUnavailable):
+			logger.Infof("Skipped the OS keychain: %s.", keychain.ErrUnavailable)
+		default:
+			// Reported per backend, then returned together: with two targets, the
+			// first failing must not hide whether the second was cleared.
+			logger.Warnf("Could not clear the %s: %s", t.Kind(), err)
+			failures = append(failures, fmt.Errorf("clear %s: %w", t.Kind(), err))
+		}
+	}
+
+	return errors.Join(failures...)
 }
 
 // nolint:gochecknoglobals
@@ -705,8 +755,8 @@ func init() {
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
 	authCmd.AddCommand(authUsernameCmd)
-	authCmd.AddCommand(common.LoginCmd)
-	authCmd.AddCommand(common.LogoutCmd)
+	authCmd.AddCommand(interactive.LoginCmd)
+	authCmd.AddCommand(interactive.LogoutCmd)
 
 	common.RootCmd.AddCommand(authCmd)
 }

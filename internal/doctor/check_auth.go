@@ -43,7 +43,7 @@ func (d *Doctor) authCheck() Check {
 				State:   StateError,
 				Detail:  "no credentials found",
 				Fixable: true,
-				Fixer:   AuthPromptFixer{},
+				Fixer:   AuthPromptFixer{Prompt: d.AuthFixPrompt},
 			}
 		},
 	}

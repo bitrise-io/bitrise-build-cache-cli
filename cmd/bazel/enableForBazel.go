@@ -2,7 +2,6 @@ package bazel
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -90,9 +90,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	params.RBE.Enabled = rbeEnabled
 	params.Timestamps = timestamps
 
-	if cliPath, exeErr := os.Executable(); exeErr == nil {
-		params.CLIPath = cliPath
-	}
+	params.CLIPath = clibin.Resolve(logger)
 
 	inventory, err := params.TemplateInventory(logger, envProvider, func(cmd string, params ...string) (string, error) {
 		output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx

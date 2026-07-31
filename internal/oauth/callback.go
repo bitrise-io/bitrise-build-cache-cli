@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -80,26 +82,24 @@ func (cs *callbackServer) close() {
 }
 
 func (cs *callbackServer) handle(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	cs.deliver(w, parseCallbackParams(r.URL.Query(), cs.state))
+}
 
+// parseCallbackParams validates the callback query params, shared by the
+// loopback handler and the pasted-URL fallback so the two can't drift.
+func parseCallbackParams(q url.Values, wantState string) callbackResult {
 	if errCode := q.Get("error"); errCode != "" {
-		desc := q.Get("error_description")
-		cs.deliver(w, callbackResult{err: fmt.Errorf("authorization denied: %s", joinNonEmpty(errCode, desc))})
-
-		return
+		return callbackResult{err: fmt.Errorf("authorization denied: %s", joinNonEmpty(errCode, q.Get("error_description")))}
 	}
-	if q.Get("state") != cs.state {
-		cs.deliver(w, callbackResult{err: errors.New("state mismatch on OAuth callback — possible CSRF, aborting")})
-
-		return
+	if q.Get("state") != wantState {
+		return callbackResult{err: errors.New("state mismatch on OAuth callback — possible CSRF, aborting")}
 	}
 	code := q.Get("code")
 	if code == "" {
-		cs.deliver(w, callbackResult{err: errors.New("OAuth callback missing authorization code")})
-
-		return
+		return callbackResult{err: errors.New("OAuth callback missing authorization code")}
 	}
-	cs.deliver(w, callbackResult{code: code})
+
+	return callbackResult{code: code}
 }
 
 // deliver sends the result to wait() (non-blocking — the channel is buffered
@@ -117,6 +117,44 @@ func (cs *callbackServer) deliver(w http.ResponseWriter, res callbackResult) {
 		return
 	}
 	_, _ = io.WriteString(w, successPage)
+}
+
+// PastedCallback is the outcome of parsing one line of user input as a callback
+// URL. Retry means the line was unusable — bad paste, wrong line — as opposed to
+// a sign-in the provider rejected, so the caller can ask for another line instead
+// of failing the login.
+type PastedCallback struct {
+	Code  string
+	Err   error
+	Retry bool
+}
+
+// ParsePastedCallback accepts what a user can realistically copy out of the
+// browser when the loopback redirect couldn't be reached: the full callback URL,
+// a bare `?a=b&c=d` query string, or just the params. It applies the same state
+// and error checks as the loopback handler, so a CallbackFallback cannot skip
+// them.
+func ParsePastedCallback(input, wantState string) PastedCallback {
+	s := strings.Trim(strings.TrimSpace(input), `"'`)
+	if s == "" {
+		return PastedCallback{Err: errors.New("empty input"), Retry: true}
+	}
+
+	if i := strings.Index(s, "?"); i >= 0 {
+		s = s[i+1:]
+	}
+
+	q, err := url.ParseQuery(s)
+	if err != nil {
+		return PastedCallback{Err: fmt.Errorf("parse pasted callback URL: %w", err), Retry: true}
+	}
+	if q.Get("code") == "" && q.Get("error") == "" {
+		return PastedCallback{Err: errors.New("no code or error parameter in it"), Retry: true}
+	}
+
+	res := parseCallbackParams(q, wantState)
+
+	return PastedCallback{Code: res.code, Err: res.err}
 }
 
 func joinNonEmpty(a, b string) string {

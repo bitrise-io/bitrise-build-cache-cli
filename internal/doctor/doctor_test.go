@@ -482,7 +482,7 @@ func TestBackendErrorState_kvSentinelUnauthenticated(t *testing.T) {
 
 func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	cfg := common.CacheAuthConfig{WorkspaceID: "ws-1"}
-	got := backendErrorDetail(kv.ErrCacheUnauthenticated, cfg, common.AuthSourceKeychain, 30*time.Millisecond)
+	got := backendErrorDetail(kv.ErrCacheUnauthenticated, cfg, sourceLabel(common.AuthSourceKeychain), 30*time.Millisecond)
 	assert.Contains(t, got, "auth-failed")
 	assert.Contains(t, got, "source=keychain")
 	assert.Contains(t, got, "ws-1")

@@ -57,6 +57,14 @@ if [ -z "$IS_CI" ] && [ -f ~/.bazelrc ] && grep -q "$FAKE_TOKEN" ~/.bazelrc; the
 fi
 pass "bazel sidecar ok"
 
+# A phase written into a shell rc file outlives the build, and GetBenchmarkPhase
+# short-circuits on the env var before calling the API — so one baseline result
+# would pin the phase and keep the cache disabled for good.
+log "activation leaves no benchmark phase in shell rc files"
+RC_HITS=$(grep -l BENCHMARK_PHASE ~/.bashrc ~/.zshrc ~/.profile ~/.zprofile 2>/dev/null || true)
+[ -z "$RC_HITS" ] || fail "benchmark phase written into shell rc file(s): $RC_HITS"
+pass "no benchmark phase pinned in rc files"
+
 log "doctor --no-backend-probe --no-update-check --json"
 DOCTOR_JSON=$("$CLI" doctor --no-backend-probe --no-update-check --json 2>&1 | sed -n '/^{/,/^}/p')
 if [ -z "$DOCTOR_JSON" ]; then fail "doctor produced no JSON"; fi
@@ -64,6 +72,16 @@ echo "$DOCTOR_JSON" | jq -e '.items | length > 0' >/dev/null || fail "doctor JSO
 echo "$DOCTOR_JSON" | jq -e '.cli_version' >/dev/null || fail "doctor JSON missing cli_version"
 STATES=$(echo "$DOCTOR_JSON" | jq -r '[.items[].result.state] | join(",")')
 pass "doctor JSON contract ok (states=$STATES)"
+
+# Only gradle + bazel are activated here (the cleanup above removed
+# ~/.bitrise/cache/ccache), so the ccache log dir must not be probed — a warning
+# about it would repeat on every Xcode build via the wrapper's health check.
+log "log-dirs check is scoped to activated tools"
+LOGDIRS_DETAIL=$(echo "$DOCTOR_JSON" | jq -r '.items[] | select(.name == "log-dirs") | .result.detail')
+[ -n "$LOGDIRS_DETAIL" ] || fail "doctor JSON has no log-dirs item"
+echo "$LOGDIRS_DETAIL" | grep -qi ccache \
+  && fail "log-dirs probed the ccache dir without ccache activated (got: $LOGDIRS_DETAIL)"
+pass "log-dirs ignores non-activated tools ($LOGDIRS_DETAIL)"
 
 log "drift-nudge fires after simulated CLI-version bump"
 mkdir -p ~/.local/state/bitrise-build-cache

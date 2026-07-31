@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
 
 const (
@@ -28,6 +30,16 @@ func (d *Doctor) keychainSmokeCheck() Check {
 			secret := newSmokeSecret()
 
 			if err := d.Keyring.Set(smokeServiceName, smokeAccountName, secret); err != nil {
+				// A host with no secret-service (headless Linux, containers) is a
+				// working setup — credentials live in the config file there — so this
+				// is worth knowing about but is not a broken keychain.
+				if keychain.Unavailable(err) {
+					return Result{
+						State:  StateWarn,
+						Detail: "no OS keychain on this machine, so credentials are kept in the config file instead. Start a secret-service backend (gnome-keyring, KeePassXC) to use the keychain.",
+					}
+				}
+
 				return Result{
 					State:  StateError,
 					Detail: "keychain Set failed: " + err.Error() + ". On Linux check that a secret-service backend (e.g. gnome-keyring, KeePassXC) is running.",
