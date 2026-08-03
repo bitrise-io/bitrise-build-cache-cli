@@ -154,7 +154,10 @@ type GetSessionStatsResponse struct {
 	KvUploadedBytes int64                  `protobuf:"varint,8,opt,name=kv_uploaded_bytes,json=kvUploadedBytes,proto3" json:"kv_uploaded_bytes,omitempty"`
 	// Requests the proxy could not complete. A cold cache reports misses, not
 	// errors, so any value here is worth surfacing.
-	Errors        int64 `protobuf:"varint,9,opt,name=errors,proto3" json:"errors,omitempty"`
+	Errors int64 `protobuf:"varint,9,opt,name=errors,proto3" json:"errors,omitempty"`
+	// The reason behind the first of those errors, so a caller can report why
+	// without parsing the proxy's log.
+	FirstError    string `protobuf:"bytes,10,opt,name=first_error,json=firstError,proto3" json:"first_error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -252,6 +255,13 @@ func (x *GetSessionStatsResponse) GetErrors() int64 {
 	return 0
 }
 
+func (x *GetSessionStatsResponse) GetFirstError() string {
+	if x != nil {
+		return x.FirstError
+	}
+	return ""
+}
+
 var File_llvm_session_session_proto protoreflect.FileDescriptor
 
 const file_llvm_session_session_proto_rawDesc = "" +
@@ -265,7 +275,7 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"\tstep_slug\x18\x04 \x01(\tR\bstepSlug\"a\n" +
 	"\x11EndSessionRequest\x12#\n" +
 	"\rinvocation_id\x18\x01 \x01(\tR\finvocationId\x12'\n" +
-	"\x10end_time_unix_ms\x18\x02 \x01(\x03R\rendTimeUnixMs\"\xab\x02\n" +
+	"\x10end_time_unix_ms\x18\x02 \x01(\x03R\rendTimeUnixMs\"\xcc\x02\n" +
 	"\x17GetSessionStatsResponse\x12%\n" +
 	"\x0euploaded_bytes\x18\x01 \x01(\x03R\ruploadedBytes\x12)\n" +
 	"\x10downloaded_bytes\x18\x02 \x01(\x03R\x0fdownloadedBytes\x12\x12\n" +
@@ -275,7 +285,10 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"\akv_hits\x18\x06 \x01(\x03R\x06kvHits\x12\x1b\n" +
 	"\tkv_misses\x18\a \x01(\x03R\bkvMisses\x12*\n" +
 	"\x11kv_uploaded_bytes\x18\b \x01(\x03R\x0fkvUploadedBytes\x12\x16\n" +
-	"\x06errors\x18\t \x01(\x03R\x06errors2\xe0\x01\n" +
+	"\x06errors\x18\t \x01(\x03R\x06errors\x12\x1f\n" +
+	"\vfirst_error\x18\n" +
+	" \x01(\tR\n" +
+	"firstError2\xe0\x01\n" +
 	"\aSession\x12B\n" +
 	"\n" +
 	"SetSession\x12\x1a.session.SetSessionRequest\x1a\x16.google.protobuf.Empty\"\x00\x12B\n" +

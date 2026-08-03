@@ -303,6 +303,7 @@ func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.G
 		KvMisses:        collectedStats.kvMisses,
 		KvUploadedBytes: collectedStats.kvUploadBytes,
 		Errors:          collectedStats.errors,
+		FirstError:      collectedStats.firstError,
 	}, nil
 }
 
@@ -331,7 +332,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			}
 		}
 
-		p.sessionState.incrementErrors()
+		p.sessionState.recordError("Get", err)
 		p.logger.TErrorf("Get error: %s", err)
 
 		return &llvmcas.CASGetResponse{
@@ -394,7 +395,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	errorHandler := func(err error) *llvmcas.CASPutResponse {
 		p.sessionState.markKeyUnsaved(key)
 
-		p.sessionState.incrementErrors()
+		p.sessionState.recordError("Put", err)
 		p.logger.TErrorf("Put error: %s", err)
 
 		return &llvmcas.CASPutResponse{
@@ -507,7 +508,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 			}
 		}
 
-		p.sessionState.incrementErrors()
+		p.sessionState.recordError("Load", err)
 		p.logger.TErrorf("Load error: %s", err)
 
 		return &llvmcas.CASLoadResponse{
@@ -561,7 +562,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 	errorHandler := func(err error) *llvmcas.CASSaveResponse {
 		p.sessionState.markKeyUnsaved(key)
 
-		p.sessionState.incrementErrors()
+		p.sessionState.recordError("Save", err)
 		p.logger.TErrorf("Save error: %s", err)
 
 		return &llvmcas.CASSaveResponse{
@@ -686,7 +687,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 			}
 		}
 
-		p.sessionState.incrementErrors()
+		p.sessionState.recordError("GetValue", err)
 		p.logger.TErrorf("GetValue error: %s", err)
 
 		return &llvmkv.GetValueResponse{
@@ -741,7 +742,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}()
 
 	errorHandler := func(err error) *llvmkv.PutValueResponse {
-		p.sessionState.incrementErrors()
+		p.sessionState.recordError("PutValue", err)
 		p.logger.TErrorf("PutValue error: %s", err)
 
 		return &llvmkv.PutValueResponse{

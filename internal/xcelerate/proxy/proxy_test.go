@@ -166,3 +166,50 @@ func Test_Proxy_SessionStatsErrorCounter(t *testing.T) {
 		})
 	}
 }
+
+// The reason travels with the count, so a caller can report why without reading
+// the proxy's log. First error wins: an unreachable backend repeats itself.
+func Test_Proxy_SessionStatsKeepsTheFirstErrorMessage(t *testing.T) {
+	var calls int
+	kvClient := &mocks.ClientMock{
+		DownloadStreamFunc: func(context.Context, io.Writer, string) error {
+			calls++
+			if calls == 1 {
+				return errors.New("connection refused")
+			}
+
+			return errors.New("a later, different failure")
+		},
+	}
+
+	listener := bufconn.Listen(1024 * 1024)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	resolver.SetDefaultScheme("passthrough")
+	client, err := grpc.NewClient("bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+
+	go func() {
+		p := proxy.NewProxy(kvClient, true, mockLogger, func(string) (log.Logger, error) {
+			return mockLogger, nil
+		}, nil)
+		_ = p.Serve(listener)
+	}()
+
+	casClient := llvmcas.NewCASDBServiceClient(client)
+	for range 2 {
+		_, err = casClient.Get(context.Background(), &llvmcas.CASGetRequest{
+			CasId: &llvmcas.CASDataID{Id: []byte("some-key")},
+		})
+		require.NoError(t, err)
+	}
+
+	stats, err := session.NewSessionClient(client).GetSessionStats(context.Background(), &emptypb.Empty{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), stats.GetErrors())
+	assert.Contains(t, stats.GetFirstError(), "connection refused")
+	assert.Contains(t, stats.GetFirstError(), "Get", "the message names the operation")
+	assert.NotContains(t, stats.GetFirstError(), "later, different")
+}

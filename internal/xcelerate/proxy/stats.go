@@ -17,9 +17,16 @@ type sessionState struct {
 	// errors counts requests the proxy could not complete. A cold cache reports
 	// misses, not errors, so any value here means lookups fell back to a local
 	// compile for a reason worth reporting.
-	errors    atomic.Int64
-	savedKeys sync.Map
+	errors atomic.Int64
+	// firstError is the message behind the first of those, kept so a caller can
+	// say why without reading the proxy's log. First rather than last: when a
+	// backend is unreachable every subsequent message repeats it.
+	firstError atomic.Pointer[string]
+	savedKeys  sync.Map
 }
+
+// errorMessageMax bounds what a single error contributes to the stats response.
+const errorMessageMax = 300
 
 type stats struct {
 	downloadBytes int64
@@ -31,6 +38,7 @@ type stats struct {
 	kvMisses      int64
 	kvUploadBytes int64
 	errors        int64
+	firstError    string
 }
 
 func newSessionState() *sessionState {
@@ -60,11 +68,29 @@ func (s *sessionState) getStats() stats {
 		kvMisses:      s.kvMisses.Load(),
 		kvUploadBytes: s.kvUploadBytes.Load(),
 		errors:        s.errors.Load(),
+		firstError:    s.loadFirstError(),
 	}
 }
 
-func (s *sessionState) incrementErrors() {
+// recordError counts a request the proxy gave up on and, for the first one, keeps
+// the reason.
+func (s *sessionState) recordError(op string, err error) {
 	s.errors.Add(1)
+
+	msg := op + ": " + err.Error()
+	if len(msg) > errorMessageMax {
+		msg = msg[:errorMessageMax] + "…"
+	}
+	// First writer wins; later errors only add to the count.
+	s.firstError.CompareAndSwap(nil, &msg)
+}
+
+func (s *sessionState) loadFirstError() string {
+	if p := s.firstError.Load(); p != nil {
+		return *p
+	}
+
+	return ""
 }
 
 func (s *sessionState) incrementMisses() {
