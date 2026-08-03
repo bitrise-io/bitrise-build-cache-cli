@@ -74,7 +74,9 @@ type Options struct {
 	// Only, when non-empty, restricts the run to checks with these names
 	// (see XcodeCheckNames, AuthProbeCheckNames).
 	Only []string
-	// PinAuth is Doctor.AuthOverride for callers that go through Run.
+	// PinAuth pins which credential the backend probe tests, so a caller
+	// diagnosing one request's failure can't get a pass on a different one (a CI
+	// JWT, say, when the request used a stored token).
 	PinAuth *common.CacheAuthConfig
 }
 
@@ -96,12 +98,8 @@ type Doctor struct {
 	// the token prompt; the doctor command supplies one that offers a browser
 	// sign-in first.
 	AuthFixPrompt func() (workspaceID, authToken string, err error)
-	// AuthOverride pins which credential the backend probe tests, so a caller
-	// diagnosing one request's failure can't get a pass on a different one (a CI
-	// JWT, say, when the request used a stored token).
-	AuthOverride *common.CacheAuthConfig
-	Now          func() time.Time
-	Debug        bool
+	Now           func() time.Time
+	Debug         bool
 
 	// checksOverride replaces the real check set in tests.
 	checksOverride []Check
@@ -264,7 +262,7 @@ func (d *Doctor) checks(opts Options) []Check {
 	}
 
 	if !opts.SkipBackendProbe {
-		checks = append(checks, d.authBackendCheck())
+		checks = append(checks, d.authBackendCheck(opts.PinAuth))
 	}
 
 	checks = append(checks,

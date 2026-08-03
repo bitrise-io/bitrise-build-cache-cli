@@ -168,7 +168,6 @@ func (d *xcodeDoctor) diagnose(ctx context.Context, timeout time.Duration, opts 
 
 	doc := doctorpkg.NewDoctor()
 	doc.Debug = d.Debug
-	doc.AuthOverride = opts.PinAuth
 
 	return doc.Run(runCtx, opts)
 }

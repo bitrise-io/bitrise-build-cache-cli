@@ -25,14 +25,14 @@ const (
 // BackendProbeFunc returns latency (always populated, even on error so callers can surface "took N ms then failed").
 type BackendProbeFunc func(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error)
 
-func (d *Doctor) authBackendCheck() Check {
+func (d *Doctor) authBackendCheck(pinned *common.CacheAuthConfig) Check {
 	return Check{
 		Name: "auth-backend",
 		Diagnose: func(ctx context.Context) Result {
 			cfg, source, err := common.ResolveAuthConfig(d.Envs)
 			srcLabel := sourceLabel(source)
-			if d.AuthOverride != nil {
-				cfg, err = *d.AuthOverride, nil
+			if pinned != nil {
+				cfg, err = *pinned, nil
 				// A pinned credential has no AuthSource of its own; saying "none"
 				// would read as "nothing resolvable", which is not what happened.
 				srcLabel = "the credential this build used"

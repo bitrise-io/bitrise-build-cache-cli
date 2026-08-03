@@ -132,9 +132,8 @@ func TestAuthBackendCheck_PinnedCredentialIsUsed(t *testing.T) {
 	}
 
 	pinned := common.CacheAuthConfig{AuthToken: "the-token-the-build-used", WorkspaceID: "ws-1"}
-	d.AuthOverride = &pinned
 
-	res := d.authBackendCheck().Diagnose(context.Background())
+	res := d.authBackendCheck(&pinned).Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Equal(t, pinned, probed, "the pinned credential must be the one probed")
 }
@@ -147,9 +146,7 @@ func TestAuthBackendCheck_EmptyPinnedCredentialIsAnError(t *testing.T) {
 
 		return 0, nil
 	}
-	d.AuthOverride = &common.CacheAuthConfig{}
-
-	res := d.authBackendCheck().Diagnose(context.Background())
+	res := d.authBackendCheck(&common.CacheAuthConfig{}).Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "cannot authenticate")
 }
@@ -175,12 +172,11 @@ func TestAuthBackendCheck_PinnedCredentialIsNamedInTheDetail(t *testing.T) {
 
 	d := NewDoctor()
 	d.Envs = map[string]string{}
-	d.AuthOverride = &pinned
 	d.BackendProbe = func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
 
-	res := d.authBackendCheck().Diagnose(context.Background())
+	res := d.authBackendCheck(&pinned).Diagnose(context.Background())
 
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "the credential this build used")
