@@ -152,14 +152,10 @@ type GetSessionStatsResponse struct {
 	KvHits          int64                  `protobuf:"varint,6,opt,name=kv_hits,json=kvHits,proto3" json:"kv_hits,omitempty"`
 	KvMisses        int64                  `protobuf:"varint,7,opt,name=kv_misses,json=kvMisses,proto3" json:"kv_misses,omitempty"`
 	KvUploadedBytes int64                  `protobuf:"varint,8,opt,name=kv_uploaded_bytes,json=kvUploadedBytes,proto3" json:"kv_uploaded_bytes,omitempty"`
-	// Requests the proxy could not complete. A cold cache reports misses, not
-	// errors, so any value here is worth surfacing.
-	Errors int64 `protobuf:"varint,9,opt,name=errors,proto3" json:"errors,omitempty"`
-	// The reason behind the first of those errors, so a caller can report why
-	// without parsing the proxy's log.
-	FirstError    string `protobuf:"bytes,10,opt,name=first_error,json=firstError,proto3" json:"first_error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Errors          int64                  `protobuf:"varint,9,opt,name=errors,proto3" json:"errors,omitempty"`
+	FirstError      string                 `protobuf:"bytes,10,opt,name=first_error,json=firstError,proto3" json:"first_error,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetSessionStatsResponse) Reset() {

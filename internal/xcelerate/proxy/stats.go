@@ -14,12 +14,9 @@ type sessionState struct {
 	kvHits        atomic.Int64
 	kvMisses      atomic.Int64
 	kvUploadBytes atomic.Int64
-	// errors counts requests that could not be completed. A cold cache reports
-	// misses, not errors, so any value here is worth surfacing.
-	errors atomic.Int64
-	// firstError, not last: an unreachable backend repeats the same message.
-	firstError atomic.Pointer[string]
-	savedKeys  sync.Map
+	errors        atomic.Int64
+	firstError    atomic.Pointer[string]
+	savedKeys     sync.Map
 }
 
 const errorMessageMax = 300

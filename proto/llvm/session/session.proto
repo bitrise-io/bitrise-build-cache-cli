@@ -33,10 +33,6 @@ message GetSessionStatsResponse {
   int64 kv_hits = 6;
   int64 kv_misses = 7;
   int64 kv_uploaded_bytes = 8;
-  // Requests the proxy could not complete. A cold cache reports misses, not
-  // errors, so any value here is worth surfacing.
   int64 errors = 9;
-  // The reason behind the first of those errors, so a caller can report why
-  // without parsing the proxy's log.
   string first_error = 10;
 }
