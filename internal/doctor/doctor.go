@@ -74,10 +74,6 @@ type Options struct {
 	// Only, when non-empty, restricts the run to checks with these names
 	// (see XcodeCheckNames, AuthProbeCheckNames).
 	Only []string
-	// PinAuth pins which credential the backend probe tests, so a caller
-	// diagnosing one request's failure can't get a pass on a different one (a CI
-	// JWT, say, when the request used a stored token).
-	PinAuth *common.CacheAuthConfig
 }
 
 type Doctor struct {
@@ -262,7 +258,7 @@ func (d *Doctor) checks(opts Options) []Check {
 	}
 
 	if !opts.SkipBackendProbe {
-		checks = append(checks, d.authBackendCheck(opts.PinAuth))
+		checks = append(checks, d.authBackendCheck())
 	}
 
 	checks = append(checks,

@@ -5,12 +5,10 @@ package doctor
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
@@ -118,39 +116,6 @@ func TestStateDirCandidates_ScopedToActivatedTools(t *testing.T) {
 		"an explicit list still wins")
 }
 
-// The probe must test the credential the caller pins, so it can't pass on a
-// different one the machine happens to resolve (a CI JWT, say).
-func TestAuthBackendCheck_PinnedCredentialIsUsed(t *testing.T) {
-	var probed common.CacheAuthConfig
-
-	d := NewDoctor()
-	d.Envs = map[string]string{common.EnvJWT: "a-ci-jwt-that-would-otherwise-win"}
-	d.BackendProbe = func(_ context.Context, cfg common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
-		probed = cfg
-
-		return time.Millisecond, nil
-	}
-
-	pinned := common.CacheAuthConfig{AuthToken: "the-token-the-build-used", WorkspaceID: "ws-1"}
-
-	res := d.authBackendCheck(&pinned).Diagnose(context.Background())
-	assert.Equal(t, StateOK, res.State)
-	assert.Equal(t, pinned, probed, "the pinned credential must be the one probed")
-}
-
-func TestAuthBackendCheck_EmptyPinnedCredentialIsAnError(t *testing.T) {
-	d := NewDoctor()
-	d.Envs = map[string]string{common.EnvJWT: "a-ci-jwt-that-would-otherwise-win"}
-	d.BackendProbe = func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
-		t.Fatal("an empty credential must not reach the backend")
-
-		return 0, nil
-	}
-	res := d.authBackendCheck(&common.CacheAuthConfig{}).Diagnose(context.Background())
-	assert.Equal(t, StateError, res.State)
-	assert.Contains(t, res.Detail, "cannot authenticate")
-}
-
 func TestRun_OnlyRunsSelectedChecks(t *testing.T) {
 	d := NewDoctor()
 	d.ActivatedTools = nil
@@ -163,22 +128,4 @@ func TestRun_OnlyRunsSelectedChecks(t *testing.T) {
 
 	require.Len(t, report.Items, 1)
 	assert.Equal(t, "log-dirs", report.Items[0].Name)
-}
-
-// A pinned credential has no AuthSource, and reporting "source=none" reads as
-// "nothing resolvable" — the opposite of what happened.
-func TestAuthBackendCheck_PinnedCredentialIsNamedInTheDetail(t *testing.T) {
-	pinned := common.CacheAuthConfig{AuthToken: "tok", WorkspaceID: "ws-1"}
-
-	d := NewDoctor()
-	d.Envs = map[string]string{}
-	d.BackendProbe = func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
-		return time.Millisecond, nil
-	}
-
-	res := d.authBackendCheck(&pinned).Diagnose(context.Background())
-
-	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "the credential this build used")
-	assert.NotContains(t, res.Detail, "source=none")
 }

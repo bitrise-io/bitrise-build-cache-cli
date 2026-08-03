@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
@@ -63,7 +62,6 @@ func newTestDoctor(t *testing.T, report func(doctorpkg.Options) doctorpkg.Report
 		Logger:       log.NewLogger(log.WithOutput(&out)),
 		OsProxy:      osProxy,
 		CacheEnabled: true,
-		AuthConfig:   configcommon.CacheAuthConfig{},
 		RunChecks: func(_ context.Context, o doctorpkg.Options) doctorpkg.Report {
 			*opts = append(*opts, o)
 
@@ -178,11 +176,6 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 
 	assert.Contains(t, out.String(), msgDoctorProbingAuth)
 	assert.Contains(t, out.String(), "auth-backend: unauthorized (token expired)")
-
-	// The probe has to test the credential the failed PUT used, not whatever else
-	// the machine can resolve — a CI JWT would otherwise report healthy.
-	require.NotNil(t, (*opts)[1].PinAuth)
-	assert.Nil(t, (*opts)[0].PinAuth, "the start check makes no backend call to pin")
 
 	out.Reset()
 	d.ReportAtEnd(context.Background(), buildOutcome{})

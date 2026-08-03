@@ -386,7 +386,7 @@ func TestAuthBackendCheck_skippedWhenNoCreds(t *testing.T) {
 	}
 
 	r := &Doctor{Envs: map[string]string{}}
-	res := r.authBackendCheck(nil).Diagnose(context.Background())
+	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "skipped")
 	assert.Contains(t, res.Detail, "source=none", "skip detail must surface the source for parity with non-skip output")
@@ -406,7 +406,7 @@ func TestAuthBackendCheck_okOnSuccessfulProbe(t *testing.T) {
 		},
 	}
 
-	res := r.authBackendCheck(nil).Diagnose(context.Background())
+	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "latency 47ms")
 	assert.Contains(t, res.Detail, "ws-1")
@@ -425,7 +425,7 @@ func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
 		},
 	}
 
-	res := r.authBackendCheck(nil).Diagnose(context.Background())
+	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "auth-failed")
 }
@@ -443,7 +443,7 @@ func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
 		},
 	}
 
-	res := r.authBackendCheck(nil).Diagnose(context.Background())
+	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
 	assert.Contains(t, res.Detail, "workspace-misconfig")
 }
@@ -461,7 +461,7 @@ func TestAuthBackendCheck_unavailableIsWarn(t *testing.T) {
 		},
 	}
 
-	res := r.authBackendCheck(nil).Diagnose(context.Background())
+	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "network")
 }
@@ -509,7 +509,7 @@ func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
 				},
 			}
 
-			res := r.authBackendCheck(nil).Diagnose(context.Background())
+			res := r.authBackendCheck().Diagnose(context.Background())
 			assert.True(t, res.Fixable, "auth-class failures must be marked Fixable so doctor --fix can offer the wizard")
 		})
 	}
@@ -525,7 +525,7 @@ func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
 		},
 	}
 
-	res := r.authBackendCheck(nil).Diagnose(context.Background())
+	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.False(t, res.Fixable, "transport blips must not trigger a wizard re-launch")
 }
 

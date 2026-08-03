@@ -7,7 +7,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
@@ -61,9 +60,6 @@ type xcodeDoctor struct {
 	Logger       log.Logger
 	Debug        bool
 	CacheEnabled bool
-	// AuthConfig must be the credential this invocation's PUT used, so the
-	// save-failure probe can't pass on a different one the machine can resolve.
-	AuthConfig   configcommon.CacheAuthConfig
 	InvocationID string
 	OsProxy      utils.OsProxy
 	RunChecks    func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
@@ -130,7 +126,6 @@ func (d *xcodeDoctor) OnInvocationSaveFailure(ctx context.Context) {
 	report := d.run(ctx, doctorProbeTimeout, doctorpkg.Options{
 		Only:            doctorpkg.AuthProbeCheckNames,
 		SkipUpdateCheck: true,
-		PinAuth:         &d.AuthConfig,
 	})
 
 	issues := doctorpkg.IssueLines(report)

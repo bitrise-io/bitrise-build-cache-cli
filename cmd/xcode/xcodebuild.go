@@ -245,7 +245,6 @@ TBD`,
 				Logger:       logger,
 				Debug:        config.DebugLogging,
 				CacheEnabled: config.BuildCacheEnabled,
-				AuthConfig:   config.AuthConfig,
 				InvocationID: invocationID,
 			}
 		}
