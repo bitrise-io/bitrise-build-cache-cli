@@ -36,7 +36,9 @@ type RunStats struct {
 type CompCacheStats struct {
 	Hits       int64
 	TotalTasks int64
-	// CASErrors is anomalous at any count: a cold cache misses cleanly, it doesn't error.
+	// CASErrors is what the compiler saw, which the proxy's own error count can't
+	// replace: a lookup that never reaches the proxy is a CAS error here and
+	// nothing there. Anomalous at any count — a cold cache misses cleanly.
 	CASErrors int64
 }
 

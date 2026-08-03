@@ -9,10 +9,8 @@ var (
 	// round-trip on every build. See AuthProbeCheckNames.
 	XcodeCheckNames = []string{"auth", "xcelerate-proxy", "xcelerate-enrichment", "log-dirs"}
 
-	// XcodeAnalyticsOnlyCheckNames is XcodeCheckNames without the proxy, for a
-	// build with the cache off (a --no-bitrise-build-cache flag, or a baseline
-	// benchmark phase): no proxy is started, so reporting it as down is noise.
-	// Auth still matters — the analytics PUT needs it.
+	// XcodeAnalyticsOnlyCheckNames drops the proxy, for a build with the cache off:
+	// none is started, so reporting it as down is noise. Auth still gates the PUT.
 	XcodeAnalyticsOnlyCheckNames = []string{"auth", "xcelerate-enrichment", "log-dirs"}
 
 	// AuthProbeCheckNames verify the credential end-to-end, including the backend probe.

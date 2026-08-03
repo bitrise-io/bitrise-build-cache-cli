@@ -14,18 +14,14 @@ type sessionState struct {
 	kvHits        atomic.Int64
 	kvMisses      atomic.Int64
 	kvUploadBytes atomic.Int64
-	// errors counts requests the proxy could not complete. A cold cache reports
-	// misses, not errors, so any value here means lookups fell back to a local
-	// compile for a reason worth reporting.
+	// errors counts requests that could not be completed. A cold cache reports
+	// misses, not errors, so any value here is worth surfacing.
 	errors atomic.Int64
-	// firstError is the message behind the first of those, kept so a caller can
-	// say why without reading the proxy's log. First rather than last: when a
-	// backend is unreachable every subsequent message repeats it.
+	// firstError, not last: an unreachable backend repeats the same message.
 	firstError atomic.Pointer[string]
 	savedKeys  sync.Map
 }
 
-// errorMessageMax bounds what a single error contributes to the stats response.
 const errorMessageMax = 300
 
 type stats struct {
@@ -72,8 +68,6 @@ func (s *sessionState) getStats() stats {
 	}
 }
 
-// recordError counts a request the proxy gave up on and, for the first one, keeps
-// the reason.
 func (s *sessionState) recordError(op string, err error) {
 	s.errors.Add(1)
 

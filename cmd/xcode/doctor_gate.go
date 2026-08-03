@@ -27,6 +27,8 @@ const (
 	msgDoctorProbingAuth      = "Checking whether an expired auth token caused the failure above..."
 	msgDoctorProbeNoIssues    = "Auth looks healthy, so the failure above is not a token problem."
 	msgDoctorCASErrors        = "The compilation cache reported %d error(s) during this build — those lookups never completed, so the files compiled locally instead."
+	msgDoctorCASOnlyErrors    = "Xcode reported %d compilation-cache error(s), but the proxy completed every request it received — so those lookups are not reaching the proxy."
+	msgDoctorCASOnlyHint      = "Check that the socket the compiler was given still exists: `bitrise-build-cache doctor`, then `activate xcode` to rewrite it."
 	msgDoctorCacheErrorsHint  = "Check `bitrise-build-cache doctor`; `xcelerate stop-proxy` makes the next build start a fresh proxy."
 	msgDoctorProxyErrors      = "The Bitrise compilation cache proxy could not complete %d request(s) during this build:"
 	msgDoctorProxyUnreachable = "The Bitrise compilation cache proxy stopped answering during this build, so nothing was cached from that point on."
@@ -36,53 +38,40 @@ const (
 
 //go:generate moq -stub -out doctor_gate_mock_test.go -pkg xcode . buildHealthReporter
 
-// buildHealthReporter surfaces local setup problems around an xcodebuild run.
 type buildHealthReporter interface {
 	CheckAtStart(ctx context.Context)
 	ReportAtEnd(ctx context.Context, outcome buildOutcome)
 	OnInvocationSaveFailure(ctx context.Context)
 }
 
-// buildOutcome is what the end-of-build report reasons about: what the compiler
-// saw, and what the proxy said about its own side.
 type buildOutcome struct {
 	CAS   xcodeargs.CompCacheStats
 	Proxy proxyOutcome
 }
 
-// proxyOutcome is the proxy's own account of the build, so the report doesn't
-// depend on matching text in its log.
 type proxyOutcome struct {
 	Errors     int64
 	FirstError string
-	// Unreachable means the stats call failed, so Errors and FirstError say
-	// nothing and the proxy's error log is the only remaining evidence.
+	// Unreachable: the stats call failed, so the counts above say nothing.
 	Unreachable bool
 }
 
 // xcodeDoctor runs the Xcode-relevant subset of the doctor checks around a build.
 type xcodeDoctor struct {
-	Logger log.Logger
-	Debug  bool
-	// CacheEnabled selects the check set: with the cache off there's no proxy to
-	// report on, but auth still gates the analytics PUT.
+	Logger       log.Logger
+	Debug        bool
 	CacheEnabled bool
-	// AuthConfig is the credential this invocation's analytics PUT uses. The
-	// save-failure probe tests exactly this one, so it can't come back healthy on
-	// a different credential the machine happens to have.
+	// AuthConfig must be the credential this invocation's PUT used, so the
+	// save-failure probe can't pass on a different one the machine can resolve.
 	AuthConfig   configcommon.CacheAuthConfig
 	InvocationID string
-	// OsProxy resolves the log directory; nil means the real filesystem.
-	OsProxy utils.OsProxy
-	// RunChecks defaults to a real doctor run; injected in tests.
-	RunChecks func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
+	OsProxy      utils.OsProxy
+	RunChecks    func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
 
 	startIssues []string
-	// proxyErrOffset is the shared error log's size at build start; anything past
-	// it belongs to this build rather than an earlier one.
+	// proxyErrOffset is the shared error log's size at build start; past it is ours.
 	proxyErrOffset int64
-	// probeReported records that OnInvocationSaveFailure already reported, so the
-	// end-of-build recap can say why it is staying quiet.
+	// probeReported keeps the end-of-build recap from repeating the probe's report.
 	probeReported bool
 }
 
@@ -114,15 +103,10 @@ func (d *xcodeDoctor) CheckAtStart(ctx context.Context) {
 	d.print(msgDoctorIssuesFound, d.startIssues)
 }
 
-// ReportAtEnd repeats the start-of-build issues, which by now are thousands of
-// xcodebuild log lines back, and reports cache errors no setup check can see.
+// ReportAtEnd repeats the start-of-build issues, thousands of xcodebuild log
+// lines back by now, and reports what no setup check can see.
 func (d *xcodeDoctor) ReportAtEnd(_ context.Context, outcome buildOutcome) {
-	casErrors := outcome.CAS.CASErrors > 0
-	if casErrors {
-		d.Logger.Warnf(msgDoctorCASErrors, outcome.CAS.CASErrors)
-	}
-
-	if d.reportProxy(outcome.Proxy) || casErrors {
+	if d.reportCacheErrors(outcome) {
 		d.Logger.Warnf(msgDoctorCacheErrorsHint)
 	}
 
@@ -136,9 +120,8 @@ func (d *xcodeDoctor) ReportAtEnd(_ context.Context, outcome buildOutcome) {
 	}
 }
 
-// OnInvocationSaveFailure diagnoses a failed analytics PUT, which an expired
-// token would explain. This runs the backend probe, so its verdict supersedes
-// the buffered start-of-build report.
+// OnInvocationSaveFailure runs the backend probe an expired token would fail, so
+// its verdict supersedes the buffered start-of-build report.
 func (d *xcodeDoctor) OnInvocationSaveFailure(ctx context.Context) {
 	d.startIssues, d.probeReported = nil, true
 
@@ -209,9 +192,35 @@ func (d *xcodeDoctor) markProxyErrLog() {
 	d.proxyErrOffset = fileSize(path)
 }
 
-// reportProxy relays what the proxy counted. Its log is read only when the proxy
-// couldn't be asked at all — a proxy that died has no counters to report, and its
-// error log is then the only evidence of why.
+// reportCacheErrors reconciles the two views of a failed lookup. The proxy counts
+// requests it could not complete; Xcode's output counts what the compiler saw. A
+// count on only one side is the interesting case: the compiler reporting errors
+// the proxy never received means the two aren't talking, which neither number
+// says on its own.
+func (d *xcodeDoctor) reportCacheErrors(outcome buildOutcome) bool {
+	proxyReported := d.reportProxy(outcome.Proxy)
+
+	casErrors := outcome.CAS.CASErrors
+	switch {
+	case casErrors == 0:
+		return proxyReported
+	case proxyReported:
+		// The proxy already gave the reason; the compiler's count is the same
+		// failures seen from the other end.
+		d.Logger.Warnf(msgDoctorCASErrors, casErrors)
+	default:
+		d.Logger.Warnf(msgDoctorCASOnlyErrors, casErrors)
+		d.Logger.Warnf(msgDoctorCASOnlyHint)
+
+		// A fresh proxy doesn't help when the compiler isn't reaching this one.
+		return false
+	}
+
+	return true
+}
+
+// reportProxy relays what the proxy counted, falling back to its error log only
+// when the proxy couldn't be asked — a dead one has no counters to report.
 func (d *xcodeDoctor) reportProxy(proxy proxyOutcome) bool {
 	switch {
 	case proxy.Unreachable:
@@ -236,8 +245,6 @@ func (d *xcodeDoctor) reportProxy(proxy proxyOutcome) bool {
 	return false
 }
 
-// reportProxyStderr shows what the proxy wrote to its shared error log during this
-// build, which is where a process that died leaves its reason.
 func (d *xcodeDoctor) reportProxyStderr() {
 	path, err := getProxyErrorLogFile(d.osProxy())
 	if err != nil {

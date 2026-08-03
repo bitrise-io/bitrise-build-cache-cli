@@ -32,7 +32,6 @@ func okReport(name string) doctorpkg.Report {
 	}}
 }
 
-// tempHomeProxy keeps the proxy-log lookups inside the test's own directory.
 func tempHomeProxy(t *testing.T) (utils.OsProxy, string) {
 	t.Helper()
 
@@ -92,9 +91,6 @@ func TestXcodeDoctor_StartCheckSkipsNetworkCalls(t *testing.T) {
 	assert.Contains(t, out.String(), "xcelerate-proxy: not running (no socket file)")
 }
 
-// With the cache off (a baseline benchmark phase, or --no-bitrise-build-cache)
-// no proxy is started, so reporting it as down would be noise — but the
-// analytics PUT still needs auth, so auth must stay in the set.
 func TestXcodeDoctor_CacheOffDropsProxyCheckButKeepsAuth(t *testing.T) {
 	var out strings.Builder
 	var opts []doctorpkg.Options
@@ -127,8 +123,6 @@ func TestXcodeDoctor_HealthySetupIsSilent(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
-// A clean run still has to leave a trace at debug level, so a build log shows
-// the checks ran at all.
 func TestXcodeDoctor_HealthySetupLogsAtDebug(t *testing.T) {
 	var out strings.Builder
 	logger := log.NewLogger(log.WithOutput(&out))
@@ -198,21 +192,48 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 		"issues were found — the recap must not claim otherwise")
 }
 
-func TestXcodeDoctor_ReportAtEndWarnsOnCASErrors(t *testing.T) {
+// Both sides counted failures: the proxy has the reason, the compiler's count is
+// the same failures from the other end.
+func TestXcodeDoctor_ReportAtEndPairsCASErrorsWithTheProxyReason(t *testing.T) {
 	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
 		return okReport("auth")
 	})
 
 	d.CheckAtStart(context.Background())
 	out.Reset()
-	d.ReportAtEnd(context.Background(), buildOutcome{CAS: xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002}})
+	d.ReportAtEnd(context.Background(), buildOutcome{
+		CAS:   xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002},
+		Proxy: proxyOutcome{Errors: 12, FirstError: "Get: connection refused"},
+	})
 
-	assert.Contains(t, out.String(), "4002 error(s)")
-	assert.Contains(t, out.String(), "compiled locally")
-	assert.Contains(t, out.String(), "stop-proxy")
+	logged := out.String()
+	assert.Contains(t, logged, "12 request(s)")
+	assert.Contains(t, logged, "connection refused")
+	assert.Contains(t, logged, "4002 error(s)")
+	assert.Contains(t, logged, "compiled locally")
+	assert.Contains(t, logged, "stop-proxy")
 }
 
-// A cold first build is 0% with no errors and must stay silent.
+// The case that keeps the compiler-side count worth having: the proxy served
+// everything it received, so the lookups never arrived.
+func TestXcodeDoctor_ReportAtEndFlagsCASErrorsTheProxyNeverSaw(t *testing.T) {
+	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
+		return okReport("auth")
+	})
+
+	d.CheckAtStart(context.Background())
+	out.Reset()
+	d.ReportAtEnd(context.Background(), buildOutcome{
+		CAS: xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002},
+	})
+
+	logged := out.String()
+	assert.Contains(t, logged, "not reaching the proxy")
+	assert.Contains(t, logged, "activate xcode")
+	assert.NotContains(t, logged, "stop-proxy", "a fresh proxy doesn't fix an unreachable one")
+}
+
+// 0% on a first build is normal, not a symptom.
 func TestXcodeDoctor_ReportAtEndSilentOnColdCacheWithoutErrors(t *testing.T) {
 	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
 		return okReport("auth")

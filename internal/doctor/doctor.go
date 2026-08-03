@@ -96,10 +96,9 @@ type Doctor struct {
 	// the token prompt; the doctor command supplies one that offers a browser
 	// sign-in first.
 	AuthFixPrompt func() (workspaceID, authToken string, err error)
-	// AuthOverride pins which credential the backend probe tests. Callers
-	// diagnosing a specific request's failure set the credential that request
-	// used, so the probe can't pass on a different one the machine happens to
-	// have (a CI JWT, say, when the request used a stored token).
+	// AuthOverride pins which credential the backend probe tests, so a caller
+	// diagnosing one request's failure can't get a pass on a different one (a CI
+	// JWT, say, when the request used a stored token).
 	AuthOverride *common.CacheAuthConfig
 	Now          func() time.Time
 	Debug        bool

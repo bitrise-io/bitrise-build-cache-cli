@@ -16,8 +16,6 @@ import (
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 )
 
-// The count and the reason both come from the proxy, so the report needs no log
-// parsing at all — only the path, for a reader who wants the rest.
 func TestXcodeDoctor_ReportsProxyErrorsFromTheStats(t *testing.T) {
 	var out strings.Builder
 	osProxy, home := tempHomeProxy(t)
@@ -46,9 +44,7 @@ func TestXcodeDoctor_ReportsProxyErrorsFromTheStats(t *testing.T) {
 	assert.Contains(t, logged, "proxy-"+invocationID+"-out.log")
 }
 
-// A build where the proxy completed everything says nothing, whatever its log
-// happens to contain — the regex that used to decide this made any line with the
-// word "error" in it a build warning.
+// Error-shaped log lines are not a failure; only the proxy's count is.
 func TestXcodeDoctor_SilentWhenTheProxyReportsNoFailures(t *testing.T) {
 	var out strings.Builder
 	osProxy, home := tempHomeProxy(t)
@@ -76,8 +72,8 @@ func TestXcodeDoctor_SilentWhenTheProxyReportsNoFailures(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
-// A proxy that stopped answering has no counters left to report, so its shared
-// error log is the only evidence of why — the one job the log still has.
+// A proxy that stopped answering has no counters left, so its error log is the
+// only evidence of why.
 func TestXcodeDoctor_ReportsProxyStderrWrittenDuringBuild(t *testing.T) {
 	var out strings.Builder
 	osProxy, home := tempHomeProxy(t)

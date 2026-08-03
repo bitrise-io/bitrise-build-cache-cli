@@ -118,9 +118,7 @@ func Test_Proxy_PushDisabled(t *testing.T) {
 	assert.Nil(t, getResponse.GetError())
 }
 
-// The counter is what the wrapper's end-of-build report trusts, so a cold cache
-// must leave it at zero while a real backend failure raises it. Both cases go
-// through the same Get path, distinguished only by the error the client returns.
+// A cold cache must leave the counter at zero; only a real backend failure raises it.
 func Test_Proxy_SessionStatsErrorCounter(t *testing.T) {
 	cases := map[string]struct {
 		downloadErr error
@@ -167,8 +165,6 @@ func Test_Proxy_SessionStatsErrorCounter(t *testing.T) {
 	}
 }
 
-// The reason travels with the count, so a caller can report why without reading
-// the proxy's log. First error wins: an unreachable backend repeats itself.
 func Test_Proxy_SessionStatsKeepsTheFirstErrorMessage(t *testing.T) {
 	var calls int
 	kvClient := &mocks.ClientMock{
