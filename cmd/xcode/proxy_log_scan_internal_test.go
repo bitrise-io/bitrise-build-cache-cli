@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 )
 
 func TestScanProxyLog_CountsErrorsAndKeepsDistinctSamples(t *testing.T) {
@@ -44,7 +43,7 @@ func TestScanProxyLog_IgnoresHealthyLines(t *testing.T) {
 	}, "\n")))
 
 	assert.Equal(t, 0, got.Errors)
-	assert.False(t, got.any())
+	assert.Empty(t, got.Samples)
 }
 
 func TestScanProxyLog_CapsSamplesButKeepsCounting(t *testing.T) {
@@ -88,7 +87,9 @@ func TestReadProxyStderrSince_MissingFile(t *testing.T) {
 	assert.Empty(t, readProxyStderrSince(path, 0))
 }
 
-func TestXcodeDoctor_ReportsProxyLogErrors(t *testing.T) {
+// The proxy's own counter decides whether anything failed; the log only supplies
+// an example of what it was.
+func TestXcodeDoctor_ReportsProxyErrorsFromTheCounter(t *testing.T) {
 	var out strings.Builder
 	osProxy, home := tempHomeProxy(t)
 	dir := proxyLogDir(t, home)
@@ -110,12 +111,42 @@ func TestXcodeDoctor_ReportsProxyLogErrors(t *testing.T) {
 	}
 
 	d.CheckAtStart(context.Background())
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{ProxyErrors: 3})
 
 	logged := out.String()
-	assert.Contains(t, logged, "1 error line(s)")
-	assert.Contains(t, logged, "token expired")
+	assert.Contains(t, logged, "3 request(s)")
+	assert.Contains(t, logged, "token expired", "the log supplies the example")
 	assert.Contains(t, logged, "proxy-"+invocationID+"-out.log")
+}
+
+// The regex used to decide this on its own, which made any log line containing
+// "error" a build warning. The counter closes that off: the proxy completed every
+// request, so there is nothing to report however the lines read.
+func TestXcodeDoctor_LogErrorLinesWithoutACountedFailureStaySilent(t *testing.T) {
+	var out strings.Builder
+	osProxy, home := tempHomeProxy(t)
+	dir := proxyLogDir(t, home)
+
+	const invocationID = "55667788"
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "proxy-"+invocationID+"-out.log"),
+		[]byte("[DEBUG] retrying after transient error, recovered\n[DEBUG] get aabb hit: true\n"),
+		0o600))
+
+	d := &xcodeDoctor{
+		Logger:       log.NewLogger(log.WithOutput(&out)),
+		OsProxy:      osProxy,
+		CacheEnabled: true,
+		InvocationID: invocationID,
+		RunChecks: func(context.Context, doctorpkg.Options) doctorpkg.Report {
+			return okReport("auth")
+		},
+	}
+
+	d.CheckAtStart(context.Background())
+	d.ReportAtEnd(context.Background(), buildOutcome{ProxyErrors: 0})
+
+	assert.Empty(t, out.String())
 }
 
 // A build whose proxy log is clean must not print a proxy warning, even though
@@ -142,7 +173,7 @@ func TestXcodeDoctor_SilentOnCleanProxyLog(t *testing.T) {
 	}
 
 	d.CheckAtStart(context.Background())
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{})
 
 	assert.Empty(t, out.String())
 }
@@ -175,7 +206,7 @@ func TestXcodeDoctor_ReportsProxyStderrWrittenDuringBuild(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{})
 
 	logged := out.String()
 	assert.Contains(t, logged, msgDoctorProxyStderr)

@@ -2,7 +2,6 @@ package xcode
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"os"
 	"regexp"
@@ -20,15 +19,13 @@ const (
 )
 
 type proxyLogFindings struct {
+	// Errors counts error-shaped lines. Not authoritative — the proxy's own
+	// counter decides whether a request failed; this is only for the debug log.
 	Errors  int
 	Samples []string
 	// Stderr is what the proxy wrote to its shared error log during this build,
 	// which is where a startup failure shows up.
 	Stderr string
-}
-
-func (f proxyLogFindings) any() bool {
-	return f.Errors > 0 || f.Stderr != ""
 }
 
 func scanProxyLog(r io.Reader) proxyLogFindings {
@@ -110,12 +107,4 @@ func truncate(s string, maxLen int) string {
 	}
 
 	return s[:maxLen] + "…"
-}
-
-func (f proxyLogFindings) summary() string {
-	if f.Errors == 0 {
-		return "the proxy logged errors"
-	}
-
-	return fmt.Sprintf("the proxy logged %d error line(s)", f.Errors)
 }

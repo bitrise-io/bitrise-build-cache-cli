@@ -122,7 +122,7 @@ func TestXcodeDoctor_HealthySetupIsSilent(t *testing.T) {
 	})
 
 	d.CheckAtStart(context.Background())
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{})
 
 	assert.Empty(t, out.String())
 }
@@ -141,7 +141,7 @@ func TestXcodeDoctor_HealthySetupLogsAtDebug(t *testing.T) {
 	}
 
 	d.CheckAtStart(context.Background())
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{})
 
 	logged := out.String()
 	assert.Contains(t, logged, "Running health checks")
@@ -157,7 +157,7 @@ func TestXcodeDoctor_ReportAtEndRepeatsStartIssues(t *testing.T) {
 
 	d.CheckAtStart(context.Background())
 	out.Reset()
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{})
 
 	assert.Len(t, *opts, 1, "the end-of-build recap must not re-run the checks")
 	assert.Contains(t, out.String(), msgDoctorIssuesRecap)
@@ -191,7 +191,7 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 	assert.Nil(t, (*opts)[0].PinAuth, "the start check makes no backend call to pin")
 
 	out.Reset()
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{})
+	d.ReportAtEnd(context.Background(), buildOutcome{})
 	assert.NotContains(t, out.String(), msgDoctorIssuesRecap,
 		"the probe verdict supersedes the start-of-build report")
 	assert.NotContains(t, out.String(), "found no issues",
@@ -205,7 +205,7 @@ func TestXcodeDoctor_ReportAtEndWarnsOnCASErrors(t *testing.T) {
 
 	d.CheckAtStart(context.Background())
 	out.Reset()
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002})
+	d.ReportAtEnd(context.Background(), buildOutcome{CAS: xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002}})
 
 	assert.Contains(t, out.String(), "4002 error(s)")
 	assert.Contains(t, out.String(), "compiled locally")
@@ -220,7 +220,7 @@ func TestXcodeDoctor_ReportAtEndSilentOnColdCacheWithoutErrors(t *testing.T) {
 
 	d.CheckAtStart(context.Background())
 	out.Reset()
-	d.ReportAtEnd(context.Background(), xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 0})
+	d.ReportAtEnd(context.Background(), buildOutcome{CAS: xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 0}})
 
 	assert.Empty(t, out.String())
 }

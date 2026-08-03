@@ -407,7 +407,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}
 	c.Logger.Debugf("Run stats: %+v", runStats)
 
-	hitRate := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
+	hitRate, proxyErrors := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
 	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
 
@@ -438,7 +438,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}
 
 	if c.Doctor != nil {
-		c.Doctor.ReportAtEnd(ctx, runStats.CacheStats)
+		c.Doctor.ReportAtEnd(ctx, buildOutcome{CAS: runStats.CacheStats, ProxyErrors: proxyErrors})
 	}
 
 	return runStats
@@ -604,13 +604,17 @@ func (c *XcodebuildRunner) sendRelation(parentID string) {
 	}
 }
 
+// Second return is the number of requests the proxy could not complete, taken
+// from the same stats call rather than a second round-trip.
+//
 //nolint:nestif
 func getHitRateFromSessionAndRunStats(ctx context.Context,
 	proxySessionClient session.SessionClient,
 	runStats xcodeargs.RunStats,
 	logger log.Logger,
-) float32 {
+) (float32, int64) {
 	var hitRate float32
+	var proxyErrors int64
 	// If build cache is not enabled, session client is nil
 	if proxySessionClient != nil {
 		proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
@@ -618,6 +622,7 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 		if err != nil || proxyStats == nil {
 			logger.Warnf("Failed to get proxy session stats: %v", err)
 		} else {
+			proxyErrors = proxyStats.GetErrors()
 			// Lowest prio: blob-based hit rate
 			if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
 				hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
@@ -658,7 +663,7 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 		)
 	}
 
-	return hitRate
+	return hitRate, proxyErrors
 }
 
 // resolveBenchmarkPhase reads the benchmark phase from:

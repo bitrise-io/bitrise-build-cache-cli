@@ -5,7 +5,6 @@ package xcode
 
 import (
 	"context"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"sync"
 )
 
@@ -25,7 +24,7 @@ var _ buildHealthReporter = &buildHealthReporterMock{}
 //			OnInvocationSaveFailureFunc: func(ctx context.Context)  {
 //				panic("mock out the OnInvocationSaveFailure method")
 //			},
-//			ReportAtEndFunc: func(ctx context.Context, stats xcodeargs.CompCacheStats)  {
+//			ReportAtEndFunc: func(ctx context.Context, outcome buildOutcome)  {
 //				panic("mock out the ReportAtEnd method")
 //			},
 //		}
@@ -42,7 +41,7 @@ type buildHealthReporterMock struct {
 	OnInvocationSaveFailureFunc func(ctx context.Context)
 
 	// ReportAtEndFunc mocks the ReportAtEnd method.
-	ReportAtEndFunc func(ctx context.Context, stats xcodeargs.CompCacheStats)
+	ReportAtEndFunc func(ctx context.Context, outcome buildOutcome)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -60,8 +59,8 @@ type buildHealthReporterMock struct {
 		ReportAtEnd []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Stats is the stats argument value.
-			Stats xcodeargs.CompCacheStats
+			// Outcome is the outcome argument value.
+			Outcome buildOutcome
 		}
 	}
 	lockCheckAtStart            sync.RWMutex
@@ -134,13 +133,13 @@ func (mock *buildHealthReporterMock) OnInvocationSaveFailureCalls() []struct {
 }
 
 // ReportAtEnd calls ReportAtEndFunc.
-func (mock *buildHealthReporterMock) ReportAtEnd(ctx context.Context, stats xcodeargs.CompCacheStats) {
+func (mock *buildHealthReporterMock) ReportAtEnd(ctx context.Context, outcome buildOutcome) {
 	callInfo := struct {
-		Ctx   context.Context
-		Stats xcodeargs.CompCacheStats
+		Ctx     context.Context
+		Outcome buildOutcome
 	}{
-		Ctx:   ctx,
-		Stats: stats,
+		Ctx:     ctx,
+		Outcome: outcome,
 	}
 	mock.lockReportAtEnd.Lock()
 	mock.calls.ReportAtEnd = append(mock.calls.ReportAtEnd, callInfo)
@@ -148,7 +147,7 @@ func (mock *buildHealthReporterMock) ReportAtEnd(ctx context.Context, stats xcod
 	if mock.ReportAtEndFunc == nil {
 		return
 	}
-	mock.ReportAtEndFunc(ctx, stats)
+	mock.ReportAtEndFunc(ctx, outcome)
 }
 
 // ReportAtEndCalls gets all the calls that were made to ReportAtEnd.
@@ -156,12 +155,12 @@ func (mock *buildHealthReporterMock) ReportAtEnd(ctx context.Context, stats xcod
 //
 //	len(mockedbuildHealthReporter.ReportAtEndCalls())
 func (mock *buildHealthReporterMock) ReportAtEndCalls() []struct {
-	Ctx   context.Context
-	Stats xcodeargs.CompCacheStats
+	Ctx     context.Context
+	Outcome buildOutcome
 } {
 	var calls []struct {
-		Ctx   context.Context
-		Stats xcodeargs.CompCacheStats
+		Ctx     context.Context
+		Outcome buildOutcome
 	}
 	mock.lockReportAtEnd.RLock()
 	calls = mock.calls.ReportAtEnd

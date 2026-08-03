@@ -2,6 +2,7 @@ package proxy_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -13,12 +14,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy/mocks"
 	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/cas"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
 func Test_Proxy_PushDisabled(t *testing.T) {
@@ -113,4 +116,53 @@ func Test_Proxy_PushDisabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, llvmcas.CASGetResponse_OBJECT_NOT_FOUND, getResponse.GetOutcome())
 	assert.Nil(t, getResponse.GetError())
+}
+
+// The counter is what the wrapper's end-of-build report trusts, so a cold cache
+// must leave it at zero while a real backend failure raises it. Both cases go
+// through the same Get path, distinguished only by the error the client returns.
+func Test_Proxy_SessionStatsErrorCounter(t *testing.T) {
+	cases := map[string]struct {
+		downloadErr error
+		wantErrors  int64
+		wantMisses  int64
+	}{
+		"cold cache counts a miss, not an error": {downloadErr: kv.ErrCacheNotFound, wantErrors: 0, wantMisses: 1},
+		"backend failure counts an error":        {downloadErr: errors.New("connection refused"), wantErrors: 1, wantMisses: 0},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			kvClient := &mocks.ClientMock{
+				DownloadStreamFunc: func(context.Context, io.Writer, string) error { return tc.downloadErr },
+			}
+
+			listener := bufconn.Listen(1024 * 1024)
+			t.Cleanup(func() { _ = listener.Close() })
+
+			resolver.SetDefaultScheme("passthrough")
+			client, err := grpc.NewClient("bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+				return listener.Dial()
+			}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+			require.NoError(t, err)
+
+			go func() {
+				p := proxy.NewProxy(kvClient, true, mockLogger, func(string) (log.Logger, error) {
+					return mockLogger, nil
+				}, nil)
+				_ = p.Serve(listener)
+			}()
+
+			casClient := llvmcas.NewCASDBServiceClient(client)
+			_, err = casClient.Get(context.Background(), &llvmcas.CASGetRequest{
+				CasId: &llvmcas.CASDataID{Id: []byte("missing-key")},
+			})
+			require.NoError(t, err)
+
+			stats, err := session.NewSessionClient(client).GetSessionStats(context.Background(), &emptypb.Empty{})
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantErrors, stats.GetErrors(), "errors")
+			assert.Equal(t, tc.wantMisses, stats.GetMisses(), "misses")
+		})
+	}
 }

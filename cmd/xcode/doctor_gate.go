@@ -29,7 +29,7 @@ const (
 	msgDoctorProbeNoIssues   = "Auth looks healthy, so the failure above is not a token problem."
 	msgDoctorCASErrors       = "The compilation cache reported %d error(s) during this build — those lookups never completed, so the files compiled locally instead."
 	msgDoctorCacheErrorsHint = "Check `bitrise-build-cache doctor`; `xcelerate stop-proxy` makes the next build start a fresh proxy."
-	msgDoctorProxyErrors     = "The Bitrise compilation cache proxy reported problems during this build (%s):"
+	msgDoctorProxyErrors     = "The Bitrise compilation cache proxy could not complete %d request(s) during this build:"
 	msgDoctorProxyStderr     = "The proxy also wrote to its error log:"
 	msgDoctorProxyLogHint    = "Full proxy log: %s"
 )
@@ -39,8 +39,17 @@ const (
 // buildHealthReporter surfaces local setup problems around an xcodebuild run.
 type buildHealthReporter interface {
 	CheckAtStart(ctx context.Context)
-	ReportAtEnd(ctx context.Context, stats xcodeargs.CompCacheStats)
+	ReportAtEnd(ctx context.Context, outcome buildOutcome)
 	OnInvocationSaveFailure(ctx context.Context)
+}
+
+// buildOutcome is what the end-of-build report reasons about: what the compiler
+// saw, and what the proxy counted on its own side.
+type buildOutcome struct {
+	CAS xcodeargs.CompCacheStats
+	// ProxyErrors comes from the proxy's own counter, so detecting a problem
+	// doesn't depend on matching text in its log.
+	ProxyErrors int64
 }
 
 // xcodeDoctor runs the Xcode-relevant subset of the doctor checks around a build.
@@ -99,13 +108,13 @@ func (d *xcodeDoctor) CheckAtStart(ctx context.Context) {
 
 // ReportAtEnd repeats the start-of-build issues, which by now are thousands of
 // xcodebuild log lines back, and reports cache errors no setup check can see.
-func (d *xcodeDoctor) ReportAtEnd(_ context.Context, stats xcodeargs.CompCacheStats) {
-	casErrors := stats.CASErrors > 0
+func (d *xcodeDoctor) ReportAtEnd(_ context.Context, outcome buildOutcome) {
+	casErrors := outcome.CAS.CASErrors > 0
 	if casErrors {
-		d.Logger.Warnf(msgDoctorCASErrors, stats.CASErrors)
+		d.Logger.Warnf(msgDoctorCASErrors, outcome.CAS.CASErrors)
 	}
 
-	if d.reportProxyLog() || casErrors {
+	if d.reportProxyLog(outcome.ProxyErrors) || casErrors {
 		d.Logger.Warnf(msgDoctorCacheErrorsHint)
 	}
 
@@ -192,24 +201,26 @@ func (d *xcodeDoctor) markProxyErrLog() {
 	d.proxyErrOffset = fileSize(path)
 }
 
-// reportProxyLog surfaces what the proxy itself recorded. The wrapper only sees
-// the compiler's side of a failed lookup, which says a request didn't complete
-// but not why — and depends on Xcode's log wording.
-func (d *xcodeDoctor) reportProxyLog() bool {
-	if d.InvocationID == "" {
-		return false
-	}
-
+// reportProxyLog explains errors the proxy counted, and reports anything it wrote
+// to its shared error log during this build — the only signal for a proxy that
+// died before it could serve a request, which no counter can record.
+func (d *xcodeDoctor) reportProxyLog(proxyErrors int64) bool {
 	findings := d.scanProxyLogs()
-	if !findings.any() {
-		d.Logger.Debugf("Proxy log had no errors for invocation %s", d.InvocationID)
+
+	if proxyErrors == 0 && findings.Stderr == "" {
+		// Error-looking log lines without a counted failure are not a request the
+		// proxy gave up on, so they stay out of the build's output.
+		d.Logger.Debugf("Proxy counted no failed requests for invocation %s (log lines matching an error shape: %d)",
+			d.InvocationID, findings.Errors)
 
 		return false
 	}
 
-	d.Logger.Warnf(msgDoctorProxyErrors, findings.summary())
-	for _, s := range findings.Samples {
-		d.Logger.Warnf("  %s", s)
+	if proxyErrors > 0 {
+		d.Logger.Warnf(msgDoctorProxyErrors, proxyErrors)
+		for _, s := range findings.Samples {
+			d.Logger.Warnf("  %s", s)
+		}
 	}
 
 	if findings.Stderr != "" {
@@ -219,8 +230,10 @@ func (d *xcodeDoctor) reportProxyLog() bool {
 		}
 	}
 
-	if path, err := getProxyLogFile(d.osProxy(), d.InvocationID); err == nil {
-		d.Logger.Warnf(msgDoctorProxyLogHint, path)
+	if d.InvocationID != "" {
+		if path, err := getProxyLogFile(d.osProxy(), d.InvocationID); err == nil {
+			d.Logger.Warnf(msgDoctorProxyLogHint, path)
+		}
 	}
 
 	return true

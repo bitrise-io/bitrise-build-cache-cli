@@ -14,7 +14,11 @@ type sessionState struct {
 	kvHits        atomic.Int64
 	kvMisses      atomic.Int64
 	kvUploadBytes atomic.Int64
-	savedKeys     sync.Map
+	// errors counts requests the proxy could not complete. A cold cache reports
+	// misses, not errors, so any value here means lookups fell back to a local
+	// compile for a reason worth reporting.
+	errors    atomic.Int64
+	savedKeys sync.Map
 }
 
 type stats struct {
@@ -26,6 +30,7 @@ type stats struct {
 	kvHits        int64
 	kvMisses      int64
 	kvUploadBytes int64
+	errors        int64
 }
 
 func newSessionState() *sessionState {
@@ -54,7 +59,12 @@ func (s *sessionState) getStats() stats {
 		kvHits:        s.kvHits.Load(),
 		kvMisses:      s.kvMisses.Load(),
 		kvUploadBytes: s.kvUploadBytes.Load(),
+		errors:        s.errors.Load(),
 	}
+}
+
+func (s *sessionState) incrementErrors() {
+	s.errors.Add(1)
 }
 
 func (s *sessionState) incrementMisses() {
