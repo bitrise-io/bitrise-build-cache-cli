@@ -17,6 +17,8 @@ type XcodeArgs interface {
 	ShortCommand() string
 	HasBuildAction() bool
 	DerivedDataPath() string
+	ClonedSourcePackagesDirPath() string
+	ResolvesPackages() bool
 	ProjectTempDir() string
 	ProjectDir() string
 	UserOtherCFlags() string
@@ -152,6 +154,23 @@ func HasBuildAction(argv []string) bool {
 
 func (p Default) HasBuildAction() bool {
 	return HasBuildAction(p.OriginalArgs)
+}
+
+// packageResolvingQueryActions still populate SPM checkouts despite not building.
+var packageResolvingQueryActions = []string{
+	"-resolvePackageDependencies",
+	"-list",
+}
+
+// ResolvesPackages reports whether a non-build invocation still populates SPM checkouts.
+func (p Default) ResolvesPackages() bool {
+	for _, arg := range p.OriginalArgs {
+		if slices.Contains(packageResolvingQueryActions, arg) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (p Default) ShortCommand() string {

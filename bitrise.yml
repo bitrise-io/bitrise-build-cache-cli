@@ -1323,6 +1323,41 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - save-cache:
+        title: 'ACI-5253: save the SPM checkouts the build actually used'
+        inputs:
+        - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
+        - paths: $BITRISE_XCODE_DERIVED_DATA_PATH/*/SourcePackages
+    - script:
+        title: 'ACI-5253: drop the checkouts so the restore has to repopulate them'
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf "${BITRISE_XCODE_DERIVED_DATA_PATH:?activate must export the DerivedData root}"/*/SourcePackages
+    - restore-cache:
+        title: 'ACI-5253: restore the SPM checkouts'
+        inputs:
+        - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
+    - script:
+        title: 'ACI-5253: assert SPM resolves offline from the restored checkouts'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Discovered rather than recomputed, so the test does not restate the workspace-sha rule.
+            spm_dir=$(echo "${BITRISE_XCODE_DERIVED_DATA_PATH:?}"/*/SourcePackages)
+            [ -d "$spm_dir" ] || { echo "restore left no SourcePackages under $BITRISE_XCODE_DERIVED_DATA_PATH"; exit 1; }
+
+            # No -clonedSourcePackagesDirPath: the wrapper injects it, so this covers that too.
+            xcodebuild -resolvePackageDependencies \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture 2>&1 | tee "$BITRISE_DEPLOY_DIR/spm-resolve.log"
+
+            # A "Fetching from" line means the cache steps archived a dir the build never reads.
+            if grep -n 'Fetching from' "$BITRISE_DEPLOY_DIR/spm-resolve.log"; then
+              echo "SPM re-fetched packages despite the restored checkouts"
+              exit 1
+            fi
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-cas-key-stable:

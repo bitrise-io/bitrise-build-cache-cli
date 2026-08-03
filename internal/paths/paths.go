@@ -277,7 +277,12 @@ func (p Paths) GradleInitScriptFile() string {
 // XcodeManagedDerivedDataDir returns the wrapper-owned DerivedData dir for a given
 // workspace-sha, layered under BitriseCacheDir("xcode-dd").
 func (p Paths) XcodeManagedDerivedDataDir(workspaceSHA string) string {
-	return filepath.Join(p.BitriseCacheDir(xcodeManagedDerivedDataTool), workspaceSHA)
+	return filepath.Join(p.XcodeManagedDerivedDataRoot(), workspaceSHA)
+}
+
+// XcodeManagedDerivedDataRoot returns the parent of every per-workspace DerivedData dir.
+func (p Paths) XcodeManagedDerivedDataRoot() string {
+	return p.BitriseCacheDir(xcodeManagedDerivedDataTool)
 }
 
 // XcodeManagedProjectTempDir returns the wrapper-owned PROJECT_TEMP_DIR dir for a given

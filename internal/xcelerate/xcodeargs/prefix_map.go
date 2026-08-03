@@ -29,6 +29,9 @@ const (
 	OtherCFlagsKey              = "OTHER_CFLAGS"
 	ProjectTempDirKey           = "PROJECT_TEMP_DIR"
 	DerivedDataPathFlag         = "-derivedDataPath"
+
+	// Used instead of -derivedDataPath on query actions, which reject that without -scheme.
+	ClonedSourcePackagesDirPathFlag = "-clonedSourcePackagesDirPath"
 )
 
 // PrefixMapPaths is the set of absolute paths whose values will be rewritten
@@ -131,6 +134,12 @@ func isBitrisePrefixMapRule(token string) bool {
 // working directory — clang rejects non-absolute inputs to -fdepscan-prefix-map=.
 func (p Default) DerivedDataPath() string {
 	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "derivedDataPath"))
+}
+
+// ClonedSourcePackagesDirPath returns the last -clonedSourcePackagesDirPath value from
+// OriginalArgs, in both the space and `=` forms. Missing → empty.
+func (p Default) ClonedSourcePackagesDirPath() string {
+	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "clonedSourcePackagesDirPath"))
 }
 
 // ProjectTempDir returns the last PROJECT_TEMP_DIR=... build-setting value

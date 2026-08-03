@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -679,9 +680,11 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		return c.XcodeArgs.Args(additional)
 	}
 
-	// Query-only invocations (-list, -version, -showBuildSettings on its own, ...) reject -derivedDataPath and don't need cache wiring. Primary short-circuit is in Run() after assembleArgs returns; this branch is defensive.
+	// Query-only invocations (-list, -version, -showBuildSettings, ...) reject -derivedDataPath and
+	// need no cache wiring, but they still take their argv from here. Run's short-circuit is separate:
+	// it skips session and analytics, not argument assembly.
 	if !c.XcodeArgs.HasBuildAction() {
-		return c.XcodeArgs.Args(additional)
+		return append(c.XcodeArgs.Args(additional), c.sourcePackagesArgvForQueryAction()...)
 	}
 
 	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = c.Config.ProxySocketPath
@@ -730,6 +733,32 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	}
 
 	return append(toPass, extraArgv...)
+}
+
+// sourcePackagesArgvForQueryAction points a resolving query action at the checkout dir the build
+// uses. The value is xcodebuild's own default there, so no new path reaches a compile command.
+func (c *XcodebuildRunner) sourcePackagesArgvForQueryAction() []string {
+	if !c.XcodeArgs.ResolvesPackages() || c.XcodeArgs.ClonedSourcePackagesDirPath() != "" {
+		return nil
+	}
+	if c.Config.BuildCacheSkipFlags || c.Config.DisablePrefixMapping || c.NoPrefixMap {
+		return nil
+	}
+
+	dd := c.XcodeArgs.DerivedDataPath()
+	if dd == "" {
+		projectDir := c.XcodeArgs.ProjectDir()
+		if c.NoManagedDD || projectDir == "" {
+			return nil
+		}
+		p := c.resolvePaths()
+		if p.Home == "" {
+			return nil
+		}
+		dd = p.XcodeManagedDerivedDataDir(workspaceSHA(projectDir))
+	}
+
+	return []string{xcodeargs.ClonedSourcePackagesDirPathFlag, filepath.Join(dd, "SourcePackages")}
 }
 
 const (

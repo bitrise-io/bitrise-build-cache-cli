@@ -44,6 +44,10 @@ func ConfigFile(osProxy utils.OsProxy) string {
 // EnvProxySocketPath overrides the default xcelerate proxy socket location when set.
 const EnvProxySocketPath = "BITRISE_XCELERATE_PROXY_SOCKET_PATH"
 
+// EnvDerivedDataPath is exported by `activate xcode`; builds live at <root>/<workspace-sha>.
+// Advisory only — the wrapper computes its own paths rather than reading it back.
+const EnvDerivedDataPath = "BITRISE_XCODE_DERIVED_DATA_PATH"
+
 // EnvInactivityTimeout overrides the xcelerate proxy inactivity window that
 // triggers a slim invocation emit. Value is a time.ParseDuration string.
 // Test-only knob: sole caller is the e2e-xcode-wrapper-watcher-race workflow, which
