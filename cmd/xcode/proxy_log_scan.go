@@ -59,9 +59,8 @@ func scanProxyLog(r io.Reader) proxyLogFindings {
 	return out
 }
 
-// readProxyStderrSince returns whatever was appended to the proxy's shared error
-// log after offset. The log outlives a single build, so an absolute read would
-// report failures from previous ones.
+// readProxyStderrSince reads from offset because the log outlives a single build:
+// reading it whole would report failures from previous ones.
 func readProxyStderrSince(path string, offset int64) string {
 	f, err := os.Open(path)
 	if err != nil {

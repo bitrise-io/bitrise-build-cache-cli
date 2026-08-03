@@ -74,8 +74,7 @@ type Options struct {
 	// Only, when non-empty, restricts the run to checks with these names
 	// (see XcodeCheckNames, AuthProbeCheckNames).
 	Only []string
-	// PinAuth carries the credential the backend probe should test, for callers
-	// diagnosing one specific request's failure. See Doctor.AuthOverride.
+	// PinAuth is Doctor.AuthOverride for callers that go through Run.
 	PinAuth *common.CacheAuthConfig
 }
 

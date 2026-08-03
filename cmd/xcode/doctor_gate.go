@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	// NoDoctorFlag skips the wrapper's health check for one invocation.
-	NoDoctorFlag = "--no-doctor"
-	// EnvSkipDoctor skips the wrapper's health check for every invocation.
+	// Opt-outs: the flag for one invocation, the env var for every one.
+	NoDoctorFlag  = "--no-doctor"
 	EnvSkipDoctor = "BITRISE_BUILD_CACHE_SKIP_DOCTOR"
 
 	doctorLocalTimeout = 5 * time.Second
@@ -54,8 +53,7 @@ type xcodeDoctor struct {
 	// AuthConfig is the credential this invocation's analytics PUT uses. The
 	// save-failure probe tests exactly this one, so it can't come back healthy on
 	// a different credential the machine happens to have.
-	AuthConfig configcommon.CacheAuthConfig
-	// InvocationID selects this build's proxy log.
+	AuthConfig   configcommon.CacheAuthConfig
 	InvocationID string
 	// OsProxy resolves the log directory; nil means the real filesystem.
 	OsProxy utils.OsProxy

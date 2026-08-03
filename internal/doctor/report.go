@@ -64,8 +64,7 @@ func Partition(items []ReportItem) (issues, healthy []ReportItem) { //nolint:non
 	return issues, healthy
 }
 
-// Lines renders one plain "<state> <check>: <detail>" line per item, for callers
-// that report through a logger instead of the doctor command's table.
+// Lines renders one plain "<state> <check>: <detail>" line per item.
 func Lines(items []ReportItem) []string {
 	if len(items) == 0 {
 		return nil
