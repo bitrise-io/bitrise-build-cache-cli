@@ -185,45 +185,44 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 		"issues were found — the recap must not claim otherwise")
 }
 
-// Both sides counted failures: the proxy has the reason, the compiler's count is
-// the same failures from the other end.
-func TestXcodeDoctor_ReportAtEndPairsCASErrorsWithTheProxyReason(t *testing.T) {
-	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
-		return okReport("auth")
-	})
+// One number, whichever side saw more: the same failure is usually counted on
+// both, and the compiler's count is what the build actually felt.
+func TestXcodeDoctor_ReportAtEndShowsTheLargerErrorCount(t *testing.T) {
+	cases := map[string]struct {
+		outcome buildOutcome
+		want    string
+	}{
+		"compiler saw more": {
+			outcome: buildOutcome{
+				CAS:   xcodeargs.CompCacheStats{CASErrors: 4002},
+				Proxy: proxyOutcome{Errors: 12},
+			},
+			want: "4002 error(s)",
+		},
+		"only the proxy saw them (a failed upload the compiler ignores)": {
+			outcome: buildOutcome{Proxy: proxyOutcome{Errors: 12}},
+			want:    "12 error(s)",
+		},
+		"only the compiler saw them (never reached the proxy)": {
+			outcome: buildOutcome{CAS: xcodeargs.CompCacheStats{CASErrors: 7}},
+			want:    "7 error(s)",
+		},
+	}
 
-	d.CheckAtStart(context.Background())
-	out.Reset()
-	d.ReportAtEnd(context.Background(), buildOutcome{
-		CAS:   xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002},
-		Proxy: proxyOutcome{Errors: 12, FirstError: "Get: connection refused"},
-	})
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
+				return okReport("auth")
+			})
 
-	logged := out.String()
-	assert.Contains(t, logged, "12 request(s)")
-	assert.Contains(t, logged, "connection refused")
-	assert.Contains(t, logged, "4002 error(s)")
-	assert.Contains(t, logged, "compiled locally")
-	assert.Contains(t, logged, "stop-proxy")
-}
+			d.CheckAtStart(context.Background())
+			out.Reset()
+			d.ReportAtEnd(context.Background(), tc.outcome)
 
-// The case that keeps the compiler-side count worth having: the proxy served
-// everything it received, so the lookups never arrived.
-func TestXcodeDoctor_ReportAtEndFlagsCASErrorsTheProxyNeverSaw(t *testing.T) {
-	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
-		return okReport("auth")
-	})
-
-	d.CheckAtStart(context.Background())
-	out.Reset()
-	d.ReportAtEnd(context.Background(), buildOutcome{
-		CAS: xcodeargs.CompCacheStats{Hits: 0, TotalTasks: 2746, CASErrors: 4002},
-	})
-
-	logged := out.String()
-	assert.Contains(t, logged, "not reaching the proxy")
-	assert.Contains(t, logged, "activate xcode")
-	assert.NotContains(t, logged, "stop-proxy", "a fresh proxy doesn't fix an unreachable one")
+			assert.Contains(t, out.String(), tc.want)
+			assert.Contains(t, out.String(), "bitrise-build-cache doctor")
+		})
+	}
 }
 
 // 0% on a first build is normal, not a symptom.

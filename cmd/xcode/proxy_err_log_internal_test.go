@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 )
 
 func TestXcodeDoctor_ReportsProxyErrorsFromTheStats(t *testing.T) {
@@ -22,8 +23,10 @@ func TestXcodeDoctor_ReportsProxyErrorsFromTheStats(t *testing.T) {
 	proxyLogDir(t, home)
 
 	const invocationID = "1f2e3d4c"
+	logger := log.NewLogger(log.WithOutput(&out))
+	logger.EnableDebugLog(true)
 	d := &xcodeDoctor{
-		Logger:       log.NewLogger(log.WithOutput(&out)),
+		Logger:       logger,
 		OsProxy:      osProxy,
 		CacheEnabled: true,
 		InvocationID: invocationID,
@@ -39,9 +42,41 @@ func TestXcodeDoctor_ReportsProxyErrorsFromTheStats(t *testing.T) {
 	}})
 
 	logged := out.String()
-	assert.Contains(t, logged, "3 request(s)")
+	assert.Contains(t, logged, "3 error(s)")
+	assert.Contains(t, logged, "bitrise-build-cache doctor")
+	// The proxy's own wording and paths are debug-only: a build log shouldn't
+	// explain the pieces to someone who just wants their cache working.
 	assert.Contains(t, logged, "token expired")
 	assert.Contains(t, logged, "proxy-"+invocationID+"-out.log")
+}
+
+// Without --debug, the same build says only what happened and what to run.
+func TestXcodeDoctor_KeepsProxyInternalsOutOfTheBuildOutput(t *testing.T) {
+	var out strings.Builder
+	osProxy, home := tempHomeProxy(t)
+	proxyLogDir(t, home)
+
+	d := &xcodeDoctor{
+		Logger:       log.NewLogger(log.WithOutput(&out)),
+		OsProxy:      osProxy,
+		CacheEnabled: true,
+		InvocationID: "1f2e3d4c",
+		RunChecks: func(context.Context, doctorpkg.Options) doctorpkg.Report {
+			return okReport("auth")
+		},
+	}
+
+	d.CheckAtStart(context.Background())
+	d.ReportAtEnd(context.Background(), buildOutcome{
+		CAS:   xcodeargs.CompCacheStats{CASErrors: 4002},
+		Proxy: proxyOutcome{Errors: 3, FirstError: "Get: token expired"},
+	})
+
+	logged := out.String()
+	assert.Contains(t, logged, "4002 error(s)", "the count the build actually felt")
+	for _, internal := range []string{"proxy", "CAS", "socket", "token expired", ".log"} {
+		assert.NotContains(t, logged, internal)
+	}
 }
 
 // Error-shaped log lines are not a failure; only the proxy's count is.
@@ -72,8 +107,8 @@ func TestXcodeDoctor_SilentWhenTheProxyReportsNoFailures(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
-// A proxy that stopped answering has no counters left, so its error log is the
-// only evidence of why.
+// A proxy that stopped answering gets a plain warning; its own words go to the
+// debug log, which is also the only place the shared error log is quoted.
 func TestXcodeDoctor_ReportsProxyStderrWrittenDuringBuild(t *testing.T) {
 	var out strings.Builder
 	osProxy, home := tempHomeProxy(t)
@@ -82,8 +117,10 @@ func TestXcodeDoctor_ReportsProxyStderrWrittenDuringBuild(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(errLog, []byte("stale failure from yesterday\n"), 0o600))
 
+	logger := log.NewLogger(log.WithOutput(&out))
+	logger.EnableDebugLog(true)
 	d := &xcodeDoctor{
-		Logger:       log.NewLogger(log.WithOutput(&out)),
+		Logger:       logger,
 		OsProxy:      osProxy,
 		CacheEnabled: true,
 		InvocationID: "abc123",
@@ -103,8 +140,7 @@ func TestXcodeDoctor_ReportsProxyStderrWrittenDuringBuild(t *testing.T) {
 	d.ReportAtEnd(context.Background(), buildOutcome{Proxy: proxyOutcome{Unreachable: true}})
 
 	logged := out.String()
-	assert.Contains(t, logged, msgDoctorProxyUnreachable)
-	assert.Contains(t, logged, msgDoctorProxyStderr)
+	assert.Contains(t, logged, msgDoctorCacheStopped)
 	assert.Contains(t, logged, "failed to dial the build cache")
 	assert.NotContains(t, logged, "yesterday", "the shared log outlives a single build")
 }

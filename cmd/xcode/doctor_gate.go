@@ -20,19 +20,14 @@ const (
 	doctorLocalTimeout = 5 * time.Second
 	doctorProbeTimeout = 15 * time.Second
 
-	msgDoctorIssuesFound      = "Bitrise Build Cache health check found issues that can affect this build:"
-	msgDoctorRepairHint       = "Run `bitrise-build-cache doctor --fix --interactive` to repair."
-	msgDoctorIssuesRecap      = "Reminder — the health check at the start of this build reported:"
-	msgDoctorProbingAuth      = "Checking whether an expired auth token caused the failure above..."
-	msgDoctorProbeNoIssues    = "Auth looks healthy, so the failure above is not a token problem."
-	msgDoctorCASErrors        = "The compilation cache reported %d error(s) during this build — those lookups never completed, so the files compiled locally instead."
-	msgDoctorCASOnlyErrors    = "Xcode reported %d compilation-cache error(s), but the proxy completed every request it received — so those lookups are not reaching the proxy."
-	msgDoctorCASOnlyHint      = "Check that the socket the compiler was given still exists: `bitrise-build-cache doctor`, then `activate xcode` to rewrite it."
-	msgDoctorCacheErrorsHint  = "Check `bitrise-build-cache doctor`; `xcelerate stop-proxy` makes the next build start a fresh proxy."
-	msgDoctorProxyErrors      = "The Bitrise compilation cache proxy could not complete %d request(s) during this build:"
-	msgDoctorProxyUnreachable = "The Bitrise compilation cache proxy stopped answering during this build, so nothing was cached from that point on."
-	msgDoctorProxyStderr      = "What the proxy wrote to its error log during this build:"
-	msgDoctorProxyLogHint     = "Full proxy log: %s"
+	msgDoctorIssuesFound     = "Bitrise Build Cache health check found issues that can affect this build:"
+	msgDoctorRepairHint      = "Run `bitrise-build-cache doctor --fix --interactive` to repair."
+	msgDoctorIssuesRecap     = "Reminder — the health check at the start of this build reported:"
+	msgDoctorProbingAuth     = "Checking whether an expired auth token caused the failure above..."
+	msgDoctorProbeNoIssues   = "Auth looks healthy, so the failure above is not a token problem."
+	msgDoctorCacheErrors     = "The Bitrise cache reported %d error(s) during this build, so some files compiled locally instead."
+	msgDoctorCacheStopped    = "The Bitrise cache stopped responding during this build, so nothing was cached after that."
+	msgDoctorCacheErrorsHint = "Run `bitrise-build-cache doctor` to check the setup."
 )
 
 //go:generate moq -stub -out doctor_gate_mock_test.go -pkg xcode . buildHealthReporter
@@ -192,67 +187,48 @@ func (d *xcodeDoctor) markProxyErrLog() {
 // the proxy never received means the two aren't talking, which neither number
 // says on its own.
 func (d *xcodeDoctor) reportCacheErrors(outcome buildOutcome) bool {
-	proxyReported := d.reportProxy(outcome.Proxy)
+	d.logCacheErrorDetail(outcome)
 
-	casErrors := outcome.CAS.CASErrors
-	switch {
-	case casErrors == 0:
-		return proxyReported
-	case proxyReported:
-		// The proxy already gave the reason; the compiler's count is the same
-		// failures seen from the other end.
-		d.Logger.Warnf(msgDoctorCASErrors, casErrors)
-	default:
-		d.Logger.Warnf(msgDoctorCASOnlyErrors, casErrors)
-		d.Logger.Warnf(msgDoctorCASOnlyHint)
-
-		// A fresh proxy doesn't help when the compiler isn't reaching this one.
-		return false
-	}
-
-	return true
-}
-
-// reportProxy relays what the proxy counted, falling back to its error log only
-// when the proxy couldn't be asked — a dead one has no counters to report.
-func (d *xcodeDoctor) reportProxy(proxy proxyOutcome) bool {
-	switch {
-	case proxy.Unreachable:
-		d.Logger.Warnf(msgDoctorProxyUnreachable)
-		d.reportProxyStderr()
-
-		return true
-	case proxy.Errors > 0:
-		d.Logger.Warnf(msgDoctorProxyErrors, proxy.Errors)
-		if proxy.FirstError != "" {
-			d.Logger.Warnf("  first failure: %s", proxy.FirstError)
-		}
-		if path, err := getProxyLogFile(d.osProxy(), d.InvocationID); err == nil {
-			d.Logger.Warnf(msgDoctorProxyLogHint, path)
-		}
+	if outcome.Proxy.Unreachable {
+		d.Logger.Warnf(msgDoctorCacheStopped)
 
 		return true
 	}
 
-	d.Logger.Debugf("Proxy completed every request for invocation %s", d.InvocationID)
+	// The larger of the two, never their sum: the same failure is usually counted
+	// on both sides, and the compiler's count is what the build actually felt.
+	if n := max(outcome.CAS.CASErrors, outcome.Proxy.Errors); n > 0 {
+		d.Logger.Warnf(msgDoctorCacheErrors, n)
+
+		return true
+	}
 
 	return false
 }
 
-func (d *xcodeDoctor) reportProxyStderr() {
-	path, err := getProxyErrorLogFile(d.osProxy())
-	if err != nil {
-		return
+// logCacheErrorDetail keeps which side saw what, and the proxy's own words, out of
+// the build's output — a developer needs to know the cache misbehaved and what to
+// run, not how the pieces talk to each other.
+func (d *xcodeDoctor) logCacheErrorDetail(outcome buildOutcome) {
+	d.Logger.Debugf("Cache errors — compiler saw %d, proxy counted %d, proxy unreachable: %t",
+		outcome.CAS.CASErrors, outcome.Proxy.Errors, outcome.Proxy.Unreachable)
+
+	if outcome.Proxy.FirstError != "" {
+		d.Logger.Debugf("First proxy failure: %s", outcome.Proxy.FirstError)
 	}
 
-	stderr := readProxyStderrSince(path, d.proxyErrOffset)
-	if stderr == "" {
-		return
+	if d.InvocationID != "" {
+		if path, err := getProxyLogFile(d.osProxy(), d.InvocationID); err == nil {
+			d.Logger.Debugf("Proxy log: %s", path)
+		}
 	}
 
-	d.Logger.Warnf(msgDoctorProxyStderr)
-	for _, l := range strings.Split(stderr, "\n") {
-		d.Logger.Warnf("  %s", truncate(l, proxyErrorSnippetMax))
+	if path, err := getProxyErrorLogFile(d.osProxy()); err == nil {
+		for _, l := range strings.Split(readProxyStderrSince(path, d.proxyErrOffset), "\n") {
+			if l != "" {
+				d.Logger.Debugf("Proxy stderr: %s", truncate(l, proxyErrorSnippetMax))
+			}
+		}
 	}
 }
 
