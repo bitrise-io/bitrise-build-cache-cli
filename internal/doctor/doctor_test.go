@@ -5,6 +5,7 @@ package doctor
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -784,4 +785,37 @@ func TestRemoveFileFixer_missingFileIsError(t *testing.T) {
 
 	_, err := f.Fix()
 	require.Error(t, err)
+}
+
+// The proxy listens on the path activation recorded, which can come from
+// --proxy-socket-path and never reaches the env chain. Checking the env-or-default
+// path instead reports a healthy proxy as down on every build.
+func TestXcelerateProxyCheck_usesThePathActivationRecorded(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Short dir: a unix socket path has a ~104 byte limit.
+	sockDir, err := os.MkdirTemp("/tmp", "doctor-cfg-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+
+	recorded := filepath.Join(sockDir, "recorded.sock")
+	ln, err := net.Listen("unix", recorded)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".bitrise-xcelerate"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(home, ".bitrise-xcelerate", "config.json"),
+		[]byte(`{"proxySocketPath":"`+recorded+`"}`), 0o600))
+
+	r := &Doctor{
+		// A different path, as a stale env var or plain default would give.
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(sockDir, "elsewhere.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateOK, res.State, "detail: %s", res.Detail)
 }

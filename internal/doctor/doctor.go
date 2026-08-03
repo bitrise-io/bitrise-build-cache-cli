@@ -295,3 +295,11 @@ func filterChecks(checks []Check, only []string) []Check {
 
 	return out
 }
+
+func (d *Doctor) osProxy() utils.OsProxy {
+	if d.OsProxy != nil {
+		return d.OsProxy
+	}
+
+	return utils.DefaultOsProxy{}
+}
