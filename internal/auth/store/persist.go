@@ -21,8 +21,8 @@ func PersistActivateCreds(logger log.Logger, envs map[string]string, auth config
 	persistActivateCredsTo(logger, SelectAuto(envs), auth, mpCfg)
 }
 
-// persistActivateCredsTo takes the target store so the keychain-refused branch is
-// testable without a real keychain.
+// persistActivateCredsTo takes the store so tests can refuse a write without a
+// real keychain.
 func persistActivateCredsTo(logger log.Logger, target Store, auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
 	if target.Kind() == KindFile {
 		persistToFile(auth, mpCfg)
@@ -31,8 +31,7 @@ func persistActivateCredsTo(logger log.Logger, target Store, auth configcommon.C
 		return
 	}
 	if err := target.Save(mergeActivateCreds(target, auth)); err != nil {
-		// AuthConfig alone has no room for the refresh token, and a host without a
-		// keychain still has the config file.
+		// AuthConfig has no room for the refresh token; the config file does.
 		logger.Warnf("Keychain save failed (%v); saving to the multiplatform config file instead", err)
 		persistToFile(auth, mpCfg)
 
@@ -41,23 +40,17 @@ func persistActivateCredsTo(logger log.Logger, target Store, auth configcommon.C
 	logger.Infof("Saved auth credentials to the OS keychain")
 }
 
-// persistToFile writes the full credential to Credentials, keeping AuthConfig in
-// step for readers that still use it. Merging against the file store is the point:
-// merging against an unreadable keychain is what yields a bare token.
+// Merges against the file store, not the caller's: merging against an unreadable
+// keychain is what yields a bare token.
 func persistToFile(auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
 	c := mergeActivateCreds(NewFile(), auth)
 	mpCfg.Credentials = &c
 	mpCfg.AuthConfig = auth
 }
 
-// mergeActivateCreds re-persists a resolved credential without downgrading what is
-// stored: activate is not the authority on what the credential is — `auth set` and
-// `auth login` are, via SaveExclusive.
-//
-// The token is deliberately not compared. A login's PAT is short-lived and gets
-// refreshed, so the resolved token routinely differs from the stored one; treating
-// that as a different credential discarded the refresh token, leaving the login
-// unable to refresh and dead at the PAT's expiry.
+// The tokens are deliberately not compared: a login's PAT is short-lived and gets
+// refreshed, so a mismatch is normal, and treating it as a different credential
+// discarded the refresh token.
 func mergeActivateCreds(target Store, auth configcommon.CacheAuthConfig) keychain.Credentials {
 	existing, err := target.Load()
 	if err != nil {

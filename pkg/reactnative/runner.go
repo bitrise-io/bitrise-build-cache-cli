@@ -209,9 +209,8 @@ type ccacheSocket interface {
 	SetInvocationID(ctx context.Context, parentID, childID string) error
 }
 
-// ensureHelper brings the ccache storage helper up and reports whether it ended up
-// usable, which gates injectCcacheEnv. Every step is still attempted after a
-// failure: the helper is best-effort and must never block the build.
+// The verdict gates injectCcacheEnv. Every step is still attempted after a failure:
+// the helper is best-effort and must never block the build.
 func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) bool {
 	socket := r.socket
 	if socket == nil {
@@ -246,15 +245,9 @@ func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) b
 	return ready
 }
 
-// injectCcacheEnv points ccache at the storage helper. Activation publishes these
-// through envman, which exists only on Bitrise CI, so off CI a build otherwise
-// compiles against local storage while the helper sits idle — with every component
-// reporting success. The wrapped build's environment is the one place we know
-// reaches the compiler.
-//
-// A value the user already set wins; they mean it. Called only once ensureHelper
-// has confirmed the helper is reachable, since CCACHE_REMOTE_ONLY at a dead socket
-// would cache nothing at all.
+// Activation publishes these through envman, which exists only on Bitrise CI, so
+// off CI nothing else tells the compiler the socket is there. A value the user
+// already set wins.
 func (r *Runner) injectCcacheEnv(envs map[string]string) {
 	if r.ccacheConfig == nil {
 		return

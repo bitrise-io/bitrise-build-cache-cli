@@ -87,8 +87,7 @@ func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) 
 	assert.Equal(t, "refresh-1", got.RefreshToken)
 }
 
-// A refreshed PAT is the same credential, and refreshing is the normal case
-// between login and activate.
+// Refreshing is the normal case between login and activate.
 func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.T) {
 	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
 		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1", Username: "dev",
@@ -112,8 +111,8 @@ func TestMergeActivateCreds_EmptyStore(t *testing.T) {
 	assert.Equal(t, "ws-1", got.WorkspaceID)
 }
 
-// A headless host keeps its login in the config file, so activation must write the
-// full credential there rather than the 3-field AuthConfig shape.
+// A headless host keeps its login in the config file, so the full credential has
+// to land there and not in the 3-field AuthConfig.
 func TestPersistActivateCreds_KeychainUnusableKeepsTheRefreshToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

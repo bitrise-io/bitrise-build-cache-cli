@@ -143,9 +143,8 @@ func (config Config) CRSHRemoteStorageURL() string {
 		config.IPCEndpoint, defaultCRSHDataTimeout, defaultCRSHRequestTimeout)
 }
 
-// BuildEnv is the environment ccache needs to route through the storage helper.
-// Both delivery paths use it — envman on CI, the wrapped build's own environment
-// off it — so the two cannot drift.
+// BuildEnv serves both delivery paths — envman on CI, the wrapped build's own
+// environment off it — so the two cannot drift.
 func (config Config) BuildEnv(baseDir string) map[string]string {
 	return map[string]string{
 		"CCACHE_BASEDIR":              baseDir,
