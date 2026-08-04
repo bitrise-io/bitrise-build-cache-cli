@@ -150,14 +150,17 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 
 	r.logger.TInfof("React Native invocation ID: %s", wrapperInvocationID)
 
+	helperReady := false
 	if r.socket != nil {
-		r.ensureHelper(ctx, wrapperInvocationID)
+		helperReady = r.ensureHelper(ctx, wrapperInvocationID)
 		r.zeroCcacheStats(ctx)
 	}
 
 	envMap := environToMap(environ)
 	envMap["BITRISE_INVOCATION_ID"] = wrapperInvocationID
-	r.injectCcacheEnv(envMap)
+	if helperReady {
+		r.injectCcacheEnv(envMap)
+	}
 	r.maybeInjectEASWorkingDir(envMap, name, cmdArgs)
 
 	start := time.Now()
@@ -206,31 +209,45 @@ type ccacheSocket interface {
 	SetInvocationID(ctx context.Context, parentID, childID string) error
 }
 
-func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
+// ensureHelper brings the ccache storage helper up and reports whether it ended
+// up usable. Every step is still attempted even after one fails — the helper is
+// best-effort and must never block the build — but the verdict gates
+// injectCcacheEnv: pointing ccache at a socket nobody is listening on, with
+// CCACHE_REMOTE_ONLY set, would leave the build caching nothing at all, which is
+// worse than the local cache it would otherwise have used. An expired credential
+// is enough to keep the helper from starting.
+func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) bool {
 	socket := r.socket
 	if socket == nil {
-		return
+		return false
 	}
+
+	ready := true
 
 	if !socket.IsListening() {
 		if err := socket.Start(); err != nil {
 			r.logger.TWarnf("Failed to start ccache storage helper: %v", err)
 
-			return
+			return false
 		}
 
 		if !socket.AwaitReady() {
 			r.logger.TWarnf("Ccache storage helper did not become ready")
+			ready = false
 		}
 	}
 
 	if err := socket.HealthCheck(ctx); err != nil {
 		r.logger.TWarnf("Ccache storage helper health check failed: %v", err)
+		ready = false
 	}
 
 	if err := socket.SetInvocationID(ctx, wrapperInvocationID, uuid.NewString()); err != nil {
 		r.logger.TWarnf("Failed to send invocation ID to storage helper: %v", err)
+		ready = false
 	}
+
+	return ready
 }
 
 // injectCcacheEnv points ccache at the storage helper for the wrapped build.
@@ -240,6 +257,8 @@ func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
 // helper sits idle — every component reports success and nothing is cached
 // remotely. The build's own environment is the one place we know reaches the
 // compiler, so the values are set here from the same config the helper uses.
+//
+// Only called once the helper is confirmed reachable — see ensureHelper.
 //
 // A value the user already set always wins: someone pointing ccache at their own
 // remote storage means it deliberately.

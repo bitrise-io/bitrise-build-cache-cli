@@ -94,8 +94,8 @@ func TestNewActivator_CppRequiresGradle(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	cases := []struct {
-		name   string
-		params ActivatorParams
+		name    string
+		params  ActivatorParams
 		wantCpp bool
 	}{
 		{

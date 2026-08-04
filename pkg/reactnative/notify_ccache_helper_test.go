@@ -30,10 +30,13 @@ type stubSocket struct {
 	capturedChildID     string
 }
 
-func (s *stubSocket) IsListening() bool                   { return s.listening }
-func (s *stubSocket) Start() error                        { s.startCalled = true; return s.startErr }
-func (s *stubSocket) AwaitReady() bool                    { s.awaitCalled = true; return s.awaitResult }
-func (s *stubSocket) HealthCheck(_ context.Context) error { s.healthCheckCalled = true; return s.healthCheckErr }
+func (s *stubSocket) IsListening() bool { return s.listening }
+func (s *stubSocket) Start() error      { s.startCalled = true; return s.startErr }
+func (s *stubSocket) AwaitReady() bool  { s.awaitCalled = true; return s.awaitResult }
+func (s *stubSocket) HealthCheck(_ context.Context) error {
+	s.healthCheckCalled = true
+	return s.healthCheckErr
+}
 func (s *stubSocket) SetInvocationID(_ context.Context, parentID, childID string) error {
 	s.setInvocationCalled = true
 	s.capturedParentID = parentID

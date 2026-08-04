@@ -441,7 +441,8 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 		return "", false
 	}
 
-	captureEnv := func(t *testing.T, environ []string) []string {
+	// helperUp is what a reachable storage helper looks like to the Runner.
+	captureEnv := func(t *testing.T, environ []string, helperUp bool) []string {
 		t.Helper()
 
 		var captured []string
@@ -452,6 +453,11 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 				return 0, nil
 			},
 		})
+		if helperUp {
+			r.socket = &stubSocket{listening: true, awaitResult: true}
+		} else {
+			r.socket = &stubSocket{listening: false, startErr: errors.New("unauthenticated")}
+		}
 		_, err := r.Run(ctx, []string{"npx", "react-native", "build-android"}, "", environ)
 		require.NoError(t, err)
 
@@ -462,7 +468,7 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 		home := activateRNHome(t)
 		writeCcacheConfig(t, home, "/tmp/ccache-ipc.sock")
 
-		got := captureEnv(t, []string{"HOME=" + home})
+		got := captureEnv(t, []string{"HOME=" + home}, true)
 
 		remote, ok := findEnv(got, "CCACHE_REMOTE_STORAGE")
 		require.True(t, ok, "the compiler has no other way to learn the socket")
@@ -478,7 +484,7 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 		home := activateRNHome(t)
 		writeCcacheConfig(t, home, "/tmp/ccache-ipc.sock")
 
-		got := captureEnv(t, []string{"HOME=" + home, "CCACHE_REMOTE_STORAGE=redis://mine"})
+		got := captureEnv(t, []string{"HOME=" + home, "CCACHE_REMOTE_STORAGE=redis://mine"}, true)
 
 		remote, _ := findEnv(got, "CCACHE_REMOTE_STORAGE")
 		assert.Equal(t, "redis://mine", remote)
@@ -487,10 +493,25 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 	t.Run("no ccache activation → nothing injected", func(t *testing.T) {
 		home := activateRNHome(t) // RN activated, but no ccache config on disk
 
-		got := captureEnv(t, []string{"HOME=" + home})
+		got := captureEnv(t, []string{"HOME=" + home}, true)
 
 		_, ok := findEnv(got, "CCACHE_REMOTE_STORAGE")
 		assert.False(t, ok, "activate --cpp was never run, so there is no helper to point at")
+	})
+
+	// An expired credential stops the helper from starting. Pointing ccache at a
+	// dead socket with CCACHE_REMOTE_ONLY would cache nothing at all, which is
+	// worse than the local cache the build would otherwise have used.
+	t.Run("helper unreachable → nothing injected", func(t *testing.T) {
+		home := activateRNHome(t)
+		writeCcacheConfig(t, home, "/tmp/ccache-ipc.sock")
+
+		got := captureEnv(t, []string{"HOME=" + home}, false)
+
+		for _, key := range []string{"CCACHE_REMOTE_STORAGE", "CCACHE_REMOTE_ONLY"} {
+			_, ok := findEnv(got, key)
+			assert.False(t, ok, key)
+		}
 	})
 }
 
