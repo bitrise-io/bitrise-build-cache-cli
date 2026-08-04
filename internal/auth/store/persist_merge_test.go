@@ -3,20 +3,28 @@
 package store
 
 import (
+	"errors"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 )
+
+func newTestLogger() log.Logger { return log.NewLogger(log.WithOutput(io.Discard)) }
 
 type memStore struct {
 	creds   keychain.Credentials
 	present bool
 	kind    Kind
+	saveErr error
 }
 
 func (m *memStore) Kind() Kind { return m.kind }
@@ -30,6 +38,9 @@ func (m *memStore) Load() (keychain.Credentials, error) {
 }
 
 func (m *memStore) Save(c keychain.Credentials) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
 	m.creds, m.present = c, true
 
 	return nil
@@ -98,4 +109,39 @@ func TestMergeActivateCreds_EmptyStore(t *testing.T) {
 
 	assert.Equal(t, "pat-1", got.AuthToken)
 	assert.Equal(t, "ws-1", got.WorkspaceID)
+}
+
+// A host with no usable OS keychain (headless Linux, containers) is where the
+// browser login lands in the config file. Activation must not overwrite that with
+// the 3-field AuthConfig shape: the refresh token lives only in Credentials, and
+// without it the login degrades to a bare PAT that dies at expiry with nothing
+// able to renew it. Observed on an RDE — `activate` ran, the refresh token
+// vanished, and the storage helper later refused to start on `unauthenticated`.
+func TestPersistActivateCreds_KeychainUnusableKeepsTheRefreshToken(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	login := keychain.Credentials{
+		AuthToken:          "bitpat_minted",
+		WorkspaceID:        "ws-1",
+		RefreshToken:       "refresh-me",
+		RefreshTokenExpiry: time.Now().Add(24 * time.Hour),
+		Username:           "dev",
+	}
+	require.NoError(t, NewFile().Save(login))
+
+	// A keychain that refuses every write, as a host with no secret-service has.
+	deadKeychain := &memStore{kind: KindKeychain, saveErr: errors.New("no usable OS keychain on this machine")}
+
+	var mpCfg multiplatformconfig.Config
+	persistActivateCredsTo(
+		newTestLogger(),
+		deadKeychain,
+		configcommon.CacheAuthConfig{AuthToken: "bitpat_minted", WorkspaceID: "ws-1"},
+		&mpCfg,
+	)
+
+	require.NotNil(t, mpCfg.Credentials, "the full credential must be written, not just AuthConfig")
+	assert.Equal(t, "refresh-me", mpCfg.Credentials.RefreshToken, "without this the login cannot refresh")
+	assert.Equal(t, "dev", mpCfg.Credentials.Username)
+	assert.Equal(t, "bitpat_minted", mpCfg.AuthConfig.AuthToken, "downstream readers still use AuthConfig")
 }

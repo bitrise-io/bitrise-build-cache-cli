@@ -18,22 +18,40 @@ func PersistActivateCreds(logger log.Logger, envs map[string]string, auth config
 
 		return
 	}
-	target := SelectAuto(envs)
+	persistActivateCredsTo(logger, SelectAuto(envs), auth, mpCfg)
+}
+
+// persistActivateCredsTo is PersistActivateCreds with the target store supplied,
+// so the keychain-refused branch is testable without a real keychain.
+func persistActivateCredsTo(logger log.Logger, target Store, auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
 	if target.Kind() == KindFile {
-		c := mergeActivateCreds(target, auth)
-		mpCfg.Credentials = &c
-		mpCfg.AuthConfig = auth
+		persistToFile(auth, mpCfg)
 		logger.Infof("Saved auth credentials to the multiplatform config file (CI-safe — fastlane setup_ci swaps the keychain)")
 
 		return
 	}
 	if err := target.Save(mergeActivateCreds(target, auth)); err != nil {
-		logger.Warnf("Keychain save failed (%v); falling back to multiplatform authConfig", err)
-		mpCfg.AuthConfig = auth
+		// Writing only AuthConfig here would strand the credential in a shape that
+		// has no refresh token, so the login degrades to a bare PAT and dies when it
+		// expires. A host with no usable keychain still has the config file.
+		logger.Warnf("Keychain save failed (%v); saving to the multiplatform config file instead", err)
+		persistToFile(auth, mpCfg)
 
 		return
 	}
 	logger.Infof("Saved auth credentials to the OS keychain")
+}
+
+// persistToFile writes the full credential to the config file's Credentials
+// block, keeping AuthConfig in step for downstream readers that still use it.
+//
+// The merge is against the file store on purpose: merging against an unusable
+// keychain reads nothing and yields a bare token, which is precisely how the
+// refresh token gets lost.
+func persistToFile(auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
+	c := mergeActivateCreds(NewFile(), auth)
+	mpCfg.Credentials = &c
+	mpCfg.AuthConfig = auth
 }
 
 // mergeActivateCreds keeps the OAuth fields and username of an existing entry
