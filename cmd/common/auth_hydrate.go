@@ -17,7 +17,7 @@ func hydrateStoredAuth(ctx context.Context) {
 		return
 	}
 	_, source, _ := configcommon.ResolveAuthConfig(envs)
-	if source != configcommon.AuthSourceKeychain && source != configcommon.AuthSourceFile {
+	if !source.StoreManaged() {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))

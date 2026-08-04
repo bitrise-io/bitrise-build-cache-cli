@@ -56,6 +56,14 @@ const (
 	AuthSourceMultiplatform
 )
 
+// StoreManaged reports whether the credential came from the CLI's own credential
+// store, where an OAuth login can be refreshed in place. Keychain and file are
+// the two backends store.SelectAuto picks between — a machine with no OS
+// keychain (Linux, containers) lands on the file one.
+func (s AuthSource) StoreManaged() bool {
+	return s == AuthSourceKeychain || s == AuthSourceFile
+}
+
 // GetKeychainCredentials returns the credentials stored in the OS keychain.
 // Bool is true only when both AuthToken and WorkspaceID are populated.
 func GetKeychainCredentials() (CacheAuthConfig, bool) {

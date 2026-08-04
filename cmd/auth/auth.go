@@ -472,7 +472,7 @@ func probeKeychain() credAudit {
 	}
 
 	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
-	if desc := configcommon.DescribeKeychainCredentials(creds); desc.IsOAuthLogin {
+	if desc := configcommon.DescribeStoredCredentials(configcommon.AuthSourceKeychain, creds); desc.IsOAuthLogin {
 		audit.note = desc.Detail()
 	}
 
@@ -489,7 +489,12 @@ func probeFileStore() credAudit {
 		return credAudit{state: sourceAbsent, note: "credentials block present but empty"}
 	}
 
-	return credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
+	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
+	if desc := configcommon.DescribeStoredCredentials(configcommon.AuthSourceFile, creds); desc.IsOAuthLogin {
+		audit.note = desc.Detail()
+	}
+
+	return audit
 }
 
 func probeMultiplatform() credAudit {

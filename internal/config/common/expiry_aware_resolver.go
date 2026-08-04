@@ -11,7 +11,7 @@ type RefreshFunc func(ctx context.Context) (pat string, workspaceID string, err 
 
 type resolveFunc func(envs map[string]string) (CacheAuthConfig, AuthSource, error)
 
-// ExpiryAwareResolver routes OAuth-managed keychain reads through refreshFn (expiry-aware refresh + rotation) and falls back to plain ResolveAuthConfig for env / file / multiplatform / JWT sources.
+// ExpiryAwareResolver routes OAuth-managed store reads (keychain / config file) through refreshFn (expiry-aware refresh + rotation) and falls back to plain ResolveAuthConfig for env / multiplatform / JWT sources.
 type ExpiryAwareResolver struct {
 	ctx       context.Context //nolint:containedctx // resolver is called per RPC without a fresh ctx
 	envs      map[string]string
@@ -43,7 +43,7 @@ func (r *ExpiryAwareResolver) Get() CacheAuthConfig {
 
 		return cfg
 	}
-	if source != AuthSourceKeychain || r.refreshFn == nil {
+	if !source.StoreManaged() || r.refreshFn == nil {
 		return cfg
 	}
 
