@@ -54,16 +54,18 @@ func persistToFile(auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig
 	mpCfg.AuthConfig = auth
 }
 
-// mergeActivateCreds keeps the OAuth fields and username of an existing entry
-// when activate re-persists the same token. Replacing the entry outright would
-// drop the refresh token, which both breaks `auth logout` and leaves the login
-// unable to refresh — degrading it to a bare, short-lived PAT.
+// mergeActivateCreds re-persists a resolved credential without downgrading what is
+// already stored. activate is not the authority on what the credential *is* —
+// `auth set` and `auth login` are, and they go through SaveExclusive — so it keeps
+// the OAuth fields of an existing login and only updates the token and workspace.
 //
-// A different token means a different credential, so the OAuth fields are not
-// carried over: they would not describe the token being stored.
+// The token is deliberately not compared: a PAT minted by a login is short-lived
+// and gets refreshed, so the resolved token routinely differs from the stored one.
+// Treating that as a different credential dropped the refresh token, leaving the
+// login unable to refresh and dead at the PAT's expiry.
 func mergeActivateCreds(target Store, auth configcommon.CacheAuthConfig) keychain.Credentials {
 	existing, err := target.Load()
-	if err != nil || existing.AuthToken != auth.AuthToken {
+	if err != nil {
 		return keychain.Credentials{AuthToken: auth.AuthToken, WorkspaceID: auth.WorkspaceID}
 	}
 

@@ -87,19 +87,22 @@ func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) 
 	assert.Equal(t, "refresh-1", got.RefreshToken)
 }
 
-// A different token is a different credential, so OAuth fields that described
-// the old one must not be carried over.
-func TestMergeActivateCreds_DropsOAuthFieldsForADifferentToken(t *testing.T) {
+// A refreshed PAT is the same credential. The stored token routinely differs from
+// the resolved one — the login mints short-lived PATs and refreshes them — so
+// comparing tokens here is what discarded the refresh token and killed the login
+// at expiry. activate re-persists; it does not redefine.
+func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.T) {
 	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
-		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1",
+		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1", Username: "dev",
 	}}
 
 	got := mergeActivateCreds(s, configcommon.CacheAuthConfig{AuthToken: "pat-2", WorkspaceID: "ws-1"})
 
-	assert.Equal(t, "pat-2", got.AuthToken)
-	assert.Empty(t, got.RefreshToken)
-	assert.Empty(t, got.JWT)
-	assert.False(t, got.IsOAuthManaged())
+	assert.Equal(t, "pat-2", got.AuthToken, "the freshly resolved token wins")
+	assert.Equal(t, "refresh-1", got.RefreshToken, "without this the login cannot refresh again")
+	assert.Equal(t, "jwt-1", got.JWT)
+	assert.Equal(t, "dev", got.Username)
+	assert.True(t, got.IsOAuthManaged())
 }
 
 func TestMergeActivateCreds_EmptyStore(t *testing.T) {
