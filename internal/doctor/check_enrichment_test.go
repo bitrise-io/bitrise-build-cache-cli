@@ -136,7 +136,6 @@ func TestEnrichmentCheck_okWhenHealthy(t *testing.T) {
 	assert.Contains(t, res.Detail, "healthy")
 }
 
-
 func TestEnrichmentCheck_warnOnConsecutiveErrors_includesLastErrorAt(t *testing.T) {
 	tmp := t.TempDir()
 	healthPath := filepath.Join(tmp, "health.json")

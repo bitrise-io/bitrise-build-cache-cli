@@ -145,6 +145,13 @@ TBD`,
 			})
 		}
 
+		noDoctor := slices.Contains(xcelerateParams.OrigArgs, NoDoctorFlag) || os.Getenv(EnvSkipDoctor) != ""
+		if noDoctor {
+			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+				return s == NoDoctorFlag
+			})
+		}
+
 		// Automatically disable cache for -create-xcframework as it's incompatible
 		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
 			config.BuildCacheEnabled = false
@@ -232,6 +239,14 @@ TBD`,
 			XcodeArgs:          xcodeArgs,
 			NoPrefixMap:        noPrefixMap,
 			NoManagedDD:        noManagedDD,
+		}
+		if !noDoctor {
+			runner.Doctor = &xcodeDoctor{
+				Logger:       logger,
+				Debug:        config.DebugLogging,
+				CacheEnabled: config.BuildCacheEnabled,
+				InvocationID: invocationID,
+			}
 		}
 		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
 			logger.Errorf(ErrExecutingXcode, runStats.Error)
@@ -326,6 +341,9 @@ type XcodebuildRunner struct {
 	// substitution; user-supplied values are still honoured either way.
 	NoManagedDD bool
 
+	// Doctor reports local setup problems around the build; nil disables it.
+	Doctor buildHealthReporter
+
 	// Paths is the on-disk root resolver. If zero, paths.Default() is used.
 	Paths paths.Paths
 
@@ -349,6 +367,10 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	// skip SetSession + analytics emit + marker write entirely.
 	if !c.XcodeArgs.HasBuildAction() {
 		return c.runPassthrough(ctx, toPass)
+	}
+
+	if c.Doctor != nil {
+		c.Doctor.CheckAtStart(ctx)
 	}
 
 	if c.ProxySessionClient != nil {
@@ -384,7 +406,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}
 	c.Logger.Debugf("Run stats: %+v", runStats)
 
-	hitRate := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
+	hitRate, proxyOutcome := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
 	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
 
@@ -402,7 +424,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.appendLocalInvocationLog(*inv, runStats)
-	c.saveInvocationAndRelation(*inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+	c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
 	// Signal build-done AFTER the wrapper's own PUT + marker write so the proxy's slim emit sees the marker and skips.
 	if c.ProxySessionClient != nil {
@@ -412,6 +434,10 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		}); err != nil {
 			c.Logger.TDebugf("EndSession call failed: %v", err)
 		}
+	}
+
+	if c.Doctor != nil {
+		c.Doctor.ReportAtEnd(ctx, buildOutcome{CAS: runStats.CacheStats, Proxy: proxyOutcome})
 	}
 
 	return runStats
@@ -478,7 +504,7 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 	return w
 }
 
-func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, hits, total int64) {
+func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv analytics.Invocation, hits, total int64) {
 	saver, err := c.resolveInvocationAPI()
 	if err != nil {
 		c.Logger.Errorf("Failed to create analytics client: %v", err)
@@ -488,6 +514,9 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(inv analytics.Invocation, h
 
 	if err := saver.PutInvocation(inv); err != nil {
 		c.Logger.Errorf("Failed to send invocation analytics: %v", err)
+		if c.Doctor != nil {
+			c.Doctor.OnInvocationSaveFailure(ctx)
+		}
 
 		return
 	}
@@ -574,20 +603,29 @@ func (c *XcodebuildRunner) sendRelation(parentID string) {
 	}
 }
 
+// Second return is what the proxy said about its own side, from the same stats
+// call rather than a second round-trip.
+//
 //nolint:nestif
 func getHitRateFromSessionAndRunStats(ctx context.Context,
 	proxySessionClient session.SessionClient,
 	runStats xcodeargs.RunStats,
 	logger log.Logger,
-) float32 {
+) (float32, proxyOutcome) {
 	var hitRate float32
+	var outcome proxyOutcome
 	// If build cache is not enabled, session client is nil
 	if proxySessionClient != nil {
 		proxyStats, err := proxySessionClient.GetSessionStats(ctx, &empty.Empty{})
 
 		if err != nil || proxyStats == nil {
 			logger.Warnf("Failed to get proxy session stats: %v", err)
+			// The proxy couldn't answer, so its counters are unavailable and its log
+			// is the only place left that can say why.
+			outcome.Unreachable = true
 		} else {
+			outcome.Errors = proxyStats.GetErrors()
+			outcome.FirstError = proxyStats.GetFirstError()
 			// Lowest prio: blob-based hit rate
 			if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
 				hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())
@@ -628,7 +666,7 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 		)
 	}
 
-	return hitRate
+	return hitRate, outcome
 }
 
 // resolveBenchmarkPhase reads the benchmark phase from:

@@ -71,6 +71,9 @@ type Options struct {
 	ApplyFixes       bool
 	SkipUpdateCheck  bool
 	SkipBackendProbe bool
+	// Only, when non-empty, restricts the run to checks with these names
+	// (see XcodeCheckNames, AuthProbeCheckNames).
+	Only []string
 }
 
 type Doctor struct {
@@ -246,7 +249,7 @@ func Fixable(items []ReportItem) []ReportItem {
 
 func (d *Doctor) checks(opts Options) []Check {
 	if d.checksOverride != nil {
-		return d.checksOverride
+		return filterChecks(d.checksOverride, opts.Only)
 	}
 
 	checks := []Check{
@@ -270,5 +273,33 @@ func (d *Doctor) checks(opts Options) []Check {
 		checks = append(checks, d.cliVersionCheck())
 	}
 
-	return checks
+	return filterChecks(checks, opts.Only)
+}
+
+func filterChecks(checks []Check, only []string) []Check {
+	if len(only) == 0 {
+		return checks
+	}
+
+	wanted := make(map[string]bool, len(only))
+	for _, n := range only {
+		wanted[n] = true
+	}
+
+	out := make([]Check, 0, len(only))
+	for _, c := range checks {
+		if wanted[c.Name] {
+			out = append(out, c)
+		}
+	}
+
+	return out
+}
+
+func (d *Doctor) osProxy() utils.OsProxy {
+	if d.OsProxy != nil {
+		return d.OsProxy
+	}
+
+	return utils.DefaultOsProxy{}
 }

@@ -14,8 +14,12 @@ type sessionState struct {
 	kvHits        atomic.Int64
 	kvMisses      atomic.Int64
 	kvUploadBytes atomic.Int64
+	errors        atomic.Int64
+	firstError    atomic.Pointer[string]
 	savedKeys     sync.Map
 }
+
+const errorMessageMax = 300
 
 type stats struct {
 	downloadBytes int64
@@ -26,6 +30,8 @@ type stats struct {
 	kvHits        int64
 	kvMisses      int64
 	kvUploadBytes int64
+	errors        int64
+	firstError    string
 }
 
 func newSessionState() *sessionState {
@@ -54,7 +60,28 @@ func (s *sessionState) getStats() stats {
 		kvHits:        s.kvHits.Load(),
 		kvMisses:      s.kvMisses.Load(),
 		kvUploadBytes: s.kvUploadBytes.Load(),
+		errors:        s.errors.Load(),
+		firstError:    s.loadFirstError(),
 	}
+}
+
+func (s *sessionState) recordError(op string, err error) {
+	s.errors.Add(1)
+
+	msg := op + ": " + err.Error()
+	if len(msg) > errorMessageMax {
+		msg = msg[:errorMessageMax] + "…"
+	}
+	// First writer wins; later errors only add to the count.
+	s.firstError.CompareAndSwap(nil, &msg)
+}
+
+func (s *sessionState) loadFirstError() string {
+	if p := s.firstError.Load(); p != nil {
+		return *p
+	}
+
+	return ""
 }
 
 func (s *sessionState) incrementMisses() {

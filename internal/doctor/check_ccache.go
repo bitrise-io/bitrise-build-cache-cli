@@ -9,9 +9,17 @@ import (
 )
 
 func (d *Doctor) ccacheHelperCheck() Check {
-	socketPath := ccacheconfig.ResolveIPCSocketPath("", d.Envs, utils.DefaultOsProxy{})
+	return d.socketDaemonCheck("ccache-helper", toolconfig.Ccache, "c++", d.ccacheSocketPath())
+}
 
-	return d.socketDaemonCheck("ccache-helper", toolconfig.Ccache, "c++", socketPath)
+// ccacheSocketPath prefers the endpoint activation recorded, for the same reason as
+// xcelerateSocketPath: an --ipc-socket-path override never reaches the env chain.
+func (d *Doctor) ccacheSocketPath() string {
+	if cfg, err := ccacheconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}); err == nil && cfg.IPCEndpoint != "" {
+		return cfg.IPCEndpoint
+	}
+
+	return ccacheconfig.ResolveIPCSocketPath("", d.Envs, d.osProxy())
 }
 
 func (d *Doctor) ccacheBinaryCheck() Check {
