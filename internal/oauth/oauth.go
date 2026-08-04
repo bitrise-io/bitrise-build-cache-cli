@@ -23,12 +23,12 @@ const (
 	DefaultResource = "https://app.bitrise.io"
 )
 
-// refreshSkew re-mints a PAT slightly before expiry; defaultPATLifetime is the
+// RefreshSkew re-mints a PAT slightly before expiry; defaultPATLifetime is the
 // fallback when the exchange omits expires_in.
 const (
 	defaultTimeout     = 30 * time.Second
 	defaultPATLifetime = time.Hour
-	refreshSkew        = 60 * time.Second
+	RefreshSkew        = 60 * time.Second
 )
 
 // Config carries the external inputs for the OAuth flow. Build one with

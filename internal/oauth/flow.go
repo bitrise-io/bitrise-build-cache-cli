@@ -11,6 +11,14 @@ import (
 // loginTimeout bounds the whole browser round-trip.
 const loginTimeout = 5 * time.Minute
 
+// The credential helper is spawned N-way parallel by Bazel and WorkOS rotates
+// the refresh token on every grant, so two processes spending the same one
+// invalidates the login. refreshLockWait stays under the helper's ctx budget.
+const (
+	refreshLockWait = 4 * time.Second
+	refreshLockTTL  = 30 * time.Second
+)
+
 var (
 	ErrNotLoggedIn   = errors.New("not logged in (run 'bitrise-build-cache auth login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)")
 	ErrLoginRequired = errors.New("OAuth session expired — run 'bitrise-build-cache auth login' to sign in again")
@@ -130,14 +138,28 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	}
 
 	now := time.Now()
-	if creds.PAT != "" && now.Add(refreshSkew).Before(creds.PATExpiry) {
+	if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
 		c.debugf("Stored Bitrise token still valid")
 
 		return creds, nil
 	}
 
+	release, lockErr := acquireRefreshLock(ctx)
+	if lockErr != nil {
+		c.debugf("Refreshing without the cross-process lock: %s", lockErr)
+	} else {
+		defer release()
+		creds, save = reloadUnderLock(creds, save)
+		now = time.Now()
+		if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
+			c.debugf("Another process refreshed the Bitrise token")
+
+			return creds, nil
+		}
+	}
+
 	// PAT stale. If the JWT is still good, a single exchange refreshes the PAT.
-	if creds.JWT != "" && now.Add(refreshSkew).Before(creds.JWTExpiry) {
+	if creds.JWT != "" && now.Add(RefreshSkew).Before(creds.JWTExpiry) {
 		if pat, expiry, exErr := c.exchangeJWTForPAT(ctx, creds.JWT); exErr == nil {
 			creds.PAT, creds.PATExpiry = pat, expiry
 			if err := save(creds); err != nil {
