@@ -209,13 +209,9 @@ type ccacheSocket interface {
 	SetInvocationID(ctx context.Context, parentID, childID string) error
 }
 
-// ensureHelper brings the ccache storage helper up and reports whether it ended
-// up usable. Every step is still attempted even after one fails — the helper is
-// best-effort and must never block the build — but the verdict gates
-// injectCcacheEnv: pointing ccache at a socket nobody is listening on, with
-// CCACHE_REMOTE_ONLY set, would leave the build caching nothing at all, which is
-// worse than the local cache it would otherwise have used. An expired credential
-// is enough to keep the helper from starting.
+// ensureHelper brings the ccache storage helper up and reports whether it ended up
+// usable, which gates injectCcacheEnv. Every step is still attempted after a
+// failure: the helper is best-effort and must never block the build.
 func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) bool {
 	socket := r.socket
 	if socket == nil {
@@ -250,18 +246,15 @@ func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) b
 	return ready
 }
 
-// injectCcacheEnv points ccache at the storage helper for the wrapped build.
+// injectCcacheEnv points ccache at the storage helper. Activation publishes these
+// through envman, which exists only on Bitrise CI, so off CI a build otherwise
+// compiles against local storage while the helper sits idle — with every component
+// reporting success. The wrapped build's environment is the one place we know
+// reaches the compiler.
 //
-// Activation writes these into envman, which only exists on Bitrise CI, so
-// without this a local build compiles against ccache's local storage while the
-// helper sits idle — every component reports success and nothing is cached
-// remotely. The build's own environment is the one place we know reaches the
-// compiler, so the values are set here from the same config the helper uses.
-//
-// Only called once the helper is confirmed reachable — see ensureHelper.
-//
-// A value the user already set always wins: someone pointing ccache at their own
-// remote storage means it deliberately.
+// A value the user already set wins; they mean it. Called only once ensureHelper
+// has confirmed the helper is reachable, since CCACHE_REMOTE_ONLY at a dead socket
+// would cache nothing at all.
 func (r *Runner) injectCcacheEnv(envs map[string]string) {
 	if r.ccacheConfig == nil {
 		return
@@ -272,14 +265,8 @@ func (r *Runner) injectCcacheEnv(envs map[string]string) {
 		r.logger.Debugf("Could not resolve the working directory for CCACHE_BASEDIR: %s", err)
 	}
 
-	for key, value := range map[string]string{
-		"CCACHE_REMOTE_STORAGE":       r.ccacheConfig.CRSHRemoteStorageURL(),
-		"CCACHE_REMOTE_ONLY":          "true",
-		"CCACHE_NOHASHDIR":            "true",
-		"CCACHE_BASEDIR":              wd,
-		"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-		"CMAKE_C_COMPILER_LAUNCHER":   "ccache",
-	} {
+	injected := 0
+	for key, value := range r.ccacheConfig.BuildEnv(wd) {
 		if value == "" {
 			continue
 		}
@@ -289,9 +276,12 @@ func (r *Runner) injectCcacheEnv(envs map[string]string) {
 			continue
 		}
 		envs[key] = value
+		injected++
 	}
 
-	r.logger.TInfof("Routing ccache through the Bitrise storage helper (%s)", r.ccacheConfig.IPCEndpoint)
+	if injected > 0 {
+		r.logger.TInfof("Routing ccache through the Bitrise storage helper (%s)", r.ccacheConfig.IPCEndpoint)
+	}
 }
 
 // maybeInjectEASWorkingDir pins EAS Build's local working directory to a

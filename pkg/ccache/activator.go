@@ -132,16 +132,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		}
 	}
 
-	envVars := map[string]string{
-		"CCACHE_BASEDIR":              baseDir,
-		"CCACHE_NOHASHDIR":            "true",
-		"CCACHE_REMOTE_ONLY":          "true",
-		"CCACHE_REMOTE_STORAGE":       config.CRSHRemoteStorageURL(),
-		"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-		"CMAKE_C_COMPILER_LAUNCHER":   "ccache",
-	}
-
-	for key, value := range envVars {
+	for key, value := range config.BuildEnv(baseDir) {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 

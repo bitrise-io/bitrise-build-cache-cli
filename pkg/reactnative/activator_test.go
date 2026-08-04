@@ -132,11 +132,7 @@ func TestNewActivator_CppRequiresGradle(t *testing.T) {
 	}
 }
 
-// Config.Save rewrites the whole file, so saveMultiplatformConfig must read
-// before it writes. Building a fresh Config there erased the Credentials block —
-// the only place a browser login's refresh token lives on a host with no usable
-// keychain. Observed on an RDE: login, activate, then the PAT expired an hour
-// later with nothing able to refresh it.
+// Config.Save rewrites the whole file, so a fresh Config here erases the login.
 func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

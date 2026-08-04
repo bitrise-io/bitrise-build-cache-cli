@@ -423,10 +423,7 @@ func Test_parseCommand(t *testing.T) {
 	}
 }
 
-// Activation writes the CCACHE_* vars into envman, which only exists on Bitrise
-// CI. Without the injection below, a local build compiles against ccache's local
-// storage while the helper it just started sits idle — observed on an RDE as 281
-// compilations, 0 remote GETs, then "Idle timeout reached, shutting down".
+// Off CI these never arrive: activation publishes them through envman.
 func TestRunner_Run_CcacheEnv(t *testing.T) {
 	ctx := context.Background()
 
@@ -441,7 +438,6 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 		return "", false
 	}
 
-	// helperUp is what a reachable storage helper looks like to the Runner.
 	captureEnv := func(t *testing.T, environ []string, helperUp bool) []string {
 		t.Helper()
 
@@ -499,9 +495,7 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 		assert.False(t, ok, "activate --cpp was never run, so there is no helper to point at")
 	})
 
-	// An expired credential stops the helper from starting. Pointing ccache at a
-	// dead socket with CCACHE_REMOTE_ONLY would cache nothing at all, which is
-	// worse than the local cache the build would otherwise have used.
+	// CCACHE_REMOTE_ONLY at a socket nobody is listening on caches nothing at all.
 	t.Run("helper unreachable → nothing injected", func(t *testing.T) {
 		home := activateRNHome(t)
 		writeCcacheConfig(t, home, "/tmp/ccache-ipc.sock")

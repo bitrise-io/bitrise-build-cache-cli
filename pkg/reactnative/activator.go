@@ -360,10 +360,8 @@ func saveMultiplatformConfig(debugLogging bool) error {
 		return fmt.Errorf("resolve auth config for multiplatform analytics: %w", err)
 	}
 
-	// Read first: Save rewrites the whole file, so building a fresh Config here
-	// erases the Credentials block — the only place the browser login's refresh
-	// token lives on a host with no usable keychain. Losing it degrades the login
-	// to a bare PAT that dies at expiry with nothing able to renew it.
+	// Read first: Save rewrites the whole file, so a fresh Config here erases the
+	// Credentials block — where a keychain-less host keeps its refresh token.
 	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	if err != nil {
 		cfg = multiplatformconfig.Config{}

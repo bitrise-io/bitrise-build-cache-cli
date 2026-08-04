@@ -87,10 +87,8 @@ func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) 
 	assert.Equal(t, "refresh-1", got.RefreshToken)
 }
 
-// A refreshed PAT is the same credential. The stored token routinely differs from
-// the resolved one — the login mints short-lived PATs and refreshes them — so
-// comparing tokens here is what discarded the refresh token and killed the login
-// at expiry. activate re-persists; it does not redefine.
+// A refreshed PAT is the same credential, and refreshing is the normal case
+// between login and activate.
 func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.T) {
 	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
 		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1", Username: "dev",
@@ -114,12 +112,8 @@ func TestMergeActivateCreds_EmptyStore(t *testing.T) {
 	assert.Equal(t, "ws-1", got.WorkspaceID)
 }
 
-// A host with no usable OS keychain (headless Linux, containers) is where the
-// browser login lands in the config file. Activation must not overwrite that with
-// the 3-field AuthConfig shape: the refresh token lives only in Credentials, and
-// without it the login degrades to a bare PAT that dies at expiry with nothing
-// able to renew it. Observed on an RDE — `activate` ran, the refresh token
-// vanished, and the storage helper later refused to start on `unauthenticated`.
+// A headless host keeps its login in the config file, so activation must write the
+// full credential there rather than the 3-field AuthConfig shape.
 func TestPersistActivateCreds_KeychainUnusableKeepsTheRefreshToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
