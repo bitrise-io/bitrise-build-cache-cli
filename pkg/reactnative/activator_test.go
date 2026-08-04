@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -128,4 +130,34 @@ func TestNewActivator_CppRequiresGradle(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Config.Save rewrites the whole file, so saveMultiplatformConfig must read
+// before it writes. Building a fresh Config there erased the Credentials block —
+// the only place a browser login's refresh token lives on a host with no usable
+// keychain. Observed on an RDE: login, activate, then the PAT expired an hour
+// later with nothing able to refresh it.
+func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "bitpat_refreshed")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-1")
+
+	login := keychain.Credentials{
+		AuthToken:    "bitpat_minted",
+		WorkspaceID:  "ws-1",
+		RefreshToken: "refresh-me",
+		Username:     "dev",
+	}
+	before := multiplatformconfig.Config{Credentials: &login}
+	require.NoError(t, before.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}))
+
+	require.NoError(t, saveMultiplatformConfig(true))
+
+	after, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.NoError(t, err)
+	require.NotNil(t, after.Credentials, "the credentials block must survive activation")
+	assert.Equal(t, "refresh-me", after.Credentials.RefreshToken)
+	assert.Equal(t, "dev", after.Credentials.Username)
+	assert.Equal(t, "bitpat_refreshed", after.AuthConfig.AuthToken, "AuthConfig still tracks the resolved token")
 }
