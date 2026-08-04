@@ -121,6 +121,11 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 		activateXcodeParams.BuildCacheSkipFlags,
 		`Skip passing cache flags to xcodebuild except the COMPILATION_CACHE_REMOTE_SERVICE_PATH.
 Cache will have to be enabled manually in the Xcode project settings.`)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.NoSwiftCache,
+		"no-swift-cache",
+		activateXcodeParams.NoSwiftCache,
+		`Cache clang/Objective-C compilation only, leaving Swift uncached.
+Swift compile caching requires explicit modules, which some projects cannot build under (typically failing with "unable to resolve module dependency").`)
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.DisablePrefixMapping,
 		"disable-prefix-mapping",
 		activateXcodeParams.DisablePrefixMapping,

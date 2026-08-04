@@ -399,3 +399,33 @@ func Test_HasBuildAction(t *testing.T) {
 		})
 	}
 }
+
+func Test_BuildCacheArgs(t *testing.T) {
+	t.Run("default keeps the Swift leg on", func(t *testing.T) {
+		args := xcodeargs.BuildCacheArgs(false)
+
+		assert.Equal(t, xcodeargs.CacheArgs, args)
+	})
+
+	t.Run("noSwiftCache turns Swift off and keeps clang caching", func(t *testing.T) {
+		args := xcodeargs.BuildCacheArgs(true)
+
+		assert.Equal(t, "NO", args[xcodeargs.SwiftEnableCompileCacheKey])
+		assert.Equal(t, "NO", args[xcodeargs.SwiftEnableExplicitModulesKey])
+		assert.NotContains(t, args, xcodeargs.SwiftUseIntegratedDriverKey)
+		assert.Equal(t, "c c++ objective-c objective-c++", args[xcodeargs.SupportedLanguagesKey])
+
+		assert.Equal(t, "YES", args["CLANG_ENABLE_COMPILE_CACHE"])
+		assert.Equal(t, "YES", args["CLANG_ENABLE_MODULES"])
+		assert.Equal(t, "YES", args["COMPILATION_CACHE_ENABLE_CACHING"])
+		assert.Equal(t, "YES", args["COMPILATION_CACHE_ENABLE_PLUGIN"])
+	})
+
+	t.Run("does not mutate CacheArgs", func(t *testing.T) {
+		_ = xcodeargs.BuildCacheArgs(true)
+
+		assert.Equal(t, "YES", xcodeargs.CacheArgs[xcodeargs.SwiftEnableExplicitModulesKey])
+		assert.Equal(t, "YES", xcodeargs.CacheArgs[xcodeargs.SwiftUseIntegratedDriverKey])
+		assert.Equal(t, "swift c c++ objective-c objective-c++", xcodeargs.CacheArgs[xcodeargs.SupportedLanguagesKey])
+	})
+}

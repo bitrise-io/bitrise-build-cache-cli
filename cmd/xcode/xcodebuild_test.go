@@ -602,3 +602,43 @@ func Test_queryActionSourcePackages(t *testing.T) {
 		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 	})
 }
+
+func Test_xcodebuildCmdFn_NoSwiftCache(t *testing.T) {
+	var receivedAdditional map[string]string
+	xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc: func() bool { return true },
+		ArgsFunc: func(additional map[string]string) []string {
+			receivedAdditional = additional
+
+			return []string{"xcodebuild"}
+		},
+		CommandFunc:      func() string { return "xcodebuild" },
+		ShortCommandFunc: func() string { return "xcodebuild" },
+	}
+
+	SUT := &xcode.XcodebuildRunner{
+		Config: xcelerate.Config{
+			BuildCacheEnabled: true,
+			NoSwiftCache:      true,
+			ProxySocketPath:   "/tmp/proxy.sock",
+		},
+		Metadata:     common.CacheConfigMetadata{},
+		InvocationID: uuid.NewString(),
+		Logger:       mockLogger,
+		CacheLogger:  mockLogger,
+		XcodeRunner: &mocks.XcodeRunnerMock{
+			RunFunc: func(_ context.Context, _ []string) xcodeargs.RunStats { return xcodeargs.RunStats{} },
+		},
+		ProxySessionClient: &mocks.SessionClientMock{},
+		XcodeArgs:          &xcodeArgProvider,
+	}
+
+	_ = SUT.Run(context.Background())
+
+	assert.Equal(t, "NO", receivedAdditional[xcodeargs.SwiftEnableExplicitModulesKey])
+	assert.Equal(t, "NO", receivedAdditional[xcodeargs.SwiftEnableCompileCacheKey])
+	assert.NotContains(t, receivedAdditional, xcodeargs.SwiftUseIntegratedDriverKey)
+	assert.Equal(t, "c c++ objective-c objective-c++", receivedAdditional[xcodeargs.SupportedLanguagesKey])
+	assert.Equal(t, "YES", receivedAdditional["CLANG_ENABLE_COMPILE_CACHE"])
+	assert.Equal(t, "/tmp/proxy.sock", receivedAdditional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"])
+}

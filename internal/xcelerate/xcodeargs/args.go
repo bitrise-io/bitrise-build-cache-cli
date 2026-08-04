@@ -2,6 +2,7 @@
 package xcodeargs
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -24,6 +25,16 @@ type XcodeArgs interface {
 	UserOtherCFlags() string
 }
 
+const (
+	SwiftEnableCompileCacheKey    = "SWIFT_ENABLE_COMPILE_CACHE"
+	SwiftEnableExplicitModulesKey = "SWIFT_ENABLE_EXPLICIT_MODULES"
+	SwiftUseIntegratedDriverKey   = "SWIFT_USE_INTEGRATED_DRIVER"
+	SupportedLanguagesKey         = "COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES"
+
+	cachedLanguages = "swift c c++ objective-c objective-c++"
+	swiftLanguage   = "swift"
+)
+
 // Xcode 26 gates the compile-cache plugin behind the master toggle
 // COMPILATION_CACHE_ENABLE_CACHING. Without it, SwiftBuild resolves the
 // individual COMPILATION_CACHE_* keys but never emits -cache-compile-job on
@@ -34,12 +45,33 @@ var CacheArgs = map[string]string{
 	"COMPILATION_CACHE_ENABLE_PLUGIN":               "YES",
 	"COMPILATION_CACHE_ENABLE_INTEGRATED_QUERIES":   "YES",
 	"COMPILATION_CACHE_ENABLE_DETACHED_KEY_QUERIES": "YES",
-	"SWIFT_ENABLE_COMPILE_CACHE":                    "YES",
-	"SWIFT_ENABLE_EXPLICIT_MODULES":                 "YES",
-	"SWIFT_USE_INTEGRATED_DRIVER":                   "YES",
+	SwiftEnableCompileCacheKey:                      "YES",
+	SwiftEnableExplicitModulesKey:                   "YES",
+	SwiftUseIntegratedDriverKey:                     "YES",
 	"CLANG_ENABLE_COMPILE_CACHE":                    "YES",
 	"CLANG_ENABLE_MODULES":                          "YES",
-	"COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES":  "swift c c++ objective-c objective-c++",
+	SupportedLanguagesKey:                           cachedLanguages,
+}
+
+// BuildCacheArgs returns the wrapper-owned build settings for a cached build.
+// noSwiftCache drops the whole Swift leg because Swift caching requires
+// explicit modules, which some projects cannot build under.
+func BuildCacheArgs(noSwiftCache bool) map[string]string {
+	args := maps.Clone(CacheArgs)
+	if !noSwiftCache {
+		return args
+	}
+
+	args[SwiftEnableCompileCacheKey] = "NO"
+	args[SwiftEnableExplicitModulesKey] = "NO"
+	// Left to the project: caching needs the integrated driver, not caching doesn't need the legacy one.
+	delete(args, SwiftUseIntegratedDriverKey)
+	args[SupportedLanguagesKey] = strings.Join(
+		slices.DeleteFunc(strings.Fields(cachedLanguages), func(lang string) bool { return lang == swiftLanguage }),
+		" ",
+	)
+
+	return args
 }
 
 // buildActions is the subset of xcodebuild action keywords that trigger an
