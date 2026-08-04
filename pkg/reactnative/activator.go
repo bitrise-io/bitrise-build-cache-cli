@@ -34,6 +34,8 @@ type ActivatorParams struct {
 	XcodeEnabled         bool
 	CppEnabled           bool
 	DisablePrefixMapping bool
+	NoSwiftCache         bool
+	BuildCacheSkipFlags  bool
 	DebugLogging         bool
 
 	// Logger overrides the default logger. If nil, a default logger is created.
@@ -67,7 +69,13 @@ func NewActivator(params ActivatorParams) *Activator {
 	}
 
 	if params.XcodeEnabled {
-		a.xcode = &xcodeActivator{logger: logger, debugLogging: params.DebugLogging, disablePrefixMapping: params.DisablePrefixMapping}
+		a.xcode = &xcodeActivator{
+			logger:               logger,
+			debugLogging:         params.DebugLogging,
+			disablePrefixMapping: params.DisablePrefixMapping,
+			noSwiftCache:         params.NoSwiftCache,
+			buildCacheSkipFlags:  params.BuildCacheSkipFlags,
+		}
 	}
 
 	// ccache only meaningfully wraps the Android/Gradle native build path in
@@ -306,12 +314,16 @@ type xcodeActivator struct {
 	logger               log.Logger
 	debugLogging         bool
 	disablePrefixMapping bool
+	noSwiftCache         bool
+	buildCacheSkipFlags  bool
 }
 
 func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams := xcelerate.DefaultParams()
 	xcodeParams.DebugLogging = x.debugLogging
 	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping
+	xcodeParams.NoSwiftCache = x.noSwiftCache
+	xcodeParams.BuildCacheSkipFlags = x.buildCacheSkipFlags
 
 	if err := xcelerate.Activate(
 		ctx,

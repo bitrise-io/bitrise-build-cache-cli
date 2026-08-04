@@ -692,7 +692,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		return c.XcodeArgs.Args(additional)
 	}
 
-	maps.Copy(additional, xcodeargs.CacheArgs)
+	maps.Copy(additional, xcodeargs.BuildCacheArgs(c.Config.NoSwiftCache))
 
 	diagnosticRemarks := "NO"
 	if c.Config.DebugLogging {
