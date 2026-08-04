@@ -422,3 +422,86 @@ func Test_parseCommand(t *testing.T) {
 		assert.Equal(t, tc.expectedCommand, parseCommand(tc.args), "args: %v", tc.args)
 	}
 }
+
+// Activation writes the CCACHE_* vars into envman, which only exists on Bitrise
+// CI. Without the injection below, a local build compiles against ccache's local
+// storage while the helper it just started sits idle — observed on an RDE as 281
+// compilations, 0 remote GETs, then "Idle timeout reached, shutting down".
+func TestRunner_Run_CcacheEnv(t *testing.T) {
+	ctx := context.Background()
+
+	findEnv := func(environ []string, key string) (string, bool) {
+		prefix := key + "="
+		for _, e := range environ {
+			if strings.HasPrefix(e, prefix) {
+				return strings.TrimPrefix(e, prefix), true
+			}
+		}
+
+		return "", false
+	}
+
+	captureEnv := func(t *testing.T, environ []string) []string {
+		t.Helper()
+
+		var captured []string
+		r := newTestRunner(RunnerParams{
+			ExecFn: func(env []string, _ string, _ ...string) (int, error) {
+				captured = env
+
+				return 0, nil
+			},
+		})
+		_, err := r.Run(ctx, []string{"npx", "react-native", "build-android"}, "", environ)
+		require.NoError(t, err)
+
+		return captured
+	}
+
+	t.Run("ccache is pointed at the storage helper", func(t *testing.T) {
+		home := activateRNHome(t)
+		writeCcacheConfig(t, home, "/tmp/ccache-ipc.sock")
+
+		got := captureEnv(t, []string{"HOME=" + home})
+
+		remote, ok := findEnv(got, "CCACHE_REMOTE_STORAGE")
+		require.True(t, ok, "the compiler has no other way to learn the socket")
+		assert.Contains(t, remote, "crsh:/tmp/ccache-ipc.sock")
+
+		for _, key := range []string{"CCACHE_REMOTE_ONLY", "CCACHE_NOHASHDIR", "CMAKE_CXX_COMPILER_LAUNCHER", "CMAKE_C_COMPILER_LAUNCHER"} {
+			_, ok := findEnv(got, key)
+			assert.True(t, ok, key)
+		}
+	})
+
+	t.Run("a value the user already set wins", func(t *testing.T) {
+		home := activateRNHome(t)
+		writeCcacheConfig(t, home, "/tmp/ccache-ipc.sock")
+
+		got := captureEnv(t, []string{"HOME=" + home, "CCACHE_REMOTE_STORAGE=redis://mine"})
+
+		remote, _ := findEnv(got, "CCACHE_REMOTE_STORAGE")
+		assert.Equal(t, "redis://mine", remote)
+	})
+
+	t.Run("no ccache activation → nothing injected", func(t *testing.T) {
+		home := activateRNHome(t) // RN activated, but no ccache config on disk
+
+		got := captureEnv(t, []string{"HOME=" + home})
+
+		_, ok := findEnv(got, "CCACHE_REMOTE_STORAGE")
+		assert.False(t, ok, "activate --cpp was never run, so there is no helper to point at")
+	})
+}
+
+func writeCcacheConfig(t *testing.T, home, socket string) {
+	t.Helper()
+
+	dir := filepath.Join(home, ".bitrise/cache/ccache")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "config.json"),
+		[]byte(`{"enabled":true,"ipcEndpoint":"`+socket+`","buildCacheEndpoint":"grpcs://x"}`),
+		0o644,
+	))
+}

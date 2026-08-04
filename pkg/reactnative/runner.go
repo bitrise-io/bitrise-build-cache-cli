@@ -157,6 +157,7 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 
 	envMap := environToMap(environ)
 	envMap["BITRISE_INVOCATION_ID"] = wrapperInvocationID
+	r.injectCcacheEnv(envMap)
 	r.maybeInjectEASWorkingDir(envMap, name, cmdArgs)
 
 	start := time.Now()
@@ -230,6 +231,48 @@ func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
 	if err := socket.SetInvocationID(ctx, wrapperInvocationID, uuid.NewString()); err != nil {
 		r.logger.TWarnf("Failed to send invocation ID to storage helper: %v", err)
 	}
+}
+
+// injectCcacheEnv points ccache at the storage helper for the wrapped build.
+//
+// Activation writes these into envman, which only exists on Bitrise CI, so
+// without this a local build compiles against ccache's local storage while the
+// helper sits idle — every component reports success and nothing is cached
+// remotely. The build's own environment is the one place we know reaches the
+// compiler, so the values are set here from the same config the helper uses.
+//
+// A value the user already set always wins: someone pointing ccache at their own
+// remote storage means it deliberately.
+func (r *Runner) injectCcacheEnv(envs map[string]string) {
+	if r.ccacheConfig == nil {
+		return
+	}
+
+	wd, err := r.osProxy.Getwd()
+	if err != nil {
+		r.logger.Debugf("Could not resolve the working directory for CCACHE_BASEDIR: %s", err)
+	}
+
+	for key, value := range map[string]string{
+		"CCACHE_REMOTE_STORAGE":       r.ccacheConfig.CRSHRemoteStorageURL(),
+		"CCACHE_REMOTE_ONLY":          "true",
+		"CCACHE_NOHASHDIR":            "true",
+		"CCACHE_BASEDIR":              wd,
+		"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+		"CMAKE_C_COMPILER_LAUNCHER":   "ccache",
+	} {
+		if value == "" {
+			continue
+		}
+		if existing, ok := envs[key]; ok && existing != "" {
+			r.logger.Debugf("%s already set to %q — leaving it alone", key, existing)
+
+			continue
+		}
+		envs[key] = value
+	}
+
+	r.logger.TInfof("Routing ccache through the Bitrise storage helper (%s)", r.ccacheConfig.IPCEndpoint)
 }
 
 // maybeInjectEASWorkingDir pins EAS Build's local working directory to a
