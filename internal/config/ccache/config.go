@@ -143,6 +143,19 @@ func (config Config) CRSHRemoteStorageURL() string {
 		config.IPCEndpoint, defaultCRSHDataTimeout, defaultCRSHRequestTimeout)
 }
 
+// BuildEnv serves both delivery paths — envman on CI, the wrapped build's own
+// environment off it — so the two cannot drift.
+func (config Config) BuildEnv(baseDir string) map[string]string {
+	return map[string]string{
+		"CCACHE_BASEDIR":              baseDir,
+		"CCACHE_NOHASHDIR":            "true",
+		"CCACHE_REMOTE_ONLY":          "true",
+		"CCACHE_REMOTE_STORAGE":       config.CRSHRemoteStorageURL(),
+		"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+		"CMAKE_C_COMPILER_LAUNCHER":   "ccache",
+	}
+}
+
 func (config Config) Save(logger log.Logger, osProxy utils.OsProxy, encoderFactory utils.EncoderFactory) error {
 	ccacheDir := DirPath(osProxy)
 	if err := osProxy.MkdirAll(ccacheDir, 0o755); err != nil {

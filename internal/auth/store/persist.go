@@ -18,34 +18,42 @@ func PersistActivateCreds(logger log.Logger, envs map[string]string, auth config
 
 		return
 	}
-	target := SelectAuto(envs)
+	persistActivateCredsTo(logger, SelectAuto(envs), auth, mpCfg)
+}
+
+// persistActivateCredsTo takes the store so tests can refuse a write without a
+// real keychain.
+func persistActivateCredsTo(logger log.Logger, target Store, auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
 	if target.Kind() == KindFile {
-		c := mergeActivateCreds(target, auth)
-		mpCfg.Credentials = &c
-		mpCfg.AuthConfig = auth
+		persistToFile(auth, mpCfg)
 		logger.Infof("Saved auth credentials to the multiplatform config file (CI-safe — fastlane setup_ci swaps the keychain)")
 
 		return
 	}
 	if err := target.Save(mergeActivateCreds(target, auth)); err != nil {
-		logger.Warnf("Keychain save failed (%v); falling back to multiplatform authConfig", err)
-		mpCfg.AuthConfig = auth
+		// AuthConfig has no room for the refresh token; the config file does.
+		logger.Warnf("Keychain save failed (%v); saving to the multiplatform config file instead", err)
+		persistToFile(auth, mpCfg)
 
 		return
 	}
 	logger.Infof("Saved auth credentials to the OS keychain")
 }
 
-// mergeActivateCreds keeps the OAuth fields and username of an existing entry
-// when activate re-persists the same token. Replacing the entry outright would
-// drop the refresh token, which both breaks `auth logout` and leaves the login
-// unable to refresh — degrading it to a bare, short-lived PAT.
-//
-// A different token means a different credential, so the OAuth fields are not
-// carried over: they would not describe the token being stored.
+// Merges against the file store, not the caller's: merging against an unreadable
+// keychain is what yields a bare token.
+func persistToFile(auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
+	c := mergeActivateCreds(NewFile(), auth)
+	mpCfg.Credentials = &c
+	mpCfg.AuthConfig = auth
+}
+
+// The tokens are deliberately not compared: a login's PAT is short-lived and gets
+// refreshed, so a mismatch is normal, and treating it as a different credential
+// discarded the refresh token.
 func mergeActivateCreds(target Store, auth configcommon.CacheAuthConfig) keychain.Credentials {
 	existing, err := target.Load()
-	if err != nil || existing.AuthToken != auth.AuthToken {
+	if err != nil {
 		return keychain.Credentials{AuthToken: auth.AuthToken, WorkspaceID: auth.WorkspaceID}
 	}
 

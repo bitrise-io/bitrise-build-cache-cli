@@ -3,20 +3,28 @@
 package store
 
 import (
+	"errors"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 )
+
+func newTestLogger() log.Logger { return log.NewLogger(log.WithOutput(io.Discard)) }
 
 type memStore struct {
 	creds   keychain.Credentials
 	present bool
 	kind    Kind
+	saveErr error
 }
 
 func (m *memStore) Kind() Kind { return m.kind }
@@ -30,6 +38,9 @@ func (m *memStore) Load() (keychain.Credentials, error) {
 }
 
 func (m *memStore) Save(c keychain.Credentials) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
 	m.creds, m.present = c, true
 
 	return nil
@@ -76,19 +87,19 @@ func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) 
 	assert.Equal(t, "refresh-1", got.RefreshToken)
 }
 
-// A different token is a different credential, so OAuth fields that described
-// the old one must not be carried over.
-func TestMergeActivateCreds_DropsOAuthFieldsForADifferentToken(t *testing.T) {
+// Refreshing is the normal case between login and activate.
+func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.T) {
 	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
-		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1",
+		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1", Username: "dev",
 	}}
 
 	got := mergeActivateCreds(s, configcommon.CacheAuthConfig{AuthToken: "pat-2", WorkspaceID: "ws-1"})
 
-	assert.Equal(t, "pat-2", got.AuthToken)
-	assert.Empty(t, got.RefreshToken)
-	assert.Empty(t, got.JWT)
-	assert.False(t, got.IsOAuthManaged())
+	assert.Equal(t, "pat-2", got.AuthToken, "the freshly resolved token wins")
+	assert.Equal(t, "refresh-1", got.RefreshToken, "without this the login cannot refresh again")
+	assert.Equal(t, "jwt-1", got.JWT)
+	assert.Equal(t, "dev", got.Username)
+	assert.True(t, got.IsOAuthManaged())
 }
 
 func TestMergeActivateCreds_EmptyStore(t *testing.T) {
@@ -98,4 +109,35 @@ func TestMergeActivateCreds_EmptyStore(t *testing.T) {
 
 	assert.Equal(t, "pat-1", got.AuthToken)
 	assert.Equal(t, "ws-1", got.WorkspaceID)
+}
+
+// A headless host keeps its login in the config file, so the full credential has
+// to land there and not in the 3-field AuthConfig.
+func TestPersistActivateCreds_KeychainUnusableKeepsTheRefreshToken(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	login := keychain.Credentials{
+		AuthToken:          "bitpat_minted",
+		WorkspaceID:        "ws-1",
+		RefreshToken:       "refresh-me",
+		RefreshTokenExpiry: time.Now().Add(24 * time.Hour),
+		Username:           "dev",
+	}
+	require.NoError(t, NewFile().Save(login))
+
+	// A keychain that refuses every write, as a host with no secret-service has.
+	deadKeychain := &memStore{kind: KindKeychain, saveErr: errors.New("no usable OS keychain on this machine")}
+
+	var mpCfg multiplatformconfig.Config
+	persistActivateCredsTo(
+		newTestLogger(),
+		deadKeychain,
+		configcommon.CacheAuthConfig{AuthToken: "bitpat_minted", WorkspaceID: "ws-1"},
+		&mpCfg,
+	)
+
+	require.NotNil(t, mpCfg.Credentials, "the full credential must be written, not just AuthConfig")
+	assert.Equal(t, "refresh-me", mpCfg.Credentials.RefreshToken, "without this the login cannot refresh")
+	assert.Equal(t, "dev", mpCfg.Credentials.Username)
+	assert.Equal(t, "bitpat_minted", mpCfg.AuthConfig.AuthToken, "downstream readers still use AuthConfig")
 }

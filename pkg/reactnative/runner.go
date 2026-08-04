@@ -150,13 +150,17 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 
 	r.logger.TInfof("React Native invocation ID: %s", wrapperInvocationID)
 
+	helperReady := false
 	if r.socket != nil {
-		r.ensureHelper(ctx, wrapperInvocationID)
+		helperReady = r.ensureHelper(ctx, wrapperInvocationID)
 		r.zeroCcacheStats(ctx)
 	}
 
 	envMap := environToMap(environ)
 	envMap["BITRISE_INVOCATION_ID"] = wrapperInvocationID
+	if helperReady {
+		r.injectCcacheEnv(envMap)
+	}
 	r.maybeInjectEASWorkingDir(envMap, name, cmdArgs)
 
 	start := time.Now()
@@ -205,30 +209,71 @@ type ccacheSocket interface {
 	SetInvocationID(ctx context.Context, parentID, childID string) error
 }
 
-func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) {
+// The verdict gates injectCcacheEnv. Every step is still attempted after a failure:
+// the helper is best-effort and must never block the build.
+func (r *Runner) ensureHelper(ctx context.Context, wrapperInvocationID string) bool {
 	socket := r.socket
 	if socket == nil {
-		return
+		return false
 	}
+
+	ready := true
 
 	if !socket.IsListening() {
 		if err := socket.Start(); err != nil {
 			r.logger.TWarnf("Failed to start ccache storage helper: %v", err)
 
-			return
+			return false
 		}
 
 		if !socket.AwaitReady() {
 			r.logger.TWarnf("Ccache storage helper did not become ready")
+			ready = false
 		}
 	}
 
 	if err := socket.HealthCheck(ctx); err != nil {
 		r.logger.TWarnf("Ccache storage helper health check failed: %v", err)
+		ready = false
 	}
 
 	if err := socket.SetInvocationID(ctx, wrapperInvocationID, uuid.NewString()); err != nil {
 		r.logger.TWarnf("Failed to send invocation ID to storage helper: %v", err)
+		ready = false
+	}
+
+	return ready
+}
+
+// Activation publishes these through envman, which exists only on Bitrise CI, so
+// off CI nothing else tells the compiler the socket is there. A value the user
+// already set wins.
+func (r *Runner) injectCcacheEnv(envs map[string]string) {
+	if r.ccacheConfig == nil {
+		return
+	}
+
+	wd, err := r.osProxy.Getwd()
+	if err != nil {
+		r.logger.Debugf("Could not resolve the working directory for CCACHE_BASEDIR: %s", err)
+	}
+
+	injected := 0
+	for key, value := range r.ccacheConfig.BuildEnv(wd) {
+		if value == "" {
+			continue
+		}
+		if existing, ok := envs[key]; ok && existing != "" {
+			r.logger.Debugf("%s already set to %q — leaving it alone", key, existing)
+
+			continue
+		}
+		envs[key] = value
+		injected++
+	}
+
+	if injected > 0 {
+		r.logger.TInfof("Routing ccache through the Bitrise storage helper (%s)", r.ccacheConfig.IPCEndpoint)
 	}
 }
 

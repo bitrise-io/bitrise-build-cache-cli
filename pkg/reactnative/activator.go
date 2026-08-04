@@ -372,10 +372,15 @@ func saveMultiplatformConfig(debugLogging bool) error {
 		return fmt.Errorf("resolve auth config for multiplatform analytics: %w", err)
 	}
 
-	cfg := multiplatformconfig.Config{
-		AuthConfig:   authConfig,
-		DebugLogging: debugLogging,
+	// Read first: Save rewrites the whole file, so a fresh Config here erases the
+	// Credentials block — where a keychain-less host keeps its refresh token.
+	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	if err != nil {
+		cfg = multiplatformconfig.Config{}
 	}
+
+	cfg.AuthConfig = authConfig
+	cfg.DebugLogging = debugLogging
 
 	if err := cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
 		return fmt.Errorf("save multiplatform analytics config: %w", err)
