@@ -20,9 +20,9 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filelock"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -96,7 +96,10 @@ var (
 
 			initialLogger.TInfof("Xcelerate Proxy")
 
-			release, err := proxypid.Acquire(osProxy, xcelerate.PathFor(osProxy, paths.ProxyPidFileName), nil)
+			release, err := filelock.Acquire(cmd.Context(), xcelerate.PathFor(osProxy, paths.ProxyPidFileName), filelock.Options{
+				Reclaim: true,
+				Os:      osProxy,
+			})
 			if err != nil {
 				initialLogger.Infof("Skipping proxy startup: %s", err)
 

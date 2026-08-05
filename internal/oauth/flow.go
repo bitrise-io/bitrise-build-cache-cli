@@ -148,7 +148,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	if lockErr != nil {
 		c.debugf("Refreshing without the cross-process lock: %s", lockErr)
 	} else {
-		defer release()
+		defer func() { _ = release() }()
 		creds, save = reloadUnderLock(creds, save)
 		now = time.Now()
 		if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {

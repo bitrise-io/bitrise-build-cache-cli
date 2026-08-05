@@ -11,13 +11,16 @@ import (
 // acquireRefreshLock serialises the token refresh across CLI processes. A
 // non-nil error means "proceed unserialised"; the release func is always safe
 // to call.
-func acquireRefreshLock(ctx context.Context) (func(), error) {
+func acquireRefreshLock(ctx context.Context) (func() error, error) {
 	p, err := paths.Default()
 	if err != nil {
-		return func() {}, fmt.Errorf("resolve refresh lock path: %w", err)
+		return func() error { return nil }, fmt.Errorf("resolve refresh lock path: %w", err)
 	}
 
-	release, err := filelock.Acquire(ctx, p.AuthRefreshLockFile(), refreshLockWait, refreshLockTTL)
+	release, err := filelock.Acquire(ctx, p.AuthRefreshLockFile(), filelock.Options{
+		Wait: refreshLockWait,
+		TTL:  refreshLockTTL,
+	})
 	if err != nil {
 		return release, fmt.Errorf("acquire refresh lock: %w", err)
 	}

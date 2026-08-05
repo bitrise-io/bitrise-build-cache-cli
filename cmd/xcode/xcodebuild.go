@@ -29,9 +29,9 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filelock"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -901,7 +901,7 @@ func startProxy(
 ) error {
 	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
 
-	if pid, alive := proxypid.Read(osProxy, pidFilePth, nil); alive {
+	if pid, alive := filelock.ReadOwner(osProxy, pidFilePth); alive {
 		logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
 		return nil
