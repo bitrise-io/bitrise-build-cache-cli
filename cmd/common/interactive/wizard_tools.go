@@ -43,6 +43,10 @@ const (
 	toolCcache interactiveTool = "ccache"
 )
 
+func defaultSelectedTools() []string {
+	return []string{string(toolGradle), string(toolBazel), string(toolXcode), string(toolCcache)}
+}
+
 func init() { //nolint:gochecknoinits
 	common.ActivateCmd.Flags().StringVar(&interactiveWorkspace, "workspace", "",
 		"Workspace (organization) slug to activate for. Skips the workspace picker, which a sign-in that has taken over standard input can't show.")
