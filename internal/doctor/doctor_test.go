@@ -230,6 +230,91 @@ func TestXcelerateProxyCheck_skippedWhenNotActivated(t *testing.T) {
 	assert.Contains(t, res.Detail, "skipped")
 }
 
+// ──────────────────────────── xcelerate wrapper path ────────────────────────────
+
+func TestXcelerateWrapperPathCheck_skippedWhenNotActivated(t *testing.T) {
+	r := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return nil }}
+
+	res := r.xcelerateWrapperPathCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "skipped")
+}
+
+func TestXcelerateWrapperPathCheck_wrapperOnPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binDir := filepath.Join(home, ".bitrise-xcelerate", "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
+
+	lookPath := func(name string) (string, error) {
+		return filepath.Join(binDir, name), nil
+	}
+
+	r := &Doctor{
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LookPath:       lookPath,
+	}
+
+	res := r.xcelerateWrapperPathCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "xcodebuild")
+	assert.Contains(t, res.Detail, "xcrun")
+}
+
+func TestXcelerateWrapperPathCheck_mismatchIsWarn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	r := &Doctor{
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LookPath:       func(string) (string, error) { return "/usr/bin/xcodebuild", nil },
+	}
+
+	res := r.xcelerateWrapperPathCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "xcodebuild resolves to /usr/bin/xcodebuild")
+	assert.Contains(t, res.Detail, "source ~/.zshrc")
+}
+
+func TestXcelerateWrapperPathCheck_notOnPathIsWarn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	r := &Doctor{
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LookPath:       func(string) (string, error) { return "", errors.New("not found") },
+	}
+
+	res := r.xcelerateWrapperPathCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "xcodebuild not on PATH")
+}
+
+func TestXcelerateWrapperPathCheck_symlinkedWrapperIsOK(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binDir := filepath.Join(home, ".bitrise-xcelerate", "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
+
+	realDir := filepath.Join(home, "real-bin")
+	require.NoError(t, os.MkdirAll(realDir, 0o755))
+	for _, name := range []string{"xcodebuild", "xcrun"} {
+		realPath := filepath.Join(realDir, name)
+		require.NoError(t, os.WriteFile(realPath, nil, 0o755))
+		require.NoError(t, os.Symlink(realPath, filepath.Join(binDir, name)))
+	}
+
+	r := &Doctor{
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LookPath: func(name string) (string, error) {
+			return filepath.Join(realDir, name), nil
+		},
+	}
+
+	res := r.xcelerateWrapperPathCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+}
+
 // ──────────────────────────── ccache ────────────────────────────
 
 func TestCcacheHelperCheck_noSocketIsWarn(t *testing.T) {
