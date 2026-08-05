@@ -250,6 +250,16 @@ func TestCcacheBinaryCheck_missingIsWarn(t *testing.T) {
 	assert.Equal(t, StateWarn, res.State)
 }
 
+func TestCcacheBinaryCheck_skippedWhenCcacheNotActivated(t *testing.T) {
+	r := &Doctor{
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LookPath:       func(string) (string, error) { return "", errors.New("not found") },
+	}
+	res := r.ccacheBinaryCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Equal(t, "skipped (c++ not activated)", res.Detail)
+}
+
 // ──────────────────────────── log-dirs ────────────────────────────
 
 func TestLogDirsCheck_missingIsFixable(t *testing.T) {
