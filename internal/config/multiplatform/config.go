@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
@@ -63,7 +64,9 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 	}
 
 	path := FilePath(osProxy)
-	tmp := path + ".tmp"
+	// Per-process: a shared temp name lets one writer truncate the bytes another is
+	// about to rename into place.
+	tmp := fmt.Sprintf("%s.tmp.%d", path, os.Getpid())
 	if err := osProxy.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)
 	}

@@ -15,9 +15,14 @@ const loginTimeout = 5 * time.Minute
 // the refresh token on every grant, so two processes spending the same one
 // invalidates the login. refreshLockWait stays under the helper's ctx budget.
 const (
-	refreshLockWait = 4 * time.Second
-	refreshLockTTL  = 30 * time.Second
+	refreshLockTTL = 30 * time.Second
+	// Far above two HTTP round-trips: breaking a live-looking marker open concedes
+	// a possible double refresh, so only a recycled pid should ever reach it.
+	refreshLockMaxHold = 10 * time.Minute
 )
+
+// Shortened by tests so they don't wait out a real contended lock.
+var refreshLockWait = 4 * time.Second //nolint:gochecknoglobals
 
 var (
 	ErrNotLoggedIn   = errors.New("not logged in (run 'bitrise-build-cache auth login', or set BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID)")
@@ -149,13 +154,17 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 		c.debugf("Refreshing without the cross-process lock: %s", lockErr)
 	} else {
 		defer func() { _ = release() }()
-		creds, save = reloadUnderLock(creds, save)
-		now = time.Now()
-		if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
-			c.debugf("Another process refreshed the Bitrise token")
+	}
 
-			return creds, nil
-		}
+	// Also after a failed wait: giving up on the lock is precisely the case where
+	// someone else is refreshing, and the credential read before the wait is the
+	// one whose refresh token they have already rotated away.
+	creds, save = reloadStored(creds, save)
+	now = time.Now()
+	if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
+		c.debugf("Another process refreshed the Bitrise token")
+
+		return creds, nil
 	}
 
 	// PAT stale. If the JWT is still good, a single exchange refreshes the PAT.

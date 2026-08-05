@@ -11,13 +11,23 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-const pollInterval = 50 * time.Millisecond
+const (
+	pollInterval     = 50 * time.Millisecond
+	stealGuardSuffix = ".steal"
+	// A steal is a read and an unlink, so a guard older than this belongs to a
+	// process that died holding it.
+	stealGuardTTL = 5 * time.Second
+	// Bounds how many corpses in a row one call will break open, so a stream of
+	// crashing holders cannot keep Acquire past its Wait.
+	maxSteals = 8
+)
 
 // ErrHeld means a live process owns the lock; callers decide what to do about it.
 var ErrHeld = errors.New("lock held by a live process")
@@ -28,40 +38,67 @@ type AliveFn func(pid int) bool
 type Options struct {
 	// Zero fails immediately instead of blocking.
 	Wait time.Duration
-	// Only consulted when the marker carries no usable pid — liveness is exact,
-	// this is a guess.
+	// TTL breaks open a marker with no usable pid, where age is all there is to
+	// go on.
 	TTL time.Duration
-	// Reclaim keeps a re-entrant caller from blocking on itself.
+	// MaxHold is the last-resort ceiling on a marker whose pid still probes as
+	// alive. Pids get recycled and zombies answer signal 0, so without it such a
+	// marker is held forever. Set it well above any legitimate hold: breaking one
+	// open concedes that two processes may run the critical section at once.
+	MaxHold time.Duration
+	// Reclaim lets a caller through a marker carrying its own pid that it is not
+	// currently holding.
 	Reclaim bool
 	IsAlive AliveFn
 	Os      utils.OsProxy
 }
 
+// Markers this process holds right now. Reclaim consults it so a second
+// in-process Acquire cannot be granted a lock the first still owns.
+var mine = struct { //nolint:gochecknoglobals
+	sync.Mutex
+
+	paths map[string]bool
+}{paths: map[string]bool{}}
+
 // The returned release is always safe to call, including on the error paths.
 func Acquire(ctx context.Context, path string, opts Options) (func() error, error) {
 	noop := func() error { return nil }
-	osProxy := opts.osProxy()
 
-	if err := osProxy.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := opts.osProxy().MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return noop, fmt.Errorf("create lock dir for %s: %w", path, err)
 	}
 
 	deadline := time.Now().Add(opts.Wait)
+	steals := 0
 	for {
 		claimed, err := opts.claim(path)
 		if err != nil {
 			return noop, err
 		}
 		if claimed {
-			return func() error { return remove(osProxy, path) }, nil
+			hold(path)
+
+			return func() error { return opts.release(path) }, nil
 		}
 
-		if opts.breakOpen(path) {
-			continue
+		stolen := opts.breakOpen(path)
+
+		// Checked on both paths: a successful steal used to jump straight back to
+		// the claim, ignoring cancellation and the caller's budget.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return noop, fmt.Errorf("waiting for lock %s: %w", path, ctxErr)
+		}
+		if stolen {
+			if steals++; steals < maxSteals {
+				continue
+			}
+
+			return noop, fmt.Errorf("%w: %s (broke open %d markers without claiming it)", ErrHeld, path, steals)
 		}
 
 		if time.Now().After(deadline) {
-			pid, _ := ReadOwner(osProxy, path)
+			pid, _ := ReadOwner(opts.osProxy(), path)
 
 			return noop, fmt.Errorf("%w: %s (pid %d)", ErrHeld, path, pid)
 		}
@@ -83,9 +120,23 @@ func ReadOwner(osProxy utils.OsProxy, path string) (int, bool) {
 // when it returns true. A failure to stamp reads as "not claimed", so a broken
 // marker stays quiet rather than spamming.
 func ClaimCooldown(path string, every time.Duration) bool {
+	opts := Options{}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return false
 	}
+
+	// Read-then-stamp is not atomic, so without this every process that starts in
+	// the same instant claims the same window and the output is not rate-limited
+	// at all.
+	guard := path + stealGuardSuffix
+	f, err := os.OpenFile(guard, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		opts.dropAbandonedGuard(guard)
+
+		return false
+	}
+	_ = f.Close()
+	defer func() { _ = os.Remove(guard) }()
 
 	if info, err := os.Stat(path); err == nil {
 		if time.Since(info.ModTime()) < every {
@@ -96,11 +147,11 @@ func ClaimCooldown(path string, every time.Duration) bool {
 		return os.Chtimes(path, now, now) == nil
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	marker, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return false
 	}
-	_ = f.Close()
+	_ = marker.Close()
 
 	return true
 }
@@ -121,42 +172,103 @@ func (o Options) claim(path string) (bool, error) {
 	return false, nil
 }
 
+// release refuses to unlink a marker that is no longer ours: removing a live
+// successor's marker would admit a third holder and cascade.
+func (o Options) release(path string) error {
+	defer unhold(path)
+
+	if pid := o.markerPID(path); pid != 0 && pid != os.Getpid() {
+		return fmt.Errorf("lock %s now held by pid %d, not removing", path, pid)
+	}
+
+	return remove(o.osProxy(), path)
+}
+
 // A holder that died without releasing must not wedge every later caller.
 func (o Options) breakOpen(path string) bool {
-	osProxy := o.osProxy()
+	if !o.stealable(path) {
+		return false
+	}
 
+	return o.steal(path)
+}
+
+// stealable reports whether the marker is a corpse — or, under Reclaim, ours.
+func (o Options) stealable(path string) bool {
 	pid, alive := o.readOwner(path)
-	selfOwned := o.Reclaim && pid == os.Getpid()
 	switch {
-	case alive && !selfOwned:
-		return false
+	case pid > 0 && !alive:
+		return true
+	case pid > 0 && o.Reclaim && pid == os.Getpid() && !holding(path):
+		return true
 	case pid > 0:
-		return remove(osProxy, path) == nil
+		return o.olderThan(path, o.MaxHold)
 	}
 
-	if o.TTL <= 0 {
+	return o.olderThan(path, o.TTL)
+}
+
+// steal admits one process at a time to the destructive path, then takes the
+// verdict again: the caller's was read outside the guard, and another stealer may
+// have replaced the corpse with its own live marker since. Unlinking on a stale
+// verdict would hand the lock to two owners at once.
+func (o Options) steal(path string) bool {
+	osProxy := o.osProxy()
+	guard := path + stealGuardSuffix
+
+	f, err := osProxy.OpenFile(guard, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		o.dropAbandonedGuard(guard)
+
 		return false
 	}
-	info, err := osProxy.Stat(path)
-	if err != nil || time.Since(info.ModTime()) <= o.TTL {
+	_ = f.Close()
+	defer func() { _ = remove(osProxy, guard) }()
+
+	if !o.stealable(path) {
 		return false
 	}
 
 	return remove(osProxy, path) == nil
 }
 
-func (o Options) readOwner(path string) (int, bool) {
-	content, exists, err := o.osProxy().ReadFileIfExists(path)
-	if err != nil || !exists {
-		return 0, false
+// A stealer that died mid-steal must not wedge break-open for good.
+func (o Options) dropAbandonedGuard(guard string) {
+	if o.olderThan(guard, stealGuardTTL) {
+		_ = remove(o.osProxy(), guard)
 	}
+}
 
-	pid, err := strconv.Atoi(strings.TrimSpace(content))
-	if err != nil || pid <= 0 {
+func (o Options) olderThan(path string, age time.Duration) bool {
+	if age <= 0 {
+		return false
+	}
+	info, err := o.osProxy().Stat(path)
+
+	return err == nil && time.Since(info.ModTime()) > age
+}
+
+func (o Options) readOwner(path string) (int, bool) {
+	pid := o.markerPID(path)
+	if pid <= 0 {
 		return 0, false
 	}
 
 	return pid, o.isAlive()(pid)
+}
+
+func (o Options) markerPID(path string) int {
+	content, exists, err := o.osProxy().ReadFileIfExists(path)
+	if err != nil || !exists {
+		return 0
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(content))
+	if err != nil || pid <= 0 {
+		return 0
+	}
+
+	return pid
 }
 
 func (o Options) osProxy() utils.OsProxy {
@@ -178,8 +290,33 @@ func (o Options) isAlive() AliveFn {
 			return false
 		}
 
-		return proc.Signal(syscall.Signal(0)) == nil
+		return aliveFromSignalErr(proc.Signal(syscall.Signal(0)))
 	}
+}
+
+// EPERM means the process is there but owned by another user, which is still a
+// live holder. Only "no such process" makes a marker stealable.
+func aliveFromSignalErr(err error) bool {
+	return err == nil || errors.Is(err, fs.ErrPermission)
+}
+
+func hold(path string) {
+	mine.Lock()
+	defer mine.Unlock()
+	mine.paths[path] = true
+}
+
+func unhold(path string) {
+	mine.Lock()
+	defer mine.Unlock()
+	delete(mine.paths, path)
+}
+
+func holding(path string) bool {
+	mine.Lock()
+	defer mine.Unlock()
+
+	return mine.paths[path]
 }
 
 func remove(osProxy utils.OsProxy, path string) error {

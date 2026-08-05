@@ -16,8 +16,9 @@ func acquireRefreshLock(ctx context.Context) (func() error, error) {
 	}
 
 	release, err := filelock.Acquire(ctx, p.AuthRefreshLockFile(), filelock.Options{
-		Wait: refreshLockWait,
-		TTL:  refreshLockTTL,
+		Wait:    refreshLockWait,
+		TTL:     refreshLockTTL,
+		MaxHold: refreshLockMaxHold,
 	})
 	if err != nil {
 		return release, fmt.Errorf("acquire refresh lock: %w", err)
@@ -28,7 +29,7 @@ func acquireRefreshLock(ctx context.Context) (func() error, error) {
 
 // A process we queued behind may have already refreshed, and spending an
 // already-rotated refresh token would invalidate the login.
-func reloadUnderLock(creds Credentials, save func(Credentials) error) (Credentials, func(Credentials) error) {
+func reloadStored(creds Credentials, save func(Credentials) error) (Credentials, func(Credentials) error) {
 	fresh, freshSrc, err := LoadWithSource()
 	if err != nil || !fresh.IsOAuthManaged() {
 		return creds, save

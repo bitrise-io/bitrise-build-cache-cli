@@ -3,6 +3,9 @@
 package oauth
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +15,7 @@ import (
 	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // go-keyring's in-memory mock is not safe for concurrent use, so this
@@ -109,4 +113,54 @@ func TestEnsureFresh_FileStore_ExpiredPAT_Refreshes(t *testing.T) {
 	reloaded, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, m.pat, reloaded.PAT)
+}
+
+// Giving up on the lock is exactly the case where another process is refreshing,
+// so the credential read before the wait is the one whose refresh token they have
+// already rotated away. Spending it again would break the login for good.
+func TestEnsureFresh_LockWaitFailed_ReloadsBeforeSpendingTheRefreshToken(t *testing.T) {
+	useFileStore(t)
+	require.NoError(t, SaveTo(store.NewFile(), Credentials{
+		PAT: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
+		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
+		RefreshToken: "refresh-0", WorkspaceID: "ws",
+	}))
+
+	// A live marker nothing will release, so the wait can only time out.
+	p, err := paths.Default()
+	require.NoError(t, err)
+	lock := p.AuthRefreshLockFile()
+	require.NoError(t, os.MkdirAll(filepath.Dir(lock), 0o700))
+	require.NoError(t, os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600))
+
+	original := refreshLockWait
+	refreshLockWait = 300 * time.Millisecond
+	defer func() { refreshLockWait = original }()
+
+	// Stand in for the process that holds the lock finishing its refresh. Joined
+	// before the test returns, so it cannot write into the next test's HOME.
+	saved := make(chan struct{})
+	go func() {
+		defer close(saved)
+		time.Sleep(50 * time.Millisecond)
+		_ = SaveTo(store.NewFile(), Credentials{
+			PAT: "refreshed-by-the-other-process", PATExpiry: time.Now().Add(time.Hour),
+			JWT: "new-jwt", JWTExpiry: time.Now().Add(time.Hour),
+			RefreshToken: "refresh-1", WorkspaceID: "ws",
+		})
+	}()
+	defer func() { <-saved }()
+
+	m := newOAuthMock()
+	defer m.close()
+
+	creds, err := m.config().EnsureFresh(t.Context())
+
+	require.NoError(t, err)
+	assert.Equal(t, "refreshed-by-the-other-process", creds.PAT, "the reload must win over the pre-wait credential")
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	assert.Zero(t, m.tokenCalls, "the rotated refresh token must not be spent a second time")
+	assert.Zero(t, m.exchangeCalls)
 }
