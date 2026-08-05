@@ -4,13 +4,18 @@ package oauth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -18,27 +23,31 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
-// Goroutines share a pid and a lock table, so they cannot exercise what the
-// refresh lock is actually for: separate CLI processes, spawned per Bazel RPC,
-// contending for one credential — including one that dies still holding it. These
-// re-exec the test binary to get real processes through acquireRefreshLock.
+// Goroutines share a pid and a lock table, so they cannot exercise what the refresh
+// lock is for: separate CLI processes, spawned per Bazel RPC, refreshing one
+// credential — including one that dies mid-refresh. These re-exec the test binary
+// and put real processes through EnsureFresh.
+//
+// The invariant under test is not "they did not overlap", it is the consequence:
+// the identity provider rotates the refresh token on every grant and rejects a
+// reused one, so a double spend leaves the login permanently broken. Every
+// assertion here is about the credential surviving.
 
 const (
-	envRole     = "REFRESHLOCK_CHILD_ROLE"
-	envHome     = "REFRESHLOCK_CHILD_HOME"
-	envSentinel = "REFRESHLOCK_CHILD_SENTINEL"
-	envLog      = "REFRESHLOCK_CHILD_LOG"
-	envHoldMS   = "REFRESHLOCK_CHILD_HOLD_MS"
-	envEpoch    = "REFRESHLOCK_CHILD_EPOCH"
+	envRole   = "REFRESHLOCK_CHILD_ROLE"
+	envHome   = "REFRESHLOCK_CHILD_HOME"
+	envIssuer = "REFRESHLOCK_CHILD_ISSUER"
+	envLog    = "REFRESHLOCK_CHILD_LOG"
+	envHoldMS = "REFRESHLOCK_CHILD_HOLD_MS"
+	envEpoch  = "REFRESHLOCK_CHILD_EPOCH"
 
-	roleHold  = "hold"
-	roleCrash = "crash"
-
-	exitLockFailed = 4
-	exitOverlap    = 5
+	roleRefresh = "refresh"
+	roleCrash   = "crash"
+	// Refreshes and then keeps the lock, so a waiter has something to give up on.
+	roleHoldAfterRefresh = "hold-after-refresh"
 )
 
 func TestMain(m *testing.M) {
@@ -49,58 +58,110 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// runLockChild goes through the production acquireRefreshLock, proves it is the
-// only holder, then either releases or dies still holding it.
+// runLockChild refreshes through the production entry point.
 func runLockChild(role string) int {
-	// paths.Default resolves from HOME, so this points the child at the test's dir.
+	// paths.Default and the credential store both resolve from HOME.
 	_ = os.Setenv("HOME", os.Getenv(envHome))
+	issuer := os.Getenv(envIssuer)
 	holdMS, _ := strconv.Atoi(os.Getenv(envHoldMS))
 
-	start := time.Now()
-	release, err := acquireRefreshLock(context.Background())
-	if err != nil {
-		appendEvent(fmt.Sprintf("BLOCKED   pid=%-6d %v", os.Getpid(), err))
+	cfg := NewConfigFromEnv(map[string]string{
+		"BITRISE_OAUTH_ISSUER":        issuer,
+		"BITRISE_OIDC_TOKEN_ENDPOINT": issuer + "/oidc/token",
+	})
 
-		return exitLockFailed
+	if role == roleHoldAfterRefresh {
+		return holdAfterRefresh(cfg, holdMS)
 	}
-	waited := time.Since(start)
-
-	// O_EXCL on a second file, held exactly as long as the lock: two holders at once
-	// are caught directly, without trusting cross-process clock resolution.
-	sentinel := os.Getenv(envSentinel)
-	f, sErr := os.OpenFile(sentinel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if sErr != nil {
-		appendEvent(fmt.Sprintf("OVERLAP   pid=%-6d ANOTHER PROCESS IS ALREADY REFRESHING: %v", os.Getpid(), sErr))
-		_ = release()
-
-		return exitOverlap
-	}
-	_ = f.Close()
-	appendEvent(fmt.Sprintf("ACQUIRED  pid=%-6d waited=%s", os.Getpid(), waited.Round(time.Millisecond)))
-
-	held := time.Now()
-	time.Sleep(time.Duration(holdMS) * time.Millisecond)
 
 	if role == roleCrash {
-		// No release, no unwinding: the kernel has to drop the lock on its own.
-		appendEvent(fmt.Sprintf("CRASHING  pid=%-6d SIGKILL while holding the lock", os.Getpid()))
+		// Die holding the lock, between the grant and the save: the worst moment,
+		// because the token this process spent is already invalid at the IdP.
+		release, err := acquireRefreshLock(context.Background())
+		if err != nil {
+			logEvent(fmt.Sprintf("BLOCKED   pid=%-6d %v", os.Getpid(), err))
+
+			return 1
+		}
+		defer func() { _ = release() }()
+
+		if _, err := cfg.refreshJWT(context.Background(), storedRefreshToken()); err != nil {
+			logEvent(fmt.Sprintf("GRANT_ERR pid=%-6d %v", os.Getpid(), err))
+
+			return 1
+		}
+		logEvent(fmt.Sprintf("SPENT     pid=%-6d rotated the token, dying before the save", os.Getpid()))
 		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
 	}
 
-	_ = os.Remove(sentinel)
-	if err := release(); err != nil {
-		appendEvent(fmt.Sprintf("REL_ERR   pid=%-6d %v", os.Getpid(), err))
+	start := time.Now()
+	creds, err := cfg.EnsureFresh(context.Background())
+	if err != nil {
+		logEvent(fmt.Sprintf("FAILED    pid=%-6d after=%s %v", os.Getpid(), time.Since(start).Round(time.Millisecond), err))
 
-		return exitLockFailed
+		return 1
 	}
-	appendEvent(fmt.Sprintf("RELEASED  pid=%-6d held=%s", os.Getpid(), time.Since(held).Round(time.Millisecond)))
+	logEvent(fmt.Sprintf("FRESH     pid=%-6d after=%-8s pat=%s", os.Getpid(), time.Since(start).Round(time.Millisecond), creds.PAT))
+
+	time.Sleep(time.Duration(holdMS) * time.Millisecond)
 
 	return 0
 }
 
-// One short O_APPEND write per event, so lines from separate processes interleave
-// without tearing and the file reads as a single timeline.
-func appendEvent(line string) {
+// holdAfterRefresh stands in for the other helper: it rotates the token, saves,
+// and keeps the lock. Not EnsureFresh, because that releases on return and a
+// waiter would then never have to give up — which is how the first version of this
+// test managed to pass against a broken reload.
+func holdAfterRefresh(cfg Config, holdMS int) int {
+	release, err := acquireRefreshLock(context.Background())
+	if err != nil {
+		logEvent(fmt.Sprintf("BLOCKED   pid=%-6d %v", os.Getpid(), err))
+
+		return 1
+	}
+	defer func() { _ = release() }()
+
+	logEvent(fmt.Sprintf("HOLDING   pid=%-6d", os.Getpid()))
+	// Long enough for the waiter to load the stale credential and start waiting.
+	time.Sleep(300 * time.Millisecond)
+
+	creds, err := Load()
+	if err != nil {
+		return 1
+	}
+	refreshed, err := cfg.refreshJWT(context.Background(), creds.RefreshToken)
+	if err != nil {
+		logEvent(fmt.Sprintf("GRANT_ERR pid=%-6d %v", os.Getpid(), err))
+
+		return 1
+	}
+	creds.JWT, creds.JWTExpiry = refreshed.AccessToken, time.Now().Add(time.Hour)
+	creds.RefreshToken = refreshed.RefreshToken
+	pat, expiry, err := cfg.exchangeJWTForPAT(context.Background(), creds.JWT)
+	if err != nil {
+		return 1
+	}
+	creds.PAT, creds.PATExpiry = pat, expiry
+	if err := SaveTo(store.NewFile(), creds); err != nil {
+		return 1
+	}
+	logEvent(fmt.Sprintf("ROTATED   pid=%-6d pat=%s still holding the lock", os.Getpid(), pat))
+
+	time.Sleep(time.Duration(holdMS) * time.Millisecond)
+
+	return 0
+}
+
+func storedRefreshToken() string {
+	creds, err := Load()
+	if err != nil {
+		return ""
+	}
+
+	return creds.RefreshToken
+}
+
+func logEvent(line string) {
 	f, err := os.OpenFile(os.Getenv(envLog), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
@@ -111,24 +172,113 @@ func appendEvent(line string) {
 	_, _ = f.WriteString(fmt.Sprintf("t=%-8s %s\n", time.Since(time.Unix(0, epoch)).Round(time.Millisecond), line))
 }
 
-type lockEnv struct {
-	home     string
-	lockFile string
-	sentinel string
-	log      string
-	epoch    time.Time
+// rotatingIDP behaves like WorkOS: one use per refresh token, and a reused token is
+// rejected outright. Reuse is what breaks a login, so it is counted, not tolerated.
+type rotatingIDP struct {
+	mu       sync.Mutex
+	valid    map[string]bool
+	grants   int
+	reuse    int
+	issued   int
+	server   *httptest.Server
+	patCalls int
 }
 
+func newRotatingIDP(t *testing.T, seedToken string) *rotatingIDP {
+	t.Helper()
+
+	idp := &rotatingIDP{valid: map[string]bool{seedToken: true}}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth2/token", idp.handleRefresh)
+	mux.HandleFunc("/oidc/token", idp.handleExchange)
+	idp.server = httptest.NewServer(mux)
+	t.Cleanup(idp.server.Close)
+
+	return idp
+}
+
+func (i *rotatingIDP) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	presented := r.FormValue("refresh_token")
+
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if !i.valid[presented] {
+		i.reuse++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+
+		return
+	}
+
+	// One use only, exactly like the real thing.
+	delete(i.valid, presented)
+	i.issued++
+	i.grants++
+	rotated := fmt.Sprintf("refresh-%d", i.issued)
+	i.valid[rotated] = true
+
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token":  makeJWT(time.Now().Add(time.Hour).Unix()),
+		"refresh_token": rotated,
+		"expires_in":    3600,
+		"token_type":    "Bearer",
+	})
+}
+
+func (i *rotatingIDP) handleExchange(w http.ResponseWriter, _ *http.Request) {
+	i.mu.Lock()
+	i.patCalls++
+	pat := fmt.Sprintf("pat-%d", i.patCalls)
+	i.mu.Unlock()
+
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token": pat,
+		"expires_in":   3600,
+		"token_type":   "Bearer",
+	})
+}
+
+func (i *rotatingIDP) stats() (grants, reuse int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	return i.grants, i.reuse
+}
+
+func (i *rotatingIDP) accepts(token string) bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	return i.valid[token]
+}
+
+type lockEnv struct {
+	home  string
+	log   string
+	idp   *rotatingIDP
+	epoch time.Time
+}
+
+// newLockEnv seeds an expired login, so every child has to refresh.
 func newLockEnv(t *testing.T) lockEnv {
 	t.Helper()
+	useFileStore(t)
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	require.NoError(t, SaveTo(store.NewFile(), Credentials{
+		PAT: "pat-seed", PATExpiry: time.Now().Add(-time.Minute),
+		JWT: "jwt-seed", JWTExpiry: time.Now().Add(-time.Minute),
+		RefreshToken: "refresh-seed", WorkspaceID: "ws",
+	}))
 
 	return lockEnv{
-		home:     dir,
-		lockFile: paths.FromHome(dir).AuthRefreshLockFile(),
-		sentinel: filepath.Join(dir, "refreshing.sentinel"),
-		log:      filepath.Join(dir, "events.log"),
-		epoch:    time.Now(),
+		home:  dir,
+		log:   filepath.Join(dir, "events.log"),
+		idp:   newRotatingIDP(t, "refresh-seed"),
+		epoch: time.Now(),
 	}
 }
 
@@ -139,7 +289,7 @@ func (e lockEnv) start(t *testing.T, role string, holdMS int) *exec.Cmd {
 	cmd.Env = append(os.Environ(),
 		envRole+"="+role,
 		envHome+"="+e.home,
-		envSentinel+"="+e.sentinel,
+		envIssuer+"="+e.idp.server.URL,
 		envLog+"="+e.log,
 		envHoldMS+"="+strconv.Itoa(holdMS),
 		envEpoch+"="+strconv.FormatInt(e.epoch.UnixNano(), 10),
@@ -167,7 +317,6 @@ func (e lockEnv) count(t *testing.T, kind string) int {
 
 	n := 0
 	for _, line := range e.events(t) {
-		// "t=<elapsed> <KIND> pid=…", so the kind is the second field.
 		if fields := strings.Fields(line); len(fields) > 1 && fields[1] == kind {
 			n++
 		}
@@ -178,77 +327,116 @@ func (e lockEnv) count(t *testing.T, kind string) int {
 
 func (e lockEnv) dump(t *testing.T, title string) {
 	t.Helper()
-	t.Logf("%s — %s\n\n%s\n", title, e.lockFile, strings.Join(e.events(t), "\n"))
+	t.Logf("%s\n\n%s\n", title, strings.Join(e.events(t), "\n"))
 }
 
-// What a Bazel build does: N helpers, one credential, and only one of them may be
-// spending the refresh token at a time.
-func TestIntegration_RefreshLock_ParallelHelpersTakeTurns(t *testing.T) {
+// servedPATs collects what each process handed back, so they can be compared.
+func (e lockEnv) servedPATs(t *testing.T) []string {
+	t.Helper()
+
+	var pats []string
+	for _, line := range e.events(t) {
+		if _, pat, found := strings.Cut(line, "pat="); found {
+			pats = append(pats, pat)
+		}
+	}
+
+	return pats
+}
+
+// Eight helpers, one expired credential, an IdP that rejects a reused token.
+func TestIntegration_RefreshLock_ParallelHelpersDoNotBurnTheRefreshToken(t *testing.T) {
 	const helpers = 8
 	env := newLockEnv(t)
 
 	cmds := make([]*exec.Cmd, 0, helpers)
 	for range helpers {
-		cmds = append(cmds, env.start(t, roleHold, 30))
+		cmds = append(cmds, env.start(t, roleRefresh, 0))
 	}
 	for i, cmd := range cmds {
-		require.NoError(t, cmd.Wait(), "helper %d should acquire, hold and release:\n%s", i, strings.Join(env.events(t), "\n"))
+		require.NoError(t, cmd.Wait(), "helper %d should end up with a live credential:\n%s", i, strings.Join(env.events(t), "\n"))
 	}
 
-	env.dump(t, "eight credential helpers contending for the refresh lock")
+	env.dump(t, "eight credential helpers refreshing one expired login")
 
-	assert.Equal(t, helpers, env.count(t, "ACQUIRED"), "every helper should get its turn")
-	assert.Equal(t, helpers, env.count(t, "RELEASED"))
-	assert.Zero(t, env.count(t, "OVERLAP"), "two processes were refreshing at once")
-	assert.Zero(t, env.count(t, "BLOCKED"), "nobody should have to give up within the wait budget")
+	grants, reuse := env.idp.stats()
+	assert.Zero(t, reuse, "a rotated refresh token was spent twice — this is what permanently breaks a login")
+	assert.Equal(t, 1, grants, "one refresh should serve every helper")
+	assert.Equal(t, helpers, env.count(t, "FRESH"), "every helper should get a credential")
+
+	pats := env.servedPATs(t)
+	require.Len(t, pats, helpers)
+	for _, pat := range pats {
+		assert.Equal(t, pats[0], pat, "every helper should be handed the same refreshed token")
+	}
+
+	stored, err := Load()
+	require.NoError(t, err)
+	assert.True(t, env.idp.accepts(stored.RefreshToken), "the stored refresh token must still be one the IdP will honour")
 }
 
-// The reason for moving to a kernel lock: a helper killed mid-refresh leaves
-// nothing to detect or break open.
-func TestIntegration_RefreshLock_KilledHolderReleasesImmediately(t *testing.T) {
+// A helper killed after the grant but before the save leaves the stored token
+// already spent. The next process must not present it again.
+func TestIntegration_RefreshLock_TokenSpentByADeadHolderIsNotPresentedAgain(t *testing.T) {
 	env := newLockEnv(t)
 
-	cmd := env.start(t, roleCrash, 0)
-	require.Error(t, cmd.Wait(), "the child should die from SIGKILL")
-	require.Equal(t, 1, env.count(t, "CRASHING"))
-	require.Zero(t, env.count(t, "RELEASED"), "a killed holder cannot have released")
+	crashed := env.start(t, roleCrash, 0)
+	require.Error(t, crashed.Wait(), "the child should die from SIGKILL")
+	require.Equal(t, 1, env.count(t, "SPENT"))
 
-	env.dump(t, "a helper killed while holding the lock")
+	grants, reuse := env.idp.stats()
+	require.Equal(t, 1, grants, "the dead holder did spend a token")
+	require.Zero(t, reuse)
 
-	require.FileExists(t, env.lockFile, "the lock file stays: unlinking it would let two processes hold it")
+	survivor := env.start(t, roleRefresh, 0)
+	err := survivor.Wait()
 
-	t.Setenv("HOME", env.home)
-	start := time.Now()
-	release, err := acquireRefreshLock(t.Context())
+	env.dump(t, "a helper killed between the grant and the save")
 
-	require.NoError(t, err, "the kernel should have dropped the dead holder's lock")
-	assert.Less(t, time.Since(start), 500*time.Millisecond, "no marker to diagnose, so no waiting")
-	require.NoError(t, release())
+	// The stored token is genuinely dead, so the honest outcome is a login prompt —
+	// never a silent double spend, and never a hang on the dead holder's lock.
+	_, reuseAfter := env.idp.stats()
+	assert.Equal(t, 1, reuseAfter, "presenting the spent token once is unavoidable; it must not be more than that")
+	if err != nil {
+		assert.Equal(t, 1, env.count(t, "FAILED"), "and the failure should say the session needs a new login")
+	}
 }
 
-// A live holder in another process keeps it, and the waiter gives up inside its
-// budget rather than hanging or stealing.
-func TestIntegration_RefreshLock_LiveHolderMakesTheWaiterGiveUp(t *testing.T) {
+// Losing the wait is the case where someone else is refreshing, so the waiter has
+// to re-read rather than present the token it loaded before waiting — that token
+// has already been rotated away.
+func TestIntegration_RefreshLock_WaiterThatGivesUpDoesNotSpendTheStaleToken(t *testing.T) {
 	env := newLockEnv(t)
 
-	cmd := env.start(t, roleHold, 3000)
+	holder := env.start(t, roleHoldAfterRefresh, 3000)
 	require.Eventually(t, func() bool {
-		return env.count(t, "ACQUIRED") == 1
-	}, 5*time.Second, 10*time.Millisecond, "waiting for the child to take the lock")
+		return env.count(t, "HOLDING") == 1
+	}, 5*time.Second, 5*time.Millisecond, "waiting for the holder to take the lock")
 
-	t.Setenv("HOME", env.home)
 	original := refreshLockWait
-	refreshLockWait = 300 * time.Millisecond
+	refreshLockWait = 900 * time.Millisecond // outlasts the holder's 300ms pre-refresh pause
 	defer func() { refreshLockWait = original }()
 
-	start := time.Now()
-	_, err := acquireRefreshLock(t.Context())
+	cfg := NewConfigFromEnv(map[string]string{
+		"BITRISE_OAUTH_ISSUER":        env.idp.server.URL,
+		"BITRISE_OIDC_TOKEN_ENDPOINT": env.idp.server.URL + "/oidc/token",
+	})
 
-	require.Error(t, err, "a live holder in another process keeps the lock")
-	assert.WithinDuration(t, start.Add(refreshLockWait), time.Now(), 2*time.Second, "it should give up on its budget, not hang")
+	creds, err := cfg.EnsureFresh(t.Context())
 
-	require.NoError(t, cmd.Wait())
-	release, err := acquireRefreshLock(t.Context())
-	require.NoError(t, err, "free once the holder is done")
-	require.NoError(t, release())
+	env.dump(t, "a waiter giving up on a lock still held by the process that refreshed")
+
+	require.NoError(t, err, "the waiter should serve the credential the holder refreshed")
+	require.Equal(t, 1, env.count(t, "ROTATED"), "the holder must have rotated the token while holding the lock")
+
+	grants, reuse := env.idp.stats()
+	assert.Zero(t, reuse, "the waiter presented a refresh token that had already been spent")
+	assert.Equal(t, 1, grants, "and it must not have refreshed again")
+	assert.NotEqual(t, "pat-seed", creds.PAT, "it should have picked up the refreshed credential")
+
+	stored, err := Load()
+	require.NoError(t, err)
+	assert.True(t, env.idp.accepts(stored.RefreshToken), "the login must still be usable afterwards")
+
+	require.NoError(t, holder.Wait())
 }
