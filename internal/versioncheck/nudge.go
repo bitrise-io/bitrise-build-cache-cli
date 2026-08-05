@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"golang.org/x/mod/semver"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/githubapi"
 )
 
 const GitHubReleasesURL = "https://api.github.com/repos/bitrise-io/bitrise-build-cache-cli/releases/latest"
@@ -63,6 +65,7 @@ func FetchLatestVersion(ctx context.Context, client *http.Client, url string) (s
 
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "bitrise-build-cache-cli/version-check")
+	githubapi.SetAuthHeader(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
