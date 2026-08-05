@@ -26,6 +26,10 @@ func (d *Doctor) ccacheBinaryCheck() Check {
 	return Check{
 		Name: "ccache-binary",
 		Diagnose: func(_ context.Context) Result {
+			if !d.toolActivated(toolconfig.Ccache) {
+				return Result{State: StateOK, Detail: "skipped (c++ not activated)"}
+			}
+
 			path, err := d.LookPath("ccache")
 			if err != nil {
 				return Result{State: StateWarn, Detail: "ccache binary not found in PATH. Install via `brew install ccache` if you build C/C++."}
