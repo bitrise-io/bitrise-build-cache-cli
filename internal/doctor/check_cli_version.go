@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/githubapi"
 )
 
 func (d *Doctor) cliVersionCheck() Check {
@@ -66,6 +68,7 @@ func fetchLatestGitHubRelease(ctx context.Context, client *http.Client) (string,
 		return "", fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	githubapi.SetAuthHeader(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
