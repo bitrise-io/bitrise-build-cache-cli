@@ -2,8 +2,6 @@ package xcode
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -11,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -35,17 +31,16 @@ func init() {
 }
 
 func stopXcelerateProxyCommandFn(osProxy utils.OsProxy, logger log.Logger) error {
-	pidPath := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
-
 	logger.TInfof("Stopping xcelerate-proxy...")
 
-	b, err := os.ReadFile(pidPath)
-	if err != nil {
-		return fmt.Errorf("read pidfile: %w", err)
+	pid, running := proxyOwner(osProxy)
+	if !running {
+		logger.TDonef("No xcelerate-proxy is running")
+
+		return nil
 	}
-	pid, err := strconv.Atoi(string(b))
-	if err != nil {
-		return fmt.Errorf("bad pid: %w", err)
+	if pid <= 0 {
+		return fmt.Errorf("a proxy holds %s but advertised no usable pid", proxyPidFile(osProxy))
 	}
 
 	// Send SIGTERM to the process group: negative PID means group in unix kill
@@ -74,8 +69,9 @@ loop:
 	// If still alive, escalate to SIGKILL
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
 
-	// remove pidfile (ignore errors)
-	_ = os.Remove(pidPath)
+	// The pid file is not removed: it carries the lock, and unlinking it would let a
+	// proxy holding the old inode and one locking a newly created file both run. The
+	// kernel drops the lock when the process dies, which is what frees it.
 	logger.TDonef("Stopped xcelerate-proxy")
 
 	return nil //nolint:nilerr
