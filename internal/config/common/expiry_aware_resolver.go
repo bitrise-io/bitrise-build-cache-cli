@@ -13,7 +13,6 @@ type RefreshFunc func(ctx context.Context) (pat string, workspaceID string, err 
 type resolveFunc func(envs map[string]string) (CacheAuthConfig, AuthSource, error)
 
 // ExpiryAwareResolver refreshes store-managed credentials before serving them.
-// Sources that carry no refresh token pass through untouched.
 type ExpiryAwareResolver struct {
 	ctx       context.Context //nolint:containedctx // resolver is called per RPC without a fresh ctx
 	envs      map[string]string

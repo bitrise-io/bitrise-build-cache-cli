@@ -16,44 +16,32 @@ import (
 	"time"
 )
 
-// Budget bounds a single helper invocation, leaving headroom under Bazel's
-// --credential_helper_timeout (10s default) for the spawn and the store read.
+// Budget leaves headroom under Bazel's --credential_helper_timeout (10s default).
 const Budget = 8 * time.Second
 
-// GetCredentialsRequest is the wire shape Bazel writes to the helper's stdin.
-// URI is populated with the target endpoint (e.g. https://<host>) — we ignore
-// it because our headers are endpoint-agnostic, matching the bare-header
+// URI is ignored: our headers are endpoint-agnostic, matching the bare-header
 // behavior of the pre-helper `--remote_header`/`--bes_header` lines.
 type GetCredentialsRequest struct {
 	URI string `json:"uri,omitempty"`
 }
 
-// GetCredentialsResponse is the wire shape Bazel reads from the helper's
-// stdout. `Headers` values are string arrays per the spec even when a header
-// has a single value.
+// Headers values are string arrays per the spec even for a single value.
 type GetCredentialsResponse struct {
 	Headers map[string][]string `json:"headers"`
-	// Expires is the spec's optional RFC 3339 cache hint: Bazel caches the
-	// credential until then rather than re-spawning the helper. Omitted when the
-	// lifetime is unknown, which falls back to --credential_helper_cache_duration.
+	// RFC 3339 cache hint — Bazel reuses the credential until then. Omitted when
+	// the lifetime is unknown, falling back to --credential_helper_cache_duration.
 	Expires string `json:"expires,omitempty"`
 }
 
-// Credential is what a Resolver hands the protocol layer. A zero Expiry omits
-// the cache hint.
 type Credential struct {
 	Token  string
 	Expiry time.Time
 }
 
-// Resolver produces a live credential; ctx bounds any network refresh it does.
 type Resolver func(ctx context.Context) (Credential, error)
 
-// Run serves one credential-helper request. Errors on unparseable input or when
-// no credential could be resolved at all.
 func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver) error {
-	// The request body is optional in practice but we accept and discard it
-	// so a malformed payload surfaces as an error rather than silent success.
+	// Decoded and discarded, so a malformed payload is an error not a silent pass.
 	var req GetCredentialsRequest
 	dec := json.NewDecoder(in)
 	if err := dec.Decode(&req); err != nil && !errors.Is(err, io.EOF) {

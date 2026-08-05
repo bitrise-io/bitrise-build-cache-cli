@@ -77,8 +77,7 @@ func TestAcquire_SecondCallerGetsItAfterRelease(t *testing.T) {
 	require.NoError(t, release2())
 }
 
-// A process that died holding the lock must not wedge every later one — and
-// liveness answers that exactly, without waiting out a TTL.
+// Liveness answers this exactly, without waiting out a TTL.
 func TestAcquire_DeadOwnerIsBrokenOpenImmediately(t *testing.T) {
 	path := lockPath(t)
 
@@ -95,9 +94,8 @@ func TestAcquire_DeadOwnerIsBrokenOpenImmediately(t *testing.T) {
 	require.NoError(t, release2())
 }
 
-// The reason the lock exists: two processes must never both spend the same
-// rotated refresh token. A slow-but-alive holder outliving the TTL used to be
-// broken open, which is exactly the double-spend this prevents.
+// A slow-but-alive holder used to be broken open after the TTL, which let two
+// processes spend the same rotated refresh token.
 func TestAcquire_LiveOwnerIsNeverBrokenOpen(t *testing.T) {
 	path := lockPath(t)
 
@@ -112,8 +110,7 @@ func TestAcquire_LiveOwnerIsNeverBrokenOpen(t *testing.T) {
 	require.ErrorIs(t, err, ErrHeld, "an owner that is still running keeps the lock however old the marker is")
 }
 
-// A writer that died mid-claim leaves a marker with no pid to probe, so age is
-// all that is left to go on.
+// A writer that died mid-claim leaves no pid to probe.
 func TestAcquire_MarkerWithoutPidFallsBackToTTL(t *testing.T) {
 	path := lockPath(t)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
@@ -135,8 +132,7 @@ func TestAcquire_MarkerWithoutPidHeldWithinTTL(t *testing.T) {
 	require.ErrorIs(t, err, ErrHeld)
 }
 
-// Fail-fast is what the proxy startup wants: contention means someone else is
-// already doing the job.
+// What the proxy startup wants: contention means someone else is doing the job.
 func TestAcquire_ZeroWaitFailsImmediately(t *testing.T) {
 	path := lockPath(t)
 

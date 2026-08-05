@@ -19,7 +19,6 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
-// envResolver drives the real resolver through its env-var branch.
 func envResolver(t *testing.T, token string) Resolver {
 	t.Helper()
 
@@ -110,8 +109,8 @@ func TestRun_EmitsExpires_FromCredentialExpiry(t *testing.T) {
 	assert.True(t, got.Equal(expiry), "got %s, want %s", got, expiry)
 }
 
-// Without a known lifetime Bazel must fall back to --credential_helper_cache_duration,
-// which it only does when the key is absent — a zero-time value would be a past expiry.
+// Bazel only falls back to --credential_helper_cache_duration when the key is
+// absent; a zero-time value would be a past expiry.
 func TestRun_OmitsExpires_WhenExpiryUnknown(t *testing.T) {
 	resolve := func(context.Context) (Credential, error) {
 		return Credential{Token: "tok"}, nil

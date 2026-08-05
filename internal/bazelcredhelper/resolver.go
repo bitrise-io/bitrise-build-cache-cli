@@ -13,23 +13,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// expiresLead pulls the cache hint in from the real PAT expiry so the next spawn
-// lands inside oauth's refresh window. It MUST stay below oauth.RefreshSkew: with
-// a larger lead Bazel would re-invoke while EnsureFresh's fast path still calls
-// the PAT valid, get the same already-past expires back, and re-spawn the helper
-// on every RPC until the PAT genuinely expired.
+// Pulls the cache hint inside oauth's refresh window. MUST stay below
+// RefreshSkew: a larger lead re-spawns the helper on every RPC, because
+// EnsureFresh's fast path keeps returning the same already-past expires.
 const expiresLead = oauth.RefreshSkew / 2
 
-// staleCacheHint bounds how long Bazel caches a credential we could not refresh,
-// so a repaired login is picked up without waiting out the 30m default.
+// Short so a repaired login is picked up without waiting out Bazel's 30m default.
 const staleCacheHint = time.Minute
 
-// warnCooldown rate-limits the stale-credential warning across the many helper
-// processes a single build spawns.
+// Rate-limits the warning across the many helper processes one build spawns.
 const warnCooldown = 10 * time.Minute
 
-// NewResolver returns the production Resolver. warn receives at most one
-// stale-credential line per cooldown; it must not be stdout.
+// warn must not be stdout.
 func NewResolver(envs map[string]string, warn io.Writer) Resolver {
 	// Logger stays nil: go-utils' logger writes to stdout, which is the protocol channel.
 	oauthCfg := oauth.NewConfigFromEnv(envs)

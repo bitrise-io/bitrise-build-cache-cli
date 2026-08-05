@@ -8,9 +8,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// acquireRefreshLock serialises the token refresh across CLI processes. A
-// non-nil error means "proceed unserialised"; the release func is always safe
-// to call.
+// A non-nil error means "proceed unserialised".
 func acquireRefreshLock(ctx context.Context) (func() error, error) {
 	p, err := paths.Default()
 	if err != nil {
@@ -28,9 +26,8 @@ func acquireRefreshLock(ctx context.Context) (func() error, error) {
 	return release, nil
 }
 
-// reloadUnderLock re-reads the store now that the lock is held: a process we
-// queued behind may have already refreshed, and spending an already-rotated
-// refresh token would invalidate the login.
+// A process we queued behind may have already refreshed, and spending an
+// already-rotated refresh token would invalidate the login.
 func reloadUnderLock(creds Credentials, save func(Credentials) error) (Credentials, func(Credentials) error) {
 	fresh, freshSrc, err := LoadWithSource()
 	if err != nil || !fresh.IsOAuthManaged() {

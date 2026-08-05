@@ -1,8 +1,5 @@
-// Package filelock provides cross-process coordination primitives built on
-// O_EXCL marker files: a mutual-exclusion lock and a cooldown gate. Both are
-// needed because the CLI is spawned as many short-lived parallel processes
-// (Bazel spawns the credential helper per request, the xcodebuild wrapper starts
-// the proxy) that have no other way to coordinate.
+// Package filelock coordinates the CLI's short-lived parallel processes — Bazel
+// spawns the credential helper per request — which have no other way to serialise.
 package filelock
 
 import (
@@ -22,31 +19,25 @@ import (
 
 const pollInterval = 50 * time.Millisecond
 
-// ErrHeld means a live process owns the lock. Callers decide what that means:
-// the proxy treats it as "someone else is already doing the job", the token
-// refresh as "go ahead unserialised".
+// ErrHeld means a live process owns the lock; callers decide what to do about it.
 var ErrHeld = errors.New("lock held by a live process")
 
-// AliveFn reports whether pid is still running.
 type AliveFn func(pid int) bool
 
-// Options selects the acquisition behaviour. The zero value fails fast, breaks
-// open only on a dead owner, and talks to the real filesystem.
+// The zero value fails fast and breaks open only on a dead owner.
 type Options struct {
-	// Wait bounds how long to block for a held lock; zero fails immediately.
+	// Zero fails immediately instead of blocking.
 	Wait time.Duration
-	// TTL breaks open a marker this old. Only consulted when the marker carries
-	// no usable pid, since liveness is the exact answer and this is a guess.
+	// Only consulted when the marker carries no usable pid — liveness is exact,
+	// this is a guess.
 	TTL time.Duration
-	// Reclaim treats a marker this process already owns as free, so a re-entrant
-	// caller is not blocked by itself.
+	// Reclaim keeps a re-entrant caller from blocking on itself.
 	Reclaim bool
 	IsAlive AliveFn
 	Os      utils.OsProxy
 }
 
-// Acquire claims the marker at path. The returned release is always safe to
-// call, including on the error paths.
+// The returned release is always safe to call, including on the error paths.
 func Acquire(ctx context.Context, path string, opts Options) (func() error, error) {
 	noop := func() error { return nil }
 	osProxy := opts.osProxy()
@@ -83,16 +74,14 @@ func Acquire(ctx context.Context, path string, opts Options) (func() error, erro
 	}
 }
 
-// ReadOwner returns the pid recorded in the marker at path and whether that
-// process is still running. A missing or malformed marker reads as (0, false).
+// ReadOwner reads the marker's owner. A missing or malformed marker is (0, false).
 func ReadOwner(osProxy utils.OsProxy, path string) (int, bool) {
 	return Options{Os: osProxy}.readOwner(path)
 }
 
-// ClaimCooldown reports whether at least every has passed since the marker at
-// path was last claimed, re-stamping it when it returns true. Used to rate-limit
-// output across separate processes; a failure to stamp reads as "not claimed"
-// so a broken marker stays quiet rather than spamming.
+// ClaimCooldown reports whether every has passed since the last claim, re-stamping
+// when it returns true. A failure to stamp reads as "not claimed", so a broken
+// marker stays quiet rather than spamming.
 func ClaimCooldown(path string, every time.Duration) bool {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return false
@@ -116,10 +105,7 @@ func ClaimCooldown(path string, every time.Duration) bool {
 	return true
 }
 
-// Private — acquisition steps
-
-// claim reports whether this process now owns the marker. O_EXCL is what makes
-// concurrent claims pick exactly one winner.
+// O_EXCL is what makes concurrent claims pick exactly one winner.
 func (o Options) claim(path string) (bool, error) {
 	f, err := o.osProxy().OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {
@@ -135,8 +121,7 @@ func (o Options) claim(path string) (bool, error) {
 	return false, nil
 }
 
-// breakOpen removes a marker no live process owns, so a holder that died
-// without releasing cannot wedge every later caller.
+// A holder that died without releasing must not wedge every later caller.
 func (o Options) breakOpen(path string) bool {
 	osProxy := o.osProxy()
 
@@ -149,8 +134,6 @@ func (o Options) breakOpen(path string) bool {
 		return remove(osProxy, path) == nil
 	}
 
-	// No usable pid: the writer died mid-write, or an older CLI wrote an empty
-	// marker. Age is all that is left to go on.
 	if o.TTL <= 0 {
 		return false
 	}

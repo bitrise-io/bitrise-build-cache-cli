@@ -22,8 +22,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// isolate points the credential stores and the warn-cooldown marker at a temp
-// HOME so a developer machine's real credentials can't leak into a test.
+// Keeps a developer machine's real credentials out of the test.
 func isolate(t *testing.T) {
 	t.Helper()
 	keyring.MockInit()
@@ -36,9 +35,6 @@ func useFileStore(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 }
 
-// The invariant expiresLead exists to protect: a lead at or above RefreshSkew
-// makes Bazel re-spawn the helper on every RPC while EnsureFresh still considers
-// the PAT valid, because the response keeps carrying an already-past expires.
 func TestExpiresLead_StaysBelowRefreshSkew(t *testing.T) {
 	assert.Less(t, expiresLead, oauth.RefreshSkew)
 }
@@ -62,8 +58,7 @@ func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 	assert.True(t, got.Expiry.IsZero(), "an unknown lifetime must omit the cache hint")
 }
 
-// The legacy authConfig block holds a static PAT with no refresh token. Nothing
-// can renew it, so the helper serves it as-is and says what to do instead.
+// A static PAT has no refresh token, so nothing can renew it.
 func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
 	isolate(t)
 	seedLegacyAuthConfig(t, "bitpat_legacy", "ws-legacy")
@@ -98,8 +93,7 @@ func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
 	assert.True(t, got.Expiry.Equal(patExpiry.Add(-expiresLead)), "got %s, want %s", got.Expiry, patExpiry.Add(-expiresLead))
 }
 
-// The Linux / no-keychain regression: credentials in the config file must take
-// the refresh path, not be waved through as unrefreshable.
+// The no-keychain regression: a file-stored credential must take the refresh path.
 func TestResolver_FileStore_TakesRefreshPath(t *testing.T) {
 	useFileStore(t)
 	require.NoError(t, oauth.SaveTo(store.NewFile(), oauth.Credentials{

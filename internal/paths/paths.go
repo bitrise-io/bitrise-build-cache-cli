@@ -68,12 +68,8 @@ const (
 
 	enrichmentHealthFilename = "health.json"
 
-	// authRefreshLockFilename serialises the OAuth refresh across concurrently
-	// spawned CLI processes (Bazel spawns the credential helper N-way parallel).
 	authRefreshLockFilename = "auth-refresh.lock"
 
-	// bazelCredHelperWarnFilename holds the mtime of the last stale-credential
-	// warning the Bazel credential helper printed, to rate-limit it.
 	bazelCredHelperWarnFilename = "bazel-credhelper-warned" //nolint:gosec // marker filename, not a credential
 
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
@@ -135,12 +131,10 @@ func (p Paths) StateFile(name string) string {
 	return filepath.Join(p.StateDir(), name)
 }
 
-// AuthRefreshLockFile is the absolute path of the cross-process OAuth refresh lock.
 func (p Paths) AuthRefreshLockFile() string {
 	return p.StateFile(authRefreshLockFilename)
 }
 
-// BazelCredHelperWarnFile is the absolute path of the credential helper's warning-cooldown marker.
 func (p Paths) BazelCredHelperWarnFile() string {
 	return p.StateFile(bazelCredHelperWarnFilename)
 }
