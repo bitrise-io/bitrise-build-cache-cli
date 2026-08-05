@@ -16,9 +16,7 @@ import (
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform" // registers the config-file credential readers
 )
 
-// Bazel parses the helper's stdout as a single JSON document, so anything else
-// written there — a stray log line, a progress message — breaks every build that
-// uses the credential helper. Nothing in this path may log to stdout.
+// A single stray log line on stdout breaks every build using the helper.
 func TestGetCmd_StdoutIsOnlyTheJSONResponse(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())

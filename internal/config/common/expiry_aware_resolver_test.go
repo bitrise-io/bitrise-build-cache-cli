@@ -29,8 +29,6 @@ func TestExpiryAwareResolver_NonOAuthSource_UsesPlainResolve(t *testing.T) {
 	assert.Equal(t, envCfg, r.Get())
 }
 
-// A host with no OS keychain (Linux, containers, CI) stores its OAuth login in
-// the config file; that credential is just as refreshable as a keychain one.
 func TestExpiryAwareResolver_FileSource_UsesRefreshFn(t *testing.T) {
 	storedCfg := CacheAuthConfig{AuthToken: "stored-tok", WorkspaceID: "stored-ws"}
 	resolve := func(_ map[string]string) (CacheAuthConfig, AuthSource, error) {

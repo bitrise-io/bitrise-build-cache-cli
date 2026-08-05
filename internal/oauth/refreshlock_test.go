@@ -14,18 +14,15 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
-// useFileStore points every credential read/write at the config file in a temp
-// HOME. go-keyring's in-memory mock is not safe for concurrent use, and the file
-// store is the backend a keychain-less host (Linux, containers, CI) uses anyway.
+// go-keyring's in-memory mock is not safe for concurrent use, so this
+// concurrency test goes through the file store instead.
 func useFileStore(t *testing.T) {
 	t.Helper()
 	keyring.MockInitWithError(keyring.ErrNotFound)
 	t.Setenv("HOME", t.TempDir())
 }
 
-// Bazel spawns the credential helper N-way parallel. WorkOS rotates the refresh
-// token on every grant, so without the lock several callers would each spend the
-// same one and the last writer would persist a token the others already burned.
+// Without the lock every caller spends the same rotated refresh token.
 func TestEnsureFresh_ConcurrentCallers_RefreshOnce(t *testing.T) {
 	useFileStore(t)
 	require.NoError(t, SaveTo(store.NewFile(), Credentials{
@@ -93,8 +90,6 @@ func TestEnsureFresh_ValidPAT_TakesNoLock(t *testing.T) {
 	assert.Less(t, time.Since(start), refreshLockWait, "the valid-PAT fast path must not wait on the lock")
 }
 
-// A file-stored OAuth login must refresh too — this is the keychain-less host
-// the ExpiryAwareResolver used to skip entirely.
 func TestEnsureFresh_FileStore_ExpiredPAT_Refreshes(t *testing.T) {
 	useFileStore(t)
 	require.NoError(t, SaveTo(store.NewFile(), Credentials{

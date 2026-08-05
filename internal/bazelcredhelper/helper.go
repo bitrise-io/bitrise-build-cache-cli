@@ -4,7 +4,6 @@
 // Bazel spawns the helper per request, writes a single-line JSON object
 // {"uri": "..."} on stdin, and expects a JSON object on stdout containing at
 // least {"headers": {...}}. Exit 0 on success; non-zero exit fails the RPC.
-//
 // Nothing on this path may write to stdout — it is the protocol channel.
 package bazelcredhelper
 
@@ -50,9 +49,8 @@ type Credential struct {
 // Resolver produces a live credential; ctx bounds any network refresh it does.
 type Resolver func(ctx context.Context) (Credential, error)
 
-// Run reads one credential-helper request from `in`, resolves a credential via
-// `resolve`, and writes the JSON response to `out`. Returns an error on
-// unparseable input or when no credential could be resolved at all.
+// Run serves one credential-helper request. Errors on unparseable input or when
+// no credential could be resolved at all.
 func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver) error {
 	// The request body is optional in practice but we accept and discard it
 	// so a malformed payload surfaces as an error rather than silent success.

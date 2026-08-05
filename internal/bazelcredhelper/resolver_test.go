@@ -30,8 +30,6 @@ func isolate(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 }
 
-// useFileStore additionally disables the keychain, reproducing a host with no
-// secret-service (Linux, containers) where credentials live in the config file.
 func useFileStore(t *testing.T) {
 	t.Helper()
 	keyring.MockInitWithError(keyring.ErrNotFound)

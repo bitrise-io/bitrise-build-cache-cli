@@ -74,8 +74,8 @@ func (d AuthDescription) Detail() string {
 	return out
 }
 
-// DescribeResolved describes a resolved credential, reading the backing store
-// for the OAuth-login + expiry distinction when the source is store-managed.
+// DescribeResolved reads the backing store to tell an OAuth login (with a PAT
+// expiry) apart from a manual `auth set`.
 func DescribeResolved(cfg CacheAuthConfig, source AuthSource) AuthDescription {
 	return DescribeResolvedWith(cfg, source, keychain.New())
 }
@@ -103,9 +103,6 @@ func DescribeResolvedWith(cfg CacheAuthConfig, source AuthSource, loader AuthLoa
 	return d
 }
 
-// DescribeStoredCredentials describes an already-loaded credential from one of
-// the managed stores, distinguishing an OAuth login (with PAT expiry) from a
-// manual `auth set`.
 func DescribeStoredCredentials(source AuthSource, creds keychain.Credentials) AuthDescription {
 	d := AuthDescription{Source: source, WorkspaceID: creds.WorkspaceID}
 	if creds.IsOAuthManaged() {
