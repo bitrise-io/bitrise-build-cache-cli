@@ -257,9 +257,13 @@ func TestIntegration_ProxyLock_KilledProxyFreesTheSingleton(t *testing.T) {
 	_, running := proxyOwner(osProxy)
 	assert.False(t, running, "the advertised pid is stale, but the lock is free")
 
-	lock, err := acquireProxyLock(osProxy)
-	require.NoError(t, err, "a dead proxy must not wedge the singleton")
-	require.NoError(t, lock.Unlock())
+	served := false
+	require.NoError(t, withProxySingleton(osProxy, log.NewLogger(), func() error {
+		served = true
+
+		return nil
+	}))
+	assert.True(t, served, "a dead proxy must not wedge the singleton — the next one should serve")
 }
 
 // Regression: deciding on the pid before the lock reported "not running" whenever
@@ -268,16 +272,18 @@ func TestProxyOwner_HeldWithAnUnreadablePidStillReportsRunning(t *testing.T) {
 	newProxyEnv(t)
 	osProxy := utils.DefaultOsProxy{}
 
-	lock, err := acquireProxyLock(osProxy)
-	require.NoError(t, err)
-	defer func() { _ = lock.Unlock() }()
+	// Inspect from inside the critical section, so the lock is genuinely held by the
+	// production path while the advertisement is unreadable.
+	require.NoError(t, withProxySingleton(osProxy, log.NewLogger(), func() error {
+		// What a reader sees between WriteFile's truncate and its write.
+		require.NoError(t, os.WriteFile(proxyPidFile(osProxy), nil, 0o644))
 
-	// What a reader sees between WriteFile's truncate and its write.
-	require.NoError(t, os.WriteFile(proxyPidFile(osProxy), nil, 0o644))
+		pid, running := proxyOwner(osProxy)
+		assert.True(t, running, "the lock is held, so a proxy is serving")
+		assert.Zero(t, pid, "with the identity simply unknown")
 
-	pid, running := proxyOwner(osProxy)
-	assert.True(t, running, "the lock is held, so a proxy is serving")
-	assert.Zero(t, pid, "with the identity simply unknown")
+		return nil
+	}))
 }
 
 // stop-proxy must not unlink the file that carries the lock: a proxy holding the
