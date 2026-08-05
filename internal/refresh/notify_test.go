@@ -17,12 +17,12 @@ func TestNeedsNudge_majorBump(t *testing.T) {
 		stored, current string
 		want            bool
 	}{
-		{"1.0.0", "2.0.0", true},  // major bump → nudge
-		{"1.5.3", "2.0.0", true},  // same
-		{"1.0.0", "1.5.0", false}, // minor only → silent
-		{"2.0.0", "1.0.0", false}, // local-ahead / rollback → silent
-		{"", "1.0.0", false},      // empty stored treated as v1.0.0 baseline → silent on first major
-		{"", "2.0.0", true},       // unversioned config behind v2 → nudge
+		{"1.0.0", "2.0.0", true},   // major bump → nudge
+		{"1.5.3", "2.0.0", true},   // same
+		{"1.0.0", "1.5.0", false},  // minor only → silent
+		{"2.0.0", "1.0.0", false},  // local-ahead / rollback → silent
+		{"", "1.0.0", false},       // empty stored treated as v1.0.0 baseline → silent on first major
+		{"", "2.0.0", true},        // unversioned config behind v2 → nudge
 		{"not-semver", "2.0.0", true},
 		{"1.0.0", "garbage", false}, // invalid current → silent
 	}

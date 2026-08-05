@@ -56,29 +56,36 @@ func acquireProxyLock(osProxy utils.OsProxy) (*flock.Flock, error) {
 	return lock, nil
 }
 
-// proxyOwner reports the advertised pid and whether a proxy is holding the lock.
-// Liveness is the lock itself: if it can be taken, nobody is serving.
+// proxyOwner reports whether a proxy is serving, and the pid it advertised.
+//
+// The lock is the authority; the pid is only for the message. Deciding on the pid
+// first would report "not running" whenever the advertisement happens to be
+// mid-write — WriteFile truncates before it fills — and that answer starts a
+// second proxy.
 func proxyOwner(osProxy utils.OsProxy) (int, bool) {
 	path := proxyPidFile(osProxy)
 
+	// Probing would create the file, so an absent one is answered without one.
 	content, exists, err := osProxy.ReadFileIfExists(path)
 	if err != nil || !exists {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(content))
-	if err != nil || pid <= 0 {
 		return 0, false
 	}
 
 	probe := flock.New(path)
 	free, err := probe.TryLock()
 	if err != nil {
-		return pid, false
+		return 0, false
 	}
 	if free {
 		_ = probe.Unlock()
 
-		return pid, false
+		return 0, false
+	}
+
+	// Held, so a pid we cannot parse means "running, identity unknown".
+	pid, err := strconv.Atoi(strings.TrimSpace(content))
+	if err != nil || pid <= 0 {
+		return 0, true
 	}
 
 	return pid, true

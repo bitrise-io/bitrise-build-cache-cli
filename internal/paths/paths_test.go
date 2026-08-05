@@ -90,3 +90,4 @@ func TestPaths_xcelerateEnrichment(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/pending-invocations.ndjson", p.PendingInvocationsFile())
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/health.json", p.EnrichmentHealthFile())
 }
+
