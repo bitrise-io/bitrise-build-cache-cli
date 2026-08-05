@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/gofrs/flock"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -89,4 +90,23 @@ func proxyOwner(osProxy utils.OsProxy) (int, bool) {
 	}
 
 	return pid, true
+}
+
+// withProxySingleton runs serve as the only proxy on this machine. Contention is
+// not a failure: another proxy is already serving, so this one has nothing to do
+// and says so rather than erroring.
+func withProxySingleton(osProxy utils.OsProxy, logger log.Logger, serve func() error) error {
+	lock, err := acquireProxyLock(osProxy)
+	if err != nil {
+		logger.Infof("Skipping proxy startup: %s", err)
+
+		return nil
+	}
+	defer func() {
+		if err := lock.Unlock(); err != nil {
+			logger.Warnf("Failed to release proxy lock: %s", err)
+		}
+	}()
+
+	return serve()
 }

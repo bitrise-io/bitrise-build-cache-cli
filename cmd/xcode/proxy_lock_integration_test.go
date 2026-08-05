@@ -3,6 +3,7 @@
 package xcode
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -57,33 +58,40 @@ func TestHelperProxyLockChild(t *testing.T) {
 	osProxy := utils.DefaultOsProxy{}
 	holdMS, _ := strconv.Atoi(os.Getenv(envProxyHold))
 
-	lock, err := acquireProxyLock(osProxy)
+	// The same call start-proxy's RunE makes, so the child exercises production's
+	// contention policy — log and exit 0 — not just the lock.
+	served := false
+	err := withProxySingleton(osProxy, log.NewLogger(), func() error {
+		served = true
+
+		sentinel := os.Getenv(envProxySent)
+		f, sErr := os.OpenFile(sentinel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if sErr != nil {
+			logProxyEvent(fmt.Sprintf("OVERLAP   pid=%-6d A SECOND PROXY IS SERVING: %v", os.Getpid(), sErr))
+			os.Exit(proxyExitOverlap)
+		}
+		_ = f.Close()
+		logProxyEvent(fmt.Sprintf("SERVING   pid=%-6d advertised=%d", os.Getpid(), advertisedPID(osProxy)))
+
+		time.Sleep(time.Duration(holdMS) * time.Millisecond)
+
+		if role == proxyRoleCrash {
+			logProxyEvent(fmt.Sprintf("CRASHING  pid=%-6d SIGKILL while serving", os.Getpid()))
+			_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		}
+
+		_ = os.Remove(sentinel)
+
+		return nil
+	})
 	if err != nil {
-		// Contention is the expected outcome for everyone but the winner: it means a
-		// proxy is already serving, which is why start-proxy treats it as success.
-		logProxyEvent(fmt.Sprintf("SKIPPED   pid=%-6d %v", os.Getpid(), err))
+		logProxyEvent(fmt.Sprintf("FAILED    pid=%-6d %v", os.Getpid(), err))
+		os.Exit(1)
+	}
+	if !served {
+		logProxyEvent(fmt.Sprintf("SKIPPED   pid=%-6d stood down, another proxy is serving", os.Getpid()))
 		os.Exit(0)
 	}
-
-	sentinel := os.Getenv(envProxySent)
-	f, sErr := os.OpenFile(sentinel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if sErr != nil {
-		logProxyEvent(fmt.Sprintf("OVERLAP   pid=%-6d A SECOND PROXY IS SERVING: %v", os.Getpid(), sErr))
-		_ = lock.Unlock()
-		os.Exit(proxyExitOverlap)
-	}
-	_ = f.Close()
-	logProxyEvent(fmt.Sprintf("SERVING   pid=%-6d advertised=%d", os.Getpid(), advertisedPID(osProxy)))
-
-	time.Sleep(time.Duration(holdMS) * time.Millisecond)
-
-	if role == proxyRoleCrash {
-		logProxyEvent(fmt.Sprintf("CRASHING  pid=%-6d SIGKILL while serving", os.Getpid()))
-		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
-	}
-
-	_ = os.Remove(sentinel)
-	_ = lock.Unlock()
 	logProxyEvent(fmt.Sprintf("STOPPED   pid=%-6d", os.Getpid()))
 	os.Exit(0)
 }
@@ -200,25 +208,32 @@ func TestIntegration_ProxyLock_OnlyOneProxyStarts(t *testing.T) {
 	assert.Zero(t, env.count(t, "OVERLAP"), "two proxies were serving at once")
 }
 
-// The wrapper asks proxyOwner whether to spawn, so it has to see a running proxy
-// and the pid it advertised.
-func TestIntegration_ProxyLock_RunningProxyIsVisibleWithItsPid(t *testing.T) {
+// What the wrapper actually runs: with a proxy serving, startProxy must return
+// without spawning anything.
+func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
 	env := newProxyEnv(t)
 	osProxy := utils.DefaultOsProxy{}
 
-	cmd := env.start(t, proxyRoleStart, 2000)
+	child := env.start(t, proxyRoleStart, 3000)
 	require.Eventually(t, func() bool {
 		return env.count(t, "SERVING") == 1
 	}, 5*time.Second, 10*time.Millisecond, "waiting for the child to take the singleton")
 
 	pid, running := proxyOwner(osProxy)
-	assert.True(t, running, "a serving proxy must be visible to the wrapper")
-	assert.Equal(t, cmd.Process.Pid, pid, "and it must be identifiable")
+	require.True(t, running, "a serving proxy must be visible to the wrapper")
+	require.Equal(t, child.Process.Pid, pid, "and identifiable, so the log names the right process")
 
-	_, err := acquireProxyLock(osProxy)
-	require.ErrorIs(t, err, ErrProxyAlreadyRunning)
+	spawns := 0
+	spawning := func(ctx context.Context, name string, args ...string) utils.Command {
+		spawns++
 
-	require.NoError(t, cmd.Wait())
+		return utils.DefaultCommandFunc()(ctx, name, args...)
+	}
+
+	require.NoError(t, startProxy(log.NewLogger(), osProxy, spawning, nil))
+	assert.Zero(t, spawns, "the wrapper must not start a second proxy while one is serving")
+
+	require.NoError(t, child.Wait())
 	_, running = proxyOwner(osProxy)
 	assert.False(t, running, "once it stops, the singleton is free")
 }
