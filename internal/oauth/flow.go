@@ -14,13 +14,6 @@ const loginTimeout = 5 * time.Minute
 // The credential helper is spawned N-way parallel by Bazel and WorkOS rotates
 // the refresh token on every grant, so two processes spending the same one
 // invalidates the login. refreshLockWait stays under the helper's ctx budget.
-const (
-	refreshLockTTL = 30 * time.Second
-	// Far above two HTTP round-trips: breaking a live-looking marker open concedes
-	// a possible double refresh, so only a recycled pid should ever reach it.
-	refreshLockMaxHold = 10 * time.Minute
-)
-
 // Shortened by tests so they don't wait out a real contended lock.
 var refreshLockWait = 4 * time.Second //nolint:gochecknoglobals
 

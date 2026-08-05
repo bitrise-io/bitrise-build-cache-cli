@@ -252,8 +252,8 @@ func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
 			RepoURL:     "git@example.com:org/repo.git",
 			CommitEmail: "dev@example.com",
 		},
-		Datacenter:     "iad1",
-		ExternalAppID:  "ext-app",
+		Datacenter:      "iad1",
+		ExternalAppID:   "ext-app",
 		ExternalBuildID: "ext-build",
 	}
 

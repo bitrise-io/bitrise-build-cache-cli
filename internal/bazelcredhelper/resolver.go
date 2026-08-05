@@ -8,7 +8,6 @@ import (
 	"time"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filelock"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -73,7 +72,7 @@ func warnStale(w io.Writer, err error) {
 	}
 
 	p, pathErr := paths.Default()
-	if pathErr == nil && !filelock.ClaimCooldown(p.BazelCredHelperWarnFile(), warnCooldown) {
+	if pathErr == nil && !claimCooldown(p.BazelCredHelperWarnFile(), warnCooldown) {
 		return
 	}
 

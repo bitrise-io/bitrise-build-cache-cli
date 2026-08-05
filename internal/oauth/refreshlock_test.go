@@ -5,11 +5,11 @@ package oauth
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
@@ -126,12 +126,17 @@ func TestEnsureFresh_LockWaitFailed_ReloadsBeforeSpendingTheRefreshToken(t *test
 		RefreshToken: "refresh-0", WorkspaceID: "ws",
 	}))
 
-	// A live marker nothing will release, so the wait can only time out.
+	// Hold the real lock for the whole test, so the wait can only time out. Separate
+	// open file descriptions conflict even inside one process, which is what lets the
+	// test stand in for the other helper.
 	p, err := paths.Default()
 	require.NoError(t, err)
-	lock := p.AuthRefreshLockFile()
-	require.NoError(t, os.MkdirAll(filepath.Dir(lock), 0o700))
-	require.NoError(t, os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(p.AuthRefreshLockFile()), 0o700))
+	holder := flock.New(p.AuthRefreshLockFile())
+	held, err := holder.TryLock()
+	require.NoError(t, err)
+	require.True(t, held, "the test needs to be the one holding it")
+	defer func() { _ = holder.Unlock() }()
 
 	original := refreshLockWait
 	refreshLockWait = 300 * time.Millisecond
