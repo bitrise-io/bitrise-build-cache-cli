@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -14,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
@@ -34,11 +37,37 @@ type staticAuthSource struct {
 
 func (s staticAuthSource) Get() common.CacheAuthConfig { return s.cfg }
 
+// poolEntry binds one gRPC connection to its per-channel semaphore and the
+// three sub-clients dialed on top of it. The semaphore caps concurrent RPCs on
+// this channel so we can never open more streams than HTTP/2 supports without
+// waiting on the transport itself.
+type poolEntry struct {
+	conn               *grpc.ClientConn // nil when test-injected (see NewClient).
+	sem                chan struct{}    // nil disables throttling (test-injected mode).
+	bitriseKVClient    kv_storage.KVStorageClient
+	capabilitiesClient remoteexecution.CapabilitiesClient
+	casClient          remoteexecution.ContentAddressableStorageClient
+}
+
+func (e *poolEntry) acquire() {
+	if e.sem == nil {
+		return
+	}
+
+	e.sem <- struct{}{}
+}
+
+func (e *poolEntry) release() {
+	if e.sem == nil {
+		return
+	}
+
+	<-e.sem
+}
+
 type Client struct {
-	conn                *grpc.ClientConn // nil when test-injected via BitriseKVClient / CapabilitiesClient.
-	bitriseKVClient     kv_storage.KVStorageClient
-	capabilitiesClient  remoteexecution.CapabilitiesClient
-	casClient           remoteexecution.ContentAddressableStorageClient
+	pool                []*poolEntry
+	poolCursor          atomic.Uint64
 	clientName          string
 	authSource          AuthSource
 	cacheConfigMetadata common.CacheConfigMetadata
@@ -50,6 +79,15 @@ type Client struct {
 	downloadRetryWait   time.Duration
 	uploadRetry         uint
 	uploadRetryWait     time.Duration
+}
+
+// pickEntry round-robins across pool entries. Callers must acquire the entry's
+// semaphore before use and release it once the RPC (including any streaming
+// body) has drained.
+func (c *Client) pickEntry() *poolEntry {
+	i := c.poolCursor.Add(1) - 1
+
+	return c.pool[i%uint64(len(c.pool))]
 }
 
 type NewClientParams struct {
@@ -72,25 +110,6 @@ type NewClientParams struct {
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
-	creds := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
-	if p.UseInsecure {
-		creds = insecure.NewCredentials()
-	}
-
-	conn, err := grpc.NewClient(p.Host, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", p.Host, err)
-	}
-
-	bitriseKVClient := p.BitriseKVClient
-	if bitriseKVClient == nil {
-		bitriseKVClient = kv_storage.NewKVStorageClient(conn)
-	}
-	capabilitiesClient := p.CapabilitiesClient
-	if capabilitiesClient == nil {
-		capabilitiesClient = remoteexecution.NewCapabilitiesClient(conn)
-	}
-
 	if p.DownloadRetry == 0 {
 		p.DownloadRetry = 3
 	}
@@ -109,11 +128,13 @@ func NewClient(p NewClientParams) (*Client, error) {
 		authSource = staticAuthSource{cfg: p.AuthConfig}
 	}
 
+	pool, err := buildPool(p)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Client{
-		conn:                conn,
-		bitriseKVClient:     bitriseKVClient,
-		capabilitiesClient:  capabilitiesClient,
-		casClient:           remoteexecution.NewContentAddressableStorageClient(conn),
+		pool:                pool,
 		clientName:          p.ClientName,
 		authSource:          authSource,
 		logger:              p.Logger,
@@ -127,22 +148,82 @@ func NewClient(p NewClientParams) (*Client, error) {
 	}, nil
 }
 
+// buildPool dials one gRPC connection per pool slot, each with its own
+// per-channel semaphore. Sizing mirrors the Gradle plugin's ClientBalancer:
+// numChannels = max(2, NumCPU/6), perChannelLimit = NumCPU.
+//
+// If callers inject a stub (BitriseKVClient or CapabilitiesClient) the pool
+// collapses to a single, no-throttle entry that hands the stub straight back —
+// keeps every test that only wires one mock working unchanged.
+func buildPool(p NewClientParams) ([]*poolEntry, error) {
+	if p.BitriseKVClient != nil || p.CapabilitiesClient != nil {
+		return []*poolEntry{{
+			bitriseKVClient:    p.BitriseKVClient,
+			capabilitiesClient: p.CapabilitiesClient,
+		}}, nil
+	}
+
+	creds := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	if p.UseInsecure {
+		creds = insecure.NewCredentials()
+	}
+
+	kaParams := keepalive.ClientParameters{
+		Time:                30 * time.Second,
+		Timeout:             10 * time.Second,
+		PermitWithoutStream: true,
+	}
+
+	numChannels := max(2, runtime.NumCPU()/6)
+	perChannelLimit := runtime.NumCPU()
+
+	pool := make([]*poolEntry, 0, numChannels)
+	for range numChannels {
+		conn, err := grpc.NewClient(p.Host,
+			grpc.WithTransportCredentials(creds),
+			grpc.WithKeepaliveParams(kaParams),
+		)
+		if err != nil {
+			// unwind partial pool so we don't leak conns
+			for _, e := range pool {
+				_ = e.conn.Close()
+			}
+
+			return nil, fmt.Errorf("dial %s: %w", p.Host, err)
+		}
+
+		pool = append(pool, &poolEntry{
+			conn:               conn,
+			sem:                make(chan struct{}, perChannelLimit),
+			bitriseKVClient:    kv_storage.NewKVStorageClient(conn),
+			capabilitiesClient: remoteexecution.NewCapabilitiesClient(conn),
+			casClient:          remoteexecution.NewContentAddressableStorageClient(conn),
+		})
+	}
+
+	return pool, nil
+}
+
 func (c *Client) SetLogger(logger log.Logger) {
 	c.logger = logger
 }
 
-// Close releases the gRPC connection. Safe to call when the client was built
-// with injected stubs (no conn) — returns nil in that case.
+// Close releases every gRPC connection in the pool. Safe to call when the
+// client was built with injected stubs — pool entries without a conn are
+// skipped.
 func (c *Client) Close() error {
-	if c.conn == nil {
-		return nil
+	var firstErr error
+	for _, e := range c.pool {
+		if e.conn == nil {
+			continue
+		}
+
+		if err := e.conn.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("close kv grpc conn: %w", err)
+		}
 	}
 
-	if err := c.conn.Close(); err != nil {
-		return fmt.Errorf("close kv grpc conn: %w", err)
-	}
-
-	return nil
+	return firstErr
 }
 
 type writer struct {
@@ -151,6 +232,8 @@ type writer struct {
 	offset       int64
 	fileSize     int64
 	response     *bytestream.WriteResponse
+	release      func() // nil-safe; releases the pool-entry semaphore once the stream drains
+	releaseOnce  sync.Once
 }
 
 func (w *writer) Response() *bytestream.WriteResponse {
@@ -176,7 +259,17 @@ func (w *writer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (w *writer) doRelease() {
+	w.releaseOnce.Do(func() {
+		if w.release != nil {
+			w.release()
+		}
+	})
+}
+
 func (w *writer) Close() error {
+	defer w.doRelease()
+
 	var err error
 	w.response, err = w.stream.CloseAndRecv()
 	if err != nil {
@@ -193,6 +286,8 @@ type reader struct {
 	buf      bytes.Buffer
 
 	metadataReady chan struct{}
+	release       func() // nil-safe; releases the pool-entry semaphore on Close
+	releaseOnce   sync.Once
 }
 
 func (r *reader) Read(p []byte) (int, error) {
@@ -275,6 +370,11 @@ func (r *reader) Metadata() map[string]string {
 
 func (r *reader) Close() error {
 	r.buf.Reset()
+	r.releaseOnce.Do(func() {
+		if r.release != nil {
+			r.release()
+		}
+	})
 
 	return nil
 }
