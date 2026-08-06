@@ -16,17 +16,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
 )
 
-// buildPool with no injected stubs dials one entry per channel using
+// buildChannels with no injected stubs dials one entry per channel using
 // max(2, NumCPU/6). Each entry gets a throttling semaphore sized to NumCPU.
 func TestBuildPool_DefaultSizing(t *testing.T) {
-	pool, err := buildPool(NewClientParams{
+	channels, err := buildChannels(NewClientParams{
 		UseInsecure: true,
 		Host:        "localhost:0",
 		AuthConfig:  common.CacheAuthConfig{AuthToken: "tok"},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, e := range pool {
+		for _, e := range channels {
 			if e.conn != nil {
 				_ = e.conn.Close()
 			}
@@ -34,8 +34,8 @@ func TestBuildPool_DefaultSizing(t *testing.T) {
 	})
 
 	wantChannels := max(2, runtime.NumCPU()/6)
-	assert.Len(t, pool, wantChannels)
-	for _, e := range pool {
+	assert.Len(t, channels, wantChannels)
+	for _, e := range channels {
 		require.NotNil(t, e.conn)
 		require.NotNil(t, e.sem)
 		assert.Equal(t, runtime.NumCPU(), cap(e.sem))
@@ -45,8 +45,8 @@ func TestBuildPool_DefaultSizing(t *testing.T) {
 	}
 }
 
-// pickEntry hands entries out round-robin across concurrent callers.
-// Over 1000 evenly-distributed picks on 4 goroutines with a 4-entry pool
+// pickChannel hands entries out round-robin across concurrent callers.
+// Over 1000 evenly-distributed picks on 4 goroutines with a 4-entry channels
 // each entry should see ~250 hits.
 func TestClient_PickEntry_RoundRobinConcurrent(t *testing.T) {
 	const (
@@ -54,11 +54,11 @@ func TestClient_PickEntry_RoundRobinConcurrent(t *testing.T) {
 		callsTotal = 1000
 		goroutines = 4
 	)
-	pool := make([]*poolEntry, poolSize)
-	for i := range pool {
-		pool[i] = &poolEntry{}
+	channels := make([]*channel, poolSize)
+	for i := range channels {
+		channels[i] = &channel{}
 	}
-	c := &Client{pool: pool}
+	c := &Client{channels: channels}
 
 	counts := make([]atomic.Int64, poolSize)
 	callsPerG := callsTotal / goroutines
@@ -69,9 +69,9 @@ func TestClient_PickEntry_RoundRobinConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range callsPerG {
-				e := c.pickEntry()
-				for i := range pool {
-					if pool[i] == e {
+				e := c.pickChannel()
+				for i := range channels {
+					if channels[i] == e {
 						counts[i].Add(1)
 
 						break
@@ -89,19 +89,19 @@ func TestClient_PickEntry_RoundRobinConcurrent(t *testing.T) {
 	}
 }
 
-// Injecting BitriseKVClient (or CapabilitiesClient) collapses the pool to one
-// entry with no semaphore, so pickEntry never blocks — even under load that
+// Injecting BitriseKVClient (or CapabilitiesClient) collapses the channels to one
+// entry with no semaphore, so pickChannel never blocks — even under load that
 // would otherwise exhaust perChannelLimit.
 func TestBuildPool_InjectedStubIsUnthrottled(t *testing.T) {
-	pool, err := buildPool(NewClientParams{
+	channels, err := buildChannels(NewClientParams{
 		BitriseKVClient: &kvStubClient{},
 	})
 	require.NoError(t, err)
-	require.Len(t, pool, 1)
-	assert.Nil(t, pool[0].sem)
-	assert.Nil(t, pool[0].conn)
+	require.Len(t, channels, 1)
+	assert.Nil(t, channels[0].sem)
+	assert.Nil(t, channels[0].conn)
 
-	c := &Client{pool: pool}
+	c := &Client{channels: channels}
 
 	// Many concurrent picks + acquires — the nil sem short-circuits, none block.
 	var wg sync.WaitGroup
@@ -109,7 +109,7 @@ func TestBuildPool_InjectedStubIsUnthrottled(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			e := c.pickEntry()
+			e := c.pickChannel()
 			e.acquire()
 			e.release()
 		}()
@@ -117,19 +117,19 @@ func TestBuildPool_InjectedStubIsUnthrottled(t *testing.T) {
 	wg.Wait()
 }
 
-// Minimal stub to satisfy the non-nil check in buildPool without pulling in moq.
+// Minimal stub to satisfy the non-nil check in buildChannels without pulling in moq.
 type kvStubClient struct {
 	kv_storage.KVStorageClient
 }
 
-// Ensure the capabilities-only injection path also collapses the pool.
+// Ensure the capabilities-only injection path also collapses the channels.
 func TestBuildPool_InjectedCapabilitiesStubOnly(t *testing.T) {
-	pool, err := buildPool(NewClientParams{
+	channels, err := buildChannels(NewClientParams{
 		CapabilitiesClient: capStubClient{},
 	})
 	require.NoError(t, err)
-	require.Len(t, pool, 1)
-	assert.Nil(t, pool[0].sem)
+	require.Len(t, channels, 1)
+	assert.Nil(t, channels[0].sem)
 }
 
 type capStubClient struct {
