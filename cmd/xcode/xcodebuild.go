@@ -31,7 +31,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -937,9 +936,7 @@ func startProxy(
 	commandFunc utils.CommandFunc,
 	_ func(pid int, signum syscall.Signal),
 ) error {
-	pidFilePth := xcelerate.PathFor(osProxy, paths.ProxyPidFileName)
-
-	if pid, alive := proxypid.Read(osProxy, pidFilePth, nil); alive {
+	if pid, running := proxyOwner(osProxy); running {
 		logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
 		return nil

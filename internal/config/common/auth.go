@@ -56,6 +56,10 @@ const (
 	AuthSourceMultiplatform
 )
 
+func (s AuthSource) StoreManaged() bool {
+	return s == AuthSourceKeychain || s == AuthSourceFile
+}
+
 // GetKeychainCredentials returns the credentials stored in the OS keychain.
 // Bool is true only when both AuthToken and WorkspaceID are populated.
 func GetKeychainCredentials() (CacheAuthConfig, bool) {

@@ -68,6 +68,10 @@ const (
 
 	enrichmentHealthFilename = "health.json"
 
+	authRefreshLockFilename = "auth-refresh.lock"
+
+	bazelCredHelperWarnFilename = "bazel-credhelper-warned" //nolint:gosec // marker filename, not a credential
+
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
 	bitriseBinSubdir = "bin"
 
@@ -125,6 +129,14 @@ func (p Paths) StateDir() string {
 // StateFile returns the absolute path of a file under StateDir.
 func (p Paths) StateFile(name string) string {
 	return filepath.Join(p.StateDir(), name)
+}
+
+func (p Paths) AuthRefreshLockFile() string {
+	return p.StateFile(authRefreshLockFilename)
+}
+
+func (p Paths) BazelCredHelperWarnFile() string {
+	return p.StateFile(bazelCredHelperWarnFilename)
 }
 
 // LaunchAgentsDir is the absolute path of the per-user macOS LaunchAgents dir.

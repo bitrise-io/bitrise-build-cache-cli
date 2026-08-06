@@ -1,0 +1,190 @@
+//go:build unit
+
+package bazelcredhelper
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+)
+
+// Keeps a developer machine's real credentials out of the test.
+func isolate(t *testing.T) {
+	t.Helper()
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+}
+
+func useFileStore(t *testing.T) {
+	t.Helper()
+	keyring.MockInitWithError(keyring.ErrNotFound)
+	t.Setenv("HOME", t.TempDir())
+}
+
+func TestExpiresLead_StaysBelowRefreshSkew(t *testing.T) {
+	assert.Less(t, expiresLead, oauth.RefreshSkew)
+}
+
+func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
+	isolate(t)
+	envs := map[string]string{
+		configcommon.EnvAuthToken:   "env-token",
+		configcommon.EnvWorkspaceID: "ws-1",
+	}
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		t.Fatal("env credentials have no refresh token; EnsureFresh must not be called")
+
+		return oauth.Credentials{}, nil
+	}
+
+	got, err := newResolver(envs, nil, ensureFresh)(t.Context())
+
+	require.NoError(t, err)
+	assert.Equal(t, "env-token", got.Token)
+	assert.True(t, got.Expiry.IsZero(), "an unknown lifetime must omit the cache hint")
+}
+
+// A static PAT has no refresh token, so nothing can renew it.
+func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
+	isolate(t)
+	seedLegacyAuthConfig(t, "bitpat_legacy", "ws-legacy")
+
+	warn := &bytes.Buffer{}
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		t.Fatal("the legacy authConfig source is not store-managed; EnsureFresh must not be called")
+
+		return oauth.Credentials{}, nil
+	}
+
+	got, err := newResolver(map[string]string{}, warn, ensureFresh)(t.Context())
+
+	require.NoError(t, err, "a token we cannot refresh is still better than failing the RPC")
+	assert.Equal(t, "bitpat_legacy", got.Token)
+	assert.Empty(t, warn.String(), "nothing was attempted, so there is nothing to warn about")
+}
+
+func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
+	isolate(t)
+	seedKeychain(t, "stale-pat", "ws-1")
+
+	patExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		return oauth.Credentials{PAT: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
+	}
+
+	got, err := newResolver(map[string]string{}, nil, ensureFresh)(t.Context())
+
+	require.NoError(t, err)
+	assert.Equal(t, "fresh-pat", got.Token)
+	assert.True(t, got.Expiry.Equal(patExpiry.Add(-expiresLead)), "got %s, want %s", got.Expiry, patExpiry.Add(-expiresLead))
+}
+
+// The no-keychain regression: a file-stored credential must take the refresh path.
+func TestResolver_FileStore_TakesRefreshPath(t *testing.T) {
+	useFileStore(t)
+	require.NoError(t, oauth.SaveTo(store.NewFile(), oauth.Credentials{
+		PAT: "stale-pat", PATExpiry: time.Now().Add(-time.Minute),
+		RefreshToken: "r", WorkspaceID: "ws-1",
+	}))
+
+	called := false
+	patExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		called = true
+
+		return oauth.Credentials{PAT: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
+	}
+
+	got, err := newResolver(map[string]string{}, nil, ensureFresh)(t.Context())
+
+	require.NoError(t, err)
+	assert.True(t, called, "a file-stored credential must be refreshed, not served verbatim")
+	assert.Equal(t, "fresh-pat", got.Token)
+}
+
+func TestResolver_RefreshFails_ServesStoredToken_WithShortExpiry(t *testing.T) {
+	isolate(t)
+	seedKeychain(t, "stored-pat", "ws-1")
+
+	warn := &bytes.Buffer{}
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		return oauth.Credentials{}, errors.New("dial tcp: connection refused")
+	}
+
+	before := time.Now()
+	got, err := newResolver(map[string]string{}, warn, ensureFresh)(t.Context())
+
+	require.NoError(t, err, "a transient refresh failure must not fail the RPC")
+	assert.Equal(t, "stored-pat", got.Token)
+	assert.WithinRange(t, got.Expiry, before.Add(staleCacheHint), time.Now().Add(staleCacheHint))
+	assert.Empty(t, warn.String(), "a transient error is not actionable; stay quiet")
+}
+
+func TestResolver_LoginRequired_WarnsOnce(t *testing.T) {
+	isolate(t)
+	seedKeychain(t, "stored-pat", "ws-1")
+
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		return oauth.Credentials{}, oauth.ErrLoginRequired
+	}
+
+	warn := &bytes.Buffer{}
+	resolve := newResolver(map[string]string{}, warn, ensureFresh)
+
+	got, err := resolve(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "stored-pat", got.Token)
+
+	first := warn.String()
+	assert.Contains(t, first, "auth login")
+	assert.Equal(t, 1, strings.Count(first, "\n"), "Bazel prints helper stderr per failing RPC; keep it to one line")
+
+	// Every later spawn in the same build must stay quiet.
+	for range 5 {
+		_, err = resolve(t.Context())
+		require.NoError(t, err)
+	}
+	assert.Equal(t, first, warn.String(), "the warning is rate-limited across spawns")
+}
+
+func TestResolver_NoCredentialsAnywhere_ReturnsError(t *testing.T) {
+	isolate(t)
+
+	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+		return oauth.Credentials{}, oauth.ErrNotLoggedIn
+	}
+
+	_, err := newResolver(map[string]string{}, nil, ensureFresh)(t.Context())
+
+	require.Error(t, err, "with nothing stored there is no token to fall back to")
+}
+
+func seedKeychain(t *testing.T, token, workspaceID string) {
+	t.Helper()
+	require.NoError(t, store.NewKeychain().Save(keychain.Credentials{
+		AuthToken: token, WorkspaceID: workspaceID,
+		PATExpiry: time.Now().Add(-time.Minute), RefreshToken: "r",
+	}))
+}
+
+func seedLegacyAuthConfig(t *testing.T, token, workspaceID string) {
+	t.Helper()
+	cfg := multiplatformconfig.Config{
+		AuthConfig: configcommon.CacheAuthConfig{AuthToken: token, WorkspaceID: workspaceID},
+	}
+	require.NoError(t, cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}))
+}

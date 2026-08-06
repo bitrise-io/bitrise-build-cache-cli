@@ -6,12 +6,13 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// RefreshFunc plugs a live credential source (e.g. oauth.Config.EnsureFresh) into ExpiryAwareResolver without pulling internal/oauth into this package (would cycle via internal/auth/store).
+// RefreshFunc is a func type rather than an interface because importing
+// internal/oauth here would cycle via internal/auth/store.
 type RefreshFunc func(ctx context.Context) (pat string, workspaceID string, err error)
 
 type resolveFunc func(envs map[string]string) (CacheAuthConfig, AuthSource, error)
 
-// ExpiryAwareResolver routes OAuth-managed keychain reads through refreshFn (expiry-aware refresh + rotation) and falls back to plain ResolveAuthConfig for env / file / multiplatform / JWT sources.
+// ExpiryAwareResolver refreshes store-managed credentials before serving them.
 type ExpiryAwareResolver struct {
 	ctx       context.Context //nolint:containedctx // resolver is called per RPC without a fresh ctx
 	envs      map[string]string
@@ -43,7 +44,7 @@ func (r *ExpiryAwareResolver) Get() CacheAuthConfig {
 
 		return cfg
 	}
-	if source != AuthSourceKeychain || r.refreshFn == nil {
+	if !source.StoreManaged() || r.refreshFn == nil {
 		return cfg
 	}
 

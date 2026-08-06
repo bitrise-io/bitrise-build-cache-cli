@@ -22,7 +22,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/proxypid"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -96,48 +95,38 @@ var (
 
 			initialLogger.TInfof("Xcelerate Proxy")
 
-			release, err := proxypid.Acquire(osProxy, xcelerate.PathFor(osProxy, paths.ProxyPidFileName), nil)
-			if err != nil {
-				initialLogger.Infof("Skipping proxy startup: %s", err)
-
-				return nil
-			}
-			defer func() {
-				if err := release(); err != nil {
-					initialLogger.Warnf("Failed to release proxy pid lock: %s", err)
+			return withProxySingleton(osProxy, initialLogger, func() error {
+				if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("failed to remove socket file, error: %w", err)
 				}
-			}()
 
-			if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("failed to remove socket file, error: %w", err)
-			}
+				initialLogger.TInfof("socketPath: %s", config.ProxySocketPath)
 
-			initialLogger.TInfof("socketPath: %s", config.ProxySocketPath)
+				signalCtx, stopSignals := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
+				defer stopSignals()
 
-			signalCtx, stopSignals := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
-			defer stopSignals()
+				listener, err := (&net.ListenConfig{}).Listen(signalCtx, "unix", config.ProxySocketPath)
+				if err != nil {
+					return fmt.Errorf("failed to listen on unix socket: %w", err)
+				}
+				defer listener.Close()
 
-			listener, err := (&net.ListenConfig{}).Listen(signalCtx, "unix", config.ProxySocketPath)
-			if err != nil {
-				return fmt.Errorf("failed to listen on unix socket: %w", err)
-			}
-			defer listener.Close()
+				return StartXcodeCacheProxy(
+					signalCtx,
+					config,
+					allEnvs,
+					func(name string, v ...string) (string, error) {
+						output, err := exec.Command(name, v...).Output()
 
-			return StartXcodeCacheProxy(
-				signalCtx,
-				config,
-				allEnvs,
-				func(name string, v ...string) (string, error) {
-					output, err := exec.Command(name, v...).Output()
-
-					return string(output), err
-				},
-				nil,
-				nil,
-				listener,
-				initialLogger,
-				loggerFactory,
-			)
+						return string(output), err
+					},
+					nil,
+					nil,
+					listener,
+					initialLogger,
+					loggerFactory,
+				)
+			})
 		},
 	}
 )

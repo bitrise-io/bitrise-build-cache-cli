@@ -10,10 +10,12 @@ import (
 )
 
 // resetKeychain swaps in a fresh in-memory keychain so each test starts with no
-// stored credential and never touches the real OS keychain.
+// stored credential and never touches the real OS keychain. HOME is redirected
+// too, so the file store and the refresh lock stay inside the test's temp dir.
 func resetKeychain(t *testing.T) {
 	t.Helper()
 	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
 }
 
 func TestCredentialsStore_RoundTrip(t *testing.T) {

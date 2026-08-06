@@ -33,6 +33,10 @@ func SourceLabel(source AuthSource, isOAuthLogin bool) string {
 
 		return "OS keychain"
 	case AuthSourceFile:
+		if isOAuthLogin {
+			return "OAuth login (config file)"
+		}
+
 		return "config file (CI-safe)"
 	case AuthSourceMultiplatform:
 		return "multiplatform config"
@@ -70,8 +74,8 @@ func (d AuthDescription) Detail() string {
 	return out
 }
 
-// DescribeResolved describes a resolved credential, reading the OS keychain for
-// the OAuth-login + expiry distinction when the source is the keychain.
+// DescribeResolved reads the backing store to tell an OAuth login (with a PAT
+// expiry) apart from a manual `auth set`.
 func DescribeResolved(cfg CacheAuthConfig, source AuthSource) AuthDescription {
 	return DescribeResolvedWith(cfg, source, keychain.New())
 }
@@ -79,9 +83,14 @@ func DescribeResolved(cfg CacheAuthConfig, source AuthSource) AuthDescription {
 // DescribeResolvedWith is DescribeResolved with an injectable keychain loader
 // (for the doctor's injected backend and for tests).
 func DescribeResolvedWith(cfg CacheAuthConfig, source AuthSource, loader AuthLoader) AuthDescription {
-	if source == AuthSourceKeychain && loader != nil {
+	switch {
+	case source == AuthSourceKeychain && loader != nil:
 		if creds, err := loader.Load(); err == nil {
-			return DescribeKeychainCredentials(creds)
+			return DescribeStoredCredentials(source, creds)
+		}
+	case source == AuthSourceFile && fileCredentialsReader != nil:
+		if creds, ok := fileCredentialsReader(); ok {
+			return DescribeStoredCredentials(source, creds)
 		}
 	}
 
@@ -94,10 +103,8 @@ func DescribeResolvedWith(cfg CacheAuthConfig, source AuthSource, loader AuthLoa
 	return d
 }
 
-// DescribeKeychainCredentials describes an already-loaded keychain credential,
-// distinguishing an OAuth login (with PAT expiry) from a manual `auth set`.
-func DescribeKeychainCredentials(creds keychain.Credentials) AuthDescription {
-	d := AuthDescription{Source: AuthSourceKeychain, WorkspaceID: creds.WorkspaceID}
+func DescribeStoredCredentials(source AuthSource, creds keychain.Credentials) AuthDescription {
+	d := AuthDescription{Source: source, WorkspaceID: creds.WorkspaceID}
 	if creds.IsOAuthManaged() {
 		d.IsOAuthLogin = true
 		d.PATExpiry = creds.PATExpiry
