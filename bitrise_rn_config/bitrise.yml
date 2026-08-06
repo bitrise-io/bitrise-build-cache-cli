@@ -980,7 +980,7 @@ step_bundles:
     - script:
         title: Activate react-native (Xcode)
         inputs:
-        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
+        - content: ./bitrise-build-cache-cli --debug activate react-native --gradle=false --xcode=true --cpp=false
     - script:
         title: Build
         inputs:
@@ -989,6 +989,22 @@ step_bundles:
             envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
             cd _seek
             ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
+    - script:
+        title: Assert both the RN and the nested xcodebuild gate ran their health checks
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # The nested wrapper's report reaches this log as the child's stderr.
+            # Counted rather than matched per check set, because a baseline
+            # benchmark phase legitimately changes the child's set.
+            gates=$(grep -c 'Running health checks' "$RN_CLI_LOG")
+            if [ "$gates" -lt 2 ]; then
+              echo "Expected the RN and the xcodebuild gate, found $gates ❌"
+              grep -n 'health check' "$RN_CLI_LOG" || true
+              exit 1
+            fi
+            bash "$BITRISE_SOURCE_DIR/scripts/check_pattern.sh" "$RN_CLI_LOG" 'Health check result:'
     - script:
         title: Assert CLI invocation analytics were sent
         inputs:
