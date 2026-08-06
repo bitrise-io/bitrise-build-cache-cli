@@ -438,9 +438,9 @@ func getLogDir(osProxy utils.OsProxy) (string, error) {
 		return "", fmt.Errorf("failed to get user home dir: %w", err)
 	}
 
-	logDir := fmt.Sprintf("%s/.local/state/xcelerate/logs", home)
+	logDir := paths.FromHome(home).XcelerateLogDir()
 
-	if err := osProxy.MkdirAll(logDir, 0o755); err != nil {
+	if err := paths.EnsureDir(osProxy, logDir); err != nil {
 		return "", fmt.Errorf("failed to create log dir: %w", err)
 	}
 

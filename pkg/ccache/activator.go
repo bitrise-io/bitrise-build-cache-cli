@@ -10,6 +10,7 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -115,6 +116,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
 
+	a.ensureLogDir()
+
 	mpCfg := multiplatformconfig.Config{DebugLogging: a.debugLogging}
 	store.PersistActivateCreds(a.logger, a.envs, config.AuthConfig, &mpCfg)
 	if err := mpCfg.Save(a.osProxy, a.encoderFactory); err != nil {
@@ -162,4 +165,19 @@ func addEnvVarToEnvman(
 	}
 
 	logger.TInfof("Set %s=%s via envman", key, value)
+}
+
+// ensureLogDir creates the dir the storage helper would otherwise create on its
+// first run, so the first build's health check doesn't report it as missing.
+func (a *Activator) ensureLogDir() {
+	home, err := a.osProxy.UserHomeDir()
+	if err != nil {
+		a.logger.Debugf("Could not resolve the home dir for the ccache log dir: %s", err)
+
+		return
+	}
+
+	if err := paths.EnsureDir(a.osProxy, paths.FromHome(home).CcacheLogDir()); err != nil {
+		a.logger.Debugf("Could not create the ccache log dir: %s", err)
+	}
 }
