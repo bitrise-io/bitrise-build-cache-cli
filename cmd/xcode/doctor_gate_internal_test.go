@@ -85,7 +85,7 @@ func TestXcodeDoctor_StartCheckSkipsNetworkCalls(t *testing.T) {
 	assert.True(t, (*opts)[0].SkipUpdateCheck)
 	assert.False(t, (*opts)[0].ApplyFixes, "a build must not mutate the setup")
 
-	assert.Contains(t, out.String(), msgDoctorIssuesFound)
+	assert.Contains(t, out.String(), doctorpkg.MsgGateIssuesFound)
 	assert.Contains(t, out.String(), "xcelerate-proxy: not running (no socket file)")
 }
 
@@ -152,7 +152,7 @@ func TestXcodeDoctor_ReportAtEndRepeatsStartIssues(t *testing.T) {
 	d.ReportAtEnd(context.Background(), buildOutcome{})
 
 	assert.Len(t, *opts, 1, "the end-of-build recap must not re-run the checks")
-	assert.Contains(t, out.String(), msgDoctorIssuesRecap)
+	assert.Contains(t, out.String(), doctorpkg.MsgGateIssuesRecap)
 	assert.Contains(t, out.String(), "auth: token expired")
 }
 
@@ -174,12 +174,12 @@ func TestXcodeDoctor_SaveFailureProbesBackendAndDropsStartBuffer(t *testing.T) {
 	assert.Equal(t, doctorpkg.AuthProbeCheckNames, (*opts)[1].Only)
 	assert.False(t, (*opts)[1].SkipBackendProbe, "the probe is the point of this run")
 
-	assert.Contains(t, out.String(), msgDoctorProbingAuth)
+	assert.Contains(t, out.String(), doctorpkg.MsgGateProbingAuth)
 	assert.Contains(t, out.String(), "auth-backend: unauthorized (token expired)")
 
 	out.Reset()
 	d.ReportAtEnd(context.Background(), buildOutcome{})
-	assert.NotContains(t, out.String(), msgDoctorIssuesRecap,
+	assert.NotContains(t, out.String(), doctorpkg.MsgGateIssuesRecap,
 		"the probe verdict supersedes the start-of-build report")
 	assert.NotContains(t, out.String(), "found no issues",
 		"issues were found — the recap must not claim otherwise")
@@ -245,6 +245,6 @@ func TestXcodeDoctor_SaveFailureWithHealthyAuth(t *testing.T) {
 
 	d.OnInvocationSaveFailure(context.Background())
 
-	assert.Contains(t, out.String(), msgDoctorProbeNoIssues)
-	assert.NotContains(t, out.String(), msgDoctorIssuesFound)
+	assert.Contains(t, out.String(), doctorpkg.MsgGateProbeNoIssues)
+	assert.NotContains(t, out.String(), doctorpkg.MsgGateIssuesFound)
 }

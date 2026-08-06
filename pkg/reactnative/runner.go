@@ -49,8 +49,8 @@ type RunnerParams struct {
 	DecoderFactory utils.DecoderFactory
 	// DebugLogging ORs with the on-disk multiplatform config's DebugLogging.
 	DebugLogging bool
-	// SkipDoctor disables the health checks run around the wrapped command.
-	// The --no-doctor flag and BITRISE_BUILD_CACHE_SKIP_DOCTOR do the same.
+	// SkipDoctor disables the health checks run around the wrapped command, as
+	// --no-doctor and BITRISE_BUILD_CACHE_SKIP_DOCTOR do.
 	SkipDoctor bool
 }
 
@@ -76,7 +76,7 @@ type Runner struct {
 	postRun        postRunRunner
 	ccacheConfig   *ccacheconfig.Config
 	socket         ccacheSocket
-	// doctor reports local setup problems around the run; nil disables it.
+	// doctor is nil when the health checks are opted out of.
 	doctor buildHealthReporter
 }
 
@@ -137,8 +137,7 @@ func NewRunner(params RunnerParams) *Runner {
 func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) (int, error) {
 	configcommon.LogCLIVersion(r.logger)
 
-	// The flag sits before the wrapped command, so anything after the "--"
-	// separator stays untouched — it belongs to the child.
+	// Only before the "--" separator: past it the argument is the child's.
 	for len(args) > 0 && args[0] == doctorpkg.NoDoctorFlag {
 		r.doctor, args = nil, args[1:]
 	}
@@ -174,7 +173,7 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 		r.zeroCcacheStats(ctx)
 	}
 
-	// After ensureHelper: a helper this run started must not be reported as down.
+	// After ensureHelper, so a helper this run started is not reported as down.
 	if r.doctor != nil {
 		r.doctor.CheckAtStart(ctx)
 	}

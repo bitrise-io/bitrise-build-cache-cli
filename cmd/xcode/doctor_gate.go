@@ -3,7 +3,6 @@ package xcode
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -16,14 +15,6 @@ const (
 	NoDoctorFlag  = doctorpkg.NoDoctorFlag
 	EnvSkipDoctor = doctorpkg.EnvSkipDoctor
 
-	doctorLocalTimeout = 5 * time.Second
-	doctorProbeTimeout = 15 * time.Second
-
-	msgDoctorIssuesFound     = "Bitrise Build Cache health check found issues that can affect this build:"
-	msgDoctorRepairHint      = "Run `bitrise-build-cache doctor --fix --interactive` to repair."
-	msgDoctorIssuesRecap     = "Reminder — the health check at the start of this build reported:"
-	msgDoctorProbingAuth     = "Checking whether an expired auth token caused the failure above..."
-	msgDoctorProbeNoIssues   = "Auth looks healthy, so the failure above is not a token problem."
 	msgDoctorCacheErrors     = "The Bitrise cache reported %d error(s) during this build, so some files compiled locally instead."
 	msgDoctorCacheStopped    = "The Bitrise cache stopped responding during this build, so nothing was cached after that."
 	msgDoctorCacheErrorsHint = "Run `bitrise-build-cache doctor` to check the setup."
@@ -58,11 +49,9 @@ type xcodeDoctor struct {
 	OsProxy      utils.OsProxy
 	RunChecks    func(ctx context.Context, opts doctorpkg.Options) doctorpkg.Report
 
-	startIssues []string
+	gate *doctorpkg.Gate
 	// proxyErrOffset is the shared error log's size at build start; past it is ours.
 	proxyErrOffset int64
-	// probeReported keeps the end-of-build recap from repeating the probe's report.
-	probeReported bool
 }
 
 func (d *xcodeDoctor) startCheckNames() []string {
@@ -73,92 +62,31 @@ func (d *xcodeDoctor) startCheckNames() []string {
 	return doctorpkg.XcodeAnalyticsOnlyCheckNames
 }
 
-// CheckAtStart reports the issues that could degrade or break this build. The
-// backend probe is deliberately left out — a network round-trip per build is too
-// much overhead; OnInvocationSaveFailure covers the expired-token case instead.
 func (d *xcodeDoctor) CheckAtStart(ctx context.Context) {
-	report := d.run(ctx, doctorLocalTimeout, doctorpkg.Options{
-		Only:             d.startCheckNames(),
-		SkipUpdateCheck:  true,
-		SkipBackendProbe: true,
-	})
-
+	d.doctorGate().CheckAtStart(ctx, d.startCheckNames())
 	d.markProxyErrLog()
-
-	d.startIssues = doctorpkg.IssueLines(report)
-	if len(d.startIssues) == 0 {
-		return
-	}
-
-	d.print(msgDoctorIssuesFound, d.startIssues)
 }
 
-// ReportAtEnd repeats the start-of-build issues, thousands of xcodebuild log
-// lines back by now, and reports what no setup check can see.
+// ReportAtEnd reports what no setup check can see, then repeats the
+// start-of-build issues, thousands of xcodebuild log lines back by now.
 func (d *xcodeDoctor) ReportAtEnd(_ context.Context, outcome buildOutcome) {
 	if d.reportCacheErrors(outcome) {
 		d.Logger.Warnf(msgDoctorCacheErrorsHint)
 	}
 
-	switch {
-	case d.probeReported:
-		d.Logger.Debugf("Health issues were reported by the auth check above; not repeating them")
-	case len(d.startIssues) == 0:
-		d.Logger.Debugf("Health check found no issues at the start of this build")
-	default:
-		d.print(msgDoctorIssuesRecap, d.startIssues)
-	}
+	d.doctorGate().Recap()
 }
 
-// OnInvocationSaveFailure runs the backend probe an expired token would fail, so
-// its verdict supersedes the buffered start-of-build report.
 func (d *xcodeDoctor) OnInvocationSaveFailure(ctx context.Context) {
-	d.startIssues, d.probeReported = nil, true
-
-	d.Logger.TInfof(msgDoctorProbingAuth)
-
-	report := d.run(ctx, doctorProbeTimeout, doctorpkg.Options{
-		Only:            doctorpkg.AuthProbeCheckNames,
-		SkipUpdateCheck: true,
-	})
-
-	issues := doctorpkg.IssueLines(report)
-	if len(issues) == 0 {
-		d.Logger.TInfof(msgDoctorProbeNoIssues)
-
-		return
-	}
-
-	d.print(msgDoctorIssuesFound, issues)
+	d.doctorGate().ProbeAuth(ctx)
 }
 
-// run diagnoses and always debug-logs the full report, so a build log shows the
-// checks ran even when they all passed.
-func (d *xcodeDoctor) run(ctx context.Context, timeout time.Duration, opts doctorpkg.Options) doctorpkg.Report {
-	d.Logger.Debugf("Running health checks %v (backend probe skipped: %t)", opts.Only, opts.SkipBackendProbe)
-
-	report := d.diagnose(ctx, timeout, opts)
-
-	for _, l := range doctorpkg.Lines(report.Items) {
-		d.Logger.Debugf("  %s", l)
-	}
-	d.Logger.Debugf("Health check result: %s", doctorpkg.EffectiveOverall(report))
-
-	return report
-}
-
-func (d *xcodeDoctor) diagnose(ctx context.Context, timeout time.Duration, opts doctorpkg.Options) doctorpkg.Report {
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	if d.RunChecks != nil {
-		return d.RunChecks(runCtx, opts)
+func (d *xcodeDoctor) doctorGate() *doctorpkg.Gate {
+	if d.gate == nil {
+		d.gate = &doctorpkg.Gate{Logger: d.Logger, Debug: d.Debug, RunChecks: d.RunChecks}
 	}
 
-	doc := doctorpkg.NewDoctor()
-	doc.Debug = d.Debug
-
-	return doc.Run(runCtx, opts)
+	return d.gate
 }
 
 func (d *xcodeDoctor) osProxy() utils.OsProxy {
@@ -229,12 +157,4 @@ func (d *xcodeDoctor) logCacheErrorDetail(outcome buildOutcome) {
 			}
 		}
 	}
-}
-
-func (d *xcodeDoctor) print(header string, lines []string) {
-	d.Logger.Warnf(header)
-	for _, l := range lines {
-		d.Logger.Warnf("  %s", l)
-	}
-	d.Logger.Warnf(msgDoctorRepairHint)
 }

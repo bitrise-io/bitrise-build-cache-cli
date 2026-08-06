@@ -13,11 +13,9 @@ var (
 	// none is started, so reporting it as down is noise. Auth still gates the PUT.
 	XcodeAnalyticsOnlyCheckNames = []string{"auth", "xcelerate-enrichment", "log-dirs"}
 
-	// ReactNativeCheckNames are the checks whose outcome can affect a wrapped
-	// React Native command. It drives Gradle, xcodebuild and ccache, so the
-	// per-tool checks are all included — each skips itself when its tool isn't
-	// activated. xcelerate-proxy is left out: the nested xcodebuild wrapper
-	// starts it later, so it is legitimately down here.
+	// ReactNativeCheckNames covers all three build tools RN drives — each check
+	// skips itself when its tool isn't activated. xcelerate-proxy is left out:
+	// the nested xcodebuild wrapper starts it later, so it is down here by design.
 	ReactNativeCheckNames = []string{
 		"auth", "xcelerate-wrapper-path", "xcelerate-enrichment",
 		"ccache-helper", "ccache-binary", "log-dirs",
@@ -27,8 +25,8 @@ var (
 	AuthProbeCheckNames = []string{"auth", "auth-backend"}
 )
 
-// Opt-outs shared by every build-time health gate: the flag for one
-// invocation, the env var for every one.
+// Opt-outs shared by every build-time gate: the flag for one invocation, the
+// env var for every one.
 const (
 	NoDoctorFlag  = "--no-doctor"
 	EnvSkipDoctor = "BITRISE_BUILD_CACHE_SKIP_DOCTOR"
