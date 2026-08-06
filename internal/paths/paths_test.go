@@ -3,10 +3,12 @@
 package paths
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFromHome_stateAndLogPaths(t *testing.T) {
@@ -91,3 +93,15 @@ func TestPaths_xcelerateEnrichment(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/health.json", p.EnrichmentHealthFile())
 }
 
+type osDirMaker struct{}
+
+func (osDirMaker) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+
+func TestEnsureDir_CreatesMissingAndAcceptsExisting(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state", "logs")
+
+	require.NoError(t, EnsureDir(osDirMaker{}, dir))
+	assert.DirExists(t, dir)
+
+	require.NoError(t, EnsureDir(osDirMaker{}, dir), "an existing dir is not an error")
+}

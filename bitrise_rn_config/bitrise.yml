@@ -940,6 +940,16 @@ step_bundles:
             cd _seek
             ../bitrise-build-cache-cli react-native run npx react-native build-android 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
+        title: Assert the wrapper ran its health check around the build
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # `activate react-native --debug` above put the runner in debug mode,
+            # so the report lands in the wrapped command's log.
+            bash "$BITRISE_SOURCE_DIR/scripts/check_pattern.sh" "$RN_CLI_LOG" 'Running health checks'
+            bash "$BITRISE_SOURCE_DIR/scripts/check_pattern.sh" "$RN_CLI_LOG" 'Health check result:'
+    - script:
         title: Assert ccache GET calls via storage helper logs
         inputs:
         - content: |-

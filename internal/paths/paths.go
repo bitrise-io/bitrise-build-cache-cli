@@ -302,3 +302,19 @@ func (p Paths) XcodeManagedDerivedDataRoot() string {
 func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 	return filepath.Join(p.BitriseCacheDir(xcodeManagedProjectTempDirTool), workspaceSHA)
 }
+
+// DirMaker is the subset of utils.OsProxy that EnsureDir needs.
+type DirMaker interface {
+	MkdirAll(path string, perm os.FileMode) error
+}
+
+// EnsureDir creates dir if it is missing. Activation uses it for the log dirs
+// the tool's first run would otherwise create lazily, so a freshly activated
+// setup doesn't report them as missing before that run.
+func EnsureDir(m DirMaker, dir string) error {
+	if err := m.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+
+	return nil
+}

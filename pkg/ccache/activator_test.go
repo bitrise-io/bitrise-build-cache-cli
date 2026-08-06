@@ -16,6 +16,7 @@ import (
 	keyring "github.com/zalando/go-keyring"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
@@ -125,6 +126,26 @@ func TestActivator_Activate(t *testing.T) {
 		assert.Equal(t, "ccache", envVars["CMAKE_CXX_COMPILER_LAUNCHER"])
 		assert.Equal(t, "ccache", envVars["CMAKE_C_COMPILER_LAUNCHER"])
 		assert.Contains(t, envVars["CCACHE_REMOTE_STORAGE"], "crsh:")
+	})
+
+	t.Run("creates the log dir the storage helper would create on its first run", func(t *testing.T) {
+		osProxy := newOsProxyMock(t)
+		home, err := osProxy.UserHomeDir()
+		require.NoError(t, err)
+
+		a, _ := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+			OsProxy:     osProxy,
+		})
+
+		require.NoError(t, a.Activate(context.Background()))
+
+		var created []string
+		for _, c := range osProxy.MkdirAllCalls() {
+			created = append(created, c.Name)
+		}
+		assert.Contains(t, created, paths.FromHome(home).CcacheLogDir())
 	})
 
 	t.Run("uses BaseDirOverride when provided", func(t *testing.T) {

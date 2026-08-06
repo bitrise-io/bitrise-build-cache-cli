@@ -9,14 +9,18 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
 //nolint:gochecknoglobals
 var runCmd = &cobra.Command{
-	Use:                "run",
-	Short:              "Run a process with the provided arguments",
-	Long:               `Run a process, forwarding all provided arguments directly.`,
+	Use:   "run",
+	Short: "Run a process with the provided arguments",
+	Long: `Run a process, forwarding all provided arguments directly.
+
+Bitrise Build Cache health checks run around the wrapped command. Pass ` + doctorpkg.NoDoctorFlag + ` before
+the command to skip them for one run, or set ` + doctorpkg.EnvSkipDoctor + ` to skip them always.`,
 	SilenceUsage:       true,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {

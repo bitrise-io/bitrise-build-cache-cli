@@ -19,7 +19,7 @@ var _ postRunRunner = &postRunRunnerMock{}
 //
 //		// make and configure a mocked postRunRunner
 //		mockedpostRunRunner := &postRunRunnerMock{
-//			runFunc: func(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error)  {
+//			runFunc: func(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) buildOutcome {
 //				panic("mock out the run method")
 //			},
 //		}
@@ -30,7 +30,7 @@ var _ postRunRunner = &postRunRunnerMock{}
 //	}
 type postRunRunnerMock struct {
 	// runFunc mocks the run method.
-	runFunc func(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error)
+	runFunc func(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) buildOutcome
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -52,7 +52,7 @@ type postRunRunnerMock struct {
 }
 
 // run calls runFunc.
-func (mock *postRunRunnerMock) run(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) {
+func (mock *postRunRunnerMock) run(contextMoqParam context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) buildOutcome {
 	callInfo := struct {
 		ContextMoqParam     context.Context
 		WrapperInvocationID string
@@ -70,9 +70,12 @@ func (mock *postRunRunnerMock) run(contextMoqParam context.Context, wrapperInvoc
 	mock.calls.run = append(mock.calls.run, callInfo)
 	mock.lockrun.Unlock()
 	if mock.runFunc == nil {
-		return
+		var (
+			buildOutcomeMoqParamOut buildOutcome
+		)
+		return buildOutcomeMoqParamOut
 	}
-	mock.runFunc(contextMoqParam, wrapperInvocationID, args, duration, execErr)
+	return mock.runFunc(contextMoqParam, wrapperInvocationID, args, duration, execErr)
 }
 
 // runCalls gets all the calls that were made to run.

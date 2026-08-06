@@ -91,6 +91,8 @@ func Activate(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
+	ensureLogDir(logger, osProxy)
+
 	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
 	store.PersistActivateCreds(logger, envs, config.AuthConfig, &mpCfg)
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
@@ -112,6 +114,22 @@ func Activate(
 	logger.TInfof(AddXcelerateToPath)
 
 	return nil
+}
+
+// ensureLogDir creates the dir the proxy would otherwise create on its first run,
+// so the first build's health check doesn't report it as missing. Best-effort:
+// the proxy still creates it, and a build must not fail over a log dir.
+func ensureLogDir(logger log.Logger, osProxy utils.OsProxy) {
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		logger.Debugf("Could not resolve the home dir for the xcelerate log dir: %s", err)
+
+		return
+	}
+
+	if err := paths.EnsureDir(osProxy, paths.FromHome(home).XcelerateLogDir()); err != nil {
+		logger.Debugf("Could not create the xcelerate log dir: %s", err)
+	}
 }
 
 // exportDerivedDataPath publishes where the wrapper relocates DerivedData to, so cache steps can
