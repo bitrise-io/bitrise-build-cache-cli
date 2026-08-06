@@ -115,14 +115,6 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 		release:      entry.release,
 	}
 
-	// Guarantee the pool-entry sem is released even when the caller abandons
-	// the stream (io.Copy error, AlreadyExists, context cancel) without
-	// calling Close.
-	go func() {
-		<-ctx.Done()
-		w.doRelease()
-	}()
-
 	return w, nil
 }
 
@@ -160,17 +152,6 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 		release:       entry.release,
 	}
 	go r.readStreamMetadata()
-
-	// Fallback release for cases where Close is not called (context cancel
-	// while a Read is in flight would surface as an error to the caller).
-	go func() {
-		<-ctx.Done()
-		r.releaseOnce.Do(func() {
-			if r.release != nil {
-				r.release()
-			}
-		})
-	}()
 
 	return r, nil
 }

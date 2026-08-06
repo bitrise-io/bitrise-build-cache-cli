@@ -232,7 +232,7 @@ type writer struct {
 	offset       int64
 	fileSize     int64
 	response     *bytestream.WriteResponse
-	release      func() // nil-safe; releases the pool-entry semaphore once the stream drains
+	release      func()
 	releaseOnce  sync.Once
 }
 
@@ -286,7 +286,7 @@ type reader struct {
 	buf      bytes.Buffer
 
 	metadataReady chan struct{}
-	release       func() // nil-safe; releases the pool-entry semaphore on Close
+	release       func()
 	releaseOnce   sync.Once
 }
 
@@ -368,13 +368,17 @@ func (r *reader) Metadata() map[string]string {
 	return m
 }
 
-func (r *reader) Close() error {
-	r.buf.Reset()
+func (r *reader) doRelease() {
 	r.releaseOnce.Do(func() {
 		if r.release != nil {
 			r.release()
 		}
 	})
+}
+
+func (r *reader) Close() error {
+	r.buf.Reset()
+	r.doRelease()
 
 	return nil
 }
