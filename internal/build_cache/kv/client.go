@@ -25,6 +25,22 @@ import (
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../../proto/kv_storage KVStorageClient
 
+const (
+	defaultDownloadRetry     uint          = 3
+	defaultUploadRetry       uint          = 3
+	defaultDownloadRetryWait time.Duration = 1 * time.Second
+	defaultUploadRetryWait   time.Duration = 1 * time.Second
+
+	keepaliveTime    = 30 * time.Second
+	keepaliveTimeout = 10 * time.Second
+)
+
+// Channel-pool sizing mirrors the Gradle plugin's ClientBalancer.
+var (
+	numChannels     = max(2, runtime.NumCPU()/6)
+	perChannelLimit = runtime.NumCPU()
+)
+
 // AuthSource returns the credentials to use for a single RPC. Implementations
 // may cache and refresh transparently; kv.Client re-reads on every call.
 type AuthSource interface {
@@ -111,16 +127,16 @@ type NewClientParams struct {
 
 func NewClient(p NewClientParams) (*Client, error) {
 	if p.DownloadRetry == 0 {
-		p.DownloadRetry = 3
+		p.DownloadRetry = defaultDownloadRetry
 	}
 	if p.DownloadRetryWait == 0 {
-		p.DownloadRetryWait = 1 * time.Second
+		p.DownloadRetryWait = defaultDownloadRetryWait
 	}
 	if p.UploadRetry == 0 {
-		p.UploadRetry = 3
+		p.UploadRetry = defaultUploadRetry
 	}
 	if p.UploadRetryWait == 0 {
-		p.UploadRetryWait = 1 * time.Second
+		p.UploadRetryWait = defaultUploadRetryWait
 	}
 
 	authSource := p.AuthSource
@@ -149,8 +165,8 @@ func NewClient(p NewClientParams) (*Client, error) {
 }
 
 // buildChannels dials one gRPC connection per channel, each with its own
-// per-channel semaphore. Sizing mirrors the Gradle plugin's ClientBalancer:
-// numChannels = max(2, NumCPU/6), perChannelLimit = NumCPU.
+// per-channel semaphore. Sizing (numChannels, perChannelLimit) is defined at
+// package level and mirrors the Gradle plugin's ClientBalancer.
 //
 // If callers inject a stub (BitriseKVClient or CapabilitiesClient) the pool
 // collapses to a single, no-throttle channel that hands the stub straight
@@ -169,13 +185,10 @@ func buildChannels(p NewClientParams) ([]*channel, error) {
 	}
 
 	kaParams := keepalive.ClientParameters{
-		Time:                30 * time.Second,
-		Timeout:             10 * time.Second,
+		Time:                keepaliveTime,
+		Timeout:             keepaliveTimeout,
 		PermitWithoutStream: true,
 	}
-
-	numChannels := max(2, runtime.NumCPU()/6)
-	perChannelLimit := runtime.NumCPU()
 
 	channels := make([]*channel, 0, numChannels)
 	for range numChannels {
