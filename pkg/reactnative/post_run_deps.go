@@ -87,7 +87,9 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 // run collects ccache stats, aggregates child invocation hit rates into
 // the wrapper invocation, and sends the wrapper analytics. ccache collection
 // runs first so its ledger entry can contribute to the aggregated hit rate.
-func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) {
+func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) buildOutcome {
+	var outcome buildOutcome
+
 	metadata := d.getMetadata()
 
 	command := parseCommand(args)
@@ -183,8 +185,11 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		HitRate:        summary.MeanHitRate,
 	}, d.authConfig, metadata)
 
+	outcome.ChildInvocations = summary.ChildCount + summary.NoActivityCount + summary.SkippedCount
+
 	if err := d.sendInvocation(*inv); err != nil {
 		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
+		outcome.InvocationSaveFailed = true
 	} else {
 		// BE confirmed the invocation was stored — surface the details URL
 		// so users can jump to it from the build log.
@@ -196,6 +201,8 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	}
 
 	d.appendLocalInvocationLog(wrapperInvocationID, command, metadata, summary, duration, execErr)
+
+	return outcome
 }
 
 // ---------------------------------------------------------------------------

@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	// Opt-outs: the flag for one invocation, the env var for every one.
-	NoDoctorFlag  = "--no-doctor"
-	EnvSkipDoctor = "BITRISE_BUILD_CACHE_SKIP_DOCTOR"
+	NoDoctorFlag  = doctorpkg.NoDoctorFlag
+	EnvSkipDoctor = doctorpkg.EnvSkipDoctor
 
 	doctorLocalTimeout = 5 * time.Second
 	doctorProbeTimeout = 15 * time.Second

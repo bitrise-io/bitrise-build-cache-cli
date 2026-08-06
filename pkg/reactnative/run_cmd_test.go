@@ -18,6 +18,7 @@ func newTestRunner(params RunnerParams) *Runner {
 	r := NewRunner(params)
 	r.socket = nil
 	r.postRun = nil
+	r.doctor = nil
 
 	return r
 }

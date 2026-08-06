@@ -14,6 +14,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
+	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -48,6 +49,9 @@ type RunnerParams struct {
 	DecoderFactory utils.DecoderFactory
 	// DebugLogging ORs with the on-disk multiplatform config's DebugLogging.
 	DebugLogging bool
+	// SkipDoctor disables the health checks run around the wrapped command.
+	// The --no-doctor flag and BITRISE_BUILD_CACHE_SKIP_DOCTOR do the same.
+	SkipDoctor bool
 }
 
 //go:generate moq -stub -out post_run_runner_mock_test.go -pkg reactnative . postRunRunner
@@ -59,7 +63,7 @@ type postRunRunner interface {
 		args []string,
 		duration time.Duration,
 		execErr error,
-	)
+	) buildOutcome
 }
 
 // Runner wraps a command execution with invocation ID injection, pre-run hooks,
@@ -72,6 +76,8 @@ type Runner struct {
 	postRun        postRunRunner
 	ccacheConfig   *ccacheconfig.Config
 	socket         ccacheSocket
+	// doctor reports local setup problems around the run; nil disables it.
+	doctor buildHealthReporter
 }
 
 // NewRunner creates a Runner with production pre-run and post-run hooks.
@@ -86,9 +92,11 @@ func NewRunner(params RunnerParams) *Runner {
 		decoderFactory = utils.DefaultDecoderFactory{}
 	}
 
+	debug := resolveDebugLogging(params.DebugLogging, osProxy, decoderFactory)
+
 	logger := params.Logger
 	if logger == nil {
-		logger = log.NewLogger(log.WithDebugLog(resolveDebugLogging(params.DebugLogging, osProxy, decoderFactory)))
+		logger = log.NewLogger(log.WithDebugLog(debug))
 	}
 
 	var ccacheConfig *ccacheconfig.Config
@@ -108,6 +116,10 @@ func NewRunner(params RunnerParams) *Runner {
 		socket:         socket,
 	}
 
+	if !params.SkipDoctor && utils.AllEnvs()[doctorpkg.EnvSkipDoctor] == "" {
+		r.doctor = &rnDoctor{Logger: logger, Debug: debug}
+	}
+
 	return r
 }
 
@@ -124,6 +136,12 @@ func NewRunner(params RunnerParams) *Runner {
 // build never fails just because the cache wasn't activated.
 func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID string, environ []string) (int, error) {
 	configcommon.LogCLIVersion(r.logger)
+
+	// The flag sits before the wrapped command, so anything after the "--"
+	// separator stays untouched — it belongs to the child.
+	for len(args) > 0 && args[0] == doctorpkg.NoDoctorFlag {
+		r.doctor, args = nil, args[1:]
+	}
 
 	// Strip leading "--" separator (cobra passes it through with DisableFlagParsing)
 	if len(args) > 0 && args[0] == "--" {
@@ -156,6 +174,11 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 		r.zeroCcacheStats(ctx)
 	}
 
+	// After ensureHelper: a helper this run started must not be reported as down.
+	if r.doctor != nil {
+		r.doctor.CheckAtStart(ctx)
+	}
+
 	envMap := environToMap(environ)
 	envMap["BITRISE_INVOCATION_ID"] = wrapperInvocationID
 	if helperReady {
@@ -167,8 +190,18 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 	exitCode, execErr := r.execFn(mapToEnviron(envMap), name, cmdArgs...)
 	duration := time.Since(start)
 
+	var outcome buildOutcome
 	if r.postRun != nil {
-		r.postRun.run(context.Background(), wrapperInvocationID, args, duration, execErr) //nolint:contextcheck // intentionally detached: post-run analytics must complete even if parent ctx is cancelled
+		outcome = r.postRun.run(context.Background(), wrapperInvocationID, args, duration, execErr) //nolint:contextcheck // intentionally detached: post-run analytics must complete even if parent ctx is cancelled
+	}
+
+	//nolint:contextcheck // intentionally detached, for the same reason as the post-run hook above
+	if r.doctor != nil {
+		reportCtx := context.Background()
+		if outcome.InvocationSaveFailed {
+			r.doctor.OnInvocationSaveFailure(reportCtx)
+		}
+		r.doctor.ReportAtEnd(reportCtx, outcome)
 	}
 
 	return exitCode, execErr
