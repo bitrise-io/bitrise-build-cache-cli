@@ -995,11 +995,7 @@ step_bundles:
         - content: |-
             set -exo pipefail
 
-            # The nested wrapper's report reaches this log as the child's stderr.
-            # Counting start-of-build runs only ("skipped: true"): the save-failure
-            # auth probe logs the same line, so a plain count could be reached by
-            # one gate plus its probe. Counted rather than matched per check set,
-            # because a baseline benchmark phase changes the child's set.
+            # Start-of-build runs only: the auth probe logs the same line.
             gates=$(grep -c 'Running health checks.*backend probe skipped: true' "$RN_CLI_LOG")
             if [ "$gates" -lt 2 ]; then
               echo "Expected the RN and the xcodebuild gate, found $gates ❌"
