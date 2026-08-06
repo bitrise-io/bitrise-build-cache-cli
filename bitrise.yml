@@ -145,6 +145,10 @@ workflows:
         envs:
         - STEP_NAME: bitrise-step-activate-gradle-mirrors
         - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
+    - bundle::update-step:
+        envs:
+        - STEP_NAME: bitrise-step-activate-build-cache-for-bazel
+        - UPDATE_SCRIPT_PATH: ../scripts/update_activate_build_cache_for_bazel.sh
     - slack@4:
         inputs:
           - channel: "#team-advanced-ci-alerts-website"
@@ -1974,6 +1978,10 @@ workflows:
           envs:
             - STEP_NAME: bitrise-step-activate-gradle-mirrors
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_gradle_mirrors.sh
+      - bundle::update-step:
+          envs:
+            - STEP_NAME: bitrise-step-activate-build-cache-for-bazel
+            - UPDATE_SCRIPT_PATH: ../scripts/update_activate_build_cache_for_bazel.sh
 
   e2e-scenarios-linux:
     description: |
