@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -99,7 +100,7 @@ func TestAuthUsernameCmd_setPersistsIntoStoreHoldingCreds(t *testing.T) {
 	t.Setenv("BITRISE_BUILD_CACHE_USERNAME", "")
 
 	// Seed keychain with token+workspace so it becomes the target store.
-	require.NoError(t, keychain.New().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+	require.NoError(t, keychain.New().Save(auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
 
 	envs := map[string]string{}
 	require.NoError(t, setLocalUsername(envs, "carol"))
@@ -312,7 +313,7 @@ func TestAuthSetCmd_ciDetectionRoutesToFile(t *testing.T) {
 func TestAuthSetCmd_preservesOAuthFieldsOnUsernameEdit(t *testing.T) {
 	keyring.MockInit()
 	kc := keychain.New()
-	require.NoError(t, kc.Save(keychain.Credentials{
+	require.NoError(t, kc.Save(auth.TokenSet{
 		AuthToken:    "old-tok",
 		WorkspaceID:  "old-ws",
 		RefreshToken: "refresh-abc",
@@ -373,10 +374,10 @@ type fakeStore struct {
 }
 
 func (s *fakeStore) Kind() store.Kind { return s.kind }
-func (s *fakeStore) Load() (keychain.Credentials, error) {
-	return keychain.Credentials{}, store.ErrNotFound
+func (s *fakeStore) Load() (auth.TokenSet, error) {
+	return auth.TokenSet{}, store.ErrNotFound
 }
-func (s *fakeStore) Save(keychain.Credentials) error { return nil }
+func (s *fakeStore) Save(auth.TokenSet) error { return nil }
 func (s *fakeStore) Clear() error {
 	if s.clearErr != nil {
 		return s.clearErr

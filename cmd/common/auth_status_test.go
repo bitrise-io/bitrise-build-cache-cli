@@ -8,6 +8,7 @@ import (
 
 	keyring "github.com/zalando/go-keyring"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 )
 
@@ -24,8 +25,8 @@ func TestCurrentAuthStatus(t *testing.T) {
 	}
 
 	// A stored OAuth login is reported as such, with workspace + a future expiry.
-	if err := oauth.Save(oauth.Credentials{
-		PAT: "p", RefreshToken: "r", WorkspaceID: "acme",
+	if err := oauth.Save(auth.TokenSet{
+		AuthToken: "p", RefreshToken: "r", WorkspaceID: "acme",
 		PATExpiry: time.Now().Add(time.Hour),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)

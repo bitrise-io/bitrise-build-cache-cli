@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -31,7 +32,7 @@ func NewResolver(envs map[string]string, warn io.Writer) Resolver {
 	return newResolver(envs, warn, oauthCfg.EnsureFresh)
 }
 
-func newResolver(envs map[string]string, warn io.Writer, ensureFresh func(context.Context) (oauth.Credentials, error)) Resolver {
+func newResolver(envs map[string]string, warn io.Writer, ensureFresh func(context.Context) (auth.TokenSet, error)) Resolver {
 	return func(ctx context.Context) (Credential, error) {
 		cfg, source, err := configcommon.ResolveAuthConfig(envs)
 		if err != nil {
@@ -51,7 +52,7 @@ func newResolver(envs map[string]string, warn io.Writer, ensureFresh func(contex
 			return Credential{Token: cfg.AuthToken, Expiry: time.Now().Add(staleCacheHint)}, nil
 		}
 
-		return Credential{Token: creds.PAT, Expiry: creds.PATExpiry.Add(-expiresLead)}, nil
+		return Credential{Token: creds.AuthToken, Expiry: creds.PATExpiry.Add(-expiresLead)}, nil
 	}
 }
 

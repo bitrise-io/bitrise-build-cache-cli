@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func TestSelect_defaultsToKeychainLocally(t *testing.T) {
@@ -54,9 +54,9 @@ func TestSaveExclusive_ClearsOtherBackend(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	kc := NewKeychain()
-	require.NoError(t, kc.Save(keychain.Credentials{AuthToken: "old", WorkspaceID: "old-ws"}))
+	require.NoError(t, kc.Save(auth.TokenSet{AuthToken: "old", WorkspaceID: "old-ws"}))
 
-	require.NoError(t, SaveExclusive(NewFile(), keychain.Credentials{AuthToken: "new", WorkspaceID: "new-ws"}))
+	require.NoError(t, SaveExclusive(NewFile(), auth.TokenSet{AuthToken: "new", WorkspaceID: "new-ws"}))
 
 	_, err := kc.Load()
 	require.ErrorIs(t, err, ErrNotFound, "keychain must be cleared after exclusive file save")
@@ -72,7 +72,7 @@ func TestSetUsername_landsInStoreHoldingCredsAndPreservesAuth(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	// Creds live only in the file store; keychain is empty.
-	require.NoError(t, NewFile().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+	require.NoError(t, NewFile().Save(auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
 
 	kind, err := SetUsername(false, "erin")
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestFileStore_SavePersistsAtRestrictedPerms(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	s := NewFile()
-	require.NoError(t, s.Save(keychain.Credentials{AuthToken: "t", WorkspaceID: "w"}))
+	require.NoError(t, s.Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w"}))
 
 	info, err := os.Stat(filepath.Join(home, ".bitrise", "analytics", "multiplatform", "config.json"))
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func TestFileStore_RoundTrip(t *testing.T) {
 	_, err := s.Load()
 	require.ErrorIs(t, err, ErrNotFound)
 
-	want := keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws", Username: "u"}
+	want := auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws", Username: "u"}
 	require.NoError(t, s.Save(want))
 
 	got, err := s.Load()

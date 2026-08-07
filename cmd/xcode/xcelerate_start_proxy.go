@@ -160,7 +160,7 @@ func StartXcodeCacheProxy(
 			return "", "", fmt.Errorf("ensure fresh oauth credentials: %w", err)
 		}
 
-		return creds.PAT, creds.WorkspaceID, nil
+		return creds.AuthToken, creds.WorkspaceID, nil
 	}
 	authProvider := configcommon.NewExpiryAwareResolver(context.WithoutCancel(ctx), envProvider, refreshFn, initialLogger)
 

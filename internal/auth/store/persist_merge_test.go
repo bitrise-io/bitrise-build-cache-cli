@@ -13,7 +13,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 )
@@ -21,7 +21,7 @@ import (
 func newTestLogger() log.Logger { return log.NewLogger(log.WithOutput(io.Discard)) }
 
 type memStore struct {
-	creds   keychain.Credentials
+	creds   auth.TokenSet
 	present bool
 	kind    Kind
 	saveErr error
@@ -29,15 +29,15 @@ type memStore struct {
 
 func (m *memStore) Kind() Kind { return m.kind }
 
-func (m *memStore) Load() (keychain.Credentials, error) {
+func (m *memStore) Load() (auth.TokenSet, error) {
 	if !m.present {
-		return keychain.Credentials{}, ErrNotFound
+		return auth.TokenSet{}, ErrNotFound
 	}
 
 	return m.creds, nil
 }
 
-func (m *memStore) Save(c keychain.Credentials) error {
+func (m *memStore) Save(c auth.TokenSet) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
@@ -47,7 +47,7 @@ func (m *memStore) Save(c keychain.Credentials) error {
 }
 
 func (m *memStore) Clear() error {
-	m.creds, m.present = keychain.Credentials{}, false
+	m.creds, m.present = auth.TokenSet{}, false
 
 	return nil
 }
@@ -57,7 +57,7 @@ func (m *memStore) Clear() error {
 // refresh, degrading it into a bare short-lived PAT.
 func TestMergeActivateCreds_KeepsOAuthFieldsForTheSameToken(t *testing.T) {
 	expiry := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
+	s := &memStore{kind: KindKeychain, present: true, creds: auth.TokenSet{
 		AuthToken:    "pat-1",
 		WorkspaceID:  "ws-1",
 		Username:     "alice",
@@ -77,7 +77,7 @@ func TestMergeActivateCreds_KeepsOAuthFieldsForTheSameToken(t *testing.T) {
 
 // A workspace switch keeps the login: the refresh token is user-scoped.
 func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) {
-	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
+	s := &memStore{kind: KindKeychain, present: true, creds: auth.TokenSet{
 		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1",
 	}}
 
@@ -89,7 +89,7 @@ func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) 
 
 // Refreshing is the normal case between login and activate.
 func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.T) {
-	s := &memStore{kind: KindKeychain, present: true, creds: keychain.Credentials{
+	s := &memStore{kind: KindKeychain, present: true, creds: auth.TokenSet{
 		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1", Username: "dev",
 	}}
 
@@ -116,7 +116,7 @@ func TestMergeActivateCreds_EmptyStore(t *testing.T) {
 func TestPersistActivateCreds_KeychainUnusableKeepsTheRefreshToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	login := keychain.Credentials{
+	login := auth.TokenSet{
 		AuthToken:          "bitpat_minted",
 		WorkspaceID:        "ws-1",
 		RefreshToken:       "refresh-me",

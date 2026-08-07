@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
 
@@ -103,7 +104,7 @@ func DescribeResolvedWith(cfg CacheAuthConfig, source AuthSource, loader AuthLoa
 	return d
 }
 
-func DescribeStoredCredentials(source AuthSource, creds keychain.Credentials) AuthDescription {
+func DescribeStoredCredentials(source AuthSource, creds auth.TokenSet) AuthDescription {
 	d := AuthDescription{Source: source, WorkspaceID: creds.WorkspaceID}
 	if creds.IsOAuthManaged() {
 		d.IsOAuthLogin = true

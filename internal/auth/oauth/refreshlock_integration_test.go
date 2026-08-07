@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
@@ -101,7 +102,7 @@ func runLockChild(role string) int {
 
 		return 1
 	}
-	logEvent(fmt.Sprintf("FRESH     pid=%-6d after=%-8s pat=%s", os.Getpid(), time.Since(start).Round(time.Millisecond), creds.PAT))
+	logEvent(fmt.Sprintf("FRESH     pid=%-6d after=%-8s pat=%s", os.Getpid(), time.Since(start).Round(time.Millisecond), creds.AuthToken))
 
 	time.Sleep(time.Duration(holdMS) * time.Millisecond)
 
@@ -141,7 +142,7 @@ func holdAfterRefresh(cfg Config, holdMS int) int {
 	if err != nil {
 		return 1
 	}
-	creds.PAT, creds.PATExpiry = pat, expiry
+	creds.AuthToken, creds.PATExpiry = pat, expiry
 	if err := SaveTo(store.NewFile(), creds); err != nil {
 		return 1
 	}
@@ -268,8 +269,8 @@ func newLockEnv(t *testing.T) lockEnv {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 
-	require.NoError(t, SaveTo(store.NewFile(), Credentials{
-		PAT: "pat-seed", PATExpiry: time.Now().Add(-time.Minute),
+	require.NoError(t, SaveTo(store.NewFile(), auth.TokenSet{
+		AuthToken: "pat-seed", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "jwt-seed", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-seed", WorkspaceID: "ws",
 	}))
@@ -432,7 +433,7 @@ func TestIntegration_RefreshLock_WaiterThatGivesUpDoesNotSpendTheStaleToken(t *t
 	grants, reuse := env.idp.stats()
 	assert.Zero(t, reuse, "the waiter presented a refresh token that had already been spent")
 	assert.Equal(t, 1, grants, "and it must not have refreshed again")
-	assert.NotEqual(t, "pat-seed", creds.PAT, "it should have picked up the refreshed credential")
+	assert.NotEqual(t, "pat-seed", creds.AuthToken, "it should have picked up the refreshed credential")
 
 	stored, err := Load()
 	require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"strings"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
 
@@ -41,7 +42,7 @@ func (cac CacheAuthConfig) TokenInGradleFormat() string {
 }
 
 type AuthLoader interface {
-	Load() (keychain.Credentials, error)
+	Load() (auth.TokenSet, error)
 }
 
 // AuthSource identifies where a credential resolved from.
@@ -109,7 +110,7 @@ func ResolveUsername(envs map[string]string) (string, UsernameSource) {
 	return resolveUsername(envs, keychain.New(), fileCredentialsReader, osUsername)
 }
 
-func resolveUsername(envs map[string]string, loader AuthLoader, readFile func() (keychain.Credentials, bool), osResolver func() string) (string, UsernameSource) {
+func resolveUsername(envs map[string]string, loader AuthLoader, readFile func() (auth.TokenSet, bool), osResolver func() string) (string, UsernameSource) {
 	if v := strings.TrimSpace(envs[EnvUsername]); v != "" {
 		return v, UsernameSourceEnv
 	}
@@ -153,9 +154,9 @@ func RegisterMultiplatformReader(fn func() (CacheAuthConfig, error)) {
 // Wired from multiplatform to avoid the import cycle.
 //
 //nolint:gochecknoglobals
-var fileCredentialsReader func() (keychain.Credentials, bool)
+var fileCredentialsReader func() (auth.TokenSet, bool)
 
-func RegisterFileCredentialsReader(fn func() (keychain.Credentials, bool)) {
+func RegisterFileCredentialsReader(fn func() (auth.TokenSet, bool)) {
 	fileCredentialsReader = fn
 }
 
@@ -164,7 +165,7 @@ func ResolveAuthConfig(envs map[string]string) (CacheAuthConfig, AuthSource, err
 	return resolveAuthConfig(envs, keychain.New(), fileCredentialsReader, multiplatformConfigReader)
 }
 
-func resolveAuthConfig(envs map[string]string, loader AuthLoader, readFile func() (keychain.Credentials, bool), readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
+func resolveAuthConfig(envs map[string]string, loader AuthLoader, readFile func() (auth.TokenSet, bool), readMultiplatform func() (CacheAuthConfig, error)) (CacheAuthConfig, AuthSource, error) {
 	if hasAuthEnvVars(envs) {
 		return readAuthConfigFromEnvironments(envs)
 	}

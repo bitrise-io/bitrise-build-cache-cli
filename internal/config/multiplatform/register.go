@@ -1,7 +1,7 @@
 package multiplatform
 
 import (
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -20,6 +20,6 @@ func readMultiplatformAuthConfig() (common.CacheAuthConfig, error) {
 	return cfg.AuthConfig, nil
 }
 
-func readMultiplatformCredentials() (keychain.Credentials, bool) {
+func readMultiplatformCredentials() (auth.TokenSet, bool) {
 	return ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 }

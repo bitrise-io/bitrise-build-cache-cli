@@ -48,10 +48,10 @@ func FixAuthPrompt(ctx context.Context, logger log.Logger) func() (string, strin
 			return authprompt.PromptAndSave() //nolint:wrapcheck // caller reports it
 		}
 
-		if out.Creds.PAT == "" {
+		if out.Creds.AuthToken == "" {
 			return "", "", fmt.Errorf("sign-in returned no token")
 		}
 
-		return out.Creds.WorkspaceID, out.Creds.PAT, nil
+		return out.Creds.WorkspaceID, out.Creds.AuthToken, nil
 	}
 }

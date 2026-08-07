@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
@@ -133,7 +134,7 @@ var ErrStdinUnusable = errors.New("standard input is no longer usable for prompt
 // keychain-less host stores the login in the config file instead, and callers
 // that go on to describe or update the credential have to target the right one.
 type loginOutcome struct {
-	Creds oauth.Credentials
+	Creds auth.TokenSet
 	Kind  store.Kind
 	// StdinUnusable means a paste reader is still holding stdin, so no prompt in
 	// this process can be trusted with keystrokes.
@@ -167,7 +168,7 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 			return loginOutcome{}, fmt.Errorf("%w: cannot show the workspace picker", ErrStdinUnusable)
 		}
 
-		workspace, err = pickWorkspace(ctx, envs, creds.PAT)
+		workspace, err = pickWorkspace(ctx, envs, creds.AuthToken)
 		if err != nil {
 			return loginOutcome{}, err
 		}
@@ -205,7 +206,7 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 // fallback, refresh token included, so the login stays refreshable there.
 //
 // An explicit --storage choice is honoured: the caller asked for that backend.
-func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds oauth.Credentials) (store.Kind, error) {
+func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds auth.TokenSet) (store.Kind, error) {
 	outcome, err := oauth.SaveToWithFallback(target, creds, storage == "")
 	if err != nil {
 		return outcome.Kind, fmt.Errorf("save credentials: %w", err)
@@ -275,8 +276,8 @@ func reportStdinUnusable(ctx context.Context, logger log.Logger, envs map[string
 	logger.Warnf("The sign-in took long enough that the CLI had started reading standard input, and it cannot stop.")
 	logger.Warnf("Any prompt now would drop keystrokes, so this command stops here.")
 
-	if out.Creds.PAT != "" {
-		if workspaces, err := bitriseapi.ListWorkspaces(ctx, bitriseapi.ResolveAPIBaseURL(envs), out.Creds.PAT); err == nil {
+	if out.Creds.AuthToken != "" {
+		if workspaces, err := bitriseapi.ListWorkspaces(ctx, bitriseapi.ResolveAPIBaseURL(envs), out.Creds.AuthToken); err == nil {
 			logger.Infof("Workspaces you can use:")
 			for _, ws := range workspaces {
 				logger.Infof("  %s (%s)", ws.Name, ws.Slug)

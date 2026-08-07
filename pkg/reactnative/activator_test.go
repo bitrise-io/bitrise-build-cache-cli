@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -139,7 +139,7 @@ func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "bitpat_refreshed")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-1")
 
-	login := keychain.Credentials{
+	login := auth.TokenSet{
 		AuthToken:    "bitpat_minted",
 		WorkspaceID:  "ws-1",
 		RefreshToken: "refresh-me",

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
@@ -46,10 +47,10 @@ func newResolver(kc keychainStore, envs map[string]string, prompt string) wizard
 func TestResolveWizardAuth_NoCredentialsSignsIn(t *testing.T) {
 	loginCalls := 0
 	r := newResolver(&stubKeychain{}, map[string]string{}, "\n")
-	r.Login = func(context.Context) (oauth.Credentials, error) {
+	r.Login = func(context.Context) (auth.TokenSet, error) {
 		loginCalls++
 
-		return oauth.Credentials{PAT: "pat-new", WorkspaceID: "ws-new", RefreshToken: "r"}, nil
+		return auth.TokenSet{AuthToken: "pat-new", WorkspaceID: "ws-new", RefreshToken: "r"}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -67,10 +68,10 @@ func TestResolveWizardAuth_EnvVarsSkipSignIn(t *testing.T) {
 		configcommon.EnvAuthToken:   "env-tok",
 		configcommon.EnvWorkspaceID: "env-ws",
 	}, "")
-	r.Login = func(context.Context) (oauth.Credentials, error) {
+	r.Login = func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("must not sign in when the env vars are set")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -86,10 +87,10 @@ func TestResolveWizardAuth_EnvVarsSkipSignIn(t *testing.T) {
 func TestResolveWizardAuth_NoPromptStreamSkipsSignIn(t *testing.T) {
 	r := newResolver(&stubKeychain{}, map[string]string{}, "")
 	r.Prompt = nil
-	r.Login = func(context.Context) (oauth.Credentials, error) {
+	r.Login = func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("must not open a browser when the sign-in can't be confirmed")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -100,10 +101,10 @@ func TestResolveWizardAuth_NoPromptStreamSkipsSignIn(t *testing.T) {
 
 func TestResolveWizardAuth_DeclinedSignInFallsBackToManualPrompt(t *testing.T) {
 	r := newResolver(&stubKeychain{}, map[string]string{}, "s\n")
-	r.Login = func(context.Context) (oauth.Credentials, error) {
+	r.Login = func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("must not sign in after the user skipped")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -114,8 +115,8 @@ func TestResolveWizardAuth_DeclinedSignInFallsBackToManualPrompt(t *testing.T) {
 
 func TestResolveWizardAuth_FailedSignInFallsBackToManualPrompt(t *testing.T) {
 	r := newResolver(&stubKeychain{}, map[string]string{}, "\n")
-	r.Login = func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{}, assert.AnError
+	r.Login = func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{}, assert.AnError
 	}
 
 	auth := r.Resolve(context.Background())
@@ -124,20 +125,20 @@ func TestResolveWizardAuth_FailedSignInFallsBackToManualPrompt(t *testing.T) {
 }
 
 func TestResolveWizardAuth_RefreshesStoredOAuthLogin(t *testing.T) {
-	kc := &stubKeychain{creds: keychain.Credentials{
+	kc := &stubKeychain{creds: auth.TokenSet{
 		AuthToken:    "stale-pat",
 		WorkspaceID:  "ws-1",
 		RefreshToken: "refresh-1",
 	}}
 
 	r := newResolver(kc, map[string]string{}, "")
-	r.EnsureFresh = func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{PAT: "fresh-pat", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}, nil
+	r.EnsureFresh = func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{AuthToken: "fresh-pat", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}, nil
 	}
-	r.Login = func(context.Context) (oauth.Credentials, error) {
+	r.Login = func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("a refreshable login must not trigger a new browser sign-in")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -148,18 +149,18 @@ func TestResolveWizardAuth_RefreshesStoredOAuthLogin(t *testing.T) {
 }
 
 func TestResolveWizardAuth_UnrefreshableLoginSignsInAgain(t *testing.T) {
-	kc := &stubKeychain{creds: keychain.Credentials{
+	kc := &stubKeychain{creds: auth.TokenSet{
 		AuthToken:    "stale-pat",
 		WorkspaceID:  "ws-1",
 		RefreshToken: "revoked",
 	}}
 
 	r := newResolver(kc, map[string]string{}, "\n")
-	r.EnsureFresh = func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{}, oauth.ErrLoginRequired
+	r.EnsureFresh = func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{}, oauth.ErrLoginRequired
 	}
-	r.Login = func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{PAT: "pat-new", WorkspaceID: "ws-2", RefreshToken: "r"}, nil
+	r.Login = func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{AuthToken: "pat-new", WorkspaceID: "ws-2", RefreshToken: "r"}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -170,13 +171,13 @@ func TestResolveWizardAuth_UnrefreshableLoginSignsInAgain(t *testing.T) {
 }
 
 func TestResolveWizardAuth_ManualKeychainCredentialUsedAsIs(t *testing.T) {
-	kc := &stubKeychain{creds: keychain.Credentials{AuthToken: "manual-pat", WorkspaceID: "ws-1"}}
+	kc := &stubKeychain{creds: auth.TokenSet{AuthToken: "manual-pat", WorkspaceID: "ws-1"}}
 
 	r := newResolver(kc, map[string]string{}, "")
-	r.EnsureFresh = func(context.Context) (oauth.Credentials, error) {
+	r.EnsureFresh = func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("a non-OAuth credential has nothing to refresh")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -188,7 +189,7 @@ func TestResolveWizardAuth_ManualKeychainCredentialUsedAsIs(t *testing.T) {
 // A fresh login rewrites the keychain, so the wizard must re-read it before it
 // later persists a display name over the same record.
 func TestResolveWizardAuth_ReReadsKeychainAfterSignIn(t *testing.T) {
-	kc := &reloadingKeychain{after: keychain.Credentials{
+	kc := &reloadingKeychain{after: auth.TokenSet{
 		AuthToken:    "pat-new",
 		WorkspaceID:  "ws-new",
 		RefreshToken: "refresh-new",
@@ -196,10 +197,10 @@ func TestResolveWizardAuth_ReReadsKeychainAfterSignIn(t *testing.T) {
 	}}
 
 	r := newResolver(kc, map[string]string{}, "\n")
-	r.Login = func(context.Context) (oauth.Credentials, error) {
+	r.Login = func(context.Context) (auth.TokenSet, error) {
 		kc.loggedIn = true
 
-		return oauth.Credentials{PAT: "pat-new", WorkspaceID: "ws-new", RefreshToken: "refresh-new"}, nil
+		return auth.TokenSet{AuthToken: "pat-new", WorkspaceID: "ws-new", RefreshToken: "refresh-new"}, nil
 	}
 
 	auth := r.Resolve(context.Background())
@@ -210,20 +211,20 @@ func TestResolveWizardAuth_ReReadsKeychainAfterSignIn(t *testing.T) {
 }
 
 type reloadingKeychain struct {
-	after    keychain.Credentials
+	after    auth.TokenSet
 	loggedIn bool
-	saved    keychain.Credentials
+	saved    auth.TokenSet
 }
 
-func (k *reloadingKeychain) Load() (keychain.Credentials, error) {
+func (k *reloadingKeychain) Load() (auth.TokenSet, error) {
 	if k.loggedIn {
 		return k.after, nil
 	}
 
-	return keychain.Credentials{}, keychain.ErrNotFound
+	return auth.TokenSet{}, keychain.ErrNotFound
 }
 
-func (k *reloadingKeychain) Save(c keychain.Credentials) error {
+func (k *reloadingKeychain) Save(c auth.TokenSet) error {
 	k.saved = c
 
 	return nil
@@ -250,7 +251,7 @@ func TestConfirmWizardLogin(t *testing.T) {
 }
 
 func TestResolvedAuthNote(t *testing.T) {
-	kc := &stubKeychain{creds: keychain.Credentials{AuthToken: "t", WorkspaceID: "ws-1"}}
+	kc := &stubKeychain{creds: auth.TokenSet{AuthToken: "t", WorkspaceID: "ws-1"}}
 
 	note := resolvedAuthNote(wizardAuth{
 		Config: configcommon.CacheAuthConfig{AuthToken: "t", WorkspaceID: "ws-1"},
@@ -283,20 +284,20 @@ type failingStore struct {
 	kind      store.Kind
 	saveErr   error
 	saved     bool
-	savedCred keychain.Credentials
+	savedCred auth.TokenSet
 }
 
 func (f *failingStore) Kind() store.Kind { return f.kind }
 
-func (f *failingStore) Load() (keychain.Credentials, error) {
+func (f *failingStore) Load() (auth.TokenSet, error) {
 	if !f.saved {
-		return keychain.Credentials{}, store.ErrNotFound
+		return auth.TokenSet{}, store.ErrNotFound
 	}
 
 	return f.savedCred, nil
 }
 
-func (f *failingStore) Save(c keychain.Credentials) error {
+func (f *failingStore) Save(c auth.TokenSet) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
@@ -306,7 +307,7 @@ func (f *failingStore) Save(c keychain.Credentials) error {
 }
 
 func (f *failingStore) Clear() error {
-	f.saved, f.savedCred = false, keychain.Credentials{}
+	f.saved, f.savedCred = false, auth.TokenSet{}
 
 	return nil
 }
@@ -314,7 +315,7 @@ func (f *failingStore) Clear() error {
 // A locked keychain must not throw away a completed sign-in.
 func TestSaveLoginWithFallback_FallsBackToTheConfigFile(t *testing.T) {
 	target := &failingStore{kind: store.KindKeychain, saveErr: assert.AnError}
-	creds := oauth.Credentials{PAT: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}
+	creds := auth.TokenSet{AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}
 
 	kind, err := saveLoginWithFallback(silentLogger(), target, "", creds)
 
@@ -327,14 +328,14 @@ func TestSaveLoginWithFallback_HonoursExplicitStorage(t *testing.T) {
 	target := &failingStore{kind: store.KindKeychain, saveErr: assert.AnError}
 
 	_, err := saveLoginWithFallback(silentLogger(), target, "keychain",
-		oauth.Credentials{PAT: "pat-1", WorkspaceID: "ws-1", RefreshToken: "r"})
+		auth.TokenSet{AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "r"})
 
 	require.Error(t, err)
 }
 
 func TestSaveLoginWithFallback_NoFallbackNeeded(t *testing.T) {
 	target := &failingStore{kind: store.KindKeychain}
-	creds := oauth.Credentials{PAT: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}
+	creds := auth.TokenSet{AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1"}
 
 	kind, err := saveLoginWithFallback(silentLogger(), target, "", creds)
 

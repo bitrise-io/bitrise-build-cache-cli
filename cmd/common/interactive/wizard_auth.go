@@ -11,6 +11,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
@@ -24,7 +25,7 @@ type wizardAuth struct {
 	Source configcommon.AuthSource
 	// Stored is the keychain credential behind Config, re-read after a fresh
 	// login so persisting a display name later can't drop the OAuth tokens.
-	Stored      keychain.Credentials
+	Stored      auth.TokenSet
 	SignedInNow bool
 	// Kind is the backend Config lives in. Only meaningful with SignedInNow: a
 	// keychain-less host stores a fresh login in the config file, and a later
@@ -54,8 +55,8 @@ type wizardAuthResolver struct {
 	// stdin cannot show.
 	Workspace string
 
-	EnsureFresh func(ctx context.Context) (oauth.Credentials, error)
-	Login       func(ctx context.Context) (oauth.Credentials, error)
+	EnsureFresh func(ctx context.Context) (auth.TokenSet, error)
+	Login       func(ctx context.Context) (auth.TokenSet, error)
 	// ResolveAuth defaults to configcommon.ResolveAuthConfig, which also reads
 	// on-disk credentials; tests override it to stay off the real machine.
 	ResolveAuth func(envs map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource, error)
@@ -73,7 +74,7 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 	if source == configcommon.AuthSourceKeychain && storedCreds.IsOAuthManaged() {
 		refreshed, err := r.ensureFresh(ctx)
 		if err == nil {
-			auth.Config.AuthToken, auth.Config.WorkspaceID = refreshed.PAT, refreshed.WorkspaceID
+			auth.Config.AuthToken, auth.Config.WorkspaceID = refreshed.AuthToken, refreshed.WorkspaceID
 			auth.Stored = loadStoredCredentials(r.Logger, r.Keychain)
 
 			return auth
@@ -92,7 +93,7 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 		return auth
 	}
 
-	auth.Config = configcommon.CacheAuthConfig{AuthToken: out.Creds.PAT, WorkspaceID: out.Creds.WorkspaceID}
+	auth.Config = configcommon.CacheAuthConfig{AuthToken: out.Creds.AuthToken, WorkspaceID: out.Creds.WorkspaceID}
 	auth.Source = authSourceForKind(out.Kind)
 	auth.Kind = out.Kind
 	auth.Stored = loadStoredCredentials(r.Logger, r.storeFor(out.Kind))
@@ -151,7 +152,7 @@ func (r wizardAuthResolver) signIn(ctx context.Context) (loginOutcome, bool) {
 	return out, true
 }
 
-func (r wizardAuthResolver) ensureFresh(ctx context.Context) (oauth.Credentials, error) {
+func (r wizardAuthResolver) ensureFresh(ctx context.Context) (auth.TokenSet, error) {
 	if r.EnsureFresh != nil {
 		return r.EnsureFresh(ctx)
 	}
@@ -161,7 +162,7 @@ func (r wizardAuthResolver) ensureFresh(ctx context.Context) (oauth.Credentials,
 
 	creds, err := cfg.EnsureFresh(ctx)
 	if err != nil {
-		return oauth.Credentials{}, fmt.Errorf("refresh stored login: %w", err)
+		return auth.TokenSet{}, fmt.Errorf("refresh stored login: %w", err)
 	}
 
 	return creds, nil
@@ -224,7 +225,7 @@ func resolvedAuthNote(auth wizardAuth, loader configcommon.AuthLoader) string {
 	return "Signing in was not needed — using " + desc.Detail() + "."
 }
 
-func loadStoredCredentials(logger log.Logger, kc keychainStore) keychain.Credentials {
+func loadStoredCredentials(logger log.Logger, kc keychainStore) auth.TokenSet {
 	creds, err := kc.Load()
 	switch {
 	case err == nil, errors.Is(err, keychain.ErrNotFound):
@@ -232,7 +233,7 @@ func loadStoredCredentials(logger log.Logger, kc keychainStore) keychain.Credent
 	default:
 		logger.Warnf("Could not read the OS keychain (%v). Wizard treats it as empty.", err)
 
-		return keychain.Credentials{}
+		return auth.TokenSet{}
 	}
 }
 

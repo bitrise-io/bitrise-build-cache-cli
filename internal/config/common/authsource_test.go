@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func TestSourceLabel(t *testing.T) {
@@ -32,7 +32,7 @@ func TestSourceLabel(t *testing.T) {
 
 func TestDescribeResolvedWith_keychainOAuthLogin(t *testing.T) {
 	exp := time.Now().Add(time.Hour)
-	loader := fakeAuthLoader{creds: keychain.Credentials{
+	loader := fakeAuthLoader{creds: auth.TokenSet{
 		AuthToken: "p", WorkspaceID: "acme", RefreshToken: "r", PATExpiry: exp,
 	}}
 
@@ -52,7 +52,7 @@ func TestDescribeResolvedWith_keychainOAuthLogin(t *testing.T) {
 }
 
 func TestDescribeResolvedWith_keychainManual(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "p", WorkspaceID: "acme"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "p", WorkspaceID: "acme"}}
 
 	d := DescribeResolvedWith(CacheAuthConfig{AuthToken: "p", WorkspaceID: "acme"}, AuthSourceKeychain, loader)
 	if d.IsOAuthLogin || d.Label() != "OS keychain" {

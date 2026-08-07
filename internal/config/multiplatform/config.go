@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -27,7 +27,7 @@ const (
 // Credentials is the CI-safe file backend for auth set/login; AuthConfig stays for backward compatibility with older analytics readers.
 type Config struct {
 	AuthConfig   common.CacheAuthConfig `json:"authConfig"`
-	Credentials  *keychain.Credentials  `json:"credentials,omitempty"`
+	Credentials  *auth.TokenSet         `json:"credentials,omitempty"`
 	DebugLogging bool                   `json:"debugLogging,omitempty"`
 }
 
@@ -80,7 +80,7 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 }
 
 // Mirrors creds into legacy AuthConfig so downstream reactnative/invocation readers keep working.
-func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, creds keychain.Credentials) error {
+func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, creds auth.TokenSet) error {
 	cfg, err := ReadConfig(osProxy, decoderFactory)
 	if err != nil && !isNotExist(err) {
 		return err
@@ -93,10 +93,10 @@ func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory,
 	return cfg.Save(osProxy, encoderFactory)
 }
 
-func ReadCredentials(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (keychain.Credentials, bool) {
+func ReadCredentials(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (auth.TokenSet, bool) {
 	cfg, err := ReadConfig(osProxy, decoderFactory)
 	if err != nil || cfg.Credentials == nil {
-		return keychain.Credentials{}, false
+		return auth.TokenSet{}, false
 	}
 
 	return *cfg.Credentials, true

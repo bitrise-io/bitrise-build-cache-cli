@@ -14,7 +14,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
@@ -84,8 +84,8 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 }
 
 type keychainStore interface {
-	Load() (keychain.Credentials, error)
-	Save(creds keychain.Credentials) error
+	Load() (auth.TokenSet, error)
+	Save(creds auth.TokenSet) error
 }
 
 func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool) error {

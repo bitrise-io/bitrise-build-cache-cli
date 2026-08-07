@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -34,8 +35,8 @@ func (k Kind) String() string {
 // Load returns ErrNotFound when nothing is stored.
 type Store interface {
 	Kind() Kind
-	Load() (keychain.Credentials, error)
-	Save(creds keychain.Credentials) error
+	Load() (auth.TokenSet, error)
+	Save(creds auth.TokenSet) error
 	Clear() error
 }
 
@@ -65,7 +66,7 @@ func Select(isCI bool, override string) (Store, error) {
 }
 
 // Saves to target, then best-effort clears every other backend to prevent split-brain.
-func SaveExclusive(target Store, creds keychain.Credentials) error {
+func SaveExclusive(target Store, creds auth.TokenSet) error {
 	if err := target.Save(creds); err != nil {
 		return err //nolint:wrapcheck
 	}
@@ -94,7 +95,7 @@ type SaveOutcome struct {
 //
 // allowFallback is false when the caller picked the backend explicitly — they
 // asked for that one, so silently using another would be wrong.
-func SaveExclusiveWithFallback(target Store, creds keychain.Credentials, allowFallback bool) (SaveOutcome, error) {
+func SaveExclusiveWithFallback(target Store, creds auth.TokenSet, allowFallback bool) (SaveOutcome, error) {
 	err := SaveExclusive(target, creds)
 	if err == nil {
 		return SaveOutcome{Kind: target.Kind()}, nil
@@ -133,16 +134,16 @@ func (s keychainStore) Kind() Kind { return KindKeychain }
 // A machine with no keychain reads as empty rather than failing, so every
 // credential lookup falls through to the next backend. `auth status` and the
 // doctor call the keychain directly and keep the distinction.
-func (s keychainStore) Load() (keychain.Credentials, error) {
+func (s keychainStore) Load() (auth.TokenSet, error) {
 	creds, err := s.kc.Load()
 	if errors.Is(err, keychain.ErrNotFound) || errors.Is(err, keychain.ErrUnavailable) {
-		return keychain.Credentials{}, ErrNotFound
+		return auth.TokenSet{}, ErrNotFound
 	}
 
 	return creds, err //nolint:wrapcheck // keychain.Keychain already wraps
 }
 
-func (s keychainStore) Save(c keychain.Credentials) error {
+func (s keychainStore) Save(c auth.TokenSet) error {
 	return s.kc.Save(c) //nolint:wrapcheck
 }
 
@@ -158,16 +159,16 @@ type fileStore struct {
 
 func (s fileStore) Kind() Kind { return KindFile }
 
-func (s fileStore) Load() (keychain.Credentials, error) {
+func (s fileStore) Load() (auth.TokenSet, error) {
 	creds, ok := multiplatformconfig.ReadCredentials(s.osProxy, s.decoderFactory)
 	if !ok {
-		return keychain.Credentials{}, ErrNotFound
+		return auth.TokenSet{}, ErrNotFound
 	}
 
 	return creds, nil
 }
 
-func (s fileStore) Save(c keychain.Credentials) error {
+func (s fileStore) Save(c auth.TokenSet) error {
 	if err := multiplatformconfig.SaveCredentials(s.osProxy, s.encoderFactory, s.decoderFactory, c); err != nil {
 		return fmt.Errorf("save credentials to multiplatform config: %w", err)
 	}

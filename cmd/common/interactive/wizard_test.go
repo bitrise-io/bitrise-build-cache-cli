@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
@@ -21,29 +21,29 @@ func TestActivateCmd_HasInteractiveFlag(t *testing.T) {
 
 func TestPersistCredentials_writesUsernameField(t *testing.T) {
 	kc := &stubKeychain{}
-	require.NoError(t, persistCredentials(kc, keychain.Credentials{}, "ws-1", "tok-1", "alice"))
+	require.NoError(t, persistCredentials(kc, auth.TokenSet{}, "ws-1", "tok-1", "alice"))
 	assert.Equal(t, "alice", kc.saved.Username)
 	assert.Equal(t, "ws-1", kc.saved.WorkspaceID)
 	assert.Equal(t, "tok-1", kc.saved.AuthToken)
 }
 
 type stubKeychain struct {
-	creds keychain.Credentials
-	saved keychain.Credentials
+	creds auth.TokenSet
+	saved auth.TokenSet
 }
 
-func (s *stubKeychain) Load() (keychain.Credentials, error) {
+func (s *stubKeychain) Load() (auth.TokenSet, error) {
 	return s.creds, nil
 }
 
-func (s *stubKeychain) Save(c keychain.Credentials) error {
+func (s *stubKeychain) Save(c auth.TokenSet) error {
 	s.saved = c
 
 	return nil
 }
 
 func TestPersistCredentials_preservesOAuthFieldsOnUpdate(t *testing.T) {
-	existing := keychain.Credentials{
+	existing := auth.TokenSet{
 		AuthToken:    "old-tok",
 		WorkspaceID:  "old-ws",
 		RefreshToken: "refresh-abc",

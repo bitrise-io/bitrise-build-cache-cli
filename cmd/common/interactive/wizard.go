@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
@@ -270,7 +271,7 @@ func persistWizardCredentialsTo(
 // env / JWT / multiplatform sources, returning AuthSourceNone if none are set.
 func wizardStartingCreds(
 	envs map[string]string,
-	storedCreds keychain.Credentials,
+	storedCreds auth.TokenSet,
 	resolve func(map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource, error),
 ) (configcommon.CacheAuthConfig, configcommon.AuthSource) {
 	if storedCreds.AuthToken != "" && storedCreds.WorkspaceID != "" {
@@ -297,7 +298,7 @@ func usernamePersistable(source configcommon.AuthSource) bool {
 		source == configcommon.AuthSourceNone
 }
 
-func persistCredentials(kc keychainStore, existing keychain.Credentials, workspaceID, authToken, username string) error {
+func persistCredentials(kc keychainStore, existing auth.TokenSet, workspaceID, authToken, username string) error {
 	existing.AuthToken = authToken
 	existing.WorkspaceID = workspaceID
 	existing.Username = username

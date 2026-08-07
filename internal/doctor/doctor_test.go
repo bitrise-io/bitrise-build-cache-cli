@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -72,11 +73,11 @@ func (f *fakeKeyring) Delete(s, a string) error {
 func newFakeKeyring() *fakeKeyring { return &fakeKeyring{store: map[string]string{}} }
 
 type fakeAuthLoader struct {
-	creds keychain.Credentials
+	creds auth.TokenSet
 	err   error
 }
 
-func (f fakeAuthLoader) Load() (keychain.Credentials, error) { return f.creds, f.err }
+func (f fakeAuthLoader) Load() (auth.TokenSet, error) { return f.creds, f.err }
 
 // ──────────────────────────── Overall + version ────────────────────────────
 
@@ -124,7 +125,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 
 	return &Doctor{
 		Envs:               map[string]string{},
-		AuthLoader:         fakeAuthLoader{creds: keychain.Credentials{AuthToken: "t", WorkspaceID: "w"}},
+		AuthLoader:         fakeAuthLoader{creds: auth.TokenSet{AuthToken: "t", WorkspaceID: "w"}},
 		Keyring:            newFakeKeyring(),
 		CLIVersion:         "devel",
 		HTTPClient:         &http.Client{},
@@ -140,7 +141,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 
 func TestAuthCheck_keychainWins(t *testing.T) {
 	r := newMinimalDoctor(t)
-	r.AuthLoader = fakeAuthLoader{creds: keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws-kc"}}
+	r.AuthLoader = fakeAuthLoader{creds: auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws-kc"}}
 
 	res := r.authCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)

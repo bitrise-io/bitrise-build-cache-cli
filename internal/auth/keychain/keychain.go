@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	keyring "github.com/zalando/go-keyring"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 const (
@@ -15,27 +16,6 @@ const (
 )
 
 var ErrNotFound = errors.New("no Bitrise Build Cache credentials in keychain")
-
-// Credentials is the single keychain item. AuthToken + WorkspaceID are always
-// present (a manual `auth set` writes only those). The remaining fields are set
-// only for an OAuth login (`bitrise-build-cache auth login`), where AuthToken is the
-// minted PAT and the refresh token + expiries drive transparent refresh.
-type Credentials struct {
-	AuthToken          string    `json:"auth_token"`
-	WorkspaceID        string    `json:"workspace_id"`
-	Username           string    `json:"username,omitempty"`
-	PATExpiry          time.Time `json:"pat_expiry,omitempty"`
-	JWT                string    `json:"jwt,omitempty"`
-	JWTExpiry          time.Time `json:"jwt_expiry,omitempty"`
-	RefreshToken       string    `json:"refresh_token,omitempty"`
-	RefreshTokenExpiry time.Time `json:"refresh_token_expiry,omitempty"`
-}
-
-// IsOAuthManaged reports whether the credential came from an OAuth login (it
-// carries a refresh token), as opposed to a manual `auth set`.
-func (c Credentials) IsOAuthManaged() bool {
-	return c.RefreshToken != ""
-}
 
 type Backend interface {
 	Get(service, account string) (string, error)
@@ -72,24 +52,24 @@ func NewBackend() Backend {
 	return defaultBackend{}
 }
 
-func (k *Keychain) Load() (Credentials, error) {
+func (k *Keychain) Load() (auth.TokenSet, error) {
 	raw, err := k.Backend.Get(serviceName, accountName)
 	switch {
 	case errors.Is(err, keyring.ErrNotFound):
-		return Credentials{}, ErrNotFound
+		return auth.TokenSet{}, ErrNotFound
 	case err != nil:
-		return Credentials{}, fmt.Errorf("keychain read: %w", classify(err))
+		return auth.TokenSet{}, fmt.Errorf("keychain read: %w", classify(err))
 	}
 
-	var c Credentials
+	var c auth.TokenSet
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
-		return Credentials{}, fmt.Errorf("keychain decode: %w", err)
+		return auth.TokenSet{}, fmt.Errorf("keychain decode: %w", err)
 	}
 
 	return c, nil
 }
 
-func (k *Keychain) Save(c Credentials) error {
+func (k *Keychain) Save(c auth.TokenSet) error {
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("keychain encode: %w", err)
@@ -100,20 +80,6 @@ func (k *Keychain) Save(c Credentials) error {
 	}
 
 	return nil
-}
-
-// SaveIfChanged writes c only when it differs from the stored value; returns whether a write happened.
-func (k *Keychain) SaveIfChanged(c Credentials) (bool, error) {
-	existing, err := k.Load()
-	if err == nil && existing == c {
-		return false, nil
-	}
-
-	if err := k.Save(c); err != nil {
-		return false, err
-	}
-
-	return true, nil
 }
 
 func (k *Keychain) Clear() error {

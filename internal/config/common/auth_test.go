@@ -9,18 +9,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 )
 
 type fakeAuthLoader struct {
-	creds keychain.Credentials
+	creds auth.TokenSet
 	err   error
 }
 
-func (f fakeAuthLoader) Load() (keychain.Credentials, error) { return f.creds, f.err }
+func (f fakeAuthLoader) Load() (auth.TokenSet, error) { return f.creds, f.err }
 
 func TestResolveAuthConfig_envVarsWinOverKeychain(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "env-ws",
@@ -33,7 +34,7 @@ func TestResolveAuthConfig_envVarsWinOverKeychain(t *testing.T) {
 }
 
 func TestResolveAuthConfig_jwtEnvWinsOverKeychain(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 	envs := map[string]string{
 		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeUMAJWT("ci-ws"),
 	}
@@ -45,7 +46,7 @@ func TestResolveAuthConfig_jwtEnvWinsOverKeychain(t *testing.T) {
 }
 
 func TestResolveAuthConfig_noEnv_keychainHit(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 
 	got, _, err := resolveAuthConfig(map[string]string{}, loader, nil, nil)
 	require.NoError(t, err)
@@ -68,14 +69,14 @@ func TestResolveAuthConfig_noEnv_keychainError_returnsEnvNotSetError(t *testing.
 }
 
 func TestResolveAuthConfig_noEnv_keychainPartial_returnsEnvNotSetError(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok"}}
 
 	_, _, err := resolveAuthConfig(map[string]string{}, loader, nil, nil)
 	require.ErrorIs(t, err, ErrAuthTokenNotProvided)
 }
 
 func TestResolveAuthConfig_partialEnv_fallsBackToKeychain(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 	envs := map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN": "env-tok",
 	}
@@ -99,7 +100,7 @@ func TestResolveAuthConfig_noEnv_noKeychain_fallsBackToMultiplatformConfig(t *te
 }
 
 func TestResolveAuthConfig_keychainWinsOverMultiplatformConfig(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 	readMp := func() (CacheAuthConfig, error) {
 		return CacheAuthConfig{AuthToken: "mp-tok", WorkspaceID: "mp-ws"}, nil
 	}
@@ -427,7 +428,7 @@ func TestExtractWorkspaceIDFromJWT(t *testing.T) {
 }
 
 func TestGetKeychainCredentials_populated(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok", WorkspaceID: "kc-ws"}}
 
 	cfg, ok := GetKeychainCredentialsWith(loader)
 	require.True(t, ok)
@@ -444,7 +445,7 @@ func TestGetKeychainCredentials_notFound(t *testing.T) {
 }
 
 func TestGetKeychainCredentials_partialTreatedAsEmpty(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{AuthToken: "kc-tok"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{AuthToken: "kc-tok"}}
 
 	_, ok := GetKeychainCredentialsWith(loader)
 	assert.False(t, ok, "token without workspace ID is incomplete; treat as not present")
@@ -460,7 +461,7 @@ func TestGetKeychainCredentials_loadErrorTreatedAsEmpty(t *testing.T) {
 func osUserStub() string { return "os-user" }
 
 func TestResolveUsername_envWins(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{Username: "kc-user"}}
 	envs := map[string]string{EnvUsername: "env-user"}
 
 	got, src := resolveUsername(envs, loader, nil, osUserStub)
@@ -469,7 +470,7 @@ func TestResolveUsername_envWins(t *testing.T) {
 }
 
 func TestResolveUsername_keychainWinsOverOS(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{Username: "kc-user"}}
 
 	got, src := resolveUsername(map[string]string{}, loader, nil, osUserStub)
 	assert.Equal(t, "kc-user", got)
@@ -477,7 +478,7 @@ func TestResolveUsername_keychainWinsOverOS(t *testing.T) {
 }
 
 func TestResolveUsername_osFallback(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{}}
 
 	got, src := resolveUsername(map[string]string{}, loader, nil, osUserStub)
 	assert.Equal(t, "os-user", got)
@@ -485,7 +486,7 @@ func TestResolveUsername_osFallback(t *testing.T) {
 }
 
 func TestResolveUsername_envEmptyStringSkipped(t *testing.T) {
-	loader := fakeAuthLoader{creds: keychain.Credentials{Username: "kc-user"}}
+	loader := fakeAuthLoader{creds: auth.TokenSet{Username: "kc-user"}}
 	envs := map[string]string{EnvUsername: "  "}
 
 	got, src := resolveUsername(envs, loader, nil, osUserStub)

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -45,10 +45,10 @@ func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 		configcommon.EnvAuthToken:   "env-token",
 		configcommon.EnvWorkspaceID: "ws-1",
 	}
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("env credentials have no refresh token; EnsureFresh must not be called")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	got, err := newResolver(envs, nil, ensureFresh)(t.Context())
@@ -64,10 +64,10 @@ func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
 	seedLegacyAuthConfig(t, "bitpat_legacy", "ws-legacy")
 
 	warn := &bytes.Buffer{}
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
 		t.Fatal("the legacy authConfig source is not store-managed; EnsureFresh must not be called")
 
-		return oauth.Credentials{}, nil
+		return auth.TokenSet{}, nil
 	}
 
 	got, err := newResolver(map[string]string{}, warn, ensureFresh)(t.Context())
@@ -82,8 +82,8 @@ func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
 	seedKeychain(t, "stale-pat", "ws-1")
 
 	patExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{PAT: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{AuthToken: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
 	}
 
 	got, err := newResolver(map[string]string{}, nil, ensureFresh)(t.Context())
@@ -96,17 +96,17 @@ func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
 // The no-keychain regression: a file-stored credential must take the refresh path.
 func TestResolver_FileStore_TakesRefreshPath(t *testing.T) {
 	useFileStore(t)
-	require.NoError(t, oauth.SaveTo(store.NewFile(), oauth.Credentials{
-		PAT: "stale-pat", PATExpiry: time.Now().Add(-time.Minute),
+	require.NoError(t, oauth.SaveTo(store.NewFile(), auth.TokenSet{
+		AuthToken: "stale-pat", PATExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "r", WorkspaceID: "ws-1",
 	}))
 
 	called := false
 	patExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
 		called = true
 
-		return oauth.Credentials{PAT: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
+		return auth.TokenSet{AuthToken: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
 	}
 
 	got, err := newResolver(map[string]string{}, nil, ensureFresh)(t.Context())
@@ -121,8 +121,8 @@ func TestResolver_RefreshFails_ServesStoredToken_WithShortExpiry(t *testing.T) {
 	seedKeychain(t, "stored-pat", "ws-1")
 
 	warn := &bytes.Buffer{}
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{}, errors.New("dial tcp: connection refused")
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{}, errors.New("dial tcp: connection refused")
 	}
 
 	before := time.Now()
@@ -138,8 +138,8 @@ func TestResolver_LoginRequired_WarnsOnce(t *testing.T) {
 	isolate(t)
 	seedKeychain(t, "stored-pat", "ws-1")
 
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{}, oauth.ErrLoginRequired
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{}, oauth.ErrLoginRequired
 	}
 
 	warn := &bytes.Buffer{}
@@ -164,8 +164,8 @@ func TestResolver_LoginRequired_WarnsOnce(t *testing.T) {
 func TestResolver_NoCredentialsAnywhere_ReturnsError(t *testing.T) {
 	isolate(t)
 
-	ensureFresh := func(context.Context) (oauth.Credentials, error) {
-		return oauth.Credentials{}, oauth.ErrNotLoggedIn
+	ensureFresh := func(context.Context) (auth.TokenSet, error) {
+		return auth.TokenSet{}, oauth.ErrNotLoggedIn
 	}
 
 	_, err := newResolver(map[string]string{}, nil, ensureFresh)(t.Context())
@@ -175,7 +175,7 @@ func TestResolver_NoCredentialsAnywhere_ReturnsError(t *testing.T) {
 
 func seedKeychain(t *testing.T, token, workspaceID string) {
 	t.Helper()
-	require.NoError(t, store.NewKeychain().Save(keychain.Credentials{
+	require.NoError(t, store.NewKeychain().Save(auth.TokenSet{
 		AuthToken: token, WorkspaceID: workspaceID,
 		PATExpiry: time.Now().Add(-time.Minute), RefreshToken: "r",
 	}))

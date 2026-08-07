@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
@@ -86,5 +86,5 @@ func TestPersistWizardCredentials_KeychainSourceDoesNotTouchTheFile(t *testing.T
 
 type failingKeychain struct{ err error }
 
-func (f *failingKeychain) Load() (keychain.Credentials, error) { return keychain.Credentials{}, f.err }
-func (f *failingKeychain) Save(keychain.Credentials) error     { return f.err }
+func (f *failingKeychain) Load() (auth.TokenSet, error) { return auth.TokenSet{}, f.err }
+func (f *failingKeychain) Save(auth.TokenSet) error     { return f.err }

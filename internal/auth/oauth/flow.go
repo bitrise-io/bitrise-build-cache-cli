@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 // loginTimeout bounds the whole browser round-trip.
@@ -22,29 +24,29 @@ var (
 	ErrLoginRequired = errors.New("OAuth session expired — run 'bitrise-build-cache auth login' to sign in again")
 )
 
-// Login runs the browser authorization + token exchange and returns Credentials
+// Login runs the browser authorization + token exchange and returns the TokenSet
 // (PAT/JWT/refresh/expiries) without WorkspaceID — the caller sets that and
 // persists. openBrowser may be nil; the URL is also logged for manual fallback.
-func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Credentials, error) {
+func (c Config) Login(ctx context.Context, openBrowser func(string) error) (auth.TokenSet, error) {
 	if c.Issuer == "" {
-		return Credentials{}, errors.New("OAuth login is not configured: no issuer (set BITRISE_OAUTH_ISSUER)")
+		return auth.TokenSet{}, errors.New("OAuth login is not configured: no issuer (set BITRISE_OAUTH_ISSUER)")
 	}
 	if c.ClientID == "" {
-		return Credentials{}, errors.New("OAuth login is not configured: no client_id (set BITRISE_OAUTH_CLIENT_ID)")
+		return auth.TokenSet{}, errors.New("OAuth login is not configured: no client_id (set BITRISE_OAUTH_CLIENT_ID)")
 	}
 
 	state, err := newState()
 	if err != nil {
-		return Credentials{}, err
+		return auth.TokenSet{}, err
 	}
 	verifier, challenge, err := newPKCE()
 	if err != nil {
-		return Credentials{}, err
+		return auth.TokenSet{}, err
 	}
 
 	cs, err := newCallbackServer(ctx, state)
 	if err != nil {
-		return Credentials{}, err
+		return auth.TokenSet{}, err
 	}
 	defer cs.close() //nolint:contextcheck // close uses a fresh short timeout for cleanup, independent of the (possibly cancelled) login context
 	cs.start()
@@ -68,24 +70,24 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (Cred
 	defer cancel()
 	code, err := c.awaitCallback(waitCtx, cs)
 	if err != nil {
-		return Credentials{}, err
+		return auth.TokenSet{}, err
 	}
 
 	c.debugf("Exchanging authorization code for a token")
 	now := time.Now() // before the exchange, so the JWT expiry isn't pushed out by the round-trip
 	jwtResp, err := c.exchangeCodeForJWT(ctx, code, verifier, cs.redirectURI())
 	if err != nil {
-		return Credentials{}, fmt.Errorf("exchange authorization code: %w", err)
+		return auth.TokenSet{}, fmt.Errorf("exchange authorization code: %w", err)
 	}
 	c.debugf("Exchanging token for a Bitrise access token")
 	pat, patExpiry, err := c.exchangeJWTForPAT(ctx, jwtResp.AccessToken)
 	if err != nil {
-		return Credentials{}, fmt.Errorf("exchange token for a Bitrise PAT: %w", err)
+		return auth.TokenSet{}, fmt.Errorf("exchange token for a Bitrise PAT: %w", err)
 	}
 	c.infof("Signed in to Bitrise.")
 
-	return Credentials{
-		PAT:          pat,
+	return auth.TokenSet{
+		AuthToken:    pat,
 		PATExpiry:    patExpiry,
 		JWT:          jwtResp.AccessToken,
 		JWTExpiry:    jwtExpiry(jwtResp, now),
@@ -122,21 +124,21 @@ func (c Config) authorizeURL(challenge, state, redirectURI string) string {
 //
 // Returns ErrNotLoggedIn when no OAuth credential is stored. Persists any new
 // tokens back to disk.
-func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
+func (c Config) EnsureFresh(ctx context.Context) (auth.TokenSet, error) {
 	creds, src, err := LoadWithSource()
 	if err != nil {
-		return Credentials{}, err
+		return auth.TokenSet{}, err
 	}
 	save := Save
 	if src != nil {
-		save = func(cr Credentials) error { return SaveTo(src, cr) }
+		save = func(cr auth.TokenSet) error { return SaveTo(src, cr) }
 	}
 	if !creds.IsOAuthManaged() {
-		return Credentials{}, ErrNotLoggedIn
+		return auth.TokenSet{}, ErrNotLoggedIn
 	}
 
 	now := time.Now()
-	if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
+	if creds.AuthToken != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
 		c.debugf("Stored Bitrise token still valid")
 
 		return creds, nil
@@ -154,7 +156,7 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	// one whose refresh token they have already rotated away.
 	creds, save = reloadStored(creds, save)
 	now = time.Now()
-	if creds.PAT != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
+	if creds.AuthToken != "" && now.Add(RefreshSkew).Before(creds.PATExpiry) {
 		c.debugf("Another process refreshed the Bitrise token")
 
 		return creds, nil
@@ -163,9 +165,9 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	// PAT stale. If the JWT is still good, a single exchange refreshes the PAT.
 	if creds.JWT != "" && now.Add(RefreshSkew).Before(creds.JWTExpiry) {
 		if pat, expiry, exErr := c.exchangeJWTForPAT(ctx, creds.JWT); exErr == nil {
-			creds.PAT, creds.PATExpiry = pat, expiry
+			creds.AuthToken, creds.PATExpiry = pat, expiry
 			if err := save(creds); err != nil {
-				return Credentials{}, err
+				return auth.TokenSet{}, err
 			}
 			c.infof("Refreshed Bitrise access token.")
 
@@ -175,13 +177,13 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 	}
 
 	if creds.RefreshToken == "" {
-		return Credentials{}, ErrLoginRequired
+		return auth.TokenSet{}, ErrLoginRequired
 	}
 	c.debugf("Refreshing the OAuth session")
 	now = time.Now() // re-anchor to just before the refresh exchange
 	refreshed, err := c.refreshJWT(ctx, creds.RefreshToken)
 	if err != nil {
-		return Credentials{}, fmt.Errorf("%w (refresh failed: %w)", ErrLoginRequired, err)
+		return auth.TokenSet{}, fmt.Errorf("%w (refresh failed: %w)", ErrLoginRequired, err)
 	}
 	creds.JWT = refreshed.AccessToken
 	creds.JWTExpiry = jwtExpiry(refreshed, now)
@@ -191,11 +193,11 @@ func (c Config) EnsureFresh(ctx context.Context) (Credentials, error) {
 
 	pat, expiry, err := c.exchangeJWTForPAT(ctx, creds.JWT)
 	if err != nil {
-		return Credentials{}, fmt.Errorf("exchange refreshed token for a PAT: %w", err)
+		return auth.TokenSet{}, fmt.Errorf("exchange refreshed token for a PAT: %w", err)
 	}
-	creds.PAT, creds.PATExpiry = pat, expiry
+	creds.AuthToken, creds.PATExpiry = pat, expiry
 	if err := save(creds); err != nil {
-		return Credentials{}, err
+		return auth.TokenSet{}, err
 	}
 	c.infof("Refreshed Bitrise access token.")
 

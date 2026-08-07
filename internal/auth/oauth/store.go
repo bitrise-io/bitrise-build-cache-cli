@@ -3,71 +3,28 @@ package oauth
 import (
 	"errors"
 	"fmt"
-	"time"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
-// Credentials is the OAuth login credential, persisted in the OS keychain as a
-// keychain.Credentials. WorkspaceID is stored because the cache is
-// workspace-scoped while the OAuth login is user-scoped.
-type Credentials struct {
-	PAT                string
-	PATExpiry          time.Time
-	JWT                string
-	JWTExpiry          time.Time
-	RefreshToken       string
-	RefreshTokenExpiry time.Time
-	WorkspaceID        string
-}
-
-// IsOAuthManaged reports whether the credential came from OAuth (has a refresh token).
-func (c Credentials) IsOAuthManaged() bool {
-	return c.RefreshToken != ""
-}
-
-func (c Credentials) toKeychain() keychain.Credentials {
-	return keychain.Credentials{
-		AuthToken:          c.PAT,
-		WorkspaceID:        c.WorkspaceID,
-		PATExpiry:          c.PATExpiry,
-		JWT:                c.JWT,
-		JWTExpiry:          c.JWTExpiry,
-		RefreshToken:       c.RefreshToken,
-		RefreshTokenExpiry: c.RefreshTokenExpiry,
-	}
-}
-
-func fromKeychain(kc keychain.Credentials) Credentials {
-	return Credentials{
-		PAT:                kc.AuthToken,
-		PATExpiry:          kc.PATExpiry,
-		JWT:                kc.JWT,
-		JWTExpiry:          kc.JWTExpiry,
-		RefreshToken:       kc.RefreshToken,
-		RefreshTokenExpiry: kc.RefreshTokenExpiry,
-		WorkspaceID:        kc.WorkspaceID,
-	}
-}
-
-func Load() (Credentials, error) {
+func Load() (auth.TokenSet, error) {
 	c, _, err := LoadWithSource()
 
 	return c, err
 }
 
 // Second return is nil when nothing was found; refresh flows save back into the same store.
-func LoadWithSource() (Credentials, store.Store, error) {
+func LoadWithSource() (auth.TokenSet, store.Store, error) {
 	return loadFrom(store.NewKeychain(), store.NewFile())
 }
 
 // loadFrom prefers an OAuth-managed credential over a manual one wherever it
 // lives: a plain `auth set` PAT in an earlier backend would otherwise hide a
 // login stored in a later one, so logout and refresh would both miss it.
-func loadFrom(backends ...store.Store) (Credentials, store.Store, error) {
+func loadFrom(backends ...store.Store) (auth.TokenSet, store.Store, error) {
 	var (
-		firstCreds Credentials
+		firstCreds auth.TokenSet
 		firstStore store.Store
 	)
 
@@ -77,10 +34,10 @@ func loadFrom(backends ...store.Store) (Credentials, store.Store, error) {
 		case errors.Is(err, store.ErrNotFound):
 			continue
 		case err != nil:
-			return Credentials{}, nil, fmt.Errorf("load credentials: %w", err)
+			return auth.TokenSet{}, nil, fmt.Errorf("load credentials: %w", err)
 		}
 
-		creds := fromKeychain(kc)
+		creds := kc
 		if creds.IsOAuthManaged() {
 			return creds, s, nil
 		}
@@ -93,14 +50,14 @@ func loadFrom(backends ...store.Store) (Credentials, store.Store, error) {
 		return firstCreds, firstStore, nil
 	}
 
-	return Credentials{}, nil, nil
+	return auth.TokenSet{}, nil, nil
 }
 
-func Save(c Credentials) error {
+func Save(c auth.TokenSet) error {
 	return SaveTo(store.NewKeychain(), c)
 }
 
-func SaveTo(s store.Store, c Credentials) error {
+func SaveTo(s store.Store, c auth.TokenSet) error {
 	_, err := SaveToWithFallback(s, c, false)
 
 	return err
@@ -110,12 +67,12 @@ func SaveTo(s store.Store, c Credentials) error {
 // write — a completed sign-in shouldn't be thrown away because the machine has no
 // keychain. The whole credential goes to the fallback, refresh token included, so
 // the login stays refreshable there.
-func SaveToWithFallback(s store.Store, c Credentials, allowFallback bool) (store.SaveOutcome, error) {
-	if c.PAT == "" {
+func SaveToWithFallback(s store.Store, c auth.TokenSet, allowFallback bool) (store.SaveOutcome, error) {
+	if c.AuthToken == "" {
 		return store.SaveOutcome{Kind: s.Kind()}, errors.New("refusing to save credentials with empty PAT")
 	}
 
-	outcome, err := store.SaveExclusiveWithFallback(s, c.toKeychain(), allowFallback)
+	outcome, err := store.SaveExclusiveWithFallback(s, c, allowFallback)
 	if err != nil {
 		return outcome, fmt.Errorf("save credentials: %w", err)
 	}
