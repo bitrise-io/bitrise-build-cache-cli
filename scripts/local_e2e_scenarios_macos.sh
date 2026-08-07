@@ -63,18 +63,19 @@ pass "daemon uninstall ok"
 # The wizard is the path most local users take, so assert it reaches launchd —
 # not just that `daemon install` does. TERM=dumb drives huh's accessible mode
 # from a pipe, so this needs no TTY.
-log "activate --interactive selecting Xcode registers the proxy with launchd"
+log "activate --interactive registers the daemon plists via the wizard"
 FAKE_TOKEN=${FAKE_TOKEN:-bitpat_fake-token-for-ci-e2e}
 FAKE_WS=${FAKE_WS:-fake-workspace-id}
 # Seeded so the wizard resolves credentials from the keychain and never reaches
 # the browser sign-in path.
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
 
-# Accessible-mode answers: 3 = toggle Xcode (1-indexed: Gradle/Bazel/Xcode/ccache),
-# 0 = confirm selection, '' = keep display name, n = no cache push,
-# y = yes to keeping the proxies running.
+# Accessible-mode answers: 0 = confirm the default (all four tools preselected),
+# '' = keep display name, n = no cache push, y = yes to keeping the proxies
+# running. Multi-toggle across huh accessible-mode redraws is not portable across
+# huh versions, so the scenario accepts the default selection and asserts both
+# supervised services are installed.
 TERM=dumb "$CLI" activate --interactive <<'EOF'
-3
 0
 
 n
@@ -85,10 +86,11 @@ EOF
   || fail "wizard did not write the xcelerate-proxy plist"
 launchctl list | grep -q io.bitrise.build-cache.xcelerate-proxy \
   || fail "wizard did not register xcelerate-proxy with launchd"
-# Xcode alone must not drag in the ccache helper.
-[ ! -f ~/Library/LaunchAgents/io.bitrise.build-cache.ccache-helper.plist ] \
-  || fail "wizard registered ccache-helper for an Xcode-only selection"
-pass "wizard installed + started only the services Xcode needs"
+[ -f ~/Library/LaunchAgents/io.bitrise.build-cache.ccache-helper.plist ] \
+  || fail "wizard did not write the ccache-helper plist"
+launchctl list | grep -q io.bitrise.build-cache.ccache-helper \
+  || fail "wizard did not register ccache-helper with launchd"
+pass "wizard installed + started the supervised services"
 
 "$CLI" daemon uninstall >/dev/null
 

@@ -202,11 +202,11 @@ expect -f /tmp/wizard.exp"
 step "TERM=dumb drives the huh accessible mode (line-based Q&A on stdin)"
 # huh auto-switches to accessible mode when TERM=dumb. With keychain seeded
 # by SCENARIO A the wizard prompts: tools multi-select → username → push
-# confirm. Pipe: 1 (toggle Gradle) → 0 (confirm) → '' (keep username) → n (no push).
+# confirm. All tools preselected; pipe: 0 (confirm the default) → '' (keep
+# username) → n (no push).
 # 'export' (not 'TERM=dumb <cmd>' prefix) so TERM=dumb survives the
 # `. ~/.bitrise/env` source that $CLI performs on Linux.
 remote_bash "export TERM=dumb; $CLI activate --interactive <<'EOF'
-1
 0
 
 n

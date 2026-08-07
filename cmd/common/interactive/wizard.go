@@ -53,7 +53,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	storedUsername := storedCreds.Username
 
 	var (
-		selectedTools []string
+		selectedTools = defaultSelectedTools()
 		workspaceID   = auth.Config.WorkspaceID
 		authToken     = auth.Config.AuthToken
 		username      = storedUsername
