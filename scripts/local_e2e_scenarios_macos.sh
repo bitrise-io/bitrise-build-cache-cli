@@ -70,11 +70,14 @@ FAKE_WS=${FAKE_WS:-fake-workspace-id}
 # the browser sign-in path.
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
 
-# Accessible-mode answers: 3 = toggle Xcode (1-indexed: Gradle/Bazel/Xcode/ccache),
-# 0 = confirm selection, '' = keep display name, n = no cache push,
-# y = yes to keeping the proxies running.
+# Accessible-mode answers: 1/2/4 = toggle off Gradle/Bazel/ccache (all preselected
+# by default; 1-indexed order is Gradle/Bazel/Xcode/ccache) leaving Xcode alone,
+# 0 = confirm, '' = keep display name, n = no cache push, y = yes to keeping the
+# proxies running.
 TERM=dumb "$CLI" activate --interactive <<'EOF'
-3
+1
+2
+4
 0
 
 n
