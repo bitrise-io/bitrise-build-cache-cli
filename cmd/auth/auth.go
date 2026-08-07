@@ -16,12 +16,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )

@@ -10,10 +10,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )

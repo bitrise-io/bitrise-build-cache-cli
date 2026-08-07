@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 )
 
 // logout is scoped to the browser login, so a manually set token in the other

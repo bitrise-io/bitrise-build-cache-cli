@@ -8,7 +8,7 @@ import (
 
 	keyring "github.com/zalando/go-keyring"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 )
 
 func TestCurrentAuthStatus(t *testing.T) {
