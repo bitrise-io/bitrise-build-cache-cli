@@ -36,10 +36,8 @@ const (
 )
 
 // Channel-pool sizing mirrors the Gradle plugin's ClientBalancer.
-var (
-	numChannels     = max(2, runtime.NumCPU()/6)
-	perChannelLimit = runtime.NumCPU()
-)
+func numChannels() int     { return max(2, runtime.NumCPU()/6) }
+func perChannelLimit() int { return runtime.NumCPU() }
 
 // AuthSource returns the credentials to use for a single RPC. Implementations
 // may cache and refresh transparently; kv.Client re-reads on every call.
@@ -190,8 +188,8 @@ func buildChannels(p NewClientParams) ([]*channel, error) {
 		PermitWithoutStream: true,
 	}
 
-	channels := make([]*channel, 0, numChannels)
-	for range numChannels {
+	channels := make([]*channel, 0, numChannels())
+	for range numChannels() {
 		conn, err := grpc.NewClient(p.Host,
 			grpc.WithTransportCredentials(creds),
 			grpc.WithKeepaliveParams(kaParams),
@@ -206,7 +204,7 @@ func buildChannels(p NewClientParams) ([]*channel, error) {
 
 		channels = append(channels, &channel{
 			conn:               conn,
-			sem:                make(chan struct{}, perChannelLimit),
+			sem:                make(chan struct{}, perChannelLimit()),
 			bitriseKVClient:    kv_storage.NewKVStorageClient(conn),
 			capabilitiesClient: remoteexecution.NewCapabilitiesClient(conn),
 			casClient:          remoteexecution.NewContentAddressableStorageClient(conn),
