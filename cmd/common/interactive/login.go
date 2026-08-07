@@ -175,6 +175,9 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 		}
 	}
 	creds.WorkspaceID = workspace
+	// A fresh sign-in carries no display name, and the save is exclusive — without
+	// this, `auth login` silently drops the name `auth username` set.
+	creds.Username = store.StoredUsername()
 
 	target, err := store.Select(configcommon.DetectCIProvider(envs) != "", storage)
 	if err != nil {

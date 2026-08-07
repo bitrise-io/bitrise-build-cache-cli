@@ -82,12 +82,15 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	// Read auth config and metadata upfront
 	logger.Infof("(i) Check Auth Config")
-	authConfig, authOrigin, err := live.Default(nil).ResolveNoRefresh(envs)
+	resolver := live.Default(nil)
+
+	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
 
-	metadata := common.NewMetadata(envs, authConfig,
+	username, _ := resolver.ResolveUsername(envs)
+	metadata := common.NewMetadata(envs, username,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 

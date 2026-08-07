@@ -7,13 +7,10 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
-// ResolvePinned resolves, and writes an env- or JWT-sourced credential to disk so
-// the processes activation starts — the xcelerate proxy, the ccache storage helper,
-// the Gradle init script — can find it in a shell that never saw those env vars.
-//
-// The write is read-modify-write against the existing record, so it cannot drop a
-// refresh token, a JWT or a display name. A write failure is logged, not returned:
-// the credential resolved fine and the activation should proceed.
+// Writes an env- or JWT-sourced credential to disk so the processes activation
+// starts — the xcelerate proxy, the ccache storage helper, the Gradle init script —
+// can find it in a shell that never saw those env vars. A write failure is logged,
+// not returned: the credential resolved fine and the activation should proceed.
 func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, isCI bool) (auth.Credential, auth.Origin, error) {
 	cred, origin, err := r.Resolve(ctx, envs)
 	if err != nil || origin.StoreManaged() {
@@ -24,25 +21,27 @@ func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, is
 	// authConfig key that the analytics and React Native readers expect, and never
 	// into the credentials block, which is for credentials that outlive one build.
 	if origin.Backend == auth.BackendJWT {
-		if legacyErr := writeLegacyFileCredential(cred); legacyErr != nil {
+		if legacyErr := writeAnalyticsCredential(cred); legacyErr != nil {
 			r.debugf("could not mirror the CI JWT to the analytics config: %s", legacyErr)
 		}
 
 		return cred, origin, nil
 	}
 
-	target := r.pinTarget(isCI)
+	// Merged per backend: if the keychain is unreadable and the write falls back to
+	// the config file, the record must be merged against the file's own contents,
+	// not against the empty one the failed keychain read produced.
+	merge := func(s store.Store) auth.TokenSet {
+		existing, loadErr := s.Load()
+		if loadErr != nil {
+			existing = auth.TokenSet{}
+		}
+		existing.AuthToken, existing.WorkspaceID = cred.Token, cred.WorkspaceID
 
-	existing, loadErr := target.Load()
-	if loadErr != nil {
-		existing = auth.TokenSet{}
-	}
-	existing.AuthToken, existing.WorkspaceID = cred.Token, cred.WorkspaceID
-	if cred.Username != "" {
-		existing.Username = cred.Username
+		return existing
 	}
 
-	result, saveErr := store.SaveWithFallback(target, existing, true)
+	result, saveErr := store.SaveWithFallback(r.pinTarget(isCI), merge, true)
 	if saveErr != nil {
 		r.debugf("could not persist the resolved credential: %s", saveErr)
 

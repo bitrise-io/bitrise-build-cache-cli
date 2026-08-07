@@ -23,12 +23,12 @@ const (
 	ProvenanceInjected
 	ProvenanceOAuthLogin
 	ProvenanceManual
-	// ProvenanceLegacy is the multiplatform config's authConfig key, kept for
-	// analytics readers predating the credentials key.
-	ProvenanceLegacy
+	// ProvenanceStatic is a token+workspace snapshot with no refresh machinery —
+	// the analytics authConfig block, and the pre-v3 xcelerate config it shares a
+	// shape with. Never refreshable, whatever backend it sits in.
+	ProvenanceStatic
 )
 
-// Origin is where a resolved credential came from.
 type Origin struct {
 	Backend    Backend
 	Provenance Provenance
@@ -36,10 +36,10 @@ type Origin struct {
 
 // StoreManaged reports whether the credential lives in a backend this CLI writes,
 // which is what makes it refreshable. Test this, never a specific backend: both the
-// keychain and the config file can hold an OAuth login. The legacy authConfig block
-// is excluded — it predates the refresh token and has nothing to refresh with.
+// keychain and the config file can hold an OAuth login. A static credential is
+// excluded — there is nothing to refresh it with.
 func (o Origin) StoreManaged() bool {
-	if o.Provenance == ProvenanceLegacy {
+	if o.Provenance == ProvenanceStatic {
 		return false
 	}
 
@@ -52,7 +52,6 @@ func (o Origin) Resolved() bool {
 
 const labelNone = "none"
 
-// Label is the prose name, for user-facing output.
 func (o Origin) Label() string {
 	switch o.Backend {
 	case BackendEnv:
@@ -69,7 +68,7 @@ func (o Origin) Label() string {
 		switch o.Provenance {
 		case ProvenanceOAuthLogin:
 			return "OAuth login (config file)"
-		case ProvenanceLegacy:
+		case ProvenanceStatic:
 			return "multiplatform config"
 		case ProvenanceNone, ProvenanceInjected, ProvenanceManual:
 		}
@@ -82,7 +81,6 @@ func (o Origin) Label() string {
 	return labelNone
 }
 
-// ShortLabel is the compact machine-ish name, for diagnostics and --json.
 func (o Origin) ShortLabel() string {
 	switch o.Backend {
 	case BackendEnv:
@@ -92,7 +90,7 @@ func (o Origin) ShortLabel() string {
 	case BackendKeychain:
 		return "keychain"
 	case BackendFile:
-		if o.Provenance == ProvenanceLegacy {
+		if o.Provenance == ProvenanceStatic {
 			return "multiplatform-config"
 		}
 

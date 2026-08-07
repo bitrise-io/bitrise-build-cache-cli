@@ -63,7 +63,7 @@ func TestUsernamePersistable(t *testing.T) {
 	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendKeychain}))
 	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendEnv}))
 	assert.True(t, usernamePersistable(authpkg.Origin{}))
-	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceLegacy}))
+	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceStatic}))
 	assert.False(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendJWT}))
 }
 

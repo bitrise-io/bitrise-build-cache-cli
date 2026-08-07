@@ -5,7 +5,6 @@ package live
 
 import (
 	"context"
-	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -14,16 +13,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
-// Prefer selects the precedence order.
 type Prefer int
 
 const (
 	// PreferEnv is the default: an injected credential beats a stored one, so CI
 	// and scripted runs use what they were handed.
 	PreferEnv Prefer = iota
-	// PreferStored puts the keychain and config file ahead of the env vars. Only
-	// the interactive wizard uses it, so a stale token exported by a shell rc file
-	// can't shadow a real login on the machine in front of the user.
+	// PreferStored puts the keychain and config file ahead of the env vars, so a
+	// stale token exported by a shell rc file can't shadow a real login on the
+	// machine in front of the user. The wizard and the doctor's auth check use it;
+	// the doctor's backend probe deliberately does not, because it exists to test
+	// the credential a build would actually send.
 	PreferStored
 )
 
@@ -43,7 +43,7 @@ const (
 )
 
 // Resolver answers "which credential should this process use". Nil fields take
-// production defaults; Refresh and Store exist so tests stay off the real machine.
+// production defaults; Refresh, Backends and AnalyticsBlock are the test seams.
 type Resolver struct {
 	Logger log.Logger
 	Prefer Prefer
@@ -54,9 +54,9 @@ type Resolver struct {
 	Refresh func(ctx context.Context, ts auth.TokenSet, backing store.Store) (auth.TokenSet, error)
 	// Backends overrides the stores consulted, in order. Nil means keychain, file.
 	Backends []store.Store
-	// LegacyFile reads the multiplatform config's legacy authConfig key. Nil means
+	// AnalyticsBlock reads the analytics config's authConfig block. Nil means
 	// the real reader.
-	LegacyFile func() (auth.Credential, bool)
+	AnalyticsBlock func() (auth.Credential, auth.Origin, bool)
 }
 
 // Resolve returns the credential to use, refreshing it first when it lives in a
@@ -91,12 +91,11 @@ func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, au
 	return cred, origin, err
 }
 
-// Bind pins the environment for a long-lived process that resolves per RPC.
+// For a long-lived process that resolves per RPC.
 func (r *Resolver) Bind(envs map[string]string) *Bound {
 	return &Bound{resolver: r, envs: envs}
 }
 
-// Bound is a Resolver with its environment fixed.
 type Bound struct {
 	resolver *Resolver
 	envs     map[string]string
@@ -119,8 +118,6 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 	return cred
 }
 
-// Private — resolution
-
 // resolve applies the precedence order and returns the backing store when the
 // credential came from one, so the caller can refresh in place.
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
@@ -142,8 +139,8 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 		}
 	}
 
-	if cred, ok := r.legacyFile(); ok {
-		return cred, auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceLegacy}, nil, nil
+	if cred, origin, ok := r.legacyFile(); ok {
+		return cred, origin, nil, nil
 	}
 
 	// Nothing stored: report the env vars as missing, which is the actionable error.
@@ -152,18 +149,33 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 	return cred, origin, nil, err
 }
 
-// fromStores walks the backends in order and returns the first populated record.
+// fromStores prefers an OAuth-managed record wherever it lives: a manual token in
+// an earlier backend would otherwise hide a login in a later one, so the login
+// would never be refreshed. Falls back to the first populated record.
 func (r *Resolver) fromStores() (auth.Credential, auth.Origin, store.Store, bool) {
+	var (
+		firstTS    auth.TokenSet
+		firstStore store.Store
+	)
+
 	for _, s := range r.backends() {
 		ts, err := s.Load()
 		if err != nil || !ts.Populated() {
 			continue
 		}
-
-		return ts.Credential(), ts.Origin(s.Backend()), s, true
+		if ts.IsOAuthManaged() {
+			return ts.Credential(), ts.Origin(s.Backend()), s, true
+		}
+		if firstStore == nil {
+			firstTS, firstStore = ts, s
+		}
 	}
 
-	return auth.Credential{}, auth.Origin{}, nil, false
+	if firstStore == nil {
+		return auth.Credential{}, auth.Origin{}, nil, false
+	}
+
+	return firstTS.Credential(), firstTS.Origin(firstStore.Backend()), firstStore, true
 }
 
 func (r *Resolver) backends() []store.Store {
@@ -174,12 +186,12 @@ func (r *Resolver) backends() []store.Store {
 	return []store.Store{store.NewKeychain(), store.NewFile()}
 }
 
-func (r *Resolver) legacyFile() (auth.Credential, bool) {
-	if r.LegacyFile != nil {
-		return r.LegacyFile()
+func (r *Resolver) legacyFile() (auth.Credential, auth.Origin, bool) {
+	if r.AnalyticsBlock != nil {
+		return r.AnalyticsBlock()
 	}
 
-	return readLegacyFileCredential()
+	return readAnalyticsCredential()
 }
 
 func (r *Resolver) refresh(ctx context.Context, backing store.Store) (auth.TokenSet, error) {
@@ -223,11 +235,7 @@ func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
 	token, workspaceID := envs[auth.EnvAuthToken], envs[auth.EnvWorkspaceID]
 
 	if token != "" && workspaceID != "" {
-		return auth.Credential{
-				Token:       token,
-				WorkspaceID: workspaceID,
-				Username:    strings.TrimSpace(envs[auth.EnvUsername]),
-			},
+		return auth.Credential{Token: token, WorkspaceID: workspaceID},
 			auth.Origin{Backend: auth.BackendEnv, Provenance: auth.ProvenanceInjected},
 			nil
 	}
@@ -251,7 +259,7 @@ func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
 	return auth.Credential{}, auth.Origin{}, auth.ErrWorkspaceIDNotProvided
 }
 
-// Default is the production resolver. A nil logger is silent.
+// A nil logger is silent.
 func Default(logger log.Logger) *Resolver {
 	return &Resolver{Logger: logger}
 }

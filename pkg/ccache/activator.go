@@ -6,6 +6,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -116,6 +117,12 @@ func (a *Activator) Activate(ctx context.Context) error {
 	}
 
 	a.ensureLogDir()
+
+	// Materialise an env- or JWT-sourced credential: the detached storage helper
+	// starts in a shell that never saw those variables.
+	if _, _, err := live.Default(a.logger).ResolvePinned(ctx, a.envs, configcommon.DetectCIProvider(a.envs) != ""); err != nil {
+		return fmt.Errorf("persist auth credentials: %w", err)
+	}
 
 	// Read-modify-write: Config.Save is a full overwrite, and a fresh Config here
 	// would drop the credentials block that is the only credential store on a

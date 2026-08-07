@@ -220,7 +220,7 @@ TBD`,
 			defer cleanup()
 		}
 
-		metadata := configcommon.NewMetadata(utils.AllEnvs(), config.AuthConfig, func(cmd string, args ...string) (string, error) {
+		metadata := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(utils.AllEnvs()), func(cmd string, args ...string) (string, error) {
 			o, err := utils.DefaultCommandFunc()(cobraCmd.Context(), cmd, args...).CombinedOutput()
 
 			return string(o), err

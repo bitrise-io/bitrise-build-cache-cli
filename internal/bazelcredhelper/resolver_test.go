@@ -107,7 +107,7 @@ func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
 // The no-keychain regression: a file-stored credential must take the refresh path.
 func TestResolver_FileStore_TakesRefreshPath(t *testing.T) {
 	useFileStore(t)
-	require.NoError(t, oauth.SaveTo(store.NewFile(), authpkg.TokenSet{
+	require.NoError(t, oauthSaveTo(t, store.NewFile(), authpkg.TokenSet{
 		AuthToken: "stale-pat", PATExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "r", WorkspaceID: "ws-1",
 	}))
@@ -195,7 +195,14 @@ func seedKeychain(t *testing.T, token, workspaceID string) {
 func seedLegacyAuthConfig(t *testing.T, token, workspaceID string) {
 	t.Helper()
 	cfg := multiplatformconfig.Config{
-		AuthConfig: multiplatformconfig.LegacyAuthConfig{AuthToken: token, WorkspaceID: workspaceID},
+		AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: token, WorkspaceID: workspaceID},
 	}
 	require.NoError(t, cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}))
+}
+
+func oauthSaveTo(t *testing.T, s store.Store, c authpkg.TokenSet) error {
+	t.Helper()
+	_, err := oauth.SaveToWithFallback(s, c, false)
+
+	return err
 }

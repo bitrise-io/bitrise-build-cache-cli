@@ -239,7 +239,7 @@ func TestConfig_AuthBackwardsCompat(t *testing.T) {
 
 		// New multiplatform config carries current auth.
 		mp := multiplatformconfig.Config{
-			AuthConfig: multiplatformconfig.LegacyAuthConfig{AuthToken: "current-token", WorkspaceID: "current-ws"},
+			AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: "current-token", WorkspaceID: "current-ws"},
 		}
 		require.NoError(t, mp.Save(osProxy, utils.DefaultEncoderFactory{}))
 

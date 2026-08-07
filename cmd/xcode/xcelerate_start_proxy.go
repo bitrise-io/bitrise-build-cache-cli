@@ -245,7 +245,7 @@ func newAnalyticsBundle(
 	b := &analyticsBundle{
 		client:       client,
 		authProvider: authProvider,
-		metadata:     configcommon.NewMetadata(envProvider, config.AuthConfig, commandFunc, logger),
+		metadata:     configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, logger),
 		logger:       logger,
 	}
 

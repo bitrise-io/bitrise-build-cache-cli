@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -52,6 +53,9 @@ type RunnerParams struct {
 	// SkipDoctor disables the health checks run around the wrapped command, as
 	// --no-doctor and BITRISE_BUILD_CACHE_SKIP_DOCTOR do.
 	SkipDoctor bool
+	// Resolver overrides credential resolution. If nil, the production resolver is
+	// used; tests inject one so the readiness gate never reads the real keychain.
+	Resolver *live.Resolver
 }
 
 //go:generate moq -stub -out post_run_runner_mock_test.go -pkg reactnative . postRunRunner
@@ -78,6 +82,9 @@ type Runner struct {
 	socket         ccacheSocket
 	// doctor is nil when the health checks are opted out of.
 	doctor buildHealthReporter
+	// resolver answers the readiness gate. Injected so tests do not consult the
+	// machine's real keychain.
+	resolver *live.Resolver
 }
 
 // NewRunner creates a Runner with production pre-run and post-run hooks.
@@ -99,6 +106,11 @@ func NewRunner(params RunnerParams) *Runner {
 		logger = log.NewLogger(log.WithDebugLog(debug))
 	}
 
+	resolver := params.Resolver
+	if resolver == nil {
+		resolver = live.Default(logger)
+	}
+
 	var ccacheConfig *ccacheconfig.Config
 	var socket ccacheSocket
 	if config, err := ccacheconfig.ReadConfig(osProxy, decoderFactory, utils.AllEnvs()); err == nil {
@@ -112,8 +124,9 @@ func NewRunner(params RunnerParams) *Runner {
 		osProxy:        osProxy,
 		decoderFactory: decoderFactory,
 		ccacheConfig:   ccacheConfig,
-		postRun:        newPostRunDeps(logger, osProxy, decoderFactory),
+		postRun:        newPostRunDeps(logger, resolver),
 		socket:         socket,
+		resolver:       resolver,
 	}
 
 	if !params.SkipDoctor && utils.AllEnvs()[doctorpkg.EnvSkipDoctor] == "" {
@@ -221,12 +234,9 @@ func (r *Runner) isReactNativeReady() bool {
 		return false
 	}
 
-	mpCfg, err := multiplatformconfig.ReadConfig(r.osProxy, r.decoderFactory)
-	if err != nil {
-		return false
-	}
+	cred, _, err := r.resolver.ResolveNoRefresh(utils.AllEnvs())
 
-	return mpCfg.AuthConfig.WorkspaceID != ""
+	return err == nil && cred.WorkspaceID != ""
 }
 
 // ---------------------------------------------------------------------------

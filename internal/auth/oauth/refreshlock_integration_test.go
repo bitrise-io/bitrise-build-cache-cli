@@ -96,7 +96,7 @@ func runLockChild(role string) int {
 	}
 
 	start := time.Now()
-	creds, err := cfg.EnsureFresh(context.Background())
+	creds, err := ensureFresh(cfg, context.Background())
 	if err != nil {
 		logEvent(fmt.Sprintf("FAILED    pid=%-6d after=%s %v", os.Getpid(), time.Since(start).Round(time.Millisecond), err))
 
@@ -126,7 +126,7 @@ func holdAfterRefresh(cfg Config, holdMS int) int {
 	// Long enough for the waiter to load the stale credential and start waiting.
 	time.Sleep(300 * time.Millisecond)
 
-	creds, err := Load()
+	creds, err := loadForTest()
 	if err != nil {
 		return 1
 	}
@@ -143,7 +143,7 @@ func holdAfterRefresh(cfg Config, holdMS int) int {
 		return 1
 	}
 	creds.AuthToken, creds.PATExpiry = pat, expiry
-	if err := SaveTo(store.NewFile(), creds); err != nil {
+	if err := saveTo(store.NewFile(), creds); err != nil {
 		return 1
 	}
 	logEvent(fmt.Sprintf("ROTATED   pid=%-6d pat=%s still holding the lock", os.Getpid(), pat))
@@ -154,7 +154,7 @@ func holdAfterRefresh(cfg Config, holdMS int) int {
 }
 
 func storedRefreshToken() string {
-	creds, err := Load()
+	creds, err := loadForTest()
 	if err != nil {
 		return ""
 	}
@@ -269,7 +269,7 @@ func newLockEnv(t *testing.T) lockEnv {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 
-	require.NoError(t, SaveTo(store.NewFile(), auth.TokenSet{
+	require.NoError(t, saveTo(store.NewFile(), auth.TokenSet{
 		AuthToken: "pat-seed", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "jwt-seed", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-seed", WorkspaceID: "ws",
@@ -371,7 +371,7 @@ func TestIntegration_RefreshLock_ParallelHelpersDoNotBurnTheRefreshToken(t *test
 		assert.Equal(t, pats[0], pat, "every helper should be handed the same refreshed token")
 	}
 
-	stored, err := Load()
+	stored, err := loadForTest()
 	require.NoError(t, err)
 	assert.True(t, env.idp.accepts(stored.RefreshToken), "the stored refresh token must still be one the IdP will honour")
 }
@@ -423,7 +423,7 @@ func TestIntegration_RefreshLock_WaiterThatGivesUpDoesNotSpendTheStaleToken(t *t
 		"BITRISE_OIDC_TOKEN_ENDPOINT": env.idp.server.URL + "/oidc/token",
 	})
 
-	creds, err := cfg.EnsureFresh(t.Context())
+	creds, err := ensureFresh(cfg, t.Context())
 
 	env.dump(t, "a waiter giving up on a lock still held by the process that refreshed")
 
@@ -435,7 +435,7 @@ func TestIntegration_RefreshLock_WaiterThatGivesUpDoesNotSpendTheStaleToken(t *t
 	assert.Equal(t, 1, grants, "and it must not have refreshed again")
 	assert.NotEqual(t, "pat-seed", creds.AuthToken, "it should have picked up the refreshed credential")
 
-	stored, err := Load()
+	stored, err := loadForTest()
 	require.NoError(t, err)
 	assert.True(t, env.idp.accepts(stored.RefreshToken), "the login must still be usable afterwards")
 

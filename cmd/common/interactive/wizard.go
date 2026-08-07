@@ -23,14 +23,14 @@ func (*huhWizard) Run(ctx context.Context) error {
 	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 	logger.TInfof("Bitrise Build Cache - interactive local setup")
 
-	kc := store.NewKeychain()
+	credStore := store.NewKeychain()
 	envs := utils.AllEnvs()
 
 	// Resolved before the form: the sign-in prints logs, opens a browser and
 	// reads stdin, none of which composes with huh's full-screen form.
 	auth := wizardAuthResolver{
 		Logger:    logger,
-		Keychain:  kc,
+		Store:     credStore,
 		Envs:      envs,
 		Prompt:    wizardPromptReader(),
 		Workspace: interactiveWorkspace,
@@ -139,7 +139,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
-	persistWizardCredentials(logger, kc, auth, wizardCredentials{
+	persistWizardCredentials(logger, credStore, auth, wizardCredentials{
 		WorkspaceID:    workspaceID,
 		AuthToken:      authToken,
 		Username:       username,
@@ -171,8 +171,8 @@ type wizardCredentials struct {
 // persistWizardCredentials saves the wizard's credentials to the keychain, with
 // a message describing what moved where. A failure is non-fatal: activation can
 // still proceed with the values resolved for this run.
-func persistWizardCredentials(logger log.Logger, kc store.Store, auth wizardAuth, creds wizardCredentials) {
-	persistWizardCredentialsTo(logger, kc, storeClearFile, auth, creds)
+func persistWizardCredentials(logger log.Logger, target store.Store, auth wizardAuth, creds wizardCredentials) {
+	persistWizardCredentialsTo(logger, target, storeClearFile, auth, creds)
 }
 
 func storeClearFile() error {
@@ -181,13 +181,13 @@ func storeClearFile() error {
 
 func persistWizardCredentialsTo(
 	logger log.Logger,
-	kc store.Store,
+	target store.Store,
 	clearFile func() error,
 	auth wizardAuth,
 	creds wizardCredentials,
 ) {
 	save := func() error {
-		return persistCredentials(kc, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
+		return persistCredentials(target, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
 	}
 
 	logUsername := func() {
@@ -203,7 +203,7 @@ func persistWizardCredentialsTo(
 		if creds.Username == creds.StoredUsername {
 			return
 		}
-		if err := persistCredentials(storeForKind(kc, auth.Origin.Backend), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
+		if err := persistCredentials(storeFor(target, auth.Origin.Backend), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
 			logger.Warnf("Could not save the display name to the %s (%v).", auth.Origin.Label(), err)
 		} else {
 			logger.Infof("Updated display name for local invocations.")
@@ -281,12 +281,12 @@ func persistCredentials(kc store.Store, existing authpkg.TokenSet, workspaceID, 
 	return nil
 }
 
-// storeForKind picks the backend to write to, keeping the injected keychain so
-// tests stay off the real one.
-func storeForKind(kc store.Store, backend authpkg.Backend) store.Store {
+// storeFor picks the backend to write to, keeping the injected store so tests stay
+// off the real one.
+func storeFor(target store.Store, backend authpkg.Backend) store.Store {
 	if backend == authpkg.BackendFile {
 		return store.NewFile()
 	}
 
-	return kc
+	return target
 }

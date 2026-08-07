@@ -169,7 +169,7 @@ func scrubMultiplatform(osProxy utils.OsProxy) (scrubbedItem, error) {
 		return scrubbedItem{}, nil
 	}
 
-	cfg.AuthConfig = multiplatformconfig.LegacyAuthConfig{}
+	cfg.AuthConfig = multiplatformconfig.AnalyticsAuthConfig{}
 	if err := cfg.Save(osProxy, utils.DefaultEncoderFactory{}); err != nil {
 		return scrubbedItem{}, fmt.Errorf("save scrubbed multiplatform config: %w", err)
 	}
@@ -350,18 +350,13 @@ var authStatusCmd = &cobra.Command{
 }
 
 func renderUsername(logger log.Logger, envs map[string]string) {
-	cred, origin, _ := live.Default(nil).ResolveNoRefresh(envs)
-	name, src := configcommon.ResolveUsername(envs, cred)
-	switch src {
-	case configcommon.UsernameSourceEnv:
-		logger.Infof("Local invocation display name: %s (source: %s env)", name, authpkg.EnvUsername)
-	case configcommon.UsernameSourceResolved:
-		logger.Infof("Local invocation display name: %s (source: %s)", name, origin.Label())
-	case configcommon.UsernameSourceOS:
-		logger.Infof("Local invocation display name: %s (source: OS username fallback)", name)
-	case configcommon.UsernameSourceNone:
+	name, src := live.Default(nil).ResolveUsername(envs)
+	if src == live.UsernameSourceNone {
 		logger.Infof("Local invocation display name: (none — set via `auth set --username <name>` or %s)", authpkg.EnvUsername)
+
+		return
 	}
+	logger.Infof("Local invocation display name: %s (source: %s)", name, src)
 }
 
 type credSourceState int
@@ -401,7 +396,7 @@ func credSources(envs map[string]string) ([]credSource, []credSource) {
 		{"Config file (CI-safe)", displayHomePath(osProxy, multiplatformConfigPath), probeFileStore},
 	}
 	migrationSources := []credSource{
-		{"Multiplatform config (legacy authConfig)", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
+		{"Analytics config (authConfig block)", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
 		{"Xcelerate config", displayHomePath(osProxy, xcelerateConfigPath), probeRawConfig(xcelerateConfigPath)},
 		{"Ccache config", displayHomePath(osProxy, ccacheConfigPath), probeRawConfig(ccacheConfigPath)},
 		{fmt.Sprintf("Env vars (%s + %s)", authpkg.EnvAuthToken, authpkg.EnvWorkspaceID), "process env", func() credAudit { return probeEnvVars(envs) }},
@@ -476,7 +471,8 @@ func probeKeychain() credAudit {
 	return audit
 }
 
-// Reads mp.Credentials (new file backend), distinct from legacy authConfig in probeMultiplatform.
+// Reads mp.Credentials, the refreshable file backend — distinct from the plain
+// authConfig block probeMultiplatform reports.
 func probeFileStore() credAudit {
 	creds, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	if !ok {
@@ -693,8 +689,7 @@ var authUsernameCmd = &cobra.Command{
 			return nil
 		}
 
-		cred, _, _ := live.Default(nil).ResolveNoRefresh(envs)
-		name, src := configcommon.ResolveUsername(envs, cred)
+		name, src := live.Default(nil).ResolveUsername(envs)
 		out := cmd.OutOrStdout()
 		if usernameJSONOut {
 			enc := json.NewEncoder(out)

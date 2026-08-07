@@ -56,7 +56,7 @@ func reloadStored(creds auth.TokenSet, save func(auth.TokenSet) error) (auth.Tok
 		return creds, save
 	}
 	if freshSrc != nil {
-		save = func(cr auth.TokenSet) error { return SaveTo(freshSrc, cr) }
+		save = func(cr auth.TokenSet) error { return saveTo(freshSrc, cr) }
 	}
 
 	return fresh, save

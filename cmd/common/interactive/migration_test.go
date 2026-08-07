@@ -25,7 +25,7 @@ func captureLogger() (log.Logger, *strings.Builder) {
 func TestPersistWizardCredentials_MigrationClearsTheFileCopy(t *testing.T) {
 	for _, origin := range []authpkg.Origin{
 		{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceManual},
-		{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceLegacy},
+		{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceStatic},
 	} {
 		kc := &stubKeychain{}
 		cleared := false

@@ -3,6 +3,7 @@
 package oauth
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -34,10 +35,10 @@ func TestCredentialsStore_RoundTrip(t *testing.T) {
 		RefreshToken: "refresh-1",
 		WorkspaceID:  "acme",
 	}
-	if err := Save(want); err != nil {
+	if err := saveForTest(t, want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	got, err := Load()
+	got, err := loadForTest()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestCredentialsStore_RoundTrip(t *testing.T) {
 func TestCredentialsStore_MissingFileIsZero(t *testing.T) {
 	resetKeychain(t)
 
-	got, err := Load()
+	got, err := loadForTest()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -67,7 +68,7 @@ func TestCredentialsStore_MissingFileIsZero(t *testing.T) {
 func TestCredentialsStore_SaveRejectsEmptyPAT(t *testing.T) {
 	resetKeychain(t)
 
-	if err := Save(auth.TokenSet{WorkspaceID: "x"}); err == nil {
+	if err := saveForTest(t, auth.TokenSet{WorkspaceID: "x"}); err == nil {
 		t.Fatal("Save with empty PAT should fail")
 	}
 }
@@ -75,24 +76,26 @@ func TestCredentialsStore_SaveRejectsEmptyPAT(t *testing.T) {
 func TestCredentialsStore_Clear(t *testing.T) {
 	resetKeychain(t)
 
-	if err := Save(auth.TokenSet{AuthToken: "p", RefreshToken: "r", WorkspaceID: "w"}); err != nil {
+	if err := saveForTest(t, auth.TokenSet{AuthToken: "p", RefreshToken: "r", WorkspaceID: "w"}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := Clear(); err != nil {
+	if err := ClearFrom(store.NewKeychain(), store.NewFile()); err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
-	if got, _ := Load(); got.AuthToken != "" {
+	if got, _ := loadForTest(); got.AuthToken != "" {
 		t.Fatalf("expected cleared, got %+v", got)
 	}
-	if err := Clear(); err != nil {
+	if err := ClearFrom(store.NewKeychain(), store.NewFile()); err != nil {
 		t.Fatalf("Clear should be idempotent: %v", err)
 	}
 }
 
-// One TokenSet for storage and for OAuth means a sign-in cannot silently drop a
-// display name written by `auth username`: there is no narrowing conversion left
-// for it to fall through.
-func TestSaveToWithFallback_KeepsTheDisplayName(t *testing.T) {
+// One TokenSet for storage and for OAuth means the save is faithful: whatever the
+// caller hands over is what lands, with no narrowing conversion to drop fields.
+// That is what makes the refresh flow safe — it loads a record and saves it back.
+// It does NOT by itself protect `auth login`, which builds a fresh record; see
+// TestStoredUsername and the merge in loginAndStore.
+func TestSaveToWithFallback_IsFaithfulToTheRecord(t *testing.T) {
 	resetKeychain(t)
 
 	target := store.NewKeychain()
@@ -109,4 +112,31 @@ func TestSaveToWithFallback_KeepsTheDisplayName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bob", got.Username)
 	assert.Equal(t, "refresh-1", got.RefreshToken)
+}
+
+// saveForTest is the keychain write the exported convenience wrappers used to
+// provide; production code always names its backend.
+func saveForTest(t *testing.T, c auth.TokenSet) error {
+	t.Helper()
+	_, err := SaveToWithFallback(store.NewKeychain(), c, false)
+
+	return err
+}
+
+func loadForTest() (auth.TokenSet, error) {
+	c, _, err := LoadWithSource()
+
+	return c, err
+}
+
+// ensureFresh is the load-then-refresh entry point production no longer needs:
+// live.Resolve has already read the store by the time it refreshes. The refresh
+// tests still drive the whole path from disk.
+func ensureFresh(c Config, ctx context.Context) (auth.TokenSet, error) { //nolint:revive // ctx after the receiver-ish arg keeps the call sites readable
+	creds, src, err := LoadWithSource()
+	if err != nil {
+		return auth.TokenSet{}, err
+	}
+
+	return c.EnsureFreshFrom(ctx, creds, src)
 }

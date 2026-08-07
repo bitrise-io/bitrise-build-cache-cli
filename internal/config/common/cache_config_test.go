@@ -10,8 +10,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func TestNewCacheConfigMetadata(t *testing.T) {
@@ -306,7 +304,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := NewMetadata(tt.envs, auth.Credential{},
+			got := NewMetadata(tt.envs, "",
 				tt.commandFunc,
 				log.NewLogger())
 
@@ -353,21 +351,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestNewMetadata_usernameFromEnvOverride(t *testing.T) {
-	envs := map[string]string{"BITRISE_BUILD_CACHE_USERNAME": "alice-dev"}
-
-	got := NewMetadata(envs, auth.Credential{}, func(_ string, _ ...string) (string, error) { return "", nil }, log.NewLogger())
-	assert.Equal(t, "alice-dev", got.HostMetadata.Username)
-}
-
-func TestNewMetadata_usernameEnvWhitespaceFallsThrough(t *testing.T) {
-	envs := map[string]string{"BITRISE_BUILD_CACHE_USERNAME": "   "}
-
-	got := NewMetadata(envs, auth.Credential{}, func(_ string, _ ...string) (string, error) { return "", nil }, log.NewLogger())
-	assert.NotEqual(t, "   ", got.HostMetadata.Username)
-	assert.NotEmpty(t, got.HostMetadata.Username, "should fall back to OS username")
 }
 
 func TestRedactBitriseEnvs_alwaysRedactedKeys(t *testing.T) {

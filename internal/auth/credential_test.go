@@ -16,7 +16,8 @@ func TestTokenSetCredential_carriesTheExpiry(t *testing.T) {
 
 	got := ts.Credential()
 
-	assert.Equal(t, Credential{Token: "pat", WorkspaceID: "ws", Username: "bob", Expiry: expiry}, got)
+	assert.Equal(t, Credential{Token: "pat", WorkspaceID: "ws", Expiry: expiry}, got)
+	assert.Empty(t, ts.Username == "", "the display name stays on the record; it is not a credential")
 }
 
 func TestTokenSetOrigin_provenanceFollowsTheRefreshToken(t *testing.T) {
@@ -50,7 +51,7 @@ func TestOriginLabel(t *testing.T) {
 		{Origin{BackendKeychain, ProvenanceOAuthLogin}, "OAuth login (keychain)", "keychain"},
 		{Origin{BackendFile, ProvenanceManual}, "config file (CI-safe)", "config-file"},
 		{Origin{BackendFile, ProvenanceOAuthLogin}, "OAuth login (config file)", "config-file"},
-		{Origin{BackendFile, ProvenanceLegacy}, "multiplatform config", "multiplatform-config"},
+		{Origin{BackendFile, ProvenanceStatic}, "multiplatform config", "multiplatform-config"},
 		{Origin{}, "none", "none"},
 	}
 	for _, tc := range cases {

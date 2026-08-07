@@ -11,7 +11,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -42,9 +41,9 @@ func (a wizardAuth) NeedsManualPrompt() bool {
 // wizardAuthResolver resolves the credential for the interactive wizard. Nil
 // function fields fall back to the real OAuth implementations.
 type wizardAuthResolver struct {
-	Logger   log.Logger
-	Keychain store.Store
-	Envs     map[string]string
+	Logger log.Logger
+	Store  store.Store
+	Envs   map[string]string
 	// Prompt is where the sign-in confirmation is read from; nil means this
 	// session can't confirm one, so no browser is launched.
 	Prompt io.Reader
@@ -65,7 +64,7 @@ type wizardAuthResolver struct {
 // so the browser never opens unannounced. An unresolved Origin leaves the manual
 // token prompt as the fallback rather than failing the wizard.
 func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
-	storedCreds := loadStoredCredentials(r.Logger, r.Keychain)
+	storedCreds := loadStoredCredentials(r.Logger, r.Store)
 
 	// PreferStored: a populated keychain must not be shadowed by a stale token
 	// exported from a shell rc file on the machine in front of the user.
@@ -81,7 +80,7 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 	auth := wizardAuth{Config: cred, Origin: origin, Stored: storedCreds}
 
 	if origin.StoreManaged() {
-		auth.Stored = loadStoredCredentials(r.Logger, r.Keychain)
+		auth.Stored = loadStoredCredentials(r.Logger, r.Store)
 	}
 
 	if auth.Origin.Resolved() {
@@ -118,14 +117,14 @@ func (r wizardAuthResolver) resolver() *live.Resolver {
 	return res
 }
 
-// storeFor returns the backend to read and update, honouring an injected keychain
-// so tests stay off the real one.
+// storeFor returns the backend to read and update, honouring an injected store so
+// tests stay off the real one.
 func (r wizardAuthResolver) storeFor(backend authpkg.Backend) store.Store {
 	if backend == authpkg.BackendFile {
 		return store.NewFile()
 	}
-	if r.Keychain != nil {
-		return r.Keychain
+	if r.Store != nil {
+		return r.Store
 	}
 
 	return store.NewKeychain()
@@ -211,13 +210,16 @@ func resolvedAuthNote(auth wizardAuth) string {
 	return "Signing in was not needed — using " + live.Describe(auth.Config, auth.Origin) + "."
 }
 
-func loadStoredCredentials(logger log.Logger, kc store.Store) authpkg.TokenSet {
-	creds, err := kc.Load()
+func loadStoredCredentials(logger log.Logger, s store.Store) authpkg.TokenSet {
+	creds, err := s.Load()
 	switch {
-	case err == nil, errors.Is(err, keychain.ErrNotFound):
+	// store.ErrNotFound covers both "nothing stored" and "no keyring on this host",
+	// which is a supported setup rather than a fault — the wizard has no business
+	// warning about it, and the backend's own sentinels are not its concern.
+	case err == nil, errors.Is(err, store.ErrNotFound):
 		return creds
 	default:
-		logger.Warnf("Could not read the OS keychain (%v). Wizard treats it as empty.", err)
+		logger.Warnf("Could not read the credential store (%v). Wizard treats it as empty.", err)
 
 		return authpkg.TokenSet{}
 	}

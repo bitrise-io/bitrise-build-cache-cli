@@ -124,3 +124,19 @@ func TestFileStore_RoundTrip(t *testing.T) {
 	_, err = s.Load()
 	require.ErrorIs(t, err, ErrNotFound)
 }
+
+// The display name is machine-level config set by `auth username`, so a sign-in
+// has to carry it across even when the exclusive write lands in a different
+// backend than the one holding it.
+func TestStoredUsername_FoundInEitherBackend(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	assert.Empty(t, StoredUsername(), "nothing stored yet")
+
+	require.NoError(t, NewFile().Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w", Username: "from-file"}))
+	assert.Equal(t, "from-file", StoredUsername(), "found even when only the file store has it")
+
+	require.NoError(t, NewKeychain().Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w", Username: "from-keychain"}))
+	assert.Equal(t, "from-keychain", StoredUsername(), "the keychain is consulted first")
+}

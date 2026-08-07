@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -148,15 +149,15 @@ func TestPostRunDeps_appendLocalInvocationLog_hitRateFromSummary(t *testing.T) {
 }
 
 func TestPostRunDeps_appendLocalInvocationLog_usernameFromEnvChain(t *testing.T) {
-	// Explicitly exercise the real ResolveUsername chain: setting
-	// BITRISE_BUILD_CACHE_USERNAME must flow through common.NewMetadata → the
-	// Record.Username field, mirroring how the wrapper runs in production.
+	// Exercise the real resolution chain: BITRISE_BUILD_CACHE_USERNAME must reach
+	// Record.Username the way the wrapper does it in production.
 	t.Setenv(auth.EnvUsername, "env-set-user")
 
 	deps, logger := depsForLocalLogTest(t)
 
 	envs := utils.AllEnvs()
-	metadata := common.NewMetadata(envs, auth.Credential{}, func(string, ...string) (string, error) { return "", nil }, log.NewLogger())
+	username, _ := live.Default(nil).ResolveUsername(envs)
+	metadata := common.NewMetadata(envs, username, func(string, ...string) (string, error) { return "", nil }, log.NewLogger())
 
 	deps.appendLocalInvocationLog("inv-un", "yarn build", metadata, childstats.Summary{}, time.Second, nil)
 

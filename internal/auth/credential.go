@@ -10,12 +10,9 @@ import "time"
 type Credential struct {
 	Token       string
 	WorkspaceID string
-	Username    string
 	Expiry      time.Time
 }
 
-// Expired reports whether a known expiry is in the past. A zero Expiry is unknown,
-// not expired.
 func (c Credential) Expired() bool {
 	return !c.Expiry.IsZero() && time.Now().After(c.Expiry)
 }
@@ -40,21 +37,17 @@ func (t TokenSet) IsOAuthManaged() bool {
 	return t.RefreshToken != ""
 }
 
-// Credential narrows the record to the boundary. This is the only conversion
-// between the two types; there is deliberately no reverse. Writes load the stored
-// record, mutate the fields they own and save it back, so a write path cannot drop
-// a refresh token, a JWT or a display name it wasn't thinking about.
+// The only conversion between the two types; there is deliberately no reverse, so a
+// write path cannot drop a refresh token, a JWT or a display name it wasn't
+// thinking about.
 func (t TokenSet) Credential() Credential {
 	return Credential{
 		Token:       t.AuthToken,
 		WorkspaceID: t.WorkspaceID,
-		Username:    t.Username,
 		Expiry:      t.PATExpiry,
 	}
 }
 
-// Origin pairs the backend the record was read from with the provenance the record
-// itself implies.
 func (t TokenSet) Origin(backend Backend) Origin {
 	provenance := ProvenanceManual
 	if t.IsOAuthManaged() {

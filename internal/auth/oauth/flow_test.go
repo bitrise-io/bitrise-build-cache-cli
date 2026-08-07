@@ -108,7 +108,7 @@ func TestEnsureFresh_NotLoggedIn(t *testing.T) {
 
 func TestEnsureFresh_ValidPAT(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(auth.TokenSet{
+	if err := saveForTest(t, auth.TokenSet{
 		AuthToken: "still-good", PATExpiry: time.Now().Add(time.Hour),
 		JWT: "j", JWTExpiry: time.Now().Add(time.Hour),
 		RefreshToken: "r", WorkspaceID: "ws",
@@ -132,7 +132,7 @@ func TestEnsureFresh_ValidPAT(t *testing.T) {
 
 func TestEnsureFresh_ExpiredPAT_ValidJWT(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(auth.TokenSet{
+	if err := saveForTest(t, auth.TokenSet{
 		AuthToken: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "good-jwt", JWTExpiry: time.Now().Add(time.Hour),
 		RefreshToken: "r", WorkspaceID: "ws",
@@ -152,14 +152,14 @@ func TestEnsureFresh_ExpiredPAT_ValidJWT(t *testing.T) {
 	if tc, ec := m.counts(); tc != 0 || ec != 1 {
 		t.Fatalf("expected 0 token + 1 exchange; got token=%d exchange=%d", tc, ec)
 	}
-	if saved, _ := Load(); saved.AuthToken != "bitpat_minted" {
+	if saved, _ := loadForTest(); saved.AuthToken != "bitpat_minted" {
 		t.Fatalf("new PAT not persisted: %q", saved.AuthToken)
 	}
 }
 
 func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(auth.TokenSet{
+	if err := saveForTest(t, auth.TokenSet{
 		AuthToken: "old", PATExpiry: time.Now().Add(-time.Hour),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-old", WorkspaceID: "ws",
@@ -180,7 +180,7 @@ func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 	if tc, ec := m.counts(); tc != 1 || ec != 1 {
 		t.Fatalf("expected 1 refresh + 1 exchange; got token=%d exchange=%d", tc, ec)
 	}
-	saved, _ := Load()
+	saved, _ := loadForTest()
 	if saved.RefreshToken != "refresh-rotated" {
 		t.Fatalf("rotated refresh token not persisted: %q", saved.RefreshToken)
 	}
@@ -191,7 +191,7 @@ func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 
 func TestEnsureFresh_RefreshRejected(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(auth.TokenSet{
+	if err := saveForTest(t, auth.TokenSet{
 		AuthToken: "old", PATExpiry: time.Now().Add(-time.Hour),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Hour),
 		RefreshToken: "expired-refresh", WorkspaceID: "ws",

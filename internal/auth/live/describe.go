@@ -7,9 +7,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
-// Describe is the one-line human description of a resolved credential: where it
-// came from, which workspace, and how long the token is good for. Pure formatting
-// — Origin already carries the provenance, so nothing is re-read from disk.
+// Pure formatting: Origin already carries the provenance, so nothing is re-read
+// from disk.
 func Describe(cred auth.Credential, origin auth.Origin) string {
 	out := origin.Label()
 

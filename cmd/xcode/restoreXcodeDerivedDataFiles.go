@@ -129,7 +129,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int,
 ) (*xa.CacheOperation, error) {
-	commonMetadata := configcommon.NewMetadata(envs, authConfig, commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
 	kvClient, err := common.CreateKVClient(ctx,
@@ -283,4 +283,11 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 	}
 
 	return cacheKeyType, cacheKey, nil
+}
+
+// invocationUsername names the person behind a local invocation for analytics.
+func invocationUsername(envs map[string]string) string {
+	name, _ := live.Default(nil).ResolveUsername(envs)
+
+	return name
 }

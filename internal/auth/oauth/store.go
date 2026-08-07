@@ -8,12 +8,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
-func Load() (auth.TokenSet, error) {
-	c, _, err := LoadWithSource()
-
-	return c, err
-}
-
 // Second return is nil when nothing was found; refresh flows save back into the same store.
 func LoadWithSource() (auth.TokenSet, store.Store, error) {
 	return loadFrom(store.NewKeychain(), store.NewFile())
@@ -53,20 +47,18 @@ func loadFrom(backends ...store.Store) (auth.TokenSet, store.Store, error) {
 	return auth.TokenSet{}, nil, nil
 }
 
-func Save(c auth.TokenSet) error {
-	return SaveTo(store.NewKeychain(), c)
-}
-
-func SaveTo(s store.Store, c auth.TokenSet) error {
+// No fallback: the refresh flow writes back to the store the record came from, and
+// moving it mid-refresh would leave two backends disagreeing.
+func saveTo(s store.Store, c auth.TokenSet) error {
 	_, err := SaveToWithFallback(s, c, false)
 
 	return err
 }
 
-// SaveToWithFallback drops to the config file when the keychain refuses the
-// write — a completed sign-in shouldn't be thrown away because the machine has no
-// keychain. The whole credential goes to the fallback, refresh token included, so
-// the login stays refreshable there.
+// SaveToWithFallback persists a completed sign-in, dropping to the config file
+// when the keychain refuses the write — a finished sign-in shouldn't be thrown
+// away because the machine has no keychain. The whole record goes to the
+// fallback, refresh token included, so the login stays refreshable there.
 func SaveToWithFallback(s store.Store, c auth.TokenSet, allowFallback bool) (store.SaveResult, error) {
 	if c.AuthToken == "" {
 		return store.SaveResult{Origin: c.Origin(s.Backend())}, errors.New("refusing to save credentials with empty PAT")
@@ -78,10 +70,6 @@ func SaveToWithFallback(s store.Store, c auth.TokenSet, allowFallback bool) (sto
 	}
 
 	return result, nil
-}
-
-func Clear() error {
-	return ClearFrom(store.NewKeychain(), store.NewFile())
 }
 
 func ClearFrom(backends ...store.Store) error {

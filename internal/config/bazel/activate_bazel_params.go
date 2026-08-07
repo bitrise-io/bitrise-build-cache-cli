@@ -90,13 +90,16 @@ func (params ActivateBazelParams) commonTemplateInventory(
 
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
-	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envs)
+	resolver := live.Default(nil)
+
+	authConfig, _, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("resolve auth config: %w", err)
 	}
 
-	cacheConfig := common.NewMetadata(envs, authConfig,
+	username, _ := resolver.ResolveUsername(envs)
+	cacheConfig := common.NewMetadata(envs, username,
 		commandFunc,
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)

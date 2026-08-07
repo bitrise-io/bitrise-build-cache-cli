@@ -134,14 +134,14 @@ func (c Config) EnsureFresh(ctx context.Context) (auth.TokenSet, error) {
 	return c.EnsureFreshFrom(ctx, creds, src)
 }
 
-// EnsureFreshFrom is EnsureFresh on a record the caller already loaded, saving
+// Refreshes a record the caller already loaded, saving
 // back to the store it came from. Resolution reads the store once and passes what
 // it found, so the refresh cannot act on a different record than the caller saw.
 // A nil backing store falls back to the default save target.
 func (c Config) EnsureFreshFrom(ctx context.Context, creds auth.TokenSet, src store.Store) (auth.TokenSet, error) {
-	save := Save
+	save := func(cr auth.TokenSet) error { return saveTo(store.NewKeychain(), cr) }
 	if src != nil {
-		save = func(cr auth.TokenSet) error { return SaveTo(src, cr) }
+		save = func(cr auth.TokenSet) error { return saveTo(src, cr) }
 	}
 	if !creds.IsOAuthManaged() {
 		return auth.TokenSet{}, ErrNotLoggedIn

@@ -376,14 +376,14 @@ func saveMultiplatformConfig(ctx context.Context, envs map[string]string, debugL
 		return fmt.Errorf("resolve auth config for multiplatform analytics: %w", err)
 	}
 
-	// The legacy authConfig block is mirrored whichever backend the credential
+	// The analytics authConfig block is mirrored whichever backend the credential
 	// lives in: the React Native post-run hook reads it directly, and on a machine
 	// with a working keychain nothing else would write it.
 	if err := multiplatformconfig.Update(
 		utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
 		func(cfg *multiplatformconfig.Config) {
 			cfg.DebugLogging = debugLogging
-			cfg.AuthConfig = multiplatformconfig.LegacyAuthConfig{
+			cfg.AuthConfig = multiplatformconfig.AnalyticsAuthConfig{
 				AuthToken:   cred.Token,
 				WorkspaceID: cred.WorkspaceID,
 				IsJWT:       origin.Backend == authpkg.BackendJWT,

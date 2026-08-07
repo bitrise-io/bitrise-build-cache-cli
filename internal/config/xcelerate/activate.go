@@ -93,6 +93,12 @@ func Activate(
 
 	ensureLogDir(logger, osProxy)
 
+	// Materialise an env- or JWT-sourced credential: the proxy and the analytics
+	// readers start in shells that never saw those variables.
+	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.DetectCIProvider(envs) != ""); err != nil {
+		return fmt.Errorf("persist auth credentials: %w", err)
+	}
+
 	// Read-modify-write: Config.Save is a full overwrite, and a fresh Config here
 	// would drop the credentials block that is the only credential store on a
 	// keychain-less host.

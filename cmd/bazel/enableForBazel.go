@@ -62,12 +62,8 @@ func init() {
 func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider map[string]string) error {
 	logger.Infof("(i) Checking parameters")
 
-	// Errors are the template inventory's to report; metadata only needs the
-	// display name, which an empty credential still resolves from env or the OS.
-	authConfig, _, _ := live.Default(logger).ResolveNoRefresh(envProvider)
-
 	// CacheConfigMetadata
-	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(), authConfig,
+	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(envProvider),
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
@@ -121,4 +117,11 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	}
 
 	return nil
+}
+
+// invocationUsername names the person behind a local invocation for analytics.
+func invocationUsername(envs map[string]string) string {
+	name, _ := live.Default(nil).ResolveUsername(envs)
+
+	return name
 }

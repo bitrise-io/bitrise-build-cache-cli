@@ -3,7 +3,6 @@ linters:
   default: all
   disable:
     - cyclop
-    - depguard
     - err113
     - exhaustruct
     - funcorder
@@ -25,6 +24,23 @@ linters:
     - wsl
     - wsl_v5
     - ireturn
+  settings:
+    depguard:
+      rules:
+        # docs/auth.md invariant 1: internal/auth is the L0 leaf.
+        auth-leaf-imports-nothing:
+          files:
+            - "**/internal/auth/*.go"
+          deny:
+            - pkg: github.com/bitrise-io/bitrise-build-cache-cli/v3
+              desc: internal/auth is the L0 credential vocabulary and must import no internal package — see docs/auth.md
+        # docs/auth.md invariant 4: config/common is not a layer of the auth graph.
+        auth-tree-excludes-config-common:
+          files:
+            - "**/internal/auth/**/*.go"
+          deny:
+            - pkg: github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common
+              desc: no package under internal/auth may import internal/config/common — see docs/auth.md
   exclusions:
     generated: lax
     presets:

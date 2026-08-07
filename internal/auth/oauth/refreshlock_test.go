@@ -30,7 +30,7 @@ func useFileStore(t *testing.T) {
 // Without the lock every caller spends the same rotated refresh token.
 func TestEnsureFresh_ConcurrentCallers_RefreshOnce(t *testing.T) {
 	useFileStore(t)
-	require.NoError(t, SaveTo(store.NewFile(), auth.TokenSet{
+	require.NoError(t, saveTo(store.NewFile(), auth.TokenSet{
 		AuthToken: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-0", WorkspaceID: "ws",
@@ -50,7 +50,7 @@ func TestEnsureFresh_ConcurrentCallers_RefreshOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			creds, err := cfg.EnsureFresh(t.Context())
+			creds, err := ensureFresh(cfg, t.Context())
 			mu.Lock()
 			defer mu.Unlock()
 			if err == nil {
@@ -74,7 +74,7 @@ func TestEnsureFresh_ConcurrentCallers_RefreshOnce(t *testing.T) {
 // The lock is only for the refresh; a valid PAT must stay a pure read.
 func TestEnsureFresh_ValidPAT_TakesNoLock(t *testing.T) {
 	useFileStore(t)
-	require.NoError(t, SaveTo(store.NewFile(), auth.TokenSet{
+	require.NoError(t, saveTo(store.NewFile(), auth.TokenSet{
 		AuthToken: "still-good", PATExpiry: time.Now().Add(time.Hour),
 		RefreshToken: "r", WorkspaceID: "ws",
 	}))
@@ -97,7 +97,7 @@ func TestEnsureFresh_ValidPAT_TakesNoLock(t *testing.T) {
 
 func TestEnsureFresh_FileStore_ExpiredPAT_Refreshes(t *testing.T) {
 	useFileStore(t)
-	require.NoError(t, SaveTo(store.NewFile(), auth.TokenSet{
+	require.NoError(t, saveTo(store.NewFile(), auth.TokenSet{
 		AuthToken: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-0", WorkspaceID: "ws",
@@ -111,7 +111,7 @@ func TestEnsureFresh_FileStore_ExpiredPAT_Refreshes(t *testing.T) {
 	assert.Equal(t, m.pat, got.AuthToken)
 
 	// The refreshed credential must be persisted back into the file store.
-	reloaded, err := Load()
+	reloaded, err := loadForTest()
 	require.NoError(t, err)
 	assert.Equal(t, m.pat, reloaded.AuthToken)
 }
@@ -121,7 +121,7 @@ func TestEnsureFresh_FileStore_ExpiredPAT_Refreshes(t *testing.T) {
 // already rotated away. Spending it again would break the login for good.
 func TestEnsureFresh_LockWaitFailed_ReloadsBeforeSpendingTheRefreshToken(t *testing.T) {
 	useFileStore(t)
-	require.NoError(t, SaveTo(store.NewFile(), auth.TokenSet{
+	require.NoError(t, saveTo(store.NewFile(), auth.TokenSet{
 		AuthToken: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-0", WorkspaceID: "ws",
@@ -149,7 +149,7 @@ func TestEnsureFresh_LockWaitFailed_ReloadsBeforeSpendingTheRefreshToken(t *test
 	go func() {
 		defer close(saved)
 		time.Sleep(50 * time.Millisecond)
-		_ = SaveTo(store.NewFile(), auth.TokenSet{
+		_ = saveTo(store.NewFile(), auth.TokenSet{
 			AuthToken: "refreshed-by-the-other-process", PATExpiry: time.Now().Add(time.Hour),
 			JWT: "new-jwt", JWTExpiry: time.Now().Add(time.Hour),
 			RefreshToken: "refresh-1", WorkspaceID: "ws",

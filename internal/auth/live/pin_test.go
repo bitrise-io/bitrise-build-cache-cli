@@ -3,19 +3,23 @@
 package live
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func pinResolver(target *fakeStore) *Resolver {
 	return &Resolver{
-		Backends:   []store.Store{target},
-		LegacyFile: func() (auth.Credential, bool) { return auth.Credential{}, false },
+		Backends:       []store.Store{target},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 }
 
@@ -69,4 +73,32 @@ func TestResolvePinned_SurvivesAnUnwritableStore(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, envToken, cred.Token)
+}
+
+// A keychain that cannot be read must not turn into a bare-token write to the
+// config file: the record has to be merged against whichever backend is actually
+// written, or an outage costs the user their refresh token.
+func TestResolvePinned_FallbackMergesAgainstTheFileNotTheDeadKeychain(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	fileLogin := auth.TokenSet{
+		AuthToken: "old", WorkspaceID: "ws", RefreshToken: "refresh-me", Username: "dev",
+	}
+	require.NoError(t, store.NewFile().Save(fileLogin))
+
+	deadKeychain := &fakeStore{backend: auth.BackendKeychain, loadErr: errors.New("no keyring"), saveErr: errors.New("no keyring")}
+	r := &Resolver{
+		Backends:       []store.Store{deadKeychain},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	_, _, err := r.ResolvePinned(t.Context(), envVars(), false)
+	require.NoError(t, err)
+
+	after, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.True(t, ok, "the fallback must have written the config file")
+	assert.Equal(t, envToken, after.AuthToken)
+	assert.Equal(t, "refresh-me", after.RefreshToken, "the file's refresh token must survive a keychain outage")
+	assert.Equal(t, "dev", after.Username)
 }

@@ -8,25 +8,25 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// readLegacyFileCredential reads the multiplatform config's authConfig key, the
-// pre-`credentials` layout that older analytics readers still write. Last in the
-// precedence order: it carries no refresh token and no expiry.
-func readLegacyFileCredential() (auth.Credential, bool) {
+// Last in the precedence order: the analytics block carries no refresh token and
+// no expiry, so anything else on the machine is a better answer.
+func readAnalyticsCredential() (auth.Credential, auth.Origin, bool) {
 	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	if err != nil || !cfg.AuthConfig.Populated() {
-		return auth.Credential{}, false
+		return auth.Credential{}, auth.Origin{}, false
 	}
 
-	return cfg.AuthConfig.Credential(), true
+	return cfg.AuthConfig.Credential(), cfg.AuthConfig.Origin(), true
 }
 
-// writeLegacyFileCredential mirrors a credential into the analytics config's
-// authConfig key without touching anything else in the file.
-func writeLegacyFileCredential(cred auth.Credential) error {
+// Mirrors a credential into the analytics block without touching the rest of the
+// file. A CI JWT goes only here: it is minted per build, so putting it in the
+// credentials block would make a 30-minute token look like a durable login.
+func writeAnalyticsCredential(cred auth.Credential) error {
 	err := multiplatformconfig.Update(
 		utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
 		func(cfg *multiplatformconfig.Config) {
-			cfg.AuthConfig = multiplatformconfig.LegacyAuthConfig{
+			cfg.AuthConfig = multiplatformconfig.AnalyticsAuthConfig{
 				AuthToken:   cred.Token,
 				WorkspaceID: cred.WorkspaceID,
 				IsJWT:       true,

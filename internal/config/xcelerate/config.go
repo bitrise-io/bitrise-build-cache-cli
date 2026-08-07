@@ -72,9 +72,10 @@ type Config struct {
 	// configs that still have `authConfig` on disk from a previous CLI version;
 	// Save zeroes it before writing and `omitzero` keeps it out of the file.
 	AuthConfig authpkg.Credential `json:"-"`
-	// LegacyAuthConfig is the pre-Credential on-disk shape, still present in configs
-	// written by older CLI versions. Read-only fallback; Save never writes it back.
-	LegacyAuthConfig multiplatformconfig.LegacyAuthConfig `json:"authConfig,omitzero"`
+	// LegacyAuthConfig genuinely is legacy, unlike the analytics block it shares a
+	// shape with: only configs written by older CLI versions have it, nothing writes
+	// it now, and it is read solely so an upgrade does not lose the credential.
+	LegacyAuthConfig multiplatformconfig.AnalyticsAuthConfig `json:"authConfig,omitzero"`
 	// AuthOrigin says where AuthConfig came from. Runtime only — it is what
 	// tells a CI JWT (sent as-is) from a PAT (prefixed with the workspace).
 	AuthOrigin           authpkg.Origin `json:"-"`
@@ -106,7 +107,7 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 	} else if config.LegacyAuthConfig.Populated() {
 		// Nothing resolvable, but an older CLI left a credential in this file.
 		config.AuthConfig = config.LegacyAuthConfig.Credential()
-		config.AuthOrigin = authpkg.Origin{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceLegacy}
+		config.AuthOrigin = config.LegacyAuthConfig.Origin()
 	}
 
 	return config, nil
@@ -141,12 +142,15 @@ func NewConfig(ctx context.Context,
 	exporter EnvExporter,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (Config, error) {
-	authConfig, authOrigin, err := live.Default(nil).ResolveNoRefresh(envs)
+	resolver := live.Default(nil)
+
+	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
-	metadata := common.NewMetadata(envs, authConfig,
+	username, _ := resolver.ResolveUsername(envs)
+	metadata := common.NewMetadata(envs, username,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
@@ -287,7 +291,7 @@ func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory ut
 	// copy on disk. Older configs that still carry `authConfig` on disk are
 	// tolerated on read (see ReadConfig).
 	config.AuthConfig = authpkg.Credential{}
-	config.LegacyAuthConfig = multiplatformconfig.LegacyAuthConfig{}
+	config.LegacyAuthConfig = multiplatformconfig.AnalyticsAuthConfig{}
 
 	enc := encoderFactory.Encoder(f)
 	enc.SetIndent("", "  ")

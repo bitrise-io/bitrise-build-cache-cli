@@ -109,8 +109,8 @@ type GitMetadata struct {
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
-func NewMetadata(envs map[string]string, cred auth.Credential, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
-	hostMetadata := generateHostMetadata(envs, cred, commandFunc, logger)
+func NewMetadata(envs map[string]string, username string, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
+	hostMetadata := generateHostMetadata(envs, username, commandFunc, logger)
 	git := generateGitMetadata(logger, commandFunc, envs)
 
 	cliVersion := GetCLIVersion(logger)
@@ -272,7 +272,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 }
 
 // nolint: funlen, nestif
-func generateHostMetadata(envs map[string]string, cred auth.Credential, commandFunc CommandFunc, logger log.Logger) HostMetadata {
+func generateHostMetadata(envs map[string]string, username string, commandFunc CommandFunc, logger log.Logger) HostMetadata {
 	metadata := HostMetadata{}
 
 	// OS
@@ -356,11 +356,7 @@ func generateHostMetadata(envs map[string]string, cred auth.Credential, commandF
 	}
 	metadata.Hostname = strings.TrimSpace(hostname)
 
-	resolved, src := ResolveUsername(envs, cred)
-	if src == UsernameSourceNone {
-		logger.Debugf("Could not resolve the local invocation username from the environment, the credential or the OS; leaving empty.")
-	}
-	metadata.Username = strings.TrimSpace(resolved)
+	metadata.Username = strings.TrimSpace(username)
 
 	return metadata
 }

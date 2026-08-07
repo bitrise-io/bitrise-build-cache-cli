@@ -3,7 +3,9 @@
 package interactive
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -29,11 +31,13 @@ func newResolver(kc store.Store, envs map[string]string, prompt string) wizardAu
 	res := live.Default(silentLogger())
 	res.Prefer = live.PreferStored
 	res.Backends = []store.Store{kc}
-	res.LegacyFile = func() (authpkg.Credential, bool) { return authpkg.Credential{}, false }
+	res.AnalyticsBlock = func() (authpkg.Credential, authpkg.Origin, bool) {
+		return authpkg.Credential{}, authpkg.Origin{}, false
+	}
 
 	return wizardAuthResolver{
 		Logger:   silentLogger(),
-		Keychain: kc,
+		Store:    kc,
 		Envs:     envs,
 		Prompt:   strings.NewReader(prompt),
 		Resolver: res,
@@ -280,6 +284,7 @@ func TestSelectChrome_GrowsWithTheDescription(t *testing.T) {
 type failingStore struct {
 	backend   authpkg.Backend
 	saveErr   error
+	loadErr   error
 	saved     bool
 	savedCred authpkg.TokenSet
 }
@@ -287,6 +292,9 @@ type failingStore struct {
 func (f *failingStore) Backend() authpkg.Backend { return f.backend }
 
 func (f *failingStore) Load() (authpkg.TokenSet, error) {
+	if f.loadErr != nil {
+		return authpkg.TokenSet{}, f.loadErr
+	}
 	if !f.saved {
 		return authpkg.TokenSet{}, store.ErrNotFound
 	}
@@ -340,4 +348,20 @@ func TestSaveLoginWithFallback_NoFallbackNeeded(t *testing.T) {
 	assert.Equal(t, authpkg.BackendKeychain, origin.Backend)
 	assert.True(t, target.saved)
 	assert.Equal(t, "refresh-1", target.savedCred.RefreshToken, "the refresh token must be persisted")
+}
+
+// A host with no keyring is a supported setup, not a fault: credentials live in
+// the config file there. The wizard must treat it as empty quietly, the way
+// keychain-smoke warns rather than errors.
+func TestLoadStoredCredentials_KeyringlessHostIsQuiet(t *testing.T) {
+	var out bytes.Buffer
+	logger := log.NewLogger(log.WithOutput(&out))
+
+	kc := &failingStore{backend: authpkg.BackendKeychain,
+		loadErr: fmt.Errorf("%w: %w", store.ErrNotFound, keychain.ErrUnavailable)}
+
+	got := loadStoredCredentials(logger, kc)
+
+	assert.Equal(t, authpkg.TokenSet{}, got)
+	assert.NotContains(t, out.String(), "Could not read", "a keyring-less host must not produce a warning")
 }

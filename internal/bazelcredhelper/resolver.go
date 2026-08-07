@@ -46,9 +46,14 @@ func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer
 			warnStale(warn, err)
 
 			return Credential{Token: cred.Token, Expiry: time.Now().Add(staleCacheHint)}, nil
-		// Env vars, the CI JWT and the legacy authConfig carry no refresh token, so
+		// Env vars, the CI JWT and the analytics block carry no refresh token, so
 		// there is no expiry to hint at.
 		case !origin.StoreManaged():
+			return Credential{Token: cred.Token}, nil
+		// A manual `auth set` PAT is store-managed but has no expiry to subtract
+		// from; a zero time here would serialise as year 1 and make Bazel re-spawn
+		// the helper on every RPC.
+		case cred.Expiry.IsZero():
 			return Credential{Token: cred.Token}, nil
 		}
 
