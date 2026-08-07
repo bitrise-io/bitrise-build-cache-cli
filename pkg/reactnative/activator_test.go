@@ -92,6 +92,36 @@ func TestActivator_exportEASWorkingDirIfCI(t *testing.T) {
 	})
 }
 
+func TestNewActivator_PushEnabledPropagates(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	cases := []struct {
+		name        string
+		pushEnabled bool
+		wantPush    bool
+	}{
+		{name: "push enabled", pushEnabled: true, wantPush: true},
+		{name: "push disabled (default)", pushEnabled: false, wantPush: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := NewActivator(ActivatorParams{
+				GradleEnabled: true,
+				XcodeEnabled:  true,
+				CppEnabled:    true,
+				PushEnabled:   tc.pushEnabled,
+			})
+
+			require.NotNil(t, a.gradle)
+			require.NotNil(t, a.xcode)
+			require.NotNil(t, a.cpp)
+			assert.Equal(t, tc.wantPush, a.gradle.pushEnabled)
+			assert.Equal(t, tc.wantPush, a.xcode.pushEnabled)
+		})
+	}
+}
+
 func TestNewActivator_CppRequiresGradle(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
