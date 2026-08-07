@@ -12,13 +12,13 @@ import (
 )
 
 // PersistActivateCreds routes non-JWT activation creds to keychain (local) or the multiplatform Credentials field (CI); JWT keeps the legacy AuthConfig write for downstream reactnative/invocation compat.
-func PersistActivateCreds(logger log.Logger, envs map[string]string, auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
+func PersistActivateCreds(logger log.Logger, isCI bool, auth configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
 	if auth.IsJWT {
 		mpCfg.AuthConfig = auth
 
 		return
 	}
-	persistActivateCredsTo(logger, SelectAuto(envs), auth, mpCfg)
+	persistActivateCredsTo(logger, SelectAuto(isCI), auth, mpCfg)
 }
 
 // persistActivateCredsTo takes the store so tests can refuse a write without a
@@ -66,8 +66,8 @@ func mergeActivateCreds(target Store, auth configcommon.CacheAuthConfig) keychai
 // SetUsername writes name into the store that already holds credentials so a
 // username-only edit can't strand an empty-token entry in the wrong backend.
 // Empty name clears the override. Returns the store written to.
-func SetUsername(envs map[string]string, name string) (Kind, error) {
-	target, existing := storeHoldingCreds(envs)
+func SetUsername(isCI bool, name string) (Kind, error) {
+	target, existing := storeHoldingCreds(isCI)
 	existing.Username = strings.TrimSpace(name)
 	if err := target.Save(existing); err != nil {
 		return target.Kind(), fmt.Errorf("save display name to %s: %w", target.Kind(), err)
@@ -76,7 +76,7 @@ func SetUsername(envs map[string]string, name string) (Kind, error) {
 	return target.Kind(), nil
 }
 
-func storeHoldingCreds(envs map[string]string) (Store, keychain.Credentials) {
+func storeHoldingCreds(isCI bool) (Store, keychain.Credentials) {
 	for _, s := range []Store{NewKeychain(), NewFile()} {
 		creds, err := s.Load()
 		if err == nil && (strings.TrimSpace(creds.AuthToken) != "" || strings.TrimSpace(creds.WorkspaceID) != "") {
@@ -84,7 +84,7 @@ func storeHoldingCreds(envs map[string]string) (Store, keychain.Credentials) {
 		}
 	}
 
-	target := SelectAuto(envs)
+	target := SelectAuto(isCI)
 	creds, _ := target.Load()
 
 	return target, creds

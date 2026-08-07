@@ -66,7 +66,7 @@ var authSetCmd = &cobra.Command{
 			return errors.New("--workspace-id is required and must not be empty")
 		}
 
-		target, err := store.Select(utils.AllEnvs(), setStorage)
+		target, err := store.Select(configcommon.DetectCIProvider(utils.AllEnvs()) != "", setStorage)
 		if err != nil {
 			return err //nolint:wrapcheck // already user-facing
 		}
@@ -719,7 +719,7 @@ var authUsernameCmd = &cobra.Command{
 func setLocalUsername(envs map[string]string, name string) error {
 	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-	kind, err := store.SetUsername(envs, name)
+	kind, err := store.SetUsername(configcommon.DetectCIProvider(envs) != "", name)
 	if err != nil {
 		return err //nolint:wrapcheck // already user-facing (store wraps with the target backend)
 	}

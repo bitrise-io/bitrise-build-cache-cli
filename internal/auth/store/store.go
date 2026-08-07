@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -40,9 +39,11 @@ type Store interface {
 	Clear() error
 }
 
-// CI→file, local→keychain. Total function; no error path.
-func SelectAuto(envs map[string]string) Store {
-	if common.DetectCIProvider(envs) != "" {
+// CI→file, local→keychain. Total function; no error path. Takes the answer, not
+// the environment: CI-ness affects only the write target, and the caller already
+// knows it.
+func SelectAuto(isCI bool) Store {
+	if isCI {
 		return NewFile()
 	}
 
@@ -50,10 +51,10 @@ func SelectAuto(envs map[string]string) Store {
 }
 
 // override: "keychain" | "file" | "" | "auto"; empty/auto delegates to SelectAuto.
-func Select(envs map[string]string, override string) (Store, error) {
+func Select(isCI bool, override string) (Store, error) {
 	switch override {
 	case "", "auto":
-		return SelectAuto(envs), nil
+		return SelectAuto(isCI), nil
 	case "keychain":
 		return NewKeychain(), nil
 	case "file":

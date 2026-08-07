@@ -94,7 +94,7 @@ func Activate(
 	ensureLogDir(logger, osProxy)
 
 	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
-	store.PersistActivateCreds(logger, envs, config.AuthConfig, &mpCfg)
+	store.PersistActivateCreds(logger, configcommon.DetectCIProvider(envs) != "", config.AuthConfig, &mpCfg)
 	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}

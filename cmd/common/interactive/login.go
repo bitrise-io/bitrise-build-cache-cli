@@ -174,7 +174,7 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	}
 	creds.WorkspaceID = workspace
 
-	target, err := store.Select(envs, storage)
+	target, err := store.Select(configcommon.DetectCIProvider(envs) != "", storage)
 	if err != nil {
 		return loginOutcome{}, err //nolint:wrapcheck
 	}

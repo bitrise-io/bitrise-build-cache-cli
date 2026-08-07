@@ -15,31 +15,29 @@ import (
 )
 
 func TestSelect_defaultsToKeychainLocally(t *testing.T) {
-	s, err := Select(map[string]string{}, "")
+	s, err := Select(false, "")
 	require.NoError(t, err)
 	assert.Equal(t, KindKeychain, s.Kind())
 }
 
 func TestSelect_defaultsToFileOnCI(t *testing.T) {
-	envs := map[string]string{"CIRCLECI": "true"}
-	s, err := Select(envs, "")
+	s, err := Select(true, "")
 	require.NoError(t, err)
 	assert.Equal(t, KindFile, s.Kind())
 }
 
 func TestSelect_overrides(t *testing.T) {
-	envs := map[string]string{"CIRCLECI": "true"} // CI, but override
-	kc, err := Select(envs, "keychain")
+	kc, err := Select(true, "keychain") // CI, but override
 	require.NoError(t, err)
 	assert.Equal(t, KindKeychain, kc.Kind())
 
-	fs, err := Select(map[string]string{}, "file")
+	fs, err := Select(false, "file")
 	require.NoError(t, err)
 	assert.Equal(t, KindFile, fs.Kind())
 }
 
 func TestSelect_unknownOverrideErrors(t *testing.T) {
-	_, err := Select(map[string]string{}, "vault")
+	_, err := Select(false, "vault")
 	require.Error(t, err)
 }
 
@@ -76,7 +74,7 @@ func TestSetUsername_landsInStoreHoldingCredsAndPreservesAuth(t *testing.T) {
 	// Creds live only in the file store; keychain is empty.
 	require.NoError(t, NewFile().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
 
-	kind, err := SetUsername(map[string]string{}, "erin")
+	kind, err := SetUsername(false, "erin")
 	require.NoError(t, err)
 	assert.Equal(t, KindFile, kind, "username must land in the file store that holds the creds, not the keychain")
 

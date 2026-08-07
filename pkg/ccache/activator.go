@@ -119,7 +119,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 	a.ensureLogDir()
 
 	mpCfg := multiplatformconfig.Config{DebugLogging: a.debugLogging}
-	store.PersistActivateCreds(a.logger, a.envs, config.AuthConfig, &mpCfg)
+	store.PersistActivateCreds(a.logger, configcommon.DetectCIProvider(a.envs) != "", config.AuthConfig, &mpCfg)
 	if err := mpCfg.Save(a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
