@@ -102,7 +102,6 @@ type Bound struct {
 	envs     map[string]string
 }
 
-// Resolve returns the current credential and where it came from.
 func (b *Bound) Resolve(ctx context.Context) (auth.Credential, auth.Origin, error) {
 	return b.resolver.Resolve(ctx, b.envs)
 }

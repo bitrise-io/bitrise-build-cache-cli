@@ -64,7 +64,6 @@ func (t TokenSet) Origin(backend Backend) Origin {
 	return Origin{Backend: backend, Provenance: provenance}
 }
 
-// Populated reports whether the record carries a usable credential.
 func (t TokenSet) Populated() bool {
 	return t.AuthToken != "" && t.WorkspaceID != ""
 }

@@ -72,7 +72,6 @@ type SaveResult struct {
 	KeychainErr error
 }
 
-// FellBack reports whether the save landed somewhere other than the target.
 func (r SaveResult) FellBack() bool { return r.KeychainErr != nil }
 
 // WarnFallback logs the one warning a keychain fallback warrants. No-op otherwise.

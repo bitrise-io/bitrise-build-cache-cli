@@ -46,7 +46,6 @@ func (o Origin) StoreManaged() bool {
 	return o.Backend == BackendKeychain || o.Backend == BackendFile
 }
 
-// Resolved reports whether a credential was found at all.
 func (o Origin) Resolved() bool {
 	return o.Backend != BackendNone
 }
@@ -116,7 +115,6 @@ func GradleToken(c Credential, o Origin) string {
 	return c.WorkspaceID + ":" + c.Token
 }
 
-// String is the storage-facing name of a backend, used in error text.
 func (b Backend) String() string {
 	switch b {
 	case BackendEnv:
