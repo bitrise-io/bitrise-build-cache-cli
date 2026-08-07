@@ -15,6 +15,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
@@ -77,19 +78,15 @@ var authSetCmd = &cobra.Command{
 		existing.AuthToken = setToken
 		existing.WorkspaceID = setWorkspaceID
 		existing.Username = setUsername
-		outcome, err := store.SaveExclusiveWithFallback(target, existing, setStorage == "")
+		result, err := store.SaveWithFallback(target, existing, setStorage == "")
 		if err != nil {
 			return fmt.Errorf("save credentials: %w", err)
 		}
-		if outcome.FellBack {
-			logger.Warnf("Could not write to the OS keychain (%s).", outcome.KeychainErr)
-		}
+		result.WarnFallback(logger)
 
-		switch outcome.Kind {
-		case store.KindKeychain:
-			logger.TInfof("✅ Credentials saved to the OS keychain")
-		case store.KindFile:
-			logger.TInfof("✅ Credentials saved to the multiplatform config file (%s)", displayHomePath(utils.DefaultOsProxy{}, multiplatformconfig.FilePath(utils.DefaultOsProxy{})))
+		logger.TInfof("✅ Credentials saved to the %s", result.Origin.Label())
+		if result.Origin.Backend == authpkg.BackendFile {
+			logger.Infof("(%s)", displayHomePath(utils.DefaultOsProxy{}, multiplatformconfig.FilePath(utils.DefaultOsProxy{})))
 			if configcommon.DetectCIProvider(utils.AllEnvs()) != "" && setStorage == "" {
 				logger.Infof("(CI detected — keychain skipped because fastlane setup_ci swaps the default keychain and would drop the entry.)")
 			}
@@ -98,9 +95,9 @@ var authSetCmd = &cobra.Command{
 			logger.TInfof("Display name for local invocations set to %q.", setUsername)
 		}
 
-		switch scrubbed, err := scrubDiskCredentials(outcome.Kind); {
+		switch scrubbed, err := scrubDiskCredentials(result.Origin.Backend); {
 		case err != nil:
-			logger.Warnf("Saved to %s, but could not strip plain-text credentials from disk: %v", outcome.Kind, err)
+			logger.Warnf("Saved to %s, but could not strip plain-text credentials from disk: %v", result.Origin.Label(), err)
 			logger.Warnf("Run `bitrise-build-cache auth status` to audit remaining sources.")
 		case len(scrubbed) > 0:
 			scrubbedPaths := make([]string, len(scrubbed))
@@ -130,7 +127,7 @@ type scrubbedItem struct {
 	hint string
 }
 
-func scrubDiskCredentials(target store.Kind) ([]scrubbedItem, error) {
+func scrubDiskCredentials(target authpkg.Backend) ([]scrubbedItem, error) {
 	osProxy := utils.DefaultOsProxy{}
 
 	scrubbers := []func(utils.OsProxy) (scrubbedItem, error){
@@ -139,7 +136,7 @@ func scrubDiskCredentials(target store.Kind) ([]scrubbedItem, error) {
 		scrubGradleInitKts,
 	}
 	// Don't scrub the file we just wrote to (different field, same path — confusing on CI logs).
-	if target != store.KindFile {
+	if target != authpkg.BackendFile {
 		scrubbers = append([]func(utils.OsProxy) (scrubbedItem, error){scrubMultiplatform}, scrubbers...)
 	}
 
@@ -628,14 +625,14 @@ func clearTargets(logger log.Logger, targets []store.Store) error {
 	for _, t := range targets {
 		switch err := t.Clear(); {
 		case err == nil:
-			logger.TInfof("✅ Credentials removed from %s", t.Kind())
+			logger.TInfof("✅ Credentials removed from %s", t.Backend())
 		case errors.Is(err, keychain.ErrUnavailable):
 			logger.Infof("Skipped the OS keychain: %s.", keychain.ErrUnavailable)
 		default:
 			// Reported per backend, then returned together: with two targets, the
 			// first failing must not hide whether the second was cleared.
-			logger.Warnf("Could not clear the %s: %s", t.Kind(), err)
-			failures = append(failures, fmt.Errorf("clear %s: %w", t.Kind(), err))
+			logger.Warnf("Could not clear the %s: %s", t.Backend(), err)
+			failures = append(failures, fmt.Errorf("clear %s: %w", t.Backend(), err))
 		}
 	}
 
@@ -719,15 +716,15 @@ var authUsernameCmd = &cobra.Command{
 func setLocalUsername(envs map[string]string, name string) error {
 	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-	kind, err := store.SetUsername(configcommon.DetectCIProvider(envs) != "", name)
+	origin, err := store.SetUsername(configcommon.DetectCIProvider(envs) != "", name)
 	if err != nil {
 		return err //nolint:wrapcheck // already user-facing (store wraps with the target backend)
 	}
 
 	if name == "" {
-		logger.TInfof("Cleared local-invocation display name in %s (falling back to %s or the OS username).", kind, configcommon.EnvUsername)
+		logger.TInfof("Cleared local-invocation display name in %s (falling back to %s or the OS username).", origin.Label(), configcommon.EnvUsername)
 	} else {
-		logger.TInfof("✅ Local-invocation display name set to %q in %s.", name, kind)
+		logger.TInfof("✅ Local-invocation display name set to %q in %s.", name, origin.Label())
 	}
 
 	return nil

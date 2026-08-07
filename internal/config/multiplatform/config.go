@@ -79,6 +79,21 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 	return nil
 }
 
+// Update applies mutate to the config on disk, read-modify-write. Config.Save is a
+// full overwrite, so anything that means to change one field must go through here
+// or it silently drops every field it did not set — including the credentials
+// block that is the only credential store on a keychain-less host.
+func Update(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, mutate func(*Config)) error {
+	cfg, err := ReadConfig(osProxy, decoderFactory)
+	if err != nil && !isNotExist(err) {
+		return err
+	}
+
+	mutate(&cfg)
+
+	return cfg.Save(osProxy, encoderFactory)
+}
+
 // Mirrors creds into legacy AuthConfig so downstream reactnative/invocation readers keep working.
 func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, creds auth.TokenSet) error {
 	cfg, err := ReadConfig(osProxy, decoderFactory)

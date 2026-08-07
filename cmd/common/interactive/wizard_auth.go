@@ -11,7 +11,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
@@ -25,12 +25,12 @@ type wizardAuth struct {
 	Source configcommon.AuthSource
 	// Stored is the keychain credential behind Config, re-read after a fresh
 	// login so persisting a display name later can't drop the OAuth tokens.
-	Stored      auth.TokenSet
+	Stored      authpkg.TokenSet
 	SignedInNow bool
-	// Kind is the backend Config lives in. Only meaningful with SignedInNow: a
+	// Origin is where Config lives. Only meaningful with SignedInNow: a
 	// keychain-less host stores a fresh login in the config file, and a later
 	// display-name write has to go to the same place.
-	Kind store.Kind
+	Origin authpkg.Origin
 	// StdinUnusable means the sign-in left a reader holding stdin, so the wizard
 	// must not run any further form.
 	StdinUnusable bool
@@ -55,8 +55,8 @@ type wizardAuthResolver struct {
 	// stdin cannot show.
 	Workspace string
 
-	EnsureFresh func(ctx context.Context) (auth.TokenSet, error)
-	Login       func(ctx context.Context) (auth.TokenSet, error)
+	EnsureFresh func(ctx context.Context) (authpkg.TokenSet, error)
+	Login       func(ctx context.Context) (authpkg.TokenSet, error)
 	// ResolveAuth defaults to configcommon.ResolveAuthConfig, which also reads
 	// on-disk credentials; tests override it to stay off the real machine.
 	ResolveAuth func(envs map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource, error)
@@ -94,20 +94,20 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 	}
 
 	auth.Config = configcommon.CacheAuthConfig{AuthToken: out.Creds.AuthToken, WorkspaceID: out.Creds.WorkspaceID}
-	auth.Source = authSourceForKind(out.Kind)
-	auth.Kind = out.Kind
-	auth.Stored = loadStoredCredentials(r.Logger, r.storeFor(out.Kind))
+	auth.Source = authSourceForBackend(out.Origin.Backend)
+	auth.Origin = out.Origin
+	auth.Stored = loadStoredCredentials(r.Logger, r.storeFor(out.Origin.Backend))
 	auth.SignedInNow = true
 	auth.StdinUnusable = out.StdinUnusable
 
 	return auth
 }
 
-// authSourceForKind keeps the wizard's view of where the credential lives in step
-// with where the sign-in actually put it — the keychain normally, the config file
-// on CI or on a host with no usable keychain.
-func authSourceForKind(kind store.Kind) configcommon.AuthSource {
-	if kind == store.KindFile {
+// authSourceForBackend keeps the wizard's view of where the credential lives in
+// step with where the sign-in actually put it — the keychain normally, the config
+// file on CI or on a host with no usable keychain.
+func authSourceForBackend(backend authpkg.Backend) configcommon.AuthSource {
+	if backend == authpkg.BackendFile {
 		return configcommon.AuthSourceFile
 	}
 
@@ -116,8 +116,8 @@ func authSourceForKind(kind store.Kind) configcommon.AuthSource {
 
 // storeFor returns the backend to read and update, honouring an injected keychain
 // so tests stay off the real one.
-func (r wizardAuthResolver) storeFor(kind store.Kind) keychainStore {
-	if kind == store.KindFile {
+func (r wizardAuthResolver) storeFor(backend authpkg.Backend) keychainStore {
+	if backend == authpkg.BackendFile {
 		return store.NewFile()
 	}
 	if r.Keychain != nil {
@@ -152,7 +152,7 @@ func (r wizardAuthResolver) signIn(ctx context.Context) (loginOutcome, bool) {
 	return out, true
 }
 
-func (r wizardAuthResolver) ensureFresh(ctx context.Context) (auth.TokenSet, error) {
+func (r wizardAuthResolver) ensureFresh(ctx context.Context) (authpkg.TokenSet, error) {
 	if r.EnsureFresh != nil {
 		return r.EnsureFresh(ctx)
 	}
@@ -162,7 +162,7 @@ func (r wizardAuthResolver) ensureFresh(ctx context.Context) (auth.TokenSet, err
 
 	creds, err := cfg.EnsureFresh(ctx)
 	if err != nil {
-		return auth.TokenSet{}, fmt.Errorf("refresh stored login: %w", err)
+		return authpkg.TokenSet{}, fmt.Errorf("refresh stored login: %w", err)
 	}
 
 	return creds, nil
@@ -172,7 +172,7 @@ func (r wizardAuthResolver) login(ctx context.Context) (loginOutcome, error) {
 	if r.Login != nil {
 		creds, err := r.Login(ctx)
 
-		return loginOutcome{Creds: creds, Kind: store.KindKeychain}, err
+		return loginOutcome{Creds: creds, Origin: creds.Origin(authpkg.BackendKeychain)}, err
 	}
 
 	return loginAndStore(ctx, r.Logger, r.Envs, r.Workspace, "", wizardWorkspaceFlag)
@@ -225,7 +225,7 @@ func resolvedAuthNote(auth wizardAuth, loader configcommon.AuthLoader) string {
 	return "Signing in was not needed — using " + desc.Detail() + "."
 }
 
-func loadStoredCredentials(logger log.Logger, kc keychainStore) auth.TokenSet {
+func loadStoredCredentials(logger log.Logger, kc keychainStore) authpkg.TokenSet {
 	creds, err := kc.Load()
 	switch {
 	case err == nil, errors.Is(err, keychain.ErrNotFound):
@@ -233,7 +233,7 @@ func loadStoredCredentials(logger log.Logger, kc keychainStore) auth.TokenSet {
 	default:
 		logger.Warnf("Could not read the OS keychain (%v). Wizard treats it as empty.", err)
 
-		return auth.TokenSet{}
+		return authpkg.TokenSet{}
 	}
 }
 

@@ -17,23 +17,23 @@ import (
 func TestSelect_defaultsToKeychainLocally(t *testing.T) {
 	s, err := Select(false, "")
 	require.NoError(t, err)
-	assert.Equal(t, KindKeychain, s.Kind())
+	assert.Equal(t, auth.BackendKeychain, s.Backend())
 }
 
 func TestSelect_defaultsToFileOnCI(t *testing.T) {
 	s, err := Select(true, "")
 	require.NoError(t, err)
-	assert.Equal(t, KindFile, s.Kind())
+	assert.Equal(t, auth.BackendFile, s.Backend())
 }
 
 func TestSelect_overrides(t *testing.T) {
 	kc, err := Select(true, "keychain") // CI, but override
 	require.NoError(t, err)
-	assert.Equal(t, KindKeychain, kc.Kind())
+	assert.Equal(t, auth.BackendKeychain, kc.Backend())
 
 	fs, err := Select(false, "file")
 	require.NoError(t, err)
-	assert.Equal(t, KindFile, fs.Kind())
+	assert.Equal(t, auth.BackendFile, fs.Backend())
 }
 
 func TestSelect_unknownOverrideErrors(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSaveExclusive_ClearsOtherBackend(t *testing.T) {
 	kc := NewKeychain()
 	require.NoError(t, kc.Save(auth.TokenSet{AuthToken: "old", WorkspaceID: "old-ws"}))
 
-	require.NoError(t, SaveExclusive(NewFile(), auth.TokenSet{AuthToken: "new", WorkspaceID: "new-ws"}))
+	require.NoError(t, saveExclusive(NewFile(), auth.TokenSet{AuthToken: "new", WorkspaceID: "new-ws"}))
 
 	_, err := kc.Load()
 	require.ErrorIs(t, err, ErrNotFound, "keychain must be cleared after exclusive file save")
@@ -74,9 +74,9 @@ func TestSetUsername_landsInStoreHoldingCredsAndPreservesAuth(t *testing.T) {
 	// Creds live only in the file store; keychain is empty.
 	require.NoError(t, NewFile().Save(auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
 
-	kind, err := SetUsername(false, "erin")
+	origin, err := SetUsername(false, "erin")
 	require.NoError(t, err)
-	assert.Equal(t, KindFile, kind, "username must land in the file store that holds the creds, not the keychain")
+	assert.Equal(t, auth.BackendFile, origin.Backend, "username must land in the file store that holds the creds, not the keychain")
 
 	got, err := NewFile().Load()
 	require.NoError(t, err)

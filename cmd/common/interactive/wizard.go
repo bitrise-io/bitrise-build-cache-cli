@@ -9,7 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
@@ -205,8 +205,8 @@ func persistWizardCredentialsTo(
 		if creds.Username == creds.StoredUsername {
 			return
 		}
-		if err := persistCredentials(storeForKind(kc, auth.Kind), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
-			logger.Warnf("Could not save the display name to the %s (%v).", auth.Kind, err)
+		if err := persistCredentials(storeForKind(kc, auth.Origin.Backend), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
+			logger.Warnf("Could not save the display name to the %s (%v).", auth.Origin.Label(), err)
 		} else {
 			logger.Infof("Updated display name for local invocations.")
 		}
@@ -271,7 +271,7 @@ func persistWizardCredentialsTo(
 // env / JWT / multiplatform sources, returning AuthSourceNone if none are set.
 func wizardStartingCreds(
 	envs map[string]string,
-	storedCreds auth.TokenSet,
+	storedCreds authpkg.TokenSet,
 	resolve func(map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource, error),
 ) (configcommon.CacheAuthConfig, configcommon.AuthSource) {
 	if storedCreds.AuthToken != "" && storedCreds.WorkspaceID != "" {
@@ -298,7 +298,7 @@ func usernamePersistable(source configcommon.AuthSource) bool {
 		source == configcommon.AuthSourceNone
 }
 
-func persistCredentials(kc keychainStore, existing auth.TokenSet, workspaceID, authToken, username string) error {
+func persistCredentials(kc keychainStore, existing authpkg.TokenSet, workspaceID, authToken, username string) error {
 	existing.AuthToken = authToken
 	existing.WorkspaceID = workspaceID
 	existing.Username = username
@@ -311,8 +311,8 @@ func persistCredentials(kc keychainStore, existing auth.TokenSet, workspaceID, a
 
 // storeForKind picks the backend to write to, keeping the injected keychain so
 // tests stay off the real one.
-func storeForKind(kc keychainStore, kind store.Kind) keychainStore {
-	if kind == store.KindFile {
+func storeForKind(kc keychainStore, backend authpkg.Backend) keychainStore {
+	if backend == authpkg.BackendFile {
 		return store.NewFile()
 	}
 

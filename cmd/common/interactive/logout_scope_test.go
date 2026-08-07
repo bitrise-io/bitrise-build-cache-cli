@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
@@ -17,12 +18,12 @@ import (
 // backend has to survive it. oauth.Clear() wipes both, which is why logout
 // targets only the store the login was found in.
 func TestLogout_LeavesAManualTokenInTheOtherBackend(t *testing.T) {
-	login := &failingStore{kind: store.KindKeychain}
+	login := &failingStore{backend: authpkg.BackendKeychain}
 	require.NoError(t, login.Save(auth.TokenSet{
 		AuthToken: "oauth-pat", WorkspaceID: "ws-1", RefreshToken: "refresh-1",
 	}))
 
-	manual := &failingStore{kind: store.KindFile}
+	manual := &failingStore{backend: authpkg.BackendFile}
 	require.NoError(t, manual.Save(auth.TokenSet{AuthToken: "manual-pat", WorkspaceID: "ws-2"}))
 
 	require.NoError(t, oauth.ClearFrom(login))

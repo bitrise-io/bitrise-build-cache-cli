@@ -67,17 +67,17 @@ func SaveTo(s store.Store, c auth.TokenSet) error {
 // write — a completed sign-in shouldn't be thrown away because the machine has no
 // keychain. The whole credential goes to the fallback, refresh token included, so
 // the login stays refreshable there.
-func SaveToWithFallback(s store.Store, c auth.TokenSet, allowFallback bool) (store.SaveOutcome, error) {
+func SaveToWithFallback(s store.Store, c auth.TokenSet, allowFallback bool) (store.SaveResult, error) {
 	if c.AuthToken == "" {
-		return store.SaveOutcome{Kind: s.Kind()}, errors.New("refusing to save credentials with empty PAT")
+		return store.SaveResult{Origin: c.Origin(s.Backend())}, errors.New("refusing to save credentials with empty PAT")
 	}
 
-	outcome, err := store.SaveExclusiveWithFallback(s, c, allowFallback)
+	result, err := store.SaveWithFallback(s, c, allowFallback)
 	if err != nil {
-		return outcome, fmt.Errorf("save credentials: %w", err)
+		return result, fmt.Errorf("save credentials: %w", err)
 	}
 
-	return outcome, nil
+	return result, nil
 }
 
 func Clear() error {

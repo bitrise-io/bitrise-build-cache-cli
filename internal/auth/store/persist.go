@@ -24,7 +24,7 @@ func PersistActivateCreds(logger log.Logger, isCI bool, cred configcommon.CacheA
 // persistActivateCredsTo takes the store so tests can refuse a write without a
 // real keychain.
 func persistActivateCredsTo(logger log.Logger, target Store, cred configcommon.CacheAuthConfig, mpCfg *multiplatformconfig.Config) {
-	if target.Kind() == KindFile {
+	if target.Backend() == auth.BackendFile {
 		persistToFile(cred, mpCfg)
 		logger.Infof("Saved auth credentials to the multiplatform config file (CI-safe — fastlane setup_ci swaps the keychain)")
 
@@ -66,14 +66,14 @@ func mergeActivateCreds(target Store, cred configcommon.CacheAuthConfig) auth.To
 // SetUsername writes name into the store that already holds credentials so a
 // username-only edit can't strand an empty-token entry in the wrong backend.
 // Empty name clears the override. Returns the store written to.
-func SetUsername(isCI bool, name string) (Kind, error) {
+func SetUsername(isCI bool, name string) (auth.Origin, error) {
 	target, existing := storeHoldingCreds(isCI)
 	existing.Username = strings.TrimSpace(name)
 	if err := target.Save(existing); err != nil {
-		return target.Kind(), fmt.Errorf("save display name to %s: %w", target.Kind(), err)
+		return existing.Origin(target.Backend()), fmt.Errorf("save display name to %s: %w", target.Backend().String(), err)
 	}
 
-	return target.Kind(), nil
+	return existing.Origin(target.Backend()), nil
 }
 
 func storeHoldingCreds(isCI bool) (Store, auth.TokenSet) {

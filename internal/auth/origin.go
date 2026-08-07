@@ -110,3 +110,21 @@ func GradleToken(c Credential, o Origin) string {
 
 	return c.WorkspaceID + ":" + c.Token
 }
+
+// String is the storage-facing name of a backend, used in error text.
+func (b Backend) String() string {
+	switch b {
+	case BackendEnv:
+		return "env"
+	case BackendJWT:
+		return "jwt"
+	case BackendKeychain:
+		return "keychain"
+	case BackendFile:
+		return "file"
+	case BackendNone:
+		return labelNone
+	}
+
+	return "unknown"
+}

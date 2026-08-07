@@ -23,11 +23,11 @@ func newTestLogger() log.Logger { return log.NewLogger(log.WithOutput(io.Discard
 type memStore struct {
 	creds   auth.TokenSet
 	present bool
-	kind    Kind
+	backend auth.Backend
 	saveErr error
 }
 
-func (m *memStore) Kind() Kind { return m.kind }
+func (m *memStore) Backend() auth.Backend { return m.backend }
 
 func (m *memStore) Load() (auth.TokenSet, error) {
 	if !m.present {
@@ -57,7 +57,7 @@ func (m *memStore) Clear() error {
 // refresh, degrading it into a bare short-lived PAT.
 func TestMergeActivateCreds_KeepsOAuthFieldsForTheSameToken(t *testing.T) {
 	expiry := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	s := &memStore{kind: KindKeychain, present: true, creds: auth.TokenSet{
+	s := &memStore{backend: auth.BackendKeychain, present: true, creds: auth.TokenSet{
 		AuthToken:    "pat-1",
 		WorkspaceID:  "ws-1",
 		Username:     "alice",
@@ -77,7 +77,7 @@ func TestMergeActivateCreds_KeepsOAuthFieldsForTheSameToken(t *testing.T) {
 
 // A workspace switch keeps the login: the refresh token is user-scoped.
 func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) {
-	s := &memStore{kind: KindKeychain, present: true, creds: auth.TokenSet{
+	s := &memStore{backend: auth.BackendKeychain, present: true, creds: auth.TokenSet{
 		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1",
 	}}
 
@@ -89,7 +89,7 @@ func TestMergeActivateCreds_KeepsOAuthFieldsAcrossWorkspaceChange(t *testing.T) 
 
 // Refreshing is the normal case between login and activate.
 func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.T) {
-	s := &memStore{kind: KindKeychain, present: true, creds: auth.TokenSet{
+	s := &memStore{backend: auth.BackendKeychain, present: true, creds: auth.TokenSet{
 		AuthToken: "pat-1", WorkspaceID: "ws-1", RefreshToken: "refresh-1", JWT: "jwt-1", Username: "dev",
 	}}
 
@@ -103,7 +103,7 @@ func TestMergeActivateCreds_KeepsOAuthFieldsWhenTheTokenWasRefreshed(t *testing.
 }
 
 func TestMergeActivateCreds_EmptyStore(t *testing.T) {
-	s := &memStore{kind: KindKeychain}
+	s := &memStore{backend: auth.BackendKeychain}
 
 	got := mergeActivateCreds(s, configcommon.CacheAuthConfig{AuthToken: "pat-1", WorkspaceID: "ws-1"})
 
@@ -126,7 +126,7 @@ func TestPersistActivateCreds_KeychainUnusableKeepsTheRefreshToken(t *testing.T)
 	require.NoError(t, NewFile().Save(login))
 
 	// A keychain that refuses every write, as a host with no secret-service has.
-	deadKeychain := &memStore{kind: KindKeychain, saveErr: errors.New("no usable OS keychain on this machine")}
+	deadKeychain := &memStore{backend: auth.BackendKeychain, saveErr: errors.New("no usable OS keychain on this machine")}
 
 	var mpCfg multiplatformconfig.Config
 	persistActivateCredsTo(

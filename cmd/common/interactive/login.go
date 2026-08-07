@@ -73,7 +73,7 @@ This is narrower than ` + "`auth clear`" + `:
 			logger.Infof("`auth clear` is the command for removing a manually set token.")
 		case !creds.IsOAuthManaged():
 			logger.Infof("Not signed in via the browser, so there is no login to remove.")
-			logger.Infof("A manually set token is stored in the %s and is left untouched — use `auth clear` to remove that.", source.Kind())
+			logger.Infof("A manually set token is stored in the %s and is left untouched — use `auth clear` to remove that.", source.Backend())
 		default:
 			// Only the backend holding the login: oauth.Clear() wipes both, which
 			// would take a manually set token in the other one with it — and
@@ -82,7 +82,7 @@ This is narrower than ` + "`auth clear`" + `:
 			if err := oauth.ClearFrom(source); err != nil {
 				return fmt.Errorf("clear stored login: %w", err)
 			}
-			logger.Infof("Signed out — the browser login was removed from the %s.", source.Kind())
+			logger.Infof("Signed out — the browser login was removed from the %s.", creds.Origin(source.Backend()).Label())
 			logger.Infof("Any token set with `auth set` is unaffected.")
 		}
 
@@ -130,12 +130,12 @@ func runLogin(cmd *cobra.Command) error {
 // keystrokes. Callers report a way to continue without one.
 var ErrStdinUnusable = errors.New("standard input is no longer usable for prompts")
 
-// loginOutcome is what a completed sign-in leaves behind. Kind matters because a
+// loginOutcome is what a completed sign-in leaves behind. Origin matters because a
 // keychain-less host stores the login in the config file instead, and callers
 // that go on to describe or update the credential have to target the right one.
 type loginOutcome struct {
-	Creds auth.TokenSet
-	Kind  store.Kind
+	Creds  auth.TokenSet
+	Origin auth.Origin
 	// StdinUnusable means a paste reader is still holding stdin, so no prompt in
 	// this process can be trusted with keystrokes.
 	StdinUnusable bool
@@ -180,19 +180,14 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 		return loginOutcome{}, err //nolint:wrapcheck
 	}
 
-	kind, err := saveLoginWithFallback(logger, target, storage, creds)
+	origin, err := saveLoginWithFallback(logger, target, storage, creds)
 	if err != nil {
 		return loginOutcome{}, err
 	}
 
-	switch kind {
-	case store.KindKeychain:
-		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the OS keychain.", workspace)
-	case store.KindFile:
-		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the multiplatform config file (CI-safe).", workspace)
-	}
+	logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
 
-	out := loginOutcome{Creds: creds, Kind: kind, StdinUnusable: paster.StdinUnusable()}
+	out := loginOutcome{Creds: creds, Origin: origin, StdinUnusable: paster.StdinUnusable()}
 	if out.StdinUnusable {
 		return out, fmt.Errorf("%w: the credential was saved", ErrStdinUnusable)
 	}
@@ -206,17 +201,14 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 // fallback, refresh token included, so the login stays refreshable there.
 //
 // An explicit --storage choice is honoured: the caller asked for that backend.
-func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds auth.TokenSet) (store.Kind, error) {
-	outcome, err := oauth.SaveToWithFallback(target, creds, storage == "")
+func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds auth.TokenSet) (auth.Origin, error) {
+	result, err := oauth.SaveToWithFallback(target, creds, storage == "")
 	if err != nil {
-		return outcome.Kind, fmt.Errorf("save credentials: %w", err)
+		return result.Origin, fmt.Errorf("save credentials: %w", err)
 	}
+	result.WarnFallback(logger)
 
-	if outcome.FellBack {
-		logger.Warnf("Could not write to the OS keychain (%s).", outcome.KeychainErr)
-	}
-
-	return outcome.Kind, nil
+	return result.Origin, nil
 }
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
 // loginTimeout bounds the whole browser round-trip.
@@ -129,6 +130,15 @@ func (c Config) EnsureFresh(ctx context.Context) (auth.TokenSet, error) {
 	if err != nil {
 		return auth.TokenSet{}, err
 	}
+
+	return c.EnsureFreshFrom(ctx, creds, src)
+}
+
+// EnsureFreshFrom is EnsureFresh on a record the caller already loaded, saving
+// back to the store it came from. Resolution reads the store once and passes what
+// it found, so the refresh cannot act on a different record than the caller saw.
+// A nil backing store falls back to the default save target.
+func (c Config) EnsureFreshFrom(ctx context.Context, creds auth.TokenSet, src store.Store) (auth.TokenSet, error) {
 	save := Save
 	if src != nil {
 		save = func(cr auth.TokenSet) error { return SaveTo(src, cr) }
