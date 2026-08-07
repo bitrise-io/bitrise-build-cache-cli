@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -59,7 +60,9 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider ma
 	activateGradleParams.TestDistro.Enabled = false
 	activateGradleParams.TestDistro.JustDependency = true
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, nil)
+	metadata := configcommon.DefaultMetadata(envProvider, logger)
+
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, metadata)
 	if err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

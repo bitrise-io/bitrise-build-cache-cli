@@ -3,13 +3,11 @@ package gradleconfig
 import (
 	"errors"
 	"fmt"
-	"os/exec"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 )
 
 const (
@@ -79,37 +77,26 @@ func NormalizeParams(params *ActivateGradleParams) {
 	}
 }
 
+// TemplateInventory builds the init-script inventory. Callers must supply
+// pre-resolved metadata and any benchmark-phase param mutations upstream —
+// see Activate for the canonical wiring.
 func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
 	envs map[string]string,
 	isDebug bool,
-	benchmarkProvider common.BenchmarkPhaseProvider,
+	metadata common.CacheConfigMetadata,
 ) (TemplateInventory, error) {
 	NormalizeParams(&params)
 
 	logger.Infof("(i) Checking parameters")
 
-	// Read auth config and metadata upfront
 	logger.Infof("(i) Check Auth Config")
 	authConfig, _, err := common.ResolveAuthConfig(envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
 
-	metadata := common.NewMetadata(envs,
-		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output() //nolint:noctx
-
-			return string(output), err
-		},
-		logger)
 	logger.Infof("(i) Cache Config: %+v", metadata)
-
-	// Check benchmark phase and override params if needed (only on CI)
-	if metadata.CIProvider != "" && benchmarkProvider != nil {
-		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
-		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, envexport.New(envs, logger))
-	}
 
 	commonInventory := params.commonTemplateInventory(authConfig, metadata, isDebug)
 

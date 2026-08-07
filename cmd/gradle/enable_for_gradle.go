@@ -8,9 +8,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -86,28 +84,23 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	activateGradleParams.CLIPath = clibin.Resolve(logger)
 
-	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
-	if err != nil {
-		return fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, err))
-	}
-
-	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, benchmarkClient)
-	if err != nil {
-		return fmt.Errorf(FmtErrorEnableForGradle, err)
-	}
-
-	if err := templateInventory.WriteToGradleInit(
+	if err := gradleconfig.Activate(
 		logger,
 		gradleHomePath,
-		utils.DefaultOsProxy{},
-		gradleconfig.GradleTemplateProxy(),
+		envProvider,
+		common.IsDebugLogMode,
+		gradleconfig.DefaultTemplateInventoryProvider,
+		func(inventory gradleconfig.TemplateInventory, path string) error {
+			return inventory.WriteToGradleInit(
+				logger,
+				path,
+				utils.DefaultOsProxy{},
+				gradleconfig.GradleTemplateProxy(),
+			)
+		},
+		gradleconfig.DefaultGradlePropertiesUpdater(),
+		activateGradleParams,
 	); err != nil {
-		return fmt.Errorf(FmtErrorEnableForGradle, err)
-	}
-
-	if err := gradleconfig.DefaultGradlePropertiesUpdater().UpdateGradleProps(activateGradleParams, logger, gradleHomePath); err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}
 

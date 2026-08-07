@@ -7,20 +7,31 @@ import (
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 )
 
 const (
 	ErrFmtFailedToUpdateProps = "failed to update gradle.properties: %w"
 )
 
-// Activate creates the Gradle init script and updates gradle.properties
-// to enable Bitrise Build Cache.
+// TemplateInventoryProvider builds a Gradle init-script inventory from
+// pre-resolved metadata and the (post-benchmark) params. Activate owns the
+// benchmark call and passes the mutated params here so callers do not
+// re-fetch metadata or re-apply the phase.
+type TemplateInventoryProvider func(
+	logger log.Logger,
+	envs map[string]string,
+	isDebug bool,
+	metadata configcommon.CacheConfigMetadata,
+	params ActivateGradleParams,
+) (TemplateInventory, error)
+
 func Activate(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
 	debugLogging bool,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (TemplateInventory, error),
+	templateInventoryProvider TemplateInventoryProvider,
 	templateWriter func(TemplateInventory, string) error,
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
@@ -32,9 +43,14 @@ func Activate(
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
 
-	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+	metadata := configcommon.DefaultMetadata(envProvider, logger)
 
-	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)
+	if metadata.CIProvider != "" {
+		benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envProvider, logger))
+	}
+
+	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, metadata, params)
 	if err != nil {
 		return err
 	}
@@ -48,4 +64,16 @@ func Activate(
 	}
 
 	return nil
+}
+
+// DefaultTemplateInventoryProvider adapts ActivateGradleParams.TemplateInventory
+// to the TemplateInventoryProvider callback shape used by Activate.
+func DefaultTemplateInventoryProvider(
+	logger log.Logger,
+	envs map[string]string,
+	isDebug bool,
+	metadata configcommon.CacheConfigMetadata,
+	params ActivateGradleParams,
+) (TemplateInventory, error) {
+	return params.TemplateInventory(logger, envs, isDebug, metadata)
 }

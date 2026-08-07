@@ -6,6 +6,7 @@ import (
 	"hash"
 	"maps"
 	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
@@ -104,6 +105,17 @@ type GitMetadata struct {
 	CommitHash  string
 	Branch      string
 	CommitEmail string
+}
+
+// DefaultMetadata builds a CacheConfigMetadata using the default exec-based
+// CommandFunc. Prefer this over NewMetadata at call sites that would otherwise
+// re-declare the exec.Command shell-out lambda.
+func DefaultMetadata(envs map[string]string, logger log.Logger) CacheConfigMetadata {
+	return NewMetadata(envs, func(name string, v ...string) (string, error) {
+		output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+		return string(output), err
+	}, logger)
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.

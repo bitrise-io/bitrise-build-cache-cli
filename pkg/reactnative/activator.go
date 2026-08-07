@@ -292,7 +292,7 @@ func (g *gradleActivator) activate() error {
 		gradleHome,
 		allEnvs,
 		g.debugLogging,
-		gradleParams.TemplateInventory,
+		gradleconfig.DefaultTemplateInventoryProvider,
 		func(inventory gradleconfig.TemplateInventory, path string) error {
 			return inventory.WriteToGradleInit(
 				g.logger,

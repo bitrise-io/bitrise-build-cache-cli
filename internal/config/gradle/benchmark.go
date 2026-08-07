@@ -54,6 +54,8 @@ func ApplyBenchmarkPhase(
 	// baseline when the relevant tool is actually caching normally.
 	if phase == common.BenchmarkPhaseBaseline {
 		params.Cache.Enabled = false
+		// clear PushEnabled — NormalizeParams runs downstream and would re-enable cache on baseline otherwise.
+		params.Cache.PushEnabled = false
 		params.Cache.JustDependency = false
 		params.Analytics.Enabled = true
 	}

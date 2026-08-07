@@ -128,7 +128,7 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 		gradleHome,
 		envs,
 		common.IsDebugLogMode,
-		params.TemplateInventory,
+		gradleconfig.DefaultTemplateInventoryProvider,
 		func(inventory gradleconfig.TemplateInventory, path string) error {
 			return inventory.WriteToGradleInit(
 				logger,
