@@ -82,15 +82,33 @@ func (r SaveResult) WarnFallback(logger log.Logger) {
 	}
 }
 
-// SaveWithFallback saves to target, dropping to the file store when the
-// keychain refuses the write: a host with no secret-service (headless Linux,
-// containers) would otherwise have no way to store credentials at all, short of
-// knowing to pass --storage=file.
+// SaveExclusiveWithFallback saves to target and clears every other backend,
+// dropping to the file store when the keychain refuses the write: a host with no
+// secret-service (headless Linux, containers) would otherwise have no way to
+// store credentials at all, short of knowing to pass --storage=file.
+//
+// Exclusive because it backs a deliberate user action (`auth login`, `auth set`)
+// where two populated backends would be split-brain. Activation must use
+// SaveWithFallback instead — see the note there.
 //
 // allowFallback is false when the caller picked the backend explicitly — they
 // asked for that one, so silently using another would be wrong.
+func SaveExclusiveWithFallback(target Store, creds auth.TokenSet, allowFallback bool) (SaveResult, error) {
+	return saveWithFallback(target, creds, allowFallback, saveExclusive)
+}
+
+// SaveWithFallback saves to target and leaves every other backend alone. Used
+// when materialising an injected credential during activation: clearing the other
+// backend there would throw away a login the user deliberately stored, which is
+// not something an incidental write should ever do.
 func SaveWithFallback(target Store, creds auth.TokenSet, allowFallback bool) (SaveResult, error) {
-	err := saveExclusive(target, creds)
+	return saveWithFallback(target, creds, allowFallback, func(s Store, c auth.TokenSet) error {
+		return s.Save(c) //nolint:wrapcheck // backends already wrap
+	})
+}
+
+func saveWithFallback(target Store, creds auth.TokenSet, allowFallback bool, save func(Store, auth.TokenSet) error) (SaveResult, error) {
+	err := save(target, creds)
 	if err == nil {
 		return SaveResult{Origin: creds.Origin(target.Backend())}, nil
 	}
@@ -100,7 +118,7 @@ func SaveWithFallback(target Store, creds auth.TokenSet, allowFallback bool) (Sa
 	}
 
 	fallback := NewFile()
-	if fbErr := saveExclusive(fallback, creds); fbErr != nil {
+	if fbErr := save(fallback, creds); fbErr != nil {
 		return SaveResult{Origin: creds.Origin(fallback.Backend())}, fmt.Errorf("save to the keychain (%w) and to the config file (%w)", err, fbErr)
 	}
 

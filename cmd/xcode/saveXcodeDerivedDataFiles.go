@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
@@ -51,7 +53,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, _, err := configcommon.ResolveAuthConfig(allEnvs)
+		authConfig, _, err := live.Default(nil).ResolveNoRefresh(allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
@@ -82,7 +84,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 			op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
 
-			xaClient, clientErr := xa.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return authConfig.AuthToken }, logger)
+			xaClient, clientErr := xa.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return authConfig.Token }, logger)
 			if clientErr != nil {
 				return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
 			}
@@ -122,7 +124,7 @@ func init() {
 }
 
 func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
-	authConfig configcommon.CacheAuthConfig,
+	authConfig authpkg.Credential,
 	cacheMetadataPath,
 	projectRoot,
 	providedCacheKey,
@@ -148,7 +150,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	commonMetadata := configcommon.NewMetadata(envs, commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, authConfig, commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeUpload, &commonMetadata)
 	op.CacheKey = cacheKey

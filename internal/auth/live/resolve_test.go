@@ -338,3 +338,63 @@ func TestBoundGet_returnsAZeroCredentialRatherThanPanicking(t *testing.T) {
 
 	assert.Equal(t, auth.Credential{}, r.Bind(map[string]string{}).Get(t.Context()))
 }
+
+// A manual `auth set` token has no refresh token. Attempting the flow yields
+// ErrNotLoggedIn, which a FailFast caller would misread as a dead login.
+func TestResolve_ManualStoredCredentialIsNotRefreshed(t *testing.T) {
+	manual := auth.TokenSet{AuthToken: "manual", WorkspaceID: "ws"}
+	r := &Resolver{
+		OnRefreshFailure: FailFast,
+		Backends:         []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: manual, present: true}},
+		LegacyFile:       func() (auth.Credential, bool) { return auth.Credential{}, false },
+		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
+			t.Fatal("a credential with no refresh token must not enter the refresh flow")
+
+			return auth.TokenSet{}, nil
+		},
+	}
+
+	cred, origin, err := r.Resolve(t.Context(), map[string]string{})
+
+	require.NoError(t, err)
+	assert.Equal(t, "manual", cred.Token)
+	assert.Equal(t, auth.ProvenanceManual, origin.Provenance)
+}
+
+// FailFast is for interactive callers: a dead refresh token must surface, not be
+// papered over with a token the backend will reject.
+func TestResolve_FailFastReportsARefreshFailure(t *testing.T) {
+	login := auth.TokenSet{AuthToken: "stale", WorkspaceID: "ws", RefreshToken: "revoked"}
+	r := &Resolver{
+		OnRefreshFailure: FailFast,
+		Backends:         []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: login, present: true}},
+		LegacyFile:       func() (auth.Credential, bool) { return auth.Credential{}, false },
+		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
+			return auth.TokenSet{}, errors.New("refresh token revoked")
+		},
+	}
+
+	_, _, err := r.Resolve(t.Context(), map[string]string{})
+
+	require.Error(t, err)
+}
+
+// The legacy authConfig block predates refresh tokens; treating it as refreshable
+// sends the Bazel helper into a flow that can only fail.
+func TestResolve_LegacyBlockIsNotStoreManaged(t *testing.T) {
+	r := &Resolver{
+		Backends:   []store.Store{&fakeStore{backend: auth.BackendKeychain}},
+		LegacyFile: func() (auth.Credential, bool) { return auth.Credential{Token: "l", WorkspaceID: "w"}, true },
+		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
+			t.Fatal("the legacy block is not store-managed")
+
+			return auth.TokenSet{}, nil
+		},
+	}
+
+	_, origin, err := r.Resolve(t.Context(), map[string]string{})
+
+	require.NoError(t, err)
+	assert.False(t, origin.StoreManaged())
+	assert.Equal(t, auth.ProvenanceLegacy, origin.Provenance)
+}

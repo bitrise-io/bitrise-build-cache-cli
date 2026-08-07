@@ -15,7 +15,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 // --proxy-socket-path override that the env-or-default chain knows nothing about,
 // so re-resolving would probe a socket nobody is listening on.
 func (d *Doctor) xcelerateSocketPath() string {
-	if cfg, err := xceleratconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}); err == nil && cfg.ProxySocketPath != "" {
+	if cfg, err := xceleratconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}, d.Envs); err == nil && cfg.ProxySocketPath != "" {
 		return cfg.ProxySocketPath
 	}
 

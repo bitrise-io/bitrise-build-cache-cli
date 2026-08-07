@@ -9,6 +9,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
@@ -69,13 +71,19 @@ type Config struct {
 	// preserved for read-side backwards compatibility with older xcelerate
 	// configs that still have `authConfig` on disk from a previous CLI version;
 	// Save zeroes it before writing and `omitzero` keeps it out of the file.
-	AuthConfig           common.CacheAuthConfig `json:"authConfig,omitzero"`
-	ExternalAppID        string                 `json:"externalAppId,omitempty"`
-	ExternalBuildID      string                 `json:"externalBuildId,omitempty"`
-	ExternalWorkflowName string                 `json:"externalWorkflowName,omitempty"`
+	AuthConfig authpkg.Credential `json:"-"`
+	// LegacyAuthConfig is the pre-Credential on-disk shape, still present in configs
+	// written by older CLI versions. Read-only fallback; Save never writes it back.
+	LegacyAuthConfig multiplatformconfig.LegacyAuthConfig `json:"authConfig,omitzero"`
+	// AuthOrigin says where AuthConfig came from. Runtime only — it is what
+	// tells a CI JWT (sent as-is) from a PAT (prefixed with the workspace).
+	AuthOrigin           authpkg.Origin `json:"-"`
+	ExternalAppID        string         `json:"externalAppId,omitempty"`
+	ExternalBuildID      string         `json:"externalBuildId,omitempty"`
+	ExternalWorkflowName string         `json:"externalWorkflowName,omitempty"`
 }
 
-func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Config, error) {
+func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs map[string]string) (Config, error) {
 	configFilePath := PathFor(osProxy, xcelerateConfigFileName)
 
 	f, err := osProxy.OpenFile(configFilePath, 0, 0)
@@ -90,10 +98,15 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (Con
 		return Config{}, fmt.Errorf("decode xcelerate config file (%s): %w", configFilePath, err)
 	}
 
-	if kcCfg, ok := common.GetKeychainCredentials(); ok {
-		config.AuthConfig = kcCfg
-	} else if mpCfg, mpErr := multiplatformconfig.ReadConfig(osProxy, decoderFactory); mpErr == nil && mpCfg.AuthConfig.AuthToken != "" {
-		config.AuthConfig = mpCfg.AuthConfig
+	// The credential is resolved, never read out of this file: the invocation PUT
+	// and the doctor must agree on which credential is current, and only one
+	// resolution path can guarantee that.
+	if cred, origin, credErr := live.Default(nil).ResolveNoRefresh(envs); credErr == nil {
+		config.AuthConfig, config.AuthOrigin = cred, origin
+	} else if config.LegacyAuthConfig.Populated() {
+		// Nothing resolvable, but an older CLI left a credential in this file.
+		config.AuthConfig = config.LegacyAuthConfig.Credential()
+		config.AuthOrigin = authpkg.Origin{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceLegacy}
 	}
 
 	return config, nil
@@ -128,12 +141,12 @@ func NewConfig(ctx context.Context,
 	exporter EnvExporter,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (Config, error) {
-	authConfig, _, err := common.ResolveAuthConfig(envs)
+	authConfig, authOrigin, err := live.Default(nil).ResolveNoRefresh(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
-	metadata := common.NewMetadata(envs,
+	metadata := common.NewMetadata(envs, authConfig,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
@@ -214,6 +227,7 @@ func NewConfig(ctx context.Context,
 		Silent:                 params.Silent,
 		XcodebuildTimestamps:   params.XcodebuildTimestampsEnabled,
 		AuthConfig:             authConfig,
+		AuthOrigin:             authOrigin,
 		ExternalAppID:          metadata.ExternalAppID,
 		ExternalBuildID:        metadata.ExternalBuildID,
 		ExternalWorkflowName:   metadata.ExternalWorkflowName,
@@ -272,7 +286,8 @@ func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory ut
 	// them before writing the xcelerate config so we don't persist a second
 	// copy on disk. Older configs that still carry `authConfig` on disk are
 	// tolerated on read (see ReadConfig).
-	config.AuthConfig = common.CacheAuthConfig{}
+	config.AuthConfig = authpkg.Credential{}
+	config.LegacyAuthConfig = multiplatformconfig.LegacyAuthConfig{}
 
 	enc := encoderFactory.Encoder(f)
 	enc.SetIndent("", "  ")

@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func captureLogger() (log.Logger, *strings.Builder) {
@@ -24,20 +23,20 @@ func captureLogger() (log.Logger, *strings.Builder) {
 // Migrating has to move the credential, not copy it: leaving the file copy keeps
 // a plaintext token on disk even though the keychain now holds it.
 func TestPersistWizardCredentials_MigrationClearsTheFileCopy(t *testing.T) {
-	for _, source := range []configcommon.AuthSource{
-		configcommon.AuthSourceFile,
-		configcommon.AuthSourceMultiplatform,
+	for _, origin := range []authpkg.Origin{
+		{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceManual},
+		{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceLegacy},
 	} {
 		kc := &stubKeychain{}
 		cleared := false
 		logger, out := captureLogger()
 
 		persistWizardCredentialsTo(logger, kc, func() error { cleared = true; return nil },
-			wizardAuth{Source: source},
+			wizardAuth{Origin: origin},
 			wizardCredentials{WorkspaceID: "ws-1", AuthToken: "tok-1"})
 
-		assert.True(t, cleared, "source=%v: the file copy must be removed", source)
-		assert.Equal(t, "tok-1", kc.saved.AuthToken, "source=%v: the keychain must hold it", source)
+		assert.True(t, cleared, "origin=%v: the file copy must be removed", origin)
+		assert.Equal(t, "tok-1", kc.saved.AuthToken, "origin=%v: the keychain must hold it", origin)
 		assert.Contains(t, out.String(), "Moved credentials")
 	}
 }
@@ -49,7 +48,7 @@ func TestPersistWizardCredentials_ReportsAFailedCleanup(t *testing.T) {
 	logger, out := captureLogger()
 
 	persistWizardCredentialsTo(logger, kc, func() error { return errors.New("permission denied") },
-		wizardAuth{Source: configcommon.AuthSourceFile},
+		wizardAuth{Origin: authpkg.Origin{Backend: authpkg.BackendFile}},
 		wizardCredentials{WorkspaceID: "ws-1", AuthToken: "tok-1"})
 
 	assert.Contains(t, out.String(), "could not remove the config-file copy")
@@ -64,7 +63,7 @@ func TestPersistWizardCredentials_KeepsTheFileWhenTheKeychainFails(t *testing.T)
 	logger, out := captureLogger()
 
 	persistWizardCredentialsTo(logger, kc, func() error { cleared = true; return nil },
-		wizardAuth{Source: configcommon.AuthSourceFile},
+		wizardAuth{Origin: authpkg.Origin{Backend: authpkg.BackendFile}},
 		wizardCredentials{WorkspaceID: "ws-1", AuthToken: "tok-1"})
 
 	require.False(t, cleared, "the file is the only remaining copy — it must survive")
@@ -78,7 +77,7 @@ func TestPersistWizardCredentials_KeychainSourceDoesNotTouchTheFile(t *testing.T
 	logger, _ := captureLogger()
 
 	persistWizardCredentialsTo(logger, kc, func() error { cleared = true; return nil },
-		wizardAuth{Source: configcommon.AuthSourceKeychain},
+		wizardAuth{Origin: authpkg.Origin{Backend: authpkg.BackendKeychain}},
 		wizardCredentials{WorkspaceID: "ws-1", AuthToken: "tok-1", Username: "alice", StoredUsername: "alice"})
 
 	assert.False(t, cleared)
@@ -86,5 +85,7 @@ func TestPersistWizardCredentials_KeychainSourceDoesNotTouchTheFile(t *testing.T
 
 type failingKeychain struct{ err error }
 
-func (f *failingKeychain) Load() (auth.TokenSet, error) { return auth.TokenSet{}, f.err }
-func (f *failingKeychain) Save(auth.TokenSet) error     { return f.err }
+func (f *failingKeychain) Backend() authpkg.Backend        { return authpkg.BackendKeychain }
+func (f *failingKeychain) Clear() error                    { return nil }
+func (f *failingKeychain) Load() (authpkg.TokenSet, error) { return authpkg.TokenSet{}, f.err }
+func (f *failingKeychain) Save(authpkg.TokenSet) error     { return f.err }

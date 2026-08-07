@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -150,12 +151,12 @@ func TestPostRunDeps_appendLocalInvocationLog_usernameFromEnvChain(t *testing.T)
 	// Explicitly exercise the real ResolveUsername chain: setting
 	// BITRISE_BUILD_CACHE_USERNAME must flow through common.NewMetadata → the
 	// Record.Username field, mirroring how the wrapper runs in production.
-	t.Setenv(common.EnvUsername, "env-set-user")
+	t.Setenv(auth.EnvUsername, "env-set-user")
 
 	deps, logger := depsForLocalLogTest(t)
 
 	envs := utils.AllEnvs()
-	metadata := common.NewMetadata(envs, func(string, ...string) (string, error) { return "", nil }, log.NewLogger())
+	metadata := common.NewMetadata(envs, auth.Credential{}, func(string, ...string) (string, error) { return "", nil }, log.NewLogger())
 
 	deps.appendLocalInvocationLog("inv-un", "yarn build", metadata, childstats.Summary{}, time.Second, nil)
 

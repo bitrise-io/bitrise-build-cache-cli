@@ -15,7 +15,7 @@ func (d *Doctor) ccacheHelperCheck() Check {
 // ccacheSocketPath prefers the endpoint activation recorded, for the same reason as
 // xcelerateSocketPath: an --ipc-socket-path override never reaches the env chain.
 func (d *Doctor) ccacheSocketPath() string {
-	if cfg, err := ccacheconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}); err == nil && cfg.IPCEndpoint != "" {
+	if cfg, err := ccacheconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}, d.Envs); err == nil && cfg.IPCEndpoint != "" {
 		return cfg.IPCEndpoint
 	}
 

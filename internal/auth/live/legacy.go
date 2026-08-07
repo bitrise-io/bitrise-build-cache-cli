@@ -13,14 +13,11 @@ import (
 // precedence order: it carries no refresh token and no expiry.
 func readLegacyFileCredential() (auth.Credential, bool) {
 	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	if err != nil || cfg.AuthConfig.AuthToken == "" || cfg.AuthConfig.WorkspaceID == "" {
+	if err != nil || !cfg.AuthConfig.Populated() {
 		return auth.Credential{}, false
 	}
 
-	return auth.Credential{
-		Token:       cfg.AuthConfig.AuthToken,
-		WorkspaceID: cfg.AuthConfig.WorkspaceID,
-	}, true
+	return cfg.AuthConfig.Credential(), true
 }
 
 // writeLegacyFileCredential mirrors a credential into the analytics config's
@@ -29,9 +26,11 @@ func writeLegacyFileCredential(cred auth.Credential) error {
 	err := multiplatformconfig.Update(
 		utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
 		func(cfg *multiplatformconfig.Config) {
-			cfg.AuthConfig.AuthToken = cred.Token
-			cfg.AuthConfig.WorkspaceID = cred.WorkspaceID
-			cfg.AuthConfig.IsJWT = true
+			cfg.AuthConfig = multiplatformconfig.LegacyAuthConfig{
+				AuthToken:   cred.Token,
+				WorkspaceID: cred.WorkspaceID,
+				IsJWT:       true,
+			}
 		},
 	)
 	if err != nil {

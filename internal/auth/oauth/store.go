@@ -72,7 +72,7 @@ func SaveToWithFallback(s store.Store, c auth.TokenSet, allowFallback bool) (sto
 		return store.SaveResult{Origin: c.Origin(s.Backend())}, errors.New("refusing to save credentials with empty PAT")
 	}
 
-	result, err := store.SaveWithFallback(s, c, allowFallback)
+	result, err := store.SaveExclusiveWithFallback(s, c, allowFallback)
 	if err != nil {
 		return result, fmt.Errorf("save credentials: %w", err)
 	}

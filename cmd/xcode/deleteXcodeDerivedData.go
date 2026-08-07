@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filegroup"
@@ -70,7 +71,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	commandFunc func(string, ...string) (string, error),
 ) error {
 	logger.Infof("(i) Check Auth Config")
-	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
+	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
 	if err != nil {
 		return fmt.Errorf("resolve auth config: %w", err)
 	}

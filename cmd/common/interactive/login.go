@@ -11,6 +11,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
@@ -213,12 +214,12 @@ func saveLoginWithFallback(logger log.Logger, target store.Store, storage string
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".
 func shadowingAuthEnv() string {
-	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
-	case configcommon.AuthSourceEnvVars:
-		return configcommon.EnvAuthToken
-	case configcommon.AuthSourceJWT:
-		return configcommon.EnvJWT
-	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceFile, configcommon.AuthSourceMultiplatform:
+	switch _, origin, _ := live.Default(nil).ResolveNoRefresh(utils.AllEnvs()); origin.Backend {
+	case auth.BackendEnv:
+		return auth.EnvAuthToken
+	case auth.BackendJWT:
+		return auth.EnvJWT
+	case auth.BackendNone, auth.BackendKeychain, auth.BackendFile:
 	}
 
 	return ""

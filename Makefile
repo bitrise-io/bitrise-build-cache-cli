@@ -47,4 +47,4 @@ run-xcelerate-proxy:
 go-generate:
 	go generate ./...
 
-check: go-generate lint-fix test-unit
+check: go-generate lint-fix lint-arch test-unit

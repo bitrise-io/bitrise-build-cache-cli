@@ -17,7 +17,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -62,7 +63,7 @@ var (
 			}
 			cmd.SetErr(io.MultiWriter(os.Stderr, errFile))
 
-			config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+			config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, utils.AllEnvs())
 			if err != nil {
 				return fmt.Errorf("read xcelerate config: %w", err)
 			}
@@ -152,17 +153,9 @@ func StartXcodeCacheProxy(
 	initialLogger log.Logger,
 	loggerFactory proxy.LoggerFactory,
 ) error {
-	oauthCfg := oauth.NewConfigFromEnv(envProvider)
-	oauthCfg.Logger = initialLogger
-	refreshFn := func(ctx context.Context) (string, string, error) {
-		creds, err := oauthCfg.EnsureFresh(ctx)
-		if err != nil {
-			return "", "", fmt.Errorf("ensure fresh oauth credentials: %w", err)
-		}
-
-		return creds.AuthToken, creds.WorkspaceID, nil
-	}
-	authProvider := configcommon.NewExpiryAwareResolver(context.WithoutCancel(ctx), envProvider, refreshFn, initialLogger)
+	// Per-RPC: the ctx arrives with each call, and the credential carries a real
+	// PAT expiry rather than a fixed TTL.
+	authProvider := live.Default(initialLogger).Bind(envProvider)
 
 	client, err := common.CreateKVClient(ctx, common.CreateKVClientParams{
 		CacheOperationID:   uuid.New().String(),
@@ -196,7 +189,7 @@ func StartXcodeCacheProxy(
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
 
 	if bundle.enrichmentEnabled() {
-		go bundle.watcher(initialLogger).Run(ctx)
+		go bundle.watcher(ctx, initialLogger).Run(ctx)
 		go bundle.retrier(initialLogger).Run(ctx)
 	}
 
@@ -215,7 +208,7 @@ func StartXcodeCacheProxy(
 
 type analyticsBundle struct {
 	client           *analytics.Client
-	authProvider     *configcommon.ExpiryAwareResolver
+	authProvider     *live.Bound
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
 	handledManifests *enrichment.HandledManifestStore
@@ -235,9 +228,13 @@ func newAnalyticsBundle(
 	envProvider map[string]string,
 	commandFunc configcommon.CommandFunc,
 	logger log.Logger,
-	authProvider *configcommon.ExpiryAwareResolver,
+	authProvider *live.Bound,
 ) *analyticsBundle {
-	tokenSupplier := func() string { return authProvider.Get().TokenInGradleFormat() }
+	tokenSupplier := func() string {
+		cred, origin, _ := authProvider.Resolve(context.WithoutCancel(ctx))
+
+		return authpkg.GradleToken(cred, origin)
+	}
 	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, tokenSupplier, logger)
 	if err != nil {
 		logger.Warnf("Xcode analytics disabled — client init failed: %s", err)
@@ -248,7 +245,7 @@ func newAnalyticsBundle(
 	b := &analyticsBundle{
 		client:       client,
 		authProvider: authProvider,
-		metadata:     configcommon.NewMetadata(envProvider, commandFunc, logger),
+		metadata:     configcommon.NewMetadata(envProvider, config.AuthConfig, commandFunc, logger),
 		logger:       logger,
 	}
 
@@ -283,11 +280,11 @@ func (b *analyticsBundle) enrichmentEnabled() bool {
 	return b.client != nil && b.pending != nil && b.homeDir != ""
 }
 
-func (b *analyticsBundle) watcher(logger log.Logger) *enrichment.Watcher {
+func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enrichment.Watcher {
 	enricher := &enrichment.Enricher{
 		Store:            b.pending,
 		Client:           b.client,
-		Auth:             b.authProvider.Get(),
+		Auth:             b.authProvider.Get(ctx),
 		Metadata:         b.metadata,
 		XcodeVersion:     b.xcodeVersion,
 		XcodeBuildNumber: b.xcodeBuildNumber,
@@ -377,7 +374,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,
 			HitRate:        hitRate,
-		}, b.authProvider.Get(), b.metadata)
+		}, b.authProvider.Get(ctx), b.metadata)
 
 		if err := putter.PutInvocation(*inv); err != nil {
 			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)

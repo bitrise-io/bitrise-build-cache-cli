@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform" // registers the config-file credential readers
 )
 
@@ -20,8 +20,8 @@ import (
 func TestGetCmd_StdoutIsOnlyTheJSONResponse(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv(configcommon.EnvAuthToken, "test-token")
-	t.Setenv(configcommon.EnvWorkspaceID, "ws-1")
+	t.Setenv(auth.EnvAuthToken, "test-token")
+	t.Setenv(auth.EnvWorkspaceID, "ws-1")
 
 	var stdout, stderr bytes.Buffer
 	getCmd.SetContext(t.Context())

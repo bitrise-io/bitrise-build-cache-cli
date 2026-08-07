@@ -1,8 +1,5 @@
 # Authentication architecture
 
-> **Status: target design (ACI-5274), not yet on disk.** Delete this banner when the
-> last commit merges.
-
 Every credential the CLI uses — a CI JWT, an env-var PAT, a browser login in the OS
 keychain, a CI-safe token in the config file — resolves through one function. This
 document is the map: what each package owns, what may import what, and how a
@@ -106,9 +103,12 @@ consumers. Both are `Backend == File`; they differ in `Provenance`
 (`OAuthLogin`/`Manual` vs `Legacy`). Backend alone cannot express that, and
 provenance alone cannot tell you which file to write.
 
-`Origin.StoreManaged()` is `Backend ∈ {Keychain, File}` — the predicate that gates
-refresh. Both backends can hold an OAuth login, so both are refreshable; test the
-predicate, never a specific backend.
+`Origin.StoreManaged()` is `Backend ∈ {Keychain, File}` minus the legacy block —
+the predicate that gates refresh. Both backends can hold an OAuth login, so both
+are refreshable; test the predicate, never a specific backend. A record with no
+refresh token is skipped inside `Resolve` regardless: attempting the flow could
+only produce `ErrNotLoggedIn`, which a `FailFast` caller would misread as a dead
+login rather than a perfectly good static credential.
 
 ## Package reference
 
@@ -152,7 +152,8 @@ The CI-safe file backend. Owns the on-disk shape; imports `auth` for `TokenSet`.
 
 | Export | Purpose |
 |---|---|
-| `Config{Credentials *auth.TokenSet, AuthConfig, DebugLogging}` | The file. `AuthConfig` is the legacy key kept for older analytics readers. |
+| `Config{Credentials *auth.TokenSet, AuthConfig LegacyAuthConfig, DebugLogging}` | The file. |
+| `LegacyAuthConfig{AuthToken, WorkspaceID, IsJWT}` | The pre-`credentials` block, still read by analytics consumers and older CLI versions. Its **field names are the wire format** — they must not be renamed to match `Credential`, which is why this is a separate type rather than a reuse. |
 | `ReadCredentials`, `SaveCredentials`, `ClearCredentials` | Credential access. `SaveCredentials` is read-modify-write and mirrors into `AuthConfig`. |
 | `Update(osProxy, enc, dec, mutate func(*Config)) error` | Read-modify-write for non-credential fields. |
 | `ReadConfig`, `FilePath` | Whole-file access. |
@@ -172,7 +173,8 @@ Which backend a credential lives in, and getting it in and out.
 | `NewKeychain()`, `NewFile()` | The two backends. |
 | `SelectAuto(isCI bool) Store` | CI → file, local → keychain. On CI, `fastlane setup_ci` swaps the keychain out from under us. |
 | `Select(isCI bool, override string) (Store, error)` | Honours `--storage=keychain\|file\|auto`. |
-| `SaveWithFallback(target, ts, allowFallback) (SaveResult, error)` | Saves exclusively; drops to the file store when the keychain refuses, so a keyring-less host can still hold a login. `allowFallback` is false when the caller named a backend explicitly. |
+| `SaveExclusiveWithFallback(target, ts, allowFallback) (SaveResult, error)` | Saves and clears every other backend, dropping to the file store when the keychain refuses so a keyring-less host can still hold a login. Exclusive because it backs a deliberate user action (`auth login`, `auth set`) where two populated backends would be split-brain. `allowFallback` is false when the caller named a backend explicitly. |
+| `SaveWithFallback(target, ts, allowFallback) (SaveResult, error)` | Same, but leaves the other backends alone. Activation uses this: clearing the other backend there would throw away a login the user deliberately stored. |
 | `SaveResult{Origin, KeychainErr}` | Where it landed, and why it fell back. A non-nil `KeychainErr` *is* the fallback signal. |
 | `SaveResult.WarnFallback(log.Logger)` | The one place the fallback warning is written. |
 | `SetUsername(isCI bool, name) (auth.Origin, error)` | Writes a display name into whichever backend already holds credentials, so it can't strand an empty-token record in the other one. |
@@ -209,9 +211,10 @@ The resolver. The only package a consumer needs.
 |---|---|
 | `Resolver{Logger, Prefer, Refresh, Store}` | The facade. Nil fields take production defaults; `Refresh` and `Store` are the test seams. |
 | `Prefer` (`PreferEnv` default, `PreferStored`) | `PreferStored` puts the store ahead of env vars. The interactive wizard uses it so a stale `BITRISE_BUILD_CACHE_AUTH_TOKEN` in a shell rc file can't shadow a real login. Nothing else should. |
-| `(*Resolver).Resolve(ctx, envs) (Credential, Origin, error)` | **The one resolve path.** Precedence, then refresh when store-managed, serving the stored credential if refresh fails. |
+| `(*Resolver).Resolve(ctx, envs) (Credential, Origin, error)` | **The one resolve path.** Precedence, then refresh when store-managed. |
+| `Resolver.OnRefreshFailure` (`ServeStale` default, `FailFast`) | What to do when a store-managed credential cannot be refreshed. `ServeStale` hands back the stored token — a slightly stale token still authenticates far more often than it doesn't, and failing would take a build down over a transient error. `FailFast` reports it: the wizard and the Bazel helper both need to act on a dead refresh token rather than serve one the backend will reject. |
 | `(*Resolver).ResolveNoRefresh(envs) (Credential, Origin, error)` | Same precedence, no network, no writes. For `status`, which documents that it never refreshes. |
-| `(*Resolver).ResolvePinned(ctx, envs, isCI) (Credential, Origin, error)` | Resolve, and materialise an ephemeral env- or JWT-sourced credential to disk so processes started by `activate` can find it without the env vars. Read-modify-write. |
+| `(*Resolver).ResolvePinned(ctx, envs, isCI) (Credential, Origin, error)` | Resolve, and materialise an ephemeral env- or JWT-sourced credential to disk so processes started by `activate` can find it without the env vars. Read-modify-write, and **not** exclusive — see `store.SaveWithFallback`. Returns the origin the credential *resolved* from, not where the copy landed. |
 | `(*Resolver).Bind(envs) *Bound` | Pins the environment for a long-lived process. |
 | `(*Bound).Get(ctx) auth.Credential` | Per-RPC credential. Structurally satisfies `kv.AuthSource` without `live` importing `kv`. |
 | `Describe(Credential, Origin) string` | The one-line human description. Pure formatting, no I/O — `Origin` already carries everything it needs. |
@@ -261,6 +264,7 @@ cmd/auth.authTokenCmd
    └─ oauth.Config.EnsureFreshFrom(ctx, ts, backingStore)            L3
       ├─ now+RefreshSkew < ts.PATExpiry → return unchanged
       ├─ refreshlock.Acquire()                        cross-process
+      ├─ record not OAuth-managed → return unchanged, no refresh attempted
       ├─ POST /oauth2/token   refresh → JWT
       ├─ POST /oidc/token     JWT → PAT
       └─ oauth.SaveToWithFallback(backingStore, ts', false)          L3
@@ -283,8 +287,8 @@ config/xcelerate.Activate(ctx, …, envs)
 │  ├─ existing, _ := target.Load()                      read-modify-write
 │  ├─ existing.AuthToken, .WorkspaceID = cred.Token, cred.WorkspaceID
 │  │     RefreshToken, Username, JWT preserved — no reverse conversion exists
-│  └─ store.SaveWithFallback(target, existing, true)
-│  ⇒ Credential, Origin{File, Manual}
+│  └─ store.SaveWithFallback(target, existing, true)    non-exclusive
+│  ⇒ Credential, Origin{Env, Injected}   ← where it resolved from
 ├─ NewConfig(ctx, logger, params, cred, envs, …)        takes the credential
 ├─ config.Save(...)
 └─ multiplatformconfig.Update(…, func(c *Config) { c.DebugLogging = … })

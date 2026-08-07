@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
 )
@@ -22,7 +22,7 @@ func TestBuildPool_DefaultSizing(t *testing.T) {
 	channels, err := buildChannels(NewClientParams{
 		UseInsecure: true,
 		Host:        "localhost:0",
-		AuthConfig:  common.CacheAuthConfig{AuthToken: "tok"},
+		AuthConfig:  auth.Credential{Token: "tok"},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

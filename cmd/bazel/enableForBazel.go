@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -61,8 +62,12 @@ func init() {
 func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider map[string]string) error {
 	logger.Infof("(i) Checking parameters")
 
+	// Errors are the template inventory's to report; metadata only needs the
+	// display name, which an empty credential still resolves from env or the OS.
+	authConfig, _, _ := live.Default(logger).ResolveNoRefresh(envProvider)
+
 	// CacheConfigMetadata
-	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(),
+	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(), authConfig,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 

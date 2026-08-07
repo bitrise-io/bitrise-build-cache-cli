@@ -14,8 +14,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/filegroup"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -45,7 +46,7 @@ var restoreGradleConfigCacheCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, _, err := configcommon.ResolveAuthConfig(allEnvs)
+		authConfig, _, err := live.Default(nil).ResolveNoRefresh(allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
@@ -77,7 +78,7 @@ func init() {
 }
 
 func restoreGradleConfigCacheCmdFn(ctx context.Context,
-	authConfig configcommon.CacheAuthConfig,
+	authConfig authpkg.Credential,
 	providedCacheKey string,
 	logger log.Logger,
 	envProvider map[string]string,

@@ -9,8 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func TestActivateCmd_HasInteractiveFlag(t *testing.T) {
@@ -21,29 +20,32 @@ func TestActivateCmd_HasInteractiveFlag(t *testing.T) {
 
 func TestPersistCredentials_writesUsernameField(t *testing.T) {
 	kc := &stubKeychain{}
-	require.NoError(t, persistCredentials(kc, auth.TokenSet{}, "ws-1", "tok-1", "alice"))
+	require.NoError(t, persistCredentials(kc, authpkg.TokenSet{}, "ws-1", "tok-1", "alice"))
 	assert.Equal(t, "alice", kc.saved.Username)
 	assert.Equal(t, "ws-1", kc.saved.WorkspaceID)
 	assert.Equal(t, "tok-1", kc.saved.AuthToken)
 }
 
 type stubKeychain struct {
-	creds auth.TokenSet
-	saved auth.TokenSet
+	creds authpkg.TokenSet
+	saved authpkg.TokenSet
 }
 
-func (s *stubKeychain) Load() (auth.TokenSet, error) {
+func (s *stubKeychain) Load() (authpkg.TokenSet, error) {
 	return s.creds, nil
 }
 
-func (s *stubKeychain) Save(c auth.TokenSet) error {
+func (s *stubKeychain) Save(c authpkg.TokenSet) error {
 	s.saved = c
 
 	return nil
 }
 
+func (s *stubKeychain) Backend() authpkg.Backend { return authpkg.BackendKeychain }
+func (s *stubKeychain) Clear() error             { return nil }
+
 func TestPersistCredentials_preservesOAuthFieldsOnUpdate(t *testing.T) {
-	existing := auth.TokenSet{
+	existing := authpkg.TokenSet{
 		AuthToken:    "old-tok",
 		WorkspaceID:  "old-ws",
 		RefreshToken: "refresh-abc",
@@ -58,11 +60,11 @@ func TestPersistCredentials_preservesOAuthFieldsOnUpdate(t *testing.T) {
 }
 
 func TestUsernamePersistable(t *testing.T) {
-	assert.True(t, usernamePersistable(configcommon.AuthSourceKeychain))
-	assert.True(t, usernamePersistable(configcommon.AuthSourceEnvVars))
-	assert.True(t, usernamePersistable(configcommon.AuthSourceNone))
-	assert.True(t, usernamePersistable(configcommon.AuthSourceMultiplatform))
-	assert.False(t, usernamePersistable(configcommon.AuthSourceJWT))
+	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendKeychain}))
+	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendEnv}))
+	assert.True(t, usernamePersistable(authpkg.Origin{}))
+	assert.True(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendFile, Provenance: authpkg.ProvenanceLegacy}))
+	assert.False(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendJWT}))
 }
 
 func TestDebugFlag_ORsGlobal_ActivateInteractive(t *testing.T) {

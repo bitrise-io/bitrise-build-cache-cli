@@ -6,7 +6,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -118,9 +117,12 @@ func (a *Activator) Activate(ctx context.Context) error {
 
 	a.ensureLogDir()
 
-	mpCfg := multiplatformconfig.Config{DebugLogging: a.debugLogging}
-	store.PersistActivateCreds(a.logger, configcommon.DetectCIProvider(a.envs) != "", config.AuthConfig, &mpCfg)
-	if err := mpCfg.Save(a.osProxy, a.encoderFactory); err != nil {
+	// Read-modify-write: Config.Save is a full overwrite, and a fresh Config here
+	// would drop the credentials block that is the only credential store on a
+	// keychain-less host.
+	if err := multiplatformconfig.Update(a.osProxy, a.encoderFactory, utils.DefaultDecoderFactory{}, func(c *multiplatformconfig.Config) {
+		c.DebugLogging = a.debugLogging
+	}); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
 	a.logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(a.osProxy))

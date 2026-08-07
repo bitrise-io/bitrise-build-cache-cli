@@ -27,11 +27,28 @@ const (
 	PreferStored
 )
 
+// OnRefreshFailure is what a caller wants when a store-managed credential cannot
+// be refreshed.
+type OnRefreshFailure int
+
+const (
+	// ServeStale is the default: hand back the stored credential. A slightly stale
+	// token still authenticates far more often than it doesn't, and failing here
+	// would take a whole build down over a transient network error.
+	ServeStale OnRefreshFailure = iota
+	// FailFast reports the failure instead. For interactive callers, where a dead
+	// refresh token means "ask the user to sign in again" rather than "let the
+	// backend reject it".
+	FailFast
+)
+
 // Resolver answers "which credential should this process use". Nil fields take
 // production defaults; Refresh and Store exist so tests stay off the real machine.
 type Resolver struct {
 	Logger log.Logger
 	Prefer Prefer
+	// OnRefreshFailure defaults to ServeStale.
+	OnRefreshFailure OnRefreshFailure
 
 	// Refresh renews a store-managed credential. Nil means the real OAuth flow.
 	Refresh func(ctx context.Context, ts auth.TokenSet, backing store.Store) (auth.TokenSet, error)
@@ -54,6 +71,9 @@ func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Cr
 
 	ts, refreshErr := r.refresh(ctx, backing)
 	if refreshErr != nil {
+		if r.OnRefreshFailure == FailFast {
+			return cred, origin, refreshErr
+		}
 		r.debugf("serving the stored credential, refresh failed: %s", refreshErr)
 
 		return cred, origin, nil
@@ -169,6 +189,13 @@ func (r *Resolver) refresh(ctx context.Context, backing store.Store) (auth.Token
 		return auth.TokenSet{}, err //nolint:wrapcheck // store errors are already contextual
 	}
 
+	// A manual `auth set` token has no refresh token. Attempting the flow would
+	// only produce ErrNotLoggedIn, which under FailFast would look like a dead
+	// login rather than a perfectly good static credential.
+	if !ts.IsOAuthManaged() {
+		return ts, nil
+	}
+
 	if r.Refresh != nil {
 		return r.Refresh(ctx, ts, backing)
 	}
@@ -223,4 +250,9 @@ func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
 	}
 
 	return auth.Credential{}, auth.Origin{}, auth.ErrWorkspaceIDNotProvided
+}
+
+// Default is the production resolver. A nil logger is silent.
+func Default(logger log.Logger) *Resolver {
+	return &Resolver{Logger: logger}
 }

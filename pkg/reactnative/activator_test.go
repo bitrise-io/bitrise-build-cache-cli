@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -134,6 +135,9 @@ func TestNewActivator_CppRequiresGradle(t *testing.T) {
 
 // Config.Save rewrites the whole file, so a fresh Config here erases the login.
 func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
+	// Pinning an env credential writes to a store; without this it reaches the
+	// real OS keychain and blocks on the unlock prompt.
+	keyring.MockInit()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "bitpat_refreshed")
@@ -148,7 +152,7 @@ func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
 	before := multiplatformconfig.Config{Credentials: &login}
 	require.NoError(t, before.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}))
 
-	require.NoError(t, saveMultiplatformConfig(true))
+	require.NoError(t, saveMultiplatformConfig(t.Context(), utils.AllEnvs(), true))
 
 	after, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.NoError(t, err)

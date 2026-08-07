@@ -18,10 +18,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
 
@@ -72,12 +72,15 @@ func (f *fakeKeyring) Delete(s, a string) error {
 
 func newFakeKeyring() *fakeKeyring { return &fakeKeyring{store: map[string]string{}} }
 
-type fakeAuthLoader struct {
-	creds auth.TokenSet
+type fakeAuthStore struct {
+	creds authpkg.TokenSet
 	err   error
 }
 
-func (f fakeAuthLoader) Load() (auth.TokenSet, error) { return f.creds, f.err }
+func (f fakeAuthStore) Backend() authpkg.Backend        { return authpkg.BackendKeychain }
+func (f fakeAuthStore) Load() (authpkg.TokenSet, error) { return f.creds, f.err }
+func (f fakeAuthStore) Save(authpkg.TokenSet) error     { return nil }
+func (f fakeAuthStore) Clear() error                    { return nil }
 
 // ──────────────────────────── Overall + version ────────────────────────────
 
@@ -125,7 +128,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 
 	return &Doctor{
 		Envs:               map[string]string{},
-		AuthLoader:         fakeAuthLoader{creds: auth.TokenSet{AuthToken: "t", WorkspaceID: "w"}},
+		AuthBackends:       []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "t", WorkspaceID: "w"}}},
 		Keyring:            newFakeKeyring(),
 		CLIVersion:         "devel",
 		HTTPClient:         &http.Client{},
@@ -133,7 +136,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 		LookPath:           func(string) (string, error) { return "/usr/local/bin/ccache", nil },
 		StateDirCandidates: []string{},
 		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{} },
-		BackendProbe: func(context.Context, common.CacheAuthConfig, map[string]string) (time.Duration, error) {
+		BackendProbe: func(context.Context, authpkg.Credential, map[string]string) (time.Duration, error) {
 			return time.Millisecond, nil
 		},
 	}
@@ -141,7 +144,7 @@ func newMinimalDoctor(t *testing.T) *Doctor {
 
 func TestAuthCheck_keychainWins(t *testing.T) {
 	r := newMinimalDoctor(t)
-	r.AuthLoader = fakeAuthLoader{creds: auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws-kc"}}
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "tok", WorkspaceID: "ws-kc"}}}
 
 	res := r.authCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
@@ -151,7 +154,7 @@ func TestAuthCheck_keychainWins(t *testing.T) {
 
 func TestAuthCheck_envFallback(t *testing.T) {
 	r := newMinimalDoctor(t)
-	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
 	r.Envs = map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "env-tok",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "ws-env",
@@ -165,7 +168,7 @@ func TestAuthCheck_envFallback(t *testing.T) {
 
 func TestAuthCheck_missingIsError(t *testing.T) {
 	r := newMinimalDoctor(t)
-	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
 
 	res := r.authCheck().Diagnose(context.Background())
 	assert.Equal(t, StateError, res.State)
@@ -174,7 +177,7 @@ func TestAuthCheck_missingIsError(t *testing.T) {
 
 func TestAuthCheck_fixerIsAuthPromptFixer(t *testing.T) {
 	r := newMinimalDoctor(t)
-	r.AuthLoader = fakeAuthLoader{err: keychain.ErrNotFound}
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
 
 	res := r.authCheck().Diagnose(context.Background())
 	require.IsType(t, AuthPromptFixer{}, res.Fixer)
@@ -477,12 +480,8 @@ func TestRun_includesVersionByDefault(t *testing.T) {
 // ──────────────────────────── auth-backend ────────────────────────────
 
 func TestAuthBackendCheck_skippedWhenNoCreds(t *testing.T) {
-	common.RegisterMultiplatformReader(nil) // keep test hermetic
-	if _, ok := common.GetKeychainCredentials(); ok {
-		t.Skip("dev keychain has creds — ResolveAuthConfig would succeed; can't exercise the skip branch here")
-	}
-
-	r := &Doctor{Envs: map[string]string{}}
+	// Empty backends keep the check off the dev machine's real keychain.
+	r := &Doctor{Envs: map[string]string{}, AuthBackends: []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}}
 	res := r.authBackendCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "skipped")
@@ -492,13 +491,13 @@ func TestAuthBackendCheck_skippedWhenNoCreds(t *testing.T) {
 
 func TestAuthBackendCheck_okOnSuccessfulProbe(t *testing.T) {
 	envs := map[string]string{
-		common.EnvAuthToken:   "tok",
-		common.EnvWorkspaceID: "ws-1",
+		authpkg.EnvAuthToken:   "tok",
+		authpkg.EnvWorkspaceID: "ws-1",
 	}
 
 	r := &Doctor{
 		Envs: envs,
-		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+		BackendProbe: func(_ context.Context, _ authpkg.Credential, _ map[string]string) (time.Duration, error) {
 			return 47 * time.Millisecond, nil
 		},
 	}
@@ -511,13 +510,13 @@ func TestAuthBackendCheck_okOnSuccessfulProbe(t *testing.T) {
 
 func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
 	envs := map[string]string{
-		common.EnvAuthToken:   "tok",
-		common.EnvWorkspaceID: "ws-1",
+		authpkg.EnvAuthToken:   "tok",
+		authpkg.EnvWorkspaceID: "ws-1",
 	}
 
 	r := &Doctor{
 		Envs: envs,
-		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+		BackendProbe: func(_ context.Context, _ authpkg.Credential, _ map[string]string) (time.Duration, error) {
 			return 30 * time.Millisecond, status.Error(codes.Unauthenticated, "bad token")
 		},
 	}
@@ -529,13 +528,13 @@ func TestAuthBackendCheck_unauthenticatedIsError(t *testing.T) {
 
 func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
 	envs := map[string]string{
-		common.EnvAuthToken:   "tok",
-		common.EnvWorkspaceID: "ws-1",
+		authpkg.EnvAuthToken:   "tok",
+		authpkg.EnvWorkspaceID: "ws-1",
 	}
 
 	r := &Doctor{
 		Envs: envs,
-		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+		BackendProbe: func(_ context.Context, _ authpkg.Credential, _ map[string]string) (time.Duration, error) {
 			return 30 * time.Millisecond, status.Error(codes.PermissionDenied, "no access")
 		},
 	}
@@ -547,13 +546,13 @@ func TestAuthBackendCheck_permissionDeniedIsWorkspaceMisconfig(t *testing.T) {
 
 func TestAuthBackendCheck_unavailableIsWarn(t *testing.T) {
 	envs := map[string]string{
-		common.EnvAuthToken:   "tok",
-		common.EnvWorkspaceID: "ws-1",
+		authpkg.EnvAuthToken:   "tok",
+		authpkg.EnvWorkspaceID: "ws-1",
 	}
 
 	r := &Doctor{
 		Envs: envs,
-		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+		BackendProbe: func(_ context.Context, _ authpkg.Credential, _ map[string]string) (time.Duration, error) {
 			return 5 * time.Second, status.Error(codes.Unavailable, "connection refused")
 		},
 	}
@@ -578,15 +577,15 @@ func TestBackendErrorState_kvSentinelUnauthenticated(t *testing.T) {
 }
 
 func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
-	cfg := common.CacheAuthConfig{WorkspaceID: "ws-1"}
-	got := backendErrorDetail(kv.ErrCacheUnauthenticated, cfg, sourceLabel(common.AuthSourceKeychain), 30*time.Millisecond)
+	cfg := authpkg.Credential{WorkspaceID: "ws-1"}
+	got := backendErrorDetail(kv.ErrCacheUnauthenticated, cfg, authpkg.Origin{Backend: authpkg.BackendKeychain}.ShortLabel(), 30*time.Millisecond)
 	assert.Contains(t, got, "auth-failed")
 	assert.Contains(t, got, "source=keychain")
 	assert.Contains(t, got, "ws-1")
 }
 
 func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
-	envs := map[string]string{common.EnvAuthToken: "tok", common.EnvWorkspaceID: "ws-1"}
+	envs := map[string]string{authpkg.EnvAuthToken: "tok", authpkg.EnvWorkspaceID: "ws-1"}
 
 	cases := []struct {
 		name string
@@ -601,7 +600,7 @@ func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &Doctor{
 				Envs: envs,
-				BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+				BackendProbe: func(_ context.Context, _ authpkg.Credential, _ map[string]string) (time.Duration, error) {
 					return 10 * time.Millisecond, tc.err
 				},
 			}
@@ -613,11 +612,11 @@ func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
 }
 
 func TestAuthBackendCheck_transientErrorNotFixable(t *testing.T) {
-	envs := map[string]string{common.EnvAuthToken: "tok", common.EnvWorkspaceID: "ws-1"}
+	envs := map[string]string{authpkg.EnvAuthToken: "tok", authpkg.EnvWorkspaceID: "ws-1"}
 
 	r := &Doctor{
 		Envs: envs,
-		BackendProbe: func(_ context.Context, _ common.CacheAuthConfig, _ map[string]string) (time.Duration, error) {
+		BackendProbe: func(_ context.Context, _ authpkg.Credential, _ map[string]string) (time.Duration, error) {
 			return 5 * time.Second, status.Error(codes.Unavailable, "connection refused")
 		},
 	}

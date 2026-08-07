@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/refresh"
@@ -81,9 +82,11 @@ type Doctor struct {
 	Envs       map[string]string
 	CLIVersion string
 	HTTPClient *http.Client
-	AuthLoader common.AuthLoader
-	Keyring    keychain.Backend
-	LookPath   func(string) (string, error)
+	// AuthBackends overrides the credential stores the checks read; nil means the
+	// real keychain and config file.
+	AuthBackends []store.Store
+	Keyring      keychain.Backend
+	LookPath     func(string) (string, error)
 	// StateDirCandidates are the log dirs to check; nil derives them from the
 	// activated tools, so an Xcode-only setup isn't asked about ccache's.
 	StateDirCandidates []string
@@ -109,7 +112,6 @@ func NewDoctor() *Doctor {
 		Envs:             utils.AllEnvs(),
 		CLIVersion:       common.GetCLIVersion(nil),
 		HTTPClient:       &http.Client{Timeout: 3 * time.Second},
-		AuthLoader:       keychain.New(),
 		Keyring:          keychain.NewBackend(),
 		LookPath:         exec.LookPath,
 		LatestReleaseTag: fetchLatestGitHubRelease,

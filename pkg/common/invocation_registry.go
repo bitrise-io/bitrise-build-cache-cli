@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -98,13 +99,13 @@ func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Conte
 	}
 
 	commandFunc := newCommandFunc(ctx)
-	metadata := configcommon.NewMetadata(inv.params.Envs, commandFunc, inv.logger)
+	metadata := configcommon.NewMetadata(inv.params.Envs, inv.config.AuthConfig.Credential(), commandFunc, inv.logger)
 
 	invocation := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationID:   params.InvocationID,
 		InvocationDate: time.Now(),
 		BuildTool:      buildTool,
-	}, inv.config.AuthConfig, metadata)
+	}, inv.config.AuthConfig.Credential(), metadata)
 
 	if err := api.PutInvocation(*invocation); err != nil {
 		return fmt.Errorf("register invocation: %w", err)
@@ -149,7 +150,7 @@ func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (invocationsAPI, er
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, inv.config.AuthConfig.TokenInGradleFormat(), logger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(inv.config.AuthConfig.Credential(), authpkg.Origin{}), logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}

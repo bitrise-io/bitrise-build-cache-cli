@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -24,11 +23,30 @@ const (
 	ErrFmtCreateFolder     = "failed to create %s folder: %w"
 )
 
+// LegacyAuthConfig is the pre-credentials on-disk shape. The field names are the
+// wire format — analytics readers and older CLI versions parse them by name, so
+// they must not be renamed even though the in-memory type is auth.Credential now.
+type LegacyAuthConfig struct {
+	AuthToken   string
+	WorkspaceID string
+	IsJWT       bool
+}
+
+// Populated reports whether the legacy block carries a usable credential.
+func (l LegacyAuthConfig) Populated() bool {
+	return l.AuthToken != "" && l.WorkspaceID != ""
+}
+
+// Credential narrows the legacy block to the boundary type.
+func (l LegacyAuthConfig) Credential() auth.Credential {
+	return auth.Credential{Token: l.AuthToken, WorkspaceID: l.WorkspaceID}
+}
+
 // Credentials is the CI-safe file backend for auth set/login; AuthConfig stays for backward compatibility with older analytics readers.
 type Config struct {
-	AuthConfig   common.CacheAuthConfig `json:"authConfig"`
-	Credentials  *auth.TokenSet         `json:"credentials,omitempty"`
-	DebugLogging bool                   `json:"debugLogging,omitempty"`
+	AuthConfig   LegacyAuthConfig `json:"authConfig"`
+	Credentials  *auth.TokenSet   `json:"credentials,omitempty"`
+	DebugLogging bool             `json:"debugLogging,omitempty"`
 }
 
 func dirPath(osProxy utils.OsProxy) string {
@@ -103,7 +121,7 @@ func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory,
 
 	c := creds
 	cfg.Credentials = &c
-	cfg.AuthConfig = common.CacheAuthConfig{AuthToken: creds.AuthToken, WorkspaceID: creds.WorkspaceID}
+	cfg.AuthConfig = LegacyAuthConfig{AuthToken: creds.AuthToken, WorkspaceID: creds.WorkspaceID}
 
 	return cfg.Save(osProxy, encoderFactory)
 }
@@ -130,7 +148,7 @@ func ClearCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory
 		return nil
 	}
 	cfg.Credentials = nil
-	cfg.AuthConfig = common.CacheAuthConfig{}
+	cfg.AuthConfig = LegacyAuthConfig{}
 
 	return cfg.Save(osProxy, encoderFactory)
 }

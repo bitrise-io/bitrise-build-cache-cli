@@ -101,7 +101,7 @@ func NewRunner(params RunnerParams) *Runner {
 
 	var ccacheConfig *ccacheconfig.Config
 	var socket ccacheSocket
-	if config, err := ccacheconfig.ReadConfig(osProxy, decoderFactory); err == nil {
+	if config, err := ccacheconfig.ReadConfig(osProxy, decoderFactory, utils.AllEnvs()); err == nil {
 		ccacheConfig = &config
 		socket = ccacheipc.NewSocket(config.IPCEndpoint)
 	}

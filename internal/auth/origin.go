@@ -36,8 +36,13 @@ type Origin struct {
 
 // StoreManaged reports whether the credential lives in a backend this CLI writes,
 // which is what makes it refreshable. Test this, never a specific backend: both the
-// keychain and the config file can hold an OAuth login.
+// keychain and the config file can hold an OAuth login. The legacy authConfig block
+// is excluded — it predates the refresh token and has nothing to refresh with.
 func (o Origin) StoreManaged() bool {
+	if o.Provenance == ProvenanceLegacy {
+		return false
+	}
+
 	return o.Backend == BackendKeychain || o.Backend == BackendFile
 }
 

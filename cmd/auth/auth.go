@@ -17,6 +17,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
@@ -34,7 +35,7 @@ var authCmd = &cobra.Command{
 	Long: fmt.Sprintf("Manage Bitrise Build Cache credentials stored in the OS keychain (macOS Keychain, Linux secret-service). "+
 		"Stored credentials are used when %s / %s (or %s on Bitrise CI) are not set — env vars take precedence "+
 		"so you can override the stored credentials for a single run.",
-		configcommon.EnvAuthToken, configcommon.EnvWorkspaceID, configcommon.EnvJWT),
+		authpkg.EnvAuthToken, authpkg.EnvWorkspaceID, authpkg.EnvJWT),
 	SilenceUsage: true,
 }
 
@@ -78,7 +79,7 @@ var authSetCmd = &cobra.Command{
 		existing.AuthToken = setToken
 		existing.WorkspaceID = setWorkspaceID
 		existing.Username = setUsername
-		result, err := store.SaveWithFallback(target, existing, setStorage == "")
+		result, err := store.SaveExclusiveWithFallback(target, existing, setStorage == "")
 		if err != nil {
 			return fmt.Errorf("save credentials: %w", err)
 		}
@@ -113,7 +114,7 @@ var authSetCmd = &cobra.Command{
 			}
 		}
 
-		logger.Infof("You can now remove %s + %s from your shell rc files.", configcommon.EnvAuthToken, configcommon.EnvWorkspaceID)
+		logger.Infof("You can now remove %s + %s from your shell rc files.", authpkg.EnvAuthToken, authpkg.EnvWorkspaceID)
 		logger.Infof("If you have running Gradle daemons, stop them so the new token is picked up: `./gradlew --stop`.")
 
 		return nil
@@ -168,7 +169,7 @@ func scrubMultiplatform(osProxy utils.OsProxy) (scrubbedItem, error) {
 		return scrubbedItem{}, nil
 	}
 
-	cfg.AuthConfig = configcommon.CacheAuthConfig{}
+	cfg.AuthConfig = multiplatformconfig.LegacyAuthConfig{}
 	if err := cfg.Save(osProxy, utils.DefaultEncoderFactory{}); err != nil {
 		return scrubbedItem{}, fmt.Errorf("save scrubbed multiplatform config: %w", err)
 	}
@@ -303,7 +304,7 @@ var authStatusCmd = &cobra.Command{
 	Short: "Show Bitrise Build Cache credentials discovered across all known sources",
 	Long: fmt.Sprintf("Shows credentials found in the OS keychain, the multiplatform analytics config on disk, "+
 		"and the %s / %s / %s env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
-		configcommon.EnvAuthToken, configcommon.EnvWorkspaceID, configcommon.EnvJWT),
+		authpkg.EnvAuthToken, authpkg.EnvWorkspaceID, authpkg.EnvJWT),
 	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -349,18 +350,17 @@ var authStatusCmd = &cobra.Command{
 }
 
 func renderUsername(logger log.Logger, envs map[string]string) {
-	name, src := configcommon.ResolveUsername(envs)
+	cred, origin, _ := live.Default(nil).ResolveNoRefresh(envs)
+	name, src := configcommon.ResolveUsername(envs, cred)
 	switch src {
 	case configcommon.UsernameSourceEnv:
-		logger.Infof("Local invocation display name: %s (source: %s env)", name, configcommon.EnvUsername)
-	case configcommon.UsernameSourceKeychain:
-		logger.Infof("Local invocation display name: %s (source: keychain)", name)
-	case configcommon.UsernameSourceFile:
-		logger.Infof("Local invocation display name: %s (source: config file)", name)
+		logger.Infof("Local invocation display name: %s (source: %s env)", name, authpkg.EnvUsername)
+	case configcommon.UsernameSourceResolved:
+		logger.Infof("Local invocation display name: %s (source: %s)", name, origin.Label())
 	case configcommon.UsernameSourceOS:
 		logger.Infof("Local invocation display name: %s (source: OS username fallback)", name)
 	case configcommon.UsernameSourceNone:
-		logger.Infof("Local invocation display name: (none — set via `auth set --username <name>` or %s)", configcommon.EnvUsername)
+		logger.Infof("Local invocation display name: (none — set via `auth set --username <name>` or %s)", authpkg.EnvUsername)
 	}
 }
 
@@ -404,8 +404,8 @@ func credSources(envs map[string]string) ([]credSource, []credSource) {
 		{"Multiplatform config (legacy authConfig)", displayHomePath(osProxy, multiplatformConfigPath), probeMultiplatform},
 		{"Xcelerate config", displayHomePath(osProxy, xcelerateConfigPath), probeRawConfig(xcelerateConfigPath)},
 		{"Ccache config", displayHomePath(osProxy, ccacheConfigPath), probeRawConfig(ccacheConfigPath)},
-		{fmt.Sprintf("Env vars (%s + %s)", configcommon.EnvAuthToken, configcommon.EnvWorkspaceID), "process env", func() credAudit { return probeEnvVars(envs) }},
-		{fmt.Sprintf("CI JWT (%s)", configcommon.EnvJWT), "process env", func() credAudit { return probeJWT(envs) }},
+		{fmt.Sprintf("Env vars (%s + %s)", authpkg.EnvAuthToken, authpkg.EnvWorkspaceID), "process env", func() credAudit { return probeEnvVars(envs) }},
+		{fmt.Sprintf("CI JWT (%s)", authpkg.EnvJWT), "process env", func() credAudit { return probeJWT(envs) }},
 	}
 
 	return targets, migrationSources
@@ -469,8 +469,8 @@ func probeKeychain() credAudit {
 	}
 
 	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
-	if desc := configcommon.DescribeStoredCredentials(configcommon.AuthSourceKeychain, creds); desc.IsOAuthLogin {
-		audit.note = desc.Detail()
+	if origin := creds.Origin(authpkg.BackendKeychain); origin.Provenance == authpkg.ProvenanceOAuthLogin {
+		audit.note = live.Describe(creds.Credential(), origin)
 	}
 
 	return audit
@@ -487,8 +487,8 @@ func probeFileStore() credAudit {
 	}
 
 	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
-	if desc := configcommon.DescribeStoredCredentials(configcommon.AuthSourceFile, creds); desc.IsOAuthLogin {
-		audit.note = desc.Detail()
+	if origin := creds.Origin(authpkg.BackendFile); origin.Provenance == authpkg.ProvenanceOAuthLogin {
+		audit.note = live.Describe(creds.Credential(), origin)
 	}
 
 	return audit
@@ -540,8 +540,8 @@ func probeRawConfig(fullPath string) func() credAudit {
 }
 
 func probeEnvVars(envs map[string]string) credAudit {
-	tok := envs[configcommon.EnvAuthToken]
-	ws := envs[configcommon.EnvWorkspaceID]
+	tok := envs[authpkg.EnvAuthToken]
+	ws := envs[authpkg.EnvWorkspaceID]
 
 	switch {
 	case tok != "" && ws != "":
@@ -554,7 +554,7 @@ func probeEnvVars(envs map[string]string) credAudit {
 }
 
 func probeJWT(envs map[string]string) credAudit {
-	jwt := envs[configcommon.EnvJWT]
+	jwt := envs[authpkg.EnvJWT]
 	if jwt == "" {
 		return credAudit{state: sourceAbsent, note: "not set"}
 	}
@@ -647,14 +647,14 @@ var authTokenCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cfg, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+		cred, origin, err := live.Default(nil).Resolve(cmd.Context(), utils.AllEnvs())
 		if err != nil {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
 
-		if _, err := fmt.Fprintln(cmd.OutOrStdout(), cfg.TokenInGradleFormat()); err != nil {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), authpkg.GradleToken(cred, origin)); err != nil {
 			return fmt.Errorf("write auth token: %w", err)
 		}
 
@@ -693,7 +693,8 @@ var authUsernameCmd = &cobra.Command{
 			return nil
 		}
 
-		name, src := configcommon.ResolveUsername(envs)
+		cred, _, _ := live.Default(nil).ResolveNoRefresh(envs)
+		name, src := configcommon.ResolveUsername(envs, cred)
 		out := cmd.OutOrStdout()
 		if usernameJSONOut {
 			enc := json.NewEncoder(out)
@@ -722,7 +723,7 @@ func setLocalUsername(envs map[string]string, name string) error {
 	}
 
 	if name == "" {
-		logger.TInfof("Cleared local-invocation display name in %s (falling back to %s or the OS username).", origin.Label(), configcommon.EnvUsername)
+		logger.TInfof("Cleared local-invocation display name in %s (falling back to %s or the OS username).", origin.Label(), authpkg.EnvUsername)
 	} else {
 		logger.TInfof("✅ Local-invocation display name set to %q in %s.", name, origin.Label())
 	}
@@ -742,7 +743,7 @@ func maskToken(token string) string {
 func init() {
 	authSetCmd.Flags().StringVar(&setToken, "token", "", "Bitrise Build Cache auth token (required)")
 	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID (required)")
-	authSetCmd.Flags().StringVar(&setUsername, "username", "", fmt.Sprintf("Display name for local invocations (optional). Overrides the OS username. Env var %s takes precedence for a single run.", configcommon.EnvUsername))
+	authSetCmd.Flags().StringVar(&setUsername, "username", "", fmt.Sprintf("Display name for local invocations (optional). Overrides the OS username. Env var %s takes precedence for a single run.", authpkg.EnvUsername))
 	authSetCmd.Flags().StringVar(&setStorage, "storage", "", "Where to persist credentials: keychain (OS keychain) | file (multiplatform config on disk) | auto (default: CI→file, local→keychain). File storage is required on CI where fastlane setup_ci swaps the default keychain.")
 	_ = authSetCmd.MarkFlagRequired("token")
 	_ = authSetCmd.MarkFlagRequired("workspace-id")

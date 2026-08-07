@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 type CacheConfigMetadata struct {
@@ -107,8 +109,8 @@ type GitMetadata struct {
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
-func NewMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
-	hostMetadata := generateHostMetadata(envs, commandFunc, logger)
+func NewMetadata(envs map[string]string, cred auth.Credential, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
+	hostMetadata := generateHostMetadata(envs, cred, commandFunc, logger)
 	git := generateGitMetadata(logger, commandFunc, envs)
 
 	cliVersion := GetCLIVersion(logger)
@@ -161,8 +163,8 @@ func hashKeyValue(hasher hash.Hash, key, value string) []byte {
 // whether BITRISE_SECRET_ENV_KEY_LIST names them. Keep in sync with any new
 // token-bearing env var the CLI or step layer introduces.
 var alwaysRedactKeys = []string{ //nolint:gochecknoglobals
-	EnvAuthToken, // BITRISE_BUILD_CACHE_AUTH_TOKEN
-	EnvJWT,       // BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN
+	auth.EnvAuthToken,
+	auth.EnvJWT,
 	"BITRISE_API_TOKEN",
 	"BUILD_TRIGGER_TOKEN",
 }
@@ -270,7 +272,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 }
 
 // nolint: funlen, nestif
-func generateHostMetadata(envs map[string]string, commandFunc CommandFunc, logger log.Logger) HostMetadata {
+func generateHostMetadata(envs map[string]string, cred auth.Credential, commandFunc CommandFunc, logger log.Logger) HostMetadata {
 	metadata := HostMetadata{}
 
 	// OS
@@ -354,9 +356,9 @@ func generateHostMetadata(envs map[string]string, commandFunc CommandFunc, logge
 	}
 	metadata.Hostname = strings.TrimSpace(hostname)
 
-	resolved, src := ResolveUsername(envs)
+	resolved, src := ResolveUsername(envs, cred)
 	if src == UsernameSourceNone {
-		logger.Debugf("Could not resolve local invocation username from any source (env, keychain, os/user); leaving empty.")
+		logger.Debugf("Could not resolve the local invocation username from the environment, the credential or the OS; leaving empty.")
 	}
 	metadata.Username = strings.TrimSpace(resolved)
 
