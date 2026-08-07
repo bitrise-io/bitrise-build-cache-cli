@@ -243,6 +243,8 @@ type writer struct {
 	response     *bytestream.WriteResponse
 	release      func()
 	releaseOnce  sync.Once
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 func (w *writer) Response() *bytestream.WriteResponse {
@@ -279,13 +281,15 @@ func (w *writer) doRelease() {
 func (w *writer) Close() error {
 	defer w.doRelease()
 
-	var err error
-	w.response, err = w.stream.CloseAndRecv()
-	if err != nil {
-		return fmt.Errorf("close stream: %w", err)
-	}
+	w.closeOnce.Do(func() {
+		resp, err := w.stream.CloseAndRecv()
+		w.response = resp
+		if err != nil {
+			w.closeErr = fmt.Errorf("close stream: %w", err)
+		}
+	})
 
-	return nil
+	return w.closeErr
 }
 
 type reader struct {

@@ -143,6 +143,7 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 
 			return fmt.Errorf("create kv put client (with key %s): %w", key, err), false
 		}
+		defer kvWriter.Close()
 
 		bytesSent := int64(0)
 		if size > 0 {
