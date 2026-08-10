@@ -28,7 +28,7 @@ import (
 
 //nolint:gochecknoglobals // swappable in tests
 var activateReactNative = func(ctx context.Context, logger log.Logger, debugLogging bool) error {
-	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).DoActivate(ctx)
+	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).Finalize(ctx)
 }
 
 // wizardWorkspaceFlag lets a run that can't prompt still name its workspace.
