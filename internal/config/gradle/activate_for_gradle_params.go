@@ -70,9 +70,6 @@ func DefaultActivateGradleParams() ActivateGradleParams {
 	}
 }
 
-// NormalizeParams enforces param invariants before any consumer (init-script
-// template, gradle.properties writer) reads the params — push requires cache
-// enabled since gradle.properties toggles the whole cache subsystem.
 func NormalizeParams(params *ActivateGradleParams) {
 	if params.Cache.PushEnabled {
 		params.Cache.Enabled = true
