@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -23,7 +24,13 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
+
+//nolint:gochecknoglobals // swappable in tests
+var saveReactNativeMarkersFn = func(logger log.Logger, debugLogging bool) error {
+	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).SaveMarkers()
+}
 
 // wizardWorkspaceFlag lets a run that can't prompt still name its workspace.
 const wizardWorkspaceFlag = "--workspace"
@@ -107,6 +114,21 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 			return err
 		}
 	}
+
+	return finalizeReactNativeIfBothSelected(logger, tools)
+}
+
+// finalizeReactNativeIfBothSelected writes RN parity markers when the selection covers both Gradle and Xcode.
+func finalizeReactNativeIfBothSelected(logger log.Logger, tools []string) error {
+	if !slices.Contains(tools, string(toolGradle)) || !slices.Contains(tools, string(toolXcode)) {
+		return nil
+	}
+
+	if err := saveReactNativeMarkersFn(logger, common.IsDebugLogMode); err != nil {
+		return fmt.Errorf("save React Native markers: %w", err)
+	}
+
+	logger.TInfof("✅ Bitrise Build Cache activated for React Native")
 
 	return nil
 }
