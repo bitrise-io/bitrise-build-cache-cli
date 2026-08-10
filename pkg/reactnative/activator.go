@@ -135,13 +135,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
-	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
-
-	if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
-		return err
-	}
-
-	if err := a.saveReactNativeMarker(); err != nil {
+	if err := a.Finalize(ctx); err != nil {
 		return err
 	}
 
@@ -218,6 +212,16 @@ func (a *Activator) exportEASWorkingDirIfCI() {
 	workdir := DefaultEASWorkingDir(envs)
 	envexport.New(envs, a.logger).Export(EASWorkingDirEnv, workdir)
 	a.logger.TInfof("Exported %s=%s for EAS Build cache stability", EASWorkingDirEnv, workdir)
+}
+
+func (a *Activator) Finalize(ctx context.Context) error {
+	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
+
+	if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
+		return err
+	}
+
+	return a.saveReactNativeMarker()
 }
 
 // saveReactNativeMarker writes ~/.bitrise/cache/reactnative/config.json to

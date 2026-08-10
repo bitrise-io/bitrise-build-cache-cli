@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -22,7 +23,13 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
+
+//nolint:gochecknoglobals // swappable in tests
+var activateReactNative = func(ctx context.Context, logger log.Logger, debugLogging bool) error {
+	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).Finalize(ctx)
+}
 
 // wizardWorkspaceFlag lets a run that can't prompt still name its workspace.
 const wizardWorkspaceFlag = "--workspace"
@@ -101,6 +108,20 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 			return err
 		}
 	}
+
+	return activateReactNativeBasedOnSelection(ctx, logger, tools)
+}
+
+func activateReactNativeBasedOnSelection(ctx context.Context, logger log.Logger, tools []string) error {
+	if !slices.Contains(tools, string(toolGradle)) || !slices.Contains(tools, string(toolXcode)) {
+		return nil
+	}
+
+	if err := activateReactNative(ctx, logger, common.IsDebugLogMode); err != nil {
+		return fmt.Errorf("activate React Native: %w", err)
+	}
+
+	logger.TInfof("✅ Bitrise Build Cache activated for React Native")
 
 	return nil
 }
