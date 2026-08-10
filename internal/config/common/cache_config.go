@@ -107,9 +107,6 @@ type GitMetadata struct {
 	CommitEmail string
 }
 
-// DefaultMetadata builds a CacheConfigMetadata using the default exec-based
-// CommandFunc. Prefer this over NewMetadata at call sites that would otherwise
-// re-declare the exec.Command shell-out lambda.
 func DefaultMetadata(envs map[string]string, logger log.Logger) CacheConfigMetadata {
 	return NewMetadata(envs, func(name string, v ...string) (string, error) {
 		output, err := exec.Command(name, v...).Output() //nolint:noctx

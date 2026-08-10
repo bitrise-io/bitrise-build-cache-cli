@@ -14,10 +14,6 @@ const (
 	ErrFmtFailedToUpdateProps = "failed to update gradle.properties: %w"
 )
 
-// TemplateInventoryProvider builds a Gradle init-script inventory from
-// pre-resolved metadata and the (post-benchmark) params. Activate owns the
-// benchmark call and passes the mutated params here so callers do not
-// re-fetch metadata or re-apply the phase.
 type TemplateInventoryProvider func(
 	logger log.Logger,
 	envs map[string]string,
@@ -66,8 +62,6 @@ func Activate(
 	return nil
 }
 
-// DefaultTemplateInventoryProvider adapts ActivateGradleParams.TemplateInventory
-// to the TemplateInventoryProvider callback shape used by Activate.
 func DefaultTemplateInventoryProvider(
 	logger log.Logger,
 	envs map[string]string,

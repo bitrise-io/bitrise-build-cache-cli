@@ -77,9 +77,6 @@ func NormalizeParams(params *ActivateGradleParams) {
 	}
 }
 
-// TemplateInventory builds the init-script inventory. Callers must supply
-// pre-resolved metadata and any benchmark-phase param mutations upstream —
-// see Activate for the canonical wiring.
 func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
 	envs map[string]string,

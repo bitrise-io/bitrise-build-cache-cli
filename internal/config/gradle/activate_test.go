@@ -195,9 +195,6 @@ func Test_Activate_BenchmarkWarmupKeepsCacheEnabledInProps(t *testing.T) {
 	assert.Contains(t, string(propsBytes), "org.gradle.caching=true")
 }
 
-// Guards against provider seeing pre-baseline params: Activate must resolve
-// metadata and apply the benchmark phase before invoking the provider, so
-// downstream consumers cannot re-enable the cache on baseline.
 func Test_Activate_ProviderReceivesResolvedMetadataAndParams(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Infof", mock.Anything).Return()
