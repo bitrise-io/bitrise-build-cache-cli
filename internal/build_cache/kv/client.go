@@ -2,6 +2,7 @@ package kv
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
@@ -40,16 +42,17 @@ func numChannels() int     { return max(2, runtime.NumCPU()/6) }
 func perChannelLimit() int { return runtime.NumCPU() }
 
 // AuthSource returns the credentials to use for a single RPC. Implementations
-// may cache and refresh transparently; kv.Client re-reads on every call.
+// may cache and refresh transparently; kv.Client re-reads on every call. The ctx
+// is the RPC's own, so a refresh cannot outlive the call that triggered it.
 type AuthSource interface {
-	Get() common.CacheAuthConfig
+	Get(ctx context.Context) auth.Credential
 }
 
 type staticAuthSource struct {
-	cfg common.CacheAuthConfig
+	cfg auth.Credential
 }
 
-func (s staticAuthSource) Get() common.CacheAuthConfig { return s.cfg }
+func (s staticAuthSource) Get(context.Context) auth.Credential { return s.cfg }
 
 // channel binds one gRPC connection to its per-channel semaphore and the
 // three sub-clients dialed on top of it. The semaphore caps concurrent RPCs on
@@ -109,7 +112,7 @@ type NewClientParams struct {
 	Host                string
 	DialTimeout         time.Duration
 	ClientName          string
-	AuthConfig          common.CacheAuthConfig
+	AuthConfig          auth.Credential
 	AuthSource          AuthSource // preferred; falls back to AuthConfig when nil
 	CacheConfigMetadata common.CacheConfigMetadata
 	Logger              log.Logger

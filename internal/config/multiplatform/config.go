@@ -8,8 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -24,11 +23,43 @@ const (
 	ErrFmtCreateFolder     = "failed to create %s folder: %w"
 )
 
+// AnalyticsAuthConfig is the credential the analytics consumers read: the React
+// Native post-run hook, the ccache invocation registry, and readers outside this
+// repo. Actively written on every activation — it is not deprecated. It carries no
+// refresh machinery, which is why it is a separate type from auth.TokenSet rather
+// than a narrower view of it.
+//
+// The field names are the wire format; parsers match them by name, so they cannot
+// be renamed to match auth.Credential.
+type AnalyticsAuthConfig struct {
+	AuthToken   string
+	WorkspaceID string
+	IsJWT       bool
+}
+
+func (l AnalyticsAuthConfig) Populated() bool {
+	return l.AuthToken != "" && l.WorkspaceID != ""
+}
+
+func (l AnalyticsAuthConfig) Credential() auth.Credential {
+	return auth.Credential{Token: l.AuthToken, WorkspaceID: l.WorkspaceID}
+}
+
+// Origin reports where the legacy block's credential came from. IsJWT is
+// load-bearing: a JWT is sent as-is, a PAT is prefixed with the workspace.
+func (l AnalyticsAuthConfig) Origin() auth.Origin {
+	if l.IsJWT {
+		return auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceInjected}
+	}
+
+	return auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}
+}
+
 // Credentials is the CI-safe file backend for auth set/login; AuthConfig stays for backward compatibility with older analytics readers.
 type Config struct {
-	AuthConfig   common.CacheAuthConfig `json:"authConfig"`
-	Credentials  *keychain.Credentials  `json:"credentials,omitempty"`
-	DebugLogging bool                   `json:"debugLogging,omitempty"`
+	AuthConfig   AnalyticsAuthConfig `json:"authConfig"`
+	Credentials  *auth.TokenSet      `json:"credentials,omitempty"`
+	DebugLogging bool                `json:"debugLogging,omitempty"`
 }
 
 func dirPath(osProxy utils.OsProxy) string {
@@ -79,8 +110,22 @@ func (c Config) Save(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory)
 	return nil
 }
 
+// Read-modify-write. Config.Save is a full overwrite, so changing one field without
+// this drops every field it did not set — including the credentials block that is
+// the only credential store on a keychain-less host.
+func Update(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, mutate func(*Config)) error {
+	cfg, err := ReadConfig(osProxy, decoderFactory)
+	if err != nil && !isNotExist(err) {
+		return err
+	}
+
+	mutate(&cfg)
+
+	return cfg.Save(osProxy, encoderFactory)
+}
+
 // Mirrors creds into legacy AuthConfig so downstream reactnative/invocation readers keep working.
-func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, creds keychain.Credentials) error {
+func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory, decoderFactory utils.DecoderFactory, creds auth.TokenSet) error {
 	cfg, err := ReadConfig(osProxy, decoderFactory)
 	if err != nil && !isNotExist(err) {
 		return err
@@ -88,15 +133,15 @@ func SaveCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory,
 
 	c := creds
 	cfg.Credentials = &c
-	cfg.AuthConfig = common.CacheAuthConfig{AuthToken: creds.AuthToken, WorkspaceID: creds.WorkspaceID}
+	cfg.AuthConfig = AnalyticsAuthConfig{AuthToken: creds.AuthToken, WorkspaceID: creds.WorkspaceID}
 
 	return cfg.Save(osProxy, encoderFactory)
 }
 
-func ReadCredentials(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (keychain.Credentials, bool) {
+func ReadCredentials(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) (auth.TokenSet, bool) {
 	cfg, err := ReadConfig(osProxy, decoderFactory)
 	if err != nil || cfg.Credentials == nil {
-		return keychain.Credentials{}, false
+		return auth.TokenSet{}, false
 	}
 
 	return *cfg.Credentials, true
@@ -115,7 +160,7 @@ func ClearCredentials(osProxy utils.OsProxy, encoderFactory utils.EncoderFactory
 		return nil
 	}
 	cfg.Credentials = nil
-	cfg.AuthConfig = common.CacheAuthConfig{}
+	cfg.AuthConfig = AnalyticsAuthConfig{}
 
 	return cfg.Save(osProxy, encoderFactory)
 }

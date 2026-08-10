@@ -43,7 +43,7 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(true))
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, true))
 
 	_, err := ch.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
@@ -79,7 +79,7 @@ func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
 }
 
 func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, error) {
-	md := metadata.Join(c.getMethodCallMetadata(false), metadata.Pairs(
+	md := metadata.Join(c.getMethodCallMetadata(ctx, false), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
@@ -122,7 +122,7 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	// Timeout is the responsibility of the caller
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(false))
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(ctx, false))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -165,7 +165,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
@@ -193,7 +193,7 @@ func (c *Client) findMissing(ctx context.Context,
 		ch.acquire()
 
 		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
+		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 
 		var err error
 		resp, err = ch.casClient.FindMissingBlobs(callCtx, req)
@@ -293,10 +293,10 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 	return out
 }
 
-func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
-	auth := c.authSource.Get()
+func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata.MD {
+	auth := c.authSource.Get(ctx)
 	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", auth.AuthToken),
+		"authorization", fmt.Sprintf("bearer %s", auth.Token),
 		"x-flare-buildtool", c.clientName)
 
 	if c.cacheOperationID != "" {
@@ -360,7 +360,7 @@ func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 	resp, err := ch.bitriseKVClient.WriteStatus(callCtx, &bytestream.QueryWriteStatusRequest{
 		ResourceName: resourceName,
 	})

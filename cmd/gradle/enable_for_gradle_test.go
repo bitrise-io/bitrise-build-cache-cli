@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 )
 
@@ -23,7 +23,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		err := gradle.EnableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf(gradle.FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, common.ErrAuthTokenNotProvided)).Error())
+		require.EqualError(t, err, fmt.Errorf(gradle.FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, auth.ErrTokenNotProvided)).Error())
 	})
 
 	t.Run("RedactedEnvs specified", func(t *testing.T) {

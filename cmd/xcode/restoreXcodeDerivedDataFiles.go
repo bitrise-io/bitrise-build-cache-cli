@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -51,7 +53,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		startT := time.Now()
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, _, err := configcommon.ResolveAuthConfig(allEnvs)
+		authConfig, _, err := live.Default(nil).ResolveNoRefresh(allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
@@ -82,7 +84,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 
 			op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
 
-			xaClient, clientErr := xa.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return authConfig.AuthToken }, logger)
+			xaClient, clientErr := xa.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return authConfig.Token }, logger)
 			if clientErr != nil {
 				return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
 			}
@@ -117,7 +119,7 @@ func init() {
 }
 
 func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
-	authConfig configcommon.CacheAuthConfig,
+	authConfig authpkg.Credential,
 	cacheMetadataPath, projectRoot, providedCacheKey string,
 	logger log.Logger,
 	tracker deriveddata.StepAnalyticsTracker,
@@ -127,7 +129,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int,
 ) (*xa.CacheOperation, error) {
-	commonMetadata := configcommon.NewMetadata(envs, commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
 	kvClient, err := common.CreateKVClient(ctx,
@@ -281,4 +283,11 @@ func downloadXcodeMetadata(ctx context.Context, cacheMetadataPath, providedCache
 	}
 
 	return cacheKeyType, cacheKey, nil
+}
+
+// invocationUsername names the person behind a local invocation for analytics.
+func invocationUsername(envs map[string]string) string {
+	name, _ := live.Default(nil).ResolveUsername(envs)
+
+	return name
 }

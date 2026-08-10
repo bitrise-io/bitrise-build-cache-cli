@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -196,7 +197,7 @@ func TestConfig_AuthBackwardsCompat(t *testing.T) {
 		cfg := xcelerate.Config{
 			ProxyVersion:           "1.0.0",
 			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
-			AuthConfig:             common.CacheAuthConfig{AuthToken: "secret", WorkspaceID: "ws"},
+			AuthConfig:             authpkg.Credential{Token: "secret", WorkspaceID: "ws"},
 		}
 
 		require.NoError(t, cfg.Save(mockLogger, osProxy, utils.DefaultEncoderFactory{}))
@@ -218,9 +219,9 @@ func TestConfig_AuthBackwardsCompat(t *testing.T) {
 		legacy := `{"proxyVersion":"1.0.0","authConfig":{"AuthToken":"legacy-token","WorkspaceID":"legacy-ws"}}`
 		require.NoError(t, os.WriteFile(xcelerate.PathFor(osProxy, "config.json"), []byte(legacy), 0o600))
 
-		cfg, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+		cfg, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, map[string]string{})
 		require.NoError(t, err)
-		assert.Equal(t, "legacy-token", cfg.AuthConfig.AuthToken)
+		assert.Equal(t, "legacy-token", cfg.AuthConfig.Token)
 		assert.Equal(t, "legacy-ws", cfg.AuthConfig.WorkspaceID)
 	})
 
@@ -238,13 +239,13 @@ func TestConfig_AuthBackwardsCompat(t *testing.T) {
 
 		// New multiplatform config carries current auth.
 		mp := multiplatformconfig.Config{
-			AuthConfig: common.CacheAuthConfig{AuthToken: "current-token", WorkspaceID: "current-ws"},
+			AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: "current-token", WorkspaceID: "current-ws"},
 		}
 		require.NoError(t, mp.Save(osProxy, utils.DefaultEncoderFactory{}))
 
-		cfg, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+		cfg, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, map[string]string{})
 		require.NoError(t, err)
-		assert.Equal(t, "current-token", cfg.AuthConfig.AuthToken)
+		assert.Equal(t, "current-token", cfg.AuthConfig.Token)
 		assert.Equal(t, "current-ws", cfg.AuthConfig.WorkspaceID)
 	})
 }
@@ -309,10 +310,11 @@ func TestConfig_NewConfig(t *testing.T) {
 			BuildCacheSkipFlags:    true,
 			DebugLogging:           true,
 			XcodebuildTimestamps:   true,
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "auth-token",
+			AuthConfig: authpkg.Credential{
+				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
 			},
+			AuthOrigin: authpkg.Origin{Backend: authpkg.BackendEnv, Provenance: authpkg.ProvenanceInjected},
 		}
 		require.Len(t, cmdMock.CombinedOutputCalls(), 2)
 		actual.ConfigVersion = ""
@@ -364,10 +366,11 @@ func TestConfig_NewConfig(t *testing.T) {
 			DebugLogging:           false,
 			XcodebuildTimestamps:   false,
 			Silent:                 true,
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "auth-token",
+			AuthConfig: authpkg.Credential{
+				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
 			},
+			AuthOrigin: authpkg.Origin{Backend: authpkg.BackendEnv, Provenance: authpkg.ProvenanceInjected},
 		}
 		require.Len(t, cmdMock.CombinedOutputCalls(), 2)
 		actual.ConfigVersion = ""
@@ -416,10 +419,11 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "auth-token",
+			AuthConfig: authpkg.Credential{
+				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
 			},
+			AuthOrigin: authpkg.Origin{Backend: authpkg.BackendEnv, Provenance: authpkg.ProvenanceInjected},
 		}
 
 		actual.ConfigVersion = ""
@@ -464,10 +468,11 @@ func TestConfig_NewConfig(t *testing.T) {
 			OriginalXcrunPath:      xcelerate.DefaultXcrunPath,
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "auth-token",
+			AuthConfig: authpkg.Credential{
+				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
 			},
+			AuthOrigin: authpkg.Origin{Backend: authpkg.BackendEnv, Provenance: authpkg.ProvenanceInjected},
 		}
 
 		actual.ConfigVersion = ""
@@ -513,10 +518,11 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "auth-token",
+			AuthConfig: authpkg.Credential{
+				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
 			},
+			AuthOrigin: authpkg.Origin{Backend: authpkg.BackendEnv, Provenance: authpkg.ProvenanceInjected},
 		}
 
 		actual.ConfigVersion = ""
@@ -563,10 +569,11 @@ func TestConfig_NewConfig(t *testing.T) {
 			ProxySocketPath:        "my-temp-dir/xcelerate-proxy.sock",
 			BuildCacheEnabled:      true,
 			DebugLogging:           true,
-			AuthConfig: common.CacheAuthConfig{
-				AuthToken:   "auth-token",
+			AuthConfig: authpkg.Credential{
+				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
 			},
+			AuthOrigin: authpkg.Origin{Backend: authpkg.BackendEnv, Provenance: authpkg.ProvenanceInjected},
 		}
 
 		actual.ConfigVersion = ""

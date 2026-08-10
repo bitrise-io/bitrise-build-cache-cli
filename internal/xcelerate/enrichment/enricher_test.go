@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
@@ -178,7 +179,7 @@ func TestEnricher_MetadataForwarded(t *testing.T) {
 
 	e := &enrichment.Enricher{
 		Store: store,
-		Auth: configcommon.CacheAuthConfig{
+		Auth: auth.Credential{
 			WorkspaceID: "ws-1",
 		},
 		Metadata: configcommon.CacheConfigMetadata{
