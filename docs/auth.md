@@ -317,8 +317,9 @@ must never construct a fresh `multiplatformconfig.Config` and `Save` it.
 ```
 cmd/common/interactive.runLogin
 ├─ cfg := oauth.NewConfigFromEnv(envs)                               L3
-├─ cfg.Login(ctx, oauth.OpenBrowser)
+├─ cfg.Login(ctx, openBrowser)      nil under --print-url
 │  ├─ PKCE + state
+│  ├─ cfg.OnAuthorizeURL(authURL, redirectURI)      --print-url writes to stdout
 │  ├─ callback server  ⟂  cfg.CallbackFallback      paste-the-URL
 │  ├─ POST /oauth2/token   code → JWT
 │  └─ POST /oidc/token     JWT → PAT
@@ -333,6 +334,18 @@ cmd/common/interactive.runLogin
                   ⇒ SaveResult{Origin{File, OAuthLogin}, KeychainErr}
 ├─ res.WarnFallback(logger)
 └─ logger.Infof("Signed in. … %s", res.Origin.Label())
+```
+
+With no terminal there is nothing to paste into, so the callback is delivered by a
+second command instead of a prompt:
+
+```
+bitrise-build-cache auth login --print-url --no-workspace   waits, prints authURL
+bitrise-build-cache auth login --callback '<address>'       another shell
+└─ relayCallback → GET <address>
+   the address is the loopback callback the waiting login bound, so it needs no
+   shared state to find it; only loopback hosts are accepted, or this would be a
+   way to make the CLI request an arbitrary address
 ```
 
 ### `auth workspace` — the picker, split in two

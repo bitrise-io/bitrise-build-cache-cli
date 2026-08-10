@@ -53,8 +53,15 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (auth
 	cs.start()
 
 	authURL := c.authorizeURL(challenge, state, cs.redirectURI())
-	c.infof("Opening your browser to sign in to Bitrise.")
-	c.infof("If it doesn't open automatically, visit:\n\n  %s\n", authURL)
+	if c.OnAuthorizeURL != nil {
+		c.OnAuthorizeURL(authURL, cs.redirectURI())
+	}
+	if openBrowser == nil {
+		c.infof("Open this URL in a browser to sign in to Bitrise:\n\n  %s\n", authURL)
+	} else {
+		c.infof("Opening your browser to sign in to Bitrise.")
+		c.infof("If it doesn't open automatically, visit:\n\n  %s\n", authURL)
+	}
 	if c.CallbackFallback != nil {
 		c.infof("If the browser can't reach %s after signing in (a connection error —", cs.redirectURI())
 		c.infof("expected on a remote/RDE machine, where localhost is not the CLI's host),")

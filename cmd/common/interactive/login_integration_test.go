@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,9 +114,8 @@ func TestLoginNoWorkspace_agentFlow(t *testing.T) {
 	}
 	t.Cleanup(func() { openBrowser = defaultOpenBrowser })
 
-	// `go test` inherits the developer's terminal, so pin stdin to a non-TTY: the
-	// point of the flow is that it works without one.
-	// A pipe, not /dev/null — that is a character device, which reads as a TTY.
+	// `go test` inherits the developer's terminal, so pin stdin to a non-TTY. A
+	// pipe, not /dev/null — that is a character device, which reads as a TTY.
 	pipeR, pipeW, err := os.Pipe()
 	require.NoError(t, err)
 	realStdin := os.Stdin
@@ -154,4 +154,77 @@ func TestLoginNoWorkspace_agentFlow(t *testing.T) {
 	assert.Equal(t, "ws-two", cred.WorkspaceID)
 	assert.Equal(t, "bitpat_minted", cred.Token)
 	assert.Equal(t, auth.ProvenanceOAuthLogin, origin.Provenance, "picking a workspace must not downgrade the login")
+}
+
+// lineSink hands whatever the command prints to stdout back to the test, without
+// a buffer both goroutines would race on.
+type lineSink struct{ lines chan string }
+
+func (s lineSink) Write(p []byte) (int, error) {
+	s.lines <- strings.TrimSpace(string(p))
+
+	return len(p), nil
+}
+
+// TestLoginPrintURLAndCallback_twoCommandFlow is the flow with no terminal and no
+// browser on the CLI's host: one command prints the URL and waits, the browser
+// runs elsewhere, and a second command delivers the address it landed on.
+func TestLoginPrintURLAndCallback_twoCommandFlow(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(auth.EnvAuthToken, "")
+	t.Setenv(auth.EnvWorkspaceID, "")
+	t.Setenv(auth.EnvJWT, "")
+
+	identity := fakeIdentity(t)
+	t.Setenv("BITRISE_OAUTH_ISSUER", identity.URL)
+	t.Setenv("BITRISE_OIDC_TOKEN_ENDPOINT", identity.URL+"/oidc/token")
+	t.Setenv("BITRISE_OAUTH_CLIENT_ID", "https://cli.example/cimd.json")
+
+	openBrowser = func(string) error {
+		t.Error("--print-url must not open a browser")
+
+		return nil
+	}
+	t.Cleanup(func() { openBrowser = defaultOpenBrowser })
+
+	pipeR, pipeW, err := os.Pipe()
+	require.NoError(t, err)
+	realStdin := os.Stdin
+	os.Stdin = pipeR
+	t.Cleanup(func() { os.Stdin = realStdin; _ = pipeR.Close(); _ = pipeW.Close() })
+
+	sink := lineSink{lines: make(chan string, 4)}
+	LoginCmd.SetOut(sink)
+	LoginCmd.SetArgs([]string{"--print-url", "--no-workspace"})
+	t.Cleanup(func() {
+		LoginCmd.SetArgs(nil)
+		LoginCmd.SetOut(nil)
+		loginPrintURL, loginNoWorkspace = false, false
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- LoginCmd.ExecuteContext(context.Background()) }()
+
+	authorizeURL := <-sink.lines
+	require.Contains(t, authorizeURL, identity.URL+"/oauth2/authorize")
+
+	// The browser, on some other machine: it can reach the provider but not the
+	// CLI's loopback, so it stops at the redirect the CLI must be handed.
+	noRedirects := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := noRedirects.Get(authorizeURL) //nolint:noctx // stands in for a browser
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	landedOn := resp.Header.Get("Location")
+	require.Contains(t, landedOn, "127.0.0.1")
+
+	require.NoError(t, relayCallback(context.Background(), testLogger(), landedOn))
+	require.NoError(t, <-done)
+
+	stored, err := store.NewKeychain().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "bitpat_minted", stored.AuthToken)
+	assert.Empty(t, stored.WorkspaceID)
 }

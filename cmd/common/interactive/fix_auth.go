@@ -37,7 +37,7 @@ func FixAuthPrompt(ctx context.Context, logger log.Logger) func() (string, strin
 
 		// No workspace flag to offer: `doctor --fix --interactive` takes none, so a
 		// sign-in that leaves stdin unusable has to stop rather than point at one.
-		out, err := loginAndStore(ctx, logger, utils.AllEnvs(), workspaceChoice{}, "", "")
+		out, err := loginAndStore(ctx, logger, utils.AllEnvs(), loginRequest{})
 		switch {
 		case errors.Is(err, tui.ErrAborted), errors.Is(err, ErrStdinUnusable):
 			return "", "", err //nolint:wrapcheck // sentinel
