@@ -97,8 +97,11 @@ type Doctor struct {
 	// the token prompt; the doctor command supplies one that offers a browser
 	// sign-in first.
 	AuthFixPrompt func() (workspaceID, authToken string, err error)
-	Now           func() time.Time
-	Debug         bool
+	// WorkspacePickPrompt selects a workspace for a login that has none. Nil
+	// leaves the fixer to point at the `auth workspace` commands instead.
+	WorkspacePickPrompt func() (workspaceID string, err error)
+	Now                 func() time.Time
+	Debug               bool
 
 	// checksOverride replaces the real check set in tests.
 	checksOverride []Check

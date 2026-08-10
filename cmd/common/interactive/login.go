@@ -159,6 +159,13 @@ type loginOutcome struct {
 	StdinUnusable bool
 }
 
+// Test seam: the integration test stands in a client that follows the redirect.
+var openBrowser = defaultOpenBrowser //nolint:gochecknoglobals
+
+func defaultOpenBrowser(url string) error {
+	return oauth.OpenBrowser(url) //nolint:wrapcheck // oauth already wraps
+}
+
 // The zero value means the interactive picker.
 type workspaceChoice struct {
 	Slug string
@@ -182,7 +189,7 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 		cfg.CallbackFallback = paster.Fallback
 	}
 
-	creds, err := cfg.Login(ctx, oauth.OpenBrowser)
+	creds, err := cfg.Login(ctx, openBrowser)
 	if err != nil {
 		return loginOutcome{}, fmt.Errorf("sign in: %w", err)
 	}
@@ -259,6 +266,32 @@ func shadowingAuthEnv() string {
 	}
 
 	return ""
+}
+
+// PickWorkspacePrompt selects and stores a workspace for a login that has none,
+// for the doctor's fixer.
+func PickWorkspacePrompt(ctx context.Context, logger log.Logger) func() (string, error) {
+	return func() (string, error) {
+		envs := utils.AllEnvs()
+
+		cred, _, err := live.Default(logger).ResolveTokenOnly(ctx, envs)
+		if err != nil {
+			return "", fmt.Errorf("resolve the stored credential: %w", err)
+		}
+
+		workspace, err := pickWorkspace(ctx, envs, cred.Token)
+		if err != nil {
+			return "", err
+		}
+
+		origin, err := store.SetWorkspaceID(configcommon.DetectCIProvider(envs) != "", workspace)
+		if err != nil {
+			return "", err //nolint:wrapcheck // already user-facing
+		}
+		logger.TInfof("✅ Using workspace %q for the build cache (stored in the %s).", workspace, origin.Label())
+
+		return workspace, nil
+	}
 }
 
 // pickWorkspace lists the workspaces the fresh PAT can access and lets the user

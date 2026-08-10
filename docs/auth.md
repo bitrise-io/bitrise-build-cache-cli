@@ -356,6 +356,9 @@ cmd/auth.newAuthWorkspaceCmd
 └─ (no flag) live.Resolver.ResolveNoRefresh(envs) → WorkspaceID
 ```
 
+`doctor --fix --interactive` reaches the same selection through
+`interactive.PickWorkspacePrompt`, which shows the picker `auth login` would have.
+
 ### `auth logout`
 
 ```
@@ -418,6 +421,11 @@ path with default precedence, which is what stops them disagreeing about which
 credential is current. The doctor's `auth` check is the one deliberate exception —
 it is `PreferStored`, because it reports what is on the machine rather than what a
 build would send.
+
+A workspace-less login fails the doctor's `auth` check with `StateError` — the
+credential cannot authenticate a build, so it is not a warning — and carries
+`WorkspacePickFixer` rather than the credential prompt: the fix is choosing a
+workspace, not signing in again.
 
 ## Adding to this
 

@@ -183,6 +183,17 @@ func TestAuthCheck_fixerIsAuthPromptFixer(t *testing.T) {
 	require.IsType(t, AuthPromptFixer{}, res.Fixer)
 }
 
+func TestAuthCheck_workspacelessLoginFailsWithThePickerFixer(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "pat", RefreshToken: "refresh"}}}
+
+	res := r.authCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "no workspace")
+	assert.True(t, res.Fixable)
+	require.IsType(t, WorkspacePickFixer{}, res.Fixer)
+}
+
 // ──────────────────────────── keychain smoke ────────────────────────────
 
 func TestKeychainSmokeCheck_happy(t *testing.T) {

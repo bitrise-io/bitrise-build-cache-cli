@@ -4,6 +4,7 @@ package auth
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +34,7 @@ func organizationsAPI(t *testing.T, workspaces ...bitriseapi.Workspace) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/organizations", r.URL.Path)
-		assert.Equal(t, "token pat", r.Header.Get("Authorization"))
+		assert.NotEmpty(t, r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": workspaces}))
 	}))
@@ -80,4 +81,63 @@ func TestWorkspaceCmd_listThenSet(t *testing.T) {
 	out, err = runWorkspaceCmd(t, "--json")
 	require.NoError(t, err)
 	assert.Contains(t, out, `"workspace_id": "ws-two"`)
+}
+
+// Re-pinning is the same command as the first pin: no sign-in, login intact.
+func TestWorkspaceCmd_setOverridesAnEarlierChoice(t *testing.T) {
+	workspacelessLogin(t)
+	organizationsAPI(t,
+		bitriseapi.Workspace{Slug: "ws-one", Name: "One"},
+		bitriseapi.Workspace{Slug: "ws-two", Name: "Two"},
+	)
+
+	_, err := runWorkspaceCmd(t, "--set", "ws-two")
+	require.NoError(t, err)
+	_, err = runWorkspaceCmd(t, "--set", "ws-one")
+	require.NoError(t, err)
+
+	got, err := store.NewFile().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ws-one", got.WorkspaceID)
+	assert.Equal(t, "refresh", got.RefreshToken)
+	assert.Equal(t, "pat", got.AuthToken)
+
+	out, err := runWorkspaceCmd(t)
+	require.NoError(t, err)
+	assert.Equal(t, "ws-one\n", out)
+}
+
+// A CI JWT carries its own workspace and outranks the store, so `--set` stores
+// the choice but must not appear to change what a build would use.
+func TestWorkspaceCmd_setUnderAJWTIsStoredButShadowed(t *testing.T) {
+	workspacelessLogin(t)
+	organizationsAPI(t, bitriseapi.Workspace{Slug: "ws-one", Name: "One"})
+	t.Setenv(authpkg.EnvJWT, serviceJWT(t, "ws-from-jwt"))
+
+	_, err := runWorkspaceCmd(t, "--set", "ws-one")
+	require.NoError(t, err)
+
+	got, err := store.NewFile().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ws-one", got.WorkspaceID, "the choice is stored for when the JWT is gone")
+
+	out, err := runWorkspaceCmd(t)
+	require.NoError(t, err)
+	assert.Equal(t, "ws-from-jwt\n", out, "the JWT still wins while it is set")
+
+	assert.Equal(t, authpkg.EnvJWT, shadowingWorkspaceEnv(map[string]string{authpkg.EnvJWT: "jwt"}))
+}
+
+func serviceJWT(t *testing.T, workspaceID string) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"authorization": map[string]any{
+			"permissions": []map[string]any{
+				{"rsname": "default", "claims": map[string]any{"org_id": []string{workspaceID}}},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	return "hdr." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
 }
