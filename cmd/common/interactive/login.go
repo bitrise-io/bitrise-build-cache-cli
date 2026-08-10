@@ -230,7 +230,10 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	cfg.Logger = logger
 
 	paster := &callbackPaster{Reader: os.Stdin, Logger: logger, WorkspaceFlag: req.WorkspaceFlag}
-	if isInteractiveStdin() {
+	// --print-url owns the callback via `auth login --callback`; arming the paste
+	// reader too would print a second, contradictory way to finish and would take
+	// over a stdin its caller is not typing into.
+	if isInteractiveStdin() && req.PrintURL == nil {
 		cfg.CallbackFallback = paster.Fallback
 	}
 

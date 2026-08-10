@@ -237,6 +237,7 @@ func TestLoginPrintURLAndCallback_twoCommandFlow(t *testing.T) {
 	assert.Empty(t, sink.lines, "stdout must carry the URL alone")
 	assert.Contains(t, stderr.String(), "auth login --callback", "the sign-in must name the path that completed it")
 	assert.Contains(t, stderr.String(), "No workspace selected yet")
+	assert.NotContains(t, stderr.String(), "paste it here", "--print-url must not also offer the terminal paste")
 }
 
 // syncBuffer collects the command's stderr while it runs on another goroutine.
