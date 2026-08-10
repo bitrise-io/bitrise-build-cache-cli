@@ -3,6 +3,7 @@
 package interactive
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -194,11 +196,14 @@ func TestLoginPrintURLAndCallback_twoCommandFlow(t *testing.T) {
 	t.Cleanup(func() { os.Stdin = realStdin; _ = pipeR.Close(); _ = pipeW.Close() })
 
 	sink := lineSink{lines: make(chan string, 4)}
+	var stderr syncBuffer
 	LoginCmd.SetOut(sink)
+	LoginCmd.SetErr(&stderr)
 	LoginCmd.SetArgs([]string{"--print-url", "--no-workspace"})
 	t.Cleanup(func() {
 		LoginCmd.SetArgs(nil)
 		LoginCmd.SetOut(nil)
+		LoginCmd.SetErr(nil)
 		loginPrintURL, loginNoWorkspace = false, false
 	})
 
@@ -226,4 +231,30 @@ func TestLoginPrintURLAndCallback_twoCommandFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bitpat_minted", stored.AuthToken)
 	assert.Empty(t, stored.WorkspaceID)
+
+	// Under --print-url stdout is the URL and nothing else; the prose, including
+	// which path completed the handshake, goes to stderr.
+	assert.Empty(t, sink.lines, "stdout must carry the URL alone")
+	assert.Contains(t, stderr.String(), "auth login --callback", "the sign-in must name the path that completed it")
+	assert.Contains(t, stderr.String(), "No workspace selected yet")
+}
+
+// syncBuffer collects the command's stderr while it runs on another goroutine.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.b.String()
 }

@@ -121,7 +121,14 @@ func init() { //nolint:gochecknoinits
 func runLogin(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	envs := utils.AllEnvs()
-	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+
+	// Under --print-url the caller is a script reading stdout, so the prose moves
+	// to stderr and stdout carries the URL and nothing else.
+	logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+	if loginPrintURL {
+		logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+	}
+	logger := log.NewLogger(logOpts...)
 
 	if loginCallback != "" {
 		if loginWorkspace != "" || loginNoWorkspace || loginPrintURL {
@@ -273,9 +280,9 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 
 	if workspace == "" {
 		logger.Infof("Signed in. Credentials stored in the %s.", origin.Label())
-		logger.Infof("No workspace selected yet — the build cache stays unconfigured until you pick one:")
-		logger.Infof("  bitrise-build-cache auth workspace --list")
-		logger.Infof("  bitrise-build-cache auth workspace --set <slug>")
+		logger.Warnf("No workspace selected yet — the build cache stays unconfigured until you pick one:")
+		logger.Warnf("  bitrise-build-cache auth workspace --list")
+		logger.Warnf("  bitrise-build-cache auth workspace --set <slug>")
 	} else {
 		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
 	}

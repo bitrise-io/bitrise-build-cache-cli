@@ -27,12 +27,15 @@ func TestCallbackServer_HappyPath(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	code, err := cs.wait(ctx)
+	code, via, err := cs.wait(ctx)
 	if err != nil {
 		t.Fatalf("wait: %v", err)
 	}
 	if code != "abc" {
 		t.Fatalf("code = %q, want abc", code)
+	}
+	if via != viaListener {
+		t.Fatalf("via = %q, want the listener", via)
 	}
 }
 
@@ -53,7 +56,7 @@ func TestCallbackServer_StateMismatch(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if _, err := cs.wait(ctx); err == nil || !strings.Contains(err.Error(), "state mismatch") {
+	if _, _, err := cs.wait(ctx); err == nil || !strings.Contains(err.Error(), "state mismatch") {
 		t.Fatalf("expected state-mismatch error, got %v", err)
 	}
 }
@@ -68,7 +71,7 @@ func TestCallbackServer_Timeout(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := cs.wait(ctx); err == nil {
+	if _, _, err := cs.wait(ctx); err == nil {
 		t.Fatal("expected timeout error when no callback arrives")
 	}
 }

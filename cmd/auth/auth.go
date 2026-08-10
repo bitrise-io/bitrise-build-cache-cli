@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -384,6 +385,16 @@ type credSource struct {
 	probe    func() credAudit
 }
 
+// keychainSourceLabel names the keyring this build actually talks to, rather than
+// a placeholder that reads like an unresolved template.
+func keychainSourceLabel() string {
+	if runtime.GOOS == "darwin" {
+		return "macOS Keychain (login keychain)"
+	}
+
+	return "OS keychain (secret-service)"
+}
+
 func credSources(envs map[string]string) ([]credSource, []credSource) {
 	osProxy := utils.DefaultOsProxy{}
 
@@ -392,7 +403,7 @@ func credSources(envs map[string]string) ([]credSource, []credSource) {
 	multiplatformConfigPath := multiplatformconfig.FilePath(osProxy)
 
 	targets := []credSource{
-		{"OS keychain", "<system keychain>", probeKeychain},
+		{keychainSourceLabel(), "", probeKeychain},
 		{"Config file (CI-safe)", displayHomePath(osProxy, multiplatformConfigPath), probeFileStore},
 	}
 	migrationSources := []credSource{

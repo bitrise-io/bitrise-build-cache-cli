@@ -22,8 +22,10 @@ type CallbackFallback func(ctx context.Context, state string) (string, error)
 const fallbackExitGrace = 3 * time.Second
 
 // awaitCallback takes the authorization code from whichever of the loopback
-// listener and the fallback produces one first.
-func (c Config) awaitCallback(ctx context.Context, cs *callbackServer) (string, error) {
+// listener and the fallback produces one first, and reports which that was — with
+// the process backgrounded, that is the only way a caller can tell whether the
+// browser reached the listener or the code had to be relayed in.
+func (c Config) awaitCallback(ctx context.Context, cs *callbackServer) (string, string, error) {
 	if c.CallbackFallback == nil {
 		return cs.wait(ctx)
 	}
@@ -35,7 +37,7 @@ func (c Config) awaitCallback(ctx context.Context, cs *callbackServer) (string, 
 	go func() {
 		defer close(done)
 		code, err := c.CallbackFallback(fallbackCtx, cs.state)
-		fallback <- callbackResult{code: code, err: err}
+		fallback <- callbackResult{code: code, err: err, via: viaPaste}
 	}()
 
 	// Returning before the fallback has released its input source would leave it
@@ -51,10 +53,10 @@ func (c Config) awaitCallback(ctx context.Context, cs *callbackServer) (string, 
 
 	select {
 	case <-ctx.Done():
-		return "", fmt.Errorf("timed out waiting for the browser sign-in to complete: %w", ctx.Err())
+		return "", "", fmt.Errorf("timed out waiting for the browser sign-in to complete: %w", ctx.Err())
 	case res := <-cs.results:
-		return res.code, res.err
+		return res.code, res.via, res.err
 	case res := <-fallback:
-		return res.code, res.err
+		return res.code, res.via, res.err
 	}
 }

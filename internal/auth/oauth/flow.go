@@ -76,10 +76,11 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (auth
 	c.debugf("Waiting for the browser sign-in to complete")
 	waitCtx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
-	code, err := c.awaitCallback(waitCtx, cs)
+	code, via, err := c.awaitCallback(waitCtx, cs)
 	if err != nil {
 		return auth.TokenSet{}, err
 	}
+	c.infof("Sign-in completed via %s.", via)
 
 	c.debugf("Exchanging authorization code for a token")
 	now := time.Now() // before the exchange, so the JWT expiry isn't pushed out by the round-trip

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 )
 
 const relayTimeout = 10 * time.Second
@@ -28,6 +30,7 @@ func relayCallback(ctx context.Context, logger log.Logger, raw string) error {
 	if err != nil {
 		return fmt.Errorf("build callback request: %w", err)
 	}
+	req.Header.Set(oauth.RelayHeader, "1")
 
 	client := &http.Client{Timeout: relayTimeout}
 	resp, err := client.Do(req)
