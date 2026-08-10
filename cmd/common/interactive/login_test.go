@@ -30,6 +30,29 @@ func makeServiceJWT(orgID string) string {
 	return header + "." + payload + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
 }
 
+func TestValidateLoginWorkspaceFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		workspace   string
+		noWorkspace bool
+		interactive bool
+		wantErr     bool
+	}{
+		{name: "picker on a terminal", interactive: true},
+		{name: "slug without a terminal", workspace: "ws"},
+		{name: "no-workspace without a terminal", noWorkspace: true},
+		{name: "picker without a terminal", wantErr: true},
+		{name: "both flags", workspace: "ws", noWorkspace: true, interactive: true, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateLoginWorkspaceFlags(tc.workspace, tc.noWorkspace, tc.interactive)
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("wantErr=%v, got %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestShadowingAuthEnv(t *testing.T) {
 	keyring.MockInit() // empty keychain so a real stored login can't interfere
 	t.Setenv("HOME", t.TempDir())

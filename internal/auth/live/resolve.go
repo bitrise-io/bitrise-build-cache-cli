@@ -64,7 +64,11 @@ type Resolver struct {
 // served as-is, because a slightly stale token still authenticates far more often
 // than it doesn't, and failing here would take the whole build down.
 func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Credential, auth.Origin, error) {
-	cred, origin, backing, err := r.resolve(envs)
+	return r.resolveAndRefresh(ctx, envs, auth.TokenSet.Populated)
+}
+
+func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, error) {
+	cred, origin, backing, err := r.resolveWith(envs, usable)
 	if err != nil || !origin.StoreManaged() {
 		return cred, origin, err
 	}
@@ -89,6 +93,15 @@ func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, au
 	cred, origin, _, err := r.resolve(envs)
 
 	return cred, origin, err
+}
+
+// ResolveTokenOnly is Resolve for the one caller that needs a token before a
+// workspace exists: the `auth workspace` picker, which asks the API which
+// workspaces the token can access. The returned Credential may carry an empty
+// WorkspaceID, so nothing that talks to the cache may use this — it would send a
+// half-formed credential that `Resolve` deliberately refuses to hand out.
+func (r *Resolver) ResolveTokenOnly(ctx context.Context, envs map[string]string) (auth.Credential, auth.Origin, error) {
+	return r.resolveAndRefresh(ctx, envs, hasToken)
 }
 
 // For a long-lived process that resolves per RPC.
@@ -118,11 +131,17 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 	return cred
 }
 
-// resolve applies the precedence order and returns the backing store when the
-// credential came from one, so the caller can refresh in place.
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
+	return r.resolveWith(envs, auth.TokenSet.Populated)
+}
+
+// resolveWith applies the precedence order and returns the backing store when the
+// credential came from one, so the caller can refresh in place. usable decides
+// which stored records count — everything but the workspace picker requires a
+// workspace.
+func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, store.Store, error) {
 	if r.Prefer == PreferStored {
-		if cred, origin, backing, ok := r.fromStores(); ok {
+		if cred, origin, backing, ok := r.fromStores(usable); ok {
 			return cred, origin, backing, nil
 		}
 	}
@@ -134,7 +153,7 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 	}
 
 	if r.Prefer != PreferStored {
-		if cred, origin, backing, ok := r.fromStores(); ok {
+		if cred, origin, backing, ok := r.fromStores(usable); ok {
 			return cred, origin, backing, nil
 		}
 	}
@@ -143,16 +162,34 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 		return cred, origin, nil, nil
 	}
 
+	// A login that stopped before the workspace step is not "no credentials" —
+	// saying so would send the user off to create a token they already have.
+	if r.hasTokenWithoutWorkspace() {
+		return auth.Credential{}, auth.Origin{}, nil, auth.ErrWorkspaceNotSelected
+	}
+
 	// Nothing stored: report the env vars as missing, which is the actionable error.
 	cred, origin, err := fromEnv(envs)
 
 	return cred, origin, nil, err
 }
 
+func (r *Resolver) hasTokenWithoutWorkspace() bool {
+	for _, s := range r.backends() {
+		if ts, err := s.Load(); err == nil && ts.AuthToken != "" && ts.WorkspaceID == "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasToken(ts auth.TokenSet) bool { return ts.AuthToken != "" }
+
 // fromStores prefers an OAuth-managed record wherever it lives: a manual token in
 // an earlier backend would otherwise hide a login in a later one, so the login
-// would never be refreshed. Falls back to the first populated record.
-func (r *Resolver) fromStores() (auth.Credential, auth.Origin, store.Store, bool) {
+// would never be refreshed. Falls back to the first usable record.
+func (r *Resolver) fromStores(usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, store.Store, bool) {
 	var (
 		firstTS    auth.TokenSet
 		firstStore store.Store
@@ -160,7 +197,7 @@ func (r *Resolver) fromStores() (auth.Credential, auth.Origin, store.Store, bool
 
 	for _, s := range r.backends() {
 		ts, err := s.Load()
-		if err != nil || !ts.Populated() {
+		if err != nil || !usable(ts) {
 			continue
 		}
 		if ts.IsOAuthManaged() {

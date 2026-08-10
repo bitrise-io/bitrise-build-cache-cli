@@ -431,7 +431,11 @@ func renderSource(logger log.Logger, s credSource, a credAudit) bool {
 
 		return false
 	case sourcePopulated:
-		logger.Infof("  Workspace ID: %s", a.workspaceID)
+		if a.workspaceID == "" {
+			logger.Warnf("  Workspace ID: (not selected — `auth workspace --list`, then `auth workspace --set <slug>`)")
+		} else {
+			logger.Infof("  Workspace ID: %s", a.workspaceID)
+		}
 		logger.Infof("  Auth token:   %s", maskToken(a.authToken))
 		if a.username != "" {
 			logger.Infof("  Display name: %s", a.username)
@@ -753,6 +757,7 @@ func init() {
 	authCmd.AddCommand(authClearCmd)
 	authCmd.AddCommand(authTokenCmd)
 	authCmd.AddCommand(authUsernameCmd)
+	authCmd.AddCommand(newAuthWorkspaceCmd())
 	authCmd.AddCommand(interactive.LoginCmd)
 	authCmd.AddCommand(interactive.LogoutCmd)
 

@@ -22,8 +22,9 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	loginWorkspace string
-	loginStorage   string
+	loginWorkspace   string
+	loginStorage     string
+	loginNoWorkspace bool
 )
 
 // LoginCmd signs the user in via the browser (OAuth) and stores a managed,
@@ -39,9 +40,13 @@ by hand.
 Nothing changes on Bitrise CI (the build still uses the auto-provided service
 token), and a manually-set BITRISE_BUILD_CACHE_AUTH_TOKEN still takes precedence.
 
-This needs a browser on the same machine as the CLI (the sign-in is handed back
-over a loopback address); it can't complete on a remote/headless host — there,
-keep using BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID.`,
+The sign-in is handed back over a loopback address, so it expects a browser on
+the same machine. On a remote/RDE session the redirect fails; paste the URL from
+the browser's address bar into the terminal and the sign-in completes from that.
+
+A session with no terminal at all (an agent driving the CLI, a script) can't be
+prompted for a workspace: pass --workspace <slug>, or --no-workspace to sign in
+first and select afterwards with ` + "`auth workspace --set <slug>`" + `.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runLogin(cmd)
 	},
@@ -94,6 +99,7 @@ This is narrower than ` + "`auth clear`" + `:
 func init() { //nolint:gochecknoinits
 	LoginCmd.Flags().StringVar(&loginWorkspace, "workspace", "", "workspace (organization) slug to use; skips the interactive picker")
 	LoginCmd.Flags().StringVar(&loginStorage, "storage", "", "Where to persist credentials: keychain | file | auto (default: CI→file, local→keychain).")
+	LoginCmd.Flags().BoolVar(&loginNoWorkspace, "no-workspace", false, "Sign in without selecting a workspace. Pick one afterwards with `auth workspace --list` + `auth workspace --set <slug>`; build-cache commands stay unconfigured until you do.")
 	// LoginCmd / LogoutCmd are registered under the `auth` command (cmd/auth).
 }
 
@@ -102,11 +108,11 @@ func runLogin(cmd *cobra.Command) error {
 	envs := utils.AllEnvs()
 	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-	if loginWorkspace == "" && !isInteractiveStdin() {
-		return fmt.Errorf("not an interactive terminal: pass --workspace <slug> to sign in non-interactively")
+	if err := validateLoginWorkspaceFlags(loginWorkspace, loginNoWorkspace, isInteractiveStdin()); err != nil {
+		return err
 	}
 
-	out, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage, "--workspace")
+	out, err := loginAndStore(ctx, logger, envs, workspaceChoice{Slug: loginWorkspace, Skip: loginNoWorkspace}, loginStorage, "--workspace")
 	switch {
 	case errors.Is(err, tui.ErrAborted):
 		logger.Infof("Sign-in cancelled. Nothing was saved.")
@@ -121,6 +127,19 @@ func runLogin(cmd *cobra.Command) error {
 	if shadow := shadowingAuthEnv(); shadow != "" {
 		logger.Warnf("%s is set and takes precedence over the login just saved.", shadow)
 		logger.Warnf("Build-cache commands will use it, not this login — unset it to use the stored login.")
+	}
+
+	return nil
+}
+
+// validateLoginWorkspaceFlags rejects the two flag combinations that would leave
+// the sign-in with no way to answer "which workspace".
+func validateLoginWorkspaceFlags(workspace string, noWorkspace, interactive bool) error {
+	if workspace != "" && noWorkspace {
+		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
+	}
+	if workspace == "" && !noWorkspace && !interactive {
+		return fmt.Errorf("not an interactive terminal: pass --workspace <slug>, or --no-workspace to pick one afterwards with `auth workspace --set`")
 	}
 
 	return nil
@@ -142,13 +161,22 @@ type loginOutcome struct {
 	StdinUnusable bool
 }
 
+// workspaceChoice is how the caller answers "which workspace" before the browser
+// flow starts: a slug, the picker (zero value), or neither.
+type workspaceChoice struct {
+	Slug string
+	// Skip leaves the credential workspace-less, for callers that cannot show a
+	// picker and will select later via `auth workspace --set`.
+	Skip bool
+}
+
 // loginAndStore runs the browser OAuth flow, resolves the workspace and persists
-// the credential. workspace empty → interactive picker; storage empty → default
-// target for the environment. Shared by `auth login` and the interactive wizard.
+// the credential. storage empty → default target for the environment. Shared by
+// `auth login` and the interactive wizard.
 //
 // workspaceFlag names the flag a caller can use to supply the workspace without
 // a prompt; it appears in ErrStdinUnusable guidance and differs per command.
-func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, workspace, storage, workspaceFlag string) (loginOutcome, error) {
+func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, ws workspaceChoice, storage, workspaceFlag string) (loginOutcome, error) {
 	cfg := oauth.NewConfigFromEnv(envs)
 	cfg.Logger = logger
 
@@ -162,7 +190,8 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 		return loginOutcome{}, fmt.Errorf("sign in: %w", err)
 	}
 
-	if workspace == "" {
+	workspace := ws.Slug
+	if workspace == "" && !ws.Skip {
 		// A picker here would race the paste reader for every keystroke, which is
 		// the failure this reports instead of reproducing.
 		if paster.StdinUnusable() {
@@ -189,7 +218,14 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 		return loginOutcome{}, err
 	}
 
-	logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
+	if workspace == "" {
+		logger.Infof("Signed in. Credentials stored in the %s.", origin.Label())
+		logger.Infof("No workspace selected yet — the build cache stays unconfigured until you pick one:")
+		logger.Infof("  bitrise-build-cache auth workspace --list")
+		logger.Infof("  bitrise-build-cache auth workspace --set <slug>")
+	} else {
+		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
+	}
 
 	out := loginOutcome{Creds: creds, Origin: origin, StdinUnusable: paster.StdinUnusable()}
 	if out.StdinUnusable {

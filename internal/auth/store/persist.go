@@ -20,6 +20,23 @@ func SetUsername(isCI bool, name string) (auth.Origin, error) {
 	return existing.Origin(target.Backend()), nil
 }
 
+// SetWorkspaceID writes slug into the store that already holds credentials,
+// leaving the token and the OAuth refresh machinery untouched — it completes a
+// `auth login --no-workspace`, and re-pins an existing one, without a second
+// browser round-trip. Returns the store written to.
+func SetWorkspaceID(isCI bool, slug string) (auth.Origin, error) {
+	target, existing := storeHoldingCreds(isCI)
+	if strings.TrimSpace(existing.AuthToken) == "" {
+		return auth.Origin{}, fmt.Errorf("no stored credentials to attach the workspace to")
+	}
+	existing.WorkspaceID = strings.TrimSpace(slug)
+	if err := target.Save(existing); err != nil {
+		return existing.Origin(target.Backend()), fmt.Errorf("save workspace to %s: %w", target.Backend().String(), err)
+	}
+
+	return existing.Origin(target.Backend()), nil
+}
+
 // StoredUsername returns the display name from whichever backend holds one. The
 // name is machine-level config set by `auth username`, independent of which
 // backend the credential currently lives in, so a sign-in has to carry it across

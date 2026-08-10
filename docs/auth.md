@@ -143,6 +143,7 @@ The shared vocabulary. Imports nothing internal.
 | `ParseJWTWorkspaceID(string) (string, error)` | Extracts `org_id` from the Bitrise UMA JWT. Signature unverified — Bitrise mints these per build. |
 | `EnvAuthToken`, `EnvWorkspaceID`, `EnvJWT`, `EnvUsername` | The four environment keys. |
 | `ErrTokenNotProvided`, `ErrWorkspaceIDNotProvided` | Distinguish "nothing configured" from a genuine failure. |
+| `ErrWorkspaceNotSelected` | A stored token with no workspace — what `auth login --no-workspace` leaves behind. Distinct from "nothing configured", which would send the user off to make a token they already have. |
 
 ### `internal/auth/keychain` (L1)
 
@@ -189,6 +190,7 @@ Which backend a credential lives in, and getting it in and out.
 | `SaveResult{Origin, KeychainErr}` | Where it landed, and why it fell back. A non-nil `KeychainErr` *is* the fallback signal. |
 | `SaveResult.WarnFallback(log.Logger)` | The one place the fallback warning is written. |
 | `SetUsername(isCI bool, name) (auth.Origin, error)` | Writes a display name into whichever backend already holds credentials, so it can't strand an empty-token record in the other one. |
+| `SetWorkspaceID(isCI bool, slug) (auth.Origin, error)` | Same, for the workspace: completes a `auth login --no-workspace` (and re-pins an existing login) without a second browser round-trip, leaving the token and refresh machinery untouched. |
 | `ErrNotFound` | Backend-agnostic "nothing stored". Wraps the keychain sentinel (`ErrNotFound` or `ErrUnavailable`) rather than replacing it, so `errors.Is` still answers "is there no keyring on this host" and no caller needs to bypass the interface. |
 
 `store` takes `isCI bool`, never an env map. CI-ness affects only the *write* target;
@@ -226,6 +228,7 @@ The resolver. The only package a consumer needs.
 | `(*Resolver).Resolve(ctx, envs) (Credential, Origin, error)` | **The one resolve path.** Precedence, then refresh when store-managed. |
 | `Resolver.OnRefreshFailure` (`ServeStale` default, `FailFast`) | What to do when a store-managed credential cannot be refreshed. `ServeStale` hands back the stored token — a slightly stale token still authenticates far more often than it doesn't, and failing would take a build down over a transient error. `FailFast` reports it: the wizard and the Bazel helper both need to act on a dead refresh token rather than serve one the backend will reject. |
 | `(*Resolver).ResolveNoRefresh(envs) (Credential, Origin, error)` | Same precedence, no network, no writes. For `status`, which documents that it never refreshes. |
+| `(*Resolver).ResolveTokenOnly(ctx, envs) (Credential, Origin, error)` | Same precedence and refresh, but a stored record counts as usable on its token alone. **For `auth workspace` only** — it asks the API which workspaces the token can access, which is the one question that precedes having a workspace. The Credential it returns can carry an empty `WorkspaceID`, so nothing that talks to the cache may use it. |
 | `(*Resolver).ResolvePinned(ctx, envs, isCI) (Credential, Origin, error)` | Resolve, and materialise an ephemeral env- or JWT-sourced credential to disk so processes started by `activate` can find it without the env vars. Read-modify-write, and **not** exclusive — see `store.SaveWithFallback`. Returns the origin the credential *resolved* from, not where the copy landed. |
 | `(*Resolver).Bind(envs) *Bound` | Pins the environment for a long-lived process. |
 | `(*Bound).Get(ctx) auth.Credential` | Per-RPC credential. Structurally satisfies `kv.AuthSource` without `live` importing `kv`. |
@@ -321,6 +324,7 @@ cmd/common/interactive.runLogin
 │  └─ POST /oidc/token     JWT → PAT
 │  ⇒ auth.TokenSet                                                   L0
 ├─ pickWorkspace(ctx, envs, ts.AuthToken) → ts.WorkspaceID
+│  skipped by --workspace <slug> and by --no-workspace
 ├─ store.Select(isCI, loginStorage)                                  L2
 └─ oauth.SaveToWithFallback(target, ts, loginStorage == "")          L3
    └─ store.SaveExclusiveWithFallback(target, ts, allowFallback)     L2
@@ -329,6 +333,27 @@ cmd/common/interactive.runLogin
                   ⇒ SaveResult{Origin{File, OAuthLogin}, KeychainErr}
 ├─ res.WarnFallback(logger)
 └─ logger.Infof("Signed in. … %s", res.Origin.Label())
+```
+
+### `auth workspace` — the picker, split in two
+
+`auth login` needs a terminal to show the workspace picker. A session that has
+none — an agent driving the CLI over a remote host, a script — signs in with
+`--no-workspace` and selects afterwards. The stored record is deliberately not
+`Populated()` in between, so no build silently runs against a half-configured
+credential; `Resolve` reports `ErrWorkspaceNotSelected` instead.
+
+```
+cmd/auth.newAuthWorkspaceCmd
+├─ --list
+│  ├─ live.Resolver.ResolveTokenOnly(ctx, envs)                      L4
+│  │  usable(ts) := ts.AuthToken != ""    ← the only relaxed resolve
+│  └─ bitriseapi.ListWorkspaces(ctx, baseURL, cred.Token)
+├─ --set <slug>
+│  ├─ warnUnknownWorkspace  best-effort, network failure is not fatal
+│  └─ store.SetWorkspaceID(isCI, slug)                               L2
+│     read-modify-write on the backend already holding the login
+└─ (no flag) live.Resolver.ResolveNoRefresh(envs) → WorkspaceID
 ```
 
 ### `auth logout`
