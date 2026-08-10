@@ -21,9 +21,9 @@ func SetUsername(isCI bool, name string) (auth.Origin, error) {
 }
 
 // SetWorkspaceID writes slug into the store that already holds credentials,
-// leaving the token and the OAuth refresh machinery untouched — it completes a
-// `auth login --no-workspace`, and re-pins an existing one, without a second
-// browser round-trip. Returns the store written to.
+// leaving the token and the OAuth refresh machinery intact so completing a
+// `auth login --no-workspace` costs no second browser round-trip. Returns the
+// store written to.
 func SetWorkspaceID(isCI bool, slug string) (auth.Origin, error) {
 	target, existing := storeHoldingCreds(isCI)
 	if strings.TrimSpace(existing.AuthToken) == "" {

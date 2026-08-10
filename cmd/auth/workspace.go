@@ -19,7 +19,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// workspaceOutput is the --json shape of the resolved workspace.
 type workspaceOutput struct {
 	WorkspaceID string `json:"workspace_id"`
 	Source      string `json:"source"`
@@ -75,8 +74,7 @@ terminal — an agent driving the CLI on a remote host, a script — can sign in
 
 func printWorkspace(cmd *cobra.Command, envs map[string]string, jsonOut bool) error {
 	cred, origin, err := live.Default(nil).ResolveNoRefresh(envs)
-	// Not selected yet is exactly what this command reports; printing an empty
-	// workspace with source "none" answers the question the caller asked.
+	// Not-selected-yet is what this command exists to report, not a failure.
 	if err != nil && !errors.Is(err, authpkg.ErrWorkspaceNotSelected) {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 

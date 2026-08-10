@@ -18,7 +18,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 )
 
-// workspacelessLogin is what `auth login --no-workspace` leaves on the machine.
 func workspacelessLogin(t *testing.T) {
 	t.Helper()
 	keyring.MockInit()
@@ -30,7 +29,6 @@ func workspacelessLogin(t *testing.T) {
 	require.NoError(t, store.NewFile().Save(authpkg.TokenSet{AuthToken: "pat", RefreshToken: "refresh"}))
 }
 
-// organizationsAPI serves the workspace listing the picker reads.
 func organizationsAPI(t *testing.T, workspaces ...bitriseapi.Workspace) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

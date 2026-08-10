@@ -132,8 +132,6 @@ func runLogin(cmd *cobra.Command) error {
 	return nil
 }
 
-// validateLoginWorkspaceFlags rejects the two flag combinations that would leave
-// the sign-in with no way to answer "which workspace".
 func validateLoginWorkspaceFlags(workspace string, noWorkspace, interactive bool) error {
 	if workspace != "" && noWorkspace {
 		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
@@ -161,12 +159,11 @@ type loginOutcome struct {
 	StdinUnusable bool
 }
 
-// workspaceChoice is how the caller answers "which workspace" before the browser
-// flow starts: a slug, the picker (zero value), or neither.
+// The zero value means the interactive picker.
 type workspaceChoice struct {
 	Slug string
-	// Skip leaves the credential workspace-less, for callers that cannot show a
-	// picker and will select later via `auth workspace --set`.
+	// Skip stores the login workspace-less, for callers that cannot show a picker
+	// and will select later via `auth workspace --set`.
 	Skip bool
 }
 

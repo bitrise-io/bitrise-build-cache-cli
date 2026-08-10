@@ -96,10 +96,8 @@ func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, au
 }
 
 // ResolveTokenOnly is Resolve for the one caller that needs a token before a
-// workspace exists: the `auth workspace` picker, which asks the API which
-// workspaces the token can access. The returned Credential may carry an empty
-// WorkspaceID, so nothing that talks to the cache may use this — it would send a
-// half-formed credential that `Resolve` deliberately refuses to hand out.
+// workspace exists: the `auth workspace` listing. The Credential it returns may
+// carry an empty WorkspaceID, so nothing that talks to the cache may use it.
 func (r *Resolver) ResolveTokenOnly(ctx context.Context, envs map[string]string) (auth.Credential, auth.Origin, error) {
 	return r.resolveAndRefresh(ctx, envs, hasToken)
 }
@@ -137,8 +135,7 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 
 // resolveWith applies the precedence order and returns the backing store when the
 // credential came from one, so the caller can refresh in place. usable decides
-// which stored records count — everything but the workspace picker requires a
-// workspace.
+// which stored records count.
 func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, store.Store, error) {
 	if r.Prefer == PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
