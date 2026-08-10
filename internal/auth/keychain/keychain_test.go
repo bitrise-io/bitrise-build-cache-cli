@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 type fakeBackend struct {
@@ -63,7 +65,7 @@ func (f *fakeBackend) Delete(service, account string) error {
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	k := &Keychain{Backend: newFakeBackend()}
 
-	creds := Credentials{AuthToken: "tok-xyz", WorkspaceID: "ws-123"}
+	creds := auth.TokenSet{AuthToken: "tok-xyz", WorkspaceID: "ws-123"}
 	require.NoError(t, k.Save(creds))
 
 	got, err := k.Load()
@@ -81,8 +83,8 @@ func TestLoadEmptyReturnsErrNotFound(t *testing.T) {
 func TestSaveReplacesPreviousValue(t *testing.T) {
 	k := &Keychain{Backend: newFakeBackend()}
 
-	require.NoError(t, k.Save(Credentials{AuthToken: "first", WorkspaceID: "ws-1"}))
-	require.NoError(t, k.Save(Credentials{AuthToken: "second", WorkspaceID: "ws-2"}))
+	require.NoError(t, k.Save(auth.TokenSet{AuthToken: "first", WorkspaceID: "ws-1"}))
+	require.NoError(t, k.Save(auth.TokenSet{AuthToken: "second", WorkspaceID: "ws-2"}))
 
 	got, err := k.Load()
 	require.NoError(t, err)
@@ -93,7 +95,7 @@ func TestSaveReplacesPreviousValue(t *testing.T) {
 func TestClearRemoves(t *testing.T) {
 	k := &Keychain{Backend: newFakeBackend()}
 
-	require.NoError(t, k.Save(Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+	require.NoError(t, k.Save(auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
 	require.NoError(t, k.Clear())
 
 	_, err := k.Load()
@@ -104,38 +106,6 @@ func TestClearNoopOnEmpty(t *testing.T) {
 	k := &Keychain{Backend: newFakeBackend()}
 
 	assert.NoError(t, k.Clear())
-}
-
-func TestSaveIfChanged_writesOnFirstSave(t *testing.T) {
-	k := &Keychain{Backend: newFakeBackend()}
-
-	wrote, err := k.SaveIfChanged(Credentials{AuthToken: "tok", WorkspaceID: "ws"})
-	require.NoError(t, err)
-	assert.True(t, wrote)
-}
-
-func TestSaveIfChanged_skipsWhenIdentical(t *testing.T) {
-	be := newFakeBackend()
-	k := &Keychain{Backend: be}
-	creds := Credentials{AuthToken: "tok", WorkspaceID: "ws"}
-	require.NoError(t, k.Save(creds))
-
-	wrote, err := k.SaveIfChanged(creds)
-	require.NoError(t, err)
-	assert.False(t, wrote)
-}
-
-func TestSaveIfChanged_writesWhenDifferent(t *testing.T) {
-	k := &Keychain{Backend: newFakeBackend()}
-	require.NoError(t, k.Save(Credentials{AuthToken: "old", WorkspaceID: "ws"}))
-
-	wrote, err := k.SaveIfChanged(Credentials{AuthToken: "new", WorkspaceID: "ws"})
-	require.NoError(t, err)
-	assert.True(t, wrote)
-
-	got, err := k.Load()
-	require.NoError(t, err)
-	assert.Equal(t, "new", got.AuthToken)
 }
 
 func TestLoadWrapsBackendError(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 	dbus "github.com/godbus/dbus/v5"
 	"github.com/stretchr/testify/assert"
 	keyring "github.com/zalando/go-keyring"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 // The exact error a Linux host with no secret-service returns, captured from a
@@ -40,7 +42,7 @@ func TestKeychainOperationsReportUnavailable(t *testing.T) {
 	kc := &Keychain{Backend: unavailableBackend{}}
 
 	_, loadErr := kc.Load()
-	saveErr := kc.Save(Credentials{AuthToken: "t", WorkspaceID: "w"})
+	saveErr := kc.Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w"})
 	clearErr := kc.Clear()
 
 	for name, err := range map[string]error{"load": loadErr, "save": saveErr, "clear": clearErr} {

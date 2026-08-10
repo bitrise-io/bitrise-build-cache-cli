@@ -15,7 +15,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
@@ -28,8 +27,8 @@ import (
 )
 
 //nolint:gochecknoglobals // swappable in tests
-var saveReactNativeMarkersFn = func(logger log.Logger, debugLogging bool) error {
-	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).SaveMarkers()
+var saveReactNativeMarkersFn = func(ctx context.Context, logger log.Logger, debugLogging bool) error {
+	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).SaveMarkers(ctx)
 }
 
 // wizardWorkspaceFlag lets a run that can't prompt still name its workspace.
@@ -90,11 +89,6 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 	}
 }
 
-type keychainStore interface {
-	Load() (keychain.Credentials, error)
-	Save(creds keychain.Credentials) error
-}
-
 func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool) error {
 	for _, t := range tools {
 		var err error
@@ -115,16 +109,16 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 		}
 	}
 
-	return finalizeReactNativeIfBothSelected(logger, tools)
+	return finalizeReactNativeIfBothSelected(ctx, logger, tools)
 }
 
 // finalizeReactNativeIfBothSelected writes RN parity markers when the selection covers both Gradle and Xcode.
-func finalizeReactNativeIfBothSelected(logger log.Logger, tools []string) error {
+func finalizeReactNativeIfBothSelected(ctx context.Context, logger log.Logger, tools []string) error {
 	if !slices.Contains(tools, string(toolGradle)) || !slices.Contains(tools, string(toolXcode)) {
 		return nil
 	}
 
-	if err := saveReactNativeMarkersFn(logger, common.IsDebugLogMode); err != nil {
+	if err := saveReactNativeMarkersFn(ctx, logger, common.IsDebugLogMode); err != nil {
 		return fmt.Errorf("save React Native markers: %w", err)
 	}
 

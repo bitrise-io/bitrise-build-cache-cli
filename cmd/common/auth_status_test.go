@@ -8,7 +8,9 @@ import (
 
 	keyring "github.com/zalando/go-keyring"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
 func TestCurrentAuthStatus(t *testing.T) {
@@ -24,8 +26,8 @@ func TestCurrentAuthStatus(t *testing.T) {
 	}
 
 	// A stored OAuth login is reported as such, with workspace + a future expiry.
-	if err := oauth.Save(oauth.Credentials{
-		PAT: "p", RefreshToken: "r", WorkspaceID: "acme",
+	if err := oauthSave(t, auth.TokenSet{
+		AuthToken: "p", RefreshToken: "r", WorkspaceID: "acme",
 		PATExpiry: time.Now().Add(time.Hour),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -53,4 +55,11 @@ func TestCurrentAuthStatus(t *testing.T) {
 	if a := currentAuthStatus(); a.Source != "error" || a.Error == "" {
 		t.Fatalf("expected surfaced resolution error, got %+v", a)
 	}
+}
+
+func oauthSave(t *testing.T, c auth.TokenSet) error {
+	t.Helper()
+	_, err := oauth.SaveToWithFallback(store.NewKeychain(), c, false)
+
+	return err
 }

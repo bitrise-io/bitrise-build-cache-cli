@@ -62,7 +62,7 @@ func scanBazel(home string) (toolconfig.Sample, bool) {
 
 func scanXcelerate(home string) (toolconfig.Sample, bool) {
 	osProxy := utils.DefaultOsProxy{}
-	cfg, err := xcelerateconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+	cfg, err := xcelerateconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, utils.AllEnvs())
 	if err != nil {
 		return toolconfig.Sample{}, false
 	}
@@ -77,7 +77,7 @@ func scanXcelerate(home string) (toolconfig.Sample, bool) {
 
 func scanCcache(home string) (toolconfig.Sample, bool) {
 	osProxy := utils.DefaultOsProxy{}
-	cfg, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+	cfg, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, utils.AllEnvs())
 	if err != nil {
 		return toolconfig.Sample{}, false
 	}

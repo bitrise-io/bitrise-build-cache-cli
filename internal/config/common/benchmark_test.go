@@ -13,6 +13,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func TestGetBenchmarkPhase_BitriseProvider(t *testing.T) {
@@ -27,8 +29,8 @@ func TestGetBenchmarkPhase_BitriseProvider(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }
@@ -57,8 +59,8 @@ func TestGetBenchmarkPhase_ExternalProvider(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-456",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }
@@ -78,8 +80,8 @@ func TestGetBenchmarkPhase_ExternalProvider(t *testing.T) {
 func TestGetBenchmarkPhase_EmptyIdentifiers(t *testing.T) {
 	t.Parallel()
 
-	client := NewBenchmarkPhaseClient("http://unused", CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient("http://unused", auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }
@@ -102,8 +104,8 @@ func TestGetBenchmarkPhase_EmptyIdentifiers(t *testing.T) {
 func TestGetBenchmarkPhase_EmptyWorkspaceID(t *testing.T) {
 	t.Parallel()
 
-	client := NewBenchmarkPhaseClient("http://unused", CacheAuthConfig{
-		AuthToken: "test-token",
+	client := NewBenchmarkPhaseClient("http://unused", auth.Credential{
+		Token: "test-token",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }
 
@@ -124,8 +126,8 @@ func TestGetBenchmarkPhase_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.httpClient.RetryMax = 0
@@ -151,8 +153,8 @@ func TestGetBenchmarkPhase_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }
@@ -179,8 +181,8 @@ func TestGetBenchmarkPhase_RespectsEnvVarOverride(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.Getenv = func(k string) string {
@@ -213,8 +215,8 @@ func TestGetBenchmarkPhase_QueriesBEWhenEnvUnset(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }
@@ -239,8 +241,8 @@ func TestGetBenchmarkPhase_EmptyPhase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewBenchmarkPhaseClient(server.URL, CacheAuthConfig{
-		AuthToken:   "test-token",
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
 		WorkspaceID: "ws-123",
 	}, log.NewLogger())
 	client.Getenv = func(string) string { return "" }

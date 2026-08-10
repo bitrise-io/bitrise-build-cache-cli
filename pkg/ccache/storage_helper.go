@@ -16,6 +16,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
@@ -89,7 +91,7 @@ func NewStorageHelper(params StorageHelperParams) (*StorageHelper, error) {
 	params = withDefaults(params)
 
 	osProxy := utils.DefaultOsProxy{}
-	config, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+	config, err := ccacheconfig.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, params.Envs)
 	if err != nil {
 		return nil, fmt.Errorf("read ccache config: %w", err)
 	}
@@ -255,7 +257,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	h.logger.TInfof("Ccache invocation ID: %s", invocationID)
 	h.logger.TInfof("Parent invocation ID: %s", parentID)
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, h.config.AuthConfig.TokenInGradleFormat(), h.logger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
 	if err != nil {
 		h.logger.TWarnf("Failed to create analytics client for ccache stats: %v", err)
 
@@ -264,7 +266,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	h.registerInvocationRelation(ctx)
 
-	metadata := configcommon.NewMetadata(h.params.Envs, newCommandFunc(ctx), h.logger)
+	metadata := configcommon.NewMetadata(h.params.Envs, hostUsername(h.params.Envs), newCommandFunc(ctx), h.logger)
 
 	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, h.config.AuthConfig, metadata)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
@@ -535,7 +537,7 @@ func createKVClient(
 		ClientName:          "ccache",
 		AuthConfig:          config.AuthConfig,
 		Logger:              logger,
-		CacheConfigMetadata: configcommon.NewMetadata(envs, commandFunc, logger),
+		CacheConfigMetadata: configcommon.NewMetadata(envs, hostUsername(envs), commandFunc, logger),
 		CacheOperationID:    uuid.NewString(),
 		InvocationID:        invocationID,
 	})
@@ -559,4 +561,11 @@ func newCommandFunc(ctx context.Context) configcommon.CommandFunc {
 
 		return stdout, nil
 	}
+}
+
+// hostUsername names the person behind a local invocation for analytics.
+func hostUsername(envs map[string]string) string {
+	name, _ := live.Default(nil).ResolveUsername(envs)
+
+	return name
 }

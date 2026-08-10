@@ -26,6 +26,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -103,7 +104,7 @@ TBD`,
 
 		decoder := utils.DefaultDecoderFactory{}
 		osProxy := utils.DefaultOsProxy{}
-		config, err := xcelerate.ReadConfig(osProxy, decoder)
+		config, err := xcelerate.ReadConfig(osProxy, decoder, utils.AllEnvs())
 		if err != nil {
 			// we don't have the config yet, use default logger
 			log.NewLogger().Errorf(ErrReadConfig, err)
@@ -219,7 +220,7 @@ TBD`,
 			defer cleanup()
 		}
 
-		metadata := configcommon.NewMetadata(utils.AllEnvs(), func(cmd string, args ...string) (string, error) {
+		metadata := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(utils.AllEnvs()), func(cmd string, args ...string) (string, error) {
 			o, err := utils.DefaultCommandFunc()(cobraCmd.Context(), cmd, args...).CombinedOutput()
 
 			return string(o), err
@@ -559,7 +560,7 @@ func (c *XcodebuildRunner) resolveInvocationAPI() (invocationSaver, error) {
 		return c.invocationAPI, nil
 	}
 
-	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return c.Config.AuthConfig.TokenInGradleFormat() }, c.Logger)
+	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, func() string { return authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin) }, c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create analytics client: %w", err)
 	}
@@ -572,7 +573,7 @@ func (c *XcodebuildRunner) resolveRelationAPI() (relationSender, error) {
 		return c.relationAPI, nil
 	}
 
-	client, err := multiplatform.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, c.Config.AuthConfig.TokenInGradleFormat(), c.Logger)
+	client, err := multiplatform.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin), c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create multiplatform analytics client: %w", err)
 	}

@@ -45,7 +45,7 @@ func TestExchangeJWTForPAT(t *testing.T) {
 	c := Config{OIDCTokenEndpoint: srv.URL}
 	pat, expiry, err := c.exchangeJWTForPAT(context.Background(), "the-jwt")
 	if err != nil {
-		t.Fatalf("exchangeJWTForPAT: %v", err)
+		t.Fatalf("exchangeJWTForAuthToken: %v", err)
 	}
 	if pat != "bitpat_x" {
 		t.Fatalf("pat = %q, want bitpat_x", pat)

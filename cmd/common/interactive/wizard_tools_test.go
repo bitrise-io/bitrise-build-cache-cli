@@ -3,6 +3,7 @@
 package interactive
 
 import (
+	"context"
 	"testing"
 
 	"charm.land/huh/v2"
@@ -34,13 +35,13 @@ func TestFinalizeReactNativeIfBothSelected(t *testing.T) {
 			t.Cleanup(func() { saveReactNativeMarkersFn = original })
 
 			var calls int
-			saveReactNativeMarkersFn = func(_ log.Logger, _ bool) error {
+			saveReactNativeMarkersFn = func(_ context.Context, _ log.Logger, _ bool) error {
 				calls++
 
 				return nil
 			}
 
-			require.NoError(t, finalizeReactNativeIfBothSelected(log.NewLogger(), tc.tools))
+			require.NoError(t, finalizeReactNativeIfBothSelected(context.Background(), log.NewLogger(), tc.tools))
 			assert.Equal(t, tc.expectCalls, calls)
 		})
 	}
