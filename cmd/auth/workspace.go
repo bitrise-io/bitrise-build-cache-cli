@@ -99,8 +99,6 @@ func printWorkspace(cmd *cobra.Command, envs map[string]string, jsonOut bool) er
 	return nil
 }
 
-// listWorkspaces resolves the token without requiring a workspace — the whole
-// point of the listing is that there may not be one yet.
 func listWorkspaces(cmd *cobra.Command, envs map[string]string, jsonOut bool) error {
 	ctx := cmd.Context()
 

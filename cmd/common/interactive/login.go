@@ -201,19 +201,16 @@ func defaultOpenBrowser(url string) error {
 // The zero value means the interactive picker.
 type workspaceChoice struct {
 	Slug string
-	// Skip stores the login workspace-less, for callers that cannot show a picker
-	// and will select later via `auth workspace --set`.
+	// Skip stores the login workspace-less, for callers that cannot show a picker.
 	Skip bool
 }
 
-// loginRequest is what one sign-in needs beyond the environment.
 type loginRequest struct {
 	Workspace workspaceChoice
 	// Storage empty → the default target for this environment.
 	Storage string
-	// WorkspaceFlag names the flag this caller accepts to supply the workspace
-	// without a prompt; it appears in ErrStdinUnusable guidance. Empty means the
-	// caller has none to offer.
+	// WorkspaceFlag names the flag this caller accepts instead of a prompt; it
+	// appears in ErrStdinUnusable guidance. Empty means it has none to offer.
 	WorkspaceFlag string
 	// PrintURL, when set, receives the sign-in URL and suppresses the browser.
 	PrintURL io.Writer

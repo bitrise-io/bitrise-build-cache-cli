@@ -24,9 +24,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 )
 
-// fakeIdentity is the OAuth provider (authorize + token) and the monolith's
-// JWT→PAT exchange, wired so the authorize endpoint redirects to whatever
-// loopback callback the CLI bound — exactly what the real provider does.
+// fakeIdentity redirects to whatever loopback callback the CLI bound, the way the
+// real provider does.
 func fakeIdentity(t *testing.T) *httptest.Server {
 	t.Helper()
 

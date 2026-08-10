@@ -10,7 +10,6 @@ type WorkspacePickFixer struct {
 	Prompt func() (workspaceID string, err error)
 }
 
-// NeedsTerminal marks this fixer as one that must ask the user something.
 func (f WorkspacePickFixer) NeedsTerminal() bool { return true }
 
 func (f WorkspacePickFixer) Fix() (string, error) {

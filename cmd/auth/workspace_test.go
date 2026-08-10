@@ -56,8 +56,7 @@ func runWorkspaceCmd(t *testing.T, args ...string) (string, error) {
 	return stdout.String(), err
 }
 
-// The two halves of the agent flow: list what the workspace-less login can see,
-// then pin one — without a second sign-in.
+// The two halves of the agent flow, with no second sign-in between them.
 func TestWorkspaceCmd_listThenSet(t *testing.T) {
 	workspacelessLogin(t)
 	organizationsAPI(t,
