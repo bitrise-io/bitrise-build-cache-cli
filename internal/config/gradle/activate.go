@@ -26,6 +26,8 @@ func Activate(
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
 ) error {
+	NormalizeParams(&params)
+
 	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)

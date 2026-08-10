@@ -72,12 +72,20 @@ func DefaultActivateGradleParams() ActivateGradleParams {
 	}
 }
 
+func NormalizeParams(params *ActivateGradleParams) {
+	if params.Cache.PushEnabled {
+		params.Cache.Enabled = true
+	}
+}
+
 func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
 	envs map[string]string,
 	isDebug bool,
 	benchmarkProvider common.BenchmarkPhaseProvider,
 ) (TemplateInventory, error) {
+	NormalizeParams(&params)
+
 	logger.Infof("(i) Checking parameters")
 
 	// Read auth config and metadata upfront

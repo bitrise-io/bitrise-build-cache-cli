@@ -174,6 +174,47 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 		},
 		{
+			name: "cache-push implies cache-enabled",
+			params: ActivateGradleParams{
+				Cache: CacheParams{
+					Enabled:         false,
+					PushEnabled:     true,
+					ValidationLevel: string(CacheValidationLevelWarning),
+					Endpoint:        "EndpointValue",
+				},
+				Analytics: AnalyticsParams{
+					Enabled: false,
+				},
+				TestDistro: TestDistroParams{
+					Enabled: false,
+				},
+			},
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+			},
+			want: TemplateInventory{
+				Common: PluginCommonTemplateInventory{
+					AuthToken: "WorkspaceIDValue:AuthTokenValue",
+					Version:   consts.GradleCommonPluginDepVersion,
+					CLIPath:   "bitrise-build-cache",
+				},
+				Cache: CacheTemplateInventory{
+					Usage:               UsageLevelEnabled,
+					Version:             consts.GradleRemoteBuildCachePluginDepVersion,
+					EndpointURLWithPort: "EndpointValue",
+					IsPushEnabled:       true,
+					ValidationLevel:     string(CacheValidationLevelWarning),
+				},
+				Analytics: AnalyticsTemplateInventory{
+					Usage: UsageLevelNone,
+				},
+				TestDistro: TestDistroTemplateInventory{
+					Usage: UsageLevelNone,
+				},
+			},
+		},
+		{
 			name: "given invalid cache validation level cache activation throws error",
 			params: ActivateGradleParams{
 				Cache: CacheParams{
