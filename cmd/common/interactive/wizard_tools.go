@@ -27,8 +27,8 @@ import (
 )
 
 //nolint:gochecknoglobals // swappable in tests
-var saveReactNativeMarkersFn = func(ctx context.Context, logger log.Logger, debugLogging bool) error {
-	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).SaveMarkers(ctx)
+var activateReactNative = func(ctx context.Context, logger log.Logger, debugLogging bool) error {
+	return reactnative.NewActivator(reactnative.ActivatorParams{Logger: logger, DebugLogging: debugLogging}).DoActivate(ctx)
 }
 
 // wizardWorkspaceFlag lets a run that can't prompt still name its workspace.
@@ -109,17 +109,17 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 		}
 	}
 
-	return finalizeReactNativeIfBothSelected(ctx, logger, tools)
+	return activateReactNativeBasedOnSelection(ctx, logger, tools)
 }
 
-// finalizeReactNativeIfBothSelected writes RN parity markers when the selection covers both Gradle and Xcode.
-func finalizeReactNativeIfBothSelected(ctx context.Context, logger log.Logger, tools []string) error {
+// activateReactNativeBasedOnSelection activates React Native when the selection covers both Gradle and Xcode.
+func activateReactNativeBasedOnSelection(ctx context.Context, logger log.Logger, tools []string) error {
 	if !slices.Contains(tools, string(toolGradle)) || !slices.Contains(tools, string(toolXcode)) {
 		return nil
 	}
 
-	if err := saveReactNativeMarkersFn(ctx, logger, common.IsDebugLogMode); err != nil {
-		return fmt.Errorf("save React Native markers: %w", err)
+	if err := activateReactNative(ctx, logger, common.IsDebugLogMode); err != nil {
+		return fmt.Errorf("activate React Native: %w", err)
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for React Native")

@@ -18,14 +18,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-func TestActivator_SaveMarkers_WritesMarkerAndMultiplatformConfig(t *testing.T) {
+func TestActivator_DoActivate_WritesMarkerAndMultiplatformConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "bitpat_token")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-1")
 
 	a := NewActivator(ActivatorParams{Logger: log.NewLogger(), DebugLogging: true})
-	require.NoError(t, a.SaveMarkers(t.Context()))
+	require.NoError(t, a.DoActivate(t.Context()))
 
 	rnCfg, err := rnconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.NoError(t, err)

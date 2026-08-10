@@ -130,7 +130,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
-	if err := a.runParityOps(ctx); err != nil {
+	if err := a.DoActivate(ctx); err != nil {
 		return err
 	}
 
@@ -209,13 +209,8 @@ func (a *Activator) exportEASWorkingDirIfCI() {
 	a.logger.TInfof("Exported %s=%s for EAS Build cache stability", EASWorkingDirEnv, workdir)
 }
 
-// SaveMarkers runs the RN post-activation ops without a full activation.
-func (a *Activator) SaveMarkers(ctx context.Context) error {
-	return a.runParityOps(ctx)
-}
-
-// runParityOps runs the RN post-activation ops (EAS working-dir on CI, multiplatform config, RN marker).
-func (a *Activator) runParityOps(ctx context.Context) error {
+// DoActivate runs the RN post-activation ops (EAS working-dir on CI, multiplatform config, RN marker).
+func (a *Activator) DoActivate(ctx context.Context) error {
 	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
 
 	if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
