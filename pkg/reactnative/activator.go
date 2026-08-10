@@ -13,7 +13,6 @@ import (
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -35,6 +34,7 @@ type ActivatorParams struct {
 	GradleEnabled        bool
 	XcodeEnabled         bool
 	CppEnabled           bool
+	PushEnabled          bool
 	DisablePrefixMapping bool
 	NoSwiftCache         bool
 	BuildCacheSkipFlags  bool
@@ -67,13 +67,18 @@ func NewActivator(params ActivatorParams) *Activator {
 	}
 
 	if params.GradleEnabled {
-		a.gradle = &gradleActivator{logger: logger, debugLogging: params.DebugLogging}
+		a.gradle = &gradleActivator{
+			logger:       logger,
+			debugLogging: params.DebugLogging,
+			pushEnabled:  params.PushEnabled,
+		}
 	}
 
 	if params.XcodeEnabled {
 		a.xcode = &xcodeActivator{
 			logger:               logger,
 			debugLogging:         params.DebugLogging,
+			pushEnabled:          params.PushEnabled,
 			disablePrefixMapping: params.DisablePrefixMapping,
 			noSwiftCache:         params.NoSwiftCache,
 			buildCacheSkipFlags:  params.BuildCacheSkipFlags,
@@ -86,7 +91,7 @@ func NewActivator(params ActivatorParams) *Activator {
 	// --gradle=false` doesn't leave a stray ccache helper running.
 	if params.CppEnabled && params.GradleEnabled {
 		a.cpp = ccachepkg.NewActivator(ccachepkg.ActivatorParams{
-			PushEnabled:  ccacheconfig.DefaultParams().PushEnabled,
+			PushEnabled:  params.PushEnabled,
 			DebugLogging: params.DebugLogging,
 			Logger:       logger,
 		})
@@ -273,6 +278,7 @@ func installDeps(ctx context.Context, logger log.Logger, doCpp bool) error {
 type gradleActivator struct {
 	logger       log.Logger
 	debugLogging bool
+	pushEnabled  bool
 }
 
 func (g *gradleActivator) activate() error {
@@ -287,7 +293,7 @@ func (g *gradleActivator) activate() error {
 
 	gradleParams := gradleconfig.DefaultActivateGradleParams()
 	gradleParams.Cache.Enabled = true
-	gradleParams.Cache.PushEnabled = true
+	gradleParams.Cache.PushEnabled = g.pushEnabled
 
 	if err := gradleconfig.Activate(
 		g.logger,
@@ -315,6 +321,7 @@ func (g *gradleActivator) activate() error {
 type xcodeActivator struct {
 	logger               log.Logger
 	debugLogging         bool
+	pushEnabled          bool
 	disablePrefixMapping bool
 	noSwiftCache         bool
 	buildCacheSkipFlags  bool
@@ -323,6 +330,7 @@ type xcodeActivator struct {
 func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams := xcelerate.DefaultParams()
 	xcodeParams.DebugLogging = x.debugLogging
+	xcodeParams.PushEnabled = x.pushEnabled
 	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping
 	xcodeParams.NoSwiftCache = x.noSwiftCache
 	xcodeParams.BuildCacheSkipFlags = x.buildCacheSkipFlags
