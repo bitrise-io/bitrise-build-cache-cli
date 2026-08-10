@@ -13,7 +13,6 @@ import (
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
