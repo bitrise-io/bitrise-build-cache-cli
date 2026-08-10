@@ -112,7 +112,6 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 	return activateReactNativeBasedOnSelection(ctx, logger, tools)
 }
 
-// activateReactNativeBasedOnSelection activates React Native when the selection covers both Gradle and Xcode.
 func activateReactNativeBasedOnSelection(ctx context.Context, logger log.Logger, tools []string) error {
 	if !slices.Contains(tools, string(toolGradle)) || !slices.Contains(tools, string(toolXcode)) {
 		return nil
