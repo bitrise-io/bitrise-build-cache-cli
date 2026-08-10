@@ -10,10 +10,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/bitriseapi"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -72,7 +74,7 @@ This is narrower than ` + "`auth clear`" + `:
 			logger.Infof("`auth clear` is the command for removing a manually set token.")
 		case !creds.IsOAuthManaged():
 			logger.Infof("Not signed in via the browser, so there is no login to remove.")
-			logger.Infof("A manually set token is stored in the %s and is left untouched — use `auth clear` to remove that.", source.Kind())
+			logger.Infof("A manually set token is stored in the %s and is left untouched — use `auth clear` to remove that.", source.Backend())
 		default:
 			// Only the backend holding the login: oauth.Clear() wipes both, which
 			// would take a manually set token in the other one with it — and
@@ -81,7 +83,7 @@ This is narrower than ` + "`auth clear`" + `:
 			if err := oauth.ClearFrom(source); err != nil {
 				return fmt.Errorf("clear stored login: %w", err)
 			}
-			logger.Infof("Signed out — the browser login was removed from the %s.", source.Kind())
+			logger.Infof("Signed out — the browser login was removed from the %s.", creds.Origin(source.Backend()).Label())
 			logger.Infof("Any token set with `auth set` is unaffected.")
 		}
 
@@ -129,12 +131,12 @@ func runLogin(cmd *cobra.Command) error {
 // keystrokes. Callers report a way to continue without one.
 var ErrStdinUnusable = errors.New("standard input is no longer usable for prompts")
 
-// loginOutcome is what a completed sign-in leaves behind. Kind matters because a
+// loginOutcome is what a completed sign-in leaves behind. Origin matters because a
 // keychain-less host stores the login in the config file instead, and callers
 // that go on to describe or update the credential have to target the right one.
 type loginOutcome struct {
-	Creds oauth.Credentials
-	Kind  store.Kind
+	Creds  auth.TokenSet
+	Origin auth.Origin
 	// StdinUnusable means a paste reader is still holding stdin, so no prompt in
 	// this process can be trusted with keystrokes.
 	StdinUnusable bool
@@ -167,31 +169,29 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 			return loginOutcome{}, fmt.Errorf("%w: cannot show the workspace picker", ErrStdinUnusable)
 		}
 
-		workspace, err = pickWorkspace(ctx, envs, creds.PAT)
+		workspace, err = pickWorkspace(ctx, envs, creds.AuthToken)
 		if err != nil {
 			return loginOutcome{}, err
 		}
 	}
 	creds.WorkspaceID = workspace
+	// A fresh sign-in carries no display name, and the save is exclusive — without
+	// this, `auth login` silently drops the name `auth username` set.
+	creds.Username = store.StoredUsername()
 
-	target, err := store.Select(envs, storage)
+	target, err := store.Select(configcommon.DetectCIProvider(envs) != "", storage)
 	if err != nil {
 		return loginOutcome{}, err //nolint:wrapcheck
 	}
 
-	kind, err := saveLoginWithFallback(logger, target, storage, creds)
+	origin, err := saveLoginWithFallback(logger, target, storage, creds)
 	if err != nil {
 		return loginOutcome{}, err
 	}
 
-	switch kind {
-	case store.KindKeychain:
-		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the OS keychain.", workspace)
-	case store.KindFile:
-		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the multiplatform config file (CI-safe).", workspace)
-	}
+	logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
 
-	out := loginOutcome{Creds: creds, Kind: kind, StdinUnusable: paster.StdinUnusable()}
+	out := loginOutcome{Creds: creds, Origin: origin, StdinUnusable: paster.StdinUnusable()}
 	if out.StdinUnusable {
 		return out, fmt.Errorf("%w: the credential was saved", ErrStdinUnusable)
 	}
@@ -205,27 +205,24 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 // fallback, refresh token included, so the login stays refreshable there.
 //
 // An explicit --storage choice is honoured: the caller asked for that backend.
-func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds oauth.Credentials) (store.Kind, error) {
-	outcome, err := oauth.SaveToWithFallback(target, creds, storage == "")
+func saveLoginWithFallback(logger log.Logger, target store.Store, storage string, creds auth.TokenSet) (auth.Origin, error) {
+	result, err := oauth.SaveToWithFallback(target, creds, storage == "")
 	if err != nil {
-		return outcome.Kind, fmt.Errorf("save credentials: %w", err)
+		return result.Origin, fmt.Errorf("save credentials: %w", err)
 	}
+	result.WarnFallback(logger)
 
-	if outcome.FellBack {
-		logger.Warnf("Could not write to the OS keychain (%s).", outcome.KeychainErr)
-	}
-
-	return outcome.Kind, nil
+	return result.Origin, nil
 }
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".
 func shadowingAuthEnv() string {
-	switch _, source, _ := configcommon.ResolveAuthConfig(utils.AllEnvs()); source {
-	case configcommon.AuthSourceEnvVars:
-		return configcommon.EnvAuthToken
-	case configcommon.AuthSourceJWT:
-		return configcommon.EnvJWT
-	case configcommon.AuthSourceNone, configcommon.AuthSourceKeychain, configcommon.AuthSourceFile, configcommon.AuthSourceMultiplatform:
+	switch _, origin, _ := live.Default(nil).ResolveNoRefresh(utils.AllEnvs()); origin.Backend {
+	case auth.BackendEnv:
+		return auth.EnvAuthToken
+	case auth.BackendJWT:
+		return auth.EnvJWT
+	case auth.BackendNone, auth.BackendKeychain, auth.BackendFile:
 	}
 
 	return ""
@@ -275,8 +272,8 @@ func reportStdinUnusable(ctx context.Context, logger log.Logger, envs map[string
 	logger.Warnf("The sign-in took long enough that the CLI had started reading standard input, and it cannot stop.")
 	logger.Warnf("Any prompt now would drop keystrokes, so this command stops here.")
 
-	if out.Creds.PAT != "" {
-		if workspaces, err := bitriseapi.ListWorkspaces(ctx, bitriseapi.ResolveAPIBaseURL(envs), out.Creds.PAT); err == nil {
+	if out.Creds.AuthToken != "" {
+		if workspaces, err := bitriseapi.ListWorkspaces(ctx, bitriseapi.ResolveAPIBaseURL(envs), out.Creds.AuthToken); err == nil {
 			logger.Infof("Workspaces you can use:")
 			for _, ws := range workspaces {
 				logger.Infof("  %s (%s)", ws.Name, ws.Slug)

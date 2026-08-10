@@ -137,7 +137,7 @@ func (c *Checker) gradleEnabled() bool {
 }
 
 func (c *Checker) xcodeEnabled() bool {
-	cfg, err := xcelerate.ReadConfig(c.osProxy, c.decoderFactory)
+	cfg, err := xcelerate.ReadConfig(c.osProxy, c.decoderFactory, c.envs)
 	if err != nil {
 		return false
 	}
@@ -146,7 +146,7 @@ func (c *Checker) xcodeEnabled() bool {
 }
 
 func (c *Checker) cppEnabled() bool {
-	cfg, err := ccacheconfig.ReadConfig(c.osProxy, c.decoderFactory)
+	cfg, err := ccacheconfig.ReadConfig(c.osProxy, c.decoderFactory, c.envs)
 	if err != nil {
 		return false
 	}

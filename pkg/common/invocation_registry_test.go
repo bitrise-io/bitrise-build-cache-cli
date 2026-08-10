@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 type stubInvocationsAPI struct {
@@ -35,15 +34,9 @@ func (s *stubInvocationsAPI) PutInvocationRelation(rel multiplatform.InvocationR
 }
 
 func newTestRegistry(envs map[string]string) *InvocationRegistry {
-	authConfig := configcommon.CacheAuthConfig{
-		AuthToken:   "test-token",
-		WorkspaceID: "test-workspace",
-	}
-
 	return &InvocationRegistry{
-		config: multiplatformconfig.Config{
-			AuthConfig: authConfig,
-		},
+		cred:   auth.Credential{Token: "test-token", WorkspaceID: "test-workspace"},
+		origin: auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic},
 		params: InvocationRegistryParams{
 			Envs: envs,
 		},

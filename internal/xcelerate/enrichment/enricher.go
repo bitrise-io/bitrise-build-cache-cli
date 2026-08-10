@@ -7,6 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 )
@@ -23,7 +24,7 @@ type InvocationPutter interface {
 type Enricher struct {
 	Store            *Store
 	Client           InvocationPutter
-	Auth             configcommon.CacheAuthConfig
+	Auth             auth.Credential
 	Metadata         configcommon.CacheConfigMetadata
 	XcodeVersion     string
 	XcodeBuildNumber string

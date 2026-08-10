@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -48,7 +49,7 @@ func Test_activateGradleParams(t *testing.T) {
 				TestDistro: TestDistroParams{Enabled: false},
 			},
 			envVars: map[string]string{},
-			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, common.ErrAuthTokenNotProvided).Error(),
+			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, auth.ErrTokenNotProvided).Error(),
 		},
 		{
 			name: "no workspaceID",
@@ -60,7 +61,7 @@ func Test_activateGradleParams(t *testing.T) {
 			envVars: map[string]string{
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue",
 			},
-			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, common.ErrWorkspaceIDNotProvided).Error(),
+			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, auth.ErrWorkspaceIDNotProvided).Error(),
 		},
 		{
 			name: "no plugins",

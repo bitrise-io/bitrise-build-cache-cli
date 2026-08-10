@@ -2,12 +2,17 @@
 GOLANGCI_LINT_VERSION = v2.4.0
 
 .PHONY: lint
-lint:					## Runs golangci-lint
+lint:					## Runs golangci-lint and the auth layering check
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --timeout 5m
+	./scripts/lint_arch.sh
 
 .PHONY: lint-fix
 lint-fix:					## Runs golangci-lint
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --timeout 5m --fix
+
+.PHONY: lint-arch
+lint-arch:				## Enforces the auth package layering (docs/auth.md)
+	./scripts/lint_arch.sh
 
 .PHONY: govulncheck
 govulncheck:				## Runs govulncheck
@@ -43,4 +48,4 @@ run-xcelerate-proxy:
 go-generate:
 	go generate ./...
 
-check: go-generate lint-fix test-unit
+check: go-generate lint-fix lint-arch test-unit

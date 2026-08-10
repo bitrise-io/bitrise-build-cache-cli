@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func Test_ActivateBazelParams(t *testing.T) {
@@ -101,7 +101,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}, false)
 
 		// then
-		require.EqualError(t, err, fmt.Errorf("resolve auth config: %w", common.ErrAuthTokenNotProvided).Error())
+		require.EqualError(t, err, fmt.Errorf("resolve auth config: %w", auth.ErrTokenNotProvided).Error())
 	})
 
 	t.Run("TemplateInventory with cache enabled and custom endpoint", func(t *testing.T) {

@@ -7,8 +7,9 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/browse"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
 // ciProviderUnknown filters the dashboard's invocation list to local runs
@@ -16,7 +17,7 @@ import (
 // filter this is the closest "show only my local invocations" proxy.
 const ciProviderUnknown = "unknown"
 
-var ErrWorkspaceNotConfigured = errors.New(configcommon.EnvWorkspaceID + " not set — pass --workspace, export the env var, or run `bitrise-build-cache auth set` so the dashboard can pick a workspace")
+var ErrWorkspaceNotConfigured = errors.New(auth.EnvWorkspaceID + " not set — pass --workspace, export the env var, or run `bitrise-build-cache auth set` so the dashboard can pick a workspace")
 
 // WorkspaceResolver is called when --workspace + env var have both come up empty.
 type WorkspaceResolver func(envs map[string]string) (string, error)
@@ -44,7 +45,7 @@ type Browser struct {
 func (b *Browser) Open(ctx context.Context, p Params) (Result, error) {
 	workspaceID := p.WorkspaceID
 	if workspaceID == "" {
-		workspaceID = p.Envs[configcommon.EnvWorkspaceID]
+		workspaceID = p.Envs[auth.EnvWorkspaceID]
 	}
 
 	if workspaceID == "" {
@@ -107,7 +108,7 @@ func (b *Browser) Open(ctx context.Context, p Params) (Result, error) {
 }
 
 func defaultWorkspaceFromAuth(envs map[string]string) (string, error) {
-	cfg, _, err := configcommon.ResolveAuthConfig(envs)
+	cfg, _, err := live.Default(nil).ResolveNoRefresh(envs)
 	if err != nil {
 		return "", err //nolint:wrapcheck // surfaced only as a fallback signal, never propagated to the user
 	}

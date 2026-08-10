@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
@@ -25,7 +26,7 @@ func Activate(
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
 ) error {
-	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
+	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}

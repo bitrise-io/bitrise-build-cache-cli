@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -89,19 +90,22 @@ func (params ActivateBazelParams) commonTemplateInventory(
 
 	// Required configs
 	logger.Infof("(i) Check Auth Config")
-	authConfig, _, err := common.ResolveAuthConfig(envs)
+	resolver := live.Default(nil)
+
+	authConfig, _, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("resolve auth config: %w", err)
 	}
 
-	cacheConfig := common.NewMetadata(envs,
+	username, _ := resolver.ResolveUsername(envs)
+	cacheConfig := common.NewMetadata(envs, username,
 		commandFunc,
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
 	return CommonTemplateInventory{
-		AuthToken:    authConfig.AuthToken,
+		AuthToken:    authConfig.Token,
 		WorkspaceID:  authConfig.WorkspaceID,
 		Debug:        isDebug,
 		AppSlug:      cacheConfig.BitriseAppID,
