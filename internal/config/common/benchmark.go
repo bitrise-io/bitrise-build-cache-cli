@@ -14,6 +14,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/retryhttp"
 	"github.com/hashicorp/go-retryablehttp"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 const (
@@ -42,14 +44,14 @@ type BenchmarkPhaseProvider interface {
 type BenchmarkPhaseClient struct {
 	httpClient *retryablehttp.Client
 	baseURL    string
-	authConfig CacheAuthConfig
+	authConfig auth.Credential
 	logger     log.Logger
 	// Getenv resolves env vars; nil means os.Getenv. Exposed so tests can inject.
 	Getenv func(string) string
 }
 
 // NewBenchmarkPhaseClient creates a new BenchmarkPhaseClient.
-func NewBenchmarkPhaseClient(baseURL string, authConfig CacheAuthConfig, logger log.Logger) *BenchmarkPhaseClient {
+func NewBenchmarkPhaseClient(baseURL string, authConfig auth.Credential, logger log.Logger) *BenchmarkPhaseClient {
 	httpClient := retryhttp.NewClient(logger)
 	httpClient.RetryMax = benchmarkMaxRetries
 	httpClient.HTTPClient.Timeout = 10 * time.Second
@@ -108,7 +110,7 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authConfig.AuthToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authConfig.Token))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

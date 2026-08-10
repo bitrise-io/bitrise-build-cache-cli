@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -99,7 +100,7 @@ func TestAuthUsernameCmd_setPersistsIntoStoreHoldingCreds(t *testing.T) {
 	t.Setenv("BITRISE_BUILD_CACHE_USERNAME", "")
 
 	// Seed keychain with token+workspace so it becomes the target store.
-	require.NoError(t, keychain.New().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+	require.NoError(t, keychain.New().Save(authpkg.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
 
 	envs := map[string]string{}
 	require.NoError(t, setLocalUsername(envs, "carol"))
@@ -312,7 +313,7 @@ func TestAuthSetCmd_ciDetectionRoutesToFile(t *testing.T) {
 func TestAuthSetCmd_preservesOAuthFieldsOnUsernameEdit(t *testing.T) {
 	keyring.MockInit()
 	kc := keychain.New()
-	require.NoError(t, kc.Save(keychain.Credentials{
+	require.NoError(t, kc.Save(authpkg.TokenSet{
 		AuthToken:    "old-tok",
 		WorkspaceID:  "old-ws",
 		RefreshToken: "refresh-abc",
@@ -340,9 +341,9 @@ func TestClearTargets_UnavailableKeychainDoesNotBlockTheFileStore(t *testing.T) 
 	var out bytes.Buffer
 	logger := log.NewLogger(log.WithOutput(&out))
 
-	file := &fakeStore{kind: store.KindFile}
+	file := &fakeStore{backend: authpkg.BackendFile}
 	err := clearTargets(logger, []store.Store{
-		&fakeStore{kind: store.KindKeychain, clearErr: errors.Join(keychain.ErrUnavailable, errors.New("no secret service"))},
+		&fakeStore{backend: authpkg.BackendKeychain, clearErr: errors.Join(keychain.ErrUnavailable, errors.New("no secret service"))},
 		file,
 	})
 
@@ -355,9 +356,9 @@ func TestClearTargets_RealFailureIsReported(t *testing.T) {
 	var out bytes.Buffer
 	logger := log.NewLogger(log.WithOutput(&out))
 
-	file := &fakeStore{kind: store.KindFile}
+	file := &fakeStore{backend: authpkg.BackendFile}
 	err := clearTargets(logger, []store.Store{
-		&fakeStore{kind: store.KindKeychain, clearErr: errors.New("keychain is locked")},
+		&fakeStore{backend: authpkg.BackendKeychain, clearErr: errors.New("keychain is locked")},
 		file,
 	})
 
@@ -367,16 +368,16 @@ func TestClearTargets_RealFailureIsReported(t *testing.T) {
 }
 
 type fakeStore struct {
-	kind     store.Kind
+	backend  authpkg.Backend
 	clearErr error
 	cleared  bool
 }
 
-func (s *fakeStore) Kind() store.Kind { return s.kind }
-func (s *fakeStore) Load() (keychain.Credentials, error) {
-	return keychain.Credentials{}, store.ErrNotFound
+func (s *fakeStore) Backend() authpkg.Backend { return s.backend }
+func (s *fakeStore) Load() (authpkg.TokenSet, error) {
+	return authpkg.TokenSet{}, store.ErrNotFound
 }
-func (s *fakeStore) Save(keychain.Credentials) error { return nil }
+func (s *fakeStore) Save(authpkg.TokenSet) error { return nil }
 func (s *fakeStore) Clear() error {
 	if s.clearErr != nil {
 		return s.clearErr

@@ -22,7 +22,7 @@ func (ConfigMigrator) Tool() toolconfig.Tool { return toolconfig.Ccache }
 func (m ConfigMigrator) Migrate(_ string) error {
 	osProxy := utils.DefaultOsProxy{}
 
-	cfg, err := ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+	cfg, err := ReadConfig(osProxy, utils.DefaultDecoderFactory{}, utils.AllEnvs())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil

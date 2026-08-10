@@ -13,7 +13,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
@@ -52,14 +53,14 @@ func newBundleForTest(t *testing.T, home string, xcodebuildPath string) *analyti
 	t.Setenv("HOME", home)
 
 	cfg := xcelerate.Config{
-		AuthConfig: common.CacheAuthConfig{
-			AuthToken:   "test-token",
+		AuthConfig: auth.Credential{
+			Token:       "test-token",
 			WorkspaceID: "test-ws",
 		},
 		OriginalXcodebuildPath: xcodebuildPath,
 	}
 
-	ap := common.NewExpiryAwareResolver(context.Background(), map[string]string{}, nil, bundleTestLogger)
+	ap := live.Default(bundleTestLogger).Bind(map[string]string{})
 
 	return newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger, ap)
 }
@@ -92,7 +93,7 @@ func Test_newAnalyticsBundle_xcodeResolveError_leavesVersionEmptyWithoutPanic(t 
 	home := t.TempDir()
 	// Non-empty path but a commandFunc that always errors.
 	cfg := xcelerate.Config{
-		AuthConfig:             common.CacheAuthConfig{AuthToken: "t", WorkspaceID: "ws"},
+		AuthConfig:             auth.Credential{Token: "t", WorkspaceID: "ws"},
 		OriginalXcodebuildPath: "/does/not/matter/xcodebuild",
 	}
 	t.Setenv("HOME", home)
@@ -100,7 +101,7 @@ func Test_newAnalyticsBundle_xcodeResolveError_leavesVersionEmptyWithoutPanic(t 
 		return "", assert.AnError
 	}
 
-	ap := common.NewExpiryAwareResolver(context.Background(), map[string]string{}, nil, bundleTestLogger)
+	ap := live.Default(bundleTestLogger).Bind(map[string]string{})
 	b := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, errCmd, bundleTestLogger, ap)
 
 	require.NotNil(t, b)
@@ -148,7 +149,7 @@ func Test_analyticsBundle_watcher_populatedFields(t *testing.T) {
 	home := t.TempDir()
 	b := newBundleForTest(t, home, "")
 
-	w := b.watcher(bundleTestLogger)
+	w := b.watcher(t.Context(), bundleTestLogger)
 
 	require.NotNil(t, w)
 	assert.Equal(t, home, w.HomeDir)
@@ -162,7 +163,7 @@ func Test_analyticsBundle_watcher_globsIncludeManagedDD(t *testing.T) {
 	home := t.TempDir()
 	b := newBundleForTest(t, home, "")
 
-	w := b.watcher(bundleTestLogger)
+	w := b.watcher(t.Context(), bundleTestLogger)
 
 	require.NotNil(t, w)
 	assert.Contains(t, w.Globs, enrichment.DefaultDerivedDataGlob,
@@ -183,7 +184,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsTrueOnOverlap(t *testing.T) 
 		HitRate:      0.5,
 	}))
 
-	w := b.watcher(bundleTestLogger)
+	w := b.watcher(t.Context(), bundleTestLogger)
 
 	// Entry that fully overlaps the pending record's window.
 	entry := enrichment.ManifestEntry{
@@ -205,7 +206,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T)
 		Duration:     60_000,
 	}))
 
-	w := b.watcher(bundleTestLogger)
+	w := b.watcher(t.Context(), bundleTestLogger)
 
 	// Entry far in the future — no overlap.
 	entry := enrichment.ManifestEntry{
@@ -221,7 +222,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testi
 	b := newBundleForTest(t, home, "")
 	b.pending = nil
 
-	w := b.watcher(bundleTestLogger)
+	w := b.watcher(t.Context(), bundleTestLogger)
 
 	entry := enrichment.ManifestEntry{
 		UUID:  "u1",

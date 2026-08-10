@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
@@ -152,10 +153,14 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 // ---------------------------------------------------------------------------
 
 func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
-	authConfig, _, err := configcommon.ResolveAuthConfig(h.envs)
+	resolver := live.Default(nil)
+
+	authConfig, _, err := resolver.ResolveNoRefresh(h.envs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve auth config: %w", err)
 	}
+
+	hostUsername, _ := resolver.ResolveUsername(h.envs)
 
 	endpointURL := configcommon.SelectCacheEndpointURL(h.endpointURL, h.envs)
 	h.logger.Debugf("Build Cache Endpoint URL: %s", endpointURL)
@@ -172,7 +177,7 @@ func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
 		ClientName:          ClientName,
 		AuthConfig:          authConfig,
 		Logger:              h.logger,
-		CacheConfigMetadata: configcommon.NewMetadata(h.envs, h.commandFunc, h.logger),
+		CacheConfigMetadata: configcommon.NewMetadata(h.envs, hostUsername, h.commandFunc, h.logger),
 		CacheOperationID:    uuid.NewString(),
 	})
 	if err != nil {

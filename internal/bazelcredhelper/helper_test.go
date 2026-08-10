@@ -16,15 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func envResolver(t *testing.T, token string) Resolver {
 	t.Helper()
 
 	return NewResolver(map[string]string{
-		configcommon.EnvAuthToken:   token,
-		configcommon.EnvWorkspaceID: "ws-1",
+		auth.EnvAuthToken:   token,
+		auth.EnvWorkspaceID: "ws-1",
 	}, io.Discard)
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofrs/flock"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
@@ -49,13 +50,13 @@ func acquireRefreshLock(ctx context.Context) (func() error, error) {
 
 // A process we queued behind may have already refreshed, and spending an
 // already-rotated refresh token would invalidate the login.
-func reloadStored(creds Credentials, save func(Credentials) error) (Credentials, func(Credentials) error) {
+func reloadStored(creds auth.TokenSet, save func(auth.TokenSet) error) (auth.TokenSet, func(auth.TokenSet) error) {
 	fresh, freshSrc, err := LoadWithSource()
 	if err != nil || !fresh.IsOAuthManaged() {
 		return creds, save
 	}
 	if freshSrc != nil {
-		save = func(cr Credentials) error { return SaveTo(freshSrc, cr) }
+		save = func(cr auth.TokenSet) error { return saveTo(freshSrc, cr) }
 	}
 
 	return fresh, save

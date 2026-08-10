@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -14,35 +16,18 @@ import (
 // Sentinel independent of backend; callers can errors.Is either this or keychain.ErrNotFound.
 var ErrNotFound = errors.New("no Bitrise Build Cache credentials in store")
 
-type Kind int
-
-const (
-	KindKeychain Kind = iota
-	KindFile
-)
-
-func (k Kind) String() string {
-	switch k {
-	case KindKeychain:
-		return "keychain"
-	case KindFile:
-		return "file"
-	}
-
-	return "unknown"
-}
-
 // Load returns ErrNotFound when nothing is stored.
 type Store interface {
-	Kind() Kind
-	Load() (keychain.Credentials, error)
-	Save(creds keychain.Credentials) error
+	Backend() auth.Backend
+	Load() (auth.TokenSet, error)
+	Save(creds auth.TokenSet) error
 	Clear() error
 }
 
-// CI→file, local→keychain. Total function; no error path.
-func SelectAuto(envs map[string]string) Store {
-	if common.DetectCIProvider(envs) != "" {
+// CI→file, because fastlane setup_ci swaps the keychain out from under us. Takes
+// the answer rather than the environment: CI-ness affects only the write target.
+func SelectAuto(isCI bool) Store {
+	if isCI {
 		return NewFile()
 	}
 
@@ -50,10 +35,10 @@ func SelectAuto(envs map[string]string) Store {
 }
 
 // override: "keychain" | "file" | "" | "auto"; empty/auto delegates to SelectAuto.
-func Select(envs map[string]string, override string) (Store, error) {
+func Select(isCI bool, override string) (Store, error) {
 	switch override {
 	case "", "auto":
-		return SelectAuto(envs), nil
+		return SelectAuto(isCI), nil
 	case "keychain":
 		return NewKeychain(), nil
 	case "file":
@@ -63,13 +48,14 @@ func Select(envs map[string]string, override string) (Store, error) {
 	return nil, fmt.Errorf("unknown storage backend %q (want keychain|file|auto)", override)
 }
 
-// Saves to target, then best-effort clears every other backend to prevent split-brain.
-func SaveExclusive(target Store, creds keychain.Credentials) error {
+// saveExclusive saves to target, then best-effort clears every other backend to
+// prevent split-brain.
+func saveExclusive(target Store, creds auth.TokenSet) error {
 	if err := target.Save(creds); err != nil {
 		return err //nolint:wrapcheck
 	}
 	for _, other := range []Store{NewKeychain(), NewFile()} {
-		if other.Kind() == target.Kind() {
+		if other.Backend() == target.Backend() {
 			continue
 		}
 		_ = other.Clear()
@@ -78,37 +64,72 @@ func SaveExclusive(target Store, creds keychain.Credentials) error {
 	return nil
 }
 
-// SaveOutcome reports which backend a save ended up in. KeychainErr is set only
-// when the keychain was tried and refused, so callers can explain the fallback.
-type SaveOutcome struct {
-	Kind        Kind
-	FellBack    bool
+// KeychainErr is set only when the keychain was tried and refused; a non-nil value
+// is itself the fallback signal.
+type SaveResult struct {
+	Origin      auth.Origin
 	KeychainErr error
 }
 
-// SaveExclusiveWithFallback saves to target, dropping to the file store when the
-// keychain refuses the write: a host with no secret-service (headless Linux,
-// containers) would otherwise have no way to store credentials at all, short of
-// knowing to pass --storage=file.
+func (r SaveResult) WarnFallback(logger log.Logger) {
+	if r.KeychainErr != nil && logger != nil {
+		logger.Warnf("Could not write to the OS keychain (%s).", r.KeychainErr)
+	}
+}
+
+// SaveExclusiveWithFallback saves to target and clears every other backend,
+// dropping to the file store when the keychain refuses the write: a host with no
+// secret-service (headless Linux, containers) would otherwise have no way to
+// store credentials at all, short of knowing to pass --storage=file.
+//
+// Exclusive because it backs a deliberate user action (`auth login`, `auth set`)
+// where two populated backends would be split-brain. Activation must use
+// SaveWithFallback instead — see the note there.
 //
 // allowFallback is false when the caller picked the backend explicitly — they
 // asked for that one, so silently using another would be wrong.
-func SaveExclusiveWithFallback(target Store, creds keychain.Credentials, allowFallback bool) (SaveOutcome, error) {
-	err := SaveExclusive(target, creds)
+func SaveExclusiveWithFallback(target Store, creds auth.TokenSet, allowFallback bool) (SaveResult, error) {
+	return saveExclusiveWithFallback(target, creds, allowFallback)
+}
+
+// SaveWithFallback saves to target and leaves every other backend alone. Used
+// when materialising an injected credential during activation: clearing the other
+// backend there would throw away a login the user deliberately stored, which is
+// not something an incidental write should ever do.
+//
+// merge rebuilds the record against whichever backend is actually written. A
+// record derived from an unreadable keychain carries no refresh token, and
+// writing that to the file store is what turns a keychain outage into a lost
+// login.
+func SaveWithFallback(target Store, merge func(Store) auth.TokenSet, allowFallback bool) (SaveResult, error) {
+	return saveWithFallback(target, merge, allowFallback, func(s Store, c auth.TokenSet) error {
+		return s.Save(c) //nolint:wrapcheck // backends already wrap
+	})
+}
+
+func saveExclusiveWithFallback(target Store, creds auth.TokenSet, allowFallback bool) (SaveResult, error) {
+	return saveWithFallback(target, func(Store) auth.TokenSet { return creds }, allowFallback, saveExclusive)
+}
+
+func saveWithFallback(target Store, merge func(Store) auth.TokenSet, allowFallback bool, save func(Store, auth.TokenSet) error) (SaveResult, error) {
+	creds := merge(target)
+
+	err := save(target, creds)
 	if err == nil {
-		return SaveOutcome{Kind: target.Kind()}, nil
+		return SaveResult{Origin: creds.Origin(target.Backend())}, nil
 	}
 
-	if target.Kind() != KindKeychain || !allowFallback {
-		return SaveOutcome{Kind: target.Kind()}, err
+	if target.Backend() != auth.BackendKeychain || !allowFallback {
+		return SaveResult{Origin: creds.Origin(target.Backend())}, err
 	}
 
 	fallback := NewFile()
-	if fbErr := SaveExclusive(fallback, creds); fbErr != nil {
-		return SaveOutcome{Kind: fallback.Kind()}, fmt.Errorf("save to the keychain (%w) and to the config file (%w)", err, fbErr)
+	fbCreds := merge(fallback)
+	if fbErr := save(fallback, fbCreds); fbErr != nil {
+		return SaveResult{Origin: fbCreds.Origin(fallback.Backend())}, fmt.Errorf("save to the keychain (%w) and to the config file (%w)", err, fbErr)
 	}
 
-	return SaveOutcome{Kind: fallback.Kind(), FellBack: true, KeychainErr: err}, nil
+	return SaveResult{Origin: fbCreds.Origin(fallback.Backend()), KeychainErr: err}, nil
 }
 
 func NewKeychain() Store {
@@ -127,21 +148,22 @@ type keychainStore struct {
 	kc *keychain.Keychain
 }
 
-func (s keychainStore) Kind() Kind { return KindKeychain }
+func (s keychainStore) Backend() auth.Backend { return auth.BackendKeychain }
 
 // A machine with no keychain reads as empty rather than failing, so every
-// credential lookup falls through to the next backend. `auth status` and the
-// doctor call the keychain directly and keep the distinction.
-func (s keychainStore) Load() (keychain.Credentials, error) {
+// credential lookup falls through to the next backend. The keychain sentinel is
+// wrapped rather than replaced, so a caller that needs to tell "nothing stored"
+// from "no keyring on this host" can still errors.Is for either.
+func (s keychainStore) Load() (auth.TokenSet, error) {
 	creds, err := s.kc.Load()
 	if errors.Is(err, keychain.ErrNotFound) || errors.Is(err, keychain.ErrUnavailable) {
-		return keychain.Credentials{}, ErrNotFound
+		return auth.TokenSet{}, fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
 
 	return creds, err //nolint:wrapcheck // keychain.Keychain already wraps
 }
 
-func (s keychainStore) Save(c keychain.Credentials) error {
+func (s keychainStore) Save(c auth.TokenSet) error {
 	return s.kc.Save(c) //nolint:wrapcheck
 }
 
@@ -155,18 +177,18 @@ type fileStore struct {
 	decoderFactory utils.DecoderFactory
 }
 
-func (s fileStore) Kind() Kind { return KindFile }
+func (s fileStore) Backend() auth.Backend { return auth.BackendFile }
 
-func (s fileStore) Load() (keychain.Credentials, error) {
+func (s fileStore) Load() (auth.TokenSet, error) {
 	creds, ok := multiplatformconfig.ReadCredentials(s.osProxy, s.decoderFactory)
 	if !ok {
-		return keychain.Credentials{}, ErrNotFound
+		return auth.TokenSet{}, ErrNotFound
 	}
 
 	return creds, nil
 }
 
-func (s fileStore) Save(c keychain.Credentials) error {
+func (s fileStore) Save(c auth.TokenSet) error {
 	if err := multiplatformconfig.SaveCredentials(s.osProxy, s.encoderFactory, s.decoderFactory, c); err != nil {
 		return fmt.Errorf("save credentials to multiplatform config: %w", err)
 	}

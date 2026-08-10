@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
@@ -23,14 +24,14 @@ const (
 )
 
 // BackendProbeFunc returns latency (always populated, even on error so callers can surface "took N ms then failed").
-type BackendProbeFunc func(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error)
+type BackendProbeFunc func(ctx context.Context, cfg auth.Credential, envs map[string]string) (time.Duration, error)
 
 func (d *Doctor) authBackendCheck() Check {
 	return Check{
 		Name: "auth-backend",
 		Diagnose: func(ctx context.Context) Result {
-			cfg, source, err := common.ResolveAuthConfig(d.Envs)
-			srcLabel := sourceLabel(source)
+			cfg, origin, err := d.resolver().ResolveNoRefresh(d.Envs)
+			srcLabel := origin.ShortLabel()
 			if err != nil {
 				return Result{State: StateOK, Detail: "skipped (source=none, no credentials resolvable: " + err.Error() + ")"}
 			}
@@ -81,12 +82,12 @@ func backendErrorFixable(err error) bool {
 }
 
 func defaultBackendProbe(debug bool) BackendProbeFunc {
-	return func(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string) (time.Duration, error) {
+	return func(ctx context.Context, cfg auth.Credential, envs map[string]string) (time.Duration, error) {
 		return runBackendProbe(ctx, cfg, envs, debug)
 	}
 }
 
-func runBackendProbe(ctx context.Context, cfg common.CacheAuthConfig, envs map[string]string, debug bool) (time.Duration, error) {
+func runBackendProbe(ctx context.Context, cfg auth.Credential, envs map[string]string, debug bool) (time.Duration, error) {
 	endpoint := common.SelectCacheEndpointURL("", envs)
 	host, insecureGRPC, err := kv.ParseURLGRPC(endpoint)
 	if err != nil {
@@ -161,7 +162,7 @@ func backendErrorState(err error) State {
 	return StateError
 }
 
-func backendErrorDetail(err error, cfg common.CacheAuthConfig, srcLabel string, latency time.Duration) string {
+func backendErrorDetail(err error, cfg auth.Credential, srcLabel string, latency time.Duration) string {
 	prefix := fmt.Sprintf("latency %dms, source=%s, workspace=%s — ", latency.Milliseconds(), srcLabel, cfg.WorkspaceID)
 
 	// The kv client converts gRPC Unauthenticated into a plain sentinel error
@@ -182,23 +183,4 @@ func backendErrorDetail(err error, cfg common.CacheAuthConfig, srcLabel string, 
 	}
 
 	return prefix + err.Error()
-}
-
-func sourceLabel(s common.AuthSource) string {
-	switch s {
-	case common.AuthSourceKeychain:
-		return "keychain"
-	case common.AuthSourceEnvVars:
-		return "env"
-	case common.AuthSourceJWT:
-		return "jwt"
-	case common.AuthSourceFile:
-		return "config-file"
-	case common.AuthSourceMultiplatform:
-		return "multiplatform-config"
-	case common.AuthSourceNone:
-		return "none"
-	}
-
-	return "unknown"
 }

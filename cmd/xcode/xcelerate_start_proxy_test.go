@@ -20,7 +20,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode/mocks"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/kv"
@@ -52,9 +52,9 @@ func Test_XcelerateProxy(t *testing.T) {
 	defer cancel()
 
 	config := xcelerate.Config{
-		AuthConfig: common.CacheAuthConfig{
-			AuthToken:   envVars[common.EnvAuthToken],
-			WorkspaceID: envVars[common.EnvWorkspaceID],
+		AuthConfig: auth.Credential{
+			Token:       envVars[auth.EnvAuthToken],
+			WorkspaceID: envVars[auth.EnvWorkspaceID],
 		},
 	}
 

@@ -10,7 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/status"
 )
@@ -146,30 +147,33 @@ type statusOutput struct {
 	Auth        authStatusInfo `json:"auth"`
 }
 
-// currentAuthStatus reports the credential commands would use, via config
-// common's resolution + shared AuthDescription. Never refreshes or writes.
+// currentAuthStatus reports the credential commands would use. Never refreshes
+// or writes.
 func currentAuthStatus() authStatusInfo {
-	cfg, source, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+	cred, origin, err := live.Default(nil).ResolveNoRefresh(utils.AllEnvs())
 	switch {
-	case errors.Is(err, configcommon.ErrAuthTokenNotProvided), errors.Is(err, configcommon.ErrWorkspaceIDNotProvided):
+	case errors.Is(err, authpkg.ErrTokenNotProvided), errors.Is(err, authpkg.ErrWorkspaceIDNotProvided):
 		return authStatusInfo{Source: "none"}
 	case err != nil:
 		// A real resolution failure (e.g. a malformed service JWT) — surface it
 		// rather than mislabel it "not configured".
 		return authStatusInfo{Source: "error", Error: err.Error()}
-	case cfg.AuthToken == "":
+	case cred.Token == "":
 		return authStatusInfo{Source: "none"}
 	}
 
-	d := configcommon.DescribeResolved(cfg, source)
 	info := authStatusInfo{
 		Configured:  true,
-		Source:      d.Label(),
-		WorkspaceID: d.WorkspaceID,
+		Source:      origin.Label(),
+		WorkspaceID: cred.WorkspaceID,
 	}
-	if !d.PATExpiry.IsZero() {
-		info.TokenExpiry = d.PATExpiry.Format(time.RFC3339)
-		info.Expired = d.Expired()
+	// A JWT embeds the workspace; the old shape never surfaced it.
+	if origin.Backend == authpkg.BackendJWT {
+		info.WorkspaceID = ""
+	}
+	if !cred.Expiry.IsZero() {
+		info.TokenExpiry = cred.Expiry.Format(time.RFC3339)
+		info.Expired = cred.Expired()
 	}
 
 	return info

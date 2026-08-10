@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
@@ -109,7 +110,7 @@ func NewCcacheInvocation(
 	invocationDate time.Time,
 	stats CcacheStats,
 	downloadedBytes, uploadedBytes int64,
-	authMetadata common.CacheAuthConfig,
+	authMetadata auth.Credential,
 	commonMetadata common.CacheConfigMetadata,
 ) *CcacheInvocation {
 	var ccacheErr error

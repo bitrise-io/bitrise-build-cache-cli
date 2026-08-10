@@ -10,8 +10,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -92,6 +93,36 @@ func TestActivator_exportEASWorkingDirIfCI(t *testing.T) {
 	})
 }
 
+func TestNewActivator_PushEnabledPropagates(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	cases := []struct {
+		name        string
+		pushEnabled bool
+		wantPush    bool
+	}{
+		{name: "push enabled", pushEnabled: true, wantPush: true},
+		{name: "push disabled (default)", pushEnabled: false, wantPush: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := NewActivator(ActivatorParams{
+				GradleEnabled: true,
+				XcodeEnabled:  true,
+				CppEnabled:    true,
+				PushEnabled:   tc.pushEnabled,
+			})
+
+			require.NotNil(t, a.gradle)
+			require.NotNil(t, a.xcode)
+			require.NotNil(t, a.cpp)
+			assert.Equal(t, tc.wantPush, a.gradle.pushEnabled)
+			assert.Equal(t, tc.wantPush, a.xcode.pushEnabled)
+		})
+	}
+}
+
 func TestNewActivator_CppRequiresGradle(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -134,12 +165,15 @@ func TestNewActivator_CppRequiresGradle(t *testing.T) {
 
 // Config.Save rewrites the whole file, so a fresh Config here erases the login.
 func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
+	// Pinning an env credential writes to a store; without this it reaches the
+	// real OS keychain and blocks on the unlock prompt.
+	keyring.MockInit()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "bitpat_refreshed")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-1")
 
-	login := keychain.Credentials{
+	login := auth.TokenSet{
 		AuthToken:    "bitpat_minted",
 		WorkspaceID:  "ws-1",
 		RefreshToken: "refresh-me",
@@ -148,7 +182,7 @@ func TestSaveMultiplatformConfig_KeepsExistingCredentials(t *testing.T) {
 	before := multiplatformconfig.Config{Credentials: &login}
 	require.NoError(t, before.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}))
 
-	require.NoError(t, saveMultiplatformConfig(true))
+	require.NoError(t, saveMultiplatformConfig(t.Context(), utils.AllEnvs(), true))
 
 	after, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.NoError(t, err)

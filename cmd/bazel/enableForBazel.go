@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -62,7 +63,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata
-	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(),
+	cacheConfig := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(envProvider),
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
 
@@ -116,4 +117,11 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 	}
 
 	return nil
+}
+
+// invocationUsername names the person behind a local invocation for analytics.
+func invocationUsername(envs map[string]string) string {
+	name, _ := live.Default(nil).ResolveUsername(envs)
+
+	return name
 }

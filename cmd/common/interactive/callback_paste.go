@@ -9,7 +9,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 )
 
 // pasteGrace is how long the loopback gets before stdin is touched. A browser

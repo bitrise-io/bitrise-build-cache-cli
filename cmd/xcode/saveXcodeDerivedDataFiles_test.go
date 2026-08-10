@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	xcodeMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata/mocks"
 )
 
@@ -25,7 +25,7 @@ func Test_saveXcodeDerivedDataFilesCmdFn(t *testing.T) {
 		}
 		_, err := xcode.SaveXcodeDerivedDataFilesCmdFn(
 			context.Background(),
-			common.CacheAuthConfig{},
+			auth.Credential{},
 			"",
 			"",
 			"",

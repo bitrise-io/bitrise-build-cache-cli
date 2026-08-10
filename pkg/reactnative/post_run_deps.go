@@ -11,9 +11,10 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -53,7 +54,8 @@ type localInvocationLogger interface {
 // collection, and invocation relation registration.
 type postRunDeps struct {
 	logger     log.Logger
-	authConfig common.CacheAuthConfig
+	authConfig authpkg.Credential
+	username   string
 	client     *ccacheanalytics.Client
 
 	// localLogger appends the wrapper's parent record to the shared local
@@ -62,15 +64,17 @@ type postRunDeps struct {
 	localLogger localInvocationLogger
 }
 
-func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory utils.DecoderFactory) *postRunDeps {
-	config, err := multiplatformconfig.ReadConfig(osProxy, decoderFactory)
+func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
+	cred, origin, err := resolver.ResolveNoRefresh(utils.AllEnvs())
 	if err != nil {
-		logger.TWarnf("Failed to read multiplatform analytics config for post-run hook: %v", err)
+		logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
 
 		return nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, config.AuthConfig.TokenInGradleFormat(), logger)
+	username, _ := resolver.ResolveUsername(utils.AllEnvs())
+
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), logger)
 	if err != nil {
 		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
@@ -79,7 +83,8 @@ func newPostRunDeps(logger log.Logger, osProxy utils.OsProxy, decoderFactory uti
 
 	return &postRunDeps{
 		logger:     logger,
-		authConfig: config.AuthConfig,
+		authConfig: cred,
+		username:   username,
 		client:     client,
 	}
 }
@@ -212,7 +217,7 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 	envs := utils.AllEnvs()
 
-	return common.NewMetadata(envs, func(name string, args ...string) (string, error) {
+	return common.NewMetadata(envs, d.username, func(name string, args ...string) (string, error) {
 		out, err := osexec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
 
 		return string(out), err

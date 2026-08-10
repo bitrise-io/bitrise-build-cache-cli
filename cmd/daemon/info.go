@@ -85,7 +85,7 @@ var infoCmd = &cobra.Command{
 }
 
 func readXcelerateInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) serviceInfo {
-	cfg, err := xcelerateconfig.ReadConfig(osProxy, decoder)
+	cfg, err := xcelerateconfig.ReadConfig(osProxy, decoder, utils.AllEnvs())
 	switch {
 	case err == nil && cfg.ProxySocketPath != "":
 		return serviceInfo{Socket: cfg.ProxySocketPath, Status: probeSocket(cfg.ProxySocketPath)}
@@ -97,7 +97,7 @@ func readXcelerateInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) serv
 }
 
 func readCcacheInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) serviceInfo {
-	cfg, err := ccacheconfig.ReadConfig(osProxy, decoder)
+	cfg, err := ccacheconfig.ReadConfig(osProxy, decoder, utils.AllEnvs())
 	switch {
 	case err == nil && cfg.IPCEndpoint != "":
 		return serviceInfo{Socket: cfg.IPCEndpoint, Status: probeCcacheSocket(cfg.IPCEndpoint)}
