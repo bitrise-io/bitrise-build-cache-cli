@@ -38,16 +38,17 @@ report() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 tokenset_allowed=(
-	# path regex                          # why it may name TokenSet
-	'^\./internal/auth/'                  # L0-L4: the type's own tree
-	'^\./internal/config/multiplatform/'  # L1: the file backend serialises it
-	'^\./cmd/auth/'                       # auth login/set/clear write whole records; auth status audits them
-	'^\./cmd/common/interactive/'         # the wizard completes a sign-in and stores the result
-	'^\./internal/authprompt/'            # the doctor's auth fixer writes the credential the user typed
-	'_test\.go$'                          # tests construct records to drive the layers below
+	'^internal/auth/'                   # L0-L4: the type's own tree
+	'^internal/config/multiplatform/'   # L1: the file backend serialises it
+	'^cmd/auth/'                        # auth login/set/clear write whole records; auth status audits them
+	'^cmd/common/interactive/'          # the wizard completes a sign-in and stores the result
+	'^internal/authprompt/'             # the doctor's auth fixer writes the credential the user typed
+	'_test\.go$'                        # tests construct records to drive the layers below
 )
 
-hits=$(grep -rln 'auth\.TokenSet\|authpkg\.TokenSet' --include='*.go' . 2>/dev/null || true)
+# git ls-files, not `grep -r .`, which also descends into nested git worktrees and
+# vendored copies where these prefixes do not match.
+hits=$(git ls-files '*.go' | xargs grep -ln 'auth\.TokenSet\|authpkg\.TokenSet' 2>/dev/null || true)
 for allow in "${tokenset_allowed[@]}"; do
 	hits=$(printf '%s\n' "$hits" | grep -v "$allow" || true)
 done

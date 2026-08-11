@@ -102,3 +102,38 @@ func TestResolvePinned_FallbackMergesAgainstTheFileNotTheDeadKeychain(t *testing
 	assert.Equal(t, "refresh-me", after.RefreshToken, "the file's refresh token must survive a keychain outage")
 	assert.Equal(t, "dev", after.Username)
 }
+
+// Guards what the fallback test cannot: on the happy path the file store must be
+// untouched. Switching to store.SaveExclusiveWithFallback would clear it, taking a
+// login stored there with it, and every other test here would still pass.
+func TestResolvePinned_HealthyKeychainLeavesTheFileUntouched(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	fileLogin := auth.TokenSet{
+		AuthToken:    "file-pat",
+		WorkspaceID:  "file-ws",
+		RefreshToken: "file-refresh",
+		Username:     "dev",
+	}
+	require.NoError(t, store.NewFile().Save(fileLogin))
+
+	// Backends[0] is the pin target; the env credential outranks the file, so the
+	// pin actually runs.
+	r := &Resolver{
+		Backends:       []store.Store{store.NewKeychain(), store.NewFile()},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	_, origin, err := r.ResolvePinned(t.Context(), envVars(), false)
+	require.NoError(t, err)
+	require.Equal(t, auth.BackendEnv, origin.Backend, "the env credential must be the one being pinned")
+
+	kc, err := store.NewKeychain().Load()
+	require.NoError(t, err, "the keychain is the target and must have been written")
+	assert.Equal(t, envToken, kc.AuthToken)
+
+	onDisk, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.True(t, ok, "the file store must still hold its record — an incidental write must not clear it")
+	assert.Equal(t, fileLogin, onDisk, "the file store must be byte-for-byte untouched")
+}
