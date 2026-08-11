@@ -13,7 +13,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/shirou/gopsutil/v4/process"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -66,7 +66,7 @@ func Activate(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
-	authConfig, _, err := configcommon.ResolveAuthConfig(envs)
+	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envs)
 	if err != nil {
 		return fmt.Errorf("resolve auth config: %w", err)
 	}
@@ -93,9 +93,18 @@ func Activate(
 
 	ensureLogDir(logger, osProxy)
 
-	mpCfg := multiplatformconfig.Config{DebugLogging: config.DebugLogging}
-	store.PersistActivateCreds(logger, envs, config.AuthConfig, &mpCfg)
-	if err := mpCfg.Save(osProxy, encoderFactory); err != nil {
+	// Materialise an env- or JWT-sourced credential: the proxy and the analytics
+	// readers start in shells that never saw those variables.
+	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.DetectCIProvider(envs) != ""); err != nil {
+		return fmt.Errorf("persist auth credentials: %w", err)
+	}
+
+	// Read-modify-write: Config.Save is a full overwrite, and a fresh Config here
+	// would drop the credentials block that is the only credential store on a
+	// keychain-less host.
+	if err := multiplatformconfig.Update(osProxy, encoderFactory, decoderFactory, func(c *multiplatformconfig.Config) {
+		c.DebugLogging = config.DebugLogging
+	}); err != nil {
 		return fmt.Errorf("failed to save multiplatform analytics config: %w", err)
 	}
 	logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(osProxy))
@@ -160,7 +169,7 @@ func overrideActivateXcodeParamsFromExistingConfig(
 	decoderFactory utils.DecoderFactory,
 	envs map[string]string,
 ) {
-	if existingConfig, err := ReadConfig(osProxy, decoderFactory); err == nil {
+	if existingConfig, err := ReadConfig(osProxy, decoderFactory, envs); err == nil {
 		if strings.Contains(existingConfig.OriginalXcodebuildPath, PathFor(osProxy, BinDir)) {
 			logger.Warnf("Removing xcelerate wrapper as original xcodebuild path...")
 			existingConfig.OriginalXcodebuildPath = ""

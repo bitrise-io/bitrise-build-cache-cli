@@ -7,6 +7,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
@@ -24,7 +26,7 @@ type CreateKVClientParams struct {
 	CacheOperationID   string
 	ClientName         string
 	InvocationID       string
-	AuthConfig         common.CacheAuthConfig
+	AuthConfig         auth.Credential
 	AuthSource         kv.AuthSource // preferred; falls back to AuthConfig when nil
 	Envs               map[string]string
 	CommandFunc        common.CommandFunc
@@ -56,7 +58,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		AuthConfig:          params.AuthConfig,
 		AuthSource:          params.AuthSource,
 		Logger:              params.Logger,
-		CacheConfigMetadata: common.NewMetadata(params.Envs, params.CommandFunc, params.Logger),
+		CacheConfigMetadata: common.NewMetadata(params.Envs, kvUsername(params.Envs), params.CommandFunc, params.Logger),
 		CacheOperationID:    params.CacheOperationID,
 		BitriseKVClient:     params.BitriseKVClient,
 		CapabilitiesClient:  params.CapabilitiesClient,
@@ -75,4 +77,11 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 	}
 
 	return kvClient, nil
+}
+
+// kvUsername names the person behind a local invocation for analytics.
+func kvUsername(envs map[string]string) string {
+	name, _ := live.Default(nil).ResolveUsername(envs)
+
+	return name
 }

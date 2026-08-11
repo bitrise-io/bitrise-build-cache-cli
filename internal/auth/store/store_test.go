@@ -11,35 +11,33 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 func TestSelect_defaultsToKeychainLocally(t *testing.T) {
-	s, err := Select(map[string]string{}, "")
+	s, err := Select(false, "")
 	require.NoError(t, err)
-	assert.Equal(t, KindKeychain, s.Kind())
+	assert.Equal(t, auth.BackendKeychain, s.Backend())
 }
 
 func TestSelect_defaultsToFileOnCI(t *testing.T) {
-	envs := map[string]string{"CIRCLECI": "true"}
-	s, err := Select(envs, "")
+	s, err := Select(true, "")
 	require.NoError(t, err)
-	assert.Equal(t, KindFile, s.Kind())
+	assert.Equal(t, auth.BackendFile, s.Backend())
 }
 
 func TestSelect_overrides(t *testing.T) {
-	envs := map[string]string{"CIRCLECI": "true"} // CI, but override
-	kc, err := Select(envs, "keychain")
+	kc, err := Select(true, "keychain") // CI, but override
 	require.NoError(t, err)
-	assert.Equal(t, KindKeychain, kc.Kind())
+	assert.Equal(t, auth.BackendKeychain, kc.Backend())
 
-	fs, err := Select(map[string]string{}, "file")
+	fs, err := Select(false, "file")
 	require.NoError(t, err)
-	assert.Equal(t, KindFile, fs.Kind())
+	assert.Equal(t, auth.BackendFile, fs.Backend())
 }
 
 func TestSelect_unknownOverrideErrors(t *testing.T) {
-	_, err := Select(map[string]string{}, "vault")
+	_, err := Select(false, "vault")
 	require.Error(t, err)
 }
 
@@ -56,9 +54,9 @@ func TestSaveExclusive_ClearsOtherBackend(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	kc := NewKeychain()
-	require.NoError(t, kc.Save(keychain.Credentials{AuthToken: "old", WorkspaceID: "old-ws"}))
+	require.NoError(t, kc.Save(auth.TokenSet{AuthToken: "old", WorkspaceID: "old-ws"}))
 
-	require.NoError(t, SaveExclusive(NewFile(), keychain.Credentials{AuthToken: "new", WorkspaceID: "new-ws"}))
+	require.NoError(t, saveExclusive(NewFile(), auth.TokenSet{AuthToken: "new", WorkspaceID: "new-ws"}))
 
 	_, err := kc.Load()
 	require.ErrorIs(t, err, ErrNotFound, "keychain must be cleared after exclusive file save")
@@ -74,11 +72,11 @@ func TestSetUsername_landsInStoreHoldingCredsAndPreservesAuth(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	// Creds live only in the file store; keychain is empty.
-	require.NoError(t, NewFile().Save(keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws"}))
+	require.NoError(t, NewFile().Save(auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
 
-	kind, err := SetUsername(map[string]string{}, "erin")
+	origin, err := SetUsername(false, "erin")
 	require.NoError(t, err)
-	assert.Equal(t, KindFile, kind, "username must land in the file store that holds the creds, not the keychain")
+	assert.Equal(t, auth.BackendFile, origin.Backend, "username must land in the file store that holds the creds, not the keychain")
 
 	got, err := NewFile().Load()
 	require.NoError(t, err)
@@ -95,7 +93,7 @@ func TestFileStore_SavePersistsAtRestrictedPerms(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	s := NewFile()
-	require.NoError(t, s.Save(keychain.Credentials{AuthToken: "t", WorkspaceID: "w"}))
+	require.NoError(t, s.Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w"}))
 
 	info, err := os.Stat(filepath.Join(home, ".bitrise", "analytics", "multiplatform", "config.json"))
 	require.NoError(t, err)
@@ -115,7 +113,7 @@ func TestFileStore_RoundTrip(t *testing.T) {
 	_, err := s.Load()
 	require.ErrorIs(t, err, ErrNotFound)
 
-	want := keychain.Credentials{AuthToken: "tok", WorkspaceID: "ws", Username: "u"}
+	want := auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws", Username: "u"}
 	require.NoError(t, s.Save(want))
 
 	got, err := s.Load()
@@ -125,4 +123,20 @@ func TestFileStore_RoundTrip(t *testing.T) {
 	require.NoError(t, s.Clear())
 	_, err = s.Load()
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// The display name is machine-level config set by `auth username`, so a sign-in
+// has to carry it across even when the exclusive write lands in a different
+// backend than the one holding it.
+func TestStoredUsername_FoundInEitherBackend(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	assert.Empty(t, StoredUsername(), "nothing stored yet")
+
+	require.NoError(t, NewFile().Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w", Username: "from-file"}))
+	assert.Equal(t, "from-file", StoredUsername(), "found even when only the file store has it")
+
+	require.NoError(t, NewKeychain().Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w", Username: "from-keychain"}))
+	assert.Equal(t, "from-keychain", StoredUsername(), "the keychain is consulted first")
 }

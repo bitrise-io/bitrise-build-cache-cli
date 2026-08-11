@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"testing"
 
@@ -62,6 +63,11 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 		WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error { return nil },
 		RenameFunc:    func(_, _ string) error { return nil },
 		RemoveFunc:    func(_ string) error { return nil },
+		// The analytics config is now read-modify-write, so activation opens it
+		// before saving. Absent is the normal first-activation case.
+		OpenFileFunc: func(_ string, _ int, _ os.FileMode) (*os.File, error) {
+			return nil, fs.ErrNotExist
+		},
 	}
 }
 

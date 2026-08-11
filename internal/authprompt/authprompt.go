@@ -7,6 +7,7 @@ import (
 
 	"charm.land/huh/v2"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
@@ -28,7 +29,7 @@ func Group(workspaceID, authToken *string) *huh.Group {
 }
 
 type KeychainSaver interface {
-	Save(creds keychain.Credentials) error
+	Save(creds auth.TokenSet) error
 }
 
 type Prompter struct {
@@ -55,7 +56,7 @@ func (p Prompter) PromptAndSave() (workspaceID, authToken string, err error) {
 		kc = keychain.New()
 	}
 
-	if err := kc.Save(keychain.Credentials{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
+	if err := kc.Save(auth.TokenSet{AuthToken: authToken, WorkspaceID: workspaceID}); err != nil {
 		return workspaceID, authToken, fmt.Errorf("save credentials to keychain: %w", err)
 	}
 

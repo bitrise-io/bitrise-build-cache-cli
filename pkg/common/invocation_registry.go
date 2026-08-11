@@ -9,6 +9,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -56,9 +58,11 @@ type invocationsAPI interface {
 
 // InvocationRegistry manages invocation registration with the analytics backend.
 type InvocationRegistry struct {
-	config multiplatformconfig.Config
-	params InvocationRegistryParams
-	logger log.Logger
+	cred     authpkg.Credential
+	origin   authpkg.Origin
+	username string
+	params   InvocationRegistryParams
+	logger   log.Logger
 
 	// api handles invocation and relation registration. If nil, a production client is created.
 	// Set in tests to inject mocks.
@@ -73,15 +77,25 @@ func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry
 		params.Envs = utils.AllEnvs()
 	}
 
-	config, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	resolver := live.Default(nil)
+
+	cred, origin, err := resolver.ResolveNoRefresh(params.Envs)
 	if err != nil {
-		return nil, fmt.Errorf("read multiplatform config: %w", err)
+		return nil, fmt.Errorf("resolve auth config: %w", err)
 	}
 
+	username, _ := resolver.ResolveUsername(params.Envs)
+
+	// Settings still come from the analytics config; only the credential is
+	// resolved. A missing file just means debug logging is off.
+	config, _ := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+
 	return &InvocationRegistry{
-		config: config,
-		params: params,
-		logger: log.NewLogger(log.WithDebugLog(config.DebugLogging)),
+		cred:     cred,
+		origin:   origin,
+		username: username,
+		params:   params,
+		logger:   log.NewLogger(log.WithDebugLog(config.DebugLogging)),
 	}, nil
 }
 
@@ -98,13 +112,13 @@ func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Conte
 	}
 
 	commandFunc := newCommandFunc(ctx)
-	metadata := configcommon.NewMetadata(inv.params.Envs, commandFunc, inv.logger)
+	metadata := configcommon.NewMetadata(inv.params.Envs, inv.username, commandFunc, inv.logger)
 
 	invocation := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationID:   params.InvocationID,
 		InvocationDate: time.Now(),
 		BuildTool:      buildTool,
-	}, inv.config.AuthConfig, metadata)
+	}, inv.cred, metadata)
 
 	if err := api.PutInvocation(*invocation); err != nil {
 		return fmt.Errorf("register invocation: %w", err)
@@ -149,7 +163,7 @@ func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (invocationsAPI, er
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, inv.config.AuthConfig.TokenInGradleFormat(), logger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(inv.cred, inv.origin), logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}

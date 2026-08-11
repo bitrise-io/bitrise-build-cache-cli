@@ -9,10 +9,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -24,14 +23,14 @@ func (*huhWizard) Run(ctx context.Context) error {
 	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 	logger.TInfof("Bitrise Build Cache - interactive local setup")
 
-	kc := keychain.New()
+	credStore := store.NewKeychain()
 	envs := utils.AllEnvs()
 
 	// Resolved before the form: the sign-in prints logs, opens a browser and
 	// reads stdin, none of which composes with huh's full-screen form.
 	auth := wizardAuthResolver{
 		Logger:    logger,
-		Keychain:  kc,
+		Store:     credStore,
 		Envs:      envs,
 		Prompt:    wizardPromptReader(),
 		Workspace: interactiveWorkspace,
@@ -49,13 +48,13 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	storedCreds := auth.Stored
-	source := auth.Source
+	origin := auth.Origin
 	storedUsername := storedCreds.Username
 
 	var (
 		selectedTools = defaultSelectedTools()
 		workspaceID   = auth.Config.WorkspaceID
-		authToken     = auth.Config.AuthToken
+		authToken     = auth.Config.Token
 		username      = storedUsername
 		pushEnabled   bool
 		startDaemon   = true
@@ -69,7 +68,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	toolsDescription := "Use space to toggle, enter to confirm."
-	if note := resolvedAuthNote(auth, kc); note != "" {
+	if note := resolvedAuthNote(auth); note != "" {
 		toolsDescription += "\n\n" + note
 	}
 
@@ -100,7 +99,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		groups = append(groups, authprompt.Group(&workspaceID, &authToken))
 	}
 
-	if usernamePersistable(source) {
+	if usernamePersistable(origin) {
 		groups = append(groups,
 			huh.NewGroup(
 				huh.NewInput().
@@ -140,15 +139,15 @@ func (*huhWizard) Run(ctx context.Context) error {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
-	persistWizardCredentials(logger, kc, auth, wizardCredentials{
+	persistWizardCredentials(logger, credStore, auth, wizardCredentials{
 		WorkspaceID:    workspaceID,
 		AuthToken:      authToken,
 		Username:       username,
 		StoredUsername: storedUsername,
 	})
 
-	envs[configcommon.EnvWorkspaceID] = workspaceID
-	envs[configcommon.EnvAuthToken] = authToken
+	envs[authpkg.EnvWorkspaceID] = workspaceID
+	envs[authpkg.EnvAuthToken] = authToken
 
 	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled); err != nil {
 		return err
@@ -172,8 +171,8 @@ type wizardCredentials struct {
 // persistWizardCredentials saves the wizard's credentials to the keychain, with
 // a message describing what moved where. A failure is non-fatal: activation can
 // still proceed with the values resolved for this run.
-func persistWizardCredentials(logger log.Logger, kc keychainStore, auth wizardAuth, creds wizardCredentials) {
-	persistWizardCredentialsTo(logger, kc, storeClearFile, auth, creds)
+func persistWizardCredentials(logger log.Logger, target store.Store, auth wizardAuth, creds wizardCredentials) {
+	persistWizardCredentialsTo(logger, target, storeClearFile, auth, creds)
 }
 
 func storeClearFile() error {
@@ -182,13 +181,13 @@ func storeClearFile() error {
 
 func persistWizardCredentialsTo(
 	logger log.Logger,
-	kc keychainStore,
+	target store.Store,
 	clearFile func() error,
 	auth wizardAuth,
 	creds wizardCredentials,
 ) {
 	save := func() error {
-		return persistCredentials(kc, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
+		return persistCredentials(target, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
 	}
 
 	logUsername := func() {
@@ -204,8 +203,8 @@ func persistWizardCredentialsTo(
 		if creds.Username == creds.StoredUsername {
 			return
 		}
-		if err := persistCredentials(storeForKind(kc, auth.Kind), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
-			logger.Warnf("Could not save the display name to the %s (%v).", auth.Kind, err)
+		if err := persistCredentials(storeFor(target, auth.Origin.Backend), auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username); err != nil {
+			logger.Warnf("Could not save the display name to the %s (%v).", auth.Origin.Label(), err)
 		} else {
 			logger.Infof("Updated display name for local invocations.")
 		}
@@ -213,8 +212,8 @@ func persistWizardCredentialsTo(
 		return
 	}
 
-	switch auth.Source {
-	case configcommon.AuthSourceKeychain:
+	switch auth.Origin.Backend {
+	case authpkg.BackendKeychain:
 		if !auth.SignedInNow {
 			logger.TInfof("Using credentials from the OS keychain.")
 		}
@@ -226,7 +225,7 @@ func persistWizardCredentialsTo(
 		} else {
 			logger.Infof("Updated display name for local invocations.")
 		}
-	case configcommon.AuthSourceEnvVars:
+	case authpkg.BackendEnv:
 		if err := save(); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
 		} else {
@@ -234,10 +233,10 @@ func persistWizardCredentialsTo(
 			logUsername()
 			logger.Infof("You can now remove them from your shell rc files.")
 		}
-	case configcommon.AuthSourceJWT:
+	case authpkg.BackendJWT:
 		// Per-build, don't persist.
 		logger.TInfof("Using credentials resolved by the CLI.")
-	case configcommon.AuthSourceMultiplatform, configcommon.AuthSourceFile:
+	case authpkg.BackendFile:
 		if err := save(); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with disk values for this run only.", err)
 
@@ -255,7 +254,7 @@ func persistWizardCredentialsTo(
 
 		logger.TInfof("Moved credentials from the config file into the OS keychain.")
 		logUsername()
-	case configcommon.AuthSourceNone:
+	case authpkg.BackendNone:
 		if err := save(); err != nil {
 			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
 		} else {
@@ -264,40 +263,14 @@ func persistWizardCredentialsTo(
 	}
 }
 
-// wizardStartingCreds enforces keychain-first precedence for the wizard:
-// keychain wins over env vars (so a populated keychain isn't silently overridden
-// by stale shell-rc env vars), then we fall back to ResolveAuthConfig for the
-// env / JWT / multiplatform sources, returning AuthSourceNone if none are set.
-func wizardStartingCreds(
-	envs map[string]string,
-	storedCreds keychain.Credentials,
-	resolve func(map[string]string) (configcommon.CacheAuthConfig, configcommon.AuthSource, error),
-) (configcommon.CacheAuthConfig, configcommon.AuthSource) {
-	if storedCreds.AuthToken != "" && storedCreds.WorkspaceID != "" {
-		return configcommon.CacheAuthConfig{AuthToken: storedCreds.AuthToken, WorkspaceID: storedCreds.WorkspaceID}, configcommon.AuthSourceKeychain
-	}
-
-	if resolve == nil {
-		resolve = configcommon.ResolveAuthConfig
-	}
-
-	cfg, src, err := resolve(envs)
-	if err != nil {
-		return configcommon.CacheAuthConfig{}, configcommon.AuthSourceNone
-	}
-
-	return cfg, src
+// usernamePersistable reports whether a display name can be stored for this
+// credential. Everything except a CI JWT qualifies: the JWT is minted per build,
+// so there is nothing durable to attach a name to.
+func usernamePersistable(origin authpkg.Origin) bool {
+	return origin.Backend != authpkg.BackendJWT
 }
 
-func usernamePersistable(source configcommon.AuthSource) bool {
-	return source == configcommon.AuthSourceKeychain ||
-		source == configcommon.AuthSourceEnvVars ||
-		source == configcommon.AuthSourceMultiplatform ||
-		source == configcommon.AuthSourceFile ||
-		source == configcommon.AuthSourceNone
-}
-
-func persistCredentials(kc keychainStore, existing keychain.Credentials, workspaceID, authToken, username string) error {
+func persistCredentials(kc store.Store, existing authpkg.TokenSet, workspaceID, authToken, username string) error {
 	existing.AuthToken = authToken
 	existing.WorkspaceID = workspaceID
 	existing.Username = username
@@ -308,12 +281,12 @@ func persistCredentials(kc keychainStore, existing keychain.Credentials, workspa
 	return nil
 }
 
-// storeForKind picks the backend to write to, keeping the injected keychain so
-// tests stay off the real one.
-func storeForKind(kc keychainStore, kind store.Kind) keychainStore {
-	if kind == store.KindFile {
+// storeFor picks the backend to write to, keeping the injected store so tests stay
+// off the real one.
+func storeFor(target store.Store, backend authpkg.Backend) store.Store {
+	if backend == authpkg.BackendFile {
 		return store.NewFile()
 	}
 
-	return kc
+	return target
 }

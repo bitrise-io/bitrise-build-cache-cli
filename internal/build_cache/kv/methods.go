@@ -37,11 +37,15 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
+	ch := c.pickChannel()
+	ch.acquire()
+	defer ch.release()
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(true))
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, true))
 
-	_, err := c.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
+	_, err := ch.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.Unauthenticated {
@@ -75,7 +79,7 @@ func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
 }
 
 func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, error) {
-	md := metadata.Join(c.getMethodCallMetadata(false), metadata.Pairs(
+	md := metadata.Join(c.getMethodCallMetadata(ctx, false), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
 		"x-flare-no-skip-duplicate-writes", "true",
@@ -86,8 +90,13 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	// Timeout is the responsibility of the caller
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
-	stream, err := c.bitriseKVClient.Put(ctx)
+	ch := c.pickChannel()
+	ch.acquire()
+
+	stream, err := ch.bitriseKVClient.Put(ctx)
 	if err != nil {
+		ch.release()
+
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.Unauthenticated {
 			return nil, ErrCacheUnauthenticated
@@ -98,27 +107,36 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 
 	resourceName := fmt.Sprintf("kv/%s", params.Name)
 
-	return &writer{
+	w := &writer{
 		stream:       stream,
 		resourceName: resourceName,
 		offset:       params.Offset,
 		fileSize:     params.FileSize,
-	}, nil
+		release:      ch.release,
+	}
+
+	return w, nil
 }
 
 func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string, offset int64) (*reader, error) {
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	// Timeout is the responsibility of the caller
-	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(false))
+	ctx = metadata.NewOutgoingContext(ctx, c.getMethodCallMetadata(ctx, false))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
 		ReadOffset:   offset,
 		ReadLimit:    0,
 	}
-	stream, err := c.bitriseKVClient.Get(ctx, readReq)
+
+	ch := c.pickChannel()
+	ch.acquire()
+
+	stream, err := ch.bitriseKVClient.Get(ctx, readReq)
 	if err != nil {
+		ch.release()
+
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.Unauthenticated {
 			return nil, ErrCacheUnauthenticated
@@ -131,6 +149,7 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 		logger:        logger,
 		stream:        stream,
 		metadataReady: make(chan struct{}),
+		release:       ch.release,
 	}
 	go r.readStreamMetadata()
 
@@ -138,18 +157,22 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 }
 
 func (c *Client) Delete(ctx context.Context, name string) error {
+	ch := c.pickChannel()
+	ch.acquire()
+	defer ch.release()
+
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 
 	readReq := &bytestream.ReadRequest{
 		ResourceName: resourceName,
 		ReadOffset:   0,
 		ReadLimit:    0,
 	}
-	_, err := c.bitriseKVClient.Delete(callCtx, readReq)
+	_, err := ch.bitriseKVClient.Delete(callCtx, readReq)
 	if err != nil {
 		return fmt.Errorf("initiate delete: %w", err)
 	}
@@ -166,13 +189,17 @@ func (c *Client) findMissing(ctx context.Context,
 			c.logger.Debugf("Retrying FindMissingBlobs... (attempt %d)", attempt)
 		}
 
+		ch := c.pickChannel()
+		ch.acquire()
+
 		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
+		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 
 		var err error
-		resp, err = c.casClient.FindMissingBlobs(callCtx, req)
+		resp, err = ch.casClient.FindMissingBlobs(callCtx, req)
 
 		cancel()
+		ch.release()
 
 		if err != nil {
 			c.logger.Errorf("Error in FindMissingBlobs attempt %d: %s", attempt, err)
@@ -266,10 +293,10 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 	return out
 }
 
-func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
-	auth := c.authSource.Get()
+func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata.MD {
+	auth := c.authSource.Get(ctx)
 	md := metadata.Pairs(
-		"authorization", fmt.Sprintf("bearer %s", auth.AuthToken),
+		"authorization", fmt.Sprintf("bearer %s", auth.Token),
 		"x-flare-buildtool", c.clientName)
 
 	if c.cacheOperationID != "" {
@@ -325,12 +352,16 @@ func (c *Client) getMethodCallMetadata(logMD bool) metadata.MD {
 }
 
 func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus, error) {
+	ch := c.pickChannel()
+	ch.acquire()
+	defer ch.release()
+
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(false))
-	resp, err := c.bitriseKVClient.WriteStatus(callCtx, &bytestream.QueryWriteStatusRequest{
+	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
+	resp, err := ch.bitriseKVClient.WriteStatus(callCtx, &bytestream.QueryWriteStatusRequest{
 		ResourceName: resourceName,
 	})
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
@@ -24,7 +25,7 @@ type InvocationRunStats struct {
 	XcodeBuildNumber string
 }
 
-func NewInvocation(runStats InvocationRunStats, authMetadata common.CacheAuthConfig, commonMetadata common.CacheConfigMetadata) *Invocation {
+func NewInvocation(runStats InvocationRunStats, authMetadata auth.Credential, commonMetadata common.CacheConfigMetadata) *Invocation {
 	errorStr := ""
 	if runStats.Error != nil {
 		errorStr = runStats.Error.Error()

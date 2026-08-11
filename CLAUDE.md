@@ -64,7 +64,12 @@ Acceptable carve-outs: paths inside generated artifact bodies the CLI doesn't it
 
 **Protocol Buffers:** `proto/` contains definitions for Bazel remote execution API, KV storage, and LLVM CAS/session protocols. Regenerate with `make protoc`.
 
-**Authentication:** Uses `BITRISE_BUILD_CACHE_AUTH_TOKEN` and `BITRISE_BUILD_CACHE_WORKSPACE_ID` env vars (auto-configured on Bitrise CI).
+**Authentication:** Uses `BITRISE_BUILD_CACHE_AUTH_TOKEN` and `BITRISE_BUILD_CACHE_WORKSPACE_ID` env vars (auto-configured on Bitrise CI). Full layering, types and call chains: **[docs/auth.md](docs/auth.md)** — read it before touching anything under `internal/auth/`. Four invariants, enforced by `make lint-arch`:
+
+- `internal/auth` (L0) imports no internal package.
+- `auth.TokenSet` never appears above L4 — consumers get `auth.Credential`.
+- Consumers resolve **only** through `internal/auth/live`; never `keychain`/`store`/`oauth` directly (except the login, logout and clear commands).
+- No auth package imports `internal/config/common`.
 
 ### Patterns for pkg/ structs
 

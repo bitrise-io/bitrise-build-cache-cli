@@ -58,7 +58,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			gradleHome,
 			allEnvs,
 			common.IsDebugLogMode,
-			gradleconfig.DefaultTemplateInventoryProvider,
+			activateGradleParams.TemplateInventory,
 			func(
 				inventory gradleconfig.TemplateInventory,
 				path string,
@@ -128,7 +128,7 @@ func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
-	templateInventoryProvider gradleconfig.TemplateInventoryProvider,
+	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 	params gradleconfig.ActivateGradleParams,

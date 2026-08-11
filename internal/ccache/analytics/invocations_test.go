@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
@@ -229,7 +230,7 @@ func Test_ParseCcacheStats(t *testing.T) {
 
 func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
 	stats := CcacheStats{CacheableCalls: 10, CacheHit: 7}
-	auth := common.CacheAuthConfig{WorkspaceID: "ws-1", AuthToken: "tok"}
+	auth := authpkg.Credential{WorkspaceID: "ws-1", Token: "tok"}
 	meta := common.CacheConfigMetadata{
 		BitriseAppID:           "app-1",
 		BitriseBuildID:         "build-1",
@@ -252,8 +253,8 @@ func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
 			RepoURL:     "git@example.com:org/repo.git",
 			CommitEmail: "dev@example.com",
 		},
-		Datacenter:     "iad1",
-		ExternalAppID:  "ext-app",
+		Datacenter:      "iad1",
+		ExternalAppID:   "ext-app",
 		ExternalBuildID: "ext-build",
 	}
 
@@ -335,7 +336,7 @@ func TestCcacheStats_ErrorSummary(t *testing.T) {
 }
 
 func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
-	auth := common.CacheAuthConfig{}
+	auth := authpkg.Credential{}
 	meta := common.CacheConfigMetadata{}
 
 	t.Run("clean run propagates hit rate, success=true, empty error", func(t *testing.T) {

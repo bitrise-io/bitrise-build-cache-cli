@@ -5,6 +5,9 @@ package reactnative
 import (
 	"context"
 	"errors"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -290,6 +293,7 @@ func TestRunner_BypassWhenNotActivated(t *testing.T) {
 	t.Run("missing workspace ID → command runs unwrapped", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		clearAuthEnv(t)
 
 		// RN marker present but multiplatform config has empty WorkspaceID.
 		rnDir := filepath.Join(home, ".bitrise/cache/reactnative")
@@ -312,6 +316,7 @@ func TestRunner_BypassWhenNotActivated(t *testing.T) {
 
 				return 0, nil
 			},
+			Resolver: hermeticResolver(),
 		})
 		r.socket = nil
 		r.postRun = mock
@@ -520,4 +525,27 @@ func writeCcacheConfig(t *testing.T, home, socket string) {
 		[]byte(`{"enabled":true,"ipcEndpoint":"`+socket+`","buildCacheEndpoint":"grpcs://x"}`),
 		0o644,
 	))
+}
+
+// clearAuthEnv removes the injected credentials a dev machine and Bitrise CI both
+// export. Without it "nothing is configured" is not actually true and the gate
+// resolves from the environment.
+func clearAuthEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{auth.EnvAuthToken, auth.EnvWorkspaceID, auth.EnvJWT} {
+		t.Setenv(k, "")
+	}
+}
+
+// hermeticResolver keeps the readiness gate off the machine's real keychain and
+// analytics config, so a developer who happens to be logged in does not flip the
+// bypass tests.
+func hermeticResolver() *live.Resolver {
+	r := live.Default(nil)
+	r.Backends = []store.Store{}
+	r.AnalyticsBlock = func() (auth.Credential, auth.Origin, bool) {
+		return auth.Credential{}, auth.Origin{}, false
+	}
+
+	return r
 }

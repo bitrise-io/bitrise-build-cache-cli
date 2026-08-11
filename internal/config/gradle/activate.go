@@ -2,9 +2,11 @@ package gradleconfig
 
 import (
 	"fmt"
+	"os/exec"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
@@ -14,39 +16,41 @@ const (
 	ErrFmtFailedToUpdateProps = "failed to update gradle.properties: %w"
 )
 
-type TemplateInventoryProvider func(
-	logger log.Logger,
-	envs map[string]string,
-	isDebug bool,
-	metadata configcommon.CacheConfigMetadata,
-	params ActivateGradleParams,
-) (TemplateInventory, error)
-
+// Activate creates the Gradle init script and updates gradle.properties
+// to enable Bitrise Build Cache.
 func Activate(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
 	debugLogging bool,
-	templateInventoryProvider TemplateInventoryProvider,
+	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (TemplateInventory, error),
 	templateWriter func(TemplateInventory, string) error,
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
 ) error {
 	NormalizeParams(&params)
 
-	authConfig, _, err := configcommon.ResolveAuthConfig(envProvider)
+	resolver := live.Default(nil)
+
+	authConfig, _, err := resolver.ResolveNoRefresh(envProvider)
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
 
-	metadata := configcommon.DefaultMetadata(envProvider, logger)
+	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
+	username, _ := resolver.ResolveUsername(envProvider)
+	metadata := configcommon.NewMetadata(envProvider, username,
+		func(name string, v ...string) (string, error) {
+			output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+			return string(output), err
+		}, logger)
 	if metadata.CIProvider != "" {
-		benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envProvider, logger))
 	}
 
-	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, metadata, params)
+	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)
 	if err != nil {
 		return err
 	}
@@ -60,14 +64,4 @@ func Activate(
 	}
 
 	return nil
-}
-
-func DefaultTemplateInventoryProvider(
-	logger log.Logger,
-	envs map[string]string,
-	isDebug bool,
-	metadata configcommon.CacheConfigMetadata,
-	params ActivateGradleParams,
-) (TemplateInventory, error) {
-	return params.TemplateInventory(logger, envs, isDebug, metadata)
 }

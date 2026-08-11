@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -51,7 +50,6 @@ type Proxy struct {
 	kvClient                Client
 	pushEnabled             bool
 	sessionMutex            sync.Mutex
-	ccSemaphore             chan struct{}
 	capabilitiesCalled      bool
 	sessionState            *sessionState
 	skipGetCapabilitiesCall []grpc.ServiceDesc
@@ -72,12 +70,6 @@ type Proxy struct {
 const defaultInactivityTimeout = 5 * time.Minute
 
 func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
-	// Note: Gradle plugin uses a client balancer, with multiple channels (min 2), each with multiple connections.
-	// For a simple implementation, we only have one channel with multiple connections.
-	numChan := max(2, runtime.NumCPU()/6)
-	ccLimit := numChan * runtime.NumCPU()
-	logger.Infof("Setting up proxy with concurrency limit: %d", ccLimit)
-
 	//nolint:exhaustruct
 	proxy := &Proxy{
 		kvClient:      kvClient,
@@ -86,7 +78,6 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 		logger:        logger,
 		loggerFactory: loggerFactory,
 		emitter:       emitter,
-		ccSemaphore:   make(chan struct{}, ccLimit),
 		skipGetCapabilitiesCall: []grpc.ServiceDesc{
 			session.Session_ServiceDesc, // skip GetCapabilities call for session service methods
 		},
@@ -308,9 +299,6 @@ func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.G
 }
 
 func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmcas.CASGetResponse, error) {
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
-
 	key := createLLVMCasKey(request.GetCasId())
 
 	p.logger.TDebugf("Get called with request: %s", key)
@@ -385,9 +373,6 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 }
 
 func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmcas.CASPutResponse, error) {
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
-
 	p.logger.TDebugf("Put called with references: %s", request.GetData().GetReferences())
 
 	var key string
@@ -484,9 +469,6 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 }
 
 func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llvmcas.CASLoadResponse, error) {
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
-
 	key := createLLVMCasKey(request.GetCasId())
 
 	p.logger.TDebugf("Load called with request: %s", key)
@@ -554,9 +536,6 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 }
 
 func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llvmcas.CASSaveResponse, error) {
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
-
 	var key string
 
 	errorHandler := func(err error) *llvmcas.CASSaveResponse {
@@ -662,9 +641,6 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 }
 
 func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (*llvmkv.GetValueResponse, error) {
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
-
 	key := createLLVMKVKey(request.GetKey())
 
 	var hit bool
@@ -729,9 +705,6 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 }
 
 func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (*llvmkv.PutValueResponse, error) {
-	p.ccSemaphore <- struct{}{}
-	defer func() { <-p.ccSemaphore }()
-
 	key := createLLVMKVKey(request.GetKey())
 
 	p.logger.TDebugf("PutValue called with key: %s", key)

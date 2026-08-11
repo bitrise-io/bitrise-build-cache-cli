@@ -68,7 +68,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcodebuild")))
 
 		// make sure config was saved as expected
-		config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+		config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, envs)
 		require.NoError(t, err)
 		require.NotNil(t, config)
 		require.True(t, config.BuildCacheEnabled)
@@ -76,7 +76,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		require.Equal(t, "/xxx/xcodebuild", config.OriginalXcodebuildPath)
 		require.Equal(t, "/xxx/xcrun", config.OriginalXcrunPath)
 		require.Equal(t, "/xxx/xcelerate.sock", config.ProxySocketPath)
-		require.Equal(t, "token", config.AuthConfig.AuthToken)
+		require.Equal(t, "token", config.AuthConfig.Token)
 		require.Equal(t, "abc123", config.AuthConfig.WorkspaceID)
 
 		// let's call activate again to make sure already configured xcodebuild path is respected from existing config
@@ -99,7 +99,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		require.NoError(t, err)
 
 		// make sure config was saved as expected
-		config, err = xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{})
+		config, err = xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, envs)
 		require.NoError(t, err)
 		require.NotNil(t, config)
 		require.True(t, config.BuildCacheEnabled)
@@ -107,7 +107,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		require.Equal(t, "/xxx/xcodebuild", config.OriginalXcodebuildPath)
 		require.Equal(t, "/xxx/xcrun", config.OriginalXcrunPath)
 		require.Equal(t, "/xxx/xcelerate.sock", config.ProxySocketPath)
-		require.Equal(t, "token", config.AuthConfig.AuthToken)
+		require.Equal(t, "token", config.AuthConfig.Token)
 		require.Equal(t, "abc123", config.AuthConfig.WorkspaceID)
 	})
 

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 // oauthMock is a test double for the WorkOS token endpoint (/oauth2/token) and
@@ -106,8 +108,8 @@ func TestEnsureFresh_NotLoggedIn(t *testing.T) {
 
 func TestEnsureFresh_ValidPAT(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(Credentials{
-		PAT: "still-good", PATExpiry: time.Now().Add(time.Hour),
+	if err := saveForTest(t, auth.TokenSet{
+		AuthToken: "still-good", PATExpiry: time.Now().Add(time.Hour),
 		JWT: "j", JWTExpiry: time.Now().Add(time.Hour),
 		RefreshToken: "r", WorkspaceID: "ws",
 	}); err != nil {
@@ -120,7 +122,7 @@ func TestEnsureFresh_ValidPAT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureFresh: %v", err)
 	}
-	if got.PAT != "still-good" || got.WorkspaceID != "ws" {
+	if got.AuthToken != "still-good" || got.WorkspaceID != "ws" {
 		t.Fatalf("got %+v", got)
 	}
 	if tc, ec := m.counts(); tc != 0 || ec != 0 {
@@ -130,8 +132,8 @@ func TestEnsureFresh_ValidPAT(t *testing.T) {
 
 func TestEnsureFresh_ExpiredPAT_ValidJWT(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(Credentials{
-		PAT: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
+	if err := saveForTest(t, auth.TokenSet{
+		AuthToken: "old-pat", PATExpiry: time.Now().Add(-time.Minute),
 		JWT: "good-jwt", JWTExpiry: time.Now().Add(time.Hour),
 		RefreshToken: "r", WorkspaceID: "ws",
 	}); err != nil {
@@ -144,21 +146,21 @@ func TestEnsureFresh_ExpiredPAT_ValidJWT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureFresh: %v", err)
 	}
-	if got.PAT != "bitpat_minted" || got.WorkspaceID != "ws" {
+	if got.AuthToken != "bitpat_minted" || got.WorkspaceID != "ws" {
 		t.Fatalf("got %+v", got)
 	}
 	if tc, ec := m.counts(); tc != 0 || ec != 1 {
 		t.Fatalf("expected 0 token + 1 exchange; got token=%d exchange=%d", tc, ec)
 	}
-	if saved, _ := Load(); saved.PAT != "bitpat_minted" {
-		t.Fatalf("new PAT not persisted: %q", saved.PAT)
+	if saved, _ := loadForTest(); saved.AuthToken != "bitpat_minted" {
+		t.Fatalf("new PAT not persisted: %q", saved.AuthToken)
 	}
 }
 
 func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(Credentials{
-		PAT: "old", PATExpiry: time.Now().Add(-time.Hour),
+	if err := saveForTest(t, auth.TokenSet{
+		AuthToken: "old", PATExpiry: time.Now().Add(-time.Hour),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Minute),
 		RefreshToken: "refresh-old", WorkspaceID: "ws",
 	}); err != nil {
@@ -172,13 +174,13 @@ func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureFresh: %v", err)
 	}
-	if got.PAT != "bitpat_minted" {
+	if got.AuthToken != "bitpat_minted" {
 		t.Fatalf("got %+v", got)
 	}
 	if tc, ec := m.counts(); tc != 1 || ec != 1 {
 		t.Fatalf("expected 1 refresh + 1 exchange; got token=%d exchange=%d", tc, ec)
 	}
-	saved, _ := Load()
+	saved, _ := loadForTest()
 	if saved.RefreshToken != "refresh-rotated" {
 		t.Fatalf("rotated refresh token not persisted: %q", saved.RefreshToken)
 	}
@@ -189,8 +191,8 @@ func TestEnsureFresh_ExpiredPATAndJWT_RefreshesAndRotates(t *testing.T) {
 
 func TestEnsureFresh_RefreshRejected(t *testing.T) {
 	resetKeychain(t)
-	if err := Save(Credentials{
-		PAT: "old", PATExpiry: time.Now().Add(-time.Hour),
+	if err := saveForTest(t, auth.TokenSet{
+		AuthToken: "old", PATExpiry: time.Now().Add(-time.Hour),
 		JWT: "old-jwt", JWTExpiry: time.Now().Add(-time.Hour),
 		RefreshToken: "expired-refresh", WorkspaceID: "ws",
 	}); err != nil {
@@ -236,8 +238,8 @@ func TestLogin_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	if creds.PAT != "bitpat_minted" {
-		t.Fatalf("PAT = %q, want bitpat_minted", creds.PAT)
+	if creds.AuthToken != "bitpat_minted" {
+		t.Fatalf("PAT = %q, want bitpat_minted", creds.AuthToken)
 	}
 	if creds.RefreshToken != "refresh-1" {
 		t.Fatalf("refresh token = %q, want refresh-1", creds.RefreshToken)

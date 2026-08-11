@@ -112,8 +112,8 @@ func TestLogin_FallbackSuppliesTheCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	if creds.PAT != "bitpat_minted" {
-		t.Fatalf("PAT = %q, want bitpat_minted", creds.PAT)
+	if creds.AuthToken != "bitpat_minted" {
+		t.Fatalf("PAT = %q, want bitpat_minted", creds.AuthToken)
 	}
 }
 

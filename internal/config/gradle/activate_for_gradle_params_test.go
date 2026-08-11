@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
 
@@ -47,7 +49,7 @@ func Test_activateGradleParams(t *testing.T) {
 				TestDistro: TestDistroParams{Enabled: false},
 			},
 			envVars: map[string]string{},
-			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, common.ErrAuthTokenNotProvided).Error(),
+			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, auth.ErrTokenNotProvided).Error(),
 		},
 		{
 			name: "no workspaceID",
@@ -59,7 +61,7 @@ func Test_activateGradleParams(t *testing.T) {
 			envVars: map[string]string{
 				"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue",
 			},
-			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, common.ErrWorkspaceIDNotProvided).Error(),
+			wantErr: fmt.Errorf(ErrFmtReadAuthConfig, auth.ErrWorkspaceIDNotProvided).Error(),
 		},
 		{
 			name: "no plugins",
@@ -372,10 +374,7 @@ func Test_activateGradleParams(t *testing.T) {
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := prep()
-			metadata := common.NewMetadata(tt.envVars,
-				func(_ string, _ ...string) (string, error) { return "", nil },
-				mockLogger)
-			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug, metadata)
+			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug, nil)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
@@ -384,4 +383,76 @@ func Test_activateGradleParams(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
+	prep := func() log.Logger {
+		mockLogger := &mocks.Logger{}
+		mockLogger.On("Infof", mock.Anything).Return()
+		mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
+		mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything).Return()
+		mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
+		mockLogger.On("Warnf", mock.Anything).Return()
+		mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+		return mockLogger
+	}
+
+	t.Run("benchmark provider is called on CI and baseline disables cache", func(t *testing.T) {
+		logger := prep()
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
+			"BITRISE_IO":                       "true",
+			"BITRISE_BUILD_SLUG":               "build-slug",
+			"BITRISE_APP_SLUG":                 "app-slug",
+			"BITRISE_TRIGGERED_WORKFLOW_ID":    "primary",
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(buildTool string, _ common.CacheConfigMetadata) (string, error) {
+				assert.Equal(t, common.BuildToolGradle, buildTool)
+
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
+		params := ActivateGradleParams{
+			Cache:     CacheParams{Enabled: true, PushEnabled: true},
+			Analytics: AnalyticsParams{Enabled: false},
+		}
+
+		inv, err := params.TemplateInventory(logger, envs, false, mockProvider)
+		require.NoError(t, err)
+
+		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
+		// Baseline disables cache
+		assert.Equal(t, UsageLevelNone, inv.Cache.Usage)
+	})
+
+	t.Run("benchmark provider is not called when CI provider is empty", func(t *testing.T) {
+		logger := prep()
+		envs := map[string]string{
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "auth-token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "workspace-id",
+		}
+
+		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
+			GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+				return common.BenchmarkPhaseBaseline, nil
+			},
+		}
+
+		params := DefaultActivateGradleParams()
+
+		_, err := params.TemplateInventory(logger, envs, false, mockProvider)
+		require.NoError(t, err)
+
+		assert.Empty(t, mockProvider.GetBenchmarkPhaseCalls())
+	})
 }

@@ -11,7 +11,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -33,6 +34,7 @@ type ActivatorParams struct {
 	GradleEnabled        bool
 	XcodeEnabled         bool
 	CppEnabled           bool
+	PushEnabled          bool
 	DisablePrefixMapping bool
 	NoSwiftCache         bool
 	BuildCacheSkipFlags  bool
@@ -65,13 +67,18 @@ func NewActivator(params ActivatorParams) *Activator {
 	}
 
 	if params.GradleEnabled {
-		a.gradle = &gradleActivator{logger: logger, debugLogging: params.DebugLogging}
+		a.gradle = &gradleActivator{
+			logger:       logger,
+			debugLogging: params.DebugLogging,
+			pushEnabled:  params.PushEnabled,
+		}
 	}
 
 	if params.XcodeEnabled {
 		a.xcode = &xcodeActivator{
 			logger:               logger,
 			debugLogging:         params.DebugLogging,
+			pushEnabled:          params.PushEnabled,
 			disablePrefixMapping: params.DisablePrefixMapping,
 			noSwiftCache:         params.NoSwiftCache,
 			buildCacheSkipFlags:  params.BuildCacheSkipFlags,
@@ -84,7 +91,7 @@ func NewActivator(params ActivatorParams) *Activator {
 	// --gradle=false` doesn't leave a stray ccache helper running.
 	if params.CppEnabled && params.GradleEnabled {
 		a.cpp = ccachepkg.NewActivator(ccachepkg.ActivatorParams{
-			PushEnabled:  ccacheconfig.DefaultParams().PushEnabled,
+			PushEnabled:  params.PushEnabled,
 			DebugLogging: params.DebugLogging,
 			Logger:       logger,
 		})
@@ -128,13 +135,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return err
 	}
 
-	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
-
-	if err := saveMultiplatformConfig(a.debugLogging); err != nil {
-		return err
-	}
-
-	if err := a.saveReactNativeMarker(); err != nil {
+	if err := a.Finalize(ctx); err != nil {
 		return err
 	}
 
@@ -213,6 +214,16 @@ func (a *Activator) exportEASWorkingDirIfCI() {
 	a.logger.TInfof("Exported %s=%s for EAS Build cache stability", EASWorkingDirEnv, workdir)
 }
 
+func (a *Activator) Finalize(ctx context.Context) error {
+	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
+
+	if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
+		return err
+	}
+
+	return a.saveReactNativeMarker()
+}
+
 // saveReactNativeMarker writes ~/.bitrise/cache/reactnative/config.json to
 // signal that RN build cache is active. The marker is what `status
 // --feature=react-native` and external step integrations read to decide
@@ -271,6 +282,7 @@ func installDeps(ctx context.Context, logger log.Logger, doCpp bool) error {
 type gradleActivator struct {
 	logger       log.Logger
 	debugLogging bool
+	pushEnabled  bool
 }
 
 func (g *gradleActivator) activate() error {
@@ -285,14 +297,14 @@ func (g *gradleActivator) activate() error {
 
 	gradleParams := gradleconfig.DefaultActivateGradleParams()
 	gradleParams.Cache.Enabled = true
-	gradleParams.Cache.PushEnabled = true
+	gradleParams.Cache.PushEnabled = g.pushEnabled
 
 	if err := gradleconfig.Activate(
 		g.logger,
 		gradleHome,
 		allEnvs,
 		g.debugLogging,
-		gradleconfig.DefaultTemplateInventoryProvider,
+		gradleParams.TemplateInventory,
 		func(inventory gradleconfig.TemplateInventory, path string) error {
 			return inventory.WriteToGradleInit(
 				g.logger,
@@ -313,6 +325,7 @@ func (g *gradleActivator) activate() error {
 type xcodeActivator struct {
 	logger               log.Logger
 	debugLogging         bool
+	pushEnabled          bool
 	disablePrefixMapping bool
 	noSwiftCache         bool
 	buildCacheSkipFlags  bool
@@ -321,6 +334,7 @@ type xcodeActivator struct {
 func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams := xcelerate.DefaultParams()
 	xcodeParams.DebugLogging = x.debugLogging
+	xcodeParams.PushEnabled = x.pushEnabled
 	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping
 	xcodeParams.NoSwiftCache = x.noSwiftCache
 	xcodeParams.BuildCacheSkipFlags = x.buildCacheSkipFlags
@@ -366,23 +380,28 @@ func (s *storageHelperStarter) start() error {
 	return nil
 }
 
-func saveMultiplatformConfig(debugLogging bool) error {
-	authConfig, _, err := configcommon.ResolveAuthConfig(utils.AllEnvs())
+func saveMultiplatformConfig(ctx context.Context, envs map[string]string, debugLogging bool) error {
+	// ResolvePinned materialises an env- or JWT-sourced credential so the post-run
+	// hook and the storage helper can find it without those env vars.
+	cred, origin, err := live.Default(nil).ResolvePinned(ctx, envs, configcommon.DetectCIProvider(envs) != "")
 	if err != nil {
 		return fmt.Errorf("resolve auth config for multiplatform analytics: %w", err)
 	}
 
-	// Read first: Save rewrites the whole file, so a fresh Config here erases the
-	// Credentials block — where a keychain-less host keeps its refresh token.
-	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	if err != nil {
-		cfg = multiplatformconfig.Config{}
-	}
-
-	cfg.AuthConfig = authConfig
-	cfg.DebugLogging = debugLogging
-
-	if err := cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}); err != nil {
+	// The analytics authConfig block is mirrored whichever backend the credential
+	// lives in: the React Native post-run hook reads it directly, and on a machine
+	// with a working keychain nothing else would write it.
+	if err := multiplatformconfig.Update(
+		utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
+		func(cfg *multiplatformconfig.Config) {
+			cfg.DebugLogging = debugLogging
+			cfg.AuthConfig = multiplatformconfig.AnalyticsAuthConfig{
+				AuthToken:   cred.Token,
+				WorkspaceID: cred.WorkspaceID,
+				IsJWT:       origin.Backend == authpkg.BackendJWT,
+			}
+		},
+	); err != nil {
 		return fmt.Errorf("save multiplatform analytics config: %w", err)
 	}
 

@@ -3,6 +3,7 @@
 package kv
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 
@@ -10,15 +11,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 type dynamicAuthSource struct {
 	calls atomic.Int64
-	cfgs  []common.CacheAuthConfig
+	cfgs  []authpkg.Credential
 }
 
-func (d *dynamicAuthSource) Get() common.CacheAuthConfig {
+func (d *dynamicAuthSource) Get(context.Context) authpkg.Credential {
 	i := d.calls.Add(1) - 1
 	if int(i) >= len(d.cfgs) {
 		return d.cfgs[len(d.cfgs)-1]
@@ -31,9 +32,9 @@ func (d *dynamicAuthSource) Get() common.CacheAuthConfig {
 // token freshness when the token rotates across the TTL boundary.
 func TestClient_getMethodCallMetadata_RefreshesPerCall(t *testing.T) {
 	src := &dynamicAuthSource{
-		cfgs: []common.CacheAuthConfig{
-			{AuthToken: "tok-1", WorkspaceID: "ws-1"},
-			{AuthToken: "tok-2", WorkspaceID: "ws-2"},
+		cfgs: []authpkg.Credential{
+			{Token: "tok-1", WorkspaceID: "ws-1"},
+			{Token: "tok-2", WorkspaceID: "ws-2"},
 		},
 	}
 
@@ -43,8 +44,8 @@ func TestClient_getMethodCallMetadata_RefreshesPerCall(t *testing.T) {
 		logger:     log.NewLogger(),
 	}
 
-	md1 := c.getMethodCallMetadata(false)
-	md2 := c.getMethodCallMetadata(false)
+	md1 := c.getMethodCallMetadata(t.Context(), false)
+	md2 := c.getMethodCallMetadata(t.Context(), false)
 
 	require.Equal(t, []string{"bearer tok-1"}, md1.Get("authorization"))
 	require.Equal(t, []string{"bearer tok-2"}, md2.Get("authorization"))
@@ -55,7 +56,7 @@ func TestClient_getMethodCallMetadata_RefreshesPerCall(t *testing.T) {
 // A stable AuthSource behaves like the old fixed AuthConfig — successive calls
 // return identical auth headers. Guards against accidental non-determinism.
 func TestClient_getMethodCallMetadata_StableWhenSourceStable(t *testing.T) {
-	src := staticAuthSource{cfg: common.CacheAuthConfig{AuthToken: "tok", WorkspaceID: "ws"}}
+	src := staticAuthSource{cfg: authpkg.Credential{Token: "tok", WorkspaceID: "ws"}}
 
 	c := &Client{
 		clientName: "test-tool",
@@ -63,8 +64,8 @@ func TestClient_getMethodCallMetadata_StableWhenSourceStable(t *testing.T) {
 		logger:     log.NewLogger(),
 	}
 
-	md1 := c.getMethodCallMetadata(false)
-	md2 := c.getMethodCallMetadata(false)
+	md1 := c.getMethodCallMetadata(t.Context(), false)
+	md2 := c.getMethodCallMetadata(t.Context(), false)
 
 	assert.Equal(t, md1.Get("authorization"), md2.Get("authorization"))
 	assert.Equal(t, md1.Get("x-org-id"), md2.Get("x-org-id"))

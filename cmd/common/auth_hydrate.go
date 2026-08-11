@@ -5,25 +5,21 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/oauth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // Skip on Bitrise CI where JWT is env-injected; self-hosted CI with a stored PAT still refreshes.
 func hydrateStoredAuth(ctx context.Context) {
 	envs := utils.AllEnvs()
-	if envs[configcommon.EnvJWT] != "" {
-		return
-	}
-	_, source, _ := configcommon.ResolveAuthConfig(envs)
-	if !source.StoreManaged() {
+	if envs[auth.EnvJWT] != "" {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
-	cfg := oauth.NewConfigFromEnv(utils.AllEnvs())
-	cfg.Logger = logger
-	if _, err := cfg.EnsureFresh(ctx); err != nil {
+	// Resolve refreshes a store-managed credential as a side effect; a non-stored
+	// one is a no-op, which is exactly the skip this used to hand-roll.
+	if _, _, err := live.Default(logger).Resolve(ctx, envs); err != nil {
 		logger.Debugf("OAuth login not applied: %s", err)
 	}
 }
