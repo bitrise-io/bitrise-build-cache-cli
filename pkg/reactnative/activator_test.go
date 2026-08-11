@@ -18,6 +18,27 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
+func TestActivator_Finalize_WritesMarkerAndMultiplatformConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "bitpat_token")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "ws-1")
+
+	a := NewActivator(ActivatorParams{Logger: log.NewLogger(), DebugLogging: true})
+	require.NoError(t, a.Finalize(t.Context()))
+
+	rnCfg, err := rnconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.NoError(t, err)
+	assert.True(t, rnCfg.Enabled)
+	assert.FileExists(t, filepath.Join(home, ".bitrise/cache/reactnative/config.json"))
+
+	mpCfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+	require.NoError(t, err)
+	assert.Equal(t, "bitpat_token", mpCfg.AuthConfig.AuthToken)
+	assert.Equal(t, "ws-1", mpCfg.AuthConfig.WorkspaceID)
+	assert.True(t, mpCfg.DebugLogging)
+}
+
 func TestActivator_saveReactNativeMarker_WritesEnabledTrue(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
