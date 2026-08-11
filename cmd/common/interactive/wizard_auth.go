@@ -162,7 +162,10 @@ func (r wizardAuthResolver) login(ctx context.Context) (loginOutcome, error) {
 		return loginOutcome{Creds: creds, Origin: creds.Origin(authpkg.BackendKeychain)}, err
 	}
 
-	return loginAndStore(ctx, r.Logger, r.Envs, r.Workspace, "", wizardWorkspaceFlag)
+	return loginAndStore(ctx, r.Logger, r.Envs, loginRequest{
+		Workspace:     workspaceChoice{Slug: r.Workspace},
+		WorkspaceFlag: wizardWorkspaceFlag,
+	})
 }
 
 // confirmWizardLogin announces the sign-in and waits for an explicit Enter, so

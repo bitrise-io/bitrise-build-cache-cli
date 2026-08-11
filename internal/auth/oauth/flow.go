@@ -53,8 +53,15 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (auth
 	cs.start()
 
 	authURL := c.authorizeURL(challenge, state, cs.redirectURI())
-	c.infof("Opening your browser to sign in to Bitrise.")
-	c.infof("If it doesn't open automatically, visit:\n\n  %s\n", authURL)
+	if c.OnAuthorizeURL != nil {
+		c.OnAuthorizeURL(authURL, cs.redirectURI())
+	}
+	if openBrowser == nil {
+		c.infof("Open this URL in a browser to sign in to Bitrise:\n\n  %s\n", authURL)
+	} else {
+		c.infof("Opening your browser to sign in to Bitrise.")
+		c.infof("If it doesn't open automatically, visit:\n\n  %s\n", authURL)
+	}
 	if c.CallbackFallback != nil {
 		c.infof("If the browser can't reach %s after signing in (a connection error —", cs.redirectURI())
 		c.infof("expected on a remote/RDE machine, where localhost is not the CLI's host),")
@@ -69,10 +76,11 @@ func (c Config) Login(ctx context.Context, openBrowser func(string) error) (auth
 	c.debugf("Waiting for the browser sign-in to complete")
 	waitCtx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
-	code, err := c.awaitCallback(waitCtx, cs)
+	code, via, err := c.awaitCallback(waitCtx, cs)
 	if err != nil {
 		return auth.TokenSet{}, err
 	}
+	c.infof("Sign-in completed via %s.", via)
 
 	c.debugf("Exchanging authorization code for a token")
 	now := time.Now() // before the exchange, so the JWT expiry isn't pushed out by the round-trip

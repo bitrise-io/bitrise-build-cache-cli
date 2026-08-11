@@ -44,6 +44,10 @@ type Config struct {
 	// reach the CLI's loopback listener (remote/RDE sessions). Nil disables the
 	// fallback (the default; non-interactive callers).
 	CallbackFallback CallbackFallback
+	// OnAuthorizeURL receives the authorize URL and the loopback redirect it comes
+	// back to, before the flow starts waiting — for callers handing them to
+	// something other than a browser on this machine.
+	OnAuthorizeURL func(authorizeURL, redirectURI string)
 }
 
 func (c Config) debugf(format string, args ...any) { //nolint:unparam // variadic for symmetry with infof/warnf and future callers

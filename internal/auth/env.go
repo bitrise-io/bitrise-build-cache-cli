@@ -18,6 +18,7 @@ const (
 var (
 	ErrTokenNotProvided       = errors.New(EnvAuthToken + " or " + EnvJWT + " environment variable not set")
 	ErrWorkspaceIDNotProvided = errors.New(EnvWorkspaceID + " environment variable not set")
+	ErrWorkspaceNotSelected   = errors.New("signed in, but no workspace is selected yet — run `bitrise-build-cache auth workspace --list` to see them, then `auth workspace --set <slug>`")
 )
 
 type jwtPermissionClaims struct {

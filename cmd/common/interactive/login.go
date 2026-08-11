@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -22,8 +23,11 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	loginWorkspace string
-	loginStorage   string
+	loginWorkspace   string
+	loginStorage     string
+	loginNoWorkspace bool
+	loginPrintURL    bool
+	loginCallback    string
 )
 
 // LoginCmd signs the user in via the browser (OAuth) and stores a managed,
@@ -39,9 +43,21 @@ by hand.
 Nothing changes on Bitrise CI (the build still uses the auto-provided service
 token), and a manually-set BITRISE_BUILD_CACHE_AUTH_TOKEN still takes precedence.
 
-This needs a browser on the same machine as the CLI (the sign-in is handed back
-over a loopback address); it can't complete on a remote/headless host — there,
-keep using BITRISE_BUILD_CACHE_AUTH_TOKEN + BITRISE_BUILD_CACHE_WORKSPACE_ID.`,
+The sign-in is handed back over a loopback address, so it expects a browser on
+the same machine. On a remote/RDE session the redirect fails; paste the URL from
+the browser's address bar into the terminal and the sign-in completes from that.
+
+A session with no terminal at all (an agent driving the CLI, a script) can't be
+prompted for a workspace: pass --workspace <slug>, or --no-workspace to sign in
+first and select afterwards with ` + "`auth workspace --set <slug>`" + `. It can't paste
+into a prompt either, so the sign-in is driven in two commands instead:
+
+  bitrise-build-cache auth login --print-url --no-workspace   # prints the URL, waits
+  bitrise-build-cache auth login --callback '<address>'       # from another shell
+
+Open the printed URL in a browser anywhere, sign in, and hand the address it
+lands on — the one that fails to load — to the second command, on this machine.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runLogin(cmd)
 	},
@@ -94,19 +110,48 @@ This is narrower than ` + "`auth clear`" + `:
 func init() { //nolint:gochecknoinits
 	LoginCmd.Flags().StringVar(&loginWorkspace, "workspace", "", "workspace (organization) slug to use; skips the interactive picker")
 	LoginCmd.Flags().StringVar(&loginStorage, "storage", "", "Where to persist credentials: keychain | file | auto (default: CI→file, local→keychain).")
+	// No backticks in these usage strings: pflag reads the first backticked word as
+	// the value placeholder, which turns the help into nonsense.
+	LoginCmd.Flags().BoolVar(&loginNoWorkspace, "no-workspace", false, "Sign in without selecting a workspace. Pick one afterwards with 'auth workspace --list' + 'auth workspace --set <slug>'; build-cache commands stay unconfigured until you do.")
+	LoginCmd.Flags().BoolVar(&loginPrintURL, "print-url", false, "Don't launch a browser: print the sign-in URL (bare, on stdout) and wait. Open it wherever you have a browser, then deliver the address it lands on with 'auth login --callback <url>'.")
+	LoginCmd.Flags().StringVar(&loginCallback, "callback", "", "Deliver a callback URL copied from the browser to the 'auth login --print-url' waiting on this machine, and exit. Signs nothing in by itself.")
 	// LoginCmd / LogoutCmd are registered under the `auth` command (cmd/auth).
 }
 
 func runLogin(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	envs := utils.AllEnvs()
-	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-	if loginWorkspace == "" && !isInteractiveStdin() {
-		return fmt.Errorf("not an interactive terminal: pass --workspace <slug> to sign in non-interactively")
+	// Under --print-url the caller is a script reading stdout, so the prose moves
+	// to stderr and stdout carries the URL and nothing else.
+	logOpts := []log.LoggerOptions{log.WithDebugLog(common.IsDebugLogMode)}
+	if loginPrintURL {
+		logOpts = append(logOpts, log.WithOutput(cmd.ErrOrStderr()))
+	}
+	logger := log.NewLogger(logOpts...)
+
+	if loginCallback != "" {
+		if loginWorkspace != "" || loginNoWorkspace || loginPrintURL {
+			return fmt.Errorf("--callback only delivers a URL to a waiting sign-in; it takes no other flag")
+		}
+
+		return relayCallback(ctx, logger, loginCallback)
 	}
 
-	out, err := loginAndStore(ctx, logger, envs, loginWorkspace, loginStorage, "--workspace")
+	if err := validateLoginWorkspaceFlags(loginWorkspace, loginNoWorkspace, isInteractiveStdin()); err != nil {
+		return err
+	}
+
+	req := loginRequest{
+		Workspace:     workspaceChoice{Slug: loginWorkspace, Skip: loginNoWorkspace},
+		Storage:       loginStorage,
+		WorkspaceFlag: "--workspace",
+	}
+	if loginPrintURL {
+		req.PrintURL = cmd.OutOrStdout()
+	}
+
+	out, err := loginAndStore(ctx, logger, envs, req)
 	switch {
 	case errors.Is(err, tui.ErrAborted):
 		logger.Infof("Sign-in cancelled. Nothing was saved.")
@@ -121,6 +166,17 @@ func runLogin(cmd *cobra.Command) error {
 	if shadow := shadowingAuthEnv(); shadow != "" {
 		logger.Warnf("%s is set and takes precedence over the login just saved.", shadow)
 		logger.Warnf("Build-cache commands will use it, not this login — unset it to use the stored login.")
+	}
+
+	return nil
+}
+
+func validateLoginWorkspaceFlags(workspace string, noWorkspace, interactive bool) error {
+	if workspace != "" && noWorkspace {
+		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
+	}
+	if workspace == "" && !noWorkspace && !interactive {
+		return fmt.Errorf("not an interactive terminal: pass --workspace <slug>, or --no-workspace to pick one afterwards with `auth workspace --set`")
 	}
 
 	return nil
@@ -142,27 +198,63 @@ type loginOutcome struct {
 	StdinUnusable bool
 }
 
+// Test seam: the integration test stands in a client that follows the redirect.
+var openBrowser = defaultOpenBrowser //nolint:gochecknoglobals
+
+func defaultOpenBrowser(url string) error {
+	return oauth.OpenBrowser(url) //nolint:wrapcheck // oauth already wraps
+}
+
+// The zero value means the interactive picker.
+type workspaceChoice struct {
+	Slug string
+	// Skip stores the login workspace-less, for callers that cannot show a picker.
+	Skip bool
+}
+
+type loginRequest struct {
+	Workspace workspaceChoice
+	// Storage empty → the default target for this environment.
+	Storage string
+	// WorkspaceFlag names the flag this caller accepts instead of a prompt; it
+	// appears in ErrStdinUnusable guidance. Empty means it has none to offer.
+	WorkspaceFlag string
+	// PrintURL, when set, receives the sign-in URL and suppresses the browser.
+	PrintURL io.Writer
+}
+
 // loginAndStore runs the browser OAuth flow, resolves the workspace and persists
-// the credential. workspace empty → interactive picker; storage empty → default
-// target for the environment. Shared by `auth login` and the interactive wizard.
-//
-// workspaceFlag names the flag a caller can use to supply the workspace without
-// a prompt; it appears in ErrStdinUnusable guidance and differs per command.
-func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, workspace, storage, workspaceFlag string) (loginOutcome, error) {
+// the credential. Shared by `auth login`, the wizard and the doctor's fixer.
+func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]string, req loginRequest) (loginOutcome, error) {
 	cfg := oauth.NewConfigFromEnv(envs)
 	cfg.Logger = logger
 
-	paster := &callbackPaster{Reader: os.Stdin, Logger: logger, WorkspaceFlag: workspaceFlag}
-	if isInteractiveStdin() {
+	paster := &callbackPaster{Reader: os.Stdin, Logger: logger, WorkspaceFlag: req.WorkspaceFlag}
+	// --print-url owns the callback via `auth login --callback`; arming the paste
+	// reader too would print a second, contradictory way to finish and would take
+	// over a stdin its caller is not typing into.
+	if isInteractiveStdin() && req.PrintURL == nil {
 		cfg.CallbackFallback = paster.Fallback
 	}
 
-	creds, err := cfg.Login(ctx, oauth.OpenBrowser)
+	open := openBrowser
+	if req.PrintURL != nil {
+		open = nil
+		cfg.OnAuthorizeURL = func(authorizeURL, redirectURI string) {
+			_, _ = fmt.Fprintln(req.PrintURL, authorizeURL)
+			logger.Infof("After signing in, the browser lands on %s, which only this machine can reach.", redirectURI)
+			logger.Infof("Copy that address and deliver it here with:")
+			logger.Infof("  bitrise-build-cache auth login --callback '<address>'")
+		}
+	}
+
+	creds, err := cfg.Login(ctx, open)
 	if err != nil {
 		return loginOutcome{}, fmt.Errorf("sign in: %w", err)
 	}
 
-	if workspace == "" {
+	workspace := req.Workspace.Slug
+	if workspace == "" && !req.Workspace.Skip {
 		// A picker here would race the paste reader for every keystroke, which is
 		// the failure this reports instead of reproducing.
 		if paster.StdinUnusable() {
@@ -179,17 +271,24 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	// this, `auth login` silently drops the name `auth username` set.
 	creds.Username = store.StoredUsername()
 
-	target, err := store.Select(configcommon.DetectCIProvider(envs) != "", storage)
+	target, err := store.Select(configcommon.DetectCIProvider(envs) != "", req.Storage)
 	if err != nil {
 		return loginOutcome{}, err //nolint:wrapcheck
 	}
 
-	origin, err := saveLoginWithFallback(logger, target, storage, creds)
+	origin, err := saveLoginWithFallback(logger, target, req.Storage, creds)
 	if err != nil {
 		return loginOutcome{}, err
 	}
 
-	logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
+	if workspace == "" {
+		logger.Infof("Signed in. Credentials stored in the %s.", origin.Label())
+		logger.Warnf("No workspace selected yet — the build cache stays unconfigured until you pick one:")
+		logger.Warnf("  bitrise-build-cache auth workspace --list")
+		logger.Warnf("  bitrise-build-cache auth workspace --set <slug>")
+	} else {
+		logger.Infof("Signed in. Using workspace %q for the build cache. Credentials stored in the %s.", workspace, origin.Label())
+	}
 
 	out := loginOutcome{Creds: creds, Origin: origin, StdinUnusable: paster.StdinUnusable()}
 	if out.StdinUnusable {
@@ -226,6 +325,32 @@ func shadowingAuthEnv() string {
 	}
 
 	return ""
+}
+
+// PickWorkspacePrompt selects and stores a workspace for a login that has none,
+// for the doctor's fixer.
+func PickWorkspacePrompt(ctx context.Context, logger log.Logger) func() (string, error) {
+	return func() (string, error) {
+		envs := utils.AllEnvs()
+
+		cred, _, err := live.Default(logger).ResolveTokenOnly(ctx, envs)
+		if err != nil {
+			return "", fmt.Errorf("resolve the stored credential: %w", err)
+		}
+
+		workspace, err := pickWorkspace(ctx, envs, cred.Token)
+		if err != nil {
+			return "", err
+		}
+
+		origin, err := store.SetWorkspaceID(configcommon.DetectCIProvider(envs) != "", workspace)
+		if err != nil {
+			return "", err //nolint:wrapcheck // already user-facing
+		}
+		logger.TInfof("✅ Using workspace %q for the build cache (stored in the %s).", workspace, origin.Label())
+
+		return workspace, nil
+	}
 }
 
 // pickWorkspace lists the workspaces the fresh PAT can access and lets the user

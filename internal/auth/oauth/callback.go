@@ -25,7 +25,19 @@ type callbackServer struct {
 type callbackResult struct {
 	code string
 	err  error
+	via  string
 }
+
+// RelayHeader marks a callback delivered by `auth login --callback` rather than
+// by a browser that reached the listener itself. Both arrive the same way, and
+// the sign-in has to be able to say which one completed it.
+const RelayHeader = "X-Bitrise-Build-Cache-Callback-Relay"
+
+const (
+	viaListener = "the browser reaching this machine"
+	viaRelay    = "`auth login --callback`"
+	viaPaste    = "the URL pasted here"
+)
 
 // newCallbackServer binds the loopback listener; caller calls start() then close().
 func newCallbackServer(ctx context.Context, state string) (*callbackServer, error) {
@@ -66,12 +78,12 @@ func (cs *callbackServer) start() {
 
 // wait blocks until the callback fires (delivering a code or error) or ctx is
 // cancelled / times out.
-func (cs *callbackServer) wait(ctx context.Context) (string, error) {
+func (cs *callbackServer) wait(ctx context.Context) (string, string, error) {
 	select {
 	case <-ctx.Done():
-		return "", fmt.Errorf("timed out waiting for the browser sign-in to complete: %w", ctx.Err())
+		return "", "", fmt.Errorf("timed out waiting for the browser sign-in to complete: %w", ctx.Err())
 	case res := <-cs.results:
-		return res.code, res.err
+		return res.code, res.via, res.err
 	}
 }
 
@@ -82,7 +94,12 @@ func (cs *callbackServer) close() {
 }
 
 func (cs *callbackServer) handle(w http.ResponseWriter, r *http.Request) {
-	cs.deliver(w, parseCallbackParams(r.URL.Query(), cs.state))
+	res := parseCallbackParams(r.URL.Query(), cs.state)
+	res.via = viaListener
+	if r.Header.Get(RelayHeader) != "" {
+		res.via = viaRelay
+	}
+	cs.deliver(w, res)
 }
 
 // parseCallbackParams validates the callback query params, shared by the

@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"context"
+	"errors"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
@@ -14,6 +15,16 @@ func (d *Doctor) authCheck() Check {
 			// Read-only: report the credential that is on the machine, not the one a
 			// refresh would produce.
 			cred, origin, err := d.storedFirstResolver().ResolveNoRefresh(d.Envs)
+			// A workspace-less login is still unusable auth, so it fails the check —
+			// but the fix is picking one, not signing in again.
+			if errors.Is(err, auth.ErrWorkspaceNotSelected) {
+				return Result{
+					State:   StateError,
+					Detail:  "signed in, but no workspace is selected",
+					Fixable: true,
+					Fixer:   WorkspacePickFixer{Prompt: d.WorkspacePickPrompt},
+				}
+			}
 			if err != nil || !origin.Resolved() {
 				return Result{
 					State:   StateError,

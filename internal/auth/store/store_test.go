@@ -140,3 +140,33 @@ func TestStoredUsername_FoundInEitherBackend(t *testing.T) {
 	require.NoError(t, NewKeychain().Save(auth.TokenSet{AuthToken: "t", WorkspaceID: "w", Username: "from-keychain"}))
 	assert.Equal(t, "from-keychain", StoredUsername(), "the keychain is consulted first")
 }
+
+func TestSetWorkspaceID_completesAWorkspacelessLogin(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	require.NoError(t, NewFile().Save(auth.TokenSet{AuthToken: "pat", RefreshToken: "refresh", Username: "erin"}))
+
+	origin, err := SetWorkspaceID(false, "  ws-slug  ")
+	require.NoError(t, err)
+	assert.Equal(t, auth.BackendFile, origin.Backend)
+	assert.Equal(t, auth.ProvenanceOAuthLogin, origin.Provenance)
+
+	got, err := NewFile().Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ws-slug", got.WorkspaceID)
+	assert.Equal(t, "refresh", got.RefreshToken, "the login must stay refreshable after picking a workspace")
+	assert.Equal(t, "pat", got.AuthToken)
+	assert.Equal(t, "erin", got.Username)
+
+	_, kcErr := NewKeychain().Load()
+	require.ErrorIs(t, kcErr, ErrNotFound, "workspace write must not create a stray keychain entry")
+}
+
+func TestSetWorkspaceID_withNothingStoredErrors(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	_, err := SetWorkspaceID(false, "ws-slug")
+	require.Error(t, err)
+}
