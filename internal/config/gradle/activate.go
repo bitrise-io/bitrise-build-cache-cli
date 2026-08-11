@@ -2,12 +2,14 @@ package gradleconfig
 
 import (
 	"fmt"
+	"os/exec"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 )
 
 const (
@@ -28,12 +30,25 @@ func Activate(
 ) error {
 	NormalizeParams(&params)
 
-	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
+	resolver := live.Default(nil)
+
+	authConfig, _, err := resolver.ResolveNoRefresh(envProvider)
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
 
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+
+	username, _ := resolver.ResolveUsername(envProvider)
+	metadata := configcommon.NewMetadata(envProvider, username,
+		func(name string, v ...string) (string, error) {
+			output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+			return string(output), err
+		}, logger)
+	if metadata.CIProvider != "" {
+		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envProvider, logger))
+	}
 
 	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)
 	if err != nil {

@@ -58,6 +58,7 @@ func Test_ApplyBenchmarkPhase(t *testing.T) {
 		ApplyBenchmarkPhase(&params, logger, mockProvider, common.CacheConfigMetadata{}, &noopExporter{})
 
 		assert.False(t, params.Cache.Enabled)
+		assert.False(t, params.Cache.PushEnabled)
 		assert.False(t, params.Cache.JustDependency)
 		assert.True(t, params.Analytics.Enabled)
 		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
