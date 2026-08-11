@@ -68,6 +68,7 @@ func Test_Activate_CachePushImpliesCacheEnabled(t *testing.T) {
 	assert.Contains(t, string(propsBytes), "org.gradle.caching=true")
 }
 
+//nolint:dupl
 func Test_Activate_BenchmarkBaselineDisablesCacheInProps(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Infof", mock.Anything).Return()
@@ -130,6 +131,7 @@ func Test_Activate_BenchmarkBaselineDisablesCacheInProps(t *testing.T) {
 	assert.Contains(t, string(propsBytes), "org.gradle.caching=false")
 }
 
+//nolint:dupl
 func Test_Activate_BenchmarkWarmupKeepsCacheEnabledInProps(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Infof", mock.Anything).Return()
