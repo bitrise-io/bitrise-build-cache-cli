@@ -6,6 +6,7 @@ type HostMetadataInventory struct {
 	DefaultCharset string
 	CPUCores       int
 	MemSize        int64
+	Username       string
 }
 
 type CommonTemplateInventory struct {

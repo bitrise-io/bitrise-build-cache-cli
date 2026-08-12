@@ -19,7 +19,8 @@ build --remote_timeout=600s
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser={{ .Common.CIProvider }}
+{{- /* CIProvider on CI, resolved display name locally */}}
+build --remote_header=x-flare-builduser={{ if .Common.CIProvider }}{{ .Common.CIProvider }}{{ else }}{{ .Common.HostMetadata.Username }}{{ end }}
 {{- if .Cache.IsPushEnabled }}
 build --remote_upload_local_results
 {{- else }}
