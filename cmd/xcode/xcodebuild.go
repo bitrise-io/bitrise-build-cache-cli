@@ -94,167 +94,182 @@ TBD`,
 	SilenceUsage:       true,
 	DisableFlagParsing: true, // pass all args to xcodebuild
 	RunE: func(cobraCmd *cobra.Command, _ []string) error {
-		invocationID := uuid.New().String()
-
-		if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
-			fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (parent: %s)\n", invocationID, parentID)
-		} else {
-			fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (no parent)\n", invocationID)
-		}
-
-		decoder := utils.DefaultDecoderFactory{}
-		osProxy := utils.DefaultOsProxy{}
-		config, err := xcelerate.ReadConfig(osProxy, decoder, utils.AllEnvs())
-		if err != nil {
-			// we don't have the config yet, use default logger
-			log.NewLogger().Errorf(ErrReadConfig, err)
-			config = xcelerate.DefaultConfig()
-		}
-
-		config = mergeDebugFlag(config)
-
-		xcelerateParams.OrigArgs = os.Args[1:]
-
-		silentLogging := config.Silent
-		if slices.Contains(xcelerateParams.OrigArgs, "-json") {
-			silentLogging = true
-		}
-
-		// Strip wrapper-only flags from argv and capture disable-reasons before
-		// the logger exists — they get logged once the logger is wired below.
-		var disabledBy []string
-		if slices.Contains(xcelerateParams.OrigArgs, NoBitriseBuildCacheFlag) {
-			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
-				return s == NoBitriseBuildCacheFlag
-			})
-			config.BuildCacheEnabled = false
-			disabledBy = append(disabledBy, NoBitriseBuildCacheFlag)
-		}
-
-		noPrefixMap := slices.Contains(xcelerateParams.OrigArgs, NoPrefixMapFlag)
-		if noPrefixMap {
-			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
-				return s == NoPrefixMapFlag
-			})
-		}
-
-		noManagedDD := slices.Contains(xcelerateParams.OrigArgs, NoManagedDerivedDataFlag)
-		if noManagedDD {
-			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
-				return s == NoManagedDerivedDataFlag
-			})
-		}
-
-		noDoctor := slices.Contains(xcelerateParams.OrigArgs, NoDoctorFlag) || os.Getenv(EnvSkipDoctor) != ""
-		if noDoctor {
-			xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
-				return s == NoDoctorFlag
-			})
-		}
-
-		// Automatically disable cache for -create-xcframework as it's incompatible
-		if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
-			config.BuildCacheEnabled = false
-			disabledBy = append(disabledBy, CreateXCFrameworkFlag)
-		}
-
-		// Query invocations short-circuit before creating the per-invocation log
-		// file or spawning the proxy.
-		isBuildAction := xcodeargs.HasBuildAction(xcelerateParams.OrigArgs)
-
-		var (
-			logFileWC io.WriteCloser
-			logPath   string
-		)
-		if isBuildAction {
-			envs := utils.AllEnvs()
-			var logErr error
-			logFileWC, logPath, logErr = logFile(invocationID, osProxy, envs)
-			if logErr != nil && !config.Silent {
-				fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", logErr)
-			}
-			defer func() {
-				if logFileWC != nil {
-					_ = logFileWC.Close()
-				}
-			}()
-		}
-
-		logOutput := wrapperLogWriter(logFileWC, logPath, silentLogging)
-		logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
-		cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
-
-		if !silentLogging {
-			for _, flag := range disabledBy {
-				logger.TInfof(MsgBuildCacheDisabledByFlag, flag)
-			}
-		}
-
-		xcodeArgs := xcodeargs.NewDefault(
-			cobraCmd,
-			xcelerateParams.OrigArgs,
-			logger,
-		)
-
-		logger.EnableDebugLog(config.DebugLogging)
-
-		var proxySessionClient session.SessionClient
-		if isBuildAction && config.BuildCacheEnabled {
-			logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
-
-			err := startProxy(
-				logger,
-				osProxy,
-				utils.DefaultCommandFunc(),
-				func(pid int, signum syscall.Signal) {
-					_ = syscall.Kill(pid, syscall.SIGKILL)
-				},
-			)
-			if err != nil {
-				return fmt.Errorf(errFmtFailedToStartProxy, err)
-			}
-
-			var cleanup func()
-
-			proxySessionClient, cleanup = createProxySessionClient(config, logger)
-			defer cleanup()
-		}
-
-		metadata := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(utils.AllEnvs()), func(cmd string, args ...string) (string, error) {
-			o, err := utils.DefaultCommandFunc()(cobraCmd.Context(), cmd, args...).CombinedOutput()
-
-			return string(o), err
-		}, logger)
-
-		xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
-
-		runner := &XcodebuildRunner{
-			Config:             config,
-			Metadata:           metadata,
-			InvocationID:       invocationID,
-			Logger:             logger,
-			CacheLogger:        cacheLogger,
-			XcodeRunner:        xcodeRunner,
-			ProxySessionClient: proxySessionClient,
-			XcodeArgs:          xcodeArgs,
-			NoPrefixMap:        noPrefixMap,
-			NoManagedDD:        noManagedDD,
-		}
-		if !noDoctor {
-			runner.Doctor = &xcodeDoctor{
-				Logger:       logger,
-				Debug:        config.DebugLogging,
-				CacheEnabled: config.BuildCacheEnabled,
-				InvocationID: invocationID,
-			}
-		}
-		if runStats := runner.Run(cobraCmd.Context()); runStats.Error != nil {
-			logger.Errorf(ErrExecutingXcode, runStats.Error)
-			os.Exit(runStats.ExitCode)
-		}
-
-		return nil
+		return runXcodebuildWrapperFn(cobraCmd.Context(), os.Args[1:], cobraCmd)
 	},
+}
+
+// runXcodebuildWrapperFn is swappable so subcommands and tests can substitute
+// the wrapper without going through os.Args.
+//
+//nolint:gochecknoglobals
+var runXcodebuildWrapperFn = runXcodebuildWrapper
+
+// runXcodebuildWrapper is the body of the xcodebuild wrapper. It runs the full
+// pipeline: proxy start, doctor, XcodebuildRunner, analytics PUT, benchmark
+// phase, invocation-registry, on the given argv.
+//
+//nolint:funlen
+func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Command) error {
+	invocationID := uuid.New().String()
+
+	if parentID := os.Getenv("BITRISE_INVOCATION_ID"); parentID != "" {
+		fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (parent: %s)\n", invocationID, parentID)
+	} else {
+		fmt.Fprintf(os.Stderr, "Xcode invocation ID: %s (no parent)\n", invocationID)
+	}
+
+	decoder := utils.DefaultDecoderFactory{}
+	osProxy := utils.DefaultOsProxy{}
+	config, err := xcelerate.ReadConfig(osProxy, decoder, utils.AllEnvs())
+	if err != nil {
+		// we don't have the config yet, use default logger
+		log.NewLogger().Errorf(ErrReadConfig, err)
+		config = xcelerate.DefaultConfig()
+	}
+
+	config = mergeDebugFlag(config)
+
+	xcelerateParams.OrigArgs = argv
+
+	silentLogging := config.Silent
+	if slices.Contains(xcelerateParams.OrigArgs, "-json") {
+		silentLogging = true
+	}
+
+	// Strip wrapper-only flags from argv and capture disable-reasons before
+	// the logger exists — they get logged once the logger is wired below.
+	var disabledBy []string
+	if slices.Contains(xcelerateParams.OrigArgs, NoBitriseBuildCacheFlag) {
+		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+			return s == NoBitriseBuildCacheFlag
+		})
+		config.BuildCacheEnabled = false
+		disabledBy = append(disabledBy, NoBitriseBuildCacheFlag)
+	}
+
+	noPrefixMap := slices.Contains(xcelerateParams.OrigArgs, NoPrefixMapFlag)
+	if noPrefixMap {
+		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+			return s == NoPrefixMapFlag
+		})
+	}
+
+	noManagedDD := slices.Contains(xcelerateParams.OrigArgs, NoManagedDerivedDataFlag)
+	if noManagedDD {
+		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+			return s == NoManagedDerivedDataFlag
+		})
+	}
+
+	noDoctor := slices.Contains(xcelerateParams.OrigArgs, NoDoctorFlag) || os.Getenv(EnvSkipDoctor) != ""
+	if noDoctor {
+		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+			return s == NoDoctorFlag
+		})
+	}
+
+	// Automatically disable cache for -create-xcframework as it's incompatible
+	if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
+		config.BuildCacheEnabled = false
+		disabledBy = append(disabledBy, CreateXCFrameworkFlag)
+	}
+
+	// Query invocations short-circuit before creating the per-invocation log
+	// file or spawning the proxy.
+	isBuildAction := xcodeargs.HasBuildAction(xcelerateParams.OrigArgs)
+
+	var (
+		logFileWC io.WriteCloser
+		logPath   string
+	)
+	if isBuildAction {
+		envs := utils.AllEnvs()
+		var logErr error
+		logFileWC, logPath, logErr = logFile(invocationID, osProxy, envs)
+		if logErr != nil && !config.Silent {
+			fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", logErr)
+		}
+		defer func() {
+			if logFileWC != nil {
+				_ = logFileWC.Close()
+			}
+		}()
+	}
+
+	logOutput := wrapperLogWriter(logFileWC, logPath, silentLogging)
+	logger := log.NewLogger(log.WithPrefix("[Bitrise Analytics] "), log.WithOutput(logOutput))
+	cacheLogger := log.NewLogger(log.WithPrefix("[Bitrise Build Cache] "), log.WithOutput(logOutput))
+
+	if !silentLogging {
+		for _, flag := range disabledBy {
+			logger.TInfof(MsgBuildCacheDisabledByFlag, flag)
+		}
+	}
+
+	xcodeArgs := xcodeargs.NewDefault(
+		cobraCmd,
+		xcelerateParams.OrigArgs,
+		logger,
+	)
+
+	logger.EnableDebugLog(config.DebugLogging)
+
+	var proxySessionClient session.SessionClient
+	if isBuildAction && config.BuildCacheEnabled {
+		logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
+
+		err := startProxy( //nolint:contextcheck // proxy intentionally detaches from the parent context
+			logger,
+			osProxy,
+			utils.DefaultCommandFunc(),
+			func(pid int, signum syscall.Signal) {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			},
+		)
+		if err != nil {
+			return fmt.Errorf(errFmtFailedToStartProxy, err)
+		}
+
+		var cleanup func()
+
+		proxySessionClient, cleanup = createProxySessionClient(config, logger)
+		defer cleanup()
+	}
+
+	metadata := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(utils.AllEnvs()), func(cmd string, args ...string) (string, error) {
+		o, err := utils.DefaultCommandFunc()(ctx, cmd, args...).CombinedOutput()
+
+		return string(o), err
+	}, logger)
+
+	xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
+
+	runner := &XcodebuildRunner{
+		Config:             config,
+		Metadata:           metadata,
+		InvocationID:       invocationID,
+		Logger:             logger,
+		CacheLogger:        cacheLogger,
+		XcodeRunner:        xcodeRunner,
+		ProxySessionClient: proxySessionClient,
+		XcodeArgs:          xcodeArgs,
+		NoPrefixMap:        noPrefixMap,
+		NoManagedDD:        noManagedDD,
+	}
+	if !noDoctor {
+		runner.Doctor = &xcodeDoctor{
+			Logger:       logger,
+			Debug:        config.DebugLogging,
+			CacheEnabled: config.BuildCacheEnabled,
+			InvocationID: invocationID,
+		}
+	}
+	if runStats := runner.Run(ctx); runStats.Error != nil {
+		logger.Errorf(ErrExecutingXcode, runStats.Error)
+		os.Exit(runStats.ExitCode) //nolint:gocritic // wrapper deliberately propagates the xcodebuild exit code
+	}
+
+	return nil
 }
 
 func init() {
