@@ -18,7 +18,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
 
-// stubResolveOK replaces resolveXcodeInvocation with a canned spec + observed args.
 func stubResolveOK(t *testing.T, spec invoke.InvocationSpec) *struct {
 	Calls int
 	Cmd   invoke.Command
@@ -45,7 +44,6 @@ func stubResolveOK(t *testing.T, spec invoke.InvocationSpec) *struct {
 	return observed
 }
 
-// stubWrapper replaces runXcodebuildWrapperFn to capture the argv it would have passed to xcodebuild.
 func stubWrapper(t *testing.T) *[]string {
 	t.Helper()
 	orig := runXcodebuildWrapperFn
@@ -61,7 +59,6 @@ func stubWrapper(t *testing.T) *[]string {
 	return &captured
 }
 
-// gitRepoDir sets up a temp dir, makes it a git repo (mkdir .git), chdir there, restores cwd.
 func gitRepoDir(t *testing.T) string {
 	t.Helper()
 
@@ -174,7 +171,6 @@ func Test_XcodeSubcommand_PositionalArgsPassThrough(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 
 	require.NotEmpty(t, *captured)
-	// Positional args land after the resolver-driven and codesign args.
 	assert.Equal(t, "-quiet", (*captured)[len(*captured)-2])
 	assert.Equal(t, "-showBuildTimingSummary", (*captured)[len(*captured)-1])
 }
@@ -198,7 +194,6 @@ func Test_XcodeSubcommand_Reconfigure_DeletesExistingConfig(t *testing.T) {
 
 	require.NoError(t, cmd.Execute())
 
-	// The current stubbed resolver does not re-persist, so the file remains absent post-delete.
 	_, err := os.Stat(configPath)
 	assert.True(t, os.IsNotExist(err), "reconfigure must delete the existing invocation config file")
 }
@@ -324,9 +319,6 @@ func Test_XcodeSubcommand_ResolveError_PropagatesWrapped(t *testing.T) {
 }
 
 func Test_XcodeCommand_RegisteredAtTopLevel(t *testing.T) {
-	// xcodeCommand is added to common.RootCmd in init(). Assert the tree
-	// exposes the new subcommands so `bitrise-build-cache xcode build/test`
-	// resolves via cobra.
 	child, _, err := xcodeCommand.Find([]string{"build"})
 	require.NoError(t, err)
 	require.NotNil(t, child)

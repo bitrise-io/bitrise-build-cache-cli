@@ -95,10 +95,6 @@ TBD`,
 //nolint:gochecknoglobals
 var runXcodebuildWrapperFn = runXcodebuildWrapper
 
-// runXcodebuildWrapper is the body of the xcodebuild wrapper. It runs the full
-// pipeline: proxy start, doctor, XcodebuildRunner, analytics PUT, benchmark
-// phase, invocation-registry, on the given argv.
-//
 //nolint:funlen
 func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Command) error {
 	invocationID := uuid.New().String()
