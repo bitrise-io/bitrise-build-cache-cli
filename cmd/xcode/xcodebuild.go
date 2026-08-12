@@ -74,15 +74,6 @@ type XcodeRunner interface {
 	Run(ctx context.Context, args []string) xcodeargs.RunStats
 }
 
-type XcelerateParams struct {
-	OrigArgs []string
-}
-
-//nolint:gochecknoglobals
-var xcelerateParams = XcelerateParams{
-	OrigArgs: []string{},
-}
-
 // rootCmd represents the base command when called without any subcommands
 //
 //nolint:gochecknoglobals
@@ -129,54 +120,54 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 
 	config = mergeDebugFlag(config)
 
-	xcelerateParams.OrigArgs = argv
+	origArgs := argv
 
 	silentLogging := config.Silent
-	if slices.Contains(xcelerateParams.OrigArgs, "-json") {
+	if slices.Contains(origArgs, "-json") {
 		silentLogging = true
 	}
 
 	// Strip wrapper-only flags from argv and capture disable-reasons before
 	// the logger exists — they get logged once the logger is wired below.
 	var disabledBy []string
-	if slices.Contains(xcelerateParams.OrigArgs, NoBitriseBuildCacheFlag) {
-		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+	if slices.Contains(origArgs, NoBitriseBuildCacheFlag) {
+		origArgs = slices.DeleteFunc(origArgs, func(s string) bool {
 			return s == NoBitriseBuildCacheFlag
 		})
 		config.BuildCacheEnabled = false
 		disabledBy = append(disabledBy, NoBitriseBuildCacheFlag)
 	}
 
-	noPrefixMap := slices.Contains(xcelerateParams.OrigArgs, NoPrefixMapFlag)
+	noPrefixMap := slices.Contains(origArgs, NoPrefixMapFlag)
 	if noPrefixMap {
-		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+		origArgs = slices.DeleteFunc(origArgs, func(s string) bool {
 			return s == NoPrefixMapFlag
 		})
 	}
 
-	noManagedDD := slices.Contains(xcelerateParams.OrigArgs, NoManagedDerivedDataFlag)
+	noManagedDD := slices.Contains(origArgs, NoManagedDerivedDataFlag)
 	if noManagedDD {
-		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+		origArgs = slices.DeleteFunc(origArgs, func(s string) bool {
 			return s == NoManagedDerivedDataFlag
 		})
 	}
 
-	noDoctor := slices.Contains(xcelerateParams.OrigArgs, NoDoctorFlag) || os.Getenv(EnvSkipDoctor) != ""
+	noDoctor := slices.Contains(origArgs, NoDoctorFlag) || os.Getenv(EnvSkipDoctor) != ""
 	if noDoctor {
-		xcelerateParams.OrigArgs = slices.DeleteFunc(xcelerateParams.OrigArgs, func(s string) bool {
+		origArgs = slices.DeleteFunc(origArgs, func(s string) bool {
 			return s == NoDoctorFlag
 		})
 	}
 
 	// Automatically disable cache for -create-xcframework as it's incompatible
-	if slices.Contains(xcelerateParams.OrigArgs, CreateXCFrameworkFlag) {
+	if slices.Contains(origArgs, CreateXCFrameworkFlag) {
 		config.BuildCacheEnabled = false
 		disabledBy = append(disabledBy, CreateXCFrameworkFlag)
 	}
 
 	// Query invocations short-circuit before creating the per-invocation log
 	// file or spawning the proxy.
-	isBuildAction := xcodeargs.HasBuildAction(xcelerateParams.OrigArgs)
+	isBuildAction := xcodeargs.HasBuildAction(origArgs)
 
 	var (
 		logFileWC io.WriteCloser
@@ -208,7 +199,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 
 	xcodeArgs := xcodeargs.NewDefault(
 		cobraCmd,
-		xcelerateParams.OrigArgs,
+		origArgs,
 		logger,
 	)
 
@@ -266,7 +257,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	}
 	if runStats := runner.Run(ctx); runStats.Error != nil {
 		logger.Errorf(ErrExecutingXcode, runStats.Error)
-		os.Exit(runStats.ExitCode) //nolint:gocritic // wrapper deliberately propagates the xcodebuild exit code
+		os.Exit(runStats.ExitCode) //nolint:gocritic // exitAfterDefer: process is terminating so OS reclaims fd/gRPC conn; propagating xcodebuild's exit code is required for shell semantics
 	}
 
 	return nil
