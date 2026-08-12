@@ -236,7 +236,7 @@ func Test_Generate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "CLIPath set but CIProvider also set uses literal token (CI branch)",
+			name: "CLIPath set on CI uses the credential helper too",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
 					AuthToken:   "AuthTokenValue",
@@ -244,6 +244,29 @@ func Test_Generate(t *testing.T) {
 					AppSlug:     "AppSlugValue",
 					CIProvider:  "bitrise",
 					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    expectedCIHelperConfig,
+			wantErr: "",
+		},
+		{
+			name: "CI without a reachable CLI falls back to the literal token",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					CLIPath:     "",
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -417,6 +440,25 @@ build --remote_header='x-org-id=WorkspaceIDValue'
 build --bes_header='x-org-id=WorkspaceIDValue'
 build --remote_header='x-app-id=AppSlugValue'
 build --bes_header='x-app-id=AppSlugValue'
+`
+
+const expectedCIHelperConfig = `build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache
+build --remote_cache=grpcs://cache.services.bitrise.io:443
+build --remote_timeout=600s
+build --remote_header=x-flare-buildtool=bazel
+build --remote_header=x-flare-builduser=bitrise
+build --remote_upload_local_results
+build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
+build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
+build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
+build --build_event_publish_all_actions
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --bes_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-id=AppSlugValue'
+build --bes_header='x-app-id=AppSlugValue'
+build --remote_header='x-ci-provider=bitrise'
+build --bes_header='x-ci-provider=bitrise'
 `
 
 const expectedCIFallbackHeaders = `build --remote_cache=grpcs://cache.services.bitrise.io:443
