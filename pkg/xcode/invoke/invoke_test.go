@@ -255,6 +255,61 @@ func TestResolve_TolerateUnknownJSONFields(t *testing.T) {
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
 }
 
+func TestResolve_UnknownJSONFieldsDroppedOnPersist(t *testing.T) {
+	repoRoot := t.TempDir()
+	dir := filepath.Join(repoRoot, ".bitrise-build-cache")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "xcode-build.json"), []byte(`{
+	"workspace": "App.xcworkspace",
+	"scheme": "App",
+	"destination": "generic/platform=iOS",
+	"sdk": "iphonesimulator"
+}`), 0o644))
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "xcode-build.json"))
+	require.NoError(t, err)
+
+	var asMap map[string]any
+	require.NoError(t, json.Unmarshal(raw, &asMap))
+
+	_, sdkPresent := asMap["sdk"]
+	assert.False(t, sdkPresent, "unknown field 'sdk' must be dropped on persist")
+	assert.Equal(t, "App.xcworkspace", asMap["workspace"])
+	assert.Equal(t, "App", asMap["scheme"])
+	assert.Equal(t, "generic/platform=iOS", asMap["destination"])
+}
+
+func TestResolve_WorkspaceWinsOverProject(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Project:     "App.xcodeproj",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+	})
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, "App.xcworkspace", got.Workspace)
+	assert.Empty(t, got.Project, "workspace wins when both are set")
+
+	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
+	assert.Equal(t, "App.xcworkspace", persisted.Workspace)
+	assert.Empty(t, persisted.Project)
+}
+
 func TestResolve_PersistsUnderRepoLocalDir(t *testing.T) {
 	repoRoot := t.TempDir()
 

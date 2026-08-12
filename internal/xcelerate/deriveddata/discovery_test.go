@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
 // manifestFixture builds an XML plist manifest with a single build entry.
@@ -94,7 +95,7 @@ func TestFinder_PicksLatestStopAcrossRoots(t *testing.T) {
 	}, "/some/path/Other.xcworkspace")
 
 	finder := &deriveddata.Finder{HomeDir: home}
-	got, err := finder.LatestForCommand(deriveddata.CommandBuild)
+	got, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.NoError(t, err)
 
 	assert.Equal(t, "NewScheme", got.Scheme)
@@ -117,10 +118,10 @@ func TestFinder_FiltersByCommand(t *testing.T) {
 	finder := &deriveddata.Finder{HomeDir: home}
 
 	// A build request should not see the test entry.
-	_, err := finder.LatestForCommand(deriveddata.CommandBuild)
+	_, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.ErrorIs(t, err, deriveddata.ErrNoRecentBuild)
 
-	got, err := finder.LatestForCommand(deriveddata.CommandTest)
+	got, err := finder.LatestForCommand(enrichment.CommandTest)
 	require.NoError(t, err)
 	assert.Equal(t, "AppTests", got.Scheme)
 }
@@ -154,7 +155,7 @@ func TestFinder_SkipsZeroStopEntries(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(ddRoot, "Logs", "Build", "LogStoreManifest.plist"), []byte(body), 0o644))
 
 	finder := &deriveddata.Finder{HomeDir: home}
-	_, err := finder.LatestForCommand(deriveddata.CommandBuild)
+	_, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.ErrorIs(t, err, deriveddata.ErrNoRecentBuild)
 }
 
@@ -170,7 +171,7 @@ func TestFinder_MissingInfoPlist_LeavesWorkspaceEmpty(t *testing.T) {
 	}, "")
 
 	finder := &deriveddata.Finder{HomeDir: home}
-	got, err := finder.LatestForCommand(deriveddata.CommandBuild)
+	got, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.NoError(t, err)
 
 	assert.Equal(t, "App", got.Scheme)
@@ -191,7 +192,7 @@ func TestFinder_ProjectFromInfoPlist(t *testing.T) {
 	}, "/some/path/App.xcodeproj")
 
 	finder := &deriveddata.Finder{HomeDir: home}
-	got, err := finder.LatestForCommand(deriveddata.CommandBuild)
+	got, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.NoError(t, err)
 
 	assert.Empty(t, got.Workspace)
@@ -202,6 +203,6 @@ func TestFinder_NoManifests(t *testing.T) {
 	home := t.TempDir()
 
 	finder := &deriveddata.Finder{HomeDir: home}
-	_, err := finder.LatestForCommand(deriveddata.CommandBuild)
+	_, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.ErrorIs(t, err, deriveddata.ErrNoRecentBuild)
 }
