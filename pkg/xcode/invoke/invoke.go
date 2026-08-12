@@ -188,7 +188,6 @@ func (r *Resolver) finder() *deriveddata.Finder {
 	return &deriveddata.Finder{Logger: r.logger()}
 }
 
-// loadExisting decodes the repo-local config, tolerating unknown fields.
 func (r *Resolver) loadExisting(configPath string) (InvocationSpec, error) {
 	if configPath == "" {
 		return InvocationSpec{}, nil
@@ -271,9 +270,6 @@ func (r *Resolver) persist(configPath string, spec InvocationSpec) error {
 	return nil
 }
 
-// isComplete returns true when the spec has enough to run xcodebuild:
-// one of workspace/project is set, scheme is set, and destination is set.
-// Configuration is optional.
 func isComplete(s InvocationSpec) bool {
 	hasContainer := s.Workspace != "" || s.Project != ""
 

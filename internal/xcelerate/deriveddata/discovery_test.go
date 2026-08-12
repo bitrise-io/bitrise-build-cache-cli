@@ -15,7 +15,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
-// manifestFixture builds an XML plist manifest with a single build entry.
 type manifestFixture struct {
 	uuid       string
 	scheme     string
@@ -117,7 +116,6 @@ func TestFinder_FiltersByCommand(t *testing.T) {
 
 	finder := &deriveddata.Finder{HomeDir: home}
 
-	// A build request should not see the test entry.
 	_, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.ErrorIs(t, err, deriveddata.ErrNoRecentBuild)
 

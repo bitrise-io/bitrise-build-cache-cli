@@ -117,8 +117,7 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 	return result, nil
 }
 
-// extractConfiguration finds "configuration <Name>" in the manifest Signature.
-// The known form Xcode writes is e.g. "Cleaning project X with scheme Y and configuration Debug".
+// Xcode writes signatures like "Cleaning project X with scheme Y and configuration Debug".
 func extractConfiguration(signature string) string {
 	const key = "configuration "
 
@@ -137,8 +136,7 @@ func extractConfiguration(signature string) string {
 	return strings.TrimSpace(rest[:end])
 }
 
-// readWorkspaceInfo reads <ddRoot>/info.plist and returns (workspace, project).
-// One of the two is set when the WorkspacePath key points to an .xcworkspace or .xcodeproj respectively.
+// Returns (workspace, project); exactly one is set based on WorkspacePath's extension.
 func (f *Finder) readWorkspaceInfo(ddRoot string) (string, string) {
 	logger := f.logger()
 
