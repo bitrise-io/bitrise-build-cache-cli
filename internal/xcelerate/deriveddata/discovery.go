@@ -14,16 +14,7 @@ import (
 	"howett.net/plist"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
-)
-
-// Command identifies which xcodebuild action the caller wants a recent build for.
-type Command int
-
-const (
-	CommandBuild Command = iota
-	CommandTest
 )
 
 // LatestBuild holds the fields discoverable from a recent DerivedData manifest.
@@ -41,10 +32,9 @@ type LatestBuild struct {
 var ErrNoRecentBuild = errors.New("no recent build found in DerivedData")
 
 // Finder scans DerivedData for the most recent manifest entry matching a command.
-// Nil Logger / OsProxy fall back to defaults.
+// Nil Logger falls back to a discard logger.
 type Finder struct {
-	Logger  log.Logger
-	OsProxy utils.OsProxy
+	Logger log.Logger
 
 	// HomeDir overrides os.UserHomeDir for tests. Empty falls back to the real home.
 	HomeDir string
@@ -52,7 +42,10 @@ type Finder struct {
 
 // LatestForCommand returns the most recent build matching command. Returns
 // ErrNoRecentBuild if no manifest entry matched.
-func (f *Finder) LatestForCommand(command Command) (LatestBuild, error) {
+//
+// Picks the entry with the latest Stop timestamp regardless of Status; a failed
+// most-recent build wins over an earlier success.
+func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, error) {
 	logger := f.logger()
 
 	home, err := f.homeDir()
@@ -64,8 +57,6 @@ func (f *Finder) LatestForCommand(command Command) (LatestBuild, error) {
 		filepath.Join(home, enrichment.DefaultDerivedDataGlob),
 		filepath.Join(home, paths.XcodeManagedDerivedDataManifestGlobRelative),
 	}
-
-	want := manifestCommandFor(command)
 
 	var (
 		best      enrichment.ManifestEntry
@@ -90,7 +81,7 @@ func (f *Finder) LatestForCommand(command Command) (LatestBuild, error) {
 			}
 
 			for _, entry := range entries {
-				if entry.Command() != want {
+				if entry.Command() != command {
 					continue
 				}
 
@@ -126,17 +117,6 @@ func (f *Finder) LatestForCommand(command Command) (LatestBuild, error) {
 	return result, nil
 }
 
-func manifestCommandFor(command Command) enrichment.Command {
-	switch command {
-	case CommandTest:
-		return enrichment.CommandTest
-	case CommandBuild:
-		fallthrough
-	default:
-		return enrichment.CommandBuild
-	}
-}
-
 // extractConfiguration finds "configuration <Name>" in the manifest Signature.
 // The known form Xcode writes is e.g. "Cleaning project X with scheme Y and configuration Debug".
 func extractConfiguration(signature string) string {
@@ -149,7 +129,7 @@ func extractConfiguration(signature string) string {
 
 	rest := signature[idx+len(key):]
 
-	end := strings.IndexAny(rest, " ")
+	end := strings.Index(rest, " ")
 	if end < 0 {
 		return strings.TrimSpace(rest)
 	}
@@ -215,12 +195,7 @@ func (f *Finder) homeDir() (string, error) {
 		return f.HomeDir, nil
 	}
 
-	proxy := f.OsProxy
-	if proxy == nil {
-		proxy = utils.DefaultOsProxy{}
-	}
-
-	home, err := proxy.UserHomeDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("user home dir: %w", err)
 	}

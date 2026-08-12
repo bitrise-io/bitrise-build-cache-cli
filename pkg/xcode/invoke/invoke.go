@@ -18,11 +18,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 // Command identifies the xcodebuild action.
 type Command int
@@ -33,6 +30,8 @@ const (
 )
 
 // InvocationSpec is the persisted set of arguments the wrapper turns into an xcodebuild invocation.
+//
+// Unknown fields in the JSON file are tolerated on load but dropped on save.
 type InvocationSpec struct {
 	Workspace     string   `json:"workspace,omitempty"`
 	Project       string   `json:"project,omitempty"`
@@ -44,6 +43,8 @@ type InvocationSpec struct {
 
 // Prompt fills any missing fields of spec in-place. Consumers can substitute
 // their own implementation via Resolver.Prompt (e.g. for tests or non-tty steps).
+//
+// Fill must not modify spec.ExtraArgs.
 type Prompt interface {
 	Fill(ctx context.Context, spec *InvocationSpec) error
 }
@@ -77,12 +78,10 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 		configPath = paths.RepoLocalConfigPath(repoRoot, configFilename(command))
 	}
 
-	spec, existed, err := r.loadExisting(configPath)
+	spec, err := r.loadExisting(configPath)
 	if err != nil {
 		return InvocationSpec{}, err
 	}
-
-	preservedExtraArgs := spec.ExtraArgs
 
 	if !isComplete(spec) {
 		if err := r.fillFromDiscovery(&spec, command); err != nil {
@@ -100,19 +99,13 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 		return InvocationSpec{}, fmt.Errorf("resolved invocation spec is still incomplete after prompt (config=%s)", configPath)
 	}
 
-	// If we loaded a config that carried ExtraArgs, preserve them even if the
-	// spec above was re-materialised through discovery/prompt paths.
-	if len(preservedExtraArgs) > 0 && len(spec.ExtraArgs) == 0 {
-		spec.ExtraArgs = preservedExtraArgs
-	}
-
 	// Guarantee workspace/project mutual exclusion: if both are set, keep workspace.
 	if spec.Workspace != "" && spec.Project != "" {
 		spec.Project = ""
 	}
 
 	if configPath != "" {
-		if err := r.persist(configPath, spec, existed); err != nil {
+		if err := r.persist(configPath, spec); err != nil {
 			return InvocationSpec{}, err
 		}
 	}
@@ -168,10 +161,6 @@ func BuildArgv(spec InvocationSpec, command Command, codesign bool) []string {
 	return argv
 }
 
-// ---------------------------------------------------------------------------
-// Private
-// ---------------------------------------------------------------------------
-
 //nolint:gochecknoglobals // shared discard logger avoids per-call allocation
 var noopLogger = log.NewLogger(log.WithOutput(io.Discard))
 
@@ -196,31 +185,30 @@ func (r *Resolver) finder() *deriveddata.Finder {
 		return r.Finder
 	}
 
-	return &deriveddata.Finder{Logger: r.logger(), OsProxy: r.osProxy()}
+	return &deriveddata.Finder{Logger: r.logger()}
 }
 
 // loadExisting decodes the repo-local config, tolerating unknown fields.
-// existed=false when no file is present.
-func (r *Resolver) loadExisting(configPath string) (InvocationSpec, bool, error) {
+func (r *Resolver) loadExisting(configPath string) (InvocationSpec, error) {
 	if configPath == "" {
-		return InvocationSpec{}, false, nil
+		return InvocationSpec{}, nil
 	}
 
 	content, existed, err := r.osProxy().ReadFileIfExists(configPath)
 	if err != nil {
-		return InvocationSpec{}, false, fmt.Errorf("read invocation config: %w", err)
+		return InvocationSpec{}, fmt.Errorf("read invocation config: %w", err)
 	}
 
 	if !existed {
-		return InvocationSpec{}, false, nil
+		return InvocationSpec{}, nil
 	}
 
 	var spec InvocationSpec
 	if err := json.Unmarshal([]byte(content), &spec); err != nil {
-		return InvocationSpec{}, true, fmt.Errorf("decode invocation config %s: %w", configPath, err)
+		return InvocationSpec{}, fmt.Errorf("decode invocation config %s: %w", configPath, err)
 	}
 
-	return spec, true, nil
+	return spec, nil
 }
 
 func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command) error {
@@ -266,11 +254,9 @@ func (r *Resolver) promptFor(ctx context.Context, spec *InvocationSpec) error {
 	return nil
 }
 
-func (r *Resolver) persist(configPath string, spec InvocationSpec, existed bool) error {
-	if !existed {
-		if err := r.osProxy().MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-			return fmt.Errorf("create %s: %w", filepath.Dir(configPath), err)
-		}
+func (r *Resolver) persist(configPath string, spec InvocationSpec) error {
+	if err := r.osProxy().MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(configPath), err)
 	}
 
 	data, err := json.MarshalIndent(spec, "", "  ")
@@ -305,13 +291,13 @@ func configFilename(command Command) string {
 	}
 }
 
-func discoveryCommandFor(command Command) deriveddata.Command {
+func discoveryCommandFor(command Command) enrichment.Command {
 	switch command {
 	case CommandTest:
-		return deriveddata.CommandTest
+		return enrichment.CommandTest
 	case CommandBuild:
 		fallthrough
 	default:
-		return deriveddata.CommandBuild
+		return enrichment.CommandBuild
 	}
 }
