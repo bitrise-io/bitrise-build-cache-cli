@@ -27,6 +27,10 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
+	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
+	// tree, holding files such as the persisted xcode-{build,test}.json invocation specs.
+	BitriseBuildCacheDirRelative = ".bitrise-build-cache"
+
 	// ProxySocketName is the xcelerate proxy unix-socket filename (lives under the OS temp dir).
 	ProxySocketName = "xcelerate-proxy.sock"
 
@@ -301,6 +305,11 @@ func (p Paths) XcodeManagedDerivedDataRoot() string {
 // workspace-sha, layered under BitriseCacheDir("xcode-ptd").
 func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 	return filepath.Join(p.BitriseCacheDir(xcodeManagedProjectTempDirTool), workspaceSHA)
+}
+
+// RepoLocalConfigPath returns <repoRoot>/.bitrise-build-cache/<filename>. Repo-rooted, not $HOME-rooted.
+func RepoLocalConfigPath(repoRoot, filename string) string {
+	return filepath.Join(repoRoot, BitriseBuildCacheDirRelative, filename)
 }
 
 // DirMaker is the subset of utils.OsProxy that EnsureDir needs.
