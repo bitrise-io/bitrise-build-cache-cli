@@ -166,6 +166,9 @@ func Test_Generate(t *testing.T) {
 					AppSlug:     "AppSlugValue",
 					CIProvider:  "",
 					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+					HostMetadata: HostMetadataInventory{
+						Username: "jane.doe",
+					},
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -181,6 +184,29 @@ func Test_Generate(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name: "Local dev with no CIProvider and no resolved Username emits empty builduser",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "",
+					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    expectedLocalHelperConfigNoUsername,
+			wantErr: "",
+		},
+		{
 			// The bare name is what `activate` passes when the running binary is on a
 			// temporary path. Dropping the helper here would silently fall back to
 			// writing the token into ~/.bazelrc.
@@ -192,6 +218,9 @@ func Test_Generate(t *testing.T) {
 					AppSlug:     "AppSlugValue",
 					CIProvider:  "",
 					CLIPath:     "bitrise-build-cache",
+					HostMetadata: HostMetadataInventory{
+						Username: "jane.doe",
+					},
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -357,6 +386,23 @@ build --bes_header='x-mem-size=1024'
 `
 
 const expectedLocalHelperConfig = `build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache
+build --remote_cache=grpcs://cache.services.bitrise.io:443
+build --remote_timeout=600s
+build --remote_header=x-flare-buildtool=bazel
+build --remote_header=x-flare-builduser=jane.doe
+build --remote_upload_local_results
+build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
+build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
+build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
+build --build_event_publish_all_actions
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --bes_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-id=AppSlugValue'
+build --bes_header='x-app-id=AppSlugValue'
+`
+
+const expectedLocalHelperConfigNoUsername = `build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache
 build --remote_cache=grpcs://cache.services.bitrise.io:443
 build --remote_timeout=600s
 build --remote_header=x-flare-buildtool=bazel
