@@ -219,6 +219,32 @@ func Test_XcodeSubcommand_Reconfigure_NoOpWhenFileMissing(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 }
 
+func Test_XcodeSubcommand_Reconfigure_NoOpOutsideGitRepo(t *testing.T) {
+	dir := t.TempDir()
+
+	orig, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	observed := stubResolveOK(t, invoke.InvocationSpec{
+		Workspace:   "Foo.xcworkspace",
+		Scheme:      "Foo",
+		Destination: "generic/platform=iOS",
+	})
+	stubWrapper(t)
+
+	cmd := newSubCmdForTest(invoke.CommandBuild)
+	cmd.SetArgs([]string{"--reconfigure"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+
+	require.NoError(t, cmd.Execute(), "reconfigure outside a git repo must not error out")
+
+	assert.Equal(t, 1, observed.Calls, "resolver must still be invoked when reconfigure runs outside a git repo")
+	assert.Empty(t, observed.Root, "resolver must be called with empty repoRoot outside a git repo")
+}
+
 func Test_XcodeSubcommand_PromptUnavailable_ReturnsUserFacingError(t *testing.T) {
 	repoRoot := gitRepoDir(t)
 

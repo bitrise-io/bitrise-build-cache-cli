@@ -58,17 +58,8 @@ func newXcodeSubcommand(command invoke.Command, use, short string) *cobra.Comman
 // resolveXcodeInvocation is swappable for tests.
 //
 //nolint:gochecknoglobals
-var resolveXcodeInvocation = defaultResolveXcodeInvocation
-
-func defaultResolveXcodeInvocation(ctx context.Context, command invoke.Command, repoRoot string) (invoke.InvocationSpec, error) {
-	r := &invoke.Resolver{}
-
-	spec, err := r.Resolve(ctx, command, repoRoot)
-	if err != nil {
-		return invoke.InvocationSpec{}, fmt.Errorf("resolve xcodebuild invocation: %w", err)
-	}
-
-	return spec, nil
+var resolveXcodeInvocation = func(ctx context.Context, command invoke.Command, repoRoot string) (invoke.InvocationSpec, error) {
+	return (&invoke.Resolver{}).Resolve(ctx, command, repoRoot)
 }
 
 func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command invoke.Command, reconfigure, codesign bool, positional []string) error {
@@ -90,10 +81,8 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 
 	if reconfigure && repoRoot != "" {
 		configPath := paths.RepoLocalConfigPath(repoRoot, configFilenameFor(command))
-		if _, existErr := osProxy.Stat(configPath); existErr == nil {
-			if rmErr := osProxy.Remove(configPath); rmErr != nil {
-				return fmt.Errorf("remove invocation config %s: %w", configPath, rmErr)
-			}
+		if err := osProxy.Remove(configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove invocation config %s: %w", configPath, err)
 		}
 	}
 
