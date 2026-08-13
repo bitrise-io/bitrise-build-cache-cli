@@ -58,8 +58,8 @@ func newXcodeSubcommand(command invoke.Command, use, short string) *cobra.Comman
 // resolveXcodeInvocation is swappable for tests.
 //
 //nolint:gochecknoglobals
-var resolveXcodeInvocation = func(ctx context.Context, command invoke.Command, repoRoot string) (invoke.InvocationSpec, error) {
-	return (&invoke.Resolver{}).Resolve(ctx, command, repoRoot)
+var resolveXcodeInvocation = func(ctx context.Context, command invoke.Command, repoRoot string, reconfigure bool) (invoke.InvocationSpec, error) {
+	return (&invoke.Resolver{Reconfigure: reconfigure}).Resolve(ctx, command, repoRoot)
 }
 
 func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command invoke.Command, reconfigure, codesign bool, positional []string) error {
@@ -79,14 +79,7 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 		return fmt.Errorf("locate git repository: %w", err)
 	}
 
-	if reconfigure && repoRoot != "" {
-		configPath := paths.RepoLocalConfigPath(repoRoot, configFilenameFor(command))
-		if err := osProxy.Remove(configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove invocation config %s: %w", configPath, err)
-		}
-	}
-
-	spec, err := resolveXcodeInvocation(ctx, command, repoRoot)
+	spec, err := resolveXcodeInvocation(ctx, command, repoRoot, reconfigure)
 	if err != nil {
 		if errors.Is(err, invoke.ErrPromptUnavailable) {
 			return promptUnavailableError(repoRoot, command, err)
