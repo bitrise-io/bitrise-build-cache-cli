@@ -473,6 +473,119 @@ func TestInvocationSpec_JSONRoundTrip(t *testing.T) {
 	assert.Equal(t, original, decoded)
 }
 
+func TestResolve_MonorepoWritesUnderProjectDir(t *testing.T) {
+	repoRoot := t.TempDir()
+	iosDir := filepath.Join(repoRoot, "apps", "ios")
+	androidDir := filepath.Join(repoRoot, "apps", "android")
+	require.NoError(t, os.MkdirAll(filepath.Join(iosDir, "App.xcworkspace"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(androidDir, "AndroidApp.xcodeproj"), 0o755))
+	cwd := filepath.Join(iosDir, "some", "deep", "dir")
+	require.NoError(t, os.MkdirAll(cwd, 0o755))
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
+		spec.Workspace = "App.xcworkspace"
+		spec.Scheme = "App"
+		spec.Destination = "generic/platform=iOS"
+
+		return nil
+	}}
+
+	r := &invoke.Resolver{
+		Prompt: prompt,
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+		Cwd:    cwd,
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+
+	_, err = os.Stat(filepath.Join(iosDir, ".bitrise-build-cache", "xcode-build.json"))
+	assert.NoError(t, err, "config must live under the resolved project dir")
+
+	_, err = os.Stat(filepath.Join(androidDir, ".bitrise-build-cache", "xcode-build.json"))
+	assert.True(t, os.IsNotExist(err), "sibling project must not be touched")
+
+	_, err = os.Stat(filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json"))
+	assert.True(t, os.IsNotExist(err), "repo root must not receive a stray write when a project ancestor exists")
+}
+
+func TestResolve_ReconfigureDeletesExistingConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "Stale.xcworkspace",
+		Scheme:      "Stale",
+		Destination: "stale-destination",
+	})
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
+		spec.Workspace = "Fresh.xcworkspace"
+		spec.Scheme = "Fresh"
+		spec.Destination = "generic/platform=iOS"
+
+		return nil
+	}}
+
+	r := &invoke.Resolver{
+		Prompt:      prompt,
+		Finder:      &deriveddata.Finder{HomeDir: t.TempDir()},
+		Reconfigure: true,
+	}
+
+	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(prompt.FillCalls()), "prompt must run because pre-seeded config was deleted")
+	assert.Equal(t, "Fresh.xcworkspace", got.Workspace)
+	assert.Equal(t, "Fresh", got.Scheme)
+
+	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
+	assert.Equal(t, "Fresh.xcworkspace", persisted.Workspace)
+}
+
+func TestResolve_ReconfigureFalseKeepsExistingConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "Kept.xcworkspace",
+		Scheme:      "Kept",
+		Destination: "generic/platform=iOS",
+	})
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, _ *invoke.InvocationSpec) error {
+		t.Fatal("prompt must not be called when config is complete and Reconfigure is false")
+
+		return nil
+	}}
+
+	r := &invoke.Resolver{
+		Prompt: prompt,
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, "Kept.xcworkspace", got.Workspace)
+}
+
+func TestResolve_ReconfigureIgnoresMissingFile(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
+		spec.Workspace = "App.xcworkspace"
+		spec.Scheme = "App"
+		spec.Destination = "generic/platform=iOS"
+
+		return nil
+	}}
+
+	r := &invoke.Resolver{
+		Prompt:      prompt,
+		Finder:      &deriveddata.Finder{HomeDir: t.TempDir()},
+		Reconfigure: true,
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+}
+
 func TestBuildArgv(t *testing.T) {
 	tests := []struct {
 		name     string

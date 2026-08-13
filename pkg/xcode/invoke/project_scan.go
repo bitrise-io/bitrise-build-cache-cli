@@ -10,15 +10,20 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// scanProjectFromCwd walks upward from cwd looking for an .xcworkspace or
+type projectAncestorHit struct {
+	projectPath string
+	projectDir  string
+}
+
+// scanProjectAncestor walks upward from cwd looking for an .xcworkspace or
 // .xcodeproj. Workspace beats project at the same level; ties broken by
 // lexicographic order. When repoRoot is non-empty the walk stays within
-// repoRoot (cwd outside repoRoot yields ""). Returns "" when nothing is found
-// — filesystem errors, no matches, and hitting the repoRoot boundary all
-// collapse to that same "no hint here" outcome.
-func scanProjectFromCwd(cwd, repoRoot string, osProxy utils.OsProxy, logger log.Logger) string {
+// repoRoot (cwd outside repoRoot yields a zero hit). Filesystem errors, no
+// matches, and hitting the repoRoot boundary all collapse to the same
+// "no hit here" outcome.
+func scanProjectAncestor(cwd, repoRoot string, osProxy utils.OsProxy, logger log.Logger) projectAncestorHit {
 	if cwd == "" {
-		return ""
+		return projectAncestorHit{}
 	}
 
 	dir := filepath.Clean(cwd)
@@ -27,22 +32,22 @@ func scanProjectFromCwd(cwd, repoRoot string, osProxy utils.OsProxy, logger log.
 	if repoRoot != "" {
 		root = filepath.Clean(repoRoot)
 		if !withinRoot(dir, root) {
-			return ""
+			return projectAncestorHit{}
 		}
 	}
 
 	for {
 		if hit := scanDirForProject(dir, osProxy, logger); hit != "" {
-			return hit
+			return projectAncestorHit{projectPath: hit, projectDir: dir}
 		}
 
 		if root != "" && dir == root {
-			return ""
+			return projectAncestorHit{}
 		}
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return ""
+			return projectAncestorHit{}
 		}
 
 		dir = parent
@@ -70,7 +75,7 @@ func scanDirForProject(dir string, osProxy utils.OsProxy, logger log.Logger) str
 	entries, err := osProxy.ReadDir(dir)
 	if err != nil {
 		if logger != nil {
-			logger.Debugf("invoke: scanProjectFromCwd: read dir %s: %s; skipping", dir, err)
+			logger.Debugf("invoke: scanProjectAncestor: read dir %s: %s; skipping", dir, err)
 		}
 
 		return ""

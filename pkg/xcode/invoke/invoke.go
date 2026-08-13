@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -68,10 +69,16 @@ type Resolver struct {
 	// Cwd overrides os.Getwd for project-hint scanning. Empty falls back to
 	// osProxy.Getwd().
 	Cwd string
+
+	// Reconfigure deletes the persisted config before loading, forcing a full
+	// re-resolution through discovery + prompt.
+	Reconfigure bool
 }
 
 // Resolve returns a complete spec for command. On success the resolved spec is
-// persisted back to <repoRoot>/.bitrise-build-cache/xcode-{build,test}.json.
+// persisted back to <configDir>/.bitrise-build-cache/xcode-{build,test}.json,
+// where configDir is the nearest project ancestor of cwd inside repoRoot (or
+// repoRoot itself as fallback).
 func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string) (InvocationSpec, error) {
 	logger := r.logger()
 
@@ -79,9 +86,27 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 		logger.Warnf("invoke: empty repoRoot — resolved spec will not be persisted")
 	}
 
+	cwd, err := r.resolveCwd()
+	if err != nil {
+		return InvocationSpec{}, err
+	}
+
+	ancestor := scanProjectAncestor(cwd, repoRoot, r.osProxy(), logger)
+
+	configDir := ancestor.projectDir
+	if configDir == "" {
+		configDir = repoRoot
+	}
+
 	configPath := ""
-	if repoRoot != "" {
-		configPath = paths.RepoLocalConfigPath(repoRoot, configFilename(command))
+	if configDir != "" {
+		configPath = paths.RepoLocalConfigPath(configDir, configFilename(command))
+	}
+
+	if r.Reconfigure && configPath != "" {
+		if err := r.osProxy().Remove(configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return InvocationSpec{}, fmt.Errorf("reconfigure: remove %s: %w", configPath, err)
+		}
 	}
 
 	spec, err := r.loadExisting(configPath)
@@ -90,7 +115,7 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 	}
 
 	if !isComplete(spec) {
-		if err := r.fillFromDiscovery(&spec, command, repoRoot); err != nil {
+		if err := r.fillFromDiscovery(&spec, command, repoRoot, ancestor.projectPath); err != nil {
 			return InvocationSpec{}, err
 		}
 	}
@@ -216,13 +241,10 @@ func (r *Resolver) loadExisting(configPath string) (InvocationSpec, error) {
 	return spec, nil
 }
 
-func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command, repoRoot string) error {
+func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command, repoRoot, scannedProjectPath string) error {
 	logger := r.logger()
 
-	hint, err := r.resolveProjectHint(*spec, repoRoot)
-	if err != nil {
-		return err
-	}
+	hint := resolveProjectHint(*spec, repoRoot, scannedProjectPath)
 
 	if hint != "" {
 		logger.Debugf("invoke: project hint = %s", hint)
@@ -258,7 +280,7 @@ func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command, repo
 	return nil
 }
 
-func (r *Resolver) resolveProjectHint(spec InvocationSpec, repoRoot string) (string, error) {
+func resolveProjectHint(spec InvocationSpec, repoRoot, scannedProjectPath string) string {
 	joinRepo := func(name string) string {
 		if repoRoot == "" || filepath.IsAbs(name) {
 			return name
@@ -269,24 +291,25 @@ func (r *Resolver) resolveProjectHint(spec InvocationSpec, repoRoot string) (str
 
 	switch {
 	case spec.Workspace != "":
-		return joinRepo(spec.Workspace), nil
+		return joinRepo(spec.Workspace)
 	case spec.Project != "":
-		return joinRepo(spec.Project), nil
-	case repoRoot == "":
-		return "", nil
+		return joinRepo(spec.Project)
 	}
 
-	cwd := r.Cwd
-	if cwd == "" {
-		got, err := r.osProxy().Getwd()
-		if err != nil {
-			return "", fmt.Errorf("resolve cwd: %w", err)
-		}
+	return scannedProjectPath
+}
 
-		cwd = got
+func (r *Resolver) resolveCwd() (string, error) {
+	if r.Cwd != "" {
+		return r.Cwd, nil
 	}
 
-	return scanProjectFromCwd(cwd, repoRoot, r.osProxy(), r.logger()), nil
+	cwd, err := r.osProxy().Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve cwd: %w", err)
+	}
+
+	return cwd, nil
 }
 
 func (r *Resolver) promptFor(ctx context.Context, spec *InvocationSpec) error {
