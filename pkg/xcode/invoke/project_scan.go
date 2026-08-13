@@ -17,23 +17,19 @@ type projectAncestorHit struct {
 
 // scanProjectAncestor walks upward from cwd looking for an .xcworkspace or
 // .xcodeproj. Workspace beats project at the same level; ties broken by
-// lexicographic order. When repoRoot is non-empty the walk stays within
-// repoRoot (cwd outside repoRoot yields a zero hit). Filesystem errors, no
-// matches, and hitting the repoRoot boundary all collapse to the same
-// "no hit here" outcome.
+// lexicographic order. The walk stays within repoRoot; an empty repoRoot or a
+// cwd outside repoRoot yields a zero hit (invariant: no repoRoot → no
+// persistence). Filesystem errors, no matches, and hitting the repoRoot
+// boundary all collapse to the same "no hit here" outcome.
 func scanProjectAncestor(cwd, repoRoot string, osProxy utils.OsProxy, logger log.Logger) projectAncestorHit {
-	if cwd == "" {
+	if cwd == "" || repoRoot == "" {
 		return projectAncestorHit{}
 	}
 
 	dir := filepath.Clean(cwd)
-
-	var root string
-	if repoRoot != "" {
-		root = filepath.Clean(repoRoot)
-		if !withinRoot(dir, root) {
-			return projectAncestorHit{}
-		}
+	root := filepath.Clean(repoRoot)
+	if !withinRoot(dir, root) {
+		return projectAncestorHit{}
 	}
 
 	for {
@@ -41,7 +37,7 @@ func scanProjectAncestor(cwd, repoRoot string, osProxy utils.OsProxy, logger log
 			return projectAncestorHit{projectPath: hit, projectDir: dir}
 		}
 
-		if root != "" && dir == root {
+		if dir == root {
 			return projectAncestorHit{}
 		}
 
@@ -54,8 +50,7 @@ func scanProjectAncestor(cwd, repoRoot string, osProxy utils.OsProxy, logger log
 	}
 }
 
-// Defensive: gitroot.Find starts at cwd so repoRoot is always an ancestor;
-// this guards against callers that supply both explicitly.
+// cwd outside repoRoot means the walker would leak past a workspace boundary — guard here.
 func withinRoot(dir, root string) bool {
 	if dir == root {
 		return true

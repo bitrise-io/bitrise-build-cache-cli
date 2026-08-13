@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -584,6 +585,45 @@ func TestResolve_ReconfigureIgnoresMissingFile(t *testing.T) {
 
 	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
+}
+
+func TestResolve_ReconfigureSurfacesPermissionError(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+	})
+
+	proxy := &utilsmocks.OsProxyMock{
+		ReadDirFunc: func(string) ([]os.DirEntry, error) {
+			return nil, nil
+		},
+		ReadFileIfExistsFunc: func(string) (string, bool, error) {
+			return "", false, nil
+		},
+		RemoveFunc: func(string) error {
+			return fs.ErrPermission
+		},
+	}
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, _ *invoke.InvocationSpec) error {
+		t.Fatal("prompt must not be called when reconfigure remove fails")
+
+		return nil
+	}}
+
+	r := &invoke.Resolver{
+		Prompt:      prompt,
+		Finder:      &deriveddata.Finder{HomeDir: t.TempDir()},
+		OsProxy:     proxy,
+		Cwd:         repoRoot,
+		Reconfigure: true,
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, fs.ErrPermission, "reconfigure Remove failure must surface")
 }
 
 func TestBuildArgv(t *testing.T) {
