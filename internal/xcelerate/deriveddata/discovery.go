@@ -108,12 +108,12 @@ func (f *Finder) updateBestFromManifest(path string, command enrichment.Command,
 		return
 	}
 
+	if f.ProjectPathHint != "" && !f.matchesHint(path) {
+		return
+	}
+
 	for _, entry := range entries {
 		if entry.Command() != command || entry.Stop.IsZero() {
-			continue
-		}
-
-		if f.ProjectPathHint != "" && !f.matchesHint(path) {
 			continue
 		}
 

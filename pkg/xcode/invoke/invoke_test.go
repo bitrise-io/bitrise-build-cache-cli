@@ -5,6 +5,7 @@ package invoke_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	utilsmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
@@ -422,6 +424,36 @@ func TestResolve_NoProjectHintFallsBackToGlobal(t *testing.T) {
 	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Empty(t, finder.ProjectPathHint)
+}
+
+func TestResolve_CwdFallback_GetwdErrorSurfaces(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	getwdErr := errors.New("boom: getwd failed")
+	proxy := &utilsmocks.OsProxyMock{
+		GetwdFunc: func() (string, error) {
+			return "", getwdErr
+		},
+		ReadFileIfExistsFunc: func(string) (string, bool, error) {
+			return "", false, nil
+		},
+	}
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, _ *invoke.InvocationSpec) error {
+		t.Fatal("prompt must not be called when cwd resolution fails")
+
+		return nil
+	}}
+
+	r := &invoke.Resolver{
+		Prompt:  prompt,
+		Finder:  &deriveddata.Finder{HomeDir: t.TempDir()},
+		OsProxy: proxy,
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, getwdErr, "Getwd failure must surface — broken environment, not a missing hint")
 }
 
 func TestInvocationSpec_JSONRoundTrip(t *testing.T) {

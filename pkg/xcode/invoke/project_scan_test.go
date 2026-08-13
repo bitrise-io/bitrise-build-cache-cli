@@ -25,8 +25,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		root := t.TempDir()
 		mustMkdir(t, filepath.Join(root, "App.xcworkspace"))
 
-		got, err := scanProjectFromCwd(root, root, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(root, root, proxy, nil)
 		assert.Equal(t, filepath.Join(root, "App.xcworkspace"), got)
 	})
 
@@ -34,8 +33,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		root := t.TempDir()
 		mustMkdir(t, filepath.Join(root, "App.xcodeproj"))
 
-		got, err := scanProjectFromCwd(root, root, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(root, root, proxy, nil)
 		assert.Equal(t, filepath.Join(root, "App.xcodeproj"), got)
 	})
 
@@ -48,8 +46,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		sub := filepath.Join(app, "Subdir")
 		mustMkdir(t, sub)
 
-		got, err := scanProjectFromCwd(sub, root, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(sub, root, proxy, nil)
 		assert.Equal(t, filepath.Join(app, "App.xcworkspace"), got)
 	})
 
@@ -58,8 +55,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		mustMkdir(t, filepath.Join(root, "App.xcworkspace"))
 		mustMkdir(t, filepath.Join(root, "App.xcodeproj"))
 
-		got, err := scanProjectFromCwd(root, root, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(root, root, proxy, nil)
 		assert.Equal(t, filepath.Join(root, "App.xcworkspace"), got)
 	})
 
@@ -68,8 +64,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		sub := filepath.Join(root, "src", "deep")
 		mustMkdir(t, sub)
 
-		got, err := scanProjectFromCwd(sub, root, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(sub, root, proxy, nil)
 		assert.Empty(t, got)
 	})
 
@@ -78,8 +73,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		mustMkdir(t, filepath.Join(root, "Beta.xcworkspace"))
 		mustMkdir(t, filepath.Join(root, "Alpha.xcworkspace"))
 
-		got, err := scanProjectFromCwd(root, root, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(root, root, proxy, nil)
 		assert.Equal(t, filepath.Join(root, "Alpha.xcworkspace"), got)
 	})
 
@@ -88,8 +82,7 @@ func Test_scanProjectFromCwd(t *testing.T) {
 		unrelated := t.TempDir()
 		mustMkdir(t, filepath.Join(unrelated, "Stray.xcworkspace"))
 
-		got, err := scanProjectFromCwd(unrelated, repoRoot, proxy)
-		require.NoError(t, err)
+		got := scanProjectFromCwd(unrelated, repoRoot, proxy, nil)
 		assert.Empty(t, got)
 	})
 }

@@ -61,7 +61,9 @@ type Resolver struct {
 	Logger  log.Logger
 	OsProxy utils.OsProxy
 	Prompt  Prompt
-	Finder  *deriveddata.Finder
+	// Finder scans DerivedData for the most recent matching build.
+	// Note: Resolve overwrites Finder.ProjectPathHint per invocation.
+	Finder *deriveddata.Finder
 
 	// Cwd overrides os.Getwd for project-hint scanning. Empty falls back to
 	// osProxy.Getwd().
@@ -284,12 +286,7 @@ func (r *Resolver) resolveProjectHint(spec InvocationSpec, repoRoot string) (str
 		cwd = got
 	}
 
-	hit, err := scanProjectFromCwd(cwd, repoRoot, r.osProxy())
-	if err != nil {
-		return "", fmt.Errorf("scan project from cwd: %w", err)
-	}
-
-	return hit, nil
+	return scanProjectFromCwd(cwd, repoRoot, r.osProxy(), r.logger()), nil
 }
 
 func (r *Resolver) promptFor(ctx context.Context, spec *InvocationSpec) error {
