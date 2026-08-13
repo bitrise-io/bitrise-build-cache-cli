@@ -10,7 +10,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-func Test_Generate(t *testing.T) {
+func assertBazelrc(t *testing.T, inv TemplateInventory, want, wantErr string) {
+	t.Helper()
+	got, err := inv.GenerateBazelrc(utils.DefaultTemplateProxy())
+	if wantErr != "" {
+		require.EqualError(t, err, wantErr)
+	} else {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, want, got)
+}
+
+func Test_Generate_BasicPermutations(t *testing.T) {
 	tests := []struct {
 		name      string
 		inventory TemplateInventory
@@ -157,6 +168,22 @@ func Test_Generate(t *testing.T) {
 			want:    expectedFullConfig,
 			wantErr: "",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertBazelrc(t, tt.inventory, tt.want, tt.wantErr)
+		})
+	}
+}
+
+func Test_Generate_LocalDevHelper(t *testing.T) {
+	tests := []struct {
+		name      string
+		inventory TemplateInventory
+		want      string
+		wantErr   string
+	}{
 		{
 			name: "Local dev with credential helper (CLIPath set, no CIProvider)",
 			inventory: TemplateInventory{
@@ -236,29 +263,6 @@ func Test_Generate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "CLIPath set but CIProvider also set uses literal token (CI branch)",
-			inventory: TemplateInventory{
-				Common: CommonTemplateInventory{
-					AuthToken:   "AuthTokenValue",
-					WorkspaceID: "WorkspaceIDValue",
-					AppSlug:     "AppSlugValue",
-					CIProvider:  "bitrise",
-					CLIPath:     "/usr/local/bin/bitrise-build-cache",
-				},
-				Cache: CacheTemplateInventory{
-					Enabled:             true,
-					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
-					IsPushEnabled:       true,
-				},
-				BES: BESTemplateInventory{
-					Enabled:             true,
-					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
-				},
-			},
-			want:    expectedCIFallbackHeaders,
-			wantErr: "",
-		},
-		{
 			name: "Local dev credential helper: cache disabled, BES enabled",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
@@ -280,13 +284,69 @@ func Test_Generate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.inventory.GenerateBazelrc(utils.DefaultTemplateProxy())
-			if tt.wantErr != "" {
-				require.EqualError(t, err, tt.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			assert.Equal(t, tt.want, got)
+			assertBazelrc(t, tt.inventory, tt.want, tt.wantErr)
+		})
+	}
+}
+
+func Test_Generate_CI(t *testing.T) {
+	tests := []struct {
+		name      string
+		inventory TemplateInventory
+		want      string
+		wantErr   string
+	}{
+		{
+			name: "CLIPath set on CI uses the credential helper too",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    expectedCIHelperConfig,
+			wantErr: "",
+		},
+		{
+			name: "CI without a reachable CLI falls back to the literal token",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					CLIPath:     "",
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    expectedCIFallbackHeaders,
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertBazelrc(t, tt.inventory, tt.want, tt.wantErr)
 		})
 	}
 }
@@ -417,6 +477,25 @@ build --remote_header='x-org-id=WorkspaceIDValue'
 build --bes_header='x-org-id=WorkspaceIDValue'
 build --remote_header='x-app-id=AppSlugValue'
 build --bes_header='x-app-id=AppSlugValue'
+`
+
+const expectedCIHelperConfig = `build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache
+build --remote_cache=grpcs://cache.services.bitrise.io:443
+build --remote_timeout=600s
+build --remote_header=x-flare-buildtool=bazel
+build --remote_header=x-flare-builduser=bitrise
+build --remote_upload_local_results
+build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
+build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
+build --bes_timeout=2m
+build --bes_upload_mode=wait_for_upload_complete
+build --build_event_publish_all_actions
+build --remote_header='x-org-id=WorkspaceIDValue'
+build --bes_header='x-org-id=WorkspaceIDValue'
+build --remote_header='x-app-id=AppSlugValue'
+build --bes_header='x-app-id=AppSlugValue'
+build --remote_header='x-ci-provider=bitrise'
+build --bes_header='x-ci-provider=bitrise'
 `
 
 const expectedCIFallbackHeaders = `build --remote_cache=grpcs://cache.services.bitrise.io:443
