@@ -10,7 +10,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-func Test_Generate(t *testing.T) {
+func assertBazelrc(t *testing.T, inv TemplateInventory, want, wantErr string) {
+	t.Helper()
+	got, err := inv.GenerateBazelrc(utils.DefaultTemplateProxy())
+	if wantErr != "" {
+		require.EqualError(t, err, wantErr)
+	} else {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, want, got)
+}
+
+func Test_Generate_BasicPermutations(t *testing.T) {
 	tests := []struct {
 		name      string
 		inventory TemplateInventory
@@ -157,6 +168,22 @@ func Test_Generate(t *testing.T) {
 			want:    expectedFullConfig,
 			wantErr: "",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertBazelrc(t, tt.inventory, tt.want, tt.wantErr)
+		})
+	}
+}
+
+func Test_Generate_LocalDevHelper(t *testing.T) {
+	tests := []struct {
+		name      string
+		inventory TemplateInventory
+		want      string
+		wantErr   string
+	}{
 		{
 			name: "Local dev with credential helper (CLIPath set, no CIProvider)",
 			inventory: TemplateInventory{
@@ -236,6 +263,40 @@ func Test_Generate(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name: "Local dev credential helper: cache disabled, BES enabled",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:  "AuthTokenValue",
+					AppSlug:    "AppSlugValue",
+					CIProvider: "",
+					CLIPath:    "/usr/local/bin/bitrise-build-cache",
+				},
+				Cache: CacheTemplateInventory{Enabled: false},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    expectedHelperCacheDisabled,
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertBazelrc(t, tt.inventory, tt.want, tt.wantErr)
+		})
+	}
+}
+
+func Test_Generate_CI(t *testing.T) {
+	tests := []struct {
+		name      string
+		inventory TemplateInventory
+		want      string
+		wantErr   string
+	}{
+		{
 			name: "CLIPath set on CI uses the credential helper too",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
@@ -281,35 +342,11 @@ func Test_Generate(t *testing.T) {
 			want:    expectedCIFallbackHeaders,
 			wantErr: "",
 		},
-		{
-			name: "Local dev credential helper: cache disabled, BES enabled",
-			inventory: TemplateInventory{
-				Common: CommonTemplateInventory{
-					AuthToken:  "AuthTokenValue",
-					AppSlug:    "AppSlugValue",
-					CIProvider: "",
-					CLIPath:    "/usr/local/bin/bitrise-build-cache",
-				},
-				Cache: CacheTemplateInventory{Enabled: false},
-				BES: BESTemplateInventory{
-					Enabled:             true,
-					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
-				},
-			},
-			want:    expectedHelperCacheDisabled,
-			wantErr: "",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.inventory.GenerateBazelrc(utils.DefaultTemplateProxy())
-			if tt.wantErr != "" {
-				require.EqualError(t, err, tt.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			assert.Equal(t, tt.want, got)
+			assertBazelrc(t, tt.inventory, tt.want, tt.wantErr)
 		})
 	}
 }
