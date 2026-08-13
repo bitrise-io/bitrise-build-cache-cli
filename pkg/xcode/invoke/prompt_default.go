@@ -13,7 +13,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 )
 
-// defaultPrompt is the huh-backed Prompt used when no override is supplied.
 type defaultPrompt struct {
 	logger log.Logger
 
@@ -65,8 +64,6 @@ func (p defaultPrompt) Fill(ctx context.Context, spec *InvocationSpec) error {
 
 	return nil
 }
-
-// Private — helpers
 
 // Scheme + configuration come from the same xcodebuild -list call.
 func (p defaultPrompt) fillSchemeAndConfig(
@@ -204,7 +201,6 @@ func normalizeContainer(spec *InvocationSpec) {
 	spec.Workspace = strings.TrimSpace(spec.Workspace)
 	spec.Project = strings.TrimSpace(spec.Project)
 
-	// If the container answer wasn't an .xcworkspace, treat it as the project field.
 	if spec.Workspace != "" && !strings.HasSuffix(spec.Workspace, ".xcworkspace") {
 		spec.Project = spec.Workspace
 		spec.Workspace = ""

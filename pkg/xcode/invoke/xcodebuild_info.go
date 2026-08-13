@@ -13,7 +13,6 @@ import (
 
 //go:generate moq -stub -out xcodebuild_info_mock_test.go -pkg invoke . xcodebuildInfoProvider
 
-// xcodebuildInfoProvider surfaces the candidate lists a picker needs.
 // Scheme + configuration share a call because xcodebuild -list evaluates the
 // whole project graph once per invocation.
 type xcodebuildInfoProvider interface {
@@ -60,8 +59,6 @@ func (e execXcodebuildInfo) ShowDestinations(ctx context.Context, workspace, pro
 
 	return parseShowDestinations(string(out)), nil
 }
-
-// Private — parsing / subprocess helpers
 
 // xcodebuildListOutput mirrors the top-level of `xcodebuild -list -json`.
 // Either Workspace or Project is populated, never both.
