@@ -352,6 +352,78 @@ func TestResolve_EmptyRepoRoot_NoPersist(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestResolve_ProjectHintFromJSONBypassesCwdScan(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace: "Foo.xcworkspace",
+	})
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
+		spec.Scheme = "Foo"
+		spec.Destination = "generic/platform=iOS"
+
+		return nil
+	}}
+
+	finder := &deriveddata.Finder{HomeDir: t.TempDir()}
+	r := &invoke.Resolver{
+		Prompt: prompt,
+		Finder: finder,
+		Cwd:    t.TempDir(), // ensure Cwd would not resolve to repoRoot
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(repoRoot, "Foo.xcworkspace"), finder.ProjectPathHint)
+}
+
+func TestResolve_ProjectHintFromCwdScan(t *testing.T) {
+	repoRoot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, "App.xcworkspace"), 0o755))
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
+		spec.Workspace = "App.xcworkspace"
+		spec.Scheme = "App"
+		spec.Destination = "generic/platform=iOS"
+
+		return nil
+	}}
+
+	finder := &deriveddata.Finder{HomeDir: t.TempDir()}
+	r := &invoke.Resolver{
+		Prompt: prompt,
+		Finder: finder,
+		Cwd:    repoRoot,
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(repoRoot, "App.xcworkspace"), finder.ProjectPathHint)
+}
+
+func TestResolve_NoProjectHintFallsBackToGlobal(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
+		spec.Workspace = "App.xcworkspace"
+		spec.Scheme = "App"
+		spec.Destination = "generic/platform=iOS"
+
+		return nil
+	}}
+
+	finder := &deriveddata.Finder{HomeDir: t.TempDir()}
+	r := &invoke.Resolver{
+		Prompt: prompt,
+		Finder: finder,
+		Cwd:    repoRoot,
+	}
+
+	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Empty(t, finder.ProjectPathHint)
+}
+
 func TestInvocationSpec_JSONRoundTrip(t *testing.T) {
 	original := invoke.InvocationSpec{
 		Workspace:     "App.xcworkspace",

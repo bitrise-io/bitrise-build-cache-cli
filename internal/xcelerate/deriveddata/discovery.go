@@ -38,6 +38,10 @@ type Finder struct {
 
 	// HomeDir overrides os.UserHomeDir for tests. Empty falls back to the real home.
 	HomeDir string
+
+	// ProjectPathHint filters DD roots to those whose info.plist WorkspacePath
+	// matches this project. Empty disables the filter (all entries considered).
+	ProjectPathHint string
 }
 
 // LatestForCommand returns the most recent build matching command. Returns
@@ -73,28 +77,7 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 		}
 
 		for _, path := range matches {
-			entries, err := enrichment.LoadManifest(path)
-			if err != nil {
-				logger.Debugf("deriveddata: load %q failed: %s", path, err)
-
-				continue
-			}
-
-			for _, entry := range entries {
-				if entry.Command() != command {
-					continue
-				}
-
-				if entry.Stop.IsZero() {
-					continue
-				}
-
-				if !bestFound || entry.Stop.After(best.Stop) {
-					best = entry
-					bestPath = path
-					bestFound = true
-				}
-			}
+			f.updateBestFromManifest(path, command, &best, &bestPath, &bestFound)
 		}
 	}
 
@@ -115,6 +98,31 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 	}
 
 	return result, nil
+}
+
+func (f *Finder) updateBestFromManifest(path string, command enrichment.Command, best *enrichment.ManifestEntry, bestPath *string, bestFound *bool) {
+	entries, err := enrichment.LoadManifest(path)
+	if err != nil {
+		f.logger().Debugf("deriveddata: load %q failed: %s", path, err)
+
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.Command() != command || entry.Stop.IsZero() {
+			continue
+		}
+
+		if f.ProjectPathHint != "" && !f.matchesHint(path) {
+			continue
+		}
+
+		if !*bestFound || entry.Stop.After(best.Stop) {
+			*best = entry
+			*bestPath = path
+			*bestFound = true
+		}
+	}
 }
 
 // Xcode writes signatures like "Cleaning project X with scheme Y and configuration Debug".
@@ -138,35 +146,7 @@ func extractConfiguration(signature string) string {
 
 // Returns (workspace, project); exactly one is set based on WorkspacePath's extension.
 func (f *Finder) readWorkspaceInfo(ddRoot string) (string, string) {
-	logger := f.logger()
-
-	infoPath := filepath.Join(ddRoot, "info.plist")
-
-	file, err := os.Open(infoPath)
-	if err != nil {
-		logger.Debugf("deriveddata: read %q failed: %s", infoPath, err)
-
-		return "", ""
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logger.Debugf("deriveddata: read %q failed: %s", infoPath, err)
-
-		return "", ""
-	}
-
-	var info struct {
-		WorkspacePath string `plist:"WorkspacePath"`
-	}
-	if _, err := plist.Unmarshal(data, &info); err != nil {
-		logger.Debugf("deriveddata: decode %q failed: %s", infoPath, err)
-
-		return "", ""
-	}
-
-	name := filepath.Base(info.WorkspacePath)
+	name := filepath.Base(f.readWorkspacePathRaw(ddRoot))
 	switch {
 	case strings.HasSuffix(name, ".xcworkspace"):
 		return name, ""
@@ -175,6 +155,75 @@ func (f *Finder) readWorkspaceInfo(ddRoot string) (string, string) {
 	default:
 		return "", ""
 	}
+}
+
+func (f *Finder) readWorkspacePathRaw(ddRoot string) string {
+	logger := f.logger()
+
+	infoPath := filepath.Join(ddRoot, "info.plist")
+
+	file, err := os.Open(infoPath)
+	if err != nil {
+		logger.Debugf("deriveddata: read %q failed: %s", infoPath, err)
+
+		return ""
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logger.Debugf("deriveddata: read %q failed: %s", infoPath, err)
+
+		return ""
+	}
+
+	var info struct {
+		WorkspacePath string `plist:"WorkspacePath"`
+	}
+	if _, err := plist.Unmarshal(data, &info); err != nil {
+		logger.Debugf("deriveddata: decode %q failed: %s", infoPath, err)
+
+		return ""
+	}
+
+	return info.WorkspacePath
+}
+
+// An unreadable info.plist (or one with an empty WorkspacePath) is treated as
+// a mismatch under an active filter.
+func (f *Finder) matchesHint(manifestPath string) bool {
+	ddRoot := filepath.Dir(filepath.Dir(filepath.Dir(manifestPath)))
+
+	raw := f.readWorkspacePathRaw(ddRoot)
+	if raw == "" {
+		f.logger().Debugf("deriveddata: skipping %s: no readable info.plist under project filter", ddRoot)
+
+		return false
+	}
+
+	return matchesProject(raw, f.ProjectPathHint)
+}
+
+// Resolves symlinks when possible; falls back to filepath.Clean on failure.
+// Compare is case-insensitive to match APFS default semantics.
+func matchesProject(candidate, hint string) bool {
+	if candidate == "" && hint == "" {
+		return true
+	}
+
+	return strings.EqualFold(normalizeProjectPath(candidate), normalizeProjectPath(hint))
+}
+
+func normalizeProjectPath(p string) string {
+	if p == "" {
+		return ""
+	}
+
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return filepath.Clean(resolved)
+	}
+
+	return filepath.Clean(p)
 }
 
 //nolint:gochecknoglobals // shared discard logger avoids per-call allocation

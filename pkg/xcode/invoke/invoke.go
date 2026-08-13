@@ -62,6 +62,10 @@ type Resolver struct {
 	OsProxy utils.OsProxy
 	Prompt  Prompt
 	Finder  *deriveddata.Finder
+
+	// Cwd overrides os.Getwd for project-hint scanning. Empty falls back to
+	// osProxy.Getwd().
+	Cwd string
 }
 
 // Resolve returns a complete spec for command. On success the resolved spec is
@@ -84,7 +88,7 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 	}
 
 	if !isComplete(spec) {
-		if err := r.fillFromDiscovery(&spec, command); err != nil {
+		if err := r.fillFromDiscovery(&spec, command, repoRoot); err != nil {
 			return InvocationSpec{}, err
 		}
 	}
@@ -210,10 +214,22 @@ func (r *Resolver) loadExisting(configPath string) (InvocationSpec, error) {
 	return spec, nil
 }
 
-func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command) error {
+func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command, repoRoot string) error {
 	logger := r.logger()
 
-	discovered, err := r.finder().LatestForCommand(discoveryCommandFor(command))
+	hint, err := r.resolveProjectHint(*spec, repoRoot)
+	if err != nil {
+		return err
+	}
+
+	if hint != "" {
+		logger.Debugf("invoke: project hint = %s", hint)
+	}
+
+	finder := r.finder()
+	finder.ProjectPathHint = hint
+
+	discovered, err := finder.LatestForCommand(discoveryCommandFor(command))
 	if err != nil {
 		if errors.Is(err, deriveddata.ErrNoRecentBuild) {
 			logger.Debugf("invoke: no recent build in DerivedData — will prompt for all missing fields")
@@ -238,6 +254,42 @@ func (r *Resolver) fillFromDiscovery(spec *InvocationSpec, command Command) erro
 	}
 
 	return nil
+}
+
+func (r *Resolver) resolveProjectHint(spec InvocationSpec, repoRoot string) (string, error) {
+	joinRepo := func(name string) string {
+		if repoRoot == "" || filepath.IsAbs(name) {
+			return name
+		}
+
+		return filepath.Join(repoRoot, name)
+	}
+
+	switch {
+	case spec.Workspace != "":
+		return joinRepo(spec.Workspace), nil
+	case spec.Project != "":
+		return joinRepo(spec.Project), nil
+	case repoRoot == "":
+		return "", nil
+	}
+
+	cwd := r.Cwd
+	if cwd == "" {
+		got, err := r.osProxy().Getwd()
+		if err != nil {
+			return "", fmt.Errorf("resolve cwd: %w", err)
+		}
+
+		cwd = got
+	}
+
+	hit, err := scanProjectFromCwd(cwd, repoRoot, r.osProxy())
+	if err != nil {
+		return "", fmt.Errorf("scan project from cwd: %w", err)
+	}
+
+	return hit, nil
 }
 
 func (r *Resolver) promptFor(ctx context.Context, spec *InvocationSpec) error {

@@ -204,3 +204,49 @@ func TestFinder_NoManifests(t *testing.T) {
 	_, err := finder.LatestForCommand(enrichment.CommandBuild)
 	require.ErrorIs(t, err, deriveddata.ErrNoRecentBuild)
 }
+
+func TestLatestForCommand_ProjectHintFiltersEntries(t *testing.T) {
+	home := t.TempDir()
+
+	matchWorkspace := "/some/path/App.xcworkspace"
+	seed(t, home, "App-abc", "Build", manifestFixture{
+		uuid:      "OLD",
+		scheme:    "AppScheme",
+		signature: "Build App project with scheme AppScheme and configuration Debug",
+		title:     "Build App project",
+		timeStop:  762345688.0,
+	}, matchWorkspace)
+
+	seed(t, home, "Other-xyz", "Build", manifestFixture{
+		uuid:      "NEW",
+		scheme:    "OtherScheme",
+		signature: "Building project Other with scheme OtherScheme and configuration Release",
+		title:     "Building project Other",
+		timeStop:  762345988.0,
+	}, "/some/path/Other.xcworkspace")
+
+	unfiltered, err := (&deriveddata.Finder{HomeDir: home}).LatestForCommand(enrichment.CommandBuild)
+	require.NoError(t, err)
+	assert.Equal(t, "OtherScheme", unfiltered.Scheme, "without filter the newer entry wins")
+
+	filtered, err := (&deriveddata.Finder{HomeDir: home, ProjectPathHint: matchWorkspace}).LatestForCommand(enrichment.CommandBuild)
+	require.NoError(t, err)
+	assert.Equal(t, "AppScheme", filtered.Scheme, "hint keeps the older matching entry")
+	assert.Equal(t, "App.xcworkspace", filtered.Workspace)
+}
+
+func TestLatestForCommand_HintFilterSkipsEntriesWithoutInfoPlist(t *testing.T) {
+	home := t.TempDir()
+
+	seed(t, home, "App-abc", "Build", manifestFixture{
+		uuid:      "BUILD",
+		scheme:    "App",
+		signature: "Build App project with scheme App and configuration Debug",
+		title:     "Build App project",
+		timeStop:  762345988.0,
+	}, "")
+
+	finder := &deriveddata.Finder{HomeDir: home, ProjectPathHint: "/some/path/App.xcworkspace"}
+	_, err := finder.LatestForCommand(enrichment.CommandBuild)
+	require.ErrorIs(t, err, deriveddata.ErrNoRecentBuild)
+}
