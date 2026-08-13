@@ -82,7 +82,7 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 	spec, err := resolveXcodeInvocation(ctx, command, repoRoot, reconfigure)
 	if err != nil {
 		if errors.Is(err, invoke.ErrPromptUnavailable) {
-			return promptUnavailableError(repoRoot, command, err)
+			return promptUnavailableError(command, err)
 		}
 
 		return err
@@ -94,23 +94,17 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 	return runXcodebuildWrapperFn(ctx, argv, cobraCmd)
 }
 
-func promptUnavailableError(repoRoot string, command invoke.Command, cause error) error {
-	if repoRoot == "" {
-		return fmt.Errorf("%w: no interactive terminal available and no config on disk to fall back on", cause)
-	}
-
-	configPath := paths.RepoLocalConfigPath(repoRoot, configFilenameFor(command))
-
-	return fmt.Errorf("%w: no interactive terminal available; edit %s with the required fields (scheme, destination, workspace/project) or rerun in a TTY", cause, configPath)
+func promptUnavailableError(command invoke.Command, cause error) error {
+	return fmt.Errorf("xcode %s: %w", commandName(command), cause)
 }
 
-func configFilenameFor(command invoke.Command) string {
+func commandName(command invoke.Command) string {
 	switch command {
 	case invoke.CommandTest:
-		return "xcode-test.json"
+		return "test"
 	case invoke.CommandBuild:
 		fallthrough
 	default:
-		return "xcode-build.json"
+		return "build"
 	}
 }

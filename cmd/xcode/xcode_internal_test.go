@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
 
@@ -244,7 +243,7 @@ func Test_XcodeSubcommand_Reconfigure_NoOpOutsideGitRepo(t *testing.T) {
 }
 
 func Test_XcodeSubcommand_PromptUnavailable_ReturnsUserFacingError(t *testing.T) {
-	repoRoot := gitRepoDir(t)
+	gitRepoDir(t)
 
 	orig := resolveXcodeInvocation
 	t.Cleanup(func() { resolveXcodeInvocation = orig })
@@ -269,7 +268,8 @@ func Test_XcodeSubcommand_PromptUnavailable_ReturnsUserFacingError(t *testing.T)
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, invoke.ErrPromptUnavailable)
-	assert.Contains(t, err.Error(), paths.RepoLocalConfigPath(repoRoot, "xcode-build.json"), "error message must include the config path so the user can hand-edit")
+	assert.Contains(t, err.Error(), "xcode build:", "error message must be prefixed with the subcommand for context")
+	assert.Contains(t, err.Error(), "prompt unavailable", "error message must surface the resolver's sentinel cause")
 }
 
 func Test_XcodeSubcommand_NotInGitRepo_ContinuesWithoutRoot(t *testing.T) {
