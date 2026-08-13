@@ -18,11 +18,11 @@ import (
 
 func Test_defaultPrompt_Fill_UsesSchemeListFromProvider(t *testing.T) {
 	provider := &xcodebuildInfoProviderMock{
-		ListSchemesFunc: func(_ context.Context, ws, proj string) ([]string, error) {
+		ListSchemesAndConfigurationsFunc: func(_ context.Context, ws, proj string) ([]string, []string, error) {
 			assert.Equal(t, "App.xcworkspace", ws)
 			assert.Empty(t, proj)
 
-			return []string{"App", "AppTests"}, nil
+			return []string{"App", "AppTests"}, nil, nil
 		},
 	}
 
@@ -40,8 +40,7 @@ func Test_defaultPrompt_Fill_UsesSchemeListFromProvider(t *testing.T) {
 	}
 
 	require.NoError(t, prompt.Fill(context.Background(), spec))
-	assert.Len(t, provider.ListSchemesCalls(), 1)
-	assert.Empty(t, provider.ListConfigurationsCalls(), "config already set — provider must not be queried")
+	assert.Len(t, provider.ListSchemesAndConfigurationsCalls(), 1)
 	assert.Empty(t, provider.ShowDestinationsCalls(), "destination already set — provider must not be queried")
 
 	// Direct builder assertion: with candidates → Select.
@@ -52,8 +51,8 @@ func Test_defaultPrompt_Fill_UsesSchemeListFromProvider(t *testing.T) {
 
 func Test_defaultPrompt_Fill_FallsBackToInputWhenListEmpty(t *testing.T) {
 	provider := &xcodebuildInfoProviderMock{
-		ListSchemesFunc: func(context.Context, string, string) ([]string, error) {
-			return nil, nil
+		ListSchemesAndConfigurationsFunc: func(context.Context, string, string) ([]string, []string, error) {
+			return nil, nil, nil
 		},
 	}
 
@@ -71,7 +70,7 @@ func Test_defaultPrompt_Fill_FallsBackToInputWhenListEmpty(t *testing.T) {
 	}
 
 	require.NoError(t, prompt.Fill(context.Background(), spec))
-	assert.Len(t, provider.ListSchemesCalls(), 1)
+	assert.Len(t, provider.ListSchemesAndConfigurationsCalls(), 1)
 
 	// Direct builder assertion: empty candidates → Input.
 	f := schemeField(&InvocationSpec{}, nil)
@@ -101,8 +100,7 @@ func Test_defaultPrompt_Fill_SkipsFieldsAlreadyInSpec(t *testing.T) {
 	}
 
 	require.NoError(t, prompt.Fill(context.Background(), spec))
-	assert.Empty(t, provider.ListSchemesCalls())
-	assert.Empty(t, provider.ListConfigurationsCalls())
+	assert.Empty(t, provider.ListSchemesAndConfigurationsCalls())
 	assert.Empty(t, provider.ShowDestinationsCalls())
 }
 
@@ -110,15 +108,10 @@ func Test_defaultPrompt_Fill_QueriesShowDestinationsAfterSchemeResolved(t *testi
 	var order []string
 
 	provider := &xcodebuildInfoProviderMock{
-		ListSchemesFunc: func(context.Context, string, string) ([]string, error) {
-			order = append(order, "ListSchemes")
+		ListSchemesAndConfigurationsFunc: func(context.Context, string, string) ([]string, []string, error) {
+			order = append(order, "ListSchemesAndConfigurations")
 
-			return []string{"App"}, nil
-		},
-		ListConfigurationsFunc: func(context.Context, string, string) ([]string, error) {
-			order = append(order, "ListConfigurations")
-
-			return []string{"Debug"}, nil
+			return []string{"App"}, []string{"Debug"}, nil
 		},
 		ShowDestinationsFunc: func(_ context.Context, ws, proj, scheme string) ([]string, error) {
 			order = append(order, "ShowDestinations:"+scheme)
@@ -144,10 +137,9 @@ func Test_defaultPrompt_Fill_QueriesShowDestinationsAfterSchemeResolved(t *testi
 
 	require.NoError(t, prompt.Fill(context.Background(), spec))
 
-	require.Len(t, order, 3)
-	assert.Contains(t, order[:2], "ListSchemes", "stage 2 queries schemes")
-	assert.Contains(t, order[:2], "ListConfigurations", "stage 2 queries configurations")
-	assert.Equal(t, "ShowDestinations:App", order[2], "stage 3 queries destinations with the resolved scheme")
+	require.Len(t, order, 2)
+	assert.Equal(t, "ListSchemesAndConfigurations", order[0], "scheme + configuration share one xcodebuild -list call")
+	assert.Equal(t, "ShowDestinations:App", order[1], "destination query runs after scheme resolved")
 
 	assert.Equal(t, "App", spec.Scheme)
 	assert.Equal(t, "Debug", spec.Configuration)
@@ -156,8 +148,8 @@ func Test_defaultPrompt_Fill_QueriesShowDestinationsAfterSchemeResolved(t *testi
 
 func Test_defaultPrompt_Fill_ProviderErrorFallsBackSilently(t *testing.T) {
 	provider := &xcodebuildInfoProviderMock{
-		ListSchemesFunc: func(context.Context, string, string) ([]string, error) {
-			return nil, errors.New("xcodebuild missing")
+		ListSchemesAndConfigurationsFunc: func(context.Context, string, string) ([]string, []string, error) {
+			return nil, nil, errors.New("xcodebuild missing")
 		},
 	}
 

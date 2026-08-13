@@ -18,11 +18,8 @@ var _ xcodebuildInfoProvider = &xcodebuildInfoProviderMock{}
 //
 //		// make and configure a mocked xcodebuildInfoProvider
 //		mockedxcodebuildInfoProvider := &xcodebuildInfoProviderMock{
-//			ListConfigurationsFunc: func(ctx context.Context, workspace string, project string) ([]string, error) {
-//				panic("mock out the ListConfigurations method")
-//			},
-//			ListSchemesFunc: func(ctx context.Context, workspace string, project string) ([]string, error) {
-//				panic("mock out the ListSchemes method")
+//			ListSchemesAndConfigurationsFunc: func(ctx context.Context, workspace string, project string) ([]string, []string, error) {
+//				panic("mock out the ListSchemesAndConfigurations method")
 //			},
 //			ShowDestinationsFunc: func(ctx context.Context, workspace string, project string, scheme string) ([]string, error) {
 //				panic("mock out the ShowDestinations method")
@@ -34,28 +31,16 @@ var _ xcodebuildInfoProvider = &xcodebuildInfoProviderMock{}
 //
 //	}
 type xcodebuildInfoProviderMock struct {
-	// ListConfigurationsFunc mocks the ListConfigurations method.
-	ListConfigurationsFunc func(ctx context.Context, workspace string, project string) ([]string, error)
-
-	// ListSchemesFunc mocks the ListSchemes method.
-	ListSchemesFunc func(ctx context.Context, workspace string, project string) ([]string, error)
+	// ListSchemesAndConfigurationsFunc mocks the ListSchemesAndConfigurations method.
+	ListSchemesAndConfigurationsFunc func(ctx context.Context, workspace string, project string) ([]string, []string, error)
 
 	// ShowDestinationsFunc mocks the ShowDestinations method.
 	ShowDestinationsFunc func(ctx context.Context, workspace string, project string, scheme string) ([]string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// ListConfigurations holds details about calls to the ListConfigurations method.
-		ListConfigurations []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Workspace is the workspace argument value.
-			Workspace string
-			// Project is the project argument value.
-			Project string
-		}
-		// ListSchemes holds details about calls to the ListSchemes method.
-		ListSchemes []struct {
+		// ListSchemesAndConfigurations holds details about calls to the ListSchemesAndConfigurations method.
+		ListSchemesAndConfigurations []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Workspace is the workspace argument value.
@@ -75,13 +60,12 @@ type xcodebuildInfoProviderMock struct {
 			Scheme string
 		}
 	}
-	lockListConfigurations sync.RWMutex
-	lockListSchemes        sync.RWMutex
-	lockShowDestinations   sync.RWMutex
+	lockListSchemesAndConfigurations sync.RWMutex
+	lockShowDestinations             sync.RWMutex
 }
 
-// ListConfigurations calls ListConfigurationsFunc.
-func (mock *xcodebuildInfoProviderMock) ListConfigurations(ctx context.Context, workspace string, project string) ([]string, error) {
+// ListSchemesAndConfigurations calls ListSchemesAndConfigurationsFunc.
+func (mock *xcodebuildInfoProviderMock) ListSchemesAndConfigurations(ctx context.Context, workspace string, project string) ([]string, []string, error) {
 	callInfo := struct {
 		Ctx       context.Context
 		Workspace string
@@ -91,24 +75,25 @@ func (mock *xcodebuildInfoProviderMock) ListConfigurations(ctx context.Context, 
 		Workspace: workspace,
 		Project:   project,
 	}
-	mock.lockListConfigurations.Lock()
-	mock.calls.ListConfigurations = append(mock.calls.ListConfigurations, callInfo)
-	mock.lockListConfigurations.Unlock()
-	if mock.ListConfigurationsFunc == nil {
+	mock.lockListSchemesAndConfigurations.Lock()
+	mock.calls.ListSchemesAndConfigurations = append(mock.calls.ListSchemesAndConfigurations, callInfo)
+	mock.lockListSchemesAndConfigurations.Unlock()
+	if mock.ListSchemesAndConfigurationsFunc == nil {
 		var (
-			stringsOut []string
-			errOut     error
+			schemesOut        []string
+			configurationsOut []string
+			errOut            error
 		)
-		return stringsOut, errOut
+		return schemesOut, configurationsOut, errOut
 	}
-	return mock.ListConfigurationsFunc(ctx, workspace, project)
+	return mock.ListSchemesAndConfigurationsFunc(ctx, workspace, project)
 }
 
-// ListConfigurationsCalls gets all the calls that were made to ListConfigurations.
+// ListSchemesAndConfigurationsCalls gets all the calls that were made to ListSchemesAndConfigurations.
 // Check the length with:
 //
-//	len(mockedxcodebuildInfoProvider.ListConfigurationsCalls())
-func (mock *xcodebuildInfoProviderMock) ListConfigurationsCalls() []struct {
+//	len(mockedxcodebuildInfoProvider.ListSchemesAndConfigurationsCalls())
+func (mock *xcodebuildInfoProviderMock) ListSchemesAndConfigurationsCalls() []struct {
 	Ctx       context.Context
 	Workspace string
 	Project   string
@@ -118,53 +103,9 @@ func (mock *xcodebuildInfoProviderMock) ListConfigurationsCalls() []struct {
 		Workspace string
 		Project   string
 	}
-	mock.lockListConfigurations.RLock()
-	calls = mock.calls.ListConfigurations
-	mock.lockListConfigurations.RUnlock()
-	return calls
-}
-
-// ListSchemes calls ListSchemesFunc.
-func (mock *xcodebuildInfoProviderMock) ListSchemes(ctx context.Context, workspace string, project string) ([]string, error) {
-	callInfo := struct {
-		Ctx       context.Context
-		Workspace string
-		Project   string
-	}{
-		Ctx:       ctx,
-		Workspace: workspace,
-		Project:   project,
-	}
-	mock.lockListSchemes.Lock()
-	mock.calls.ListSchemes = append(mock.calls.ListSchemes, callInfo)
-	mock.lockListSchemes.Unlock()
-	if mock.ListSchemesFunc == nil {
-		var (
-			stringsOut []string
-			errOut     error
-		)
-		return stringsOut, errOut
-	}
-	return mock.ListSchemesFunc(ctx, workspace, project)
-}
-
-// ListSchemesCalls gets all the calls that were made to ListSchemes.
-// Check the length with:
-//
-//	len(mockedxcodebuildInfoProvider.ListSchemesCalls())
-func (mock *xcodebuildInfoProviderMock) ListSchemesCalls() []struct {
-	Ctx       context.Context
-	Workspace string
-	Project   string
-} {
-	var calls []struct {
-		Ctx       context.Context
-		Workspace string
-		Project   string
-	}
-	mock.lockListSchemes.RLock()
-	calls = mock.calls.ListSchemes
-	mock.lockListSchemes.RUnlock()
+	mock.lockListSchemesAndConfigurations.RLock()
+	calls = mock.calls.ListSchemesAndConfigurations
+	mock.lockListSchemesAndConfigurations.RUnlock()
 	return calls
 }
 

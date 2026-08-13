@@ -1,6 +1,7 @@
 package invoke
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,46 +13,32 @@ import (
 
 //go:generate moq -stub -out xcodebuild_info_mock_test.go -pkg invoke . xcodebuildInfoProvider
 
-// xcodebuildInfoProvider surfaces the candidate lists a picker needs. Split
-// per-field so the default Prompt can chain scheme → configuration →
-// destination without leaking xcodebuild subprocess wiring into the caller.
+// xcodebuildInfoProvider surfaces the candidate lists a picker needs.
+// Scheme + configuration share a call because xcodebuild -list evaluates the
+// whole project graph once per invocation.
 type xcodebuildInfoProvider interface {
-	ListSchemes(ctx context.Context, workspace, project string) ([]string, error)
-	ListConfigurations(ctx context.Context, workspace, project string) ([]string, error)
+	ListSchemesAndConfigurations(ctx context.Context, workspace, project string) (schemes, configurations []string, err error)
 	ShowDestinations(ctx context.Context, workspace, project, scheme string) ([]string, error)
 }
 
 type execXcodebuildInfo struct{}
 
-func (e execXcodebuildInfo) ListSchemes(ctx context.Context, workspace, project string) ([]string, error) {
+func (e execXcodebuildInfo) ListSchemesAndConfigurations(ctx context.Context, workspace, project string) ([]string, []string, error) {
 	info, err := runXcodebuildList(ctx, workspace, project)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	// Workspaces don't expose configurations directly — callers drop to a
+	// free-text input, matching the pre-picker UX.
 	switch {
 	case info.Workspace != nil:
-		return info.Workspace.Schemes, nil
+		return info.Workspace.Schemes, nil, nil
 	case info.Project != nil:
-		return info.Project.Schemes, nil
+		return info.Project.Schemes, info.Project.Configurations, nil
 	}
 
-	return nil, nil
-}
-
-func (e execXcodebuildInfo) ListConfigurations(ctx context.Context, workspace, project string) ([]string, error) {
-	info, err := runXcodebuildList(ctx, workspace, project)
-	if err != nil {
-		return nil, err
-	}
-
-	// Workspaces don't expose configurations directly. Fall back to the empty
-	// slice — the caller drops to a free-text input, matching the pre-picker UX.
-	if info.Project != nil {
-		return info.Project.Configurations, nil
-	}
-
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (e execXcodebuildInfo) ShowDestinations(ctx context.Context, workspace, project, scheme string) ([]string, error) {
@@ -107,12 +94,17 @@ func runXcodebuildList(ctx context.Context, workspace, project string) (xcodebui
 
 	cmd := exec.CommandContext(ctx, "xcodebuild", args...)
 
-	out, err := cmd.Output()
-	if err != nil {
-		return xcodebuildListOutput{}, fmt.Errorf("xcodebuild -list -json: %w", err)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		combined := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+
+		return xcodebuildListOutput{}, fmt.Errorf("xcodebuild -list -json: %w (output: %s)", err, combined)
 	}
 
-	return parseXcodebuildList(out)
+	return parseXcodebuildList(stdout.Bytes())
 }
 
 func parseXcodebuildList(raw []byte) (xcodebuildListOutput, error) {
@@ -132,8 +124,29 @@ func parseShowDestinations(output string) []string {
 	seen := map[string]struct{}{}
 	dests := []string{}
 
+	// Xcode emits two blocks: "Available destinations" (usable) and
+	// "Ineligible destinations" (unavailable — e.g. uninstalled simulators).
+	// Only the former belongs in the picker.
+	inAvailable := false
+
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
+
+		switch {
+		case strings.HasPrefix(line, "Available destinations"):
+			inAvailable = true
+
+			continue
+		case strings.HasPrefix(line, "Ineligible destinations"):
+			inAvailable = false
+
+			continue
+		}
+
+		if !inAvailable {
+			continue
+		}
+
 		if !strings.HasPrefix(line, "{") || !strings.HasSuffix(line, "}") {
 			continue
 		}
@@ -172,15 +185,10 @@ func canonicalDestination(fields map[string]string) string {
 		return ""
 	}
 
-	name := fields["name"]
-
-	// "Any iOS Device" / "Any Mac" entries only carry a platform + name; emit as
+	// "Any iOS Device" / "Any Mac" entries carry a platform + name; emit as
 	// generic/platform=X for consistency with Xcode's own -destination shorthand.
-	if strings.HasPrefix(strings.ToLower(name), "any ") {
-		return "generic/platform=" + platform
-	}
-
-	if name == "" {
+	name := fields["name"]
+	if name == "" || strings.HasPrefix(strings.ToLower(name), "any ") {
 		return "generic/platform=" + platform
 	}
 

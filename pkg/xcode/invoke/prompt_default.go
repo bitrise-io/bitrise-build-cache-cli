@@ -38,7 +38,6 @@ func (p defaultPrompt) Fill(ctx context.Context, spec *InvocationSpec) error {
 		runForm = func(g *huh.Group) error { return tui.RunForm(g) } //nolint:wrapcheck // tui already wraps errors
 	}
 
-	// Stage 1: container. Everything else queries xcodebuild against it.
 	if spec.Workspace == "" && spec.Project == "" {
 		if err := runForm(huh.NewGroup(containerField(spec))); err != nil {
 			return err //nolint:wrapcheck // tui already wraps errors
@@ -52,12 +51,10 @@ func (p defaultPrompt) Fill(ctx context.Context, spec *InvocationSpec) error {
 		provider = execXcodebuildInfo{}
 	}
 
-	// Stage 2: scheme + configuration. Both come from the same -list -json call.
 	if err := p.fillSchemeAndConfig(ctx, provider, runForm, spec); err != nil {
 		return err
 	}
 
-	// Stage 3: destination. Requires scheme resolved.
 	if spec.Destination == "" {
 		if err := p.fillDestination(ctx, provider, runForm, spec); err != nil {
 			return err
@@ -71,6 +68,7 @@ func (p defaultPrompt) Fill(ctx context.Context, spec *InvocationSpec) error {
 
 // Private — helpers
 
+// Scheme + configuration come from the same xcodebuild -list call.
 func (p defaultPrompt) fillSchemeAndConfig(
 	ctx context.Context,
 	provider xcodebuildInfoProvider,
@@ -89,22 +87,12 @@ func (p defaultPrompt) fillSchemeAndConfig(
 		configs []string
 	)
 
-	if needScheme {
-		s, err := provider.ListSchemes(ctx, spec.Workspace, spec.Project)
-		if err != nil {
-			p.debug("xcodebuild -list schemes: %s; falling back to free-text input", err)
-		} else {
-			schemes = s
-		}
-	}
-
-	if needConfig {
-		c, err := provider.ListConfigurations(ctx, spec.Workspace, spec.Project)
-		if err != nil {
-			p.debug("xcodebuild -list configurations: %s; falling back to free-text input", err)
-		} else {
-			configs = c
-		}
+	s, c, err := provider.ListSchemesAndConfigurations(ctx, spec.Workspace, spec.Project)
+	if err != nil {
+		p.debug("xcodebuild -list: %s; falling back to free-text input", err)
+	} else {
+		schemes = s
+		configs = c
 	}
 
 	fields := []huh.Field{}
