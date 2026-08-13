@@ -235,6 +235,8 @@ func TestResolve_PromptReturnsErrPromptUnavailable(t *testing.T) {
 
 	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.ErrorIs(t, err, invoke.ErrPromptUnavailable)
+	assert.Contains(t, err.Error(), repoRoot)
+	assert.Contains(t, err.Error(), "xcode-build.json")
 }
 
 func TestResolve_TolerateUnknownJSONFields(t *testing.T) {

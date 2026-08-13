@@ -122,6 +122,10 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 
 	if !isComplete(spec) {
 		if err := r.promptFor(ctx, &spec); err != nil {
+			if errors.Is(err, ErrPromptUnavailable) && configPath != "" {
+				return InvocationSpec{}, fmt.Errorf("%w (edit %s)", err, configPath)
+			}
+
 			return InvocationSpec{}, err
 		}
 	}
