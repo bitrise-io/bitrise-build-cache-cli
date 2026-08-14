@@ -121,6 +121,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 			DefaultCharset: cacheConfig.HostMetadata.DefaultCharset,
 			CPUCores:       cacheConfig.HostMetadata.CPUCores,
 			MemSize:        cacheConfig.HostMetadata.MemSize,
+			Username:       cacheConfig.HostMetadata.Username,
 		},
 	}, nil
 }

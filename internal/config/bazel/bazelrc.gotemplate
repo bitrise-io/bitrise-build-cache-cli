@@ -1,14 +1,22 @@
 {{- /*
-Local dev (CLIPath present, CIProvider empty) resolves the auth token per
-build via the CLI's credential-helper hook (Bazel invokes `<CLIPath> get`
-per the EngFlow spec) — no plain-text token on disk. CLIPath is an absolute
-path, or the bare binary name, which Bazel looks up in $PATH. CI keeps the
-literal `Bearer <token>` header for perf and to avoid spawning the CLI on
-every RPC. CLIPath is empty when the CLI is neither at a usable path nor on
-$PATH, and that also takes the literal-header branch: a token on disk
-still authenticates, a helper that can't be spawned fails every build.
+Whenever the CLI is reachable (CLIPath present), the auth token is resolved
+per build via its credential-helper hook (Bazel invokes `<CLIPath> get` per
+the EngFlow spec) — no plain-text token on disk. CLIPath is an absolute
+path, or the bare binary name, which Bazel looks up in $PATH.
+
+CI takes this branch too. It used to keep the literal `Bearer <token>`
+header instead, to avoid spawning the CLI on every RPC, but that collides
+with a repo-level `--credential_helper` for the same hosts: the helper is
+URI-agnostic, so RPCs carried two `authorization` headers and flare-bes
+rejected them with `failed to read JWT from header`. Bazel caches the
+helper's answer (`expires`, else --credential_helper_cache_duration), so
+the helper is not spawned per RPC.
+
+CLIPath is empty when the CLI is neither at a usable path nor on $PATH, and
+that takes the literal-header branch: a token on disk still authenticates,
+a helper that can't be spawned fails every build.
 */ -}}
-{{- $useHelper := and .Common.CLIPath (not .Common.CIProvider) -}}
+{{- $useHelper := .Common.CLIPath -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
 build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}
 {{ end }}
@@ -19,7 +27,8 @@ build --remote_timeout=600s
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser={{ .Common.CIProvider }}
+{{- /* CIProvider on CI, resolved display name locally */}}
+build --remote_header=x-flare-builduser={{ if .Common.CIProvider }}{{ .Common.CIProvider }}{{ else }}{{ .Common.HostMetadata.Username }}{{ end }}
 {{- if .Cache.IsPushEnabled }}
 build --remote_upload_local_results
 {{- else }}
