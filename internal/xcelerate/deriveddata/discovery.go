@@ -58,8 +58,8 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 	}
 
 	globs := []string{
-		filepath.Join(home, enrichment.DefaultDerivedDataGlob),
-		filepath.Join(home, paths.XcodeManagedDerivedDataManifestGlobRelative),
+		enrichment.DefaultDerivedDataGlob,
+		paths.XcodeManagedDerivedDataManifestGlobRelative,
 	}
 
 	var (
@@ -68,18 +68,23 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 		bestFound bool
 	)
 
-	for _, glob := range globs {
-		matches, err := filepath.Glob(glob)
-		if err != nil {
-			logger.Debugf("deriveddata: glob %q failed: %s", glob, err)
-
-			continue
+	enrichment.WalkManifests(home, globs, logger, func(path string, entries []enrichment.ManifestEntry) {
+		if f.ProjectPathHint != "" && !f.matchesHint(path) {
+			return
 		}
 
-		for _, path := range matches {
-			f.updateBestFromManifest(path, command, &best, &bestPath, &bestFound)
+		for _, entry := range entries {
+			if entry.Command() != command || entry.Stop.IsZero() {
+				continue
+			}
+
+			if !bestFound || entry.Stop.After(best.Stop) {
+				best = entry
+				bestPath = path
+				bestFound = true
+			}
 		}
-	}
+	})
 
 	if !bestFound {
 		return LatestBuild{}, ErrNoRecentBuild
@@ -98,31 +103,6 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 	}
 
 	return result, nil
-}
-
-func (f *Finder) updateBestFromManifest(path string, command enrichment.Command, best *enrichment.ManifestEntry, bestPath *string, bestFound *bool) {
-	entries, err := enrichment.LoadManifest(path)
-	if err != nil {
-		f.logger().Debugf("deriveddata: load %q failed: %s", path, err)
-
-		return
-	}
-
-	if f.ProjectPathHint != "" && !f.matchesHint(path) {
-		return
-	}
-
-	for _, entry := range entries {
-		if entry.Command() != command || entry.Stop.IsZero() {
-			continue
-		}
-
-		if !*bestFound || entry.Stop.After(best.Stop) {
-			*best = entry
-			*bestPath = path
-			*bestFound = true
-		}
-	}
 }
 
 // Xcode writes signatures like "Cleaning project X with scheme Y and configuration Debug".

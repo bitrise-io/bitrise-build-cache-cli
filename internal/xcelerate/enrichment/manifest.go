@@ -3,9 +3,11 @@ package enrichment
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"howett.net/plist"
 )
 
@@ -50,6 +52,34 @@ func (m ManifestEntry) Command() Command {
 
 func (m ManifestEntry) Success() bool {
 	return m.Status == "S"
+}
+
+// WalkManifests expands each glob against homeDir, loads every matched
+// LogStoreManifest.plist, and invokes visit(manifestPath, entries) for each
+// successfully parsed manifest. Glob or load failures are logged at debug and
+// skipped — matching the pre-existing behavior of both Finder and Watcher.
+func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func(manifestPath string, entries []ManifestEntry)) {
+	l := logOr(logger)
+
+	for _, glob := range globs {
+		matches, err := filepath.Glob(filepath.Join(homeDir, glob))
+		if err != nil {
+			l.Debugf("WalkManifests: glob %q failed: %s", glob, err)
+
+			continue
+		}
+
+		for _, path := range matches {
+			entries, err := LoadManifest(path)
+			if err != nil {
+				l.Debugf("WalkManifests: load %q failed: %s", path, err)
+
+				continue
+			}
+
+			visit(path, entries)
+		}
+	}
 }
 
 func LoadManifest(path string) ([]ManifestEntry, error) {
