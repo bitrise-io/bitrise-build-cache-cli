@@ -12,7 +12,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
@@ -64,10 +63,7 @@ func init() { //nolint:gochecknoinits
 			return cmd.Help() //nolint:wrapcheck // help has no useful error to wrap
 		}
 
-		// TERM=dumb switches huh into line-based accessible mode; that path
-		// reads answers from stdin so a real TTY isn't required. Everything
-		// else needs a proper interactive terminal.
-		if os.Getenv("TERM") != "dumb" && !term.IsTerminal(int(os.Stdin.Fd())) {
+		if !HasInteractiveStdin() {
 			return errors.New(`interactive setup requires a terminal. For scripted use:
   bitrise-build-cache auth set --token <token> --workspace-id <workspace-id>
   bitrise-build-cache activate gradle   # or bazel / xcode / c++

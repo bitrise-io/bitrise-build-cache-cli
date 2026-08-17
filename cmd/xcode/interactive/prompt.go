@@ -6,13 +6,12 @@ package interactive
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"golang.org/x/term"
 
+	commoninteractive "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
@@ -61,9 +60,7 @@ type Prompter struct {
 //	}
 //	_ = r.Persist(meta.ConfigPath, spec)
 func (p Prompter) Fill(ctx context.Context, spec invoke.InvocationSpec, projectPath string) (invoke.InvocationSpec, error) {
-	// Mirror wizard_tools.go: huh accessible mode (TERM=dumb) reads from stdin
-	// so a real TTY isn't required. Everything else needs one.
-	if os.Getenv("TERM") != "dumb" && !term.IsTerminal(int(os.Stdin.Fd())) {
+	if !commoninteractive.HasInteractiveStdin() {
 		return spec, ErrPromptUnavailable
 	}
 
