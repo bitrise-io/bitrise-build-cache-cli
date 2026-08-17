@@ -21,10 +21,15 @@ type XcodebuildInfoProvider interface {
 	ShowDestinations(ctx context.Context, workspace, project, scheme string) ([]string, error)
 }
 
-type execXcodebuildInfo struct{}
+// execXcodebuildInfo runs xcodebuild from WorkDir (or the current directory
+// when empty). Setting WorkDir to the project directory lets callers pass bare
+// workspace/project filenames instead of absolute paths.
+type execXcodebuildInfo struct {
+	WorkDir string
+}
 
 func (e execXcodebuildInfo) ListSchemesAndConfigurations(ctx context.Context, workspace, project string) ([]string, []string, error) {
-	info, err := runXcodebuildList(ctx, workspace, project)
+	info, err := e.runXcodebuildList(ctx, workspace, project)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,6 +57,7 @@ func (e execXcodebuildInfo) ShowDestinations(ctx context.Context, workspace, pro
 	}
 
 	cmd := exec.CommandContext(ctx, "xcodebuild", args...)
+	cmd.Dir = e.WorkDir
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -80,7 +86,7 @@ type xcodebuildProjectInfo struct {
 	Targets        []string `json:"targets"`
 }
 
-func runXcodebuildList(ctx context.Context, workspace, project string) (xcodebuildListOutput, error) {
+func (e execXcodebuildInfo) runXcodebuildList(ctx context.Context, workspace, project string) (xcodebuildListOutput, error) {
 	args := []string{"-list", "-json"}
 
 	switch {
@@ -91,6 +97,7 @@ func runXcodebuildList(ctx context.Context, workspace, project string) (xcodebui
 	}
 
 	cmd := exec.CommandContext(ctx, "xcodebuild", args...)
+	cmd.Dir = e.WorkDir
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

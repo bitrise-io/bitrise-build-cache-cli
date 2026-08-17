@@ -41,7 +41,7 @@ func Test_Fill_UsesSchemeListFromProvider(t *testing.T) {
 		RunForm:        func(*huh.Group) error { return nil },
 	}
 
-	_, err := Fill(context.Background(), prompter, spec)
+	_, err := prompter.Fill(context.Background(), spec, "")
 	require.NoError(t, err)
 	assert.Len(t, provider.ListSchemesAndConfigurationsCalls(), 1)
 	assert.Empty(t, provider.ShowDestinationsCalls(), "destination already set — provider must not be queried")
@@ -72,7 +72,7 @@ func Test_Fill_FallsBackToInputWhenListEmpty(t *testing.T) {
 		RunForm:        func(*huh.Group) error { return nil },
 	}
 
-	_, err := Fill(context.Background(), prompter, spec)
+	_, err := prompter.Fill(context.Background(), spec, "")
 	require.NoError(t, err)
 	assert.Len(t, provider.ListSchemesAndConfigurationsCalls(), 1)
 
@@ -103,7 +103,7 @@ func Test_Fill_SkipsFieldsAlreadyInSpec(t *testing.T) {
 		},
 	}
 
-	_, err := Fill(context.Background(), prompter, spec)
+	_, err := prompter.Fill(context.Background(), spec, "")
 	require.NoError(t, err)
 	assert.Empty(t, provider.ListSchemesAndConfigurationsCalls())
 	assert.Empty(t, provider.ShowDestinationsCalls())
@@ -140,7 +140,7 @@ func Test_Fill_QueriesShowDestinationsAfterSchemeResolved(t *testing.T) {
 		RunForm:        func(*huh.Group) error { return nil },
 	}
 
-	got, err := Fill(context.Background(), prompter, spec)
+	got, err := prompter.Fill(context.Background(), spec, "")
 	require.NoError(t, err)
 
 	require.Len(t, order, 2)
@@ -177,7 +177,7 @@ func Test_Fill_ProviderErrorFallsBackSilently(t *testing.T) {
 		},
 	}
 
-	_, err := Fill(context.Background(), prompter, spec)
+	_, err := prompter.Fill(context.Background(), spec, "")
 	require.NoError(t, err)
 	assert.True(t, runFormCalled, "runForm still fires with the free-text fallback field")
 }
@@ -185,8 +185,33 @@ func Test_Fill_ProviderErrorFallsBackSilently(t *testing.T) {
 func Test_Fill_PromptUnavailable_whenNoTTY(t *testing.T) {
 	t.Setenv("TERM", "not-dumb")
 
-	_, err := Fill(context.Background(), Prompter{}, invoke.InvocationSpec{Workspace: "App.xcworkspace"})
+	spec := invoke.InvocationSpec{Workspace: "App.xcworkspace"}
+	got, err := Prompter{}.Fill(context.Background(), spec, "")
 	require.ErrorIs(t, err, ErrPromptUnavailable)
+	assert.Equal(t, spec, got, "spec must not be mutated when no TTY is available")
+}
+
+func Test_Fill_PreservesExtraArgs(t *testing.T) {
+	provider := &XcodebuildInfoProviderMock{
+		ListSchemesAndConfigurationsFunc: func(context.Context, string, string) ([]string, []string, error) {
+			return []string{"App"}, nil, nil
+		},
+	}
+
+	t.Setenv("TERM", "dumb")
+
+	spec := invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Destination: "generic/platform=iOS",
+		ExtraArgs:   []string{"-quiet", "OTHER_LDFLAGS=-lfoo"},
+	}
+
+	got, err := Prompter{
+		XcodebuildInfo: provider,
+		RunForm:        func(*huh.Group) error { return nil },
+	}.Fill(context.Background(), spec, "")
+	require.NoError(t, err)
+	assert.Equal(t, spec.ExtraArgs, got.ExtraArgs, "ExtraArgs must survive the picker")
 }
 
 func Test_normalizeContainer_treatsNonWorkspaceAsProject(t *testing.T) {

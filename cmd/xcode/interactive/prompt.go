@@ -23,7 +23,7 @@ import (
 var ErrPromptUnavailable = errors.New("prompt unavailable: cannot request missing invocation fields")
 
 // Prompter fills any missing fields on an invoke.InvocationSpec by walking the
-// user through a huh form. Consumers create it once and call Fill per resolve.
+// user through a huh form. Nil fields fall back to production defaults.
 type Prompter struct {
 	Logger log.Logger
 
@@ -37,16 +37,24 @@ type Prompter struct {
 }
 
 // Fill walks the user through a picker for whichever fields on spec are still
-// blank. The returned spec is a copy — ExtraArgs are preserved as-is.
+// blank. projectPath is the directory containing the .xcworkspace / .xcodeproj
+// — it is used as the working directory when the exec-backed picker calls
+// xcodebuild, so bare workspace/project filenames resolve. Pass "" when there
+// is no project directory yet.
 //
-// Intended flow (see invoke.Resolver docs for the full sequence):
+// The returned spec is a copy — ExtraArgs are preserved as-is. When no TTY is
+// available, Fill returns ErrPromptUnavailable and leaves spec unchanged.
 //
-//	spec, cfg, _ := r.Resolve(ctx, cmd, repoRoot)
+// End-to-end flow:
+//
+//	spec, cfg, err := r.Resolve(ctx, cmd, repoRoot)
+//	if err != nil { ... }
 //	if !spec.IsComplete() {
-//	    spec, _ = interactive.Fill(ctx, prompter, spec)
+//	    spec, err = prompter.Fill(ctx, spec, filepath.Dir(cfg))
+//	    if err != nil { ... }
 //	}
 //	_ = r.Persist(cfg, spec)
-func Fill(ctx context.Context, p Prompter, spec invoke.InvocationSpec) (invoke.InvocationSpec, error) {
+func (p Prompter) Fill(ctx context.Context, spec invoke.InvocationSpec, projectPath string) (invoke.InvocationSpec, error) {
 	// Mirror wizard_tools.go: huh accessible mode (TERM=dumb) reads from stdin
 	// so a real TTY isn't required. Everything else needs one.
 	if os.Getenv("TERM") != "dumb" && !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -68,7 +76,7 @@ func Fill(ctx context.Context, p Prompter, spec invoke.InvocationSpec) (invoke.I
 
 	provider := p.XcodebuildInfo
 	if provider == nil {
-		provider = execXcodebuildInfo{}
+		provider = execXcodebuildInfo{WorkDir: projectPath}
 	}
 
 	if err := p.fillSchemeAndConfig(ctx, provider, runForm, &spec); err != nil {
