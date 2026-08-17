@@ -119,7 +119,7 @@ func TestResolve_FullConfig_NoDiscoveryNoPrompt(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.False(t, promptCalled)
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
@@ -157,8 +157,9 @@ func TestResolve_PartialConfig_MergesFinderThenPrompt(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: home},
 	}
 
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
+	require.NoError(t, r.Persist(cfg, got))
 	assert.Equal(t, 1, len(prompt.FillCalls()))
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
 	assert.Equal(t, "App", got.Scheme)
@@ -190,7 +191,7 @@ func TestResolve_NoConfig_FinderFull_DestinationStillPrompted(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: home},
 	}
 
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
 	assert.Equal(t, "App", got.Scheme)
@@ -214,7 +215,7 @@ func TestResolve_NoRecentBuild_PromptFillsEverything(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
 	assert.Equal(t, "App", got.Scheme)
@@ -233,7 +234,7 @@ func TestResolve_PromptReturnsErrPromptUnavailable(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.ErrorIs(t, err, invoke.ErrPromptUnavailable)
 	assert.Contains(t, err.Error(), repoRoot)
 	assert.Contains(t, err.Error(), "xcode-build.json")
@@ -255,17 +256,18 @@ func TestResolve_TolerateUnknownJSONFields(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
 }
 
-func TestResolve_UnknownJSONFieldsDroppedOnPersist(t *testing.T) {
+func TestPersist_DropsUnknownJSONFields(t *testing.T) {
 	repoRoot := t.TempDir()
 	dir := filepath.Join(repoRoot, ".bitrise-build-cache")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "xcode-build.json"), []byte(`{
+	cfg := filepath.Join(dir, "xcode-build.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{
 	"workspace": "App.xcworkspace",
 	"scheme": "App",
 	"destination": "generic/platform=iOS",
@@ -276,10 +278,11 @@ func TestResolve_UnknownJSONFieldsDroppedOnPersist(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, cfgPath, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
+	require.NoError(t, r.Persist(cfgPath, got))
 
-	raw, err := os.ReadFile(filepath.Join(dir, "xcode-build.json"))
+	raw, err := os.ReadFile(cfg)
 	require.NoError(t, err)
 
 	var asMap map[string]any
@@ -292,27 +295,44 @@ func TestResolve_UnknownJSONFieldsDroppedOnPersist(t *testing.T) {
 	assert.Equal(t, "generic/platform=iOS", asMap["destination"])
 }
 
-func TestResolve_WorkspaceWinsOverProject(t *testing.T) {
+func TestPersist_WorkspaceWinsOverProject(t *testing.T) {
 	repoRoot := t.TempDir()
-	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+
+	r := &invoke.Resolver{}
+
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	require.NoError(t, r.Persist(cfg, invoke.InvocationSpec{
 		Workspace:   "App.xcworkspace",
 		Project:     "App.xcodeproj",
 		Scheme:      "App",
 		Destination: "generic/platform=iOS",
-	})
-
-	r := &invoke.Resolver{
-		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
-	}
-
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
-	require.NoError(t, err)
-	assert.Equal(t, "App.xcworkspace", got.Workspace)
-	assert.Empty(t, got.Project, "workspace wins when both are set")
+	}))
 
 	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
 	assert.Equal(t, "App.xcworkspace", persisted.Workspace)
-	assert.Empty(t, persisted.Project)
+	assert.Empty(t, persisted.Project, "workspace wins when both are set")
+}
+
+func TestPersist_EmptyConfigPath_NoOp(t *testing.T) {
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Persist("", invoke.InvocationSpec{Workspace: "App.xcworkspace"}))
+}
+
+func TestPersist_PreservesExtraArgs(t *testing.T) {
+	repoRoot := t.TempDir()
+	r := &invoke.Resolver{}
+
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	spec := invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+		ExtraArgs:   []string{"-quiet", "OTHER_LDFLAGS=-lfoo"},
+	}
+	require.NoError(t, r.Persist(cfg, spec))
+
+	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
+	assert.Equal(t, spec.ExtraArgs, persisted.ExtraArgs)
 }
 
 func TestResolve_PersistsUnderRepoLocalDir(t *testing.T) {
@@ -331,8 +351,9 @@ func TestResolve_PersistsUnderRepoLocalDir(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandTest, repoRoot)
+	got, cfg, err := r.Resolve(context.Background(), invoke.CommandTest, repoRoot)
 	require.NoError(t, err)
+	require.NoError(t, r.Persist(cfg, got))
 
 	persisted := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-test.json")
 	_, err = os.Stat(persisted)
@@ -353,8 +374,9 @@ func TestResolve_EmptyRepoRoot_NoPersist(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, "")
+	_, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, "")
 	require.NoError(t, err)
+	assert.Empty(t, cfg, "no configPath means Persist is a no-op")
 }
 
 func TestResolve_ProjectHintFromJSONBypassesCwdScan(t *testing.T) {
@@ -377,7 +399,7 @@ func TestResolve_ProjectHintFromJSONBypassesCwdScan(t *testing.T) {
 		Cwd:    t.TempDir(), // ensure Cwd would not resolve to repoRoot
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(repoRoot, "Foo.xcworkspace"), finder.ProjectPathHint)
 }
@@ -401,7 +423,7 @@ func TestResolve_ProjectHintFromCwdScan(t *testing.T) {
 		Cwd:    repoRoot,
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(repoRoot, "App.xcworkspace"), finder.ProjectPathHint)
 }
@@ -424,7 +446,7 @@ func TestResolve_NoProjectHintFallsBackToGlobal(t *testing.T) {
 		Cwd:    repoRoot,
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Empty(t, finder.ProjectPathHint)
 }
@@ -454,7 +476,7 @@ func TestResolve_CwdFallback_GetwdErrorSurfaces(t *testing.T) {
 		OsProxy: proxy,
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, getwdErr, "Getwd failure must surface — broken environment, not a missing hint")
 }
@@ -499,8 +521,9 @@ func TestResolve_MonorepoWritesUnderProjectDir(t *testing.T) {
 		Cwd:    cwd,
 	}
 
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
+	require.NoError(t, r.Persist(cfg, got))
 
 	_, err = os.Stat(filepath.Join(iosDir, ".bitrise-build-cache", "xcode-build.json"))
 	assert.NoError(t, err, "config must live under the resolved project dir")
@@ -512,7 +535,56 @@ func TestResolve_MonorepoWritesUnderProjectDir(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "repo root must not receive a stray write when a project ancestor exists")
 }
 
-func TestResolve_ReconfigureDeletesExistingConfig(t *testing.T) {
+func TestReset_DeletesExistingConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "Stale.xcworkspace",
+		Scheme:      "Stale",
+		Destination: "stale-destination",
+	})
+
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Reset(cfg))
+
+	_, err := os.Stat(cfg)
+	assert.True(t, os.IsNotExist(err), "Reset must delete the existing config file")
+}
+
+func TestReset_IgnoresMissingFile(t *testing.T) {
+	repoRoot := t.TempDir()
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Reset(cfg), "Reset on a missing file must be silent")
+}
+
+func TestReset_EmptyConfigPath_NoOp(t *testing.T) {
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Reset(""))
+}
+
+func TestReset_SurfacesPermissionError(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+	})
+
+	proxy := &utilsmocks.OsProxyMock{
+		RemoveFunc: func(string) error {
+			return fs.ErrPermission
+		},
+	}
+
+	r := &invoke.Resolver{OsProxy: proxy}
+	err := r.Reset(filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, fs.ErrPermission, "Reset Remove failure must surface")
+}
+
+func TestResolve_AfterReset_UsesFreshDiscoveryAndPrompt(t *testing.T) {
 	repoRoot := t.TempDir()
 	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
 		Workspace:   "Stale.xcworkspace",
@@ -529,103 +601,23 @@ func TestResolve_ReconfigureDeletesExistingConfig(t *testing.T) {
 	}}
 
 	r := &invoke.Resolver{
-		Prompt:      prompt,
-		Finder:      &deriveddata.Finder{HomeDir: t.TempDir()},
-		Reconfigure: true,
+		Prompt: prompt,
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	// Emulate the cmd-layer flow: caller Reset()s before Resolve to force a fresh cycle.
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	require.NoError(t, r.Reset(cfg))
+
+	got, cfgPath, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
+	require.NoError(t, r.Persist(cfgPath, got))
 	assert.Equal(t, 1, len(prompt.FillCalls()), "prompt must run because pre-seeded config was deleted")
 	assert.Equal(t, "Fresh.xcworkspace", got.Workspace)
 	assert.Equal(t, "Fresh", got.Scheme)
 
 	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
 	assert.Equal(t, "Fresh.xcworkspace", persisted.Workspace)
-}
-
-func TestResolve_ReconfigureFalseKeepsExistingConfig(t *testing.T) {
-	repoRoot := t.TempDir()
-	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
-		Workspace:   "Kept.xcworkspace",
-		Scheme:      "Kept",
-		Destination: "generic/platform=iOS",
-	})
-
-	prompt := &PromptMock{FillFunc: func(_ context.Context, _ *invoke.InvocationSpec) error {
-		t.Fatal("prompt must not be called when config is complete and Reconfigure is false")
-
-		return nil
-	}}
-
-	r := &invoke.Resolver{
-		Prompt: prompt,
-		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
-	}
-
-	got, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
-	require.NoError(t, err)
-	assert.Equal(t, "Kept.xcworkspace", got.Workspace)
-}
-
-func TestResolve_ReconfigureIgnoresMissingFile(t *testing.T) {
-	repoRoot := t.TempDir()
-
-	prompt := &PromptMock{FillFunc: func(_ context.Context, spec *invoke.InvocationSpec) error {
-		spec.Workspace = "App.xcworkspace"
-		spec.Scheme = "App"
-		spec.Destination = "generic/platform=iOS"
-
-		return nil
-	}}
-
-	r := &invoke.Resolver{
-		Prompt:      prompt,
-		Finder:      &deriveddata.Finder{HomeDir: t.TempDir()},
-		Reconfigure: true,
-	}
-
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
-	require.NoError(t, err)
-}
-
-func TestResolve_ReconfigureSurfacesPermissionError(t *testing.T) {
-	repoRoot := t.TempDir()
-	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
-		Workspace:   "App.xcworkspace",
-		Scheme:      "App",
-		Destination: "generic/platform=iOS",
-	})
-
-	proxy := &utilsmocks.OsProxyMock{
-		ReadDirFunc: func(string) ([]os.DirEntry, error) {
-			return nil, nil
-		},
-		ReadFileIfExistsFunc: func(string) (string, bool, error) {
-			return "", false, nil
-		},
-		RemoveFunc: func(string) error {
-			return fs.ErrPermission
-		},
-	}
-
-	prompt := &PromptMock{FillFunc: func(_ context.Context, _ *invoke.InvocationSpec) error {
-		t.Fatal("prompt must not be called when reconfigure remove fails")
-
-		return nil
-	}}
-
-	r := &invoke.Resolver{
-		Prompt:      prompt,
-		Finder:      &deriveddata.Finder{HomeDir: t.TempDir()},
-		OsProxy:     proxy,
-		Cwd:         repoRoot,
-		Reconfigure: true,
-	}
-
-	_, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, fs.ErrPermission, "reconfigure Remove failure must surface")
 }
 
 func TestBuildArgv(t *testing.T) {
