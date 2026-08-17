@@ -317,12 +317,11 @@ func (r *Resolver) resolveCwd() (string, error) {
 }
 
 func (r *Resolver) promptFor(ctx context.Context, spec *InvocationSpec) error {
-	prompt := r.Prompt
-	if prompt == nil {
-		prompt = defaultPrompt{logger: r.logger()}
+	if r.Prompt == nil {
+		return ErrPromptUnavailable
 	}
 
-	if err := prompt.Fill(ctx, spec); err != nil {
+	if err := r.Prompt.Fill(ctx, spec); err != nil {
 		return fmt.Errorf("prompt for invocation fields: %w", err)
 	}
 

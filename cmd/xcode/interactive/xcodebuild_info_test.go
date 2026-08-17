@@ -1,6 +1,6 @@
 //go:build unit
 
-package invoke
+package interactive
 
 import (
 	"testing"

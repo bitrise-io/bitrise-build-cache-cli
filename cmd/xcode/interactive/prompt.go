@@ -1,4 +1,7 @@
-package invoke
+// Package interactive contains the huh-based picker UI for filling in an
+// xcodebuild invocation spec. It lives under cmd/ so the pkg/xcode/invoke
+// resolver stays free of TUI concerns.
+package interactive
 
 import (
 	"context"
@@ -11,66 +14,84 @@ import (
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
 
-type defaultPrompt struct {
-	logger log.Logger
+// ErrPromptUnavailable signals a prompt was needed but no interactive TTY was
+// available. Callers wrap this with the resolved config path so the user knows
+// where to edit the file by hand.
+var ErrPromptUnavailable = errors.New("prompt unavailable: cannot request missing invocation fields")
 
-	// xcodebuildInfo sources picker candidates. nil falls back to the exec-backed
+// Prompter fills any missing fields on an invoke.InvocationSpec by walking the
+// user through a huh form. Consumers create it once and call Fill per resolve.
+type Prompter struct {
+	Logger log.Logger
+
+	// XcodebuildInfo sources picker candidates. nil falls back to the exec-backed
 	// implementation.
-	xcodebuildInfo xcodebuildInfoProvider
+	XcodebuildInfo XcodebuildInfoProvider
 
-	// runForm is a seam so tests can drive the form without a real TTY.
+	// RunForm is a seam so tests can drive the form without a real TTY.
 	// nil falls back to tui.RunForm.
-	runForm func(*huh.Group) error
+	RunForm func(*huh.Group) error
 }
 
-func (p defaultPrompt) Fill(ctx context.Context, spec *InvocationSpec) error {
+// Fill walks the user through a picker for whichever fields on spec are still
+// blank. The returned spec is a copy — ExtraArgs are preserved as-is.
+//
+// Intended flow (see invoke.Resolver docs for the full sequence):
+//
+//	spec, cfg, _ := r.Resolve(ctx, cmd, repoRoot)
+//	if !spec.IsComplete() {
+//	    spec, _ = interactive.Fill(ctx, prompter, spec)
+//	}
+//	_ = r.Persist(cfg, spec)
+func Fill(ctx context.Context, p Prompter, spec invoke.InvocationSpec) (invoke.InvocationSpec, error) {
 	// Mirror wizard_tools.go: huh accessible mode (TERM=dumb) reads from stdin
 	// so a real TTY isn't required. Everything else needs one.
 	if os.Getenv("TERM") != "dumb" && !term.IsTerminal(int(os.Stdin.Fd())) {
-		return ErrPromptUnavailable
+		return spec, ErrPromptUnavailable
 	}
 
-	runForm := p.runForm
+	runForm := p.RunForm
 	if runForm == nil {
 		runForm = func(g *huh.Group) error { return tui.RunForm(g) } //nolint:wrapcheck // tui already wraps errors
 	}
 
 	if spec.Workspace == "" && spec.Project == "" {
-		if err := runForm(huh.NewGroup(containerField(spec))); err != nil {
-			return err //nolint:wrapcheck // tui already wraps errors
+		if err := runForm(huh.NewGroup(containerField(&spec))); err != nil {
+			return spec, err //nolint:wrapcheck // tui already wraps errors
 		}
 
-		normalizeContainer(spec)
+		normalizeContainer(&spec)
 	}
 
-	provider := p.xcodebuildInfo
+	provider := p.XcodebuildInfo
 	if provider == nil {
 		provider = execXcodebuildInfo{}
 	}
 
-	if err := p.fillSchemeAndConfig(ctx, provider, runForm, spec); err != nil {
-		return err
+	if err := p.fillSchemeAndConfig(ctx, provider, runForm, &spec); err != nil {
+		return spec, err
 	}
 
 	if spec.Destination == "" {
-		if err := p.fillDestination(ctx, provider, runForm, spec); err != nil {
-			return err
+		if err := p.fillDestination(ctx, provider, runForm, &spec); err != nil {
+			return spec, err
 		}
 
 		spec.Destination = strings.TrimSpace(spec.Destination)
 	}
 
-	return nil
+	return spec, nil
 }
 
 // Scheme + configuration come from the same xcodebuild -list call.
-func (p defaultPrompt) fillSchemeAndConfig(
+func (p Prompter) fillSchemeAndConfig(
 	ctx context.Context,
-	provider xcodebuildInfoProvider,
+	provider XcodebuildInfoProvider,
 	runForm func(*huh.Group) error,
-	spec *InvocationSpec,
+	spec *invoke.InvocationSpec,
 ) error {
 	needScheme := spec.Scheme == ""
 	needConfig := spec.Configuration == ""
@@ -111,11 +132,11 @@ func (p defaultPrompt) fillSchemeAndConfig(
 	return nil
 }
 
-func (p defaultPrompt) fillDestination(
+func (p Prompter) fillDestination(
 	ctx context.Context,
-	provider xcodebuildInfoProvider,
+	provider XcodebuildInfoProvider,
 	runForm func(*huh.Group) error,
-	spec *InvocationSpec,
+	spec *invoke.InvocationSpec,
 ) error {
 	var dests []string
 
@@ -135,15 +156,15 @@ func (p defaultPrompt) fillDestination(
 	return nil
 }
 
-func (p defaultPrompt) debug(format string, args ...any) {
-	if p.logger == nil {
+func (p Prompter) debug(format string, args ...any) {
+	if p.Logger == nil {
 		return
 	}
 
-	p.logger.Debugf(format, args...)
+	p.Logger.Debugf(format, args...)
 }
 
-func containerField(spec *InvocationSpec) huh.Field {
+func containerField(spec *invoke.InvocationSpec) huh.Field {
 	return huh.NewInput().
 		Title("Workspace or project").
 		Description("Filename ending in .xcworkspace or .xcodeproj").
@@ -151,7 +172,7 @@ func containerField(spec *InvocationSpec) huh.Field {
 		Value(&spec.Workspace)
 }
 
-func schemeField(spec *InvocationSpec, candidates []string) huh.Field {
+func schemeField(spec *invoke.InvocationSpec, candidates []string) huh.Field {
 	if len(candidates) == 0 {
 		return huh.NewInput().
 			Title("Scheme").
@@ -166,7 +187,7 @@ func schemeField(spec *InvocationSpec, candidates []string) huh.Field {
 		Value(&spec.Scheme)
 }
 
-func configurationField(spec *InvocationSpec, candidates []string) huh.Field {
+func configurationField(spec *invoke.InvocationSpec, candidates []string) huh.Field {
 	if len(candidates) == 0 {
 		return huh.NewInput().
 			Title("Configuration").
@@ -181,7 +202,7 @@ func configurationField(spec *InvocationSpec, candidates []string) huh.Field {
 		Value(&spec.Configuration)
 }
 
-func destinationField(spec *InvocationSpec, candidates []string) huh.Field {
+func destinationField(spec *invoke.InvocationSpec, candidates []string) huh.Field {
 	if len(candidates) == 0 {
 		return huh.NewInput().
 			Title("Destination").
@@ -197,7 +218,7 @@ func destinationField(spec *InvocationSpec, candidates []string) huh.Field {
 		Value(&spec.Destination)
 }
 
-func normalizeContainer(spec *InvocationSpec) {
+func normalizeContainer(spec *invoke.InvocationSpec) {
 	spec.Workspace = strings.TrimSpace(spec.Workspace)
 	spec.Project = strings.TrimSpace(spec.Project)
 
