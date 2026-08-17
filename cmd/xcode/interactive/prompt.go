@@ -27,9 +27,15 @@ var ErrPromptUnavailable = errors.New("prompt unavailable: cannot request missin
 type Prompter struct {
 	Logger log.Logger
 
-	// XcodebuildInfo sources picker candidates. nil falls back to the exec-backed
-	// implementation.
+	// XcodebuildInfo sources picker candidates. When set, wins over
+	// NewXcodebuildInfo — tests use it for a fixed provider that doesn't need
+	// to see projectPath.
 	XcodebuildInfo XcodebuildInfoProvider
+
+	// NewXcodebuildInfo builds a projectPath-scoped provider (its WorkDir is
+	// the projectPath passed to Fill). Tests can swap this to capture the
+	// projectPath argument; nil falls back to the exec-backed implementation.
+	NewXcodebuildInfo func(projectPath string) XcodebuildInfoProvider
 
 	// RunForm is a seam so tests can drive the form without a real TTY.
 	// nil falls back to tui.RunForm.
@@ -47,13 +53,13 @@ type Prompter struct {
 //
 // End-to-end flow:
 //
-//	spec, cfg, err := r.Resolve(ctx, cmd, repoRoot)
+//	spec, meta, err := r.Resolve(cmd, repoRoot)
 //	if err != nil { ... }
 //	if !spec.IsComplete() {
-//	    spec, err = prompter.Fill(ctx, spec, filepath.Dir(cfg))
+//	    spec, err = prompter.Fill(ctx, spec, meta.ProjectDir)
 //	    if err != nil { ... }
 //	}
-//	_ = r.Persist(cfg, spec)
+//	_ = r.Persist(meta.ConfigPath, spec)
 func (p Prompter) Fill(ctx context.Context, spec invoke.InvocationSpec, projectPath string) (invoke.InvocationSpec, error) {
 	// Mirror wizard_tools.go: huh accessible mode (TERM=dumb) reads from stdin
 	// so a real TTY isn't required. Everything else needs one.
@@ -76,7 +82,11 @@ func (p Prompter) Fill(ctx context.Context, spec invoke.InvocationSpec, projectP
 
 	provider := p.XcodebuildInfo
 	if provider == nil {
-		provider = execXcodebuildInfo{WorkDir: projectPath}
+		if p.NewXcodebuildInfo != nil {
+			provider = p.NewXcodebuildInfo(projectPath)
+		} else {
+			provider = execXcodebuildInfo{WorkDir: projectPath}
+		}
 	}
 
 	if err := p.fillSchemeAndConfig(ctx, provider, runForm, &spec); err != nil {

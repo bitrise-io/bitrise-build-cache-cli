@@ -245,3 +245,37 @@ func Test_configurationField_isSelectWhenCandidatesProvided(t *testing.T) {
 	_, ok := f.(*huh.Select[string])
 	assert.True(t, ok)
 }
+
+// Guards the "callers passing filepath.Dir(configPath)" regression: the
+// projectPath argument to Fill must reach the provider factory verbatim so the
+// exec-backed picker can use it as cmd.Dir for bare workspace/project names.
+func Test_Fill_ThreadsProjectPathIntoProviderFactory(t *testing.T) {
+	provider := &XcodebuildInfoProviderMock{
+		ListSchemesAndConfigurationsFunc: func(context.Context, string, string) ([]string, []string, error) {
+			return []string{"App"}, nil, nil
+		},
+	}
+
+	var factoryProjectPath string
+	t.Setenv("TERM", "dumb")
+
+	prompter := Prompter{
+		NewXcodebuildInfo: func(projectPath string) XcodebuildInfoProvider {
+			factoryProjectPath = projectPath
+
+			return provider
+		},
+		RunForm: func(*huh.Group) error { return nil },
+	}
+
+	const projectDir = "/tmp/some/repo/apps/ios"
+	spec := invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Destination: "generic/platform=iOS",
+	}
+
+	_, err := prompter.Fill(context.Background(), spec, projectDir)
+	require.NoError(t, err)
+	assert.Equal(t, projectDir, factoryProjectPath, "projectPath argument must reach the provider factory unchanged")
+	assert.NotEmpty(t, factoryProjectPath, "projectPath must be non-empty — otherwise the exec-backed picker breaks on bare workspace names")
+}

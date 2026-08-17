@@ -3,7 +3,6 @@
 package invoke_test
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -113,7 +112,7 @@ func TestResolve_FullConfig_ReturnsCompleteSpec(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.True(t, got.IsComplete())
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
@@ -139,7 +138,7 @@ func TestResolve_PartialConfig_DiscoveryFillsAvailableFields(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: home},
 	}
 
-	got, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.False(t, got.IsComplete(), "destination is still missing")
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
@@ -150,7 +149,7 @@ func TestResolve_PartialConfig_DiscoveryFillsAvailableFields(t *testing.T) {
 
 	// Emulate the cmd layer: complete the spec and persist.
 	got.Destination = "generic/platform=iOS"
-	require.NoError(t, r.Persist(cfg, got))
+	require.NoError(t, r.Persist(meta.ConfigPath, got))
 
 	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
 	assert.Equal(t, got, persisted)
@@ -169,7 +168,7 @@ func TestResolve_NoConfig_FinderFull_DestinationStillMissing(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: home},
 	}
 
-	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.False(t, got.IsComplete())
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
@@ -185,10 +184,10 @@ func TestResolve_NoRecentBuild_ReturnsEmptySpec(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.False(t, got.IsComplete())
-	assert.NotEmpty(t, cfg, "configPath must be resolved even for an empty spec")
+	assert.NotEmpty(t, meta.ConfigPath, "configPath must be resolved even for an empty spec")
 }
 
 func TestResolve_TolerateUnknownJSONFields(t *testing.T) {
@@ -207,7 +206,7 @@ func TestResolve_TolerateUnknownJSONFields(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, "App.xcworkspace", got.Workspace)
 }
@@ -229,9 +228,9 @@ func TestPersist_DropsUnknownJSONFields(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	got, cfgPath, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
-	require.NoError(t, r.Persist(cfgPath, got))
+	require.NoError(t, r.Persist(meta.ConfigPath, got))
 
 	raw, err := os.ReadFile(cfg)
 	require.NoError(t, err)
@@ -293,13 +292,13 @@ func TestResolve_ConfigPathIsCommandSpecific(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	_, buildCfg, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, buildMeta, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
-	assert.Contains(t, buildCfg, "xcode-build.json")
+	assert.Contains(t, buildMeta.ConfigPath, "xcode-build.json")
 
-	_, testCfg, err := r.Resolve(context.Background(), invoke.CommandTest, repoRoot)
+	_, testMeta, err := r.Resolve(invoke.CommandTest, repoRoot)
 	require.NoError(t, err)
-	assert.Contains(t, testCfg, "xcode-test.json")
+	assert.Contains(t, testMeta.ConfigPath, "xcode-test.json")
 }
 
 func TestResolve_EmptyRepoRoot_ReturnsEmptyConfigPath(t *testing.T) {
@@ -307,9 +306,49 @@ func TestResolve_EmptyRepoRoot_ReturnsEmptyConfigPath(t *testing.T) {
 		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
 	}
 
-	_, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, "")
+	_, meta, err := r.Resolve(invoke.CommandBuild, "")
 	require.NoError(t, err)
-	assert.Empty(t, cfg, "no configPath means Persist / Reset are no-ops")
+	assert.Empty(t, meta.ConfigPath, "no configPath means Persist / Reset are no-ops")
+	assert.Empty(t, meta.ProjectDir, "no projectDir when repoRoot is empty and no ancestor scan hit")
+}
+
+// Guards the "callers passing filepath.Dir(configPath)" regression: the
+// ProjectDir returned by Resolve must be the parent of .bitrise-build-cache/,
+// not the .bitrise-build-cache/ dir itself.
+func TestResolve_ProjectDirIsParentOfConfigDir(t *testing.T) {
+	t.Run("repoRoot with no project ancestor: projectDir == repoRoot", func(t *testing.T) {
+		repoRoot := t.TempDir()
+
+		r := &invoke.Resolver{
+			Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+			Cwd:    repoRoot,
+		}
+
+		_, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+		require.NoError(t, err)
+		assert.Equal(t, repoRoot, meta.ProjectDir)
+		assert.Equal(t, filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json"), meta.ConfigPath)
+		assert.Equal(t, meta.ProjectDir, filepath.Dir(filepath.Dir(meta.ConfigPath)),
+			"ProjectDir must be the parent of .bitrise-build-cache/, not the config dir itself")
+	})
+
+	t.Run("monorepo project ancestor: projectDir == project subdir", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		iosDir := filepath.Join(repoRoot, "apps", "ios")
+		require.NoError(t, os.MkdirAll(filepath.Join(iosDir, "App.xcworkspace"), 0o755))
+		cwd := filepath.Join(iosDir, "some", "deep", "dir")
+		require.NoError(t, os.MkdirAll(cwd, 0o755))
+
+		r := &invoke.Resolver{
+			Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+			Cwd:    cwd,
+		}
+
+		_, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+		require.NoError(t, err)
+		assert.Equal(t, iosDir, meta.ProjectDir)
+		assert.Equal(t, meta.ProjectDir, filepath.Dir(filepath.Dir(meta.ConfigPath)))
+	})
 }
 
 func TestResolve_ProjectHintFromJSONBypassesCwdScan(t *testing.T) {
@@ -324,7 +363,7 @@ func TestResolve_ProjectHintFromJSONBypassesCwdScan(t *testing.T) {
 		Cwd:    t.TempDir(), // ensure Cwd would not resolve to repoRoot
 	}
 
-	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(repoRoot, "Foo.xcworkspace"), finder.ProjectPathHint)
 }
@@ -339,7 +378,7 @@ func TestResolve_ProjectHintFromCwdScan(t *testing.T) {
 		Cwd:    repoRoot,
 	}
 
-	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(repoRoot, "App.xcworkspace"), finder.ProjectPathHint)
 }
@@ -353,7 +392,7 @@ func TestResolve_NoProjectHintFallsBackToGlobal(t *testing.T) {
 		Cwd:    repoRoot,
 	}
 
-	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Empty(t, finder.ProjectPathHint)
 }
@@ -376,7 +415,7 @@ func TestResolve_CwdFallback_GetwdErrorSurfaces(t *testing.T) {
 		OsProxy: proxy,
 	}
 
-	_, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, getwdErr, "Getwd failure must surface — broken environment, not a missing hint")
 }
@@ -412,13 +451,15 @@ func TestResolve_MonorepoWritesUnderProjectDir(t *testing.T) {
 		Cwd:    cwd,
 	}
 
-	got, cfg, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	// Complete the spec the way the cmd layer would after a prompt.
 	got.Workspace = "App.xcworkspace"
 	got.Scheme = "App"
 	got.Destination = "generic/platform=iOS"
-	require.NoError(t, r.Persist(cfg, got))
+	require.NoError(t, r.Persist(meta.ConfigPath, got))
+
+	assert.Equal(t, iosDir, meta.ProjectDir, "monorepo: meta.ProjectDir points at the resolved project ancestor")
 
 	_, err = os.Stat(filepath.Join(iosDir, ".bitrise-build-cache", "xcode-build.json"))
 	assert.NoError(t, err, "config must live under the resolved project dir")
@@ -495,7 +536,7 @@ func TestResolve_AfterReset_LoadsBlankSpec(t *testing.T) {
 	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
 	require.NoError(t, r.Reset(cfg))
 
-	got, _, err := r.Resolve(context.Background(), invoke.CommandBuild, repoRoot)
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
 	require.NoError(t, err)
 	assert.Empty(t, got.Workspace, "stale config must not leak into the resolved spec")
 	assert.Empty(t, got.Scheme)

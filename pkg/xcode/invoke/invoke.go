@@ -7,7 +7,6 @@
 package invoke
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,25 +66,37 @@ type Resolver struct {
 	Cwd string
 }
 
-// Resolve returns the best-effort spec for command and the config path where it
-// would be persisted. The spec is loaded from disk, then filled in from
-// DerivedData discovery. Incomplete specs are returned as-is (no error); the
-// caller runs an interactive picker if IsComplete is false and then calls
-// Persist to save the result.
+// ResolveMeta carries the on-disk locations Resolve computed alongside the
+// spec. ConfigPath is where Persist / Reset write; ProjectDir is the directory
+// containing the .xcworkspace / .xcodeproj — pass it to Prompter.Fill so
+// xcodebuild resolves bare workspace/project names against the right cwd.
 //
-// configPath is the empty string when no repoRoot was supplied and no project
+// Both fields are the empty string when no repoRoot was supplied and no
+// project ancestor was found.
+type ResolveMeta struct {
+	ConfigPath string
+	ProjectDir string
+}
+
+// Resolve returns the best-effort spec for command plus a ResolveMeta locating
+// its on-disk config and project dir. The spec is loaded from disk, then
+// filled in from DerivedData discovery. Incomplete specs are returned as-is
+// (no error); the caller runs an interactive picker if IsComplete is false and
+// then calls Persist to save the result.
+//
+// meta.ConfigPath is empty when no repoRoot was supplied and no project
 // ancestor was found; in that case Persist and Reset are no-ops.
 //
 // Intended flow:
 //
-//	spec, cfg, err := r.Resolve(ctx, cmd, repoRoot)
+//	spec, meta, err := r.Resolve(cmd, repoRoot)
 //	if err != nil { ... }
 //	if !spec.IsComplete() {
-//	    spec, err = prompter.Fill(ctx, spec, filepath.Dir(cfg))
+//	    spec, err = prompter.Fill(ctx, spec, meta.ProjectDir)
 //	    if err != nil { ... }
 //	}
-//	_ = r.Persist(cfg, spec)
-func (r *Resolver) Resolve(_ context.Context, command Command, repoRoot string) (InvocationSpec, string, error) {
+//	_ = r.Persist(meta.ConfigPath, spec)
+func (r *Resolver) Resolve(command Command, repoRoot string) (InvocationSpec, ResolveMeta, error) {
 	logger := r.logger()
 
 	if repoRoot == "" {
@@ -94,33 +105,31 @@ func (r *Resolver) Resolve(_ context.Context, command Command, repoRoot string) 
 
 	cwd, err := r.resolveCwd()
 	if err != nil {
-		return InvocationSpec{}, "", err
+		return InvocationSpec{}, ResolveMeta{}, err
 	}
 
 	ancestor := scanProjectAncestor(cwd, repoRoot, r.osProxy(), logger)
 
-	configDir := ancestor.projectDir
-	if configDir == "" {
-		configDir = repoRoot
+	projectDir := ancestor.projectDir
+	if projectDir == "" {
+		projectDir = repoRoot
 	}
 
-	configPath := ""
-	if configDir != "" {
-		configPath = paths.RepoLocalConfigPath(configDir, configFilename(command))
+	meta := ResolveMeta{ProjectDir: projectDir}
+	if projectDir != "" {
+		meta.ConfigPath = paths.RepoLocalConfigPath(projectDir, configFilename(command))
 	}
 
-	spec, err := r.loadExisting(configPath)
+	spec, err := r.loadExisting(meta.ConfigPath)
 	if err != nil {
-		return InvocationSpec{}, configPath, err
+		return InvocationSpec{}, meta, err
 	}
 
-	if !spec.IsComplete() {
-		if err := r.fillFromDiscovery(&spec, command, repoRoot, ancestor.projectPath); err != nil {
-			return InvocationSpec{}, configPath, err
-		}
+	if err := r.fillFromDiscovery(&spec, command, repoRoot, ancestor.projectPath); err != nil {
+		return InvocationSpec{}, meta, err
 	}
 
-	return spec, configPath, nil
+	return spec, meta, nil
 }
 
 // Persist writes spec to configPath as JSON, honoring the workspace/project
