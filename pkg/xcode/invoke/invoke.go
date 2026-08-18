@@ -1,12 +1,12 @@
 // Package invoke resolves + persists an xcodebuild invocation spec used by the
 // `xcode build` / `xcode test` subcommands.
 //
-// Sources are tried in order (config file → DerivedData discovery → prompt).
-// A successful Resolve rewrites the repo-local config so the next run reuses it.
+// Sources are tried in order (config file → DerivedData discovery). Resolve
+// returns whatever it could fill in — callers detect incompleteness via
+// InvocationSpec.IsComplete and drive their own prompt loop before Persist.
 package invoke
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,26 +42,21 @@ type InvocationSpec struct {
 	ExtraArgs     []string `json:"extraArgs,omitempty"`
 }
 
-// Prompt fills any missing fields of spec in-place. Consumers can substitute
-// their own implementation via Resolver.Prompt (e.g. for tests or non-tty steps).
-//
-// Fill must not modify spec.ExtraArgs.
-type Prompt interface {
-	Fill(ctx context.Context, spec *InvocationSpec) error
+// IsComplete reports whether the spec has every field needed to invoke
+// xcodebuild without further input (a container, a scheme, and a destination).
+// Configuration and ExtraArgs are optional and do not affect completeness.
+func (s InvocationSpec) IsComplete() bool {
+	hasContainer := s.Workspace != "" || s.Project != ""
+
+	return hasContainer && s.Scheme != "" && s.Destination != ""
 }
 
-// ErrPromptUnavailable signals a prompt was needed but no interactive TTY was available.
-var ErrPromptUnavailable = errors.New("prompt unavailable: cannot request missing invocation fields")
-
-//go:generate moq -stub -out prompt_mock_test.go -pkg invoke_test . Prompt
-
-// Resolver assembles a complete InvocationSpec by combining the repo-local
-// config, a DerivedData discovery pass, and an interactive prompt. Nil fields
-// fall back to production defaults.
+// Resolver assembles a best-effort InvocationSpec by combining the repo-local
+// config with a DerivedData discovery pass. Nil fields fall back to production
+// defaults.
 type Resolver struct {
 	Logger  log.Logger
 	OsProxy utils.OsProxy
-	Prompt  Prompt
 	// Finder scans DerivedData for the most recent matching build.
 	// Note: Resolve overwrites Finder.ProjectPathHint per invocation.
 	Finder *deriveddata.Finder
@@ -69,17 +64,39 @@ type Resolver struct {
 	// Cwd overrides os.Getwd for project-hint scanning. Empty falls back to
 	// osProxy.Getwd().
 	Cwd string
-
-	// Reconfigure deletes the persisted config before loading, forcing a full
-	// re-resolution through discovery + prompt.
-	Reconfigure bool
 }
 
-// Resolve returns a complete spec for command. On success the resolved spec is
-// persisted back to <configDir>/.bitrise-build-cache/xcode-{build,test}.json,
-// where configDir is the nearest project ancestor of cwd inside repoRoot (or
-// repoRoot itself as fallback).
-func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string) (InvocationSpec, error) {
+// ResolveMeta carries the on-disk locations Resolve computed alongside the
+// spec. ConfigPath is where Persist / Reset write; ProjectDir is the directory
+// containing the .xcworkspace / .xcodeproj — pass it to Prompter.Fill so
+// xcodebuild resolves bare workspace/project names against the right cwd.
+//
+// Both fields are the empty string when no repoRoot was supplied and no
+// project ancestor was found.
+type ResolveMeta struct {
+	ConfigPath string
+	ProjectDir string
+}
+
+// Resolve returns the best-effort spec for command plus a ResolveMeta locating
+// its on-disk config and project dir. The spec is loaded from disk, then
+// filled in from DerivedData discovery. Incomplete specs are returned as-is
+// (no error); the caller runs an interactive picker if IsComplete is false and
+// then calls Persist to save the result.
+//
+// meta.ConfigPath is empty when no repoRoot was supplied and no project
+// ancestor was found; in that case Persist and Reset are no-ops.
+//
+// Intended flow:
+//
+//	spec, meta, err := r.Resolve(cmd, repoRoot)
+//	if err != nil { ... }
+//	if !spec.IsComplete() {
+//	    spec, err = prompter.Fill(ctx, spec, meta.ProjectDir)
+//	    if err != nil { ... }
+//	}
+//	_ = r.Persist(meta.ConfigPath, spec)
+func (r *Resolver) Resolve(command Command, repoRoot string) (InvocationSpec, ResolveMeta, error) {
 	logger := r.logger()
 
 	if repoRoot == "" {
@@ -88,50 +105,39 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 
 	cwd, err := r.resolveCwd()
 	if err != nil {
-		return InvocationSpec{}, err
+		return InvocationSpec{}, ResolveMeta{}, err
 	}
 
 	ancestor := scanProjectAncestor(cwd, repoRoot, r.osProxy(), logger)
 
-	configDir := ancestor.projectDir
-	if configDir == "" {
-		configDir = repoRoot
+	projectDir := ancestor.projectDir
+	if projectDir == "" {
+		projectDir = repoRoot
 	}
 
-	configPath := ""
-	if configDir != "" {
-		configPath = paths.RepoLocalConfigPath(configDir, configFilename(command))
+	meta := ResolveMeta{ProjectDir: projectDir}
+	if projectDir != "" {
+		meta.ConfigPath = paths.RepoLocalConfigPath(projectDir, configFilename(command))
 	}
 
-	if r.Reconfigure && configPath != "" {
-		if err := r.osProxy().Remove(configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return InvocationSpec{}, fmt.Errorf("reconfigure: remove %s: %w", configPath, err)
-		}
-	}
-
-	spec, err := r.loadExisting(configPath)
+	spec, err := r.loadExisting(meta.ConfigPath)
 	if err != nil {
-		return InvocationSpec{}, err
+		return InvocationSpec{}, meta, err
 	}
 
-	if !isComplete(spec) {
-		if err := r.fillFromDiscovery(&spec, command, repoRoot, ancestor.projectPath); err != nil {
-			return InvocationSpec{}, err
-		}
+	if err := r.fillFromDiscovery(&spec, command, repoRoot, ancestor.projectPath); err != nil {
+		return InvocationSpec{}, meta, err
 	}
 
-	if !isComplete(spec) {
-		if err := r.promptFor(ctx, &spec); err != nil {
-			if errors.Is(err, ErrPromptUnavailable) && configPath != "" {
-				return InvocationSpec{}, fmt.Errorf("%w (edit %s)", err, configPath)
-			}
+	return spec, meta, nil
+}
 
-			return InvocationSpec{}, err
-		}
-	}
-
-	if !isComplete(spec) {
-		return InvocationSpec{}, fmt.Errorf("resolved invocation spec is still incomplete after prompt (config=%s)", configPath)
+// Persist writes spec to configPath as JSON, honoring the workspace/project
+// mutual-exclusion clamp (workspace wins), dropping unknown JSON keys, and
+// preserving ExtraArgs verbatim. No-op when configPath is empty.
+func (r *Resolver) Persist(configPath string, spec InvocationSpec) error {
+	if configPath == "" {
+		return nil
 	}
 
 	// Guarantee workspace/project mutual exclusion: if both are set, keep workspace.
@@ -139,13 +145,35 @@ func (r *Resolver) Resolve(ctx context.Context, command Command, repoRoot string
 		spec.Project = ""
 	}
 
-	if configPath != "" {
-		if err := r.persist(configPath, spec); err != nil {
-			return InvocationSpec{}, err
-		}
+	if err := r.osProxy().MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(configPath), err)
 	}
 
-	return spec, nil
+	data, err := json.MarshalIndent(spec, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode invocation spec: %w", err)
+	}
+
+	if err := r.osProxy().WriteFile(configPath, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", configPath, err)
+	}
+
+	return nil
+}
+
+// Reset removes the persisted config file at configPath. Missing files are
+// tolerated silently; other errors surface. No-op when configPath is empty.
+// Callers use Reset before Resolve to force a fresh discovery + prompt cycle.
+func (r *Resolver) Reset(configPath string) error {
+	if configPath == "" {
+		return nil
+	}
+
+	if err := r.osProxy().Remove(configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reset %s: %w", configPath, err)
+	}
+
+	return nil
 }
 
 // BuildArgv assembles the xcodebuild argv from a resolved spec.
@@ -314,42 +342,6 @@ func (r *Resolver) resolveCwd() (string, error) {
 	}
 
 	return cwd, nil
-}
-
-func (r *Resolver) promptFor(ctx context.Context, spec *InvocationSpec) error {
-	prompt := r.Prompt
-	if prompt == nil {
-		prompt = defaultPrompt{logger: r.logger()}
-	}
-
-	if err := prompt.Fill(ctx, spec); err != nil {
-		return fmt.Errorf("prompt for invocation fields: %w", err)
-	}
-
-	return nil
-}
-
-func (r *Resolver) persist(configPath string, spec InvocationSpec) error {
-	if err := r.osProxy().MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(configPath), err)
-	}
-
-	data, err := json.MarshalIndent(spec, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode invocation spec: %w", err)
-	}
-
-	if err := r.osProxy().WriteFile(configPath, append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", configPath, err)
-	}
-
-	return nil
-}
-
-func isComplete(s InvocationSpec) bool {
-	hasContainer := s.Workspace != "" || s.Project != ""
-
-	return hasContainer && s.Scheme != "" && s.Destination != ""
 }
 
 func configFilename(command Command) string {

@@ -2,7 +2,6 @@ package enrichment
 
 import (
 	"context"
-	"path/filepath"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -109,34 +108,16 @@ func (w *Watcher) seedSeenFromStore() bool {
 }
 
 func (w *Watcher) scan(seedOnly bool) {
-	logger := logOr(w.Logger)
-
 	globs := w.Globs
 	if len(globs) == 0 {
 		globs = []string{DefaultDerivedDataGlob}
 	}
 
-	for _, glob := range globs {
-		matches, err := filepath.Glob(filepath.Join(w.HomeDir, glob))
-		if err != nil {
-			logger.Warnf("LogWatcher glob failed: %s", err)
-
-			continue
+	WalkManifests(w.HomeDir, globs, w.Logger, func(_ string, entries []ManifestEntry) {
+		for _, entry := range entries {
+			w.handleEntry(entry, seedOnly)
 		}
-
-		for _, path := range matches {
-			entries, err := LoadManifest(path)
-			if err != nil {
-				logger.Warnf("LogWatcher failed to load %s: %s", path, err)
-
-				continue
-			}
-
-			for _, entry := range entries {
-				w.handleEntry(entry, seedOnly)
-			}
-		}
-	}
+	})
 }
 
 func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
