@@ -271,7 +271,7 @@ workflows:
 
       Wired into the features-e2e PR pipeline; also triggerable on demand.
     envs:
-    - RDE_STACK_ID: osx-xcode-26.0.x-edge
+    - RDE_STACK_ID: osx-xcode-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
     - RDE_SMOKE_GOOS: darwin
     - RDE_SMOKE_GOARCH: arm64
@@ -1219,7 +1219,7 @@ workflows:
   e2e-xcode-comp-cache:
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
@@ -1391,7 +1391,7 @@ workflows:
       everything and hitRate would be ~0.
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
@@ -1484,7 +1484,7 @@ workflows:
       InvocationID — not a fresh UUID.
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
@@ -1577,7 +1577,7 @@ workflows:
       metrics.
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
