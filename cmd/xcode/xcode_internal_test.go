@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
 
@@ -248,7 +249,7 @@ func Test_XcodeSubcommand_PromptUnavailable_ReturnsUserFacingError(t *testing.T)
 	orig := resolveXcodeInvocation
 	t.Cleanup(func() { resolveXcodeInvocation = orig })
 	resolveXcodeInvocation = func(_ context.Context, _ invoke.Command, _ string, _ bool) (invoke.InvocationSpec, error) {
-		return invoke.InvocationSpec{}, invoke.ErrPromptUnavailable
+		return invoke.InvocationSpec{}, interactive.ErrPromptUnavailable
 	}
 
 	origWrap := runXcodebuildWrapperFn
@@ -267,7 +268,7 @@ func Test_XcodeSubcommand_PromptUnavailable_ReturnsUserFacingError(t *testing.T)
 	err := cmd.Execute()
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, invoke.ErrPromptUnavailable)
+	assert.ErrorIs(t, err, interactive.ErrPromptUnavailable)
 	assert.Contains(t, err.Error(), "xcode build:", "error message must be prefixed with the subcommand for context")
 	assert.Contains(t, err.Error(), "prompt unavailable", "error message must surface the resolver's sentinel cause")
 }

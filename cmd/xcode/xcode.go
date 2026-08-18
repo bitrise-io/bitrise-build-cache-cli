@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/gitroot"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -55,11 +56,42 @@ func newXcodeSubcommand(command invoke.Command, use, short string) *cobra.Comman
 	return cmd
 }
 
-// resolveXcodeInvocation is swappable for tests.
+// resolveXcodeInvocation runs the full resolve → prompt → persist cycle and
+// returns the final spec ready to feed into BuildArgv. Swappable for tests.
 //
 //nolint:gochecknoglobals
 var resolveXcodeInvocation = func(ctx context.Context, command invoke.Command, repoRoot string, reconfigure bool) (invoke.InvocationSpec, error) {
-	return (&invoke.Resolver{Reconfigure: reconfigure}).Resolve(ctx, command, repoRoot)
+	resolver := &invoke.Resolver{}
+
+	if reconfigure {
+		// Preflight to learn the config path, then wipe it so Resolve rediscovers.
+		_, meta, err := resolver.Resolve(command, repoRoot)
+		if err != nil {
+			return invoke.InvocationSpec{}, err //nolint:wrapcheck // resolver errors are already contextual
+		}
+
+		if err := resolver.Reset(meta.ConfigPath); err != nil {
+			return invoke.InvocationSpec{}, err //nolint:wrapcheck // resolver errors are already contextual
+		}
+	}
+
+	spec, meta, err := resolver.Resolve(command, repoRoot)
+	if err != nil {
+		return invoke.InvocationSpec{}, err //nolint:wrapcheck // resolver errors are already contextual
+	}
+
+	if !spec.IsComplete() {
+		spec, err = interactive.Prompter{}.Fill(ctx, spec, meta.ProjectDir)
+		if err != nil {
+			return invoke.InvocationSpec{}, err //nolint:wrapcheck // prompter errors are already contextual
+		}
+	}
+
+	if err := resolver.Persist(meta.ConfigPath, spec); err != nil {
+		return invoke.InvocationSpec{}, err //nolint:wrapcheck // resolver errors are already contextual
+	}
+
+	return spec, nil
 }
 
 func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command invoke.Command, reconfigure, codesign bool, positional []string) error {
@@ -81,7 +113,7 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 
 	spec, err := resolveXcodeInvocation(ctx, command, repoRoot, reconfigure)
 	if err != nil {
-		if errors.Is(err, invoke.ErrPromptUnavailable) {
+		if errors.Is(err, interactive.ErrPromptUnavailable) {
 			return promptUnavailableError(command, err)
 		}
 
