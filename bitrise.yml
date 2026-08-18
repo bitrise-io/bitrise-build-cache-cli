@@ -271,7 +271,7 @@ workflows:
 
       Wired into the features-e2e PR pipeline; also triggerable on demand.
     envs:
-    - RDE_STACK_ID: osx-xcode-26.0.x-edge
+    - RDE_STACK_ID: osx-xcode-edge
     - RDE_MACHINE_TYPE: g2.mac.m2pro.6c-14g
     - RDE_SMOKE_GOOS: darwin
     - RDE_SMOKE_GOARCH: arm64
@@ -1219,11 +1219,11 @@ workflows:
   e2e-xcode-comp-cache:
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -1391,11 +1391,11 @@ workflows:
       everything and hitRate would be ~0.
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     - CHECKOUT_B_DIR: $HOME/checkoutB
     steps:
     - bundle::feature-e2e-setup: {}
@@ -1484,11 +1484,11 @@ workflows:
       InvocationID — not a fresh UUID.
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     # Force slim emit to fire well after the watcher's manifest sighting; exercises
     # the correlation retry bucket that this workflow is designed to prove.
     - TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
@@ -1577,11 +1577,11 @@ workflows:
       metrics.
     meta:
       bitrise.io:
-        stack: osx-xcode-26.0.x-edge
+        stack: osx-xcode-edge
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
