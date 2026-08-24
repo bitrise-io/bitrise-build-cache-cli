@@ -93,6 +93,10 @@ func TestPaths_xcelerateEnrichment(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/health.json", p.EnrichmentHealthFile())
 }
 
+func TestRepoLocalConfigPath(t *testing.T) {
+	assert.Equal(t, "/repo/.bitrise-build-cache/xcode-build.json", RepoLocalConfigPath("/repo", "xcode-build.json"))
+}
+
 type osDirMaker struct{}
 
 func (osDirMaker) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
