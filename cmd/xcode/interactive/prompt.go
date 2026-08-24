@@ -13,6 +13,7 @@ import (
 
 	commoninteractive "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodebuildinfo"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
 
@@ -82,7 +83,7 @@ func (p Prompter) Fill(ctx context.Context, spec invoke.InvocationSpec, projectP
 		if p.NewXcodebuildInfo != nil {
 			provider = p.NewXcodebuildInfo(projectPath)
 		} else {
-			provider = execXcodebuildInfo{WorkDir: projectPath}
+			provider = xcodebuildinfo.New(projectPath)
 		}
 	}
 
