@@ -241,6 +241,14 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	parentID := h.parentID
 	h.sessionMu.RUnlock()
 
+	iccache.CacheEffectiveness{
+		Hits:          int64(stats.CacheHit),
+		Total:         int64(stats.CacheHit + stats.CacheMiss),
+		Errors:        int64(stats.RemoteStorageError + stats.RemoteStorageTimeout),
+		DownloadBytes: dl,
+		UploadBytes:   ul,
+	}.Log(h.logger)
+
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {
 		h.logger.TInfof("No ccache activity detected, skipping analytics")

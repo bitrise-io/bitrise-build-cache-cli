@@ -67,10 +67,13 @@ func (b *statBuilder) Prefix() string {
 	return fmt.Sprintf("[%s - %s]", b.stats.method, b.stats.key)
 }
 
-// sessionState aggregates byte-transfer counters across all requests handled by a server instance.
+// sessionState aggregates the counters of the invocation currently being served.
 type sessionState struct {
 	downloadBytes atomic.Int64
 	uploadBytes   atomic.Int64
+	getHits       atomic.Int64
+	getMisses     atomic.Int64
+	errors        atomic.Int64
 }
 
 func newSessionState() *sessionState {
@@ -78,10 +81,40 @@ func newSessionState() *sessionState {
 }
 
 func (s *sessionState) resetAndGet() (int64, int64) {
+	s.getHits.Store(0)
+	s.getMisses.Store(0)
+	s.errors.Store(0)
+
 	return s.downloadBytes.Swap(0), s.uploadBytes.Swap(0)
 }
 
+func (s *sessionState) effectiveness() CacheEffectiveness {
+	hits := s.getHits.Load()
+
+	return CacheEffectiveness{
+		Hits:          hits,
+		Total:         hits + s.getMisses.Load(),
+		Errors:        s.errors.Load(),
+		DownloadBytes: s.downloadBytes.Load(),
+		UploadBytes:   s.uploadBytes.Load(),
+	}
+}
+
 func (s *sessionState) updateWithResult(result processResult) {
+	switch result.Outcome {
+	case PROCESS_REQUEST_ERROR:
+		s.errors.Add(1)
+	case PROCESS_REQUEST_MISS:
+		if result.CallStats.method == CALL_METHOD_GET {
+			s.getMisses.Add(1)
+		}
+	case PROCESS_REQUEST_OK:
+		if result.CallStats.method == CALL_METHOD_GET {
+			s.getHits.Add(1)
+		}
+	case PROCESS_REQUEST_PUSH_DISABLED:
+	}
+
 	if result.Outcome != PROCESS_REQUEST_OK {
 		return
 	}

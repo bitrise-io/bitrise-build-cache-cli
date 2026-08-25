@@ -66,7 +66,8 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint) // CI: asserted by cache-ccache-test workflow
 	s.resetIdleTimer(cancelFn)
 	go s.acceptLoop(cancellableCtx, cancelFn)
-	<-cancellableCtx.Done()                 // wait for context cancellation
+	<-cancellableCtx.Done()
+	s.sessionState.effectiveness().Log(s.logger)
 	s.logger.TInfof("Server shutting down") // CI: asserted by cache-ccache-test workflow
 	s.listener.Close()
 
@@ -153,14 +154,19 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 }
 
 func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
+	var outgoing CacheEffectiveness
+
 	s.activeInvocationMu.Lock()
 	isDuplicate := result.InvocationChildID == s.activeInvocationID
 	if !isDuplicate {
+		outgoing = s.sessionState.effectiveness()
 		s.sessionState.resetAndGet()
 		s.activeInvocationID = result.InvocationChildID
 		s.activeParentID = result.InvocationParentID
 	}
 	s.activeInvocationMu.Unlock()
+
+	outgoing.Log(s.logger)
 }
 
 func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn context.CancelFunc) {
