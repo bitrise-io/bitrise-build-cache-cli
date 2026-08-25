@@ -127,6 +127,7 @@ func TestActivator_Activate(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "/work/dir", envVars["CCACHE_BASEDIR"])
+		assert.Equal(t, "content", envVars["CCACHE_COMPILERCHECK"])
 		assert.Equal(t, "true", envVars["CCACHE_NOHASHDIR"])
 		assert.Equal(t, "true", envVars["CCACHE_REMOTE_ONLY"])
 		assert.Equal(t, "ccache", envVars["CMAKE_CXX_COMPILER_LAUNCHER"])

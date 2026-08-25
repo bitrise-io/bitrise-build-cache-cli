@@ -32,8 +32,8 @@ printf 'int add(int a, int b) { return a + b; }\n' > "$TEST_DIR/test.c"
 ccache gcc -c "$TEST_DIR/test.c" -o "$TEST_DIR/test1.o"
 echo "Build 1 done"
 
-# Build 2: same source — a GET hit from build 1's PUT. This only covers the transport;
-# reuse across builds is asserted by ccache_cold_reuse_test.sh.
+# Build 2: a GET hit from build 1's PUT — transport only. Reuse across builds is
+# asserted by ccache_cold_reuse_test.sh.
 ccache gcc -c "$TEST_DIR/test.c" -o "$TEST_DIR/test2.o"
 echo "Build 2 done — expected GET hit"
 

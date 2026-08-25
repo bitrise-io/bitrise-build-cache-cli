@@ -27,8 +27,7 @@ esac
 
 echo "Phase: $PHASE, cache-key token: $TOKEN"
 
-# Both phases must produce a byte-identical compilation. The source lives at a fixed path
-# under CCACHE_BASEDIR so its path cannot leak into the key.
+# A fixed path under CCACHE_BASEDIR: a temp dir would differ per VM and leak into the key.
 SRC_DIR="${BITRISE_SOURCE_DIR:-$PWD}/.ccache-cold-reuse"
 SRC="$SRC_DIR/cold_reuse.c"
 mkdir -p "$SRC_DIR"
@@ -41,8 +40,7 @@ gcc --version | head -1
 DC="${BITRISE_DEN_VM_DATACENTER:-unknown}"
 echo "Datacenter: $DC, node: $(hostname)"
 
-# The cache origin is per-datacenter: a read in another DC misses by design and says
-# nothing about key stability, which is what this test is for.
+# The cache origin is per-datacenter, so a read in another DC misses by design.
 if [ "$PHASE" = read ] && [ "$DC" != "${CCACHE_E2E_DC:-$DC}" ]; then
   echo "Write phase ran in ${CCACHE_E2E_DC}, this VM is in ${DC} — cross-DC read, key stability not testable here."
   echo "Skipped ⏭️"

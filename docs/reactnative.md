@@ -49,6 +49,7 @@ func (a *Activator) Activate(ctx context.Context) error
 
 **ccache env vars exported by Activate:**
 - `CCACHE_BASEDIR` — working directory (normalizes paths in cache keys)
+- `CCACHE_COMPILERCHECK=content` — hash the compiler's contents, not its mtime
 - `CCACHE_NOHASHDIR=true`
 - `CCACHE_REMOTE_ONLY=true`
 - `CCACHE_REMOTE_STORAGE=<CRS HTTP endpoint>`
