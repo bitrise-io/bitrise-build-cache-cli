@@ -151,7 +151,10 @@ func (config Config) CRSHRemoteStorageURL() string {
 // environment off it — so the two cannot drift.
 func (config Config) BuildEnv(baseDir string) map[string]string {
 	return map[string]string{
-		"CCACHE_BASEDIR":              baseDir,
+		"CCACHE_BASEDIR": baseDir,
+		// ccache's default mtime check rotates every key on CI, where a toolchain installed
+		// per build (e.g. an NDK from sdkmanager) is stamped with the install time.
+		"CCACHE_COMPILERCHECK":        "content",
 		"CCACHE_NOHASHDIR":            "true",
 		"CCACHE_REMOTE_ONLY":          "true",
 		"CCACHE_REMOTE_STORAGE":       config.CRSHRemoteStorageURL(),
