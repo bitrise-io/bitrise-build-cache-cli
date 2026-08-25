@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -12,6 +13,7 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -147,6 +149,13 @@ func (*huhWizard) Run(ctx context.Context) error {
 
 	envs[authpkg.EnvWorkspaceID] = workspaceID
 	envs[authpkg.EnvAuthToken] = authToken
+
+	// Wizard's own daemon prompt is authoritative — suppress sub-activators' Ensure.
+	if err := os.Setenv(daemonpkg.EnvSkipEnsure, "1"); err != nil {
+		logger.Debugf("Could not set %s: %v", daemonpkg.EnvSkipEnsure, err)
+	}
+
+	envs[daemonpkg.EnvSkipEnsure] = "1"
 
 	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled); err != nil {
 		return err

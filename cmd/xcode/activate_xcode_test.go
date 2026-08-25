@@ -13,6 +13,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
@@ -25,6 +26,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "token",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "abc123",
 		"GITHUB_ENV":                       filepath.Join(home, ".github_env"),
+		daemonpkg.EnvSkipEnsure:            "1",
 	}
 
 	t.Run("success", func(t *testing.T) {

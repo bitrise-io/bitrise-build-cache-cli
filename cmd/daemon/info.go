@@ -6,17 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net"
-	"os"
-	"time"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	xcelerateconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -33,7 +28,6 @@ const (
 	statusStopped       = "stopped"
 	statusStuck         = "stuck (socket present, not responding — run `bitrise-build-cache doctor --fix` or `bitrise-build-cache daemon restart`)"
 	statusNotConfigured = "not configured"
-	probeTimeout        = 500 * time.Millisecond
 )
 
 //nolint:gochecknoglobals
@@ -51,8 +45,8 @@ var infoCmd = &cobra.Command{
 
 		out := cmd.OutOrStdout()
 
-		proxy := readXcelerateInfo(osProxy, decoder)
-		ccache := readCcacheInfo(osProxy, decoder)
+		proxy := readXcelerateInfo(cmd.Context(), osProxy, decoder)
+		ccache := readCcacheInfo(cmd.Context(), osProxy, decoder)
 
 		if infoJSON {
 			payload := struct {
@@ -84,11 +78,11 @@ var infoCmd = &cobra.Command{
 	},
 }
 
-func readXcelerateInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) serviceInfo {
+func readXcelerateInfo(ctx context.Context, osProxy utils.OsProxy, decoder utils.DecoderFactory) serviceInfo {
 	cfg, err := xcelerateconfig.ReadConfig(osProxy, decoder, utils.AllEnvs())
 	switch {
 	case err == nil && cfg.ProxySocketPath != "":
-		return serviceInfo{Socket: cfg.ProxySocketPath, Status: probeSocket(cfg.ProxySocketPath)}
+		return serviceInfo{Socket: cfg.ProxySocketPath, Status: probeStatus(daemonpkg.ProbeSocket(ctx, cfg.ProxySocketPath))}
 	case errors.Is(err, fs.ErrNotExist):
 		return serviceInfo{Socket: "<not configured — run `bitrise-build-cache activate xcode`>", Status: statusNotConfigured}
 	default:
@@ -96,11 +90,11 @@ func readXcelerateInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) serv
 	}
 }
 
-func readCcacheInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) serviceInfo {
+func readCcacheInfo(ctx context.Context, osProxy utils.OsProxy, decoder utils.DecoderFactory) serviceInfo {
 	cfg, err := ccacheconfig.ReadConfig(osProxy, decoder, utils.AllEnvs())
 	switch {
 	case err == nil && cfg.IPCEndpoint != "":
-		return serviceInfo{Socket: cfg.IPCEndpoint, Status: probeCcacheSocket(cfg.IPCEndpoint)}
+		return serviceInfo{Socket: cfg.IPCEndpoint, Status: probeStatus(daemonpkg.ProbeCcacheSocket(ctx, cfg.IPCEndpoint))}
 	case errors.Is(err, fs.ErrNotExist):
 		return serviceInfo{Socket: "<not configured — run `bitrise-build-cache activate c++`>", Status: statusNotConfigured}
 	default:
@@ -108,51 +102,17 @@ func readCcacheInfo(osProxy utils.OsProxy, decoder utils.DecoderFactory) service
 	}
 }
 
-func probeSocket(path string) string {
-	if _, err := os.Stat(path); err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			debugLogger().Debugf("probeSocket: stat %s failed: %v", path, err)
-		}
-
+func probeStatus(p daemonpkg.SocketProbe) string {
+	switch p {
+	case daemonpkg.ProbeRunning:
+		return statusRunning
+	case daemonpkg.ProbeStuck:
+		return statusStuck
+	case daemonpkg.ProbeStopped:
+		return statusStopped
+	default:
 		return statusStopped
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-	defer cancel()
-
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", path)
-	if err != nil {
-		return statusStuck
-	}
-	_ = conn.Close()
-
-	return statusRunning
-}
-
-// probeCcacheSocket uses the ccache protocol's health-check exchange so the
-// storage helper sees a clean handshake — a raw dial+close would surface as
-// "Capabilities check failed" in the helper's log, and CI asserts on those.
-func probeCcacheSocket(path string) string {
-	if _, err := os.Stat(path); err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			debugLogger().Debugf("probeCcacheSocket: stat %s failed: %v", path, err)
-		}
-
-		return statusStopped
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
-	defer cancel()
-
-	if err := ccache.SendHealthCheck(ctx, path); err != nil {
-		return statusStuck
-	}
-
-	return statusRunning
-}
-
-func debugLogger() log.Logger {
-	return log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 }
 
 func init() {

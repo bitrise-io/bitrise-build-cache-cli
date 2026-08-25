@@ -10,9 +10,13 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
+
+//nolint:gochecknoglobals // test seam for daemon.Ensure
+var ensureFn = daemonpkg.Ensure
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -148,7 +152,25 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
+	if err := a.runDaemonEnsure(ctx); err != nil {
+		a.logger.Warnf("Could not ensure ccache background service state: %s", err)
+		a.logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
+	}
+
 	a.logger.TInfof(ActivateCppSuccessful)
+
+	return nil
+}
+
+// runDaemonEnsure reconciles the ccache helper service with the saved
+// config. Errors are downgraded by the caller so a supervisor hiccup
+// cannot fail an otherwise-successful activation.
+func (a *Activator) runDaemonEnsure(ctx context.Context) error {
+	services := daemonpkg.ServicesForTools(false, true)
+
+	if err := ensureFn(ctx, a.logger, services, daemonpkg.EnsureDeps{Envs: a.envs}); err != nil {
+		return fmt.Errorf("daemon ensure: %w", err)
+	}
 
 	return nil
 }

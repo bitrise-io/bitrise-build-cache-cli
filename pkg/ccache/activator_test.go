@@ -17,6 +17,7 @@ import (
 	keyring "github.com/zalando/go-keyring"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
@@ -45,6 +46,7 @@ func validEnvs() map[string]string {
 	return map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "test-token",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "test-workspace",
+		daemonpkg.EnvSkipEnsure:            "1",
 	}
 }
 

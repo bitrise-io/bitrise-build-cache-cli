@@ -3,6 +3,7 @@
 package xcelerate
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -10,11 +11,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func TestWriteExecutableAtomically_OverwritesExistingTarget(t *testing.T) {
@@ -115,4 +118,51 @@ func TestEnsureLogDir_FailureDoesNotStopActivation(t *testing.T) {
 		UserHomeDirFunc: func() (string, error) { return "", errors.New("no home") },
 		MkdirAllFunc:    func(string, os.FileMode) error { return errors.New("read-only fs") },
 	})
+}
+
+func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error) {
+	t.Helper()
+	prev := ensureFn
+	ensureFn = fn
+	t.Cleanup(func() { ensureFn = prev })
+}
+
+func TestRunDaemonEnsure_wiresXcelerateProxyService(t *testing.T) {
+	var gotServices []daemonpkg.Service
+	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, _ daemonpkg.EnsureDeps) error {
+		gotServices = services
+
+		return nil
+	})
+
+	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{})
+	require.NoError(t, err)
+
+	require.Len(t, gotServices, 1)
+	assert.Equal(t, daemonpkg.ServiceXcelerateProxy, gotServices[0].Name)
+}
+
+func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {
+	var gotEnvs map[string]string
+	swapEnsureFn(t, func(_ context.Context, _ log.Logger, _ []daemonpkg.Service, deps daemonpkg.EnsureDeps) error {
+		gotEnvs = deps.Envs
+
+		return nil
+	})
+
+	envs := map[string]string{daemonpkg.EnvSkipEnsure: "1"}
+
+	err := runDaemonEnsure(t.Context(), log.NewLogger(), envs)
+	require.NoError(t, err)
+	assert.Equal(t, "1", gotEnvs[daemonpkg.EnvSkipEnsure])
+}
+
+func TestXcelerateRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
+	swapEnsureFn(t, func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error {
+		return errors.New("launchctl bootstrap: permission denied")
+	})
+
+	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "permission denied")
 }
