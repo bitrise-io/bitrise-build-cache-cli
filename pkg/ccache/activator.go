@@ -107,8 +107,6 @@ func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
-	oldPush, hadOldConfig := a.readExistingPushEnabled()
-
 	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
 		BuildCacheEndpoint:    a.buildCacheEndpoint,
 		PushEnabled:           a.pushEnabled,
@@ -157,7 +155,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
-	if err := a.runDaemonEnsure(ctx, hadOldConfig && oldPush != config.PushEnabled); err != nil {
+	if err := a.runDaemonEnsure(ctx); err != nil {
 		a.logger.Warnf("Could not ensure ccache background service state: %s", err)
 		a.logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
 	}
@@ -167,40 +165,14 @@ func (a *Activator) Activate(ctx context.Context) error {
 	return nil
 }
 
-// returns the persisted PushEnabled value and whether the config existed.
-func (a *Activator) readExistingPushEnabled() (bool, bool) {
-	existing, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
-	if err != nil {
-		return false, false
-	}
-
-	return existing.PushEnabled, true
-}
-
 // runDaemonEnsure asks the daemon package to reconcile the ccache helper
 // service state with the just-saved config. Errors are downgraded to warnings
 // by the caller — the config write already succeeded, so a launchctl/systemctl
 // failure must not fail activation.
-func (a *Activator) runDaemonEnsure(ctx context.Context, pushChanged bool) error {
+func (a *Activator) runDaemonEnsure(ctx context.Context) error {
 	services := daemonpkg.ServicesForTools(false, true)
 
-	probe := func(pCtx context.Context, svc daemonpkg.Service) daemonpkg.SocketProbe {
-		if svc.Name != daemonpkg.ServiceCcacheHelper {
-			return daemonpkg.ProbeStopped
-		}
-
-		cfg, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
-		if err != nil || cfg.IPCEndpoint == "" {
-			return daemonpkg.ProbeStopped
-		}
-
-		return daemonpkg.ProbeCcacheSocket(pCtx, cfg.IPCEndpoint)
-	}
-
-	if err := ensureFn(ctx, a.logger, services, pushChanged, daemonpkg.EnsureDeps{
-		Envs:  a.envs,
-		Probe: probe,
-	}); err != nil {
+	if err := ensureFn(ctx, a.logger, services, daemonpkg.EnsureDeps{Envs: a.envs}); err != nil {
 		return fmt.Errorf("daemon ensure: %w", err)
 	}
 

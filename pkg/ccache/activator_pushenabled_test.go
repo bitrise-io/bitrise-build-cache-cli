@@ -33,7 +33,7 @@ func TestNewActivator_PushEnabledPropagates(t *testing.T) {
 }
 
 // swapEnsureFn replaces the daemon.Ensure seam for the duration of a test.
-func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, bool, daemonpkg.EnsureDeps) error) {
+func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error) {
 	t.Helper()
 	prev := ensureFn
 	ensureFn = fn
@@ -42,31 +42,28 @@ func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg
 
 func TestRunDaemonEnsure_wiresCcacheHelperService(t *testing.T) {
 	var gotServices []daemonpkg.Service
-	var gotPush bool
 
-	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, pushChanged bool, _ daemonpkg.EnsureDeps) error {
+	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, _ daemonpkg.EnsureDeps) error {
 		gotServices = services
-		gotPush = pushChanged
 
 		return nil
 	})
 
 	a := NewActivator(ActivatorParams{PushEnabled: true, Envs: map[string]string{}})
-	err := a.runDaemonEnsure(t.Context(), true)
+	err := a.runDaemonEnsure(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, gotServices, 1)
 	assert.Equal(t, daemonpkg.ServiceCcacheHelper, gotServices[0].Name)
-	assert.True(t, gotPush)
 }
 
 func TestCcacheRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
-	swapEnsureFn(t, func(context.Context, log.Logger, []daemonpkg.Service, bool, daemonpkg.EnsureDeps) error {
+	swapEnsureFn(t, func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error {
 		return errors.New("systemctl enable: bus unavailable")
 	})
 
 	a := NewActivator(ActivatorParams{PushEnabled: true, Envs: map[string]string{}})
-	err := a.runDaemonEnsure(t.Context(), false)
+	err := a.runDaemonEnsure(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bus unavailable")
 }

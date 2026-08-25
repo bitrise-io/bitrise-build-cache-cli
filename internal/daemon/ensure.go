@@ -18,18 +18,13 @@ const EnvSkipEnsure = "BITRISE_BUILD_CACHE_SKIP_DAEMON_ENSURE"
 type EnsureDeps struct {
 	// Envs — for reading EnvSkipEnsure. Defaults to os.Getenv lookup.
 	Envs map[string]string
-	// Probe resolves each service's socket path and probes it. Required in
-	// tests; Ensure without a Probe assumes ProbeStopped, which forces
-	// Bootstrap-or-Up (never Restart) — safe fallback.
-	Probe ProbeFn
 	// BootstrapFn overrides the production install-and-start path. Injected in
 	// tests. Defaults to the real Bootstrap.
 	BootstrapFn func(ctx context.Context, logger log.Logger, services []Service) (InstallResult, Paths, error)
-	// UpFn / RestartFn are indirected the same way so the state machine can be
+	// RestartFn is indirected the same way so the state machine can be
 	// exercised without a real supervisor.
-	UpFn      func(ctx context.Context, backend Backend, paths Paths, services []Service) (ControlResult, error)
 	RestartFn func(ctx context.Context, backend Backend, paths Paths, services []Service) (ControlResult, error)
-	// BackendAndPathsFn resolves the backend + paths to use for Up / Restart.
+	// BackendAndPathsFn resolves the backend + paths to use for Restart.
 	// Defaults to DefaultBackendAndPaths so tests can inject a fake backend
 	// without touching launchctl / systemctl.
 	BackendAndPathsFn func() (Backend, Paths, error)
@@ -37,20 +32,20 @@ type EnsureDeps struct {
 
 // Ensure guarantees each service ends up running with the just-saved config.
 //
-// Decision matrix, per service:
+// Decision per service:
 //
-//	| Config file exists | Running? | pushChanged | Action        |
-//	|--------------------|----------|-------------|---------------|
-//	| no                 | —        | —           | Bootstrap     |
-//	| yes                | no       | —           | Up            |
-//	| yes                | yes      | no          | Noop          |
-//	| yes                | yes      | yes         | Restart       |
+//	| Config file exists | Action    |
+//	|--------------------|-----------|
+//	| no                 | Bootstrap |
+//	| yes                | Restart   |
 //
-// pushChanged is computed by the caller (they own the old→new config diff).
+// Restart unconditionally cycles the service so the just-saved config is
+// picked up. Both backend Stop implementations are idempotent, so Restart
+// works whether the service was previously running or not.
 //
 // Setting EnvSkipEnsure=1 short-circuits the whole batch — the wizard uses this
 // so its explicit user-driven daemon prompt wins.
-func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChanged bool, deps EnsureDeps) error {
+func Ensure(ctx context.Context, logger log.Logger, services []Service, deps EnsureDeps) error {
 	envs := deps.Envs
 	if envs == nil {
 		envs = map[string]string{}
@@ -74,19 +69,9 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChan
 		return err
 	}
 
-	probe := deps.Probe
-	if probe == nil {
-		probe = func(context.Context, Service) SocketProbe { return ProbeStopped }
-	}
-
 	bootstrapFn := deps.BootstrapFn
 	if bootstrapFn == nil {
 		bootstrapFn = Bootstrap
-	}
-
-	upFn := deps.UpFn
-	if upFn == nil {
-		upFn = Up
 	}
 
 	restartFn := deps.RestartFn
@@ -95,7 +80,7 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChan
 	}
 
 	for _, svc := range services {
-		if err := ensureOne(ctx, logger, backend, dPaths, svc, pushChanged, probe, bootstrapFn, upFn, restartFn); err != nil {
+		if err := ensureOne(ctx, logger, backend, dPaths, svc, bootstrapFn, restartFn); err != nil {
 			return err
 		}
 	}
@@ -109,10 +94,7 @@ func ensureOne(
 	backend Backend,
 	dPaths Paths,
 	svc Service,
-	pushChanged bool,
-	probe ProbeFn,
 	bootstrapFn func(context.Context, log.Logger, []Service) (InstallResult, Paths, error),
-	upFn func(context.Context, Backend, Paths, []Service) (ControlResult, error),
 	restartFn func(context.Context, Backend, Paths, []Service) (ControlResult, error),
 ) error {
 	one := []Service{svc}
@@ -130,20 +112,9 @@ func ensureOne(
 		return nil
 	}
 
-	switch {
-	case probe(ctx, svc) != ProbeRunning:
-		if _, err := upFn(ctx, backend, dPaths, one); err != nil {
-			return fmt.Errorf("start %s: %w", svc.Name, err)
-		}
-
-		return nil
-	case pushChanged:
-		if _, err := restartFn(ctx, backend, dPaths, one); err != nil {
-			return fmt.Errorf("restart %s: %w", svc.Name, err)
-		}
-
-		return nil
-	default:
-		return nil
+	if _, err := restartFn(ctx, backend, dPaths, one); err != nil {
+		return fmt.Errorf("restart %s: %w", svc.Name, err)
 	}
+
+	return nil
 }

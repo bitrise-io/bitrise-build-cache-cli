@@ -10,8 +10,7 @@ import (
 )
 
 // SocketProbe classifies a unix-socket-backed service as running, stopped, or
-// stuck. Shared by `daemon info` (human-facing status) and `Ensure` (decides
-// whether to restart on push-flag change).
+// stuck. Used by `daemon info` for human-facing status.
 type SocketProbe int
 
 const (
@@ -67,8 +66,3 @@ func ProbeCcacheSocket(ctx context.Context, path string) SocketProbe {
 
 	return ProbeRunning
 }
-
-// ProbeFn probes a given service. Ensure needs one — the daemon package cannot
-// resolve per-tool socket paths itself without importing the config packages
-// (which would form a cycle with the callers of Ensure).
-type ProbeFn func(ctx context.Context, svc Service) SocketProbe

@@ -71,8 +71,6 @@ func Activate(
 	activateXcodeParams Params,
 	envs map[string]string,
 ) error {
-	oldPush, hadOldConfig := readExistingPushEnabled(osProxy, decoderFactory, envs)
-
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
@@ -129,7 +127,7 @@ func Activate(
 
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
-	if err := runDaemonEnsure(ctx, logger, osProxy, decoderFactory, envs, hadOldConfig && oldPush != config.PushEnabled); err != nil {
+	if err := runDaemonEnsure(ctx, logger, envs); err != nil {
 		logger.Warnf("Could not ensure Xcode background service state: %s", err)
 		logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
 	}
@@ -140,47 +138,14 @@ func Activate(
 	return nil
 }
 
-// returns the persisted PushEnabled value and whether the config existed.
-func readExistingPushEnabled(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs map[string]string) (bool, bool) {
-	existing, err := ReadConfig(osProxy, decoderFactory, envs)
-	if err != nil {
-		return false, false
-	}
-
-	return existing.PushEnabled, true
-}
-
 // runDaemonEnsure asks the daemon package to reconcile the xcelerate proxy
 // service state with the just-saved config. Errors are downgraded to warnings
 // by the caller — the config write already succeeded, so a launchctl/systemctl
 // failure must not fail activation.
-func runDaemonEnsure(
-	ctx context.Context,
-	logger log.Logger,
-	osProxy utils.OsProxy,
-	decoderFactory utils.DecoderFactory,
-	envs map[string]string,
-	pushChanged bool,
-) error {
+func runDaemonEnsure(ctx context.Context, logger log.Logger, envs map[string]string) error {
 	services := daemonpkg.ServicesForTools(true, false)
 
-	probe := func(pCtx context.Context, svc daemonpkg.Service) daemonpkg.SocketProbe {
-		if svc.Name != daemonpkg.ServiceXcelerateProxy {
-			return daemonpkg.ProbeStopped
-		}
-
-		cfg, err := ReadConfig(osProxy, decoderFactory, envs)
-		if err != nil || cfg.ProxySocketPath == "" {
-			return daemonpkg.ProbeStopped
-		}
-
-		return daemonpkg.ProbeSocket(pCtx, cfg.ProxySocketPath)
-	}
-
-	if err := ensureFn(ctx, logger, services, pushChanged, daemonpkg.EnsureDeps{
-		Envs:  envs,
-		Probe: probe,
-	}); err != nil {
+	if err := ensureFn(ctx, logger, services, daemonpkg.EnsureDeps{Envs: envs}); err != nil {
 		return fmt.Errorf("daemon ensure: %w", err)
 	}
 

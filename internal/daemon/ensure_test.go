@@ -43,12 +43,10 @@ func writeConfigFile(t *testing.T, backend Backend, dPaths Paths, svc Service) {
 
 type ensureCallLog struct {
 	bootstrapped []Service
-	upped        []Service
 	restarted    []Service
 }
 
 func TestEnsure_configMissing_bootstraps(t *testing.T) {
-	// No config file exists → Bootstrap regardless of pushChanged.
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
 	dPaths := NewPathsFromHome(home)
@@ -56,23 +54,27 @@ func TestEnsure_configMissing_bootstraps(t *testing.T) {
 
 	deps := EnsureDeps{
 		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeStopped },
 		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
 		BootstrapFn: func(_ context.Context, _ log.Logger, services []Service) (InstallResult, Paths, error) {
 			calls.bootstrapped = append(calls.bootstrapped, services...)
 
 			return InstallResult{}, dPaths, nil
 		},
+		RestartFn: func(context.Context, Backend, Paths, []Service) (ControlResult, error) {
+			t.Fatalf("Restart must not be called when config file is missing")
+
+			return ControlResult{}, nil
+		},
 	}
 
-	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, false, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, deps)
 	require.NoError(t, err)
 	assert.Len(t, calls.bootstrapped, 1)
-	assert.Empty(t, calls.upped)
 	assert.Empty(t, calls.restarted)
 }
 
-func TestEnsure_configPresent_notRunning_upsService(t *testing.T) {
+func TestEnsure_configPresent_restarts(t *testing.T) {
+	// Config file exists → Restart unconditionally, no probe involved.
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
 	dPaths := NewPathsFromHome(home)
@@ -82,59 +84,12 @@ func TestEnsure_configPresent_notRunning_upsService(t *testing.T) {
 	calls := &ensureCallLog{}
 	deps := EnsureDeps{
 		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeStopped },
 		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
-		UpFn: func(_ context.Context, _ Backend, _ Paths, services []Service) (ControlResult, error) {
-			calls.upped = append(calls.upped, services...)
+		BootstrapFn: func(context.Context, log.Logger, []Service) (InstallResult, Paths, error) {
+			t.Fatalf("Bootstrap must not be called when config file is present")
 
-			return ControlResult{}, nil
+			return InstallResult{}, dPaths, nil
 		},
-	}
-
-	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
-	require.NoError(t, err)
-	assert.Len(t, calls.upped, 1)
-}
-
-func TestEnsure_configPresent_running_samePush_noop(t *testing.T) {
-	home := t.TempDir()
-	backend := fakeBackend{name: "launchd"}
-	dPaths := NewPathsFromHome(home)
-	svc := Service{Name: ServiceXcelerateProxy}
-	writeConfigFile(t, backend, dPaths, svc)
-
-	deps := EnsureDeps{
-		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeRunning },
-		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
-		UpFn: func(context.Context, Backend, Paths, []Service) (ControlResult, error) {
-			t.Fatalf("Up must not be called when running with same push flag")
-
-			return ControlResult{}, nil
-		},
-		RestartFn: func(context.Context, Backend, Paths, []Service) (ControlResult, error) {
-			t.Fatalf("Restart must not be called when running with same push flag")
-
-			return ControlResult{}, nil
-		},
-	}
-
-	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
-	require.NoError(t, err)
-}
-
-func TestEnsure_configPresent_running_pushChanged_restarts(t *testing.T) {
-	home := t.TempDir()
-	backend := fakeBackend{name: "launchd"}
-	dPaths := NewPathsFromHome(home)
-	svc := Service{Name: ServiceXcelerateProxy}
-	writeConfigFile(t, backend, dPaths, svc)
-
-	calls := &ensureCallLog{}
-	deps := EnsureDeps{
-		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeRunning },
-		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
 		RestartFn: func(_ context.Context, _ Backend, _ Paths, services []Service) (ControlResult, error) {
 			calls.restarted = append(calls.restarted, services...)
 
@@ -142,50 +97,15 @@ func TestEnsure_configPresent_running_pushChanged_restarts(t *testing.T) {
 		},
 	}
 
-	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, deps)
 	require.NoError(t, err)
 	assert.Len(t, calls.restarted, 1)
-}
-
-func TestEnsure_configPresent_stuck_pushChanged_upsService(t *testing.T) {
-	// Not-running trumps push-changed: no point restarting a service that
-	// isn't up. Ensure should start it, not restart it.
-	home := t.TempDir()
-	backend := fakeBackend{name: "launchd"}
-	dPaths := NewPathsFromHome(home)
-	svc := Service{Name: ServiceXcelerateProxy}
-	writeConfigFile(t, backend, dPaths, svc)
-
-	calls := &ensureCallLog{}
-	deps := EnsureDeps{
-		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeStuck },
-		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
-		UpFn: func(_ context.Context, _ Backend, _ Paths, services []Service) (ControlResult, error) {
-			calls.upped = append(calls.upped, services...)
-
-			return ControlResult{}, nil
-		},
-		RestartFn: func(context.Context, Backend, Paths, []Service) (ControlResult, error) {
-			t.Fatalf("Restart must not be called when service isn't currently up")
-
-			return ControlResult{}, nil
-		},
-	}
-
-	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, true, deps)
-	require.NoError(t, err)
-	assert.Len(t, calls.upped, 1)
+	assert.Empty(t, calls.bootstrapped)
 }
 
 func TestEnsure_skipEnvVar_shortCircuits(t *testing.T) {
 	deps := EnsureDeps{
 		Envs: map[string]string{EnvSkipEnsure: "1"},
-		Probe: func(context.Context, Service) SocketProbe {
-			t.Fatalf("Probe must not run when skip env var is set")
-
-			return ProbeStopped
-		},
 		BackendAndPathsFn: func() (Backend, Paths, error) {
 			t.Fatalf("Backend must not be resolved when skip env var is set")
 
@@ -193,7 +113,7 @@ func TestEnsure_skipEnvVar_shortCircuits(t *testing.T) {
 		},
 	}
 
-	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, deps)
 	require.NoError(t, err)
 }
 
@@ -203,11 +123,6 @@ func TestEnsure_skipEnvVar_fallsBackToProcessEnv(t *testing.T) {
 	t.Setenv(EnvSkipEnsure, "1")
 
 	deps := EnsureDeps{
-		Probe: func(context.Context, Service) SocketProbe {
-			t.Fatalf("Probe must not run when process env var is set")
-
-			return ProbeStopped
-		},
 		BackendAndPathsFn: func() (Backend, Paths, error) {
 			t.Fatalf("Backend must not be resolved when process env var is set")
 
@@ -215,13 +130,13 @@ func TestEnsure_skipEnvVar_fallsBackToProcessEnv(t *testing.T) {
 		},
 	}
 
-	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, deps)
 	require.NoError(t, err)
 }
 
 func TestEnsure_emptyServices_isNoOp(t *testing.T) {
 	deps := EnsureDeps{Envs: map[string]string{}}
-	err := Ensure(context.Background(), log.NewLogger(), nil, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), nil, deps)
 	require.NoError(t, err)
 }
 
@@ -232,14 +147,13 @@ func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
 
 	deps := EnsureDeps{
 		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeStopped },
 		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
 		BootstrapFn: func(context.Context, log.Logger, []Service) (InstallResult, Paths, error) {
 			return InstallResult{}, dPaths, errors.New("launchctl bootstrap: permission denied")
 		},
 	}
 
-	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, false, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, deps)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "permission denied")
 }
