@@ -152,8 +152,8 @@ func readExistingPushEnabled(osProxy utils.OsProxy, decoderFactory utils.Decoder
 
 // runDaemonEnsure asks the daemon package to reconcile the xcelerate proxy
 // service state with the just-saved config. Errors are downgraded to warnings
-// by the caller — activation itself succeeded, and a failure to reach
-// launchctl/systemctl must not fail the build.
+// by the caller — the config write already succeeded, so a launchctl/systemctl
+// failure must not fail activation.
 func runDaemonEnsure(
 	ctx context.Context,
 	logger log.Logger,

@@ -179,8 +179,8 @@ func (a *Activator) readExistingPushEnabled() (bool, bool) {
 
 // runDaemonEnsure asks the daemon package to reconcile the ccache helper
 // service state with the just-saved config. Errors are downgraded to warnings
-// by the caller — activation itself succeeded, and a failure to reach
-// launchctl/systemctl must not fail the build.
+// by the caller — the config write already succeeded, so a launchctl/systemctl
+// failure must not fail activation.
 func (a *Activator) runDaemonEnsure(ctx context.Context, pushChanged bool) error {
 	services := daemonpkg.ServicesForTools(false, true)
 
