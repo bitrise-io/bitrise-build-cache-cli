@@ -32,7 +32,6 @@ func TestNewActivator_PushEnabledPropagates(t *testing.T) {
 	}
 }
 
-// swapEnsureFn replaces the daemon.Ensure seam for the duration of a test.
 func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error) {
 	t.Helper()
 	prev := ensureFn

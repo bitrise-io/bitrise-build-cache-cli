@@ -9,29 +9,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 )
 
-// SocketProbe classifies a unix-socket-backed service as running, stopped, or
-// stuck. Used by `daemon info` for human-facing status.
 type SocketProbe int
 
 const (
-	// ProbeRunning: socket accepts connections (or, for ccache, replies OK to a
-	// health-check handshake).
 	ProbeRunning SocketProbe = iota
-	// ProbeStopped: socket file is absent — the supervisor is not holding it open.
 	ProbeStopped
-	// ProbeStuck: socket file exists but a dial fails — leftover from a crashed
-	// helper; the supervisor is not currently bound.
 	ProbeStuck
 )
 
-// ProbeTimeout is the dial/handshake budget for a single probe.
 const ProbeTimeout = 500 * time.Millisecond
 
-// ProbeSocket dials a unix socket and reports whether something is listening.
-// A hung accept still counts as running — the caller only wants to know if the
-// supervisor is holding the port. Stat errors (including ENOENT) map to
-// ProbeStopped; a successful stat followed by a failed dial maps to ProbeStuck.
-// ctx is used for the dial only; the stat is always synchronous.
+// ProbeSocket dials a unix socket. A hung accept still counts as running.
 func ProbeSocket(ctx context.Context, path string) SocketProbe {
 	if _, err := os.Stat(path); err != nil {
 		return ProbeStopped
@@ -49,9 +37,9 @@ func ProbeSocket(ctx context.Context, path string) SocketProbe {
 	return ProbeRunning
 }
 
-// ProbeCcacheSocket uses the ccache protocol's health-check exchange so the
-// storage helper sees a clean handshake — a raw dial+close would surface as
-// "Capabilities check failed" in the helper's log, and CI asserts on those.
+// ProbeCcacheSocket runs the ccache health-check handshake instead of a raw
+// dial+close, which would surface as "Capabilities check failed" in the
+// helper's log — CI asserts on those.
 func ProbeCcacheSocket(ctx context.Context, path string) SocketProbe {
 	if _, err := os.Stat(path); err != nil {
 		return ProbeStopped

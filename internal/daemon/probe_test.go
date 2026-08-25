@@ -27,7 +27,7 @@ func TestProbeSocket_stale(t *testing.T) {
 }
 
 func TestProbeSocket_live(t *testing.T) {
-	// Unix socket path is capped at ~104 chars on darwin; use a short dir under /tmp.
+	// darwin caps unix socket paths at ~104 chars; use /tmp not t.TempDir().
 	dir, err := os.MkdirTemp("/tmp", "probe-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
@@ -54,9 +54,7 @@ func TestProbeCcacheSocket_stale(t *testing.T) {
 }
 
 func TestProbeSocket_ctxCanceledIsStuck(t *testing.T) {
-	// A canceled context can only manifest during the dial (post-stat). Create
-	// a fresh socket file so stat succeeds, then pass a canceled ctx — the
-	// dial fails and we should get Stuck.
+	// Stat succeeds; the canceled ctx only fails the dial → Stuck.
 	path := filepath.Join(t.TempDir(), "canceled.sock")
 	f, err := os.Create(path)
 	require.NoError(t, err)

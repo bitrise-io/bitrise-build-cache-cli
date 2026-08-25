@@ -14,10 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeBackend is a tiny Backend stub for Ensure state-machine tests. Its Name
-// drives configPath, so it must match one of the real backends. We pick
-// "launchd" (any name would do); the real launchctl is never called because
-// Install/Uninstall/Start/Stop are no-ops here.
+// fakeBackend.Name drives configPath, so it must match a real backend name.
 type fakeBackend struct{ name string }
 
 func (b fakeBackend) Name() string { return b.name }
@@ -31,8 +28,6 @@ func (fakeBackend) Uninstall(context.Context, Paths, Service) (string, bool, err
 func (fakeBackend) Start(context.Context, Paths, Service) error { return nil }
 func (fakeBackend) Stop(context.Context, Paths, Service) error  { return nil }
 
-// writeConfigFile drops a fake plist/unit at the path configPath() would
-// resolve for svc under paths, so Ensure sees "config exists".
 func writeConfigFile(t *testing.T, backend Backend, dPaths Paths, svc Service) {
 	t.Helper()
 
@@ -74,7 +69,6 @@ func TestEnsure_configMissing_bootstraps(t *testing.T) {
 }
 
 func TestEnsure_configPresent_restarts(t *testing.T) {
-	// Config file exists → Restart unconditionally, no probe involved.
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
 	dPaths := NewPathsFromHome(home)
@@ -118,8 +112,6 @@ func TestEnsure_skipEnvVar_shortCircuits(t *testing.T) {
 }
 
 func TestEnsure_skipEnvVar_fallsBackToProcessEnv(t *testing.T) {
-	// Envs map unset — the OR-fallback branch should still short-circuit off
-	// the process-level env var so we don't regress the invariant.
 	t.Setenv(EnvSkipEnsure, "1")
 
 	deps := EnsureDeps{

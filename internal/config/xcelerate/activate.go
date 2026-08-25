@@ -23,11 +23,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// ensureFn is the seam tests use to inject a fake daemon.Ensure. Package-level
-// so tests can swap it without threading a dep through xcelerate.Activate's
-// public signature.
-//
-//nolint:gochecknoglobals
+//nolint:gochecknoglobals // test seam for daemon.Ensure
 var ensureFn = daemonpkg.Ensure
 
 const (
@@ -138,10 +134,9 @@ func Activate(
 	return nil
 }
 
-// runDaemonEnsure asks the daemon package to reconcile the xcelerate proxy
-// service state with the just-saved config. Errors are downgraded to warnings
-// by the caller — the config write already succeeded, so a launchctl/systemctl
-// failure must not fail activation.
+// runDaemonEnsure reconciles the xcelerate proxy service with the saved
+// config. Errors are downgraded by the caller so a supervisor hiccup
+// cannot fail an otherwise-successful activation.
 func runDaemonEnsure(ctx context.Context, logger log.Logger, envs map[string]string) error {
 	services := daemonpkg.ServicesForTools(true, false)
 

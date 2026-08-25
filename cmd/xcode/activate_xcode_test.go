@@ -26,9 +26,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "token",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "abc123",
 		"GITHUB_ENV":                       filepath.Join(home, ".github_env"),
-		// The daemon Ensure would try to reach launchctl / systemctl on the test
-		// host; skip it — this suite exercises the config side only.
-		daemonpkg.EnvSkipEnsure: "1",
+		daemonpkg.EnvSkipEnsure:            "1",
 	}
 
 	t.Run("success", func(t *testing.T) {

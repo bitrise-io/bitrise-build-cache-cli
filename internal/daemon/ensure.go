@@ -8,43 +8,21 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-// EnvSkipEnsure suppresses the post-activate daemon Ensure. Set by callers
-// (e.g. the interactive wizard) that own their own daemon lifecycle so we
-// don't double-install or override their user-driven answer.
+// EnvSkipEnsure suppresses the post-activate Ensure. Callers that own their
+// own daemon lifecycle set it to avoid fighting the auto-ensure.
 const EnvSkipEnsure = "BITRISE_BUILD_CACHE_SKIP_DAEMON_ENSURE"
 
-// EnsureDeps holds the seams Ensure needs to make decisions and act. All fields
-// are optional; the zero value uses production defaults.
+// EnsureDeps carries optional test seams; the zero value uses production defaults.
 type EnsureDeps struct {
-	// Envs — for reading EnvSkipEnsure. Defaults to os.Getenv lookup.
-	Envs map[string]string
-	// BootstrapFn overrides the production install-and-start path. Injected in
-	// tests. Defaults to the real Bootstrap.
-	BootstrapFn func(ctx context.Context, logger log.Logger, services []Service) (InstallResult, Paths, error)
-	// RestartFn is indirected the same way so the state machine can be
-	// exercised without a real supervisor.
-	RestartFn func(ctx context.Context, backend Backend, paths Paths, services []Service) (ControlResult, error)
-	// BackendAndPathsFn resolves the backend + paths to use for Restart.
-	// Defaults to DefaultBackendAndPaths so tests can inject a fake backend
-	// without touching launchctl / systemctl.
+	Envs              map[string]string
+	BootstrapFn       func(ctx context.Context, logger log.Logger, services []Service) (InstallResult, Paths, error)
+	RestartFn         func(ctx context.Context, backend Backend, paths Paths, services []Service) (ControlResult, error)
 	BackendAndPathsFn func() (Backend, Paths, error)
 }
 
-// Ensure guarantees each service ends up running with the just-saved config.
-//
-// Decision per service:
-//
-//	| Config file exists | Action    |
-//	|--------------------|-----------|
-//	| no                 | Bootstrap |
-//	| yes                | Restart   |
-//
-// Restart unconditionally cycles the service so the just-saved config is
-// picked up. Both backend Stop implementations are idempotent, so Restart
-// works whether the service was previously running or not.
-//
-// Setting EnvSkipEnsure=1 short-circuits the whole batch — the wizard uses this
-// so its explicit user-driven daemon prompt wins.
+// Ensure reconciles each service to running with the just-saved config:
+// no config file → Bootstrap; config present → Restart (idempotent Stop+Start).
+// EnvSkipEnsure=1 short-circuits the whole batch.
 func Ensure(ctx context.Context, logger log.Logger, services []Service, deps EnsureDeps) error {
 	envs := deps.Envs
 	if envs == nil {

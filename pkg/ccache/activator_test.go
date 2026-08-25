@@ -46,8 +46,7 @@ func validEnvs() map[string]string {
 	return map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "test-token",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "test-workspace",
-		// Skip the daemon Ensure — these tests don't reach a launchctl / systemctl.
-		daemonpkg.EnvSkipEnsure: "1",
+		daemonpkg.EnvSkipEnsure:            "1",
 	}
 }
 

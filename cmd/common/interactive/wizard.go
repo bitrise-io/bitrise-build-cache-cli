@@ -150,10 +150,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[authpkg.EnvWorkspaceID] = workspaceID
 	envs[authpkg.EnvAuthToken] = authToken
 
-	// The wizard owns the daemon lifecycle for its own run (see startDaemonForTools
-	// below). Tell the sub-activators to skip their own Ensure so the two paths
-	// don't fight over launchctl/systemctl. The env var only affects this
-	// process — child processes we spawn inherit it, which is what we want.
+	// Wizard's own daemon prompt is authoritative — suppress sub-activators' Ensure.
 	if err := os.Setenv(daemonpkg.EnvSkipEnsure, "1"); err != nil {
 		logger.Debugf("Could not set %s: %v", daemonpkg.EnvSkipEnsure, err)
 	}

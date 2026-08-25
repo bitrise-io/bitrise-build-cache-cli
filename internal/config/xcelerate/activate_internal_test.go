@@ -120,8 +120,6 @@ func TestEnsureLogDir_FailureDoesNotStopActivation(t *testing.T) {
 	})
 }
 
-// swapEnsureFn replaces the daemon.Ensure seam for the duration of a test,
-// letting us observe (services, deps) without touching launchctl.
 func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error) {
 	t.Helper()
 	prev := ensureFn
@@ -140,7 +138,6 @@ func TestRunDaemonEnsure_wiresXcelerateProxyService(t *testing.T) {
 	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{})
 	require.NoError(t, err)
 
-	// Xcode activate wires exactly the xcelerate-proxy service.
 	require.Len(t, gotServices, 1)
 	assert.Equal(t, daemonpkg.ServiceXcelerateProxy, gotServices[0].Name)
 }

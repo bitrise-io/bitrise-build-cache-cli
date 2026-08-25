@@ -100,9 +100,9 @@ func NewActivator(params ActivatorParams) *Activator {
 	return a
 }
 
-// Activate runs the full React Native build cache activation flow:
-// install dependencies → activate sub-systems (each of which reconciles its own
-// background service via daemon.Ensure) → save config.
+// Activate runs the full React Native build cache activation flow: install
+// dependencies, activate each sub-system (which reconciles its own daemon),
+// save config.
 func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for React Native")
@@ -157,10 +157,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 }
 
 // activateCppIfApplicable activates ccache when it was wired in NewActivator
-// AND gradle did not end up in the benchmark baseline phase. The
-// gradle-baseline skip is a stop-gap until ccache grows its own benchmark
-// phase support (ACI-4926) so the rotation stays consistent across both
-// halves of the Android build.
+// and gradle isn't in the benchmark baseline phase. Skipping on baseline is a
+// stop-gap until ccache grows its own benchmark phase (ACI-4926).
 func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
 	if a.cpp == nil {
 		return nil

@@ -15,10 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// ensureFn is the seam tests use to inject a fake daemon.Ensure without
-// touching the exported ActivatorParams / Activate signature.
-//
-//nolint:gochecknoglobals
+//nolint:gochecknoglobals // test seam for daemon.Ensure
 var ensureFn = daemonpkg.Ensure
 
 // ---------------------------------------------------------------------------
@@ -165,10 +162,9 @@ func (a *Activator) Activate(ctx context.Context) error {
 	return nil
 }
 
-// runDaemonEnsure asks the daemon package to reconcile the ccache helper
-// service state with the just-saved config. Errors are downgraded to warnings
-// by the caller — the config write already succeeded, so a launchctl/systemctl
-// failure must not fail activation.
+// runDaemonEnsure reconciles the ccache helper service with the saved
+// config. Errors are downgraded by the caller so a supervisor hiccup
+// cannot fail an otherwise-successful activation.
 func (a *Activator) runDaemonEnsure(ctx context.Context) error {
 	services := daemonpkg.ServicesForTools(false, true)
 
