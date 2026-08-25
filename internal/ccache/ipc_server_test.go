@@ -5,6 +5,7 @@ package ccache
 import (
 	"testing"
 
+	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -32,7 +33,7 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 
 func Test_handleSetInvocationIDResult(t *testing.T) {
 	t.Run("updates active ID and resets stats on new invocation", func(t *testing.T) {
-		s := &IpcServer{sessionState: newSessionState()}
+		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
 		s.sessionState.downloadBytes.Store(100)
 		s.activeInvocationID = "old-id"
 
@@ -50,7 +51,7 @@ func Test_handleSetInvocationIDResult(t *testing.T) {
 	})
 
 	t.Run("duplicate invocation ID does not reset stats or change active ID", func(t *testing.T) {
-		s := &IpcServer{sessionState: newSessionState()}
+		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
 		s.sessionState.downloadBytes.Store(200)
 		s.activeInvocationID = "same-id"
 		s.activeParentID = "parent-orig"
@@ -71,7 +72,7 @@ func Test_handleSetInvocationIDResult(t *testing.T) {
 
 func Test_IpcServer_SessionBytes(t *testing.T) {
 	t.Run("returns accumulated download and upload bytes from session state", func(t *testing.T) {
-		s := &IpcServer{sessionState: newSessionState()}
+		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
 		s.sessionState.downloadBytes.Store(1024)
 		s.sessionState.uploadBytes.Store(4096)
 
@@ -82,7 +83,7 @@ func Test_IpcServer_SessionBytes(t *testing.T) {
 	})
 
 	t.Run("returns zero when no transfers have occurred", func(t *testing.T) {
-		s := &IpcServer{sessionState: newSessionState()}
+		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
 
 		dl, ul := s.SessionBytes()
 
@@ -91,7 +92,7 @@ func Test_IpcServer_SessionBytes(t *testing.T) {
 	})
 
 	t.Run("reflects reset after SetInvocationID", func(t *testing.T) {
-		s := &IpcServer{sessionState: newSessionState()}
+		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
 		s.sessionState.downloadBytes.Store(512)
 		s.sessionState.uploadBytes.Store(1024)
 
@@ -102,4 +103,18 @@ func Test_IpcServer_SessionBytes(t *testing.T) {
 		assert.Equal(t, int64(0), dl)
 		assert.Equal(t, int64(0), ul)
 	})
+}
+
+func Test_handleSetInvocationIDResult_logsOutgoingInvocation(t *testing.T) {
+	logger := &utilsMocks.Logger{}
+	registerLoggerMethod(logger, "TInfof")
+	s := &IpcServer{sessionState: newSessionState(), logger: logger, activeInvocationID: "old-id"}
+	s.sessionState.getHits.Store(1)
+	s.sessionState.downloadBytes.Store(2048)
+
+	s.handleSetInvocationIDResult(processResult{InvocationChildID: "new-id"})
+
+	logger.AssertCalled(t, "TInfof", "%s",
+		"Ccache stats: hits: 1 (2.0 kB) / total: 1 (100.00%). Uploaded: 0 B")
+	assert.Equal(t, CacheEffectiveness{}, s.sessionState.effectiveness())
 }

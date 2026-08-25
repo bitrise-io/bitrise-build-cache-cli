@@ -49,7 +49,7 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 		assert.Equal(t, int64(0), s.uploadBytes.Load())
 	})
 
-	t.Run("GET MISS does not change any counters", func(t *testing.T) {
+	t.Run("GET MISS counts a miss without moving bytes", func(t *testing.T) {
 		s := newSessionState()
 		result := processResult{
 			Outcome: PROCESS_REQUEST_MISS,
@@ -62,6 +62,7 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 
 		assert.Equal(t, int64(0), s.downloadBytes.Load())
 		assert.Equal(t, int64(0), s.uploadBytes.Load())
+		assert.Equal(t, int64(1), s.getMisses.Load())
 	})
 
 	t.Run("PUT OK adds upload bytes", func(t *testing.T) {
@@ -93,5 +94,31 @@ func Test_sessionState_updateWithResult(t *testing.T) {
 
 		assert.Equal(t, int64(0), s.downloadBytes.Load())
 		assert.Equal(t, int64(0), s.uploadBytes.Load())
+	})
+}
+
+func Test_sessionState_effectiveness(t *testing.T) {
+	t.Run("counts hits, misses and errors of the current invocation", func(t *testing.T) {
+		s := newSessionState()
+		s.updateWithResult(processResult{Outcome: PROCESS_REQUEST_OK, CallStats: callStats{method: CALL_METHOD_GET, downloadBytes: 1024}})
+		s.updateWithResult(processResult{Outcome: PROCESS_REQUEST_MISS, CallStats: callStats{method: CALL_METHOD_GET}})
+		s.updateWithResult(processResult{Outcome: PROCESS_REQUEST_OK, CallStats: callStats{method: CALL_METHOD_PUT, uploadBytes: 2048}})
+		s.updateWithResult(processResult{Outcome: PROCESS_REQUEST_ERROR, CallStats: callStats{method: CALL_METHOD_PUT}})
+
+		assert.Equal(t, CacheEffectiveness{
+			Hits:          1,
+			Total:         2,
+			Errors:        1,
+			DownloadBytes: 1024,
+			UploadBytes:   2048,
+		}, s.effectiveness())
+
+		s.resetAndGet()
+
+		assert.Equal(t, CacheEffectiveness{}, s.effectiveness())
+	})
+
+	t.Run("empty session", func(t *testing.T) {
+		assert.Equal(t, CacheEffectiveness{}, newSessionState().effectiveness())
 	})
 }
