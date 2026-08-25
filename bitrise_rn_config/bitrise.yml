@@ -555,92 +555,10 @@ workflows:
         title: Assert remote cache hit via ccache storage helper
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/ccache_e2e_test.sh
-
-  ccache-cold-reuse-write:
-    meta:
-      bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
-    envs:
-    - PHASE: write
-    steps:
-    - activate-ssh-key@4: {}
-    - git-clone@8: {}
     - script:
-        title: Build CLI
+        title: Assert the cache survives a toolchain reinstall
         inputs:
-        - content: go build
-    - script:
-        title: Activate ccache remote storage
-        inputs:
-        - content: ./bitrise-build-cache-cli activate c++
-    - script@1:
-        title: Change apt sources to enzu mirror
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-
-            sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
-    - script:
-        title: Install ccache and gcc
-        inputs:
-        - content: |-
-            apt-get update -qq
-            apt-get install -y -q gcc jq
-            CCACHE_VERSION="4.13.2"
-            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-glibc.tar.gz" \
-              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-linux-x86_64-glibc/ccache"
-            ccache --version
-    - script:
-        title: Upload a cache entry for the next build
-        inputs:
-        - content: CCACHE_E2E_CLI=$BITRISE_SOURCE_DIR/bitrise-build-cache-cli bash $BITRISE_SOURCE_DIR/scripts/ccache_cold_reuse_test.sh
-    - share-pipeline-variable@1:
-        title: Hand the cache-key token to the read phase
-        inputs:
-        - variables: |-
-            CCACHE_E2E_TOKEN
-            CCACHE_E2E_DC
-  ccache-cold-reuse-read:
-    meta:
-      bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
-    envs:
-    - PHASE: read
-    steps:
-    - activate-ssh-key@4: {}
-    - git-clone@8: {}
-    - script:
-        title: Build CLI
-        inputs:
-        - content: go build
-    - script:
-        title: Activate ccache remote storage
-        inputs:
-        - content: ./bitrise-build-cache-cli activate c++
-    - script@1:
-        title: Change apt sources to enzu mirror
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-
-            sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|https://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list
-    - script:
-        title: Install ccache and gcc
-        inputs:
-        - content: |-
-            apt-get update -qq
-            apt-get install -y -q gcc jq
-            CCACHE_VERSION="4.13.2"
-            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-glibc.tar.gz" \
-              | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-linux-x86_64-glibc/ccache"
-            ccache --version
-    - script:
-        title: Assert the previous build's entry is reusable on this VM
-        inputs:
-        - content: CCACHE_E2E_CLI=$BITRISE_SOURCE_DIR/bitrise-build-cache-cli bash $BITRISE_SOURCE_DIR/scripts/ccache_cold_reuse_test.sh
-
+        - content: CCACHE_E2E_CLI=$BITRISE_SOURCE_DIR/bitrise-build-cache-cli bash $BITRISE_SOURCE_DIR/scripts/ccache_toolchain_reinstall_test.sh
 
 step_bundles:
   # -------------------------------------------------------------------------------
@@ -1084,12 +1002,6 @@ step_bundles:
 # Pipelines
 # -------------------------------------------------------------------------------
 pipelines:
-  ccache-cold-reuse:
-    workflows:
-      ccache-cold-reuse-write: {}
-      ccache-cold-reuse-read:
-        depends_on:
-        - ccache-cold-reuse-write
   rn-cli-benchmark-seek-android:
     workflows:
       rn-cli-seek-android-preheat: {}
