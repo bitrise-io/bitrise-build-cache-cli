@@ -12,8 +12,9 @@ CLI="${CCACHE_E2E_CLI:-bitrise-build-cache}"
 case "$PHASE" in
 write)
   TOKEN="${CCACHE_E2E_TOKEN:-$(cat /proc/sys/kernel/random/uuid)}"
-  # Exported for the share-pipeline-variable step that hands it to the read phase.
+  # Exported for the share-pipeline-variable step that hands them to the read phase.
   envman add --key CCACHE_E2E_TOKEN --value "$TOKEN"
+  envman add --key CCACHE_E2E_DC --value "${BITRISE_DEN_VM_DATACENTER:-unknown}"
   ;;
 read)
   TOKEN="${CCACHE_E2E_TOKEN:?read phase needs the token written by the write phase}"
@@ -37,8 +38,16 @@ COMPILER="$(readlink -f "$(command -v gcc)")"
 echo "Compiler: $COMPILER"
 stat -c 'Compiler identity: size=%s mtime=%Y (%y)' "$COMPILER"
 gcc --version | head -1
-# The cache origin is per-datacenter, so a miss is only meaningful next to the DC of both phases.
-echo "Datacenter: ${BITRISE_DEN_VM_DATACENTER:-unknown}, node: $(hostname)"
+DC="${BITRISE_DEN_VM_DATACENTER:-unknown}"
+echo "Datacenter: $DC, node: $(hostname)"
+
+# The cache origin is per-datacenter: a read in another DC misses by design and says
+# nothing about key stability, which is what this test is for.
+if [ "$PHASE" = read ] && [ "$DC" != "${CCACHE_E2E_DC:-$DC}" ]; then
+  echo "Write phase ran in ${CCACHE_E2E_DC}, this VM is in ${DC} — cross-DC read, key stability not testable here."
+  echo "Skipped ⏭️"
+  exit 0
+fi
 
 INVOCATION_ID="$(cat /proc/sys/kernel/random/uuid)"
 STORAGE_LOG="$HOME/.local/state/ccache/logs/ccache-${INVOCATION_ID}.log"

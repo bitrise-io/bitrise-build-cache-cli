@@ -598,7 +598,9 @@ workflows:
     - share-pipeline-variable@1:
         title: Hand the cache-key token to the read phase
         inputs:
-        - variables: CCACHE_E2E_TOKEN
+        - variables: |-
+            CCACHE_E2E_TOKEN
+            CCACHE_E2E_DC
   ccache-cold-reuse-read:
     meta:
       bitrise.io:
