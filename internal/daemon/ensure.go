@@ -13,53 +13,6 @@ import (
 // don't double-install or override their user-driven answer.
 const EnvSkipEnsure = "BITRISE_BUILD_CACHE_SKIP_DAEMON_ENSURE"
 
-// EnsureAction says what happened to a single service in an Ensure call.
-type EnsureAction int
-
-const (
-	// EnsureNoop: the service was already running with the same push flag.
-	EnsureNoop EnsureAction = iota
-	// EnsureBootstrapped: config file was missing → install + start.
-	EnsureBootstrapped
-	// EnsureStarted: config file was present but nothing bound to the socket
-	// → start.
-	EnsureStarted
-	// EnsureRestarted: config file was present and the service was running, but
-	// the push flag flipped → down + up.
-	EnsureRestarted
-	// EnsureSkipped: EnvSkipEnsure was set; the whole batch is a no-op.
-	EnsureSkipped
-)
-
-func (a EnsureAction) String() string {
-	switch a {
-	case EnsureNoop:
-		return "noop"
-	case EnsureBootstrapped:
-		return "bootstrapped"
-	case EnsureStarted:
-		return "started"
-	case EnsureRestarted:
-		return "restarted"
-	case EnsureSkipped:
-		return "skipped"
-	default:
-		return fmt.Sprintf("unknown(%d)", int(a))
-	}
-}
-
-// EnsureStatus is the per-service outcome of Ensure.
-type EnsureStatus struct {
-	Service Service
-	Action  EnsureAction
-}
-
-// EnsureResult is the batch outcome of Ensure.
-type EnsureResult struct {
-	BackendName string
-	Statuses    []EnsureStatus
-}
-
 // EnsureDeps holds the seams Ensure needs to make decisions and act. All fields
 // are optional; the zero value uses production defaults.
 type EnsureDeps struct {
@@ -95,20 +48,20 @@ type EnsureDeps struct {
 //
 // pushChanged is computed by the caller (they own the old→new config diff).
 //
-// Setting EnvSkipEnsure=1 short-circuits the whole batch to EnsureSkipped —
-// the wizard uses this so its explicit user-driven daemon prompt wins.
-func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChanged bool, deps EnsureDeps) (EnsureResult, error) {
+// Setting EnvSkipEnsure=1 short-circuits the whole batch — the wizard uses this
+// so its explicit user-driven daemon prompt wins.
+func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChanged bool, deps EnsureDeps) error {
 	envs := deps.Envs
 	if envs == nil {
 		envs = map[string]string{}
 	}
 
 	if envs[EnvSkipEnsure] != "" || os.Getenv(EnvSkipEnsure) != "" {
-		return skipResult(services), nil
+		return nil
 	}
 
 	if len(services) == 0 {
-		return EnsureResult{}, nil
+		return nil
 	}
 
 	backendAndPaths := deps.BackendAndPathsFn
@@ -118,7 +71,7 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChan
 
 	backend, dPaths, err := backendAndPaths()
 	if err != nil {
-		return EnsureResult{}, err
+		return err
 	}
 
 	probe := deps.Probe
@@ -141,21 +94,13 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, pushChan
 		restartFn = Restart
 	}
 
-	result := EnsureResult{
-		BackendName: backend.Name(),
-		Statuses:    make([]EnsureStatus, 0, len(services)),
-	}
-
 	for _, svc := range services {
-		action, err := ensureOne(ctx, logger, backend, dPaths, svc, pushChanged, probe, bootstrapFn, upFn, restartFn)
-		if err != nil {
-			return result, err
+		if err := ensureOne(ctx, logger, backend, dPaths, svc, pushChanged, probe, bootstrapFn, upFn, restartFn); err != nil {
+			return err
 		}
-
-		result.Statuses = append(result.Statuses, EnsureStatus{Service: svc, Action: action})
 	}
 
-	return result, nil
+	return nil
 }
 
 func ensureOne(
@@ -169,45 +114,36 @@ func ensureOne(
 	bootstrapFn func(context.Context, log.Logger, []Service) (InstallResult, Paths, error),
 	upFn func(context.Context, Backend, Paths, []Service) (ControlResult, error),
 	restartFn func(context.Context, Backend, Paths, []Service) (ControlResult, error),
-) (EnsureAction, error) {
+) error {
 	one := []Service{svc}
 	cfg := configPath(backend, dPaths, svc)
 
 	if _, err := os.Stat(cfg); err != nil {
 		if !os.IsNotExist(err) {
-			return EnsureNoop, fmt.Errorf("stat %s: %w", cfg, err)
+			return fmt.Errorf("stat %s: %w", cfg, err)
 		}
 
 		if _, _, err := bootstrapFn(ctx, logger, one); err != nil {
-			return EnsureNoop, fmt.Errorf("bootstrap %s: %w", svc.Name, err)
+			return fmt.Errorf("bootstrap %s: %w", svc.Name, err)
 		}
 
-		return EnsureBootstrapped, nil
+		return nil
 	}
 
 	switch {
 	case probe(ctx, svc) != ProbeRunning:
 		if _, err := upFn(ctx, backend, dPaths, one); err != nil {
-			return EnsureNoop, fmt.Errorf("start %s: %w", svc.Name, err)
+			return fmt.Errorf("start %s: %w", svc.Name, err)
 		}
 
-		return EnsureStarted, nil
+		return nil
 	case pushChanged:
 		if _, err := restartFn(ctx, backend, dPaths, one); err != nil {
-			return EnsureNoop, fmt.Errorf("restart %s: %w", svc.Name, err)
+			return fmt.Errorf("restart %s: %w", svc.Name, err)
 		}
 
-		return EnsureRestarted, nil
+		return nil
 	default:
-		return EnsureNoop, nil
+		return nil
 	}
-}
-
-func skipResult(services []Service) EnsureResult {
-	statuses := make([]EnsureStatus, 0, len(services))
-	for _, svc := range services {
-		statuses = append(statuses, EnsureStatus{Service: svc, Action: EnsureSkipped})
-	}
-
-	return EnsureResult{Statuses: statuses}
 }

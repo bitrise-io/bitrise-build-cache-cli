@@ -160,9 +160,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 // AND gradle did not end up in the benchmark baseline phase. The
 // gradle-baseline skip is a stop-gap until ccache grows its own benchmark
 // phase support (ACI-4926) so the rotation stays consistent across both
-// halves of the Android build. The daemon package's Ensure (invoked from
-// pkg/ccache.Activator) is what installs + starts the storage helper now;
-// the old fork+exec launcher was replaced in ACI-5321.
+// halves of the Android build.
 func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
 	if a.cpp == nil {
 		return nil

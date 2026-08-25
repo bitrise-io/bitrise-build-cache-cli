@@ -167,9 +167,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 	return nil
 }
 
-// readExistingPushEnabled returns the PushEnabled flag persisted in the
-// on-disk config so Activate can decide whether a restart is warranted.
-// The second return value is true iff the config file existed before.
+// returns the persisted PushEnabled value and whether the config existed.
 func (a *Activator) readExistingPushEnabled() (bool, bool) {
 	existing, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
 	if err != nil {
@@ -199,11 +197,10 @@ func (a *Activator) runDaemonEnsure(ctx context.Context, pushChanged bool) error
 		return daemonpkg.ProbeCcacheSocket(pCtx, cfg.IPCEndpoint)
 	}
 
-	_, err := ensureFn(ctx, a.logger, services, pushChanged, daemonpkg.EnsureDeps{
+	if err := ensureFn(ctx, a.logger, services, pushChanged, daemonpkg.EnsureDeps{
 		Envs:  a.envs,
 		Probe: probe,
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("daemon ensure: %w", err)
 	}
 

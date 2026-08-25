@@ -123,7 +123,7 @@ func TestEnsureLogDir_FailureDoesNotStopActivation(t *testing.T) {
 
 // swapEnsureFn replaces the daemon.Ensure seam for the duration of a test,
 // letting us observe (pushChanged, services) without touching launchctl.
-func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, bool, daemonpkg.EnsureDeps) (daemonpkg.EnsureResult, error)) {
+func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, bool, daemonpkg.EnsureDeps) error) {
 	t.Helper()
 	prev := ensureFn
 	ensureFn = fn
@@ -156,11 +156,11 @@ func TestRunDaemonEnsure_pushChangedFlagPropagates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var gotPush bool
 			var gotServices []daemonpkg.Service
-			swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, pushChanged bool, _ daemonpkg.EnsureDeps) (daemonpkg.EnsureResult, error) {
+			swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, pushChanged bool, _ daemonpkg.EnsureDeps) error {
 				gotServices = services
 				gotPush = pushChanged
 
-				return daemonpkg.EnsureResult{}, nil
+				return nil
 			})
 
 			osProxy := &utilsMocks.OsProxyMock{
@@ -181,10 +181,10 @@ func TestRunDaemonEnsure_pushChangedFlagPropagates(t *testing.T) {
 
 func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {
 	var gotEnvs map[string]string
-	swapEnsureFn(t, func(_ context.Context, _ log.Logger, _ []daemonpkg.Service, _ bool, deps daemonpkg.EnsureDeps) (daemonpkg.EnsureResult, error) {
+	swapEnsureFn(t, func(_ context.Context, _ log.Logger, _ []daemonpkg.Service, _ bool, deps daemonpkg.EnsureDeps) error {
 		gotEnvs = deps.Envs
 
-		return daemonpkg.EnsureResult{}, nil
+		return nil
 	})
 
 	osProxy := &utilsMocks.OsProxyMock{
@@ -198,9 +198,9 @@ func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {
 	assert.Equal(t, "1", gotEnvs[daemonpkg.EnvSkipEnsure])
 }
 
-func TestRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
-	swapEnsureFn(t, func(context.Context, log.Logger, []daemonpkg.Service, bool, daemonpkg.EnsureDeps) (daemonpkg.EnsureResult, error) {
-		return daemonpkg.EnsureResult{}, errors.New("launchctl bootstrap: permission denied")
+func TestXcelerateRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
+	swapEnsureFn(t, func(context.Context, log.Logger, []daemonpkg.Service, bool, daemonpkg.EnsureDeps) error {
+		return errors.New("launchctl bootstrap: permission denied")
 	})
 
 	osProxy := &utilsMocks.OsProxyMock{

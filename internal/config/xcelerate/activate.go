@@ -140,9 +140,7 @@ func Activate(
 	return nil
 }
 
-// readExistingPushEnabled returns the PushEnabled flag persisted in the
-// on-disk config so Activate can decide whether a restart is warranted.
-// The second return value is true iff the config file existed before.
+// returns the persisted PushEnabled value and whether the config existed.
 func readExistingPushEnabled(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs map[string]string) (bool, bool) {
 	existing, err := ReadConfig(osProxy, decoderFactory, envs)
 	if err != nil {
@@ -179,11 +177,10 @@ func runDaemonEnsure(
 		return daemonpkg.ProbeSocket(pCtx, cfg.ProxySocketPath)
 	}
 
-	_, err := ensureFn(ctx, logger, services, pushChanged, daemonpkg.EnsureDeps{
+	if err := ensureFn(ctx, logger, services, pushChanged, daemonpkg.EnsureDeps{
 		Envs:  envs,
 		Probe: probe,
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("daemon ensure: %w", err)
 	}
 

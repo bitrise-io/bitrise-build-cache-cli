@@ -65,10 +65,8 @@ func TestEnsure_configMissing_bootstraps(t *testing.T) {
 		},
 	}
 
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, false, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, false, deps)
 	require.NoError(t, err)
-	require.Len(t, result.Statuses, 1)
-	assert.Equal(t, EnsureBootstrapped, result.Statuses[0].Action)
 	assert.Len(t, calls.bootstrapped, 1)
 	assert.Empty(t, calls.upped)
 	assert.Empty(t, calls.restarted)
@@ -93,10 +91,8 @@ func TestEnsure_configPresent_notRunning_upsService(t *testing.T) {
 		},
 	}
 
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
 	require.NoError(t, err)
-	require.Len(t, result.Statuses, 1)
-	assert.Equal(t, EnsureStarted, result.Statuses[0].Action)
 	assert.Len(t, calls.upped, 1)
 }
 
@@ -123,10 +119,8 @@ func TestEnsure_configPresent_running_samePush_noop(t *testing.T) {
 		},
 	}
 
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
 	require.NoError(t, err)
-	require.Len(t, result.Statuses, 1)
-	assert.Equal(t, EnsureNoop, result.Statuses[0].Action)
 }
 
 func TestEnsure_configPresent_running_pushChanged_restarts(t *testing.T) {
@@ -148,10 +142,8 @@ func TestEnsure_configPresent_running_pushChanged_restarts(t *testing.T) {
 		},
 	}
 
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, true, deps)
 	require.NoError(t, err)
-	require.Len(t, result.Statuses, 1)
-	assert.Equal(t, EnsureRestarted, result.Statuses[0].Action)
 	assert.Len(t, calls.restarted, 1)
 }
 
@@ -181,9 +173,8 @@ func TestEnsure_configPresent_stuck_pushChanged_upsService(t *testing.T) {
 		},
 	}
 
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, true, deps)
 	require.NoError(t, err)
-	assert.Equal(t, EnsureStarted, result.Statuses[0].Action)
 	assert.Len(t, calls.upped, 1)
 }
 
@@ -202,17 +193,36 @@ func TestEnsure_skipEnvVar_shortCircuits(t *testing.T) {
 		},
 	}
 
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, true, deps)
 	require.NoError(t, err)
-	require.Len(t, result.Statuses, 1)
-	assert.Equal(t, EnsureSkipped, result.Statuses[0].Action)
+}
+
+func TestEnsure_skipEnvVar_fallsBackToProcessEnv(t *testing.T) {
+	// Envs map unset — the OR-fallback branch should still short-circuit off
+	// the process-level env var so we don't regress the invariant.
+	t.Setenv(EnvSkipEnsure, "1")
+
+	deps := EnsureDeps{
+		Probe: func(context.Context, Service) SocketProbe {
+			t.Fatalf("Probe must not run when process env var is set")
+
+			return ProbeStopped
+		},
+		BackendAndPathsFn: func() (Backend, Paths, error) {
+			t.Fatalf("Backend must not be resolved when process env var is set")
+
+			return nil, Paths{}, nil
+		},
+	}
+
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceCcacheHelper}}, true, deps)
+	require.NoError(t, err)
 }
 
 func TestEnsure_emptyServices_isNoOp(t *testing.T) {
 	deps := EnsureDeps{Envs: map[string]string{}}
-	result, err := Ensure(context.Background(), log.NewLogger(), nil, true, deps)
+	err := Ensure(context.Background(), log.NewLogger(), nil, true, deps)
 	require.NoError(t, err)
-	assert.Empty(t, result.Statuses)
 }
 
 func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
@@ -229,7 +239,7 @@ func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
 		},
 	}
 
-	_, err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, false, deps)
+	err := Ensure(context.Background(), log.NewLogger(), []Service{{Name: ServiceXcelerateProxy}}, false, deps)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "permission denied")
 }
@@ -263,22 +273,4 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 			assert.Equal(t, tc.wantNames, gotNames)
 		})
 	}
-}
-
-func TestEnsure_reportsBackendName(t *testing.T) {
-	home := t.TempDir()
-	backend := fakeBackend{name: "systemd"}
-	dPaths := NewPathsFromHome(home)
-	svc := Service{Name: ServiceCcacheHelper}
-	writeConfigFile(t, backend, dPaths, svc)
-
-	deps := EnsureDeps{
-		Envs:              map[string]string{},
-		Probe:             func(context.Context, Service) SocketProbe { return ProbeRunning },
-		BackendAndPathsFn: func() (Backend, Paths, error) { return backend, dPaths, nil },
-	}
-
-	result, err := Ensure(context.Background(), log.NewLogger(), []Service{svc}, false, deps)
-	require.NoError(t, err)
-	assert.Equal(t, "systemd", result.BackendName)
 }
