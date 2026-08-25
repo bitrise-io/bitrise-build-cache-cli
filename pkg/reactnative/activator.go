@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -49,7 +48,6 @@ type Activator struct {
 	gradle       *gradleActivator
 	xcode        *xcodeActivator
 	cpp          *ccachepkg.Activator
-	helper       *storageHelperStarter
 	debugLogging bool
 	logger       log.Logger
 }
@@ -95,7 +93,6 @@ func NewActivator(params ActivatorParams) *Activator {
 			DebugLogging: params.DebugLogging,
 			Logger:       logger,
 		})
-		a.helper = &storageHelperStarter{logger: logger}
 	} else if params.CppEnabled && !params.GradleEnabled {
 		logger.Infof("(i) Skipping C++ (ccache) activation: Gradle is disabled — ccache only wraps the Android/Gradle native build path.")
 	}
@@ -104,7 +101,8 @@ func NewActivator(params ActivatorParams) *Activator {
 }
 
 // Activate runs the full React Native build cache activation flow:
-// install dependencies → activate sub-systems → start storage helper → save config.
+// install dependencies → activate sub-systems (each of which reconciles its own
+// background service via daemon.Ensure) → save config.
 func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for React Native")
@@ -158,11 +156,13 @@ func (a *Activator) Activate(ctx context.Context) error {
 	return nil
 }
 
-// activateCppIfApplicable activates ccache and starts the storage helper
-// when ccache was wired in NewActivator AND gradle did not end up in the
-// benchmark baseline phase. The gradle-baseline skip is a stop-gap until
-// ccache grows its own benchmark phase support (ACI-4926) so the rotation
-// stays consistent across both halves of the Android build.
+// activateCppIfApplicable activates ccache when it was wired in NewActivator
+// AND gradle did not end up in the benchmark baseline phase. The
+// gradle-baseline skip is a stop-gap until ccache grows its own benchmark
+// phase support (ACI-4926) so the rotation stays consistent across both
+// halves of the Android build. The daemon package's Ensure (invoked from
+// pkg/ccache.Activator) is what installs + starts the storage helper now;
+// the old fork+exec launcher was replaced in ACI-5321.
 func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
 	if a.cpp == nil {
 		return nil
@@ -179,10 +179,6 @@ func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
 
 	if err := a.cpp.Activate(ctx); err != nil {
 		return fmt.Errorf("activate C++ build cache: %w", err)
-	}
-
-	if err := a.helper.start(); err != nil {
-		return fmt.Errorf("start ccache storage helper: %w", err)
 	}
 
 	return nil
@@ -351,31 +347,6 @@ func (x *xcodeActivator) activate(ctx context.Context) error {
 	); err != nil {
 		return fmt.Errorf("xcode activation: %w", err)
 	}
-
-	return nil
-}
-
-type storageHelperStarter struct {
-	logger log.Logger
-}
-
-func (s *storageHelperStarter) start() error {
-	s.logger.TInfof("Starting ccache storage helper...")
-
-	binary, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("get executable path: %w", err)
-	}
-
-	cmd := exec.Command(binary, "ccache", "storage-helper", "start") //nolint:gosec,noctx // intentionally detached: the helper must outlive this command
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start storage helper process: %w", err)
-	}
-
-	s.logger.TInfof("Ccache storage helper started (pid %d)", cmd.Process.Pid)
 
 	return nil
 }

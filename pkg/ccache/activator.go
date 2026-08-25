@@ -10,9 +10,16 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
+
+// ensureFn is the seam tests use to inject a fake daemon.Ensure without
+// touching the exported ActivatorParams / Activate signature.
+//
+//nolint:gochecknoglobals
+var ensureFn = daemonpkg.Ensure
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -100,6 +107,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
+	oldPush, hadOldConfig := a.readExistingPushEnabled()
+
 	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
 		BuildCacheEndpoint:    a.buildCacheEndpoint,
 		PushEnabled:           a.pushEnabled,
@@ -148,7 +157,55 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
+	if err := a.runDaemonEnsure(ctx, hadOldConfig && oldPush != config.PushEnabled); err != nil {
+		a.logger.Warnf("Could not ensure ccache background service state: %s", err)
+		a.logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
+	}
+
 	a.logger.TInfof(ActivateCppSuccessful)
+
+	return nil
+}
+
+// readExistingPushEnabled returns the PushEnabled flag persisted in the
+// on-disk config so Activate can decide whether a restart is warranted.
+// The second return value is true iff the config file existed before.
+func (a *Activator) readExistingPushEnabled() (bool, bool) {
+	existing, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
+	if err != nil {
+		return false, false
+	}
+
+	return existing.PushEnabled, true
+}
+
+// runDaemonEnsure asks the daemon package to reconcile the ccache helper
+// service state with the just-saved config. Errors are downgraded to warnings
+// by the caller — activation itself succeeded, and a failure to reach
+// launchctl/systemctl must not fail the build.
+func (a *Activator) runDaemonEnsure(ctx context.Context, pushChanged bool) error {
+	services := daemonpkg.ServicesForTools(false, true)
+
+	probe := func(pCtx context.Context, svc daemonpkg.Service) daemonpkg.SocketProbe {
+		if svc.Name != daemonpkg.ServiceCcacheHelper {
+			return daemonpkg.ProbeStopped
+		}
+
+		cfg, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
+		if err != nil || cfg.IPCEndpoint == "" {
+			return daemonpkg.ProbeStopped
+		}
+
+		return daemonpkg.ProbeCcacheSocket(pCtx, cfg.IPCEndpoint)
+	}
+
+	_, err := ensureFn(ctx, a.logger, services, pushChanged, daemonpkg.EnsureDeps{
+		Envs:  a.envs,
+		Probe: probe,
+	})
+	if err != nil {
+		return fmt.Errorf("daemon ensure: %w", err)
+	}
 
 	return nil
 }

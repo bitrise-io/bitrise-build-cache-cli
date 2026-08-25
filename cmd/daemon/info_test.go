@@ -12,10 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 )
 
+func TestProbeStatus_mapsProbeToHumanString(t *testing.T) {
+	assert.Equal(t, statusRunning, probeStatus(daemonpkg.ProbeRunning))
+	assert.Equal(t, statusStuck, probeStatus(daemonpkg.ProbeStuck))
+	assert.Equal(t, statusStopped, probeStatus(daemonpkg.ProbeStopped))
+}
+
 func TestProbeSocket_missingFile(t *testing.T) {
-	assert.Equal(t, statusStopped, probeSocket(filepath.Join(t.TempDir(), "does-not-exist.sock")))
+	assert.Equal(t, daemonpkg.ProbeStopped, daemonpkg.ProbeSocket(t.Context(), filepath.Join(t.TempDir(), "does-not-exist.sock")))
 }
 
 func TestProbeSocket_fileExistsButNothingListening(t *testing.T) {
@@ -23,7 +30,7 @@ func TestProbeSocket_fileExistsButNothingListening(t *testing.T) {
 	f, err := os.Create(path)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-	assert.Equal(t, statusStuck, probeSocket(path))
+	assert.Equal(t, daemonpkg.ProbeStuck, daemonpkg.ProbeSocket(t.Context(), path))
 }
 
 func TestProbeSocket_listeningSocket(t *testing.T) {
@@ -37,11 +44,11 @@ func TestProbeSocket_listeningSocket(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
 
-	assert.Equal(t, statusRunning, probeSocket(path))
+	assert.Equal(t, daemonpkg.ProbeRunning, daemonpkg.ProbeSocket(t.Context(), path))
 }
 
 func TestProbeCcacheSocket_missingFile(t *testing.T) {
-	assert.Equal(t, statusStopped, probeCcacheSocket(filepath.Join(t.TempDir(), "does-not-exist.sock")))
+	assert.Equal(t, daemonpkg.ProbeStopped, daemonpkg.ProbeCcacheSocket(t.Context(), filepath.Join(t.TempDir(), "does-not-exist.sock")))
 }
 
 func TestProbeCcacheSocket_fileExistsButNothingListening(t *testing.T) {
@@ -49,7 +56,7 @@ func TestProbeCcacheSocket_fileExistsButNothingListening(t *testing.T) {
 	f, err := os.Create(path)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-	assert.Equal(t, statusStuck, probeCcacheSocket(path))
+	assert.Equal(t, daemonpkg.ProbeStuck, daemonpkg.ProbeCcacheSocket(t.Context(), path))
 }
 
 func TestProbeCcacheSocket_healthCheckOK(t *testing.T) {
@@ -78,7 +85,7 @@ func TestProbeCcacheSocket_healthCheckOK(t *testing.T) {
 		_ = protocol.WriteByte(conn, protocol.ResponseOK)
 	}()
 
-	assert.Equal(t, statusRunning, probeCcacheSocket(path))
+	assert.Equal(t, daemonpkg.ProbeRunning, daemonpkg.ProbeCcacheSocket(t.Context(), path))
 }
 
 func TestProbeSocket_acceptButHangIsReportedRunning(t *testing.T) {
@@ -102,5 +109,5 @@ func TestProbeSocket_acceptButHangIsReportedRunning(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	assert.Equal(t, statusRunning, probeSocket(path))
+	assert.Equal(t, daemonpkg.ProbeRunning, daemonpkg.ProbeSocket(t.Context(), path))
 }

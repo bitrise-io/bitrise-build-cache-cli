@@ -17,10 +17,18 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
+
+// ensureFn is the seam tests use to inject a fake daemon.Ensure. Package-level
+// so tests can swap it without threading a dep through xcelerate.Activate's
+// public signature.
+//
+//nolint:gochecknoglobals
+var ensureFn = daemonpkg.Ensure
 
 const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
@@ -63,6 +71,8 @@ func Activate(
 	activateXcodeParams Params,
 	envs map[string]string,
 ) error {
+	oldPush, hadOldConfig := readExistingPushEnabled(osProxy, decoderFactory, envs)
+
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
@@ -119,8 +129,63 @@ func Activate(
 
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
+	if err := runDaemonEnsure(ctx, logger, osProxy, decoderFactory, envs, hadOldConfig && oldPush != config.PushEnabled); err != nil {
+		logger.Warnf("Could not ensure Xcode background service state: %s", err)
+		logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
+	}
+
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
+
+	return nil
+}
+
+// readExistingPushEnabled returns the PushEnabled flag persisted in the
+// on-disk config so Activate can decide whether a restart is warranted.
+// The second return value is true iff the config file existed before.
+func readExistingPushEnabled(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs map[string]string) (bool, bool) {
+	existing, err := ReadConfig(osProxy, decoderFactory, envs)
+	if err != nil {
+		return false, false
+	}
+
+	return existing.PushEnabled, true
+}
+
+// runDaemonEnsure asks the daemon package to reconcile the xcelerate proxy
+// service state with the just-saved config. Errors are downgraded to warnings
+// by the caller — activation itself succeeded, and a failure to reach
+// launchctl/systemctl must not fail the build.
+func runDaemonEnsure(
+	ctx context.Context,
+	logger log.Logger,
+	osProxy utils.OsProxy,
+	decoderFactory utils.DecoderFactory,
+	envs map[string]string,
+	pushChanged bool,
+) error {
+	services := daemonpkg.ServicesForTools(true, false)
+
+	probe := func(pCtx context.Context, svc daemonpkg.Service) daemonpkg.SocketProbe {
+		if svc.Name != daemonpkg.ServiceXcelerateProxy {
+			return daemonpkg.ProbeStopped
+		}
+
+		cfg, err := ReadConfig(osProxy, decoderFactory, envs)
+		if err != nil || cfg.ProxySocketPath == "" {
+			return daemonpkg.ProbeStopped
+		}
+
+		return daemonpkg.ProbeSocket(pCtx, cfg.ProxySocketPath)
+	}
+
+	_, err := ensureFn(ctx, logger, services, pushChanged, daemonpkg.EnsureDeps{
+		Envs:  envs,
+		Probe: probe,
+	})
+	if err != nil {
+		return fmt.Errorf("daemon ensure: %w", err)
+	}
 
 	return nil
 }
