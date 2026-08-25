@@ -37,6 +37,8 @@ COMPILER="$(readlink -f "$(command -v gcc)")"
 echo "Compiler: $COMPILER"
 stat -c 'Compiler identity: size=%s mtime=%Y (%y)' "$COMPILER"
 gcc --version | head -1
+# The cache origin is per-datacenter, so a miss is only meaningful next to the DC of both phases.
+echo "Datacenter: ${BITRISE_DEN_VM_DATACENTER:-unknown}, node: $(hostname)"
 
 INVOCATION_ID="$(cat /proc/sys/kernel/random/uuid)"
 STORAGE_LOG="$HOME/.local/state/ccache/logs/ccache-${INVOCATION_ID}.log"
