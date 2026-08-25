@@ -1,6 +1,6 @@
 //go:build unit
 
-package interactive
+package xcodebuildinfo
 
 import (
 	"testing"
