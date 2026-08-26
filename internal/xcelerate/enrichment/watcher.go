@@ -26,6 +26,12 @@ type Watcher struct {
 	MatchProbe            func(entry ManifestEntry) bool
 	MaxCorrelationRetries int
 
+	// OrphanMintDeadline gates the orphan-mint branch: while the entry's
+	// Stop is within the deadline the retry bucket is kept alive regardless
+	// of MaxCorrelationRetries. Zero preserves the pre-existing count-only
+	// behavior. MaxCorrelationRetries stays as a hard upper bound.
+	OrphanMintDeadline time.Duration
+
 	// HandledStore persists the seen-UUID set across restarts. nil disables
 	// persistence (seen stays in-memory only) — this is the pre-persistence
 	// behavior and is still what tests use unless they set the field.
@@ -45,6 +51,18 @@ func (w *Watcher) now() time.Time {
 	}
 
 	return time.Now()
+}
+
+// deadlineElapsed reports whether the entry's Stop is past the
+// OrphanMintDeadline — the point at which an unmatched entry should be
+// minted as an orphan regardless of the remaining retry-bucket count.
+// Zero deadline disables the deadline path entirely.
+func (w *Watcher) deadlineElapsed(entry ManifestEntry) bool {
+	if w.OrphanMintDeadline <= 0 || entry.Stop.IsZero() {
+		return false
+	}
+
+	return w.now().Sub(entry.Stop) > w.OrphanMintDeadline
 }
 
 func (w *Watcher) markHandled(uuid string) {
@@ -160,11 +178,20 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
+		case w.deadlineElapsed(entry):
+			waited := w.now().Sub(entry.Stop).Round(time.Second)
+			logger.Infof("Watcher: orphan mint uuid=%s scheme=%s waited=%s", entry.UUID, entry.SchemeName, waited)
+			w.Handle(entry)
+			w.markHandled(entry.UUID)
+			delete(w.retries, entry.UUID)
+		case w.OrphanMintDeadline > 0:
+			logger.Debugf("Watcher: pending unmatched, hold for deadline uuid=%s", entry.UUID)
 		case w.retries[entry.UUID] > 0:
 			w.retries[entry.UUID]--
 			logger.Debugf("Watcher: pending still unmatched, decrement uuid=%s attempts_left=%d", entry.UUID, w.retries[entry.UUID])
 		default:
-			logger.Debugf("Watcher: pending retries exhausted, minting orphan uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
+			waited := w.now().Sub(entry.Stop).Round(time.Second)
+			logger.Infof("Watcher: orphan mint uuid=%s scheme=%s waited=%s", entry.UUID, entry.SchemeName, waited)
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)

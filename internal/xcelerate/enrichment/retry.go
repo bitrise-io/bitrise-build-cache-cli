@@ -77,7 +77,7 @@ func (r *Retrier) Sweep() {
 		return
 	}
 
-	logger.Debugf("Retrier: sweep start, pending=%d", len(snapshot))
+	logger.Infof("Retrier: sweep start, pending=%d", len(snapshot))
 
 	now := r.now()
 	maxAge := r.MaxAge
@@ -126,31 +126,60 @@ func (r *Retrier) Sweep() {
 		updates[rec.InvocationID] = update{drop: true}
 	}
 
-	if len(updates) == 0 {
+	if len(updates) > 0 {
+		if err := r.Store.Mutate(func(current []PendingRecord) []PendingRecord {
+			out := current[:0]
+			for _, rec := range current {
+				u, seen := updates[rec.InvocationID]
+				if !seen {
+					out = append(out, rec)
+
+					continue
+				}
+				if u.drop {
+					continue
+				}
+
+				rec.Attempts += u.attemptsDelta
+				rec.LastAttempt = u.lastAt
+				rec.LastError = u.lastErr
+				out = append(out, rec)
+			}
+
+			return out
+		}); err != nil {
+			logger.Warnf("Retrier failed to persist swept pending: %s", err)
+		}
+	}
+
+	r.pruneStrandedOrphans(now, maxAge, logger)
+}
+
+// pruneStrandedOrphans reuses the exact predicate PruneAll trusts to drain
+// records that the watcher-side path never touches: slim-emitted entries
+// (Attempts==0) whose enrichment path never landed.
+func (r *Retrier) pruneStrandedOrphans(now time.Time, maxAge time.Duration, logger log.Logger) {
+	before, err := r.Store.Load()
+	if err != nil {
+		logger.Debugf("Retrier: prune load failed: %s", err)
+
 		return
 	}
 
-	if err := r.Store.Mutate(func(current []PendingRecord) []PendingRecord {
-		out := current[:0]
-		for _, rec := range current {
-			u, seen := updates[rec.InvocationID]
-			if !seen {
-				out = append(out, rec)
+	if err := r.Store.PruneOrphansOlderThan(now, maxAge); err != nil {
+		logger.Warnf("Retrier: prune orphans failed: %s", err)
 
-				continue
-			}
-			if u.drop {
-				continue
-			}
+		return
+	}
 
-			rec.Attempts += u.attemptsDelta
-			rec.LastAttempt = u.lastAt
-			rec.LastError = u.lastErr
-			out = append(out, rec)
-		}
+	after, err := r.Store.Load()
+	if err != nil {
+		logger.Debugf("Retrier: prune reload failed: %s", err)
 
-		return out
-	}); err != nil {
-		logger.Warnf("Retrier failed to persist swept pending: %s", err)
+		return
+	}
+
+	if pruned := len(before) - len(after); pruned > 0 {
+		logger.Infof("Retrier: pruned %d stranded orphan record(s)", pruned)
 	}
 }

@@ -319,6 +319,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		Logger:                logger,
 		MatchProbe:            matchProbe,
 		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
+		OrphanMintDeadline:    proxy.DefaultInactivityTimeout + time.Minute,
 		HandledStore:          b.handledManifests,
 	}
 }

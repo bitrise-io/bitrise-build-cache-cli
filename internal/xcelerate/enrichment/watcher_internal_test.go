@@ -4,6 +4,7 @@ package enrichment
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -276,6 +277,39 @@ func writeInlineManifest(t *testing.T, derivedRoot, subdir, uuid string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "LogStoreManifest.plist"), []byte(plist), 0o644))
 }
 
+// writeInlineManifestAtTime is writeInlineManifest with an explicit Stop
+// time expressed as an offset relative to fixtureNow so tests can pin the
+// deadline math precisely.
+func writeInlineManifestAtTime(t *testing.T, derivedRoot, subdir, uuid string, stopOffset time.Duration) {
+	t.Helper()
+
+	dir := filepath.Join(derivedRoot, "Logs", subdir)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	stopCF := float64(fixtureNow.Add(stopOffset).Unix() - cfAbsoluteEpoch)
+	startCF := stopCF - 10
+
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logs</key>
+	<dict>
+		<key>%s</key>
+		<dict>
+			<key>fileName</key><string>%s.xcactivitylog</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>signature</key><string>Build FreshScheme</string>
+			<key>timeStartedRecording</key><real>%.1f</real>
+			<key>timeStoppedRecording</key><real>%.1f</real>
+		</dict>
+	</dict>
+</dict>
+</plist>`, uuid, uuid, startCF, stopCF)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "LogStoreManifest.plist"), []byte(plist), 0o644))
+}
+
 func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 	home := t.TempDir()
 
@@ -409,6 +443,90 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 		uuids = append(uuids, r.UUID)
 	}
 	assert.Contains(t, uuids, uuid, "emitted UUID must be appended to HandledStore")
+}
+
+func TestWatcher_scan_OrphanMintDeadline_HoldsUntilMatchProbeSucceeds(t *testing.T) {
+	// Inline manifest with Stop 30s before fixtureNow so the 10m deadline
+	// keeps the entry gated across every scan until MatchProbe flips.
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-late")
+	const uuid = "LATE-PENDING-UUID"
+	writeInlineManifestAtTime(t, derivedRoot, "Build", uuid, -30*time.Second)
+
+	// Simulates ACI-5350: pending record lands after MaxCorrelationRetries
+	// would have exhausted but still within the deadline. Watcher must
+	// correlate instead of minting an orphan.
+	var (
+		matched   bool
+		handled   []string
+		probeHits int
+	)
+	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
+		HomeDir: home,
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+		MatchProbe: func(e ManifestEntry) bool {
+			probeHits++
+
+			return matched
+		},
+		MaxCorrelationRetries: 2,
+		OrphanMintDeadline:    10 * time.Minute,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	const gatedScans = 6
+	for i := 0; i < gatedScans; i++ {
+		w.scan(false)
+		assert.Empty(t, handled, "held while OrphanMintDeadline is active (scan %d)", i)
+	}
+
+	matched = true
+	w.scan(false)
+
+	assert.Equal(t, []string{uuid}, handled, "correlates on the scan MatchProbe first returns true")
+	assert.Contains(t, w.seen, uuid)
+	assert.NotContains(t, w.retries, uuid)
+	// One probe per scan (fresh-sight + gatedScans-1 held + 1 resolving).
+	assert.GreaterOrEqual(t, probeHits, gatedScans, "MatchProbe re-checked on every gated tick")
+}
+
+func TestWatcher_scan_OrphanMintDeadline_MintsWhenDeadlineElapsed(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-orphan")
+	const uuid = "ORPHAN-UUID"
+	// Stop 30s before fixtureNow: within the 10m deadline for the first
+	// scan, past the 1s deadline once we advance the clock by an hour.
+	writeInlineManifestAtTime(t, derivedRoot, "Build", uuid, -30*time.Second)
+
+	scanNow := fixtureNow
+	var handled []string
+	w := &Watcher{
+		Now:     func() time.Time { return scanNow },
+		HomeDir: home,
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+		MatchProbe:            func(ManifestEntry) bool { return false },
+		MaxCorrelationRetries: 6,
+		OrphanMintDeadline:    time.Second,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false)
+	assert.Empty(t, handled, "first sight buckets the uuid")
+
+	// Advance well past the 1s deadline but stay under HandledManifestMaxAge.
+	scanNow = fixtureNow.Add(time.Hour)
+	w.scan(false)
+
+	assert.Equal(t, []string{uuid}, handled, "past deadline mints the orphan")
+	assert.Contains(t, w.seen, uuid)
+	assert.NotContains(t, w.retries, uuid)
 }
 
 func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {

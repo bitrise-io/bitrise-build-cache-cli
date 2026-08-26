@@ -69,6 +69,10 @@ type Proxy struct {
 
 const defaultInactivityTimeout = 5 * time.Minute
 
+// DefaultInactivityTimeout is the exported view of the session-idle window,
+// consumed by the enrichment watcher to size its orphan-mint deadline.
+const DefaultInactivityTimeout = defaultInactivityTimeout
+
 func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
 	//nolint:exhaustruct
 	proxy := &Proxy{
