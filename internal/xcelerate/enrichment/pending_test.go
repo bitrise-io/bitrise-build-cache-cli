@@ -213,7 +213,9 @@ func TestStore_PruneOrphansOlderThan(t *testing.T) {
 		StartTime:    now.Add(-time.Hour),
 	}))
 
-	require.NoError(t, s.PruneOrphansOlderThan(now, 24*time.Hour))
+	pruned, err := s.PruneOrphansOlderThan(now, 24*time.Hour)
+	require.NoError(t, err)
+	assert.Equal(t, 1, pruned)
 
 	loaded, err := s.Load()
 	require.NoError(t, err)

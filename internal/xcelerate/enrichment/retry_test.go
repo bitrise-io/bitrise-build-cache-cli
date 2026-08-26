@@ -235,7 +235,7 @@ func TestRetrier_Sweep_DrainsStrandedOrphans(t *testing.T) {
 
 	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
 
-	// Attempts==0 record older than MaxAge: the exact leak ACI-5350 patched.
+	// Attempts==0 record older than MaxAge: slim-emitted, never enriched.
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID: "stranded-old",
 		StartTime:    now.Add(-25 * time.Hour),

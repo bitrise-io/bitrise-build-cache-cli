@@ -310,6 +310,38 @@ func writeInlineManifestAtTime(t *testing.T, derivedRoot, subdir, uuid string, s
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "LogStoreManifest.plist"), []byte(plist), 0o644))
 }
 
+// writeInlineManifestZeroStop writes a manifest with timeStoppedRecording=0 so
+// cfAbsoluteToTime returns a zero time.Time on Stop — the state Xcode leaves
+// behind for still-recording builds.
+func writeInlineManifestZeroStop(t *testing.T, derivedRoot, subdir, uuid string) {
+	t.Helper()
+
+	dir := filepath.Join(derivedRoot, "Logs", subdir)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	startCF := float64(fixtureNow.Add(-30*time.Second).Unix() - cfAbsoluteEpoch)
+
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logs</key>
+	<dict>
+		<key>%s</key>
+		<dict>
+			<key>fileName</key><string>%s.xcactivitylog</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>signature</key><string>Build FreshScheme</string>
+			<key>timeStartedRecording</key><real>%.1f</real>
+			<key>timeStoppedRecording</key><real>0.0</real>
+		</dict>
+	</dict>
+</dict>
+</plist>`, uuid, uuid, startCF)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "LogStoreManifest.plist"), []byte(plist), 0o644))
+}
+
 func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 	home := t.TempDir()
 
@@ -453,9 +485,9 @@ func TestWatcher_scan_OrphanMintDeadline_HoldsUntilMatchProbeSucceeds(t *testing
 	const uuid = "LATE-PENDING-UUID"
 	writeInlineManifestAtTime(t, derivedRoot, "Build", uuid, -30*time.Second)
 
-	// Simulates ACI-5350: pending record lands after MaxCorrelationRetries
-	// would have exhausted but still within the deadline. Watcher must
-	// correlate instead of minting an orphan.
+	// Pending record lands after MaxCorrelationRetries would have exhausted
+	// but still within the deadline: watcher must correlate instead of
+	// minting an orphan.
 	var (
 		matched   bool
 		handled   []string
@@ -491,7 +523,7 @@ func TestWatcher_scan_OrphanMintDeadline_HoldsUntilMatchProbeSucceeds(t *testing
 	assert.Contains(t, w.seen, uuid)
 	assert.NotContains(t, w.retries, uuid)
 	// One probe per scan (fresh-sight + gatedScans-1 held + 1 resolving).
-	assert.GreaterOrEqual(t, probeHits, gatedScans, "MatchProbe re-checked on every gated tick")
+	assert.Equal(t, gatedScans+1, probeHits, "MatchProbe re-checked on every gated tick")
 }
 
 func TestWatcher_scan_OrphanMintDeadline_MintsWhenDeadlineElapsed(t *testing.T) {
@@ -525,6 +557,52 @@ func TestWatcher_scan_OrphanMintDeadline_MintsWhenDeadlineElapsed(t *testing.T) 
 	w.scan(false)
 
 	assert.Equal(t, []string{uuid}, handled, "past deadline mints the orphan")
+	assert.Contains(t, w.seen, uuid)
+	assert.NotContains(t, w.retries, uuid)
+}
+
+// Zero-Stop entries can never trigger deadlineElapsed (no reference point for
+// the deadline math). With OrphanMintDeadline > 0 they must still drain via
+// the count-based fallback: retry bucket decrements each scan, then the
+// default branch orphan-mints.
+func TestWatcher_scan_ZeroStop_WithOrphanMintDeadline_FallsBackToRetryCount(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-zerostop")
+	const uuid = "ZERO-STOP-UUID"
+	writeInlineManifestZeroStop(t, derivedRoot, "Build", uuid)
+
+	var handled []string
+	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
+		HomeDir: home,
+		Handle: func(e ManifestEntry) {
+			handled = append(handled, e.UUID)
+		},
+		MatchProbe:            func(ManifestEntry) bool { return false },
+		MaxCorrelationRetries: 2,
+		OrphanMintDeadline:    10 * time.Minute,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	// Scan 1: first sight → opens retry bucket (attempts_left = 2).
+	w.scan(false)
+	assert.Empty(t, handled, "first sight only buckets")
+	assert.Equal(t, 2, w.retries[uuid])
+
+	// Scan 2: decrement to 1.
+	w.scan(false)
+	assert.Empty(t, handled)
+	assert.Equal(t, 1, w.retries[uuid])
+
+	// Scan 3: decrement to 0.
+	w.scan(false)
+	assert.Empty(t, handled)
+	assert.Equal(t, 0, w.retries[uuid])
+
+	// Scan 4: default branch mints the orphan even though OrphanMintDeadline > 0.
+	w.scan(false)
+	assert.Equal(t, []string{uuid}, handled, "count-based fallback must mint zero-Stop entries")
 	assert.Contains(t, w.seen, uuid)
 	assert.NotContains(t, w.retries, uuid)
 }

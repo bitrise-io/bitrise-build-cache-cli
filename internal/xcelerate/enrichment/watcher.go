@@ -53,10 +53,7 @@ func (w *Watcher) now() time.Time {
 	return time.Now()
 }
 
-// deadlineElapsed reports whether the entry's Stop is past the
-// OrphanMintDeadline — the point at which an unmatched entry should be
-// minted as an orphan regardless of the remaining retry-bucket count.
-// Zero deadline disables the deadline path entirely.
+// deadlineElapsed reports whether entry.Stop is past OrphanMintDeadline.
 func (w *Watcher) deadlineElapsed(entry ManifestEntry) bool {
 	if w.OrphanMintDeadline <= 0 || entry.Stop.IsZero() {
 		return false
@@ -184,7 +181,7 @@ func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
 			w.Handle(entry)
 			w.markHandled(entry.UUID)
 			delete(w.retries, entry.UUID)
-		case w.OrphanMintDeadline > 0:
+		case w.OrphanMintDeadline > 0 && !entry.Stop.IsZero():
 			logger.Debugf("Watcher: pending unmatched, hold for deadline uuid=%s", entry.UUID)
 		case w.retries[entry.UUID] > 0:
 			w.retries[entry.UUID]--

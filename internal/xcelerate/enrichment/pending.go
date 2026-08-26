@@ -60,17 +60,22 @@ func (s *Store) Mutate(fn func([]PendingRecord) []PendingRecord) error {
 }
 
 // PruneOrphansOlderThan drops records with Attempts == 0 whose StartTime is
-// older than maxAge. Retrier calls this at startup so a wrapper crash between
-// slim emit (appends untouched record) and enrichment doesn't leave the
-// queue growing indefinitely. Records with Attempts > 0 are the Retrier's
-// concern (aged out by FirstAttempt) and left alone.
-func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) error {
-	return s.Mutate(func(existing []PendingRecord) []PendingRecord {
+// older than maxAge and returns the number of records removed. Retrier calls
+// this at startup so a wrapper crash between slim emit (appends untouched
+// record) and enrichment doesn't leave the queue growing indefinitely.
+// Records with Attempts > 0 are the Retrier's concern (aged out by
+// FirstAttempt) and left alone.
+func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) (int, error) {
+	var pruned int
+
+	err := s.Mutate(func(existing []PendingRecord) []PendingRecord {
 		cutoff := now.Add(-maxAge)
 		kept := existing[:0]
 
 		for _, r := range existing {
 			if r.Attempts == 0 && !r.StartTime.IsZero() && r.StartTime.Before(cutoff) {
+				pruned++
+
 				continue
 			}
 
@@ -79,6 +84,11 @@ func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) error
 
 		return kept
 	})
+	if err != nil {
+		return 0, err
+	}
+
+	return pruned, nil
 }
 
 func (s *Store) loadLocked() ([]PendingRecord, error) {

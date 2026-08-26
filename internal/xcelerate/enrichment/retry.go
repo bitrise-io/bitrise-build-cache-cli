@@ -77,7 +77,11 @@ func (r *Retrier) Sweep() {
 		return
 	}
 
-	logger.Infof("Retrier: sweep start, pending=%d", len(snapshot))
+	if len(snapshot) > 0 {
+		logger.Infof("Retrier: sweep start, pending=%d", len(snapshot))
+	} else {
+		logger.Debugf("Retrier: sweep start, pending=0")
+	}
 
 	now := r.now()
 	maxAge := r.MaxAge
@@ -155,31 +159,18 @@ func (r *Retrier) Sweep() {
 	r.pruneStrandedOrphans(now, maxAge, logger)
 }
 
-// pruneStrandedOrphans reuses the exact predicate PruneAll trusts to drain
-// records that the watcher-side path never touches: slim-emitted entries
-// (Attempts==0) whose enrichment path never landed.
-func (r *Retrier) pruneStrandedOrphans(now time.Time, maxAge time.Duration, logger log.Logger) {
-	before, err := r.Store.Load()
+// pruneStrandedOrphans drains slim-emitted (Attempts==0) records the watcher path never touches.
+func (r *Retrier) pruneStrandedOrphans(now time.Time, maxAge time.Duration, logger log.Logger) int {
+	pruned, err := r.Store.PruneOrphansOlderThan(now, maxAge)
 	if err != nil {
-		logger.Debugf("Retrier: prune load failed: %s", err)
-
-		return
-	}
-
-	if err := r.Store.PruneOrphansOlderThan(now, maxAge); err != nil {
 		logger.Warnf("Retrier: prune orphans failed: %s", err)
 
-		return
+		return 0
 	}
 
-	after, err := r.Store.Load()
-	if err != nil {
-		logger.Debugf("Retrier: prune reload failed: %s", err)
-
-		return
-	}
-
-	if pruned := len(before) - len(after); pruned > 0 {
+	if pruned > 0 {
 		logger.Infof("Retrier: pruned %d stranded orphan record(s)", pruned)
 	}
+
+	return pruned
 }
