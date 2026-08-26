@@ -22,8 +22,9 @@ When you report status, report it **per channel**, and state what you actually c
 4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
 5. **Step GitHub releases** — cut for the scoped steps (Step 8).
 6. **Steplib PRs** — merged (Step 9).
+7. **Steplib spec published** — the new version is actually in the published spec (Step 10). A merged steplib PR does NOT mean the step shipped.
 
-Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–6). Confirming one says nothing about the other.
+Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–7). Confirming one says nothing about the other.
 
 ## ⚠ Critical path — read before doing anything
 
@@ -172,6 +173,42 @@ gh pr merge --squash --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
 ```
 
 Always wait for CI to pass — never bypass branch protection. The steplib repo requires squash merges (merge commits are blocked).
+
+### 10. Verify the steplib spec was published (⏳ SLOW — budget ~1h for a full batch)
+
+⚠ **Tell the user up front that this step is a long wait.** Merging a steplib PR triggers a `deploy` build on **`tooling-steplib-controller [STEPLIB]`** (app `4320df4cdbe4bf24`, owned by Bitrise #Steps) which regenerates the spec every build resolves `@<major>` against. Those deploys are **serialized — one at a time, ~7–22 min each** (`pr_audit` builds are unaffected and start instantly). Merging four steplib PRs within a couple of minutes therefore queues four deploys back to back, and the last one waits out all the others.
+
+**The tail of a burst can be silently dropped.** A queued build that has not started within 60 minutes is killed by the idle reaper (`Idle Build: Build hasn't been started or updated since more than 60 minutes ago`), nothing retries it, and the spec keeps whatever the last *successful* deploy published — while PR merged / tag cut / steplib PR merged all still read green. The **last-merged step is the one at risk**, because its deploy sits at the back of the queue.
+
+v3.6.2 hit this exactly: seven deploys were queued from ~13:02, `activate-build-cache-for-react-native-0.14.2` merged at 13:18:51, and its deploy (#6094) was reaped at 14:20:45 — **71 seconds** before the deploy ahead of it finished at 14:21:56. The spec stayed at 0.14.1 and a customer on `@0` was still resolving CLI 3.6.1 seventeen hours later.
+
+Check the deploy queue (watch `queue_wait` against the 60-minute limit, and any `abort_reason`):
+
+```bash
+curl -sS -H "Authorization: $BITRISE_PAT" \
+  "https://api.bitrise.io/v0.1/apps/4320df4cdbe4bf24/builds?limit=12" | python3 -c "
+import sys,json,datetime
+def p(t): return datetime.datetime.fromisoformat(t.replace('Z','+00:00')) if t else None
+for b in sorted(json.load(sys.stdin)['data'], key=lambda b: b['build_number']):
+    tr,sa=p(b.get('triggered_at')),p(b.get('started_on_worker_at'))
+    wait=f'{(sa-tr).total_seconds()/60:.1f}m' if (sa and tr) else 'NOT STARTED'
+    print(b['build_number'], b['status_text'], b.get('triggered_workflow'), 'wait='+wait, b.get('abort_reason') or '')"
+```
+
+Then verify the published artifact — this is the only check that proves delivery:
+
+```bash
+curl -sS https://bitrise-steplib-collection.s3.amazonaws.com/slim-spec.json.gz -o /tmp/spec.gz
+python3 -c "
+import gzip,json
+d=json.load(gzip.open('/tmp/spec.gz'))['steps']
+for n in ('activate-build-cache-for-gradle','activate-build-cache-for-xcode','activate-build-cache-for-react-native','activate-gradle-mirrors'):
+    print(n, d[n]['latest_version_number'])"
+```
+
+If a version is missing, re-trigger `deploy` on `master` at that steplib squash-merge commit (master HEAD if it merged last). It is idempotent — it regenerates from master — and on an empty queue it **starts immediately** and takes ~20 min, so this recovery is quick. Then re-check the spec.
+
+Step 9 says to merge each steplib PR as soon as it is mergeable, which is right for throughput but is what creates this queue. Keep doing that, then always come back and verify the spec — or stagger the last merge if a deploy backlog is already visible.
 
 ## Flaky E2E tests — cache hit rate
 
