@@ -20,16 +20,11 @@ const gradleDaemonMarker = "org.gradle.launcher.daemon.bootstrap.gradledaemon"
 
 // knownIDEs pairs a display name with markers taken from real process lines.
 //
-// execs match the executable path up to a token boundary, so a versioned bundle
-// (Xcode-26.6.0.app, which is what macOS reports even when launched through the
-// Xcode.app symlink) is found while an app whose name merely starts the same
-// (Xcodes.app) is not.
-//
-// args match anywhere in the command line, for markers a boundary would cut off:
-// a version-suffixed install dir, or the JetBrains launcher's own paths.selector.
-// That argument is what identifies a JetBrains IDE on Linux, where install dirs
-// differ per channel (`idea-IU-<ver>` vs Toolbox's `intellij-idea-ultimate`); on
-// macOS the JVM runs inside the app bundle and passes no such argument.
+// execs must end where the executable path does, so a versioned bundle
+// (Xcode-26.6.0.app — what macOS reports even via the Xcode.app symlink) matches
+// while Xcodes.app does not. args match anywhere, for markers a boundary would
+// cut off: version-suffixed install dirs, and the JetBrains paths.selector
+// argument, the only signal that holds across Linux install channels.
 //
 //nolint:gochecknoglobals
 var knownIDEs = []struct {
@@ -129,8 +124,8 @@ func ideRunning(processList string, execs, args []string) bool {
 	return false
 }
 
-// endsAtTokenBoundary reports whether marker occurs in line and ends where the
-// executable path does — at the end of the line, or where its arguments start.
+// endsAtTokenBoundary reports whether marker ends where the executable path does:
+// at the end of the line, or where its arguments start.
 func endsAtTokenBoundary(line, marker string) bool {
 	for rest := line; ; {
 		i := strings.Index(rest, marker)
