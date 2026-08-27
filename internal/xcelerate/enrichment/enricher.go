@@ -94,17 +94,17 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 		inv.Command = string(entry.Command()) + " " + scheme
 	}
 
-	e.markAttempt()
+	TickAttempt(e.Health, e.Logger, e.now())
 
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
-		e.markFailure(err)
+		TickFailure(e.Health, e.Logger, e.now(), err)
 		e.recordFailure(invocationID, matched, inv, err)
 
 		return
 	}
 
-	e.markSuccess()
+	TickSuccess(e.Health, e.Logger, e.now(), matched)
 
 	logger.Infof("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
 
@@ -112,50 +112,6 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 		if err := e.Store.Remove(invocationID); err != nil {
 			logger.Warnf("Failed to remove pending invocation %s after enrichment: %s", invocationID, err)
 		}
-	}
-}
-
-func (e *Enricher) markAttempt() {
-	if e.Health == nil {
-		return
-	}
-
-	now := e.now()
-	if err := e.Health.Update(func(s *HealthSnapshot) {
-		s.LastAttempt = now
-	}); err != nil {
-		logOr(e.Logger).Warnf("Failed to record enrichment attempt health: %s", err)
-	}
-}
-
-func (e *Enricher) markSuccess() {
-	if e.Health == nil {
-		return
-	}
-
-	now := e.now()
-	if err := e.Health.Update(func(s *HealthSnapshot) {
-		s.LastSuccess = now
-		s.ConsecutiveErrors = 0
-		s.LastError = ""
-		s.LastErrorAt = time.Time{}
-	}); err != nil {
-		logOr(e.Logger).Warnf("Failed to record enrichment success health: %s", err)
-	}
-}
-
-func (e *Enricher) markFailure(putErr error) {
-	if e.Health == nil {
-		return
-	}
-
-	now := e.now()
-	if err := e.Health.Update(func(s *HealthSnapshot) {
-		s.LastError = putErr.Error()
-		s.LastErrorAt = now
-		s.ConsecutiveErrors++
-	}); err != nil {
-		logOr(e.Logger).Warnf("Failed to record enrichment failure health: %s", err)
 	}
 }
 
