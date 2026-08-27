@@ -60,7 +60,7 @@ func Test_xcodebuildCmdFn(t *testing.T) {
 		}
 
 		SUT := &xcode.XcodebuildRunner{
-			Config:             xcelerate.Config{},
+			Config:             xcelerate.Config{SelfEnrichDisabled: true},
 			Metadata:           common.CacheConfigMetadata{},
 			InvocationID:       uuid.NewString(),
 			Logger:             mockLogger,

@@ -4,6 +4,7 @@ package xcode
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,6 +25,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
@@ -293,13 +295,28 @@ func (c *countingSessionClient) EndSession(_ context.Context, _ *session.EndSess
 }
 
 type countingInvocationSaver struct {
-	putCalls atomic.Int32
+	putCalls  atomic.Int32
+	lastInv   analytics.Invocation
+	returnErr error
 }
 
-func (s *countingInvocationSaver) PutInvocation(_ analytics.Invocation) error {
+func (s *countingInvocationSaver) PutInvocation(inv analytics.Invocation) error {
 	s.putCalls.Add(1)
+	s.lastInv = inv
 
-	return nil
+	return s.returnErr
+}
+
+type fakeXcresultParser struct {
+	summary xcresult.Summary
+	err     error
+	calls   atomic.Int32
+}
+
+func (p *fakeXcresultParser) Parse(_ context.Context, _ string) (xcresult.Summary, error) {
+	p.calls.Add(1)
+
+	return p.summary, p.err
 }
 
 type recordingXcodeRunner struct {
@@ -425,4 +442,199 @@ func TestDebugFlag_ORsGlobal_Xcodebuild(t *testing.T) {
 	merged := mergeDebugFlag(cfg)
 
 	assert.True(t, merged.DebugLogging, "global -d must OR into config.DebugLogging")
+}
+
+func newBuildActionArgsMock() *xcodeargsMocks.XcodeArgsMock {
+	return &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:   func() bool { return true },
+		ArgsFunc:             func(_ map[string]string) []string { return []string{"xcodebuild"} },
+		CommandFunc:          func() string { return "xcodebuild -scheme App" },
+		ShortCommandFunc:     func() string { return "xcodebuild build" },
+		ResultBundlePathFunc: func() string { return "" },
+	}
+}
+
+func newXcresultRunner(t *testing.T, argsMock *xcodeargsMocks.XcodeArgsMock, cfg xcelerate.Config, saver *countingInvocationSaver, parser xcresult.Parser) *XcodebuildRunner {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("BITRISE_INVOCATION_ID", "")
+
+	return &XcodebuildRunner{
+		Config:             cfg,
+		Metadata:           common.CacheConfigMetadata{},
+		InvocationID:       "inv-under-test",
+		Logger:             bundleTestLogger,
+		CacheLogger:        bundleTestLogger,
+		XcodeRunner:        &recordingXcodeRunner{stats: xcodeargs.RunStats{Success: true}},
+		ProxySessionClient: &countingSessionClient{},
+		XcodeArgs:          argsMock,
+		invocationAPI:      saver,
+		relationAPI:        &relationSenderMock{PutInvocationRelationFunc: func(_ multiplatform.InvocationRelation) error { return nil }},
+		localLogger:        &localInvocationLoggerMock{AppendFunc: func(_ invocations.Record) error { return nil }},
+		xcresultParser:     parser,
+	}
+}
+
+func Test_XcodebuildRunner_Run_SlimPath_NoXcresult_WhenDisabled(t *testing.T) {
+	argsMock := newBuildActionArgsMock()
+	saver := &countingInvocationSaver{}
+
+	r := newXcresultRunner(t, argsMock, xcelerate.Config{
+		BuildCacheEnabled:  true,
+		ProxySocketPath:    "/tmp/sock",
+		Silent:             true,
+		SelfEnrichDisabled: true,
+	}, saver, nil)
+
+	_ = r.Run(context.Background())
+
+	require.Equal(t, int32(1), saver.putCalls.Load())
+	assert.Empty(t, saver.lastInv.Targets, "SelfEnrichDisabled must skip xcresult attachment")
+	assert.Empty(t, saver.lastInv.Failures)
+}
+
+func Test_XcodebuildRunner_Run_SlimPath_ParserError(t *testing.T) {
+	argsMock := newBuildActionArgsMock()
+	saver := &countingInvocationSaver{}
+	parser := &fakeXcresultParser{err: errors.New("boom")}
+
+	r := newXcresultRunner(t, argsMock, xcelerate.Config{
+		BuildCacheEnabled: true,
+		ProxySocketPath:   "/tmp/sock",
+		Silent:            true,
+	}, saver, parser)
+
+	_ = r.Run(context.Background())
+
+	require.Equal(t, int32(1), saver.putCalls.Load())
+	assert.Empty(t, saver.lastInv.Targets, "parser error must not populate targets")
+	assert.Empty(t, saver.lastInv.Failures)
+	assert.Equal(t, int32(1), parser.calls.Load(), "parser must have been consulted")
+}
+
+func Test_XcodebuildRunner_Run_EnrichedPath_AttachesTargetsAndFailures(t *testing.T) {
+	argsMock := newBuildActionArgsMock()
+	saver := &countingInvocationSaver{}
+	parser := &fakeXcresultParser{
+		summary: xcresult.Summary{
+			Targets: []xcresult.TargetSummary{
+				{Name: "App", BuildDurationMs: 12500},
+				{Name: "Tests", BuildDurationMs: 2500},
+			},
+			Failures: []xcresult.FailureSummary{
+				{TargetName: "App", Message: "linker error: undefined symbol"},
+			},
+		},
+	}
+
+	r := newXcresultRunner(t, argsMock, xcelerate.Config{
+		BuildCacheEnabled: true,
+		ProxySocketPath:   "/tmp/sock",
+		Silent:            true,
+	}, saver, parser)
+
+	_ = r.Run(context.Background())
+
+	require.Equal(t, int32(1), saver.putCalls.Load())
+	require.Len(t, saver.lastInv.Targets, 2)
+	assert.Equal(t, "App", saver.lastInv.Targets[0].Name)
+	assert.Equal(t, int64(12500), saver.lastInv.Targets[0].BuildDurationMs)
+	assert.Equal(t, "Tests", saver.lastInv.Targets[1].Name)
+	require.Len(t, saver.lastInv.Failures, 1)
+	assert.Equal(t, "App", saver.lastInv.Failures[0].TargetName)
+	assert.Equal(t, "linker error: undefined symbol", saver.lastInv.Failures[0].Message)
+}
+
+func Test_XcodebuildRunner_assembleArgs_InjectsResultBundlePathByDefault(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:   func() bool { return true },
+		ResultBundlePathFunc: func() string { return "" },
+		ArgsFunc:             func(_ map[string]string) []string { return []string{"xcodebuild"} },
+	}
+	r := &XcodebuildRunner{
+		Config:       xcelerate.Config{BuildCacheEnabled: false},
+		Metadata:     common.CacheConfigMetadata{},
+		InvocationID: "inv-argv-1",
+		Logger:       bundleTestLogger,
+		CacheLogger:  bundleTestLogger,
+		XcodeArgs:    argsMock,
+	}
+
+	out := r.assembleArgs()
+
+	assert.Contains(t, out, ResultBundlePathFlag)
+	// The value must be the wrapper-owned deterministic path.
+	assert.Contains(t, out, filepath.Join(os.TempDir(), "bitrise-xcelerate-inv-argv-1.xcresult"))
+}
+
+func Test_XcodebuildRunner_assembleArgs_DoesNotClobberUserResultBundlePath(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:   func() bool { return true },
+		ResultBundlePathFunc: func() string { return "/user/path/result.xcresult" },
+		ArgsFunc:             func(_ map[string]string) []string { return []string{"xcodebuild", "-resultBundlePath", "/user/path/result.xcresult"} },
+	}
+	r := &XcodebuildRunner{
+		Config:       xcelerate.Config{BuildCacheEnabled: false},
+		Metadata:     common.CacheConfigMetadata{},
+		InvocationID: "inv-argv-2",
+		Logger:       bundleTestLogger,
+		CacheLogger:  bundleTestLogger,
+		XcodeArgs:    argsMock,
+	}
+
+	out := r.assembleArgs()
+
+	// User's path stays; wrapper does not add a second occurrence.
+	occurrences := 0
+	for _, a := range out {
+		if a == ResultBundlePathFlag {
+			occurrences++
+		}
+	}
+	assert.Equal(t, 1, occurrences, "user's -resultBundlePath must be the only one")
+	assert.NotContains(t, out, filepath.Join(os.TempDir(), "bitrise-xcelerate-inv-argv-2.xcresult"))
+}
+
+func Test_XcodebuildRunner_assembleArgs_SkipsInjectionForQueryActions(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:   func() bool { return false },
+		ResultBundlePathFunc: func() string { return "" },
+		ArgsFunc:             func(_ map[string]string) []string { return []string{"-list"} },
+	}
+	r := &XcodebuildRunner{
+		Config:       xcelerate.Config{BuildCacheEnabled: false},
+		Metadata:     common.CacheConfigMetadata{},
+		InvocationID: "inv-argv-3",
+		Logger:       bundleTestLogger,
+		CacheLogger:  bundleTestLogger,
+		XcodeArgs:    argsMock,
+	}
+
+	out := r.assembleArgs()
+
+	assert.NotContains(t, out, ResultBundlePathFlag,
+		"non-build actions must not receive -resultBundlePath (nothing to parse)")
+}
+
+func Test_XcodebuildRunner_assembleArgs_NoXcresultFlagDisablesInjection(t *testing.T) {
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:   func() bool { return true },
+		ResultBundlePathFunc: func() string { return "" },
+		ArgsFunc:             func(_ map[string]string) []string { return []string{"xcodebuild"} },
+	}
+	r := &XcodebuildRunner{
+		Config:       xcelerate.Config{BuildCacheEnabled: false},
+		Metadata:     common.CacheConfigMetadata{},
+		InvocationID: "inv-argv-4",
+		Logger:       bundleTestLogger,
+		CacheLogger:  bundleTestLogger,
+		XcodeArgs:    argsMock,
+		NoXcresult:   true,
+	}
+
+	out := r.assembleArgs()
+
+	assert.NotContains(t, out, ResultBundlePathFlag)
 }
