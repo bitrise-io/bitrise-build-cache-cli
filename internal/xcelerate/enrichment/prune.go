@@ -10,8 +10,6 @@ import (
 
 // PruneAll runs every enrichment-side startup sweep in one shot: handled
 // invocation markers, handled manifest UUIDs, and orphan pending records.
-// The Retrier repeats the pending-orphan prune each sweep so stranded
-// Attempts==0 records cannot accumulate between proxy restarts.
 func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	l := logOr(logger)
 

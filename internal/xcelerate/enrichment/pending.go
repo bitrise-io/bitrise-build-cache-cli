@@ -60,11 +60,10 @@ func (s *Store) Mutate(fn func([]PendingRecord) []PendingRecord) error {
 }
 
 // PruneOrphansOlderThan drops records with Attempts == 0 whose StartTime is
-// older than maxAge and returns the number of records removed. Retrier calls
-// this at startup and each sweep so a wrapper crash between slim emit
-// (appends untouched record) and enrichment doesn't leave the queue growing
-// indefinitely. Records with Attempts > 0 are the Retrier's concern (aged
-// out by FirstAttempt) and left alone.
+// older than maxAge. A wrapper crash between slim emit (appends untouched
+// record) and enrichment would otherwise leave the queue growing indefinitely.
+// Records with Attempts > 0 are the Retrier's concern (aged out by
+// FirstAttempt) and left alone.
 func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) (int, error) {
 	var pruned int
 
