@@ -213,7 +213,9 @@ func TestStore_PruneOrphansOlderThan(t *testing.T) {
 		StartTime:    now.Add(-time.Hour),
 	}))
 
-	require.NoError(t, s.PruneOrphansOlderThan(now, 24*time.Hour))
+	pruned, err := s.PruneOrphansOlderThan(now, 24*time.Hour)
+	require.NoError(t, err)
+	assert.Equal(t, 1, pruned, "only the old untouched orphan must count")
 
 	loaded, err := s.Load()
 	require.NoError(t, err)
@@ -222,4 +224,23 @@ func TestStore_PruneOrphansOlderThan(t *testing.T) {
 	assert.Contains(t, ids, "old-retried")
 	assert.Contains(t, ids, "fresh")
 	assert.NotContains(t, ids, "old-orphan")
+}
+
+func TestStore_PruneOrphansOlderThan_ReportsZeroWhenNothingRemoved(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	require.NoError(t, s.Append(enrichment.PendingRecord{
+		InvocationID: "fresh",
+		StartTime:    now.Add(-time.Hour),
+	}))
+
+	pruned, err := s.PruneOrphansOlderThan(now, 24*time.Hour)
+	require.NoError(t, err)
+	assert.Zero(t, pruned)
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	assert.Len(t, loaded, 1)
 }

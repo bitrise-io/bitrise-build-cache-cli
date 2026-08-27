@@ -77,7 +77,11 @@ func (r *Retrier) Sweep() {
 		return
 	}
 
-	logger.Debugf("Retrier: sweep start, pending=%d", len(snapshot))
+	if len(snapshot) > 0 {
+		logger.Infof("Retrier: sweep start, pending=%d", len(snapshot))
+	} else {
+		logger.Debugf("Retrier: sweep start, pending=0")
+	}
 
 	now := r.now()
 	maxAge := r.MaxAge
@@ -126,31 +130,51 @@ func (r *Retrier) Sweep() {
 		updates[rec.InvocationID] = update{drop: true}
 	}
 
-	if len(updates) == 0 {
+	if len(updates) > 0 {
+		if err := r.Store.Mutate(func(current []PendingRecord) []PendingRecord {
+			out := current[:0]
+			for _, rec := range current {
+				u, seen := updates[rec.InvocationID]
+				if !seen {
+					out = append(out, rec)
+
+					continue
+				}
+				if u.drop {
+					continue
+				}
+
+				rec.Attempts += u.attemptsDelta
+				rec.LastAttempt = u.lastAt
+				rec.LastError = u.lastErr
+				out = append(out, rec)
+			}
+
+			return out
+		}); err != nil {
+			logger.Warnf("Retrier failed to persist swept pending: %s", err)
+		}
+	}
+
+	r.pruneStrandedOrphans(logger, now)
+}
+
+// pruneStrandedOrphans drains slim-emitted (Attempts==0) records the watcher
+// path never touches so the pending queue is bounded by DefaultRetryMaxAge
+// instead of "until the next proxy restart".
+func (r *Retrier) pruneStrandedOrphans(logger log.Logger, now time.Time) {
+	pruned, err := r.Store.PruneOrphansOlderThan(now, DefaultRetryMaxAge)
+	if err != nil {
+		logger.Warnf("Retrier: prune orphans failed: %s", err)
+
 		return
 	}
 
-	if err := r.Store.Mutate(func(current []PendingRecord) []PendingRecord {
-		out := current[:0]
-		for _, rec := range current {
-			u, seen := updates[rec.InvocationID]
-			if !seen {
-				out = append(out, rec)
+	if pruned > 0 {
+		logger.Infof("Retrier: pruned %d stranded orphan record(s)", pruned)
 
-				continue
-			}
-			if u.drop {
-				continue
-			}
-
-			rec.Attempts += u.attemptsDelta
-			rec.LastAttempt = u.lastAt
-			rec.LastError = u.lastErr
-			out = append(out, rec)
-		}
-
-		return out
-	}); err != nil {
-		logger.Warnf("Retrier failed to persist swept pending: %s", err)
+		return
 	}
+
+	logger.Debugf("Retrier: no stranded orphans to prune")
 }
