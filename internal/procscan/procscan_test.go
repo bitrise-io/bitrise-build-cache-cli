@@ -71,8 +71,33 @@ func TestScanner_Scan_IDEs(t *testing.T) {
 			expected: []string{"VS Code Insiders"},
 		},
 		{
+			name:     "a versioned Xcode bundle, which is what macOS reports",
+			psOutput: "/Applications/Xcode-26.6.0.app/Contents/MacOS/Xcode\n/usr/libexec/opendirectoryd\n",
+			expected: []string{"Xcode"},
+		},
+		{
+			name:     "Xcode with launch arguments",
+			psOutput: "/Applications/Xcode.app/Contents/MacOS/Xcode -psn_0_167948\n",
+			expected: []string{"Xcode"},
+		},
+		{
+			name:     "the Xcodes version manager is not Xcode",
+			psOutput: "/Applications/Xcodes.app/Contents/MacOS/Xcodes\n",
+			expected: nil,
+		},
+		{
+			name:     "an Xcode helper is not the app itself",
+			psOutput: "/Applications/Xcode.app/Contents/SharedFrameworks/DVTInstrumentsFoundation.framework/Resources/DTServiceHub\n",
+			expected: nil,
+		},
+		{
+			name:     "VS Code on macOS",
+			psOutput: "/Applications/Visual Studio Code.app/Contents/MacOS/Code\n",
+			expected: []string{"Visual Studio Code"},
+		},
+		{
 			name:     "several IDEs are reported once each, in a stable order",
-			psOutput: "/Applications/Cursor.app/Contents/MacOS/Cursor\n/Applications/Xcode.app/Contents/MacOS/Xcode\n/Applications/Xcode.app/Contents/MacOS/Xcode --psn_0_1\n/Applications/Android Studio.app/Contents/MacOS/studio\n",
+			psOutput: "/Applications/Cursor.app/Contents/MacOS/Cursor\n/Applications/Xcode-26.6.0.app/Contents/MacOS/Xcode\n/Applications/Xcode-26.6.0.app/Contents/MacOS/Xcode -psn_0_1\n/Applications/Android Studio.app/Contents/MacOS/studio\n",
 			expected: []string{"Android Studio", "Xcode", "Cursor"},
 		},
 		{

@@ -19,23 +19,48 @@ const scanTimeout = 3 * time.Second
 const gradleDaemonMarker = "org.gradle.launcher.daemon.bootstrap.gradledaemon"
 
 // knownIDEs pairs a display name with markers taken from real process lines.
-// JetBrains install dirs differ per channel (`idea-IU-<ver>` vs Toolbox's
-// `intellij-idea-ultimate`), so on Linux the launcher's own paths.selector
-// argument is what holds; macOS runs the JVM inside the app bundle and passes no
-// such argument. Markers stay path-anchored to not fire on a process that merely
-// mentions an IDE, such as a tail of its log.
+//
+// execs match the executable path up to a token boundary, so a versioned bundle
+// (Xcode-26.6.0.app, which is what macOS reports even when launched through the
+// Xcode.app symlink) is found while an app whose name merely starts the same
+// (Xcodes.app) is not.
+//
+// args match anywhere in the command line, for markers a boundary would cut off:
+// a version-suffixed install dir, or the JetBrains launcher's own paths.selector.
+// That argument is what identifies a JetBrains IDE on Linux, where install dirs
+// differ per channel (`idea-IU-<ver>` vs Toolbox's `intellij-idea-ultimate`); on
+// macOS the JVM runs inside the app bundle and passes no such argument.
 //
 //nolint:gochecknoglobals
 var knownIDEs = []struct {
-	name     string
-	patterns []string
+	name  string
+	execs []string
+	args  []string
 }{
-	{"Android Studio", []string{"android studio.app/contents/macos", "/android-studio/bin/studio", "didea.paths.selector=androidstudio"}},
-	{"IntelliJ IDEA", []string{"intellij idea.app/contents/macos", "/idea-iu", "/idea-ic", "didea.paths.selector=intellijidea"}},
-	{"Xcode", []string{"xcode.app/contents/macos/xcode"}},
-	{"Visual Studio Code", []string{"visual studio code.app/contents/macos", "/usr/share/code/code"}},
-	{"VS Code Insiders", []string{"visual studio code - insiders.app/contents/macos", "/usr/share/code-insiders/code-insiders"}},
-	{"Cursor", []string{"cursor.app/contents/macos", "/usr/share/cursor/cursor"}},
+	{
+		name: "Android Studio",
+		args: []string{"android studio.app/contents/macos", "/android-studio/bin/studio", "didea.paths.selector=androidstudio"},
+	},
+	{
+		name: "IntelliJ IDEA",
+		args: []string{"intellij idea.app/contents/macos", "/idea-iu", "/idea-ic", "didea.paths.selector=intellijidea"},
+	},
+	{
+		name:  "Xcode",
+		execs: []string{".app/contents/macos/xcode"},
+	},
+	{
+		name:  "Visual Studio Code",
+		execs: []string{"visual studio code.app/contents/macos/code", "/usr/share/code/code"},
+	},
+	{
+		name:  "VS Code Insiders",
+		execs: []string{"visual studio code - insiders.app/contents/macos/code - insiders", "/usr/share/code-insiders/code-insiders"},
+	},
+	{
+		name: "Cursor",
+		args: []string{"cursor.app/contents/macos", "/usr/share/cursor/cursor"},
+	},
 }
 
 type Result struct {
@@ -70,12 +95,8 @@ func scan(processList string) Result {
 	var result Result
 
 	for _, entry := range knownIDEs {
-		for _, pattern := range entry.patterns {
-			if strings.Contains(processList, pattern) {
-				result.IDEs = append(result.IDEs, entry.name)
-
-				break
-			}
+		if ideRunning(processList, entry.execs, entry.args) {
+			result.IDEs = append(result.IDEs, entry.name)
 		}
 	}
 
@@ -88,4 +109,40 @@ func scan(processList string) Result {
 	}
 
 	return result
+}
+
+func ideRunning(processList string, execs, args []string) bool {
+	for _, arg := range args {
+		if strings.Contains(processList, arg) {
+			return true
+		}
+	}
+
+	for line := range strings.SplitSeq(processList, "\n") {
+		for _, exe := range execs {
+			if endsAtTokenBoundary(line, exe) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// endsAtTokenBoundary reports whether marker occurs in line and ends where the
+// executable path does — at the end of the line, or where its arguments start.
+func endsAtTokenBoundary(line, marker string) bool {
+	for rest := line; ; {
+		i := strings.Index(rest, marker)
+		if i < 0 {
+			return false
+		}
+
+		after := rest[i+len(marker):]
+		if after == "" || strings.HasPrefix(after, " ") {
+			return true
+		}
+
+		rest = rest[i+1:]
+	}
 }
