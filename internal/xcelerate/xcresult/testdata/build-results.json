@@ -1,0 +1,44 @@
+{
+  "analyzerWarningCount": 0,
+  "errorCount": 1,
+  "warningCount": 2,
+  "status": "failed",
+  "startedTime": 1000.0,
+  "endedTime": 1030.5,
+  "actions": [
+    {
+      "title": "Build Seek",
+      "schemeName": "Seek",
+      "targets": [
+        {
+          "name": "Seek",
+          "buildDurationInMs": 12500
+        },
+        {
+          "name": "SeekTests",
+          "buildDurationInSeconds": 2.5
+        }
+      ],
+      "result": {
+        "errors": [
+          {
+            "message": "SwiftCompile normal arm64 Compiling Foo.swift\n/Users/vagrant/Seek/Foo.swift:10:5: error: cannot find 'bar' in scope",
+            "issueType": "Swift Compiler Error",
+            "targetName": "Seek"
+          }
+        ]
+      }
+    }
+  ],
+  "targets": [
+    {
+      "name": "SharedKit",
+      "buildDurationInMs": 3200
+    },
+    {
+      "name": "Seek",
+      "buildDurationInMs": 12500
+    }
+  ],
+  "extra_field_should_be_ignored": true
+}
