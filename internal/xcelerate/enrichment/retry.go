@@ -77,9 +77,10 @@ func (r *Retrier) Sweep() {
 		return
 	}
 
-	if len(snapshot) > 0 {
+	switch {
+	case len(snapshot) > 0:
 		logger.Infof("Retrier: sweep start, pending=%d", len(snapshot))
-	} else {
+	default:
 		logger.Debugf("Retrier: sweep start, pending=0")
 	}
 
@@ -164,17 +165,12 @@ func (r *Retrier) Sweep() {
 // instead of "until the next proxy restart".
 func (r *Retrier) pruneStrandedOrphans(logger log.Logger, now time.Time) {
 	pruned, err := r.Store.PruneOrphansOlderThan(now, DefaultRetryMaxAge)
-	if err != nil {
+	switch {
+	case err != nil:
 		logger.Warnf("Retrier: prune orphans failed: %s", err)
-
-		return
-	}
-
-	if pruned > 0 {
+	case pruned > 0:
 		logger.Infof("Retrier: pruned %d stranded orphan record(s)", pruned)
-
-		return
+	default:
+		logger.Debugf("Retrier: no stranded orphans to prune")
 	}
-
-	logger.Debugf("Retrier: no stranded orphans to prune")
 }
