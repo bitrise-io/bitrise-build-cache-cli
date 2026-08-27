@@ -59,8 +59,10 @@ func TestDetector_Running(t *testing.T) {
 			expected: []string{"Xcode"},
 		},
 		{
-			name:     "an unrelated process mentioning an IDE path does not count",
-			psOutput: "tail -f /Users/me/Library/Logs/Android Studio/idea.log\n",
+			name: "an unrelated process mentioning an IDE path does not count",
+			psOutput: "tail -f /Users/me/Library/Logs/Android Studio/idea.log\n" +
+				"grep -r studio.sh /Users/me/src\n" +
+				"vim /Users/me/notes/code-insiders.md\n",
 			expected: nil,
 		},
 		{
@@ -72,13 +74,16 @@ func TestDetector_Running(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, detectorFor(t, tc.psOutput, nil).Running(context.Background()))
+			got, err := detectorFor(t, tc.psOutput, nil).Running(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
 
 func TestDetector_Running_psFails(t *testing.T) {
-	got := detectorFor(t, "/Applications/Android Studio.app/Contents/MacOS/studio", errors.New("ps: command not found")).
+	got, err := detectorFor(t, "/Applications/Android Studio.app/Contents/MacOS/studio", errors.New("ps: command not found")).
 		Running(context.Background())
-	require.Nil(t, got)
+	require.Error(t, err)
+	assert.Nil(t, got)
 }

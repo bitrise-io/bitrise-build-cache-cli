@@ -1,11 +1,11 @@
-// Package ide detects IDEs that are currently running. IDEs read $PATH once at
+// Package ide detects IDEs that are currently running. An IDE reads $PATH once at
 // startup, so one that was already open when `activate` ran cannot see a freshly
-// installed CLI and its builds fail — knowing which ones are up lets the CLI say
-// exactly what needs restarting.
+// installed CLI — knowing which ones are up lets the CLI name what to restart.
 package ide
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,20 +14,19 @@ import (
 
 const detectTimeout = 3 * time.Second
 
-// known maps a display name to the process-argument markers that identify it.
-// Markers are matched case-insensitively against the full command line, and are
-// specific enough (app bundle executables, launcher scripts) not to fire on an
-// unrelated process that merely mentions the IDE in a path.
+// known pairs a display name with the process-argument markers identifying it.
+// Markers stay path-anchored so they don't fire on a process that merely mentions
+// an IDE — a log tail, an editor open on a file under the IDE's directory.
 //
 //nolint:gochecknoglobals
 var known = []struct {
 	name     string
 	patterns []string
 }{
-	{"Android Studio", []string{"android studio.app/contents/macos", "/android-studio/bin/studio", "studio.sh", "studio_main"}},
-	{"IntelliJ IDEA", []string{"intellij idea.app/contents/macos", "/idea-iu", "/idea-ic", "/idea/bin/idea", "idea.sh"}},
+	{"Android Studio", []string{"android studio.app/contents/macos", "/android-studio/bin/studio", "/bin/studio.sh"}},
+	{"IntelliJ IDEA", []string{"intellij idea.app/contents/macos", "/idea-iu", "/idea-ic", "/bin/idea.sh", "/idea/bin/idea"}},
 	{"Xcode", []string{"xcode.app/contents/macos/xcode"}},
-	{"Visual Studio Code", []string{"visual studio code.app/contents/macos", "/usr/share/code/code", "code-insiders"}},
+	{"Visual Studio Code", []string{"visual studio code.app/contents/macos", "/usr/share/code/code", "/bin/code-insiders"}},
 	{"Cursor", []string{"cursor.app/contents/macos"}},
 }
 
@@ -36,10 +35,8 @@ type Detector struct {
 	CommandFunc utils.CommandFunc
 }
 
-// Running returns the display names of the IDEs it found, in `known` order. An
-// unusable process list yields no names: the detection is a nicety, so a host
-// where it doesn't work stays silent rather than guessing.
-func (d Detector) Running(ctx context.Context) []string {
+// Running returns the display names of the IDEs it found, in `known` order.
+func (d Detector) Running(ctx context.Context) ([]string, error) {
 	commandFunc := d.CommandFunc
 	if commandFunc == nil {
 		commandFunc = utils.DefaultCommandFunc()
@@ -50,10 +47,10 @@ func (d Detector) Running(ctx context.Context) []string {
 
 	out, err := commandFunc(ctx, "ps", "-Ao", "args=").CombinedOutput()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list processes: %w", err)
 	}
 
-	return match(strings.ToLower(string(out)))
+	return match(strings.ToLower(string(out))), nil
 }
 
 func match(processList string) []string {

@@ -11,20 +11,19 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// ideDetector is swappable in tests.
-//
-//nolint:gochecknoglobals
-var ideDetector = func(ctx context.Context) []string {
+//nolint:gochecknoglobals // swappable in tests
+var detectRunningIDEs = func(ctx context.Context) ([]string, error) {
 	return ide.Detector{}.Running(ctx)
 }
 
-// warnRestartIDEs tells the user to restart the IDEs that are up. An IDE started
+// warnRestartIDEs asks for a restart of the IDEs that are up: an IDE opened
 // before the CLI was installed has a $PATH without it, and the generated Gradle
-// init script calls the CLI by name, so its builds fail at configuration time
-// with `Cannot run program "bitrise-build-cache"`.
+// init script calls the CLI by name, so its builds fail at configuration time.
 func warnRestartIDEs(ctx context.Context, logger log.Logger, tools []string) {
-	running := ideDetector(ctx)
-	gradleSelected := slices.Contains(tools, string(toolGradle))
+	running, err := detectRunningIDEs(ctx)
+	if err != nil {
+		logger.Debugf("Could not list running IDEs: %s", err)
+	}
 
 	logger.Println()
 
@@ -34,26 +33,15 @@ func warnRestartIDEs(ctx context.Context, logger log.Logger, tools []string) {
 		return
 	}
 
-	logger.Warnf("⚠️  %s %s running — restart %s now.", strings.Join(running, " and "), isAre(len(running)), itThem(len(running)))
+	subject := "is running — restart it now."
+	if len(running) > 1 {
+		subject = "are running — restart them now."
+	}
+
+	logger.Warnf("⚠️  %s %s", strings.Join(running, " and "), subject)
 	logger.Infof("IDEs read $PATH once at startup, so an already-running IDE won't find the %s CLI and your builds will fail with `Cannot run program \"%s\"`.", paths.CLIBinaryName, paths.CLIBinaryName)
 
-	if gradleSelected {
+	if slices.Contains(tools, string(toolGradle)) {
 		logger.Infof("Also run `./gradlew --stop` to drop any Gradle daemon started with the old environment.")
 	}
-}
-
-func isAre(n int) string {
-	if n == 1 {
-		return "is"
-	}
-
-	return "are"
-}
-
-func itThem(n int) string {
-	if n == 1 {
-		return "it"
-	}
-
-	return "them"
 }

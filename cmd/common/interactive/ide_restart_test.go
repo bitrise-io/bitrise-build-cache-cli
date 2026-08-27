@@ -4,15 +4,19 @@ package interactive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 )
 
-// recordingLogger collects every formatted line so assertions can look at the
-// whole output regardless of which level printed it.
+var _ log.Logger = &recordingLogger{}
+
+// recordingLogger flattens every level into one buffer, so a message can be
+// asserted on without pinning which level printed it.
 type recordingLogger struct {
 	lines []string
 }
@@ -38,17 +42,17 @@ func (l *recordingLogger) TErrorf(format string, v ...interface{}) { l.record(fo
 func (l *recordingLogger) Println()                                {}
 func (l *recordingLogger) EnableDebugLog(bool)                     {}
 
-func stubIDEDetector(t *testing.T, running []string) {
+func stubIDEDetector(t *testing.T, running []string, err error) {
 	t.Helper()
 
-	original := ideDetector
-	ideDetector = func(context.Context) []string { return running }
-	t.Cleanup(func() { ideDetector = original })
+	original := detectRunningIDEs
+	detectRunningIDEs = func(context.Context) ([]string, error) { return running, err }
+	t.Cleanup(func() { detectRunningIDEs = original })
 }
 
 func TestWarnRestartIDEs(t *testing.T) {
 	t.Run("names the running IDEs and mentions the Gradle daemon", func(t *testing.T) {
-		stubIDEDetector(t, []string{"Android Studio", "Xcode"})
+		stubIDEDetector(t, []string{"Android Studio", "Xcode"}, nil)
 		logger := &recordingLogger{}
 
 		warnRestartIDEs(context.Background(), logger, []string{string(toolGradle), string(toolXcode)})
@@ -60,7 +64,7 @@ func TestWarnRestartIDEs(t *testing.T) {
 	})
 
 	t.Run("no Gradle daemon hint when Gradle was not selected", func(t *testing.T) {
-		stubIDEDetector(t, []string{"Xcode"})
+		stubIDEDetector(t, []string{"Xcode"}, nil)
 		logger := &recordingLogger{}
 
 		warnRestartIDEs(context.Background(), logger, []string{string(toolXcode)})
@@ -71,7 +75,7 @@ func TestWarnRestartIDEs(t *testing.T) {
 	})
 
 	t.Run("falls back to a single conditional line when no IDE is detected", func(t *testing.T) {
-		stubIDEDetector(t, nil)
+		stubIDEDetector(t, nil, nil)
 		logger := &recordingLogger{}
 
 		warnRestartIDEs(context.Background(), logger, []string{string(toolGradle)})
@@ -79,5 +83,16 @@ func TestWarnRestartIDEs(t *testing.T) {
 		out := logger.String()
 		assert.Contains(t, out, "If an IDE was already open before this setup, restart it")
 		assert.NotContains(t, out, "./gradlew --stop")
+	})
+
+	t.Run("a failed detection still prints the conditional line", func(t *testing.T) {
+		stubIDEDetector(t, nil, errors.New("ps: command not found"))
+		logger := &recordingLogger{}
+
+		warnRestartIDEs(context.Background(), logger, []string{string(toolGradle)})
+
+		out := logger.String()
+		assert.Contains(t, out, "Could not list running IDEs")
+		assert.Contains(t, out, "If an IDE was already open before this setup, restart it")
 	})
 }
