@@ -112,6 +112,11 @@ func TestScanner_Scan_gradleDaemons(t *testing.T) {
 		{"one daemon", daemonLine + "\n", 1},
 		{"two daemons", daemonLine + "\n" + daemonLine + " --foo\n", 2},
 		{
+			name:     "a shell command naming the class is not a daemon",
+			psOutput: "grep -r org.gradle.launcher.daemon.bootstrap.GradleDaemon /Users/me/src\n",
+			expected: 0,
+		},
+		{
 			name:     "the Kotlin compile daemon is not a Gradle daemon",
 			psOutput: "/usr/bin/java -cp /Users/me/.gradle/caches/kotlin.jar org.jetbrains.kotlin.daemon.KotlinCompileDaemon\n",
 			expected: 0,

@@ -17,10 +17,9 @@ var scanStaleProcesses = func(ctx context.Context) (procscan.Result, error) {
 	return procscan.Scanner{}.Scan(ctx)
 }
 
-// warnRestartStale asks for a restart of whatever is still holding the old
-// environment: an IDE or a Gradle daemon started before the CLI was installed has
-// a $PATH without it, and the generated Gradle init script calls the CLI by name,
-// so its builds fail at configuration time.
+// warnRestartStale asks for a restart of whatever still holds the pre-install
+// $PATH. The generated Gradle init script calls the CLI by name, so a process
+// that can't resolve it fails the build at configuration time.
 func warnRestartStale(ctx context.Context, logger log.Logger, tools []string) {
 	found, err := scanStaleProcesses(ctx)
 	if err != nil {

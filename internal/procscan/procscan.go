@@ -1,7 +1,6 @@
-// Package procscan finds processes that are holding a stale environment: an IDE
-// and a Gradle daemon both read $PATH once at startup, so either one that was
-// already up when `activate` ran cannot see a freshly installed CLI — knowing
-// which are around lets the CLI name exactly what to restart.
+// Package procscan finds processes holding a stale environment. An IDE and a
+// Gradle daemon both read $PATH once at startup, so either one that was already
+// up when `activate` ran cannot see a freshly installed CLI.
 package procscan
 
 import (
@@ -15,16 +14,16 @@ import (
 
 const scanTimeout = 3 * time.Second
 
-// gradleDaemonMarker is the daemon's bootstrap class, which every Gradle version
-// passes on the java command line.
+// The bootstrap class is stable across majors (checked on 4.4.1 and 8.14.5),
+// unlike the jar paths around it.
 const gradleDaemonMarker = "org.gradle.launcher.daemon.bootstrap.gradledaemon"
 
-// knownIDEs pairs a display name with the process-argument markers identifying
-// it. Every marker was taken from a real process line (macOS app bundles, Linux
-// package paths, and the JetBrains launcher's own -Didea.paths.selector, which
-// holds across tarball, Toolbox and snap installs). They stay path-anchored so
-// they don't fire on a process that merely mentions an IDE — a log tail, an
-// editor open on a file under the IDE's directory.
+// knownIDEs pairs a display name with markers taken from real process lines.
+// JetBrains install dirs differ per channel (`idea-IU-<ver>` vs Toolbox's
+// `intellij-idea-ultimate`), so on Linux the launcher's own paths.selector
+// argument is what holds; macOS runs the JVM inside the app bundle and passes no
+// such argument. Markers stay path-anchored to not fire on a process that merely
+// mentions an IDE, such as a tail of its log.
 //
 //nolint:gochecknoglobals
 var knownIDEs = []struct {
@@ -39,7 +38,6 @@ var knownIDEs = []struct {
 	{"Cursor", []string{"cursor.app/contents/macos", "/usr/share/cursor/cursor"}},
 }
 
-// Result is what a scan found.
 type Result struct {
 	// IDEs holds display names, in knownIDEs order.
 	IDEs          []string
@@ -69,7 +67,7 @@ func (s Scanner) Scan(ctx context.Context) (Result, error) {
 }
 
 func scan(processList string) Result {
-	result := Result{}
+	var result Result
 
 	for _, entry := range knownIDEs {
 		for _, pattern := range entry.patterns {
@@ -81,8 +79,10 @@ func scan(processList string) Result {
 		}
 	}
 
+	// A line has to be a JVM as well: the marker alone also matches a shell
+	// command that merely names the class, e.g. a grep for it.
 	for line := range strings.SplitSeq(processList, "\n") {
-		if strings.Contains(line, gradleDaemonMarker) {
+		if strings.Contains(line, gradleDaemonMarker) && strings.Contains(line, "java") {
 			result.GradleDaemons++
 		}
 	}
