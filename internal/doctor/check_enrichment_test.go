@@ -142,8 +142,6 @@ func TestEnrichmentCheck_warnWhenLastMatchedLagsLastSuccess(t *testing.T) {
 	pendingPath := filepath.Join(tmp, "pending.ndjson")
 	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
 
-	// Wrapper self-enrich keeps ticking (LastSuccess fresh) but the watcher's
-	// correlated path hasn't fired in over a week — the ACI-5350 shape.
 	hw := &enrichment.HealthWriter{Path: healthPath}
 	require.NoError(t, hw.Update(func(s *enrichment.HealthSnapshot) {
 		s.LastSuccess = now.Add(-time.Minute)
@@ -169,7 +167,6 @@ func TestEnrichmentCheck_okWhenLastMatchedNeverSet(t *testing.T) {
 	require.NoError(t, hw.Update(func(s *enrichment.HealthSnapshot) {
 		s.LastSuccess = now.Add(-time.Minute)
 		s.LastAttempt = now.Add(-time.Minute)
-		// LastMatched stays zero.
 	}))
 
 	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })

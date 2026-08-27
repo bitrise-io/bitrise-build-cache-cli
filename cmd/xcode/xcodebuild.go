@@ -839,7 +839,6 @@ func (c *XcodebuildRunner) appendResultBundleArg(argv []string) []string {
 	return append(argv, ResultBundlePathFlag, bundlePath)
 }
 
-// selfEnrichEnabled combines the config kill switch with the per-invocation flag.
 func (c *XcodebuildRunner) selfEnrichEnabled() bool {
 	if c.Config.SelfEnrichDisabled {
 		return false

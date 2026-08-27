@@ -33,11 +33,9 @@ const (
 	// wrapper's PUT.
 	parseTimeout = 10 * time.Second
 
-	// stderrCap bounds the stderr buffer we retain for diagnostics.
 	stderrCap = 1024 * 1024
 )
 
-// Summary is the wrapper-side view of a Xcode 26 build's xcresult.
 type Summary struct {
 	Targets  []TargetSummary
 	Failures []FailureSummary
@@ -57,8 +55,7 @@ type Parser interface {
 	Parse(ctx context.Context, bundlePath string) Summary
 }
 
-// DefaultParser is the production parser. XcrunPath is optional — when empty
-// the shell PATH resolves xcrun.
+// DefaultParser resolves xcrun off PATH when XcrunPath is empty.
 type DefaultParser struct {
 	XcrunPath   string
 	CommandFunc utils.CommandFunc

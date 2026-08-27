@@ -563,7 +563,6 @@ func Test_XcodebuildRunner_assembleArgs_InjectsResultBundlePathByDefault(t *test
 	out := r.assembleArgs()
 
 	assert.Contains(t, out, ResultBundlePathFlag)
-	// The value must be the wrapper-owned deterministic path.
 	assert.Contains(t, out, filepath.Join(os.TempDir(), "bitrise-xcelerate-inv-argv-1.xcresult"))
 }
 
@@ -584,7 +583,6 @@ func Test_XcodebuildRunner_assembleArgs_DoesNotClobberUserResultBundlePath(t *te
 
 	out := r.assembleArgs()
 
-	// User's path stays; wrapper does not add a second occurrence.
 	occurrences := 0
 	for _, a := range out {
 		if a == ResultBundlePathFlag {
@@ -637,8 +635,6 @@ func Test_XcodebuildRunner_assembleArgs_NoXcresultFlagDisablesInjection(t *testi
 	assert.NotContains(t, out, ResultBundlePathFlag)
 }
 
-// User-supplied -resultBundlePath must be off-limits: wrapper must not parse
-// it and must not delete it on cleanup.
 func Test_XcodebuildRunner_Run_UserResultBundlePath_LeftUntouched(t *testing.T) {
 	userBundle := filepath.Join(t.TempDir(), "user.xcresult")
 	require.NoError(t, os.MkdirAll(userBundle, 0o755))
