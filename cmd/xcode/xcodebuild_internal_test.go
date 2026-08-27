@@ -4,7 +4,6 @@ package xcode
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -309,14 +308,13 @@ func (s *countingInvocationSaver) PutInvocation(inv analytics.Invocation) error 
 
 type fakeXcresultParser struct {
 	summary xcresult.Summary
-	err     error
 	calls   atomic.Int32
 }
 
-func (p *fakeXcresultParser) Parse(_ context.Context, _ string) (xcresult.Summary, error) {
+func (p *fakeXcresultParser) Parse(_ context.Context, _ string) xcresult.Summary {
 	p.calls.Add(1)
 
-	return p.summary, p.err
+	return p.summary
 }
 
 type recordingXcodeRunner struct {
@@ -495,10 +493,10 @@ func Test_XcodebuildRunner_Run_SlimPath_NoXcresult_WhenDisabled(t *testing.T) {
 	assert.Empty(t, saver.lastInv.Failures)
 }
 
-func Test_XcodebuildRunner_Run_SlimPath_ParserError(t *testing.T) {
+func Test_XcodebuildRunner_Run_SlimPath_EmptyParserSummary(t *testing.T) {
 	argsMock := newBuildActionArgsMock()
 	saver := &countingInvocationSaver{}
-	parser := &fakeXcresultParser{err: errors.New("boom")}
+	parser := &fakeXcresultParser{}
 
 	r := newXcresultRunner(t, argsMock, xcelerate.Config{
 		BuildCacheEnabled: true,
@@ -509,7 +507,7 @@ func Test_XcodebuildRunner_Run_SlimPath_ParserError(t *testing.T) {
 	_ = r.Run(context.Background())
 
 	require.Equal(t, int32(1), saver.putCalls.Load())
-	assert.Empty(t, saver.lastInv.Targets, "parser error must not populate targets")
+	assert.Empty(t, saver.lastInv.Targets, "empty parser summary must not populate targets")
 	assert.Empty(t, saver.lastInv.Failures)
 	assert.Equal(t, int32(1), parser.calls.Load(), "parser must have been consulted")
 }
@@ -637,4 +635,39 @@ func Test_XcodebuildRunner_assembleArgs_NoXcresultFlagDisablesInjection(t *testi
 	out := r.assembleArgs()
 
 	assert.NotContains(t, out, ResultBundlePathFlag)
+}
+
+// User-supplied -resultBundlePath must be off-limits: wrapper must not parse
+// it and must not delete it on cleanup.
+func Test_XcodebuildRunner_Run_UserResultBundlePath_LeftUntouched(t *testing.T) {
+	userBundle := filepath.Join(t.TempDir(), "user.xcresult")
+	require.NoError(t, os.MkdirAll(userBundle, 0o755))
+	marker := filepath.Join(userBundle, "marker.txt")
+	require.NoError(t, os.WriteFile(marker, []byte("do-not-touch"), 0o644))
+
+	argsMock := &xcodeargsMocks.XcodeArgsMock{
+		HasBuildActionFunc:   func() bool { return true },
+		ResultBundlePathFunc: func() string { return userBundle },
+		ArgsFunc:             func(_ map[string]string) []string { return []string{"xcodebuild", "-resultBundlePath", userBundle} },
+		CommandFunc:          func() string { return "xcodebuild -scheme App -resultBundlePath " + userBundle },
+		ShortCommandFunc:     func() string { return "xcodebuild build" },
+	}
+
+	saver := &countingInvocationSaver{}
+	parser := &fakeXcresultParser{}
+
+	r := newXcresultRunner(t, argsMock, xcelerate.Config{
+		BuildCacheEnabled: true,
+		ProxySocketPath:   "/tmp/sock",
+		Silent:            true,
+	}, saver, parser)
+
+	_ = r.Run(context.Background())
+
+	require.Equal(t, int32(1), saver.putCalls.Load())
+	assert.Zero(t, parser.calls.Load(),
+		"parser must not be consulted when the user supplied -resultBundlePath")
+
+	_, statErr := os.Stat(marker)
+	assert.NoError(t, statErr, "wrapper must not touch the user-supplied bundle")
 }

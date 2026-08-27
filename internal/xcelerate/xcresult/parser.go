@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,10 +53,8 @@ type FailureSummary struct {
 	Message    string
 }
 
-// Parser wraps xcresulttool + JSON decoding. It's a small interface so tests
-// can seam the shell-out without spawning a subprocess.
 type Parser interface {
-	Parse(ctx context.Context, bundlePath string) (Summary, error)
+	Parse(ctx context.Context, bundlePath string) Summary
 }
 
 // DefaultParser is the production parser. XcrunPath is optional — when empty
@@ -76,20 +76,20 @@ func NewDefaultParser(logger log.Logger) *DefaultParser {
 }
 
 // Parse invokes xcresulttool and returns a Summary. Every recoverable failure
-// mode (missing binary, non-zero exit, JSON error, size cap, timeout) returns
-// an empty Summary and a nil error so the caller can attach nothing without
-// aborting the enclosing analytics PUT.
-func (p *DefaultParser) Parse(ctx context.Context, bundlePath string) (Summary, error) {
+// mode (missing binary, non-zero exit, JSON error, size cap, timeout) is logged
+// internally and returns an empty Summary so the caller can attach nothing
+// without aborting the enclosing analytics PUT.
+func (p *DefaultParser) Parse(ctx context.Context, bundlePath string) Summary {
 	logger := p.logger()
 
 	if bundlePath == "" {
-		return Summary{}, nil
+		return Summary{}
 	}
 
 	if size, ok := bundleSize(bundlePath); ok && size > MaxBundleSize {
 		logger.Infof("xcresult bundle exceeds %d bytes (got %d), skipping enrichment", MaxBundleSize, size)
 
-		return Summary{}, nil
+		return Summary{}
 	}
 
 	xcrun := p.XcrunPath
@@ -100,7 +100,7 @@ func (p *DefaultParser) Parse(ctx context.Context, bundlePath string) (Summary, 
 	if _, err := exec.LookPath(xcrun); err != nil {
 		logger.Debugf("xcresult parse skipped, xcrun not found: %v", err)
 
-		return Summary{}, nil
+		return Summary{}
 	}
 
 	cmdFunc := p.CommandFunc
@@ -122,17 +122,17 @@ func (p *DefaultParser) Parse(ctx context.Context, bundlePath string) (Summary, 
 			logger.Warnf("xcresulttool failed: %v (stderr: %s)", err, snippet)
 		}
 
-		return Summary{}, nil
+		return Summary{}
 	}
 
 	summary, err := parseBuildResults(out)
 	if err != nil {
 		logger.Warnf("Failed to parse xcresult: %v", err)
 
-		return Summary{}, nil
+		return Summary{}
 	}
 
-	return summary, nil
+	return summary
 }
 
 func (p *DefaultParser) logger() log.Logger {
@@ -143,8 +143,9 @@ func (p *DefaultParser) logger() log.Logger {
 	return log.NewLogger(log.WithOutput(io.Discard))
 }
 
-// bundleSize returns the total size of an xcresult bundle (a directory) or a
-// single-file bundle. false when stat fails.
+// bundleSize returns the total size of an xcresult bundle (recursively summed
+// across every regular file when path is a directory) or the file size when
+// path is a single-file bundle. false when stat fails.
 func bundleSize(path string) (int64, bool) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -155,16 +156,24 @@ func bundleSize(path string) (int64, bool) {
 	}
 
 	var total int64
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return 0, false
-	}
-	for _, e := range entries {
-		fi, err := e.Info()
-		if err != nil {
-			continue
+	walkErr := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil, d.IsDir():
+			return nil //nolint:nilerr // best-effort sizing: skip unreadable entries rather than abort
 		}
-		total += fi.Size()
+
+		fi, err := d.Info()
+		if err != nil {
+			return nil //nolint:nilerr // best-effort sizing: skip entries whose Info() fails mid-walk
+		}
+		if fi.Mode().IsRegular() {
+			total += fi.Size()
+		}
+
+		return nil
+	})
+	if walkErr != nil {
+		return 0, false
 	}
 
 	return total, true
@@ -174,29 +183,18 @@ func bundleSize(path string) (int64, bool) {
 // this parser consumes. Unknown fields are tolerated: we only extract a few
 // fields and leave the rest unread.
 type buildResultsPayload struct {
-	AnalyzerWarningCount int           `json:"analyzerWarningCount,omitempty"`
-	ErrorCount           int           `json:"errorCount,omitempty"`
-	WarningCount         int           `json:"warningCount,omitempty"`
-	Status               string        `json:"status,omitempty"`
-	StartedTime          float64       `json:"startedTime,omitempty"`
-	EndedTime            float64       `json:"endedTime,omitempty"`
-	Errors               []issueEntry  `json:"errors,omitempty"`
-	Warnings             []issueEntry  `json:"warnings,omitempty"`
-	AnalyzerWarnings     []issueEntry  `json:"analyzerWarnings,omitempty"`
-	Actions              []actionEntry `json:"actions,omitempty"`
-	DestinationTargets   []targetEntry `json:"destinationTargets,omitempty"`
-	Targets              []targetEntry `json:"targets,omitempty"`
-	BuildMetrics         *buildMetrics `json:"buildMetrics,omitempty"`
-	Runs                 []runEntry    `json:"runs,omitempty"`
+	Errors             []issueEntry  `json:"errors,omitempty"`
+	Actions            []actionEntry `json:"actions,omitempty"`
+	DestinationTargets []targetEntry `json:"destinationTargets,omitempty"`
+	Targets            []targetEntry `json:"targets,omitempty"`
+	Runs               []runEntry    `json:"runs,omitempty"`
 	// Some xcresulttool builds nest the flat lists under "buildResult".
 	BuildResult *buildResultsPayload `json:"buildResult,omitempty"`
 }
 
 type actionEntry struct {
-	Title      string               `json:"title,omitempty"`
-	SchemeName string               `json:"schemeName,omitempty"`
-	Targets    []targetEntry        `json:"targets,omitempty"`
-	Result     *buildResultsPayload `json:"result,omitempty"`
+	Targets []targetEntry        `json:"targets,omitempty"`
+	Result  *buildResultsPayload `json:"result,omitempty"`
 }
 
 type runEntry struct {

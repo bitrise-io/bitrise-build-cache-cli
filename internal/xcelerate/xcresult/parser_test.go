@@ -114,3 +114,42 @@ func Test_firstLine(t *testing.T) {
 	assert.Empty(t, firstLine(""))
 	assert.Empty(t, firstLine("   \n   "))
 }
+
+func Test_bundleSize_recursesIntoNestedDirs(t *testing.T) {
+	// Mirror a real xcresult layout: top-level Info.plist + nested Data/ with
+	// blobs. A shallow ReadDir would sum only the direct entries (small) and
+	// miss the nested blobs entirely.
+	bundle := filepath.Join(t.TempDir(), "Run-Foo.xcresult")
+	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "Data"), 0o755))
+
+	infoPlist := []byte("<plist>info</plist>")
+	require.NoError(t, os.WriteFile(filepath.Join(bundle, "Info.plist"), infoPlist, 0o644))
+
+	blob := make([]byte, 4096)
+	for i := range blob {
+		blob[i] = 'x'
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(bundle, "Data", "blob-A"), blob, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(bundle, "Data", "blob-B"), blob, 0o644))
+
+	total, ok := bundleSize(bundle)
+	require.True(t, ok)
+
+	wantMin := int64(len(infoPlist) + 2*len(blob))
+	assert.GreaterOrEqual(t, total, wantMin,
+		"bundleSize must recurse into nested Data/ subdirs — got %d, want >= %d", total, wantMin)
+}
+
+func Test_bundleSize_singleFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "single.xcresult")
+	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
+
+	total, ok := bundleSize(p)
+	require.True(t, ok)
+	assert.Equal(t, int64(5), total)
+}
+
+func Test_bundleSize_missingPath(t *testing.T) {
+	_, ok := bundleSize(filepath.Join(t.TempDir(), "does-not-exist"))
+	assert.False(t, ok)
+}

@@ -19,7 +19,13 @@ const (
 	// enrichmentStaleLastSuccessAge aliases Retrier.MaxAge — after that long
 	// without a successful PUT and with pending records still queued, we surface
 	// a warning. Kept coupled so it never drifts from the retry give-up window.
-	enrichmentStaleLastSuccessAge  = enrichment.DefaultRetryMaxAge
+	enrichmentStaleLastSuccessAge = enrichment.DefaultRetryMaxAge
+	// enrichmentStaleLastMatchedLag warns when the wrapper's slim PUTs keep
+	// LastSuccess fresh but the watcher's correlated PUT hasn't fired in a while
+	// — the ACI-5350 shape where Xcode-26 CLI builds bypass the watcher path
+	// entirely. 7 days is long enough not to fire on normal CLI-only usage but
+	// short enough to catch a full watcher regression.
+	enrichmentStaleLastMatchedLag  = 7 * 24 * time.Hour
 	enrichmentDashboardURLTemplate = "https://app.bitrise.io/build-cache/invocations/xcode/%s"
 	enrichmentPendingDetailMax     = 3
 	enrichmentLastErrorSnippetMax  = 120
@@ -94,9 +100,32 @@ func diagnoseEnrichment(healthPath, pendingPath string, now func() time.Time) Re
 		}
 
 		return Result{State: StateWarn, Detail: detail}
+	case matchedLagging(snap, now()):
+		detail := fmt.Sprintf(
+			"watcher path silent: LastMatched %s lags LastSuccess %s by > %s (wrapper self-enrich still ticking, watcher correlation is not)",
+			formatOptionalTime(snap.LastMatched), formatOptionalTime(snap.LastSuccess), enrichmentStaleLastMatchedLag,
+		)
+
+		return Result{State: StateWarn, Detail: detail}
 	}
 
 	return Result{State: StateOK, Detail: fmt.Sprintf("healthy (last success %s, %d pending)", formatOptionalTime(snap.LastSuccess), len(pending))}
+}
+
+// matchedLagging fires when the watcher's correlated PUT has fallen behind the
+// wrapper's slim PUT by more than enrichmentStaleLastMatchedLag. Requires
+// LastSuccess to be fresh — a stale LastSuccess is caught earlier. Also
+// requires LastMatched to be non-zero: a never-matched state is the norm on
+// wrapper-only installs and would false-positive here.
+func matchedLagging(snap enrichment.HealthSnapshot, now time.Time) bool {
+	if snap.LastSuccess.IsZero() || snap.LastMatched.IsZero() {
+		return false
+	}
+	if now.Sub(snap.LastSuccess) > enrichmentStaleLastSuccessAge {
+		return false
+	}
+
+	return snap.LastSuccess.Sub(snap.LastMatched) > enrichmentStaleLastMatchedLag
 }
 
 // formatOptionalTime renders t as RFC3339 or "never" when zero — avoids the

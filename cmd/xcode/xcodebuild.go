@@ -817,8 +817,9 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 
 // appendResultBundleArg splices `-resultBundlePath <tmp>` into argv when self-enrich
 // is on and the user did not supply their own -resultBundlePath. The bundle
-// path is derived once per invocation and cached on the runner so the parse
-// step later can find it. No-op for query actions (no build → no xcresult).
+// path is derived deterministically from InvocationID each call so argv-inject,
+// parse, and cleanup sites don't share state. No-op for query actions (no build →
+// no xcresult).
 func (c *XcodebuildRunner) appendResultBundleArg(argv []string) []string {
 	if !c.selfEnrichEnabled() {
 		return argv
@@ -875,12 +876,7 @@ func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analy
 	}()
 
 	parser := c.resolveXcresultParser()
-	summary, err := parser.Parse(ctx, bundlePath)
-	if err != nil {
-		c.Logger.Warnf("xcresult parse failed for invocation %s: %v", c.InvocationID, err)
-
-		return
-	}
+	summary := parser.Parse(ctx, bundlePath)
 
 	if len(summary.Targets) == 0 && len(summary.Failures) == 0 {
 		return

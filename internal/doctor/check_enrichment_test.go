@@ -136,6 +136,63 @@ func TestEnrichmentCheck_okWhenHealthy(t *testing.T) {
 	assert.Contains(t, res.Detail, "healthy")
 }
 
+func TestEnrichmentCheck_warnWhenLastMatchedLagsLastSuccess(t *testing.T) {
+	tmp := t.TempDir()
+	healthPath := filepath.Join(tmp, "health.json")
+	pendingPath := filepath.Join(tmp, "pending.ndjson")
+	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+
+	// Wrapper self-enrich keeps ticking (LastSuccess fresh) but the watcher's
+	// correlated path hasn't fired in over a week — the ACI-5350 shape.
+	hw := &enrichment.HealthWriter{Path: healthPath}
+	require.NoError(t, hw.Update(func(s *enrichment.HealthSnapshot) {
+		s.LastSuccess = now.Add(-time.Minute)
+		s.LastAttempt = now.Add(-time.Minute)
+		s.LastMatched = now.Add(-10 * 24 * time.Hour)
+	}))
+
+	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "watcher path silent")
+	assert.Contains(t, res.Detail, "LastMatched")
+}
+
+func TestEnrichmentCheck_okWhenLastMatchedNeverSet(t *testing.T) {
+	// Wrapper-only installs (no watcher ever ran) leave LastMatched zero
+	// forever; that MUST NOT trip the warn.
+	tmp := t.TempDir()
+	healthPath := filepath.Join(tmp, "health.json")
+	pendingPath := filepath.Join(tmp, "pending.ndjson")
+	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+
+	hw := &enrichment.HealthWriter{Path: healthPath}
+	require.NoError(t, hw.Update(func(s *enrichment.HealthSnapshot) {
+		s.LastSuccess = now.Add(-time.Minute)
+		s.LastAttempt = now.Add(-time.Minute)
+		// LastMatched stays zero.
+	}))
+
+	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })
+	assert.Equal(t, StateOK, res.State)
+}
+
+func TestEnrichmentCheck_okWhenLastMatchedRecent(t *testing.T) {
+	tmp := t.TempDir()
+	healthPath := filepath.Join(tmp, "health.json")
+	pendingPath := filepath.Join(tmp, "pending.ndjson")
+	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+
+	hw := &enrichment.HealthWriter{Path: healthPath}
+	require.NoError(t, hw.Update(func(s *enrichment.HealthSnapshot) {
+		s.LastSuccess = now.Add(-time.Minute)
+		s.LastAttempt = now.Add(-time.Minute)
+		s.LastMatched = now.Add(-2 * time.Hour)
+	}))
+
+	res := diagnoseEnrichment(healthPath, pendingPath, func() time.Time { return now })
+	assert.Equal(t, StateOK, res.State)
+}
+
 func TestEnrichmentCheck_warnOnConsecutiveErrors_includesLastErrorAt(t *testing.T) {
 	tmp := t.TempDir()
 	healthPath := filepath.Join(tmp, "health.json")
