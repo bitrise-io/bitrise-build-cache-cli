@@ -165,7 +165,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		startDaemonForTools(ctx, logger, selectedTools)
 	}
 
-	warnRestartIDEs(ctx, logger, selectedTools)
+	warnRestartStale(ctx, logger, selectedTools)
 
 	return nil
 }

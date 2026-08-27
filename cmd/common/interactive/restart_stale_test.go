@@ -11,6 +11,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/procscan"
 )
 
 var _ log.Logger = &recordingLogger{}
@@ -42,32 +44,34 @@ func (l *recordingLogger) TErrorf(format string, v ...interface{}) { l.record(fo
 func (l *recordingLogger) Println()                                {}
 func (l *recordingLogger) EnableDebugLog(bool)                     {}
 
-func stubIDEDetector(t *testing.T, running []string, err error) {
+func stubScan(t *testing.T, ides []string, gradleDaemons int, err error) {
 	t.Helper()
 
-	original := detectRunningIDEs
-	detectRunningIDEs = func(context.Context) ([]string, error) { return running, err }
-	t.Cleanup(func() { detectRunningIDEs = original })
+	original := scanStaleProcesses
+	scanStaleProcesses = func(context.Context) (procscan.Result, error) {
+		return procscan.Result{IDEs: ides, GradleDaemons: gradleDaemons}, err
+	}
+	t.Cleanup(func() { scanStaleProcesses = original })
 }
 
-func TestWarnRestartIDEs(t *testing.T) {
-	t.Run("names the running IDEs and mentions the Gradle daemon", func(t *testing.T) {
-		stubIDEDetector(t, []string{"Android Studio", "Xcode"}, nil)
+func TestWarnRestartStale(t *testing.T) {
+	t.Run("names the running IDEs and counts the Gradle daemons", func(t *testing.T) {
+		stubScan(t, []string{"Android Studio", "Xcode"}, 2, nil)
 		logger := &recordingLogger{}
 
-		warnRestartIDEs(context.Background(), logger, []string{string(toolGradle), string(toolXcode)})
+		warnRestartStale(context.Background(), logger, []string{string(toolGradle), string(toolXcode)})
 
 		out := logger.String()
 		assert.Contains(t, out, "Android Studio and Xcode are running — restart them now.")
 		assert.Contains(t, out, `Cannot run program "bitrise-build-cache"`)
-		assert.Contains(t, out, "./gradlew --stop")
+		assert.Contains(t, out, "2 Gradle daemons are running — run `./gradlew --stop`")
 	})
 
 	t.Run("no Gradle daemon hint when Gradle was not selected", func(t *testing.T) {
-		stubIDEDetector(t, []string{"Xcode"}, nil)
+		stubScan(t, []string{"Xcode"}, 1, nil)
 		logger := &recordingLogger{}
 
-		warnRestartIDEs(context.Background(), logger, []string{string(toolXcode)})
+		warnRestartStale(context.Background(), logger, []string{string(toolXcode)})
 
 		out := logger.String()
 		assert.Contains(t, out, "Xcode is running — restart it now.")
@@ -75,24 +79,42 @@ func TestWarnRestartIDEs(t *testing.T) {
 	})
 
 	t.Run("falls back to a single conditional line when no IDE is detected", func(t *testing.T) {
-		stubIDEDetector(t, nil, nil)
+		stubScan(t, nil, 0, nil)
 		logger := &recordingLogger{}
 
-		warnRestartIDEs(context.Background(), logger, []string{string(toolGradle)})
+		warnRestartStale(context.Background(), logger, []string{string(toolGradle)})
 
 		out := logger.String()
 		assert.Contains(t, out, "If an IDE was already open before this setup, restart it")
 		assert.NotContains(t, out, "./gradlew --stop")
 	})
 
-	t.Run("a failed detection still prints the conditional line", func(t *testing.T) {
-		stubIDEDetector(t, nil, errors.New("ps: command not found"))
+	t.Run("a single running daemon is reported in the singular", func(t *testing.T) {
+		stubScan(t, nil, 1, nil)
 		logger := &recordingLogger{}
 
-		warnRestartIDEs(context.Background(), logger, []string{string(toolGradle)})
+		warnRestartStale(context.Background(), logger, []string{string(toolGradle)})
+
+		assert.Contains(t, logger.String(), "1 Gradle daemon is running — run `./gradlew --stop`")
+	})
+
+	t.Run("no daemon hint when none is running", func(t *testing.T) {
+		stubScan(t, []string{"Android Studio"}, 0, nil)
+		logger := &recordingLogger{}
+
+		warnRestartStale(context.Background(), logger, []string{string(toolGradle)})
+
+		assert.NotContains(t, logger.String(), "./gradlew --stop")
+	})
+
+	t.Run("a failed detection still prints the conditional line", func(t *testing.T) {
+		stubScan(t, nil, 0, errors.New("ps: command not found"))
+		logger := &recordingLogger{}
+
+		warnRestartStale(context.Background(), logger, []string{string(toolGradle)})
 
 		out := logger.String()
-		assert.Contains(t, out, "Could not list running IDEs")
+		assert.Contains(t, out, "Could not scan for running IDEs and Gradle daemons")
 		assert.Contains(t, out, "If an IDE was already open before this setup, restart it")
 	})
 }
