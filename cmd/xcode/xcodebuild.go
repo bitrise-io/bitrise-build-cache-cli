@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -213,6 +214,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 			func(pid int, signum syscall.Signal) {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
 			},
+			config.ProxySocketPath,
 		)
 		if err != nil {
 			return fmt.Errorf(errFmtFailedToStartProxy, err)
@@ -934,29 +936,29 @@ func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
 	return out
 }
 
-// proxyReadyTimeout bounds the wait for a proxy to serve. It must exceed the
-// launchd ThrottleInterval (10s), so a proxy we just reclaimed has a chance to be
-// revived by its supervisor before we give up on it.
-const proxyReadyTimeout = 30 * time.Second
+// launchd only revives a killed proxy after its ThrottleInterval (10s), so the
+// total wait has to comfortably exceed that.
+const (
+	proxyReadyAttempts = 60
+	proxyReadyInterval = 500 * time.Millisecond
+)
 
-const proxyReadyPollInterval = 200 * time.Millisecond
+var errProxyNotServing = errors.New("xcelerate proxy is not serving yet")
 
-func awaitProxySocket(ctx context.Context, socketPath string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for {
-		if daemon.ProbeSocket(ctx, socketPath) == daemon.ProbeRunning {
-			return true
-		}
-		if time.Now().After(deadline) {
-			return false
+func awaitProxySocket(ctx context.Context, socketPath string, attempts uint) bool {
+	err := retry.Times(attempts).Wait(proxyReadyInterval).TryWithAbort(func(_ uint) (error, bool) {
+		if ctx.Err() != nil {
+			return errProxyNotServing, true
 		}
 
-		select {
-		case <-ctx.Done():
-			return false
-		case <-time.After(proxyReadyPollInterval):
+		if daemon.ProbeSocket(ctx, socketPath) != daemon.ProbeRunning {
+			return errProxyNotServing, false
 		}
-	}
+
+		return nil, true
+	})
+
+	return err == nil
 }
 
 func startProxy(
@@ -964,9 +966,9 @@ func startProxy(
 	osProxy utils.OsProxy,
 	commandFunc utils.CommandFunc,
 	kill func(pid int, signum syscall.Signal),
+	socketPath string,
 ) error {
 	ctx := context.Background()
-	socketPath := xcelerate.ResolveProxySocketPath("", utils.AllEnvs(), osProxy)
 
 	// Holding the singleton is not the same as serving: a supervised proxy
 	// (launchd/systemd) can hold it while wedged or mid-respawn, and attaching to
@@ -986,7 +988,7 @@ func startProxy(
 
 		// A supervised proxy is revived by launchd/systemd, not by us — spawning here
 		// would only lose the race for the singleton.
-		if awaitProxySocket(ctx, socketPath, proxyReadyTimeout) {
+		if awaitProxySocket(ctx, socketPath, proxyReadyAttempts) {
 			logger.TDonef("Xcelerate proxy recovered on %s", socketPath)
 
 			return nil
@@ -1017,8 +1019,8 @@ func startProxy(
 
 	// Returning before the socket answers lets xcodebuild race the proxy and fail its
 	// first cache operations. A cache that cannot start must not fail the build.
-	if !awaitProxySocket(ctx, socketPath, proxyReadyTimeout) {
-		logger.TWarnf("Xcelerate proxy did not start serving on %s within %s, continuing with caching degraded", socketPath, proxyReadyTimeout)
+	if !awaitProxySocket(ctx, socketPath, proxyReadyAttempts) {
+		logger.TWarnf("Xcelerate proxy did not start serving on %s, continuing with caching degraded", socketPath)
 	}
 
 	return nil

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -230,7 +231,8 @@ func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
 		return utils.DefaultCommandFunc()(ctx, name, args...)
 	}
 
-	require.NoError(t, startProxy(log.NewLogger(), osProxy, spawning, nil))
+	require.NoError(t, startProxy(log.NewLogger(), osProxy, spawning, nil,
+		xcelerate.ResolveProxySocketPath("", utils.AllEnvs(), osProxy)))
 	assert.Zero(t, spawns, "the wrapper must not start a second proxy while one is serving")
 
 	require.NoError(t, child.Wait())
