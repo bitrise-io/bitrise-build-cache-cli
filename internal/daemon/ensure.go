@@ -8,6 +8,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // EnvSkipEnsure suppresses the post-activate Ensure. Callers that own their
@@ -35,11 +36,12 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, deps Ens
 		return nil
 	}
 
-	// A supervised proxy is for a developer machine, where it has to outlive the
-	// shell that started it. On CI the build owns the whole VM and the wrapper can
-	// start the proxy itself, which is also the only configuration measured to keep
-	// cache operations fast under a parallel build.
-	if provider := configcommon.DetectCIProvider(allEnvs(envs)); provider != "" {
+	// TEMPORARY WORKAROUND. The supervised proxy is measurably slower on CI than
+	// the one the build tool wrapper starts — median cache-op latency 5276ms
+	// against 16ms on a 4-core VM — and the reason is not yet understood. Remove
+	// this once it is. The proxy exists for developer machines, where it has to
+	// outlive the shell that started it; nothing on CI needs it to persist.
+	if provider := configcommon.DetectCIProvider(mergedEnvs(envs)); provider != "" {
 		logger.Debugf("CI provider %s detected, leaving the proxy to the build tool wrapper", provider)
 
 		return nil
@@ -109,15 +111,10 @@ func ensureOne(
 	return nil
 }
 
-// allEnvs merges the process environment under the caller-supplied map, so CI
-// detection sees the same variables whether or not the caller passed them in.
-func allEnvs(envs map[string]string) map[string]string {
-	merged := make(map[string]string, len(envs)+4)
-	for _, key := range configcommon.CIProviderEnvKeys() {
-		if v := os.Getenv(key); v != "" {
-			merged[key] = v
-		}
-	}
+// mergedEnvs lets the caller's map win over the process environment, so a test
+// or a caller that passes envs explicitly is not overridden by the ambient one.
+func mergedEnvs(envs map[string]string) map[string]string {
+	merged := utils.AllEnvs()
 	for k, v := range envs {
 		merged[k] = v
 	}

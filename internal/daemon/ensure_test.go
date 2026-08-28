@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,6 +42,8 @@ type ensureCallLog struct {
 }
 
 func TestEnsure_configMissing_bootstraps(t *testing.T) {
+	clearCIEnv(t)
+
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
 	dPaths := NewPathsFromHome(home)
@@ -71,6 +71,8 @@ func TestEnsure_configMissing_bootstraps(t *testing.T) {
 }
 
 func TestEnsure_configPresent_restarts(t *testing.T) {
+	clearCIEnv(t)
+
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
 	dPaths := NewPathsFromHome(home)
@@ -135,6 +137,8 @@ func TestEnsure_emptyServices_isNoOp(t *testing.T) {
 }
 
 func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
+	clearCIEnv(t)
+
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
 	dPaths := NewPathsFromHome(home)
@@ -183,9 +187,8 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 	}
 }
 
-// The v3.6.3 regression: a launchd-supervised proxy served cache operations at a
-// median of 5276ms under a parallel build, against 16ms for the wrapper-forked
-// one. CI must not install the service at all.
+// A supervised proxy on CI serves cache operations orders of magnitude slower
+// than the wrapper-started one, so CI must not install the service at all.
 func TestEnsure_SkipsOnCI(t *testing.T) {
 	for _, tc := range []struct{ name, key, value string }{
 		{"bitrise", "BITRISE_IO", "true"},
@@ -237,7 +240,7 @@ func TestEnsure_RunsWhenNotOnCI(t *testing.T) {
 func clearCIEnv(t *testing.T) {
 	t.Helper()
 
-	for _, key := range configcommon.CIProviderEnvKeys() {
+	for _, key := range []string{"CIRCLECI", "GITHUB_ACTIONS", "GITLAB_CI", "BITRISE_IO", "BITRISE_BUILD_SLUG"} {
 		t.Setenv(key, "")
 	}
 }
