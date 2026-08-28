@@ -50,8 +50,6 @@ func Test_WorkflowNameHeaderValue(t *testing.T) {
 	}
 }
 
-// The header is emitted on both the cache and the BES side, so both have to
-// carry the escaped value.
 func Test_Generate_WorkflowNameIsEscaped(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: CommonTemplateInventory{
