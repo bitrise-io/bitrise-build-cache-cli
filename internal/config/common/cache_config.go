@@ -76,6 +76,12 @@ func DetectCIProvider(envs map[string]string) string {
 	return ""
 }
 
+// CIProviderEnvKeys lists the variables DetectCIProvider reads, for callers that
+// have to assemble the env map themselves.
+func CIProviderEnvKeys() []string {
+	return []string{"CIRCLECI", "GITHUB_ACTIONS", "GITLAB_CI", "BITRISE_IO", "BITRISE_BUILD_SLUG"}
+}
+
 func detectExternalIDs(provider string, envs map[string]string) (string, string, string) {
 	switch provider {
 	case CIProviderCircleCI:

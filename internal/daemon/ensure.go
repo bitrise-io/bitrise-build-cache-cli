@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
 // EnvSkipEnsure suppresses the post-activate Ensure. Callers that own their
@@ -30,6 +32,16 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, deps Ens
 	}
 
 	if envs[EnvSkipEnsure] != "" || os.Getenv(EnvSkipEnsure) != "" {
+		return nil
+	}
+
+	// A supervised proxy is for a developer machine, where it has to outlive the
+	// shell that started it. On CI the build owns the whole VM and the wrapper can
+	// start the proxy itself, which is also the only configuration measured to keep
+	// cache operations fast under a parallel build.
+	if provider := configcommon.DetectCIProvider(allEnvs(envs)); provider != "" {
+		logger.Debugf("CI provider %s detected, leaving the proxy to the build tool wrapper", provider)
+
 		return nil
 	}
 
@@ -95,4 +107,20 @@ func ensureOne(
 	}
 
 	return nil
+}
+
+// allEnvs merges the process environment under the caller-supplied map, so CI
+// detection sees the same variables whether or not the caller passed them in.
+func allEnvs(envs map[string]string) map[string]string {
+	merged := make(map[string]string, len(envs)+4)
+	for _, key := range configcommon.CIProviderEnvKeys() {
+		if v := os.Getenv(key); v != "" {
+			merged[key] = v
+		}
+	}
+	for k, v := range envs {
+		merged[k] = v
+	}
+
+	return merged
 }

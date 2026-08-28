@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -152,10 +154,10 @@ func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
 
 func TestServicesForTools_correctMappings(t *testing.T) {
 	cases := []struct {
-		name          string
+		name           string
 		needsXcelerate bool
-		needsCcache   bool
-		wantNames     []string
+		needsCcache    bool
+		wantNames      []string
 	}{
 		{name: "neither", wantNames: nil},
 		{name: "xcelerate only", needsXcelerate: true, wantNames: []string{ServiceXcelerateProxy}},
@@ -178,5 +180,64 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 
 			assert.Equal(t, tc.wantNames, gotNames)
 		})
+	}
+}
+
+// The v3.6.3 regression: a launchd-supervised proxy served cache operations at a
+// median of 5276ms under a parallel build, against 16ms for the wrapper-forked
+// one. CI must not install the service at all.
+func TestEnsure_SkipsOnCI(t *testing.T) {
+	for _, tc := range []struct{ name, key, value string }{
+		{"bitrise", "BITRISE_IO", "true"},
+		{"github actions", "GITHUB_ACTIONS", "true"},
+		{"circleci", "CIRCLECI", "true"},
+		{"gitlab", "GITLAB_CI", "true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearCIEnv(t)
+			envs := map[string]string{tc.key: tc.value}
+			if tc.key == "BITRISE_IO" {
+				envs["BITRISE_BUILD_SLUG"] = "slug"
+			}
+
+			called := false
+			err := Ensure(context.Background(), log.NewLogger(), DefaultServices(), EnsureDeps{
+				Envs: envs,
+				BackendAndPathsFn: func() (Backend, Paths, error) {
+					called = true
+
+					return nil, Paths{}, nil
+				},
+			})
+
+			require.NoError(t, err)
+			assert.False(t, called, "must not touch the service manager on CI")
+		})
+	}
+}
+
+// Off CI the daemon is still the supported lifecycle.
+func TestEnsure_RunsWhenNotOnCI(t *testing.T) {
+	clearCIEnv(t)
+
+	called := false
+	_ = Ensure(context.Background(), log.NewLogger(), DefaultServices(), EnsureDeps{
+		Envs: map[string]string{},
+		BackendAndPathsFn: func() (Backend, Paths, error) {
+			called = true
+
+			return nil, Paths{}, assert.AnError
+		},
+	})
+
+	assert.True(t, called, "a developer machine still gets the supervised proxy")
+}
+
+// These tests run on CI themselves, so the ambient CI variables have to go.
+func clearCIEnv(t *testing.T) {
+	t.Helper()
+
+	for _, key := range configcommon.CIProviderEnvKeys() {
+		t.Setenv(key, "")
 	}
 }
