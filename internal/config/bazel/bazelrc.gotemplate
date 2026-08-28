@@ -27,8 +27,10 @@ build --remote_timeout=600s
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --remote_header=x-flare-buildtool=bazel
-{{- /* CIProvider on CI, resolved display name locally */}}
-build --remote_header=x-flare-builduser={{ if .Common.CIProvider }}{{ .Common.CIProvider }}{{ else }}{{ .Common.HostMetadata.Username }}{{ end }}
+{{- /* CIProvider on CI, resolved display name locally. Quoted because a display
+name can hold spaces, which Bazel would otherwise read as separate arguments —
+see BuildUserHeaderValue for why the value is escaped too. */}}
+build --remote_header='x-flare-builduser={{ .Common.BuildUserHeaderValue }}'
 {{- if .Cache.IsPushEnabled }}
 build --remote_upload_local_results
 {{- else }}

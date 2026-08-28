@@ -355,7 +355,7 @@ const expectedBasicConfig = `build --remote_cache=grpcs://cache.services.bitrise
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_header='x-flare-builduser=CIProviderValue'
 build --remote_upload_local_results
 build --remote_header='x-org-id=WorkspaceIDValue'
 build --remote_header='x-app-id=AppSlugValue'
@@ -366,7 +366,7 @@ const expectedBasicConfigJWT = `build --remote_cache=grpcs://cache.services.bitr
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer some-jwt-token"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_header='x-flare-builduser=CIProviderValue'
 build --remote_upload_local_results
 build --remote_header='x-app-id=AppSlugValue'
 build --remote_header='x-ci-provider=CIProviderValue'
@@ -376,7 +376,7 @@ const expectedConfigWithPushDisabled = `build --remote_cache=grpcs://cache.servi
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_header='x-flare-builduser=CIProviderValue'
 build --noremote_upload_local_results
 build --remote_header='x-org-id=WorkspaceIDValue'
 build --remote_header='x-app-id=AppSlugValue'
@@ -387,7 +387,7 @@ const expectedConfigWithTimestamps = `build --remote_cache=grpcs://cache.service
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_header='x-flare-builduser=CIProviderValue'
 build --remote_upload_local_results
 build --show_timestamps
 build --remote_header='x-org-id=WorkspaceIDValue'
@@ -399,7 +399,7 @@ const expectedNoBESConfig = `build --remote_cache=grpcs://cache.services.bitrise
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_header='x-flare-builduser=CIProviderValue'
 build --remote_upload_local_results
 build --verbose_failures
 build --show_timestamps
@@ -415,7 +415,7 @@ const expectedFullConfig = `build --remote_cache=grpcs://cache.services.bitrise.
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=CIProviderValue
+build --remote_header='x-flare-builduser=CIProviderValue'
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_header=authorization="Bearer AuthTokenValue"
@@ -449,7 +449,7 @@ const expectedLocalHelperConfig = `build --credential_helper=*.services.bitrise.
 build --remote_cache=grpcs://cache.services.bitrise.io:443
 build --remote_timeout=600s
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=jane.doe
+build --remote_header='x-flare-builduser=jane.doe'
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
@@ -466,7 +466,7 @@ const expectedLocalHelperConfigNoUsername = `build --credential_helper=*.service
 build --remote_cache=grpcs://cache.services.bitrise.io:443
 build --remote_timeout=600s
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=
+build --remote_header='x-flare-builduser='
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
@@ -483,7 +483,7 @@ const expectedCIHelperConfig = `build --credential_helper=*.services.bitrise.io=
 build --remote_cache=grpcs://cache.services.bitrise.io:443
 build --remote_timeout=600s
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=bitrise
+build --remote_header='x-flare-builduser=bitrise'
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
@@ -502,7 +502,7 @@ const expectedCIFallbackHeaders = `build --remote_cache=grpcs://cache.services.b
 build --remote_timeout=600s
 build --remote_header=authorization="Bearer AuthTokenValue"
 build --remote_header=x-flare-buildtool=bazel
-build --remote_header=x-flare-builduser=bitrise
+build --remote_header='x-flare-builduser=bitrise'
 build --remote_upload_local_results
 build --bes_backend=grpcs://flare-bes.services.bitrise.io:443
 build --bes_header=authorization="Bearer AuthTokenValue"

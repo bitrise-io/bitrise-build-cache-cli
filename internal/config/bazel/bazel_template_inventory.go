@@ -1,5 +1,7 @@
 package bazelconfig
 
+import "strings"
+
 type HostMetadataInventory struct {
 	OS             string
 	Locale         string
@@ -52,4 +54,35 @@ type TemplateInventory struct {
 	Cache  CacheTemplateInventory
 	BES    BESTemplateInventory
 	RBE    RBETemplateInventory
+}
+
+// BuildUserHeaderValue is the `x-flare-builduser` header value — the CI provider
+// on CI, the resolved display name locally — escaped to sit inside a
+// single-quoted Bazel rc value.
+//
+// The value has to be quoted in the rc file: Bazel splits rc lines on
+// whitespace, so an unquoted display name like `Jane Doe` becomes two
+// arguments, and the trailing one is read as a target pattern that fails every
+// command with `no such target '//:Doe'`.
+//
+// Quoting alone is not enough. Inside single quotes Bazel treats a backslash as
+// an escape character, so a Windows domain user (`CORP\jdoe`) silently loses the
+// separator and an apostrophe (`Pat O'Brien`) closes the quote early and drops
+// the rest — neither errors, they just report the wrong user. Escaping both
+// keeps the value intact.
+func (i CommonTemplateInventory) BuildUserHeaderValue() string {
+	buildUser := i.CIProvider
+	if buildUser == "" {
+		buildUser = i.HostMetadata.Username
+	}
+
+	return bazelRCEscape(buildUser)
+}
+
+// bazelRCEscape escapes a value for use inside a single-quoted Bazel rc value.
+// Backslash first, so the backslashes it introduces are not escaped again.
+func bazelRCEscape(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+
+	return strings.ReplaceAll(value, `'`, `\'`)
 }
