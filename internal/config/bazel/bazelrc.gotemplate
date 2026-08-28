@@ -27,7 +27,7 @@ build --remote_timeout=600s
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --remote_header=x-flare-buildtool=bazel
-{{- /* CIProvider on CI, resolved display name locally. Quoted and escaped: the value can hold spaces. */}}
+{{- /* CIProvider on CI, resolved display name locally. Quoted and escaped: the value can include special characters like space, single quote and backslash. */}}
 build --remote_header='x-flare-builduser={{ .Common.BuildUserHeaderValue }}'
 {{- if .Cache.IsPushEnabled }}
 build --remote_upload_local_results
