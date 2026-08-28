@@ -1,5 +1,7 @@
 package bazelconfig
 
+import "strings"
+
 type HostMetadataInventory struct {
 	OS             string
 	Locale         string
@@ -52,4 +54,25 @@ type TemplateInventory struct {
 	Cache  CacheTemplateInventory
 	BES    BESTemplateInventory
 	RBE    RBETemplateInventory
+}
+
+func (i CommonTemplateInventory) BuildUserHeaderValue() string {
+	buildUser := i.CIProvider
+	if buildUser == "" {
+		buildUser = i.HostMetadata.Username
+	}
+
+	return bazelRCEscape(buildUser)
+}
+
+func (i CommonTemplateInventory) WorkflowNameHeaderValue() string {
+	return bazelRCEscape(i.WorkflowName)
+}
+
+// bazelRCEscape escapes a value for use inside a single-quoted Bazel rc value.
+// Backslash first, so the backslashes it introduces are not escaped again.
+func bazelRCEscape(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+
+	return strings.ReplaceAll(value, `'`, `\'`)
 }
