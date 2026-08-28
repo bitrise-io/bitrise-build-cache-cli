@@ -65,6 +65,10 @@ func (i CommonTemplateInventory) BuildUserHeaderValue() string {
 	return bazelRCEscape(buildUser)
 }
 
+func (i CommonTemplateInventory) WorkflowNameHeaderValue() string {
+	return bazelRCEscape(i.WorkflowName)
+}
+
 // bazelRCEscape escapes a value for use inside a single-quoted Bazel rc value.
 // Backslash first, so the backslashes it introduces are not escaped again.
 func bazelRCEscape(value string) string {

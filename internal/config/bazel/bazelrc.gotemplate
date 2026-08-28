@@ -101,10 +101,10 @@ build --bes_header='x-repository-url={{ .Common.RepoURL }}'
 
 {{- if .Common.WorkflowName }}
 {{- if .Cache.Enabled }}
-build --remote_header='x-workflow-name={{ .Common.WorkflowName }}'
+build --remote_header='x-workflow-name={{ .Common.WorkflowNameHeaderValue }}'
 {{- end }}
 {{- if .BES.Enabled }}
-build --bes_header='x-workflow-name={{ .Common.WorkflowName }}'
+build --bes_header='x-workflow-name={{ .Common.WorkflowNameHeaderValue }}'
 {{- end }}
 {{- end }}
 
