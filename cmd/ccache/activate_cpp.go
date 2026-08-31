@@ -7,8 +7,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
@@ -43,6 +45,24 @@ This command will:
 			permhint.PrintIfApplicable(log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)), err)
 
 			return fmt.Errorf("activate C++ cache: %w", err)
+		}
+
+		// daemon.Ensure declines to install the service on CI, and ccache silently
+		// misses every lookup when nothing serves the socket, so start the helper
+		// here when it is not already up. Best-effort: a missing helper degrades
+		// the cache, it must not fail activation.
+		socketPath := ccacheconfig.ResolveIPCSocketPath(
+			activateCppParams.IPCSocketPathOverride, utils.AllEnvs(), utils.DefaultOsProxy{},
+		)
+		socket := ccacheipc.NewSocket(socketPath)
+		if !socket.IsListening() {
+			if err := socket.Start(); err != nil {
+				logger.Warnf("Could not start the ccache storage helper: %s", err)
+			} else if !socket.AwaitReady() {
+				logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
+			} else {
+				logger.Debugf("Started the ccache storage helper on %s", socketPath)
+			}
 		}
 
 		return nil
