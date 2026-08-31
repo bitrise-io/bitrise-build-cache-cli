@@ -211,6 +211,34 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			// ~/.bazelrc is machine-global, so a stored repo URL would attribute every
+			// Bazel project on the machine to this one. The helper sends it instead.
+			name: "Credential helper drops the resolved repo URL from the bazelrc",
+			inventory: TemplateInventory{
+				Common: CommonTemplateInventory{
+					AuthToken:   "AuthTokenValue",
+					WorkspaceID: "WorkspaceIDValue",
+					AppSlug:     "AppSlugValue",
+					RepoURL:     "https://repo-url",
+					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+					HostMetadata: HostMetadataInventory{
+						Username: "jane.doe",
+					},
+				},
+				Cache: CacheTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443",
+					IsPushEnabled:       true,
+				},
+				BES: BESTemplateInventory{
+					Enabled:             true,
+					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
+				},
+			},
+			want:    expectedLocalHelperConfig,
+			wantErr: "",
+		},
+		{
 			name: "Local dev with no CIProvider and no resolved Username emits empty builduser",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
