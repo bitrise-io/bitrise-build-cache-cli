@@ -51,12 +51,24 @@ This command will:
 		// misses every lookup when nothing serves the socket, so start the helper
 		// here when it is not already up. Best-effort: a missing helper degrades
 		// the cache, it must not fail activation.
+		//
+		// Forward --debug so downstream consumers (e.g. Gradle cache plugin) can
+		// grep [SetInvocationID] in the helper log, and pass BITRISE_INVOCATION_ID
+		// as the initial invocation-id so the first log file has a deterministic
+		// name instead of a random UUID. The plugin later overrides via
+		// set-invocation-id, at which point the helper swaps loggers to its own
+		// per-invocation file.
 		socketPath := ccacheconfig.ResolveIPCSocketPath(
 			activateCppParams.IPCSocketPathOverride, utils.AllEnvs(), utils.DefaultOsProxy{},
 		)
 		socket := ccacheipc.NewSocket(socketPath)
 		if !socket.IsListening() {
-			if err := socket.Start(); err != nil {
+			startOpts := []ccacheipc.StartOption{ccacheipc.WithDebug()}
+			if invID := utils.AllEnvs()["BITRISE_INVOCATION_ID"]; invID != "" {
+				startOpts = append(startOpts, ccacheipc.WithInvocationID(invID))
+			}
+
+			if err := socket.Start(startOpts...); err != nil {
 				logger.Warnf("Could not start the ccache storage helper: %s", err)
 			} else if !socket.AwaitReady() {
 				logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)

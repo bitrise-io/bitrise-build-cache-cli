@@ -9,6 +9,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
+
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 )
 
 var helperTestLogger = log.NewLogger() //nolint:gochecknoglobals
@@ -31,7 +33,11 @@ type stubSocket struct {
 }
 
 func (s *stubSocket) IsListening() bool { return s.listening }
-func (s *stubSocket) Start() error      { s.startCalled = true; return s.startErr }
+func (s *stubSocket) Start(_ ...ccacheipc.StartOption) error {
+	s.startCalled = true
+
+	return s.startErr
+}
 func (s *stubSocket) AwaitReady() bool  { s.awaitCalled = true; return s.awaitResult }
 func (s *stubSocket) HealthCheck(_ context.Context) error {
 	s.healthCheckCalled = true
