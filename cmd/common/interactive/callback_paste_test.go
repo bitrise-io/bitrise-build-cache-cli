@@ -122,6 +122,7 @@ func TestCallbackPaster_MarksStdinUnusableWhenItCannotStopTheReader(t *testing.T
 	}
 	require.False(t, paster.StdinUnusable(), "nothing has been armed yet")
 
+	paster.armed.Store(true) // simulate read() having entered its blocking Scan
 	paster.stop(make(chan struct{})) // never closed: the reader is still blocked
 
 	assert.True(t, paster.StdinUnusable(), "the caller has to be able to see this, not just read the log")
@@ -137,11 +138,29 @@ func TestCallbackPaster_OmitsTheFlagAdviceWhenTheCallerHasNoFlag(t *testing.T) {
 		Reader: newBlockingReader(os.ErrNoDeadline),
 		Logger: log.NewLogger(log.WithOutput(&out)),
 	}
+	paster.armed.Store(true) // simulate read() having entered its blocking Scan
 	paster.stop(make(chan struct{}))
 
 	assert.True(t, paster.StdinUnusable())
 	assert.NotContains(t, out.String(), "--workspace", "the caller can't offer that flag")
 	assert.Contains(t, out.String(), "stop rather than drop keystrokes")
+}
+
+// A reachable browser cancels the flow before the grace elapses, so read() never
+// arms. stop() must not then claim stdin is spoken for — that mis-read is why the
+// wizard used to short-circuit its own workspace picker after a first-run sign-in.
+func TestCallbackPaster_ReaderNotArmedDoesNotFlagUnusable(t *testing.T) {
+	var out strings.Builder
+
+	paster := &callbackPaster{
+		Reader:        newBlockingReader(os.ErrNoDeadline),
+		Logger:        log.NewLogger(log.WithOutput(&out)),
+		WorkspaceFlag: "--workspace",
+	}
+	paster.stop(make(chan struct{})) // never closed: reader was never armed
+
+	assert.False(t, paster.StdinUnusable(), "an un-armed reader hasn't taken stdin")
+	assert.Empty(t, out.String(), "an un-armed reader must not produce a warning")
 }
 
 func TestCallbackPaster_QuietWhenReaderAlreadyDone(t *testing.T) {
