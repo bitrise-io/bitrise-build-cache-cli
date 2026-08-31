@@ -73,16 +73,15 @@ func (r wizardAuthResolver) Resolve(ctx context.Context) wizardAuth {
 	// not "serve a token the backend will reject". A transient refresh error
 	// (network blip, cancelled ctx) is different: the stored token may still be
 	// live, and forcing a new sign-in there is what turned this into a two-run
-	// wizard — offer it back as-is instead.
+	// wizard.
 	cred, origin, err := r.resolver().Resolve(ctx, r.Envs)
 	switch {
-	case errors.Is(err, oauth.ErrLoginRequired) && origin.StoreManaged():
+	case err == nil:
+	case errors.Is(err, oauth.ErrLoginRequired), !origin.StoreManaged():
 		r.Logger.Warnf("The stored login could not be refreshed (%v).", err)
 		cred, origin = authpkg.Credential{}, authpkg.Origin{}
-	case err != nil && origin.StoreManaged():
+	default:
 		r.Logger.Warnf("Could not refresh the stored login right now (%v); using the credential as-is.", err)
-	case err != nil:
-		cred, origin = authpkg.Credential{}, authpkg.Origin{}
 	}
 	auth := wizardAuth{Config: cred, Origin: origin, Stored: storedCreds}
 

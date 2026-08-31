@@ -122,7 +122,7 @@ func TestCallbackPaster_MarksStdinUnusableWhenItCannotStopTheReader(t *testing.T
 	}
 	require.False(t, paster.StdinUnusable(), "nothing has been armed yet")
 
-	paster.armed.Store(true) // simulate read() having entered its blocking Scan
+	paster.armed.Store(true)
 	paster.stop(make(chan struct{})) // never closed: the reader is still blocked
 
 	assert.True(t, paster.StdinUnusable(), "the caller has to be able to see this, not just read the log")
@@ -138,7 +138,7 @@ func TestCallbackPaster_OmitsTheFlagAdviceWhenTheCallerHasNoFlag(t *testing.T) {
 		Reader: newBlockingReader(os.ErrNoDeadline),
 		Logger: log.NewLogger(log.WithOutput(&out)),
 	}
-	paster.armed.Store(true) // simulate read() having entered its blocking Scan
+	paster.armed.Store(true)
 	paster.stop(make(chan struct{}))
 
 	assert.True(t, paster.StdinUnusable())
