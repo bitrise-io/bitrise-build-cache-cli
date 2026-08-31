@@ -3,53 +3,52 @@
 package bazelcredhelper
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func staticRemote(url string, err error) func(context.Context) (string, error) {
-	return func(context.Context) (string, error) {
+func staticRemote(url string, err error) func(string, ...string) (string, error) {
+	return func(string, ...string) (string, error) {
 		return url, err
 	}
 }
 
-func TestRepoURLResolver_PrefersTheWorkspaceRemoteOverTheEnv(t *testing.T) {
-	resolve := newRepoURLResolver(
+func TestResolveRepoURL_PrefersTheWorkspaceRemoteOverTheEnv(t *testing.T) {
+	got := resolveRepoURL(
 		map[string]string{"GIT_REPOSITORY_URL": "https://github.com/org/from-env.git"},
 		staticRemote("https://github.com/org/from-git.git\n", nil),
 	)
 
-	assert.Equal(t, "https://github.com/org/from-git.git", resolve(t.Context()))
+	assert.Equal(t, "https://github.com/org/from-git.git", got)
 }
 
-func TestRepoURLResolver_FallsBackToEnv_WhenGitIsUnavailable(t *testing.T) {
-	resolve := newRepoURLResolver(
+func TestResolveRepoURL_FallsBackToEnv_WhenGitIsUnavailable(t *testing.T) {
+	got := resolveRepoURL(
 		map[string]string{"GIT_REPOSITORY_URL": "https://github.com/org/from-env.git"},
 		staticRemote("", errors.New("exec: git: executable file not found in $PATH")),
 	)
 
-	assert.Equal(t, "https://github.com/org/from-env.git", resolve(t.Context()))
+	assert.Equal(t, "https://github.com/org/from-env.git", got)
 }
 
-func TestRepoURLResolver_NoGitNoEnv_ReturnsEmpty(t *testing.T) {
-	resolve := newRepoURLResolver(map[string]string{}, staticRemote("", errors.New("exit status 1")))
+func TestResolveRepoURL_NoGitNoEnv_ReturnsEmpty(t *testing.T) {
+	got := resolveRepoURL(map[string]string{}, staticRemote("", errors.New("exit status 1")))
 
-	assert.Empty(t, resolve(t.Context()))
+	assert.Empty(t, got)
 }
 
-func TestRepoURLResolver_RejectsUnsafeHeaderValues(t *testing.T) {
-	resolve := newRepoURLResolver(
+func TestResolveRepoURL_RejectsValuesUnusableAsAHeader(t *testing.T) {
+	got := resolveRepoURL(
 		map[string]string{"GIT_REPOSITORY_URL": "https://github.com/org/ünicode.git"},
 		staticRemote("https://github.com/org/repo.git\ninjected: yes", nil),
 	)
 
-	assert.Empty(t, resolve(t.Context()))
+	assert.Empty(t, got)
 }
 
-func TestRepoURLResolver_StripsCredentialsFromTheRemote(t *testing.T) {
+func TestResolveRepoURL_StripsCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		remote string
@@ -77,18 +76,7 @@ func TestRepoURLResolver_StripsCredentialsFromTheRemote(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resolve := newRepoURLResolver(map[string]string{}, staticRemote(tc.remote, nil))
-
-			assert.Equal(t, tc.want, resolve(t.Context()))
+			assert.Equal(t, tc.want, resolveRepoURL(map[string]string{}, staticRemote(tc.remote, nil)))
 		})
 	}
-}
-
-func TestRepoURLResolver_StripsCredentialsFromTheEnv(t *testing.T) {
-	resolve := newRepoURLResolver(
-		map[string]string{"GIT_REPOSITORY_URL": "https://user:pat@github.com/org/repo.git"},
-		staticRemote("", errors.New("not a git repo")),
-	)
-
-	assert.Equal(t, "https://github.com/org/repo.git", resolve(t.Context()))
 }

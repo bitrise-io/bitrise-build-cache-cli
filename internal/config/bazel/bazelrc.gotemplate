@@ -91,11 +91,9 @@ build --bes_header='x-ci-provider={{ .Common.CIProvider }}'
 {{- end }}
 
 {{- /*
-Repo-scoped, unlike everything else here, and ~/.bazelrc is machine-global: a
-stored value attributes every Bazel project on the machine to whichever repo
-`activate bazel` ran in. The helper resolves it per build from the workspace
-root, so only the helper-less fallback keeps the stored one — emitting both
-would put two values in the same metadata key.
+Repo-scoped, unlike everything else here, so the helper resolves it per build
+from the workspace root. Only the helper-less fallback keeps the stored one:
+emitting both would put two values in the same metadata key.
 */ -}}
 {{- if and .Common.RepoURL (not $useHelper) }}
 {{- if .Cache.Enabled }}

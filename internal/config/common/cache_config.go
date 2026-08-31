@@ -218,12 +218,11 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 	gitMetadata := GitMetadata{}
 
 	// Repo URL
-	repoURL, err := commandFunc("git", "config", "--get", "remote.origin.url")
+	repoURL, err := ResolveRepoURL(commandFunc, envs)
 	if err != nil {
 		logger.Debugf("Error in get git repo URL: %v", err)
-		repoURL = envs["GIT_REPOSITORY_URL"]
 	}
-	gitMetadata.RepoURL = strings.TrimSpace(repoURL)
+	gitMetadata.RepoURL = repoURL
 
 	// Commit hash
 	commitHash, err := commandFunc("git", "rev-parse", "HEAD")
