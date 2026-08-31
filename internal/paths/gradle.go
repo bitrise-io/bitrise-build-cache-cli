@@ -10,6 +10,7 @@ const (
 	GradleHomeRelative          = ".gradle"
 	GradleInitScriptName        = "bitrise-build-cache.init.gradle.kts"
 	GradleMirrorsInitScriptName = "bitrise-gradle-mirrors.init.gradle.kts"
+	GradlePropertiesName        = "gradle.properties"
 	gradleInitDir               = "init.d"
 )
 
@@ -33,4 +34,10 @@ func GradleInitScript(gradleHome string) string {
 
 func GradleMirrorsInitScript(gradleHome string) string {
 	return filepath.Join(GradleInitDir(gradleHome), GradleMirrorsInitScriptName)
+}
+
+// GradlePropertiesFile returns the absolute path of the gradle.properties file
+// under the resolved gradleHome. Callers pass the value returned by GradleHome.
+func GradlePropertiesFile(gradleHome string) string {
+	return filepath.Join(gradleHome, GradlePropertiesName)
 }

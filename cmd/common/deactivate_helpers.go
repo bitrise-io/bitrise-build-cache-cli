@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -44,15 +42,14 @@ func DeactivateGradle(logger log.Logger, dryRun bool) error {
 
 // DeactivateBazel wraps bazelconfig.Deactivate for the `deactivate all` fan-out.
 func DeactivateBazel(logger log.Logger, dryRun bool) error {
-	home, err := os.UserHomeDir()
+	p, err := paths.Default()
 	if err != nil {
 		return fmt.Errorf("resolve home dir: %w", err)
 	}
-	bazelrcPath := filepath.Join(home, ".bazelrc")
 
 	if err := bazelconfig.Deactivate(logger, bazelconfig.DeactivateParams{
-		BazelrcPath: bazelrcPath,
-		Home:        home,
+		BazelrcPath: p.BazelrcFile(),
+		Home:        p.Home,
 		DryRun:      dryRun,
 	}); err != nil {
 		return fmt.Errorf("deactivate Bazel: %w", err)
@@ -102,10 +99,10 @@ func DeactivateCcacheWithSocket(ctx context.Context, logger log.Logger, socketOv
 	return errors.Join(errs...)
 }
 
-// DeactivateReactNativeMarker removes only the RN marker file — the tool-specific
+// RemoveReactNativeMarker removes only the RN marker file — the tool-specific
 // cleanup is invoked separately by the callers so the accumulated error list
 // stays granular per-tool.
-func DeactivateReactNativeMarker(logger log.Logger, dryRun bool) error {
+func RemoveReactNativeMarker(logger log.Logger, dryRun bool) error {
 	if err := rnconfig.Deactivate(logger, rnconfig.DeactivateParams{DryRun: dryRun}); err != nil {
 		return fmt.Errorf("deactivate react-native marker: %w", err)
 	}

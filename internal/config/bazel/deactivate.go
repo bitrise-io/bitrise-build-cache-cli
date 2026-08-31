@@ -86,15 +86,18 @@ func removeBazelSidecar(logger log.Logger, home string, dryRun bool) error {
 		return nil
 	}
 
-	if err := os.Remove(sidecarFile); err != nil && !os.IsNotExist(err) {
+	switch err := os.Remove(sidecarFile); {
+	case err == nil:
+		logger.TInfof("Removed bazel sidecar %s", sidecarFile)
+	case os.IsNotExist(err):
+		logger.Infof("Bazel sidecar already absent: %s", sidecarFile)
+	default:
 		return fmt.Errorf("remove bazel sidecar %s: %w", sidecarFile, err)
 	}
 
 	if err := os.Remove(sidecarDir); err != nil && !os.IsNotExist(err) {
 		logger.Debugf("Leaving bazel sidecar dir in place (%s): %s", sidecarDir, err)
 	}
-
-	logger.TInfof("Removed bazel sidecar %s", sidecarFile)
 
 	return nil
 }

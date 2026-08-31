@@ -17,17 +17,6 @@ import (
 // ErrProxyAlreadyRunning means another process holds the proxy lock.
 var ErrProxyAlreadyRunning = errors.New("xcelerate proxy already running")
 
-// proxyPidFile is a cmd-local alias for xcelerate.ProxyPidFile, kept so tests in
-// this package can address it without importing the internal xcelerate package.
-func proxyPidFile(osProxy utils.OsProxy) string {
-	return xcelerate.ProxyPidFile(osProxy)
-}
-
-// proxyOwner is a cmd-local alias for xcelerate.ProxyOwner.
-func proxyOwner(osProxy utils.OsProxy) (int, bool) {
-	return xcelerate.ProxyOwner(osProxy)
-}
-
 // withProxySingleton runs serve as the only proxy on this machine. Contention is
 // not a failure: another proxy is already serving, so this one has nothing to do
 // and says so rather than erroring.
@@ -35,7 +24,7 @@ func proxyOwner(osProxy utils.OsProxy) (int, bool) {
 // The only way to take the lock, so the policy cannot be bypassed by a future
 // caller claiming it and deciding for itself.
 func withProxySingleton(osProxy utils.OsProxy, logger log.Logger, serve func() error) error {
-	path := proxyPidFile(osProxy)
+	path := xcelerate.ProxyPidFile(osProxy)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create proxy pid dir: %w", err)
 	}
@@ -46,7 +35,7 @@ func withProxySingleton(osProxy utils.OsProxy, logger log.Logger, serve func() e
 		return fmt.Errorf("lock %s: %w", path, err)
 	}
 	if !locked {
-		pid, _ := proxyOwner(osProxy)
+		pid, _ := xcelerate.ProxyOwner(osProxy)
 		logger.Infof("Skipping proxy startup: %s (pid: %d)", ErrProxyAlreadyRunning, pid)
 
 		return nil

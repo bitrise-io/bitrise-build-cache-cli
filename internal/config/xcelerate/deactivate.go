@@ -12,8 +12,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// XcelerateShellRCBlockName mirrors the name activate uses via envexport.ExportToShellRC.
-// Deactivate strips the same block, so keeping this in one place prevents drift.
+// XcelerateShellRCBlockName is the marker block name shared by activate (via
+// envexport.ExportToShellRC) and deactivate (via RemoveFromShellRC), so the two
+// sides cannot drift.
 const XcelerateShellRCBlockName = "Bitrise Xcelerate"
 
 // DeactivateParams controls the xcelerate/Xcode deactivate flow.
@@ -32,16 +33,24 @@ type DeactivateParams struct {
 // Logs and enrichment queue under ~/.local/state/xcelerate/* are intentionally
 // preserved for debugging. The auth credential store under
 // ~/.bitrise/analytics/multiplatform/config.json is owned by auth logout.
+//
+// Home resolution honours envs["HOME"] first (so t.Setenv("HOME", ...) works
+// end-to-end), else falls back to paths.Default().
 func Deactivate(logger log.Logger, params DeactivateParams) error {
 	var errs []error
 
 	osProxy := utils.DefaultOsProxy{}
 
+	home, err := resolveHome(params.Envs)
+	if err != nil {
+		return fmt.Errorf("resolve home dir: %w", err)
+	}
+
 	if err := stopProxyForDeactivate(logger, osProxy, params.DryRun); err != nil {
 		errs = append(errs, err)
 	}
 
-	if err := removeXcelerateRoot(logger, params.DryRun); err != nil {
+	if err := removeXcelerateRoot(logger, home, params.DryRun); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -68,12 +77,22 @@ func stopProxyForDeactivate(logger log.Logger, osProxy utils.OsProxy, dryRun boo
 	return nil
 }
 
-func removeXcelerateRoot(logger log.Logger, dryRun bool) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("resolve home dir: %w", err)
+// resolveHome prefers envs["HOME"] (so a t.Setenv("HOME", ...) works from tests
+// and CI-provided overrides propagate) and falls back to paths.Default().
+func resolveHome(envs map[string]string) (string, error) {
+	if v := envs["HOME"]; v != "" {
+		return v, nil
 	}
 
+	p, err := paths.Default()
+	if err != nil {
+		return "", fmt.Errorf("default paths: %w", err)
+	}
+
+	return p.Home, nil
+}
+
+func removeXcelerateRoot(logger log.Logger, home string, dryRun bool) error {
 	root := paths.FromHome(home).XcelerateRoot()
 
 	if dryRun {

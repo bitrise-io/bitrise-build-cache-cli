@@ -2,10 +2,10 @@ package gradleconfig
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -30,7 +30,7 @@ func (updater GradlePropertiesUpdater) UpdateGradleProps(
 	logger log.Logger,
 	gradleHomePath string,
 ) error {
-	gradlePropertiesPath := filepath.Join(gradleHomePath, "gradle.properties")
+	gradlePropertiesPath := paths.GradlePropertiesFile(gradleHomePath)
 	logger.Infof("(i) Write %s", gradlePropertiesPath)
 
 	currentGradlePropsFileContent, isGradlePropsExists, err := updater.OsProxy.ReadFileIfExists(gradlePropertiesPath)

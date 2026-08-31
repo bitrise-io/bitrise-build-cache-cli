@@ -49,15 +49,18 @@ func removeCcacheConfig(logger log.Logger, osProxy utils.OsProxy, dryRun bool) e
 		return nil
 	}
 
-	if err := os.Remove(configFile); err != nil && !os.IsNotExist(err) {
+	switch err := os.Remove(configFile); {
+	case err == nil:
+		logger.TInfof("Removed ccache config %s", configFile)
+	case os.IsNotExist(err):
+		logger.Infof("ccache config already absent: %s", configFile)
+	default:
 		return fmt.Errorf("remove ccache config %s: %w", configFile, err)
 	}
 
 	if err := os.Remove(configDir); err != nil && !os.IsNotExist(err) {
 		logger.Debugf("Leaving ccache config dir in place (%s): %s", configDir, err)
 	}
-
-	logger.TInfof("Removed ccache config %s", configFile)
 
 	return nil
 }

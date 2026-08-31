@@ -35,10 +35,13 @@ func Deactivate(logger log.Logger, params DeactivateParams) error {
 		return nil
 	}
 
-	if err := os.Remove(configFile); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("remove react-native marker %s: %w", configFile, err))
-	} else {
+	switch err := os.Remove(configFile); {
+	case err == nil:
 		logger.TInfof("Removed react-native marker %s", configFile)
+	case os.IsNotExist(err):
+		logger.Infof("React Native marker already absent: %s", configFile)
+	default:
+		errs = append(errs, fmt.Errorf("remove react-native marker %s: %w", configFile, err))
 	}
 
 	if err := os.Remove(configDir); err != nil && !os.IsNotExist(err) {

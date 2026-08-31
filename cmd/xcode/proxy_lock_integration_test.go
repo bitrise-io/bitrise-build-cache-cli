@@ -98,7 +98,7 @@ func TestHelperProxyLockChild(t *testing.T) {
 }
 
 func advertisedPID(osProxy utils.OsProxy) int {
-	content, _, err := osProxy.ReadFileIfExists(proxyPidFile(osProxy))
+	content, _, err := osProxy.ReadFileIfExists(xcelerate.ProxyPidFile(osProxy))
 	if err != nil {
 		return 0
 	}
@@ -220,7 +220,7 @@ func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
 		return env.count(t, "SERVING") == 1
 	}, 5*time.Second, 10*time.Millisecond, "waiting for the child to take the singleton")
 
-	pid, running := proxyOwner(osProxy)
+	pid, running := xcelerate.ProxyOwner(osProxy)
 	require.True(t, running, "a serving proxy must be visible to the wrapper")
 	require.Equal(t, child.Process.Pid, pid, "and identifiable, so the log names the right process")
 
@@ -236,7 +236,7 @@ func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
 	assert.Zero(t, spawns, "the wrapper must not start a second proxy while one is serving")
 
 	require.NoError(t, child.Wait())
-	_, running = proxyOwner(osProxy)
+	_, running = xcelerate.ProxyOwner(osProxy)
 	assert.False(t, running, "once it stops, the singleton is free")
 }
 
@@ -253,10 +253,10 @@ func TestIntegration_ProxyLock_KilledProxyFreesTheSingleton(t *testing.T) {
 
 	env.dump(t, "a proxy killed while serving")
 
-	require.FileExists(t, proxyPidFile(osProxy), "the file stays: it carries the lock")
+	require.FileExists(t, xcelerate.ProxyPidFile(osProxy), "the file stays: it carries the lock")
 	assert.Equal(t, cmd.Process.Pid, advertisedPID(osProxy), "and still advertises the dead pid")
 
-	_, running := proxyOwner(osProxy)
+	_, running := xcelerate.ProxyOwner(osProxy)
 	assert.False(t, running, "the advertised pid is stale, but the lock is free")
 
 	served := false
@@ -278,9 +278,9 @@ func TestProxyOwner_HeldWithAnUnreadablePidStillReportsRunning(t *testing.T) {
 	// production path while the advertisement is unreadable.
 	require.NoError(t, withProxySingleton(osProxy, log.NewLogger(), func() error {
 		// What a reader sees between WriteFile's truncate and its write.
-		require.NoError(t, os.WriteFile(proxyPidFile(osProxy), nil, 0o644))
+		require.NoError(t, os.WriteFile(xcelerate.ProxyPidFile(osProxy), nil, 0o644))
 
-		pid, running := proxyOwner(osProxy)
+		pid, running := xcelerate.ProxyOwner(osProxy)
 		assert.True(t, running, "the lock is held, so a proxy is serving")
 		assert.Zero(t, pid, "with the identity simply unknown")
 
@@ -305,9 +305,9 @@ func TestIntegration_ProxyLock_StopLeavesTheLockFileInPlace(t *testing.T) {
 	_, _ = cmd.Process.Wait()
 	env.dump(t, "stop-proxy against a live proxy")
 
-	assert.FileExists(t, proxyPidFile(osProxy), "stop must not remove the file that carries the lock")
+	assert.FileExists(t, xcelerate.ProxyPidFile(osProxy), "stop must not remove the file that carries the lock")
 
-	free, err := flock.New(proxyPidFile(osProxy)).TryLock()
+	free, err := flock.New(xcelerate.ProxyPidFile(osProxy)).TryLock()
 	require.NoError(t, err)
 	assert.True(t, free, "and the lock must be free once the proxy is gone")
 }

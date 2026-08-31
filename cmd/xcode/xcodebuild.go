@@ -973,7 +973,7 @@ func startProxy(
 	// Holding the singleton is not the same as serving: a supervised proxy
 	// (launchd/systemd) can hold it while wedged or mid-respawn, and attaching to
 	// one that never answers silently drops every cache operation for the build.
-	if pid, running := proxyOwner(osProxy); running {
+	if pid, running := xcelerate.ProxyOwner(osProxy); running {
 		if daemon.ProbeSocket(ctx, socketPath) == daemon.ProbeRunning {
 			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 

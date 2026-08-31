@@ -6,13 +6,8 @@ import (
 
 // DeactivateCmd is the parent of all per-tool `deactivate ...` subcommands.
 // The subcommands are registered by each tool's cmd package (mirroring
-// how ActivateCmd is composed).
-//
-// Limitations: this flow does NOT clear CI env vars set at activation time
-// (via envman / GITHUB_ENV / shell RC files other than the Xcelerate PATH block).
-// On CI you may need to restart the workflow or reset the affected variables
-// yourself. It also does NOT remove `~/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts`
-// — that is tracked as a follow-up.
+// how ActivateCmd is composed). Limitations of the flow live on the cobra
+// Long string so `--help` prints them.
 var DeactivateCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "deactivate",
 	Short: "Deactivate Bitrise Build Cache for a given tool",

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -77,7 +76,7 @@ func removeGradleInitScript(logger log.Logger, gradleHome string, dryRun bool) e
 }
 
 func stripGradlePropertiesBlock(logger log.Logger, gradleHome string, dryRun bool) error {
-	propsPath := filepath.Join(gradleHome, "gradle.properties")
+	propsPath := paths.GradlePropertiesFile(gradleHome)
 
 	if dryRun {
 		logger.TInfof("[dry-run] would strip generated block from %s", propsPath)
@@ -127,7 +126,12 @@ func removeGradleSidecar(logger log.Logger, home string, dryRun bool) error {
 		return nil
 	}
 
-	if err := os.Remove(sidecarFile); err != nil && !os.IsNotExist(err) {
+	switch err := os.Remove(sidecarFile); {
+	case err == nil:
+		logger.TInfof("Removed gradle sidecar %s", sidecarFile)
+	case os.IsNotExist(err):
+		logger.Infof("Gradle sidecar already absent: %s", sidecarFile)
+	default:
 		return fmt.Errorf("remove gradle sidecar %s: %w", sidecarFile, err)
 	}
 
@@ -135,8 +139,6 @@ func removeGradleSidecar(logger log.Logger, home string, dryRun bool) error {
 		// Non-empty is normal (user extras left behind); do not treat as failure.
 		logger.Debugf("Leaving gradle sidecar dir in place (%s): %s", sidecarDir, err)
 	}
-
-	logger.TInfof("Removed gradle sidecar %s", sidecarFile)
 
 	return nil
 }

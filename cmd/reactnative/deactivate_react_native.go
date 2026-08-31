@@ -31,7 +31,7 @@ Each step is best-effort — a missing artifact is not an error.`,
 
 		var errs []error
 
-		if err := common.DeactivateReactNativeMarker(logger, deactivateReactNativeDryRun); err != nil {
+		if err := common.RemoveReactNativeMarker(logger, deactivateReactNativeDryRun); err != nil {
 			errs = append(errs, err)
 		}
 

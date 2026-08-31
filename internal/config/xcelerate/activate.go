@@ -393,7 +393,7 @@ func addXcelerateCommandToPathWithScriptWrapper(
 
 	exporter := envexport.New(envs, logger)
 	exporter.Export("PATH", path)
-	exporter.ExportToShellRC("Bitrise Xcelerate", fmt.Sprintf("export PATH=%s:$PATH", binPath))
+	exporter.ExportToShellRC(XcelerateShellRCBlockName, fmt.Sprintf("export PATH=%s:$PATH", binPath))
 
 	return nil
 }

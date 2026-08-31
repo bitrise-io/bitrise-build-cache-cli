@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"errors"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -9,6 +10,18 @@ import (
 
 //nolint:gochecknoglobals
 var deactivateAllDryRun bool
+
+// Fan-out hooks. Exported (via package-scoped vars) so tests can spy on them
+// without executing the real per-tool cleanup. Production wiring is inline.
+//
+//nolint:gochecknoglobals
+var (
+	deactivateAllReactNativeFn = RemoveReactNativeMarker
+	deactivateAllGradleFn      = DeactivateGradle
+	deactivateAllBazelFn       = DeactivateBazel
+	deactivateAllXcodeFn       = DeactivateXcode
+	deactivateAllCcacheFn      = DeactivateCcache
+)
 
 // DeactivateAllCmd fans out `deactivate` to every supported tool.
 var DeactivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -21,30 +34,34 @@ var DeactivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
 		logger.EnableDebugLog(IsDebugLogMode)
 		logger.TInfof("Deactivate Bitrise Build Cache for all tools")
 
-		var errs []error
-
-		if err := DeactivateReactNativeMarker(logger, deactivateAllDryRun); err != nil {
-			errs = append(errs, err)
-		}
-
-		if err := DeactivateGradle(logger, deactivateAllDryRun); err != nil {
-			errs = append(errs, err)
-		}
-
-		if err := DeactivateBazel(logger, deactivateAllDryRun); err != nil {
-			errs = append(errs, err)
-		}
-
-		if err := DeactivateXcode(logger, deactivateAllDryRun); err != nil {
-			errs = append(errs, err)
-		}
-
-		if err := DeactivateCcache(cmd.Context(), logger, deactivateAllDryRun); err != nil {
-			errs = append(errs, err)
-		}
-
-		return errors.Join(errs...)
+		return runDeactivateAll(cmd.Context(), logger, deactivateAllDryRun)
 	},
+}
+
+func runDeactivateAll(ctx context.Context, logger log.Logger, dryRun bool) error {
+	var errs []error
+
+	if err := deactivateAllReactNativeFn(logger, dryRun); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := deactivateAllGradleFn(logger, dryRun); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := deactivateAllBazelFn(logger, dryRun); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := deactivateAllXcodeFn(logger, dryRun); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := deactivateAllCcacheFn(ctx, logger, dryRun); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
 
 func init() {

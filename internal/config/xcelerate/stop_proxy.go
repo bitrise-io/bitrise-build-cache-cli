@@ -22,7 +22,7 @@ func ProxyPidFile(osProxy utils.OsProxy) string {
 }
 
 // ProxyOwner reports whether a proxy is serving, and the pid it advertised.
-// See cmd/xcode/proxy_lock.go for the layering rationale.
+// See cmd/xcode/proxy_lock.go (withProxySingleton) for the layering rationale.
 func ProxyOwner(osProxy utils.OsProxy) (int, bool) {
 	path := ProxyPidFile(osProxy)
 
@@ -54,14 +54,15 @@ func ProxyOwner(osProxy utils.OsProxy) (int, bool) {
 // sends SIGTERM to the process group, and escalates to SIGKILL after a grace
 // period. Returns nil (and logs) when no proxy is running.
 func StopProxy(logger log.Logger, osProxy utils.OsProxy) error {
-	logger.TInfof("Stopping xcelerate-proxy...")
-
 	pid, running := ProxyOwner(osProxy)
 	if !running {
 		logger.TDonef("No xcelerate-proxy is running")
 
 		return nil
 	}
+
+	logger.TInfof("Stopping xcelerate-proxy...")
+
 	if pid <= 0 {
 		return fmt.Errorf("a proxy holds %s but advertised no usable pid", ProxyPidFile(osProxy))
 	}
