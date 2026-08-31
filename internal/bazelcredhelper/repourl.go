@@ -2,6 +2,7 @@ package bazelcredhelper
 
 import (
 	"context"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -34,14 +35,14 @@ func newRepoURLResolver(envs map[string]string, remoteURL func(ctx context.Conte
 		defer cancel()
 
 		if url, err := remoteURL(ctx); err == nil {
-			if url = strings.TrimSpace(url); isHeaderSafe(url) {
+			if url = stripCredentials(strings.TrimSpace(url)); isHeaderSafe(url) {
 				return url
 			}
 		}
 
 		// Covers a workspace outside a git checkout, and containerised builds
 		// where git is absent — those get the URL forwarded in the environment.
-		if url := strings.TrimSpace(envs["GIT_REPOSITORY_URL"]); isHeaderSafe(url) {
+		if url := stripCredentials(strings.TrimSpace(envs["GIT_REPOSITORY_URL"])); isHeaderSafe(url) {
 			return url
 		}
 
@@ -54,6 +55,26 @@ func gitRemoteURL(ctx context.Context) (string, error) {
 	out, err := exec.CommandContext(ctx, "git", "config", "--get", "remote.origin.url").Output()
 
 	return string(out), err //nolint:wrapcheck // the caller only branches on nil
+}
+
+// stripCredentials drops the userinfo of a URL-form remote. A checkout done by
+// a CI provider often leaves a token there (`https://x-access-token:<token>@…`,
+// `https://<token>@…`), and this value travels in a header and is persisted.
+// scp-form remotes (`git@github.com:org/repo.git`) have no scheme, carry a
+// username rather than a secret, and are left alone.
+func stripCredentials(rawURL string) string {
+	if !strings.Contains(rawURL, "://") {
+		return rawURL
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.User == nil {
+		return rawURL
+	}
+
+	parsed.User = nil
+
+	return parsed.String()
 }
 
 // gRPC rejects metadata outside printable ASCII, which would fail every RPC of
