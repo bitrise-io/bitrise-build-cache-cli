@@ -238,28 +238,24 @@ settingsEvaluated {
             collectMetadata = false
         }
     }
-    rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
-    }
-    rootProject {
-        extensions.create("analytics", AnalyticsPluginExtension::class.java)
-        extensions.configure(AnalyticsPluginExtension::class.java) {
-            endpoint.set("AnalyticsEndpointURLValue:123")
-            httpEndpoint.set("AnalyticsHttpEndpointValue")
-            grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-            authToken.set("AuthTokenValue")
-            dumpEventsToFiles.set(true)
-            debug.set(true)
-            enabled.set(true)
+    apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    extensions.create("analytics", AnalyticsPluginExtension::class.java)
+    extensions.configure(AnalyticsPluginExtension::class.java) {
+        endpoint.set("AnalyticsEndpointURLValue:123")
+        httpEndpoint.set("AnalyticsHttpEndpointValue")
+        grpcEndpoint.set("AnalyticsGRPCEndpointValue")
+        authToken.set("AuthTokenValue")
+        dumpEventsToFiles.set(true)
+        debug.set(true)
+        enabled.set(true)
 
-            providerName.set("CIProviderValue")
+        providerName.set("CIProviderValue")
 
-            bitrise {
-                appSlug.set("AppSlugValue")
-            }
+        bitrise {
+            appSlug.set("AppSlugValue")
         }
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
 }
 rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
@@ -301,28 +297,24 @@ settingsEvaluated {
             collectMetadata = false
         }
     }
-    rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
-    }
-    rootProject {
-        extensions.create("analytics", AnalyticsPluginExtension::class.java)
-        extensions.configure(AnalyticsPluginExtension::class.java) {
-            endpoint.set("AnalyticsEndpointURLValue:123")
-            httpEndpoint.set("AnalyticsHttpEndpointValue")
-            grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-            authToken.set(providers.bitriseAuthToken())
-            dumpEventsToFiles.set(true)
-            debug.set(true)
-            enabled.set(true)
+    apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    extensions.create("analytics", AnalyticsPluginExtension::class.java)
+    extensions.configure(AnalyticsPluginExtension::class.java) {
+        endpoint.set("AnalyticsEndpointURLValue:123")
+        httpEndpoint.set("AnalyticsHttpEndpointValue")
+        grpcEndpoint.set("AnalyticsGRPCEndpointValue")
+        authToken.set(providers.bitriseAuthToken())
+        dumpEventsToFiles.set(true)
+        debug.set(true)
+        enabled.set(true)
 
-            providerName.set("")
+        providerName.set("")
 
-            bitrise {
-                appSlug.set("AppSlugValue")
-            }
+        bitrise {
+            appSlug.set("AppSlugValue")
         }
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
 }
 rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {

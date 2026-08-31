@@ -88,32 +88,28 @@ settingsEvaluated {
             {{- end }}
         }
     }
-    rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
-    }
+    apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}
-    rootProject {
-        extensions.create("analytics", AnalyticsPluginExtension::class.java)
-        extensions.configure(AnalyticsPluginExtension::class.java) {
-            endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
-            httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
-            grpcEndpoint.set("{{ .Analytics.GRPCEndpoint }}")
-            authToken.set({{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }})
-            dumpEventsToFiles.set({{ .Common.Debug }})
-            debug.set({{ .Common.Debug }})
-            enabled.set(true)
+    extensions.create("analytics", AnalyticsPluginExtension::class.java)
+    extensions.configure(AnalyticsPluginExtension::class.java) {
+        endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
+        httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
+        grpcEndpoint.set("{{ .Analytics.GRPCEndpoint }}")
+        authToken.set({{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }})
+        dumpEventsToFiles.set({{ .Common.Debug }})
+        debug.set({{ .Common.Debug }})
+        enabled.set(true)
 
-            providerName.set("{{ .Common.CIProvider }}")
+        providerName.set("{{ .Common.CIProvider }}")
 
-            bitrise {
-                {{- if .Common.AppSlug }}
-                appSlug.set("{{ .Common.AppSlug }}")
-                {{- end }}
-            }
+        bitrise {
+            {{- if .Common.AppSlug }}
+            appSlug.set("{{ .Common.AppSlug }}")
+            {{- end }}
         }
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     {{- end }}
 }
 {{- end -}}
