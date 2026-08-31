@@ -25,10 +25,22 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 		<key>SuccessfulExit</key>
 		<false/>
 	</dict>
+	<!-- Interactive, because every other band is throttled under contention and
+	     this proxy serves xcodebuild while all cores compile. A shell child
+	     inherits the shell's QoS; a launchd job does not. Under a real build on
+	     a 4-core CI VM, Background cost 5276ms against 16ms per cache
+	     operation; Interactive matched the shell, 3 runs of 3, and production
+	     went from 106 failed builds in 22h to none.
+
+	     Only reproducible on a small machine under a real compile:
+	     e2e-daemon-cache-macos runs 4-core on purpose, where flipping this to
+	     Background timed out 128 of 620 cache operations while Interactive
+	     timed out none. On a 6-core machine both bands measure identically, so
+	     do not re-tune this from a microbenchmark or a larger VM. -->
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
 	<key>ProcessType</key>
-	<string>Background</string>
+	<string>Interactive</string>
 	<key>StandardOutPath</key>
 	<string>{{escape .StdoutPath}}</string>
 	<key>StandardErrorPath</key>

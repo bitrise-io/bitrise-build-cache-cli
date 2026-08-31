@@ -1568,6 +1568,68 @@ workflows:
             assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
+  e2e-daemon-cache-macos:
+    description: |
+      Guard the v3.6.3 daemon regression: a launchd-supervised xcelerate proxy
+      served cache operations far slower than the wrapper-forked one, timing out
+      on 30-60% of them in production.
+
+      Builds a real project through the launchd proxy with every compile key
+      busted, so the cache runs cold and every operation is an upload — the path
+      that failed. Any DeadlineExceeded fails the workflow.
+
+      activate starts the daemon itself, so this also covers the CI path that
+      #491 used to skip.
+
+      Verified as a gate in both directions: flipping ProcessType to Background
+      timed out 38 of 620 operations against none on Interactive.
+
+      Two things are load-bearing and easy to undo by accident:
+
+      - The 4-core machine. The same flip on a 6-core machine produced identical
+        numbers for both bands, as did every microbenchmark against the proxy
+        socket. A bigger machine silently disarms this workflow.
+      - The cold cache. The unique define busts every compile key, so every
+        operation is an upload. A warm build barely touches the failing path.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        # 4 cores on purpose. The regression is machine-size dependent — 13.9%
+        # of builds failed on 4-core against 0% on 4x-large — and a Background
+        # proxy kept up fine on a 6-core large.
+        machine_type_id: g2.mac.medium
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
+    # A brand-new workflow name resolves to the baseline phase, which disables
+    # the cache outright and would leave nothing to measure.
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: warmup
+    - DAEMON_E2E_FAKE_BACKEND: "1"
+    steps:
+    - bundle::feature-e2e-setup: {}
+    # activate publishes its xcodebuild shim through envman, which only takes
+    # effect in the next step, so the build cannot share this one.
+    - script:
+        title: activate and start the launchd-supervised proxy
+        inputs:
+        - content: |-
+            set -eo pipefail
+            ../scripts/daemon_cache_activate.sh "$BITRISE_DEPLOY_DIR/daemon-build"
+    - script:
+        title: build through the proxy with every compile key busted
+        inputs:
+        - content: |-
+            set -eo pipefail
+            ../scripts/daemon_cache_build.sh "$BITRISE_DEPLOY_DIR/daemon-build"
+    - script:
+        title: assert no cache operation timed out
+        inputs:
+        - content: |-
+            set -eo pipefail
+            ../scripts/assert_daemon_cache.sh "$BITRISE_DEPLOY_DIR/daemon-build"
+    - deploy-to-bitrise-io@2:
+        is_always_run: true
+
   e2e-daemon-install-macos:
     description: |
       Validate `daemon install` / `up` / `down` / `restart` / `uninstall`
@@ -2525,6 +2587,7 @@ pipelines:
       e2e-xcode-cas-key-stable: {}
       e2e-xcode-wrapper-watcher-race: {}
       e2e-daemon-install-macos: {}
+      e2e-daemon-cache-macos: {}
       e2e-scenarios-linux: {}
       e2e-scenarios-macos: {}
       ccache-storage-helper-test: {}
