@@ -37,12 +37,15 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
-	ch := c.pickChannel()
-	ch.acquire()
-	defer ch.release()
-
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
+	ch := c.pickChannel()
+	if err := ch.acquire(timeoutCtx); err != nil {
+		return err
+	}
+	defer ch.release()
+
 	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, true))
 
 	_, err := ch.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
@@ -91,7 +94,9 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	ch := c.pickChannel()
-	ch.acquire()
+	if err := ch.acquire(ctx); err != nil {
+		return nil, err
+	}
 
 	stream, err := ch.bitriseKVClient.Put(ctx)
 	if err != nil {
@@ -131,7 +136,9 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 	}
 
 	ch := c.pickChannel()
-	ch.acquire()
+	if err := ch.acquire(ctx); err != nil {
+		return nil, err
+	}
 
 	stream, err := ch.bitriseKVClient.Get(ctx, readReq)
 	if err != nil {
@@ -157,14 +164,17 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 }
 
 func (c *Client) Delete(ctx context.Context, name string) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	ch := c.pickChannel()
-	ch.acquire()
+	if err := ch.acquire(timeoutCtx); err != nil {
+		return err
+	}
 	defer ch.release()
 
 	resourceName := fmt.Sprintf("kv/%s", name)
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 
 	readReq := &bytestream.ReadRequest{
@@ -189,10 +199,15 @@ func (c *Client) findMissing(ctx context.Context,
 			c.logger.Debugf("Retrying FindMissingBlobs... (attempt %d)", attempt)
 		}
 
-		ch := c.pickChannel()
-		ch.acquire()
-
 		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+
+		ch := c.pickChannel()
+		if err := ch.acquire(timeoutCtx); err != nil {
+			cancel()
+
+			return err, true
+		}
+
 		callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 
 		var err error
@@ -352,14 +367,17 @@ func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata
 }
 
 func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	ch := c.pickChannel()
-	ch.acquire()
+	if err := ch.acquire(timeoutCtx); err != nil {
+		return WriteStatus{}, err
+	}
 	defer ch.release()
 
 	resourceName := fmt.Sprintf("kv/%s", name)
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 	callCtx := metadata.NewOutgoingContext(timeoutCtx, c.getMethodCallMetadata(ctx, false))
 	resp, err := ch.bitriseKVClient.WriteStatus(callCtx, &bytestream.QueryWriteStatusRequest{
 		ResourceName: resourceName,

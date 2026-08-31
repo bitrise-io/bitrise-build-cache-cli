@@ -66,12 +66,20 @@ type channel struct {
 	casClient          remoteexecution.ContentAddressableStorageClient
 }
 
-func (ch *channel) acquire() {
+// acquire blocks for a slot, or gives up when ctx is done. Waiting past the
+// caller's deadline would hand back a slot with no time left to use it: the
+// stream opens, the server accepts it, and the first message never arrives.
+func (ch *channel) acquire(ctx context.Context) error {
 	if ch.sem == nil {
-		return
+		return nil
 	}
 
-	ch.sem <- struct{}{}
+	select {
+	case ch.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("acquire kv channel: %w", ctx.Err())
+	}
 }
 
 func (ch *channel) release() {

@@ -28,7 +28,9 @@ func TestGeneratePlist_xcelerateProxy(t *testing.T) {
 	assert.Contains(t, got, "<key>RunAtLoad</key>")
 	assert.Contains(t, got, "<key>ThrottleInterval</key>")
 	assert.Contains(t, got, "<integer>10</integer>")
-	assert.Contains(t, got, "<string>Background</string>")
+	// Background is the throttled band; a proxy serving xcodebuild must not be in it.
+	assert.Contains(t, got, "<string>Interactive</string>")
+	assert.NotContains(t, got, "<string>Background</string>")
 }
 
 func TestGeneratePlist_ccacheHelper(t *testing.T) {
