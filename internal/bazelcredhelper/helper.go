@@ -40,7 +40,8 @@ type Credential struct {
 
 type Resolver func(ctx context.Context) (Credential, error)
 
-func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver) error {
+// resolveRepoURL may be nil, in which case no repository header is emitted.
+func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, resolveRepoURL RepoURLResolver) error {
 	// Decoded and discarded, so a malformed payload is an error not a silent pass.
 	var req GetCredentialsRequest
 	dec := json.NewDecoder(in)
@@ -64,6 +65,12 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver) err
 	}
 	if !cred.Expiry.IsZero() {
 		resp.Expires = cred.Expiry.UTC().Format(time.RFC3339)
+	}
+
+	if resolveRepoURL != nil {
+		if repoURL := resolveRepoURL(ctx); repoURL != "" {
+			resp.Headers[repositoryURLHeader] = []string{repoURL}
+		}
 	}
 
 	if err := json.NewEncoder(out).Encode(resp); err != nil {
