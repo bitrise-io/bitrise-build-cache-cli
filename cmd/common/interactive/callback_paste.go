@@ -38,6 +38,9 @@ type callbackPaster struct {
 	// as non-pollable, so SetReadDeadline is rejected — which makes this the
 	// normal outcome once the grace period elapses, not an edge case.
 	unusable atomic.Bool
+	// armed gates stop() so a reader that never entered its blocking Scan can't
+	// be reported as still holding stdin. Set by read() before the first Scan.
+	armed atomic.Bool
 }
 
 // StdinUnusable reports whether a reader is still holding stdin. Callers must not
@@ -83,6 +86,7 @@ func (p *callbackPaster) Fallback(ctx context.Context, state string) (string, er
 }
 
 func (p *callbackPaster) read(state string, out chan<- oauth.PastedCallback) {
+	p.armed.Store(true)
 	scanner := bufio.NewScanner(p.Reader)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -111,6 +115,10 @@ func (p *callbackPaster) stop(done <-chan struct{}) {
 	case <-done:
 		return // already finished, nothing to unblock
 	default:
+	}
+
+	if !p.armed.Load() {
+		return // never entered the blocking Scan, so stdin is still free
 	}
 
 	dr, ok := p.Reader.(deadlineReader)
