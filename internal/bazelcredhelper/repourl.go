@@ -25,25 +25,27 @@ func NewRepoURLResolver(envs map[string]string) RepoURLResolver {
 	return newRepoURLResolver(envs, gitRemoteURL)
 }
 
+// Git first, env second, matching common.generateGitMetadata: the env var names
+// the repo that triggered the CI build, which is not always the one the Bazel
+// workspace belongs to.
 func newRepoURLResolver(envs map[string]string, remoteURL func(ctx context.Context) (string, error)) RepoURLResolver {
 	return func(ctx context.Context) string {
+		ctx, cancel := context.WithTimeout(ctx, gitBudget)
+		defer cancel()
+
+		if url, err := remoteURL(ctx); err == nil {
+			if url = strings.TrimSpace(url); isHeaderSafe(url) {
+				return url
+			}
+		}
+
+		// Covers a workspace outside a git checkout, and containerised builds
+		// where git is absent — those get the URL forwarded in the environment.
 		if url := strings.TrimSpace(envs["GIT_REPOSITORY_URL"]); isHeaderSafe(url) {
 			return url
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, gitBudget)
-		defer cancel()
-
-		url, err := remoteURL(ctx)
-		if err != nil {
-			return ""
-		}
-
-		if url = strings.TrimSpace(url); !isHeaderSafe(url) {
-			return ""
-		}
-
-		return url
+		return ""
 	}
 }
 
