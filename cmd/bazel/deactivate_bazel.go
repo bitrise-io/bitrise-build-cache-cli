@@ -1,0 +1,38 @@
+package bazel
+
+import (
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/spf13/cobra"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+)
+
+//nolint:gochecknoglobals
+var deactivateBazelDryRun bool
+
+// DeactivateBazelCmd represents the `bazel` subcommand under `deactivate`.
+var DeactivateBazelCmd = &cobra.Command{ //nolint:gochecknoglobals
+	Use:   "bazel",
+	Short: "Deactivate Bitrise Build Cache for Bazel",
+	Long: `Deactivate Bitrise Build Cache for Bazel.
+This command will:
+
+- Strip the "# [start/end] generated-by-bitrise-build-cache" block from ~/.bazelrc.
+- Remove ~/.bitrise/cache/bazel/config.json.
+
+The .bazelrc file itself is preserved. If nothing was activated the command
+reports "already absent" for each step and returns success.`,
+	SilenceUsage: true,
+	RunE: func(_ *cobra.Command, _ []string) error {
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+		logger.EnableDebugLog(common.IsDebugLogMode)
+		logger.TInfof("Deactivate Bitrise Build Cache for Bazel")
+
+		return common.DeactivateBazel(logger, deactivateBazelDryRun)
+	},
+}
+
+func init() {
+	common.DeactivateCmd.AddCommand(DeactivateBazelCmd)
+	DeactivateBazelCmd.Flags().BoolVar(&deactivateBazelDryRun, "dry-run", false, "List intended removals without executing them.")
+}

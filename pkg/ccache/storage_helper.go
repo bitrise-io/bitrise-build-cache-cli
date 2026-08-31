@@ -168,16 +168,24 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 // error if the helper is not running. Only stops the process — does not
 // collect or send analytics. Use CollectAndSendStats separately.
 func (h *StorageHelper) Stop(ctx context.Context) error {
-	socketPath := h.socketPath()
+	return StopStorageHelperAt(ctx, h.logger, h.socketPath())
+}
 
+// StopStorageHelperAt sends the STOP request to a helper listening on socketPath
+// without requiring a ccache config file on disk. Returns nil if nothing is
+// listening. Used by the deactivate flow, which must work even when the config
+// was already partially cleaned up.
+func StopStorageHelperAt(ctx context.Context, logger log.Logger, socketPath string) error {
 	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
-		h.logger.TInfof("Storage helper is not running, nothing to stop")
+		if logger != nil {
+			logger.TInfof("Storage helper is not running on %s", socketPath)
+		}
 
 		return nil
 	}
 
 	if err := iccache.SendStop(ctx, socketPath); err != nil {
-		return fmt.Errorf("send stop to storage helper: %w", err)
+		return fmt.Errorf("send stop to storage helper on %s: %w", socketPath, err)
 	}
 
 	return nil

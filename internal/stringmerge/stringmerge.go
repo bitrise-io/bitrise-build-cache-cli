@@ -29,3 +29,46 @@ func ChangeContentInBlock(currentContent, blockStartPattern, blockEndPattern, bl
 	// the block is not present yet, append it to the existing content
 	return currentContent + "\n" + fullBlockContent
 }
+
+// RemoveBlock strips a `blockStartPattern`..`blockEndPattern` block (inclusive of
+// the end-marker line and its trailing newline) from currentContent. It also
+// collapses the "\n\n" left when ChangeContentInBlock had inserted a blank-line
+// separator while appending, so a round-trip Activate→Deactivate returns the
+// original content. Returns the input unchanged when either marker is missing or
+// when the markers are out of order.
+func RemoveBlock(currentContent, blockStartPattern, blockEndPattern string) string {
+	startIndex := strings.Index(currentContent, blockStartPattern)
+	if startIndex < 0 {
+		return currentContent
+	}
+
+	endIndex := strings.Index(currentContent, blockEndPattern)
+	if endIndex < 0 || endIndex < startIndex {
+		return currentContent
+	}
+
+	cutTo := endIndex + len(blockEndPattern)
+	if cutTo < len(currentContent) && currentContent[cutTo] == '\n' {
+		cutTo++
+	}
+
+	result := currentContent[:startIndex] + currentContent[cutTo:]
+
+	// ChangeContentInBlock's append path prefixes a "\n" separator; after the
+	// block+trailing-\n are gone that leaves "\n\n" at the seam (or "\n" at EOF).
+	// Collapse both cases so activate→deactivate is a true round-trip.
+	if startIndex > 0 && currentContent[startIndex-1] == '\n' {
+		// EOF case: block ran to end of file, leaving one extra "\n" in the tail.
+		if startIndex == len(result) && strings.HasSuffix(result, "\n\n") {
+			result = result[:len(result)-1]
+		}
+
+		// Mid-file case: startIndex now points to the char after the seam. If
+		// that char is also '\n' we have "\n\n" back-to-back — collapse.
+		if startIndex < len(result) && result[startIndex] == '\n' {
+			result = result[:startIndex] + result[startIndex+1:]
+		}
+	}
+
+	return result
+}

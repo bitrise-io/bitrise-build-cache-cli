@@ -126,3 +126,56 @@ func writeShellRCBlock(filePath, blockName, content string) error {
 
 	return nil
 }
+
+// RemoveFromShellRC strips the marker block written by ExportToShellRC from both
+// ~/.bashrc and ~/.zshrc. Missing files, missing blocks, and empty result content
+// are all no-ops (never deletes the file).
+func (e *EnvExporter) RemoveFromShellRC(blockName string) {
+	homeDir := e.envs["HOME"]
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			e.logger.Debugf("Failed to get home directory: %v", err)
+
+			return
+		}
+	}
+
+	for _, rcFile := range []string{".bashrc", ".zshrc"} {
+		rcPath := filepath.Join(homeDir, rcFile)
+		if err := removeShellRCBlock(rcPath, blockName); err != nil {
+			e.logger.Debugf("Failed to update %s: %v", rcFile, err)
+
+			continue
+		}
+		e.logger.Infof("Stripped %q block from %s", blockName, rcPath)
+	}
+}
+
+func removeShellRCBlock(filePath, blockName string) error {
+	currentContent, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to read %s: %w", filePath, err)
+	}
+
+	newContent := stringmerge.RemoveBlock(
+		string(currentContent),
+		fmt.Sprintf("# [start] %s", blockName),
+		fmt.Sprintf("# [end] %s", blockName),
+	)
+
+	if newContent == string(currentContent) {
+		return nil
+	}
+
+	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil { //nolint:mnd,gosec
+		return fmt.Errorf("failed to write %s: %w", filePath, err)
+	}
+
+	return nil
+}

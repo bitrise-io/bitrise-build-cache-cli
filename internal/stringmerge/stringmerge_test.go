@@ -6,9 +6,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	testBlockStart = "# [start] generated-by-bitrise-build-cache"
+	testBlockEnd   = "# [end] generated-by-bitrise-build-cache"
+)
+
 func TestChangeContentInBlock(t *testing.T) {
-	theBlockStartPattern := "# [start] generated-by-bitrise-build-cache"
-	theBlockEndPattern := "# [end] generated-by-bitrise-build-cache"
+	theBlockStartPattern := testBlockStart
+	theBlockEndPattern := testBlockEnd
 	theBlockContentStr := `org.gradle.caching=true
 org.gradle.caching.debug=true`
 
@@ -82,5 +87,96 @@ org.gradle.configuration-cache=true`,
 				tt.args.blockContentStr)
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestRemoveBlock(t *testing.T) {
+	start := testBlockStart
+	end := testBlockEnd
+
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "block absent",
+			content: "user=alice\nother=stuff\n",
+			want:    "user=alice\nother=stuff\n",
+		},
+		{
+			name:    "empty content",
+			content: "",
+			want:    "",
+		},
+		{
+			name: "block at start",
+			content: `# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+user=alice
+`,
+			want: `user=alice
+`,
+		},
+		{
+			name: "block at end",
+			content: `user=alice
+# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+`,
+			want: `user=alice
+`,
+		},
+		{
+			name: "block in the middle",
+			content: `user=alice
+# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+other=stuff
+`,
+			want: `user=alice
+other=stuff
+`,
+		},
+		{
+			name:    "missing end marker leaves input unchanged",
+			content: "user=alice\n# [start] generated-by-bitrise-build-cache\nmanaged=true\nother=stuff\n",
+			want:    "user=alice\n# [start] generated-by-bitrise-build-cache\nmanaged=true\nother=stuff\n",
+		},
+		{
+			name: "end marker before start marker leaves input unchanged",
+			content: `# [end] generated-by-bitrise-build-cache
+# [start] generated-by-bitrise-build-cache
+`,
+			want: `# [end] generated-by-bitrise-build-cache
+# [start] generated-by-bitrise-build-cache
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RemoveBlock(tt.content, start, end)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestChangeAndRemoveBlock_RoundTrip(t *testing.T) {
+	start := testBlockStart
+	end := testBlockEnd
+
+	cases := []string{
+		"",
+		"user=alice\n",
+		"user=alice\nother=stuff\n",
+	}
+	for _, original := range cases {
+		activated := ChangeContentInBlock(original, start, end, "managed=true")
+		deactivated := RemoveBlock(activated, start, end)
+		assert.Equalf(t, original, deactivated,
+			"Activate→Deactivate must round-trip; original=%q, activated=%q", original, activated)
 	}
 }
