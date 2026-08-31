@@ -341,13 +341,15 @@ workflows:
             make lint
     - go-test@1: {}
     - bundle::generate_gradle_verification_reference: { }
-    - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2:
+        is_always_run: true
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_TARGET_PATH"
     - deploy-to-bitrise-io@2:
+        is_always_run: true
         inputs:
           - deploy_path: "$GRADLE_VERIFICATION_REF_MIRROR_TARGET_PATH"
+    - bundle::check_gradle_verification_reference: { }
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
