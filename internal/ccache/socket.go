@@ -34,14 +34,43 @@ func (s *Socket) IsListening() bool {
 	return IsListening(s.path)
 }
 
+type StartOption func(*startConfig)
+
+type startConfig struct {
+	invocationID string
+	debug        bool
+}
+
+func WithInvocationID(id string) StartOption {
+	return func(c *startConfig) { c.invocationID = id }
+}
+
+func WithDebug() StartOption {
+	return func(c *startConfig) { c.debug = true }
+}
+
 // Start launches the storage helper as a detached background process.
-func (s *Socket) Start() error {
+func (s *Socket) Start(opts ...StartOption) error {
+	cfg := startConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	bin, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("get executable path: %w", err)
 	}
 
-	cmd := exec.Command(bin, "ccache", "storage-helper", "start") //nolint:gosec,noctx // intentionally detached: the helper must outlive this command
+	args := make([]string, 0, 5)
+	if cfg.debug {
+		args = append(args, "--debug")
+	}
+	args = append(args, "ccache", "storage-helper", "start")
+	if cfg.invocationID != "" {
+		args = append(args, "--invocation-id="+cfg.invocationID)
+	}
+
+	cmd := exec.Command(bin, args...) //nolint:gosec,noctx // intentionally detached: the helper must outlive this command
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

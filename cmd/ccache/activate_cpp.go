@@ -47,16 +47,19 @@ This command will:
 			return fmt.Errorf("activate C++ cache: %w", err)
 		}
 
-		// daemon.Ensure declines to install the service on CI, and ccache silently
-		// misses every lookup when nothing serves the socket, so start the helper
-		// here when it is not already up. Best-effort: a missing helper degrades
-		// the cache, it must not fail activation.
+		// daemon.Ensure skips the service on CI; ccache silently misses every
+		// lookup when nothing serves the socket. Best-effort — must not fail activation.
 		socketPath := ccacheconfig.ResolveIPCSocketPath(
 			activateCppParams.IPCSocketPathOverride, utils.AllEnvs(), utils.DefaultOsProxy{},
 		)
 		socket := ccacheipc.NewSocket(socketPath)
 		if !socket.IsListening() {
-			if err := socket.Start(); err != nil {
+			startOpts := []ccacheipc.StartOption{ccacheipc.WithDebug()}
+			if invID := utils.AllEnvs()["BITRISE_INVOCATION_ID"]; invID != "" {
+				startOpts = append(startOpts, ccacheipc.WithInvocationID(invID))
+			}
+
+			if err := socket.Start(startOpts...); err != nil {
 				logger.Warnf("Could not start the ccache storage helper: %s", err)
 			} else if !socket.AwaitReady() {
 				logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
