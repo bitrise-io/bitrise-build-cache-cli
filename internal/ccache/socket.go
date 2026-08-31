@@ -34,7 +34,6 @@ func (s *Socket) IsListening() bool {
 	return IsListening(s.path)
 }
 
-// StartOption customizes how the storage-helper subprocess is spawned.
 type StartOption func(*startConfig)
 
 type startConfig struct {
@@ -42,17 +41,10 @@ type startConfig struct {
 	debug        bool
 }
 
-// WithInvocationID passes --invocation-id=X to the helper. Callers that already
-// know the build's invocation ID at spawn time (e.g. the wrapper's parent ID)
-// get a deterministic ~/.local/state/ccache/logs/ccache-<id>.log filename
-// instead of the helper's random-UUID default.
 func WithInvocationID(id string) StartOption {
 	return func(c *startConfig) { c.invocationID = id }
 }
 
-// WithDebug forwards --debug to the helper root command so [SetInvocationID]
-// and per-op stat lines land in the log file. Consumers that assert on those
-// lines in CI must enable this.
 func WithDebug() StartOption {
 	return func(c *startConfig) { c.debug = true }
 }

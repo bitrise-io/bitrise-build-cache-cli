@@ -47,17 +47,8 @@ This command will:
 			return fmt.Errorf("activate C++ cache: %w", err)
 		}
 
-		// daemon.Ensure declines to install the service on CI, and ccache silently
-		// misses every lookup when nothing serves the socket, so start the helper
-		// here when it is not already up. Best-effort: a missing helper degrades
-		// the cache, it must not fail activation.
-		//
-		// Forward --debug so downstream consumers (e.g. Gradle cache plugin) can
-		// grep [SetInvocationID] in the helper log, and pass BITRISE_INVOCATION_ID
-		// as the initial invocation-id so the first log file has a deterministic
-		// name instead of a random UUID. The plugin later overrides via
-		// set-invocation-id, at which point the helper swaps loggers to its own
-		// per-invocation file.
+		// daemon.Ensure skips the service on CI; ccache silently misses every
+		// lookup when nothing serves the socket. Best-effort — must not fail activation.
 		socketPath := ccacheconfig.ResolveIPCSocketPath(
 			activateCppParams.IPCSocketPathOverride, utils.AllEnvs(), utils.DefaultOsProxy{},
 		)
