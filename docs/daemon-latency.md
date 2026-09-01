@@ -66,7 +66,7 @@ Tracked in the table below; each row links to the commit that tested it.
 | # | Candidate | Where tested | Result |
 |---|---|---|---|
 | D1 | Bound gRPC concurrency (`MaxConcurrentStreams`, `NumStreamWorkers`) | laptop: inconclusive | needs CI |
-| B1 | Self-daemonize: double-fork + `setsid`, no launchd | | |
+| B1 | Self-daemonize: double-fork + `setsid`, no launchd | laptop: survives + serves | latency already known |
 | A2 | `LimitLoadToSessionType` (Aqua / Background) | laptop: loads (Aqua only) | needs CI |
 | A1 | `LaunchDaemon` in the system domain | | |
 | A3 | `NSAppSleepDisabled=1` | laptop: loads | needs CI |
@@ -147,3 +147,26 @@ here. Forcing the process into the background band and clearing it again:
 Whether the supervised proxy is *in* that band on CI is the open question; if
 it is, this is a one-line fix, and if it is not, the call is a harmless no-op
 (it returns an error, which is logged at debug and ignored).
+
+## B1 — self-daemonize, no launchd
+
+The wrapper already spawns the proxy with `Setpgid`, so B1 is less of a change
+than it looks. Two things were unknown: whether such a proxy outlives the shell
+that started it, and what it costs.
+
+**The cost is already measured.** The `nodaemon` arm *is* a detached shell
+child, and it serves at **11.9ms p50** against the launchd proxy's 2199ms. B1
+needs no CI latency run; that number is B1's number.
+
+**Persistence, checked on the laptop:** started from a subshell that then
+exited, the proxy was reparented to `ppid=1`, stayed running, and still served
+(20 ops, 1ms p50).
+
+So a detached proxy satisfies the requirement launchd was chosen for — it
+outlives the shell — while keeping the shell's scheduling treatment. What it
+does not give is restart-on-crash (`KeepAlive`) or start-at-login, neither of
+which CI needs and both of which a small supervisor could provide without
+launchd owning the proxy's scheduling.
+
+This makes B1 the leading candidate: the fastest measured configuration, and
+the persistence objection does not hold.
