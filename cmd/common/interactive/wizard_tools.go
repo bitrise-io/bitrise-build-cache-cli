@@ -224,7 +224,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
 	activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 		PushEnabled:  pushEnabled,
-		DebugLogging: common.IsDebugLogMode,
+		DebugLogging: common.DebugFromFlag(),
 		Envs:         envs,
 		Logger:       logger,
 	})

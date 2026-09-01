@@ -38,7 +38,7 @@ This command will:
 			PushEnabled:           activateCppParams.PushEnabled,
 			IPCSocketPathOverride: activateCppParams.IPCSocketPathOverride,
 			BaseDirOverride:       activateCppParams.BaseDirOverride,
-			DebugLogging:          common.IsDebugLogMode,
+			DebugLogging:          common.DebugFromFlag(),
 		})
 
 		if err := activator.Activate(cmd.Context()); err != nil {

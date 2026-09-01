@@ -44,7 +44,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 			DisablePrefixMapping: disablePrefixMapping,
 			NoSwiftCache:         noSwiftCache,
 			BuildCacheSkipFlags:  buildCacheSkipFlags,
-			DebugLogging:         common.IsDebugLogMode,
+			DebugLogging:         common.DebugFromFlag(),
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
