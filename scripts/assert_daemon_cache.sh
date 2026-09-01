@@ -70,9 +70,16 @@ if [[ "$ops" -eq 0 ]]; then
     exit 1
 fi
 
-errs=$(count 'DeadlineExceeded')
+# Both spellings: the gRPC code is "DeadlineExceeded", but a caller that gave up
+# queueing for a pool slot reports Go's "context deadline exceeded" instead, and
+# that one is invisible to the first pattern.
+errs=$(count 'DeadlineExceeded|context deadline exceeded')
+# Queue starvation and a slow backend both surface as DeadlineExceeded, and the
+# caller's timeout covers both, so the split says which one it was.
+starved=$(count 'acquire kv channel')
 
-printf '%s cache operations, %s DeadlineExceeded\n' "$ops" "$errs"
+printf '%s cache operations, %s DeadlineExceeded (%s waiting for a pool slot)\n' \
+    "$ops" "$errs" "$starved"
 "$(dirname "${BASH_SOURCE[0]}")/xcelerate_op_latency.sh" "$DIR"
 
 if [[ "$errs" -ne 0 ]]; then

@@ -37,8 +37,10 @@ const (
 	keepaliveTimeout = 10 * time.Second
 )
 
-// Channel-pool sizing mirrors the Gradle plugin's ClientBalancer.
-func numChannels() int     { return max(2, runtime.NumCPU()/6) }
+// Sizing mirrors the Gradle plugin's ClientBalancer, except for the floor:
+// NumCPU/6 gives two channels under 12 cores, and two starved a customer build
+// into 1308 acquire timeouts. Four measured ~4x fewer errors.
+func numChannels() int     { return max(4, runtime.NumCPU()/6) }
 func perChannelLimit() int { return runtime.NumCPU() }
 
 // AuthSource returns the credentials to use for a single RPC. Implementations
@@ -74,11 +76,14 @@ func (ch *channel) acquire(ctx context.Context) error {
 		return nil
 	}
 
+	started := time.Now()
+
 	select {
 	case ch.sem <- struct{}{}:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("acquire kv channel: %w", ctx.Err())
+		return fmt.Errorf("acquire kv channel (%d/%d slots busy on this channel, waited %s): %w",
+			len(ch.sem), cap(ch.sem), time.Since(started).Round(time.Millisecond), ctx.Err())
 	}
 }
 
@@ -104,6 +109,9 @@ type Client struct {
 	downloadRetryWait   time.Duration
 	uploadRetry         uint
 	uploadRetryWait     time.Duration
+	stopSampling        chan struct{}
+	stopSamplingOnce    sync.Once
+	lastContentionLog   atomic.Int64
 }
 
 // pickChannel round-robins across channels. Callers must acquire the channel's
@@ -132,6 +140,7 @@ type NewClientParams struct {
 	DownloadRetryWait   time.Duration
 	UploadRetry         uint
 	UploadRetryWait     time.Duration
+	DebugLogging        bool
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -158,7 +167,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{
+	client := &Client{
 		channels:            channels,
 		clientName:          p.ClientName,
 		authSource:          authSource,
@@ -170,7 +179,14 @@ func NewClient(p NewClientParams) (*Client, error) {
 		downloadRetryWait:   p.DownloadRetryWait,
 		uploadRetry:         p.UploadRetry,
 		uploadRetryWait:     p.UploadRetryWait,
-	}, nil
+	}
+
+	if p.DebugLogging && p.Logger != nil {
+		client.stopSampling = make(chan struct{})
+		go client.samplePool(client.stopSampling)
+	}
+
+	return client, nil
 }
 
 // buildChannels dials one gRPC connection per channel, each with its own
@@ -232,6 +248,12 @@ func (c *Client) SetLogger(logger log.Logger) {
 // Close releases every gRPC connection in the pool. Safe to call when the
 // client was built with injected stubs — channels without a conn are skipped.
 func (c *Client) Close() error {
+	c.stopSamplingOnce.Do(func() {
+		if c.stopSampling != nil {
+			close(c.stopSampling)
+		}
+	})
+
 	var firstErr error
 	for _, ch := range c.channels {
 		if ch.conn == nil {

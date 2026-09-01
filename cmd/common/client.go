@@ -63,6 +63,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		BitriseKVClient:     params.BitriseKVClient,
 		CapabilitiesClient:  params.CapabilitiesClient,
 		InvocationID:        params.InvocationID,
+		DebugLogging:        IsDebugLogMode,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)
