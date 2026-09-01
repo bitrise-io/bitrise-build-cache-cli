@@ -6,6 +6,9 @@ import (
 	"os"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // EnvSkipEnsure suppresses the post-activate Ensure. Callers that own their
@@ -30,6 +33,17 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, deps Ens
 	}
 
 	if envs[EnvSkipEnsure] != "" || os.Getenv(EnvSkipEnsure) != "" {
+		return nil
+	}
+
+	// Reverted to this after v3.6.7 re-enabled the daemon on CI: the reference
+	// app's builds got slower, so the launchd proxy is still not the right
+	// lifecycle here. ProcessType Interactive fixed the timeouts, not the
+	// slowdown. The proxy exists for developer machines, where it has to
+	// outlive the shell that started it; nothing on CI needs it to persist.
+	if provider := configcommon.DetectCIProvider(mergedEnvs(envs)); provider != "" {
+		logger.Debugf("CI provider %s detected, leaving the proxy to the build tool wrapper", provider)
+
 		return nil
 	}
 
@@ -95,4 +109,15 @@ func ensureOne(
 	}
 
 	return nil
+}
+
+// mergedEnvs lets the caller's map win over the process environment, so a test
+// or a caller that passes envs explicitly is not overridden by the ambient one.
+func mergedEnvs(envs map[string]string) map[string]string {
+	merged := utils.AllEnvs()
+	for k, v := range envs {
+		merged[k] = v
+	}
+
+	return merged
 }

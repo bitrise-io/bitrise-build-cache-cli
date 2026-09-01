@@ -1578,8 +1578,9 @@ workflows:
       busted, so the cache runs cold and every operation is an upload — the path
       that failed. Any DeadlineExceeded fails the workflow.
 
-      activate starts the daemon itself, so this also covers the CI path that
-      #491 used to skip.
+      activate skips the daemon on CI, so this installs it explicitly: the
+      guard keeps exercising the launchd proxy that customer builds no longer
+      get.
 
       Verified as a gate in both directions: flipping ProcessType to Background
       timed out 38 of 620 operations against none on Interactive.
