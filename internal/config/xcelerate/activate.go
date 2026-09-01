@@ -29,6 +29,14 @@ var ensureFn = daemonpkg.Ensure
 const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
 	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
+
+	// The proxy is deliberately not a supervised service: a launchd job lands
+	// in its own resource coalition and loses to the compiler it serves, which
+	// cost 2314ms against 6.3ms per cache operation. See docs/daemon-latency.md.
+	ProxyLifecycleNotice = "ℹ️ The cache proxy starts automatically with your first `xcodebuild` and keeps serving later builds."
+	ProxyRestartNotice   = "ℹ️ It does not survive a reboot or logout. Terminal builds restart it on their own; " +
+		"for builds started from Xcode.app, run `bitrise-build-cache xcelerate start-proxy` first — " +
+		"see docs/xcode-app.md for a Run Script that does it for you."
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
 	cliBasename                    = "bitrise-build-cache-cli"
@@ -125,11 +133,12 @@ func Activate(
 
 	if err := runDaemonEnsure(ctx, logger, envs, config.DebugLogging); err != nil {
 		logger.Warnf("Could not ensure Xcode background service state: %s", err)
-		logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
 	}
 
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
+	logger.TInfof(ProxyLifecycleNotice)
+	logger.TInfof(ProxyRestartNotice)
 
 	return nil
 }

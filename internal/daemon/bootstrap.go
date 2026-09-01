@@ -108,9 +108,12 @@ func ServicesForTools(needsXcelerate, needsCcache bool) []Service {
 	for _, svc := range DefaultServices() {
 		switch svc.Name {
 		case ServiceXcelerateProxy:
-			if needsXcelerate {
-				out = append(out, svc)
-			}
+			// Never supervised. A launchd job gets its own resource coalition
+			// and loses to the compiler it serves: 2314ms against 6.3ms per
+			// cache operation on a 4-core machine, with no plist key able to
+			// close it. The xcodebuild wrapper forks the proxy instead, which
+			// puts it in the build's coalition. See docs/daemon-latency.md.
+			_ = needsXcelerate
 		case ServiceCcacheHelper:
 			if needsCcache {
 				out = append(out, svc)

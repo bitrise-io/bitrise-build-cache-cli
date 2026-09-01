@@ -366,12 +366,29 @@ Xcode's coalition, the same way the wrapper puts it in the CLI build's. Any
 arrangement where something else owns the proxy's lifetime reproduces the
 problem.
 
-## Recommendation
+## Decision
 
-Do not supervise the proxy with launchd. Keep the wrapper-forked proxy, which
-is already the fast path, already survives its shell, and already repairs a
-wedged predecessor. Ship D1 (bounded gRPC concurrency) on its own merits — it
-is a 34% improvement that costs nothing and bounds the thread and fd growth.
+The xcelerate proxy is no longer installed as a supervised service on any
+platform. `ServicesForTools` returns nothing for Xcode, so `activate xcode`
+registers no LaunchAgent and no systemd unit; the xcodebuild wrapper forks the
+proxy, which puts it in the build's coalition.
 
-Revisit only if Xcode.app integration lands, and then as an app-bundle login
-item rather than an agent.
+What that changes:
+
+- **Terminal builds**: nothing to do. The wrapper starts the proxy on the first
+  build and later builds attach to it, which is what already happened.
+- **Xcode.app builds**: the proxy must be running first. `activate` now says so,
+  and [xcode-app.md](xcode-app.md) carries a Run Script build phase that starts
+  it — spawned by Xcode, so it lands in Xcode's coalition.
+- **Crash recovery**: `startProxy` already reclaims a proxy that holds the
+  singleton lock but is not serving, so a dead proxy is repaired by the next
+  build instead of by `KeepAlive`.
+- **Reboot**: the proxy does not come back on its own. Terminal builds restart
+  it; Xcode.app users need the Run Script or one manual command per session.
+
+The ccache storage helper is still supervised. It has the same shape and
+probably the same problem, but it has not been measured and is out of scope
+here.
+
+D1 (bounded gRPC concurrency) ships alongside on its own merits: 34% faster and
+it bounds the thread and fd growth regardless of how the proxy is started.

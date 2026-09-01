@@ -48,9 +48,11 @@ func TestDaemonServicesForTools(t *testing.T) {
 
 	assert.Empty(t, names(), "no tools, no services")
 	assert.Empty(t, names("gradle", "bazel"), "Gradle and Bazel talk to the cache directly")
-	assert.Equal(t, []string{daemonpkg.ServiceXcelerateProxy}, names("xcode"))
+	// Xcode needs no service: the xcodebuild wrapper forks the proxy, which
+	// keeps it in the build's resource coalition. See docs/daemon-latency.md.
+	assert.Empty(t, names("xcode"), "the xcelerate proxy is never supervised")
 	assert.Equal(t, []string{daemonpkg.ServiceCcacheHelper}, names("ccache"))
 	assert.Equal(t,
-		[]string{daemonpkg.ServiceXcelerateProxy, daemonpkg.ServiceCcacheHelper},
+		[]string{daemonpkg.ServiceCcacheHelper},
 		names("gradle", "xcode", "ccache"))
 }

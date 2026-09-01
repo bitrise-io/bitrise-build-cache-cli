@@ -127,7 +127,10 @@ func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg
 	t.Cleanup(func() { ensureFn = prev })
 }
 
-func TestRunDaemonEnsure_wiresXcelerateProxyService(t *testing.T) {
+// The proxy is never supervised: a launchd job lands in its own resource
+// coalition and loses to the compiler it serves. The xcodebuild wrapper forks
+// it instead. See docs/daemon-latency.md.
+func TestRunDaemonEnsure_wiresNoXcelerateProxyService(t *testing.T) {
 	var gotServices []daemonpkg.Service
 	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, _ daemonpkg.EnsureDeps) error {
 		gotServices = services
@@ -138,8 +141,7 @@ func TestRunDaemonEnsure_wiresXcelerateProxyService(t *testing.T) {
 	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, false)
 	require.NoError(t, err)
 
-	require.Len(t, gotServices, 1)
-	assert.Equal(t, daemonpkg.ServiceXcelerateProxy, gotServices[0].Name)
+	assert.Empty(t, gotServices)
 }
 
 func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {

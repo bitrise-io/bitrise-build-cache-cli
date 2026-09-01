@@ -164,13 +164,16 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 		wantNames      []string
 	}{
 		{name: "neither", wantNames: nil},
-		{name: "xcelerate only", needsXcelerate: true, wantNames: []string{ServiceXcelerateProxy}},
+		// The xcelerate proxy is never supervised: a launchd job gets its own
+		// resource coalition and loses to the compiler it serves. The
+		// xcodebuild wrapper forks it instead. See docs/daemon-latency.md.
+		{name: "xcelerate only", needsXcelerate: true, wantNames: nil},
 		{name: "ccache only", needsCcache: true, wantNames: []string{ServiceCcacheHelper}},
 		{
 			name:           "both",
 			needsXcelerate: true,
 			needsCcache:    true,
-			wantNames:      []string{ServiceXcelerateProxy, ServiceCcacheHelper},
+			wantNames:      []string{ServiceCcacheHelper},
 		},
 	}
 
