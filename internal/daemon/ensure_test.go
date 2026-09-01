@@ -42,6 +42,7 @@ type ensureCallLog struct {
 }
 
 func TestEnsure_configMissing_bootstraps(t *testing.T) {
+	clearCIEnv(t)
 
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
@@ -70,6 +71,7 @@ func TestEnsure_configMissing_bootstraps(t *testing.T) {
 }
 
 func TestEnsure_configPresent_restarts(t *testing.T) {
+	clearCIEnv(t)
 
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
@@ -135,6 +137,7 @@ func TestEnsure_emptyServices_isNoOp(t *testing.T) {
 }
 
 func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
+	clearCIEnv(t)
 
 	home := t.TempDir()
 	backend := fakeBackend{name: "launchd"}
@@ -184,11 +187,9 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 	}
 }
 
-// The daemon used to be skipped on CI, because a supervised proxy served cache
-// operations far slower there. ProcessType Interactive fixed that at the source
-// and e2e-daemon-cache-macos guards it, so CI takes the same path as everywhere
-// else — this pins that down so the skip is not reintroduced by accident.
-func TestEnsure_RunsOnCI(t *testing.T) {
+// A supervised proxy on CI serves cache operations orders of magnitude slower
+// than the wrapper-started one, so CI must not install the service at all.
+func TestEnsure_SkipsOnCI(t *testing.T) {
 	for _, tc := range []struct{ name, key, value string }{
 		{"bitrise", "BITRISE_IO", "true"},
 		{"github actions", "GITHUB_ACTIONS", "true"},
@@ -196,22 +197,50 @@ func TestEnsure_RunsOnCI(t *testing.T) {
 		{"gitlab", "GITLAB_CI", "true"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			clearCIEnv(t)
 			envs := map[string]string{tc.key: tc.value}
 			if tc.key == "BITRISE_IO" {
 				envs["BITRISE_BUILD_SLUG"] = "slug"
 			}
 
 			called := false
-			_ = Ensure(context.Background(), log.NewLogger(), DefaultServices(), EnsureDeps{
+			err := Ensure(context.Background(), log.NewLogger(), DefaultServices(), EnsureDeps{
 				Envs: envs,
 				BackendAndPathsFn: func() (Backend, Paths, error) {
 					called = true
 
-					return nil, Paths{}, assert.AnError
+					return nil, Paths{}, nil
 				},
 			})
 
-			assert.True(t, called, "CI gets the supervised proxy like any other machine")
+			require.NoError(t, err)
+			assert.False(t, called, "must not touch the service manager on CI")
 		})
+	}
+}
+
+// Off CI the daemon is still the supported lifecycle.
+func TestEnsure_RunsWhenNotOnCI(t *testing.T) {
+	clearCIEnv(t)
+
+	called := false
+	_ = Ensure(context.Background(), log.NewLogger(), DefaultServices(), EnsureDeps{
+		Envs: map[string]string{},
+		BackendAndPathsFn: func() (Backend, Paths, error) {
+			called = true
+
+			return nil, Paths{}, assert.AnError
+		},
+	})
+
+	assert.True(t, called, "a developer machine still gets the supervised proxy")
+}
+
+// These tests run on CI themselves, so the ambient CI variables have to go.
+func clearCIEnv(t *testing.T) {
+	t.Helper()
+
+	for _, key := range []string{"CIRCLECI", "GITHUB_ACTIONS", "GITLAB_CI", "BITRISE_IO", "BITRISE_BUILD_SLUG"} {
+		t.Setenv(key, "")
 	}
 }

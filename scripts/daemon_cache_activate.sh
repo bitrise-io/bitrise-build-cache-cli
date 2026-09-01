@@ -8,8 +8,8 @@
 # envman, which only takes effect in the next step. Building in this one would
 # use the unwrapped xcodebuild and the cache would never engage.
 #
-# activate starts the daemon itself, including on CI — that is what this
-# exercises, so nothing here installs it by hand.
+# activate deliberately skips the daemon on CI, so the guard installs it by
+# hand: customers do not get the launchd proxy, but this still exercises it.
 
 set -euo pipefail
 
@@ -66,6 +66,8 @@ fi
 
 # shellcheck disable=SC2086 # ENDPOINT_ARGS is empty or two words, deliberately unquoted
 "$CLI" -d activate xcode --cache $ENDPOINT_ARGS 2>&1 | tee "$OUT/activate.log"
+"$CLI" daemon install 2>&1 | tee -a "$OUT/activate.log"
+"$CLI" daemon up 2>&1 | tee -a "$OUT/activate.log"
 
 launchctl print "gui/$(id -u)/io.bitrise.build-cache.xcelerate-proxy" >"$OUT/launchctl.txt" 2>&1
 
@@ -73,7 +75,7 @@ launchctl print "gui/$(id -u)/io.bitrise.build-cache.xcelerate-proxy" >"$OUT/lau
 # than one the wrapper forked for itself.
 DAEMON_PID="$(awk '/pid = /{print $3; exit}' "$OUT/launchctl.txt")"
 if [[ -z "$DAEMON_PID" ]]; then
-    echo "FAIL: activate did not leave a launchd xcelerate proxy running" >&2
+    echo "FAIL: no launchd xcelerate proxy after daemon up" >&2
     cat "$OUT/launchctl.txt" >&2
     exit 1
 fi
