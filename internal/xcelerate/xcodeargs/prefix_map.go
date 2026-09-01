@@ -142,6 +142,13 @@ func (p Default) ClonedSourcePackagesDirPath() string {
 	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "clonedSourcePackagesDirPath"))
 }
 
+// ResultBundlePath returns the last -resultBundlePath value from OriginalArgs,
+// in both the space and `=` forms. Missing → empty. When empty, the wrapper is
+// free to inject its own value on the self-enrich path.
+func (p Default) ResultBundlePath() string {
+	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "resultBundlePath"))
+}
+
 // ProjectTempDir returns the last PROJECT_TEMP_DIR=... build-setting value
 // from OriginalArgs. Missing → empty. Relative values are resolved against the
 // current working directory — clang rejects non-absolute inputs to

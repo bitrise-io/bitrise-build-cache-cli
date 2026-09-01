@@ -12,8 +12,13 @@ import (
 )
 
 type HealthSnapshot struct {
-	LastAttempt       time.Time `json:"last_attempt"`
-	LastSuccess       time.Time `json:"last_success"`
+	LastAttempt time.Time `json:"last_attempt"`
+	LastSuccess time.Time `json:"last_success"`
+	// LastMatched is bumped only when the watcher correlates a manifest to a
+	// wrapper-side pending record (Correlate returned true). The wrapper's own
+	// slim PUT does not touch it, so a stale LastMatched signals the watcher
+	// path is silent even when the wrapper path keeps LastSuccess fresh.
+	LastMatched       time.Time `json:"last_matched,omitempty"`
 	LastError         string    `json:"last_error,omitempty"`
 	LastErrorAt       time.Time `json:"last_error_at,omitempty"`
 	ConsecutiveErrors int       `json:"consecutive_errors"`

@@ -38,6 +38,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
@@ -55,7 +56,9 @@ const (
 	NoBitriseBuildCacheFlag     = "--no-bitrise-build-cache"
 	NoPrefixMapFlag             = "--no-prefix-map"
 	NoManagedDerivedDataFlag    = "--no-managed-derived-data"
+	NoXcresultFlag              = "--no-xcresult"
 	CreateXCFrameworkFlag       = "-create-xcframework"
+	ResultBundlePathFlag        = "-resultBundlePath"
 	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
@@ -147,6 +150,13 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	if noManagedDD {
 		origArgs = slices.DeleteFunc(origArgs, func(s string) bool {
 			return s == NoManagedDerivedDataFlag
+		})
+	}
+
+	noXcresult := slices.Contains(origArgs, NoXcresultFlag)
+	if noXcresult {
+		origArgs = slices.DeleteFunc(origArgs, func(s string) bool {
+			return s == NoXcresultFlag
 		})
 	}
 
@@ -245,6 +255,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		XcodeArgs:          xcodeArgs,
 		NoPrefixMap:        noPrefixMap,
 		NoManagedDD:        noManagedDD,
+		NoXcresult:         noXcresult,
 	}
 	if !noDoctor {
 		runner.Doctor = &xcodeDoctor{
@@ -345,6 +356,8 @@ type XcodebuildRunner struct {
 	// NoManagedDD suppresses the wrapper-owned -derivedDataPath and PROJECT_TEMP_DIR
 	// substitution; user-supplied values are still honoured either way.
 	NoManagedDD bool
+	// Per-invocation counterpart to Config.SelfEnrichDisabled.
+	NoXcresult bool
 
 	// Doctor reports local setup problems around the build; nil disables it.
 	Doctor buildHealthReporter
@@ -358,6 +371,9 @@ type XcodebuildRunner struct {
 	relationAPI relationSender
 	// localLogger appends to the local invocation log. If nil, paths.Default + invocations.NewWriter is used.
 	localLogger localInvocationLogger
+	// xcresultParser parses the xcresult bundle for wrapper self-enrich. If nil,
+	// a production xcresult.DefaultParser is created on demand.
+	xcresultParser xcresult.Parser
 }
 
 // Run executes the xcodebuild wrapper: runs xcodebuild, collects stats,
@@ -427,6 +443,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		XcodeVersion:     runStats.XcodeVersion,
 		XcodeBuildNumber: runStats.XcodeBuildNumber,
 	}, c.Config.AuthConfig, c.Metadata)
+
+	c.attachXcresultSummary(ctx, inv)
 
 	c.appendLocalInvocationLog(*inv, runStats)
 	c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
@@ -517,14 +535,22 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv an
 		return
 	}
 
+	hw := c.resolveHealthWriter()
+	enrichment.TickAttempt(hw, c.Logger, time.Now())
+
 	if err := saver.PutInvocation(inv); err != nil {
 		c.Logger.Errorf("Failed to send invocation analytics: %v", err)
+		enrichment.TickFailure(hw, c.Logger, time.Now(), err)
 		if c.Doctor != nil {
 			c.Doctor.OnInvocationSaveFailure(ctx)
 		}
 
 		return
 	}
+
+	// Wrapper self-enrich never runs through Correlate, so tick success with
+	// matched=false — LastMatched must stay reserved for the watcher path.
+	enrichment.TickSuccess(hw, c.Logger, time.Now(), false)
 
 	enrichment.WriteMarker(c.Logger, c.InvocationID)
 
@@ -534,6 +560,15 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv an
 		c.sendRelation(parentID)
 		c.writeChildStatsLedger(parentID, inv, hits, total)
 	}
+}
+
+func (c *XcodebuildRunner) resolveHealthWriter() *enrichment.HealthWriter {
+	p, err := paths.Default()
+	if err != nil {
+		return nil
+	}
+
+	return &enrichment.HealthWriter{Path: p.EnrichmentHealthFile()}
 }
 
 // writeChildStatsLedger records this xcode invocation's hit rate in the
@@ -715,12 +750,13 @@ func createProxySessionClient(config xcelerate.Config, logger log.Logger) (sessi
 }
 
 // assembleArgs returns the final argv for xcodebuild: user args plus the
-// wrapper-owned build settings and prefix-map splicing when build cache is on.
+// wrapper-owned build settings, prefix-map splicing when build cache is on, and
+// wrapper self-enrich `-resultBundlePath` on the CLI enrichment path.
 func (c *XcodebuildRunner) assembleArgs() []string {
 	additional := map[string]string{}
 
 	if !c.Config.BuildCacheEnabled {
-		return c.XcodeArgs.Args(additional)
+		return c.appendResultBundleArg(c.XcodeArgs.Args(additional))
 	}
 
 	// Query-only invocations (-list, -version, -showBuildSettings, ...) reject -derivedDataPath and
@@ -775,7 +811,87 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		}
 	}
 
-	return append(toPass, extraArgv...)
+	return c.appendResultBundleArg(append(toPass, extraArgv...))
+}
+
+// Deterministic per InvocationID so argv-inject, parse and cleanup agree without extra state.
+func (c *XcodebuildRunner) appendResultBundleArg(argv []string) []string {
+	if !c.selfEnrichEnabled() {
+		return argv
+	}
+	if !c.XcodeArgs.HasBuildAction() {
+		return argv
+	}
+	if c.XcodeArgs.ResultBundlePath() != "" {
+		c.Logger.Debugf("User supplied -resultBundlePath, skipping wrapper injection")
+
+		return argv
+	}
+
+	bundlePath := c.wrapperResultBundlePath()
+	c.Logger.Debugf("Injecting -resultBundlePath %s for wrapper self-enrich", bundlePath)
+
+	return append(argv, ResultBundlePathFlag, bundlePath)
+}
+
+func (c *XcodebuildRunner) selfEnrichEnabled() bool {
+	if c.Config.SelfEnrichDisabled {
+		return false
+	}
+
+	return !c.NoXcresult
+}
+
+func (c *XcodebuildRunner) wrapperResultBundlePath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("bitrise-xcelerate-%s.xcresult", c.InvocationID))
+}
+
+// Cleanup removes the wrapper-injected bundle whether parsing succeeded or not.
+func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analytics.Invocation) {
+	if !c.selfEnrichEnabled() || !c.XcodeArgs.HasBuildAction() {
+		return
+	}
+	if c.XcodeArgs.ResultBundlePath() != "" {
+		return
+	}
+
+	bundlePath := c.wrapperResultBundlePath()
+	defer func() {
+		if err := os.RemoveAll(bundlePath); err != nil {
+			c.Logger.Debugf("xcresult cleanup failed for %s: %v", bundlePath, err)
+		}
+	}()
+
+	parser := c.resolveXcresultParser()
+	summary := parser.Parse(ctx, bundlePath)
+
+	if len(summary.Targets) == 0 && len(summary.Failures) == 0 {
+		return
+	}
+
+	for _, t := range summary.Targets {
+		inv.Targets = append(inv.Targets, analytics.TargetSummary{
+			Name:            t.Name,
+			BuildDurationMs: t.BuildDurationMs,
+		})
+	}
+	for _, f := range summary.Failures {
+		inv.Failures = append(inv.Failures, analytics.FailureSummary{
+			TargetName: f.TargetName,
+			Message:    f.Message,
+		})
+	}
+
+	c.Logger.Infof("Attached xcresult summary to invocation %s (targets=%d, failures=%d)",
+		c.InvocationID, len(inv.Targets), len(inv.Failures))
+}
+
+func (c *XcodebuildRunner) resolveXcresultParser() xcresult.Parser {
+	if c.xcresultParser != nil {
+		return c.xcresultParser
+	}
+
+	return xcresult.NewDefaultParser(c.Logger)
 }
 
 // sourcePackagesArgvForQueryAction points a resolving query action at the checkout dir the build

@@ -71,4 +71,17 @@ type Invocation struct {
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
 	BenchmarkPhase       string            `json:"benchmarkPhase,omitempty"`
+	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
+	Targets  []TargetSummary  `json:"targets,omitempty"`
+	Failures []FailureSummary `json:"failures,omitempty"`
+}
+
+type TargetSummary struct {
+	Name            string `json:"name"`
+	BuildDurationMs int64  `json:"buildDurationInMs,omitempty"`
+}
+
+type FailureSummary struct {
+	TargetName string `json:"targetName,omitempty"`
+	Message    string `json:"message"`
 }

@@ -42,6 +42,9 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //			ResolvesPackagesFunc: func() bool {
 //				panic("mock out the ResolvesPackages method")
 //			},
+//			ResultBundlePathFunc: func() string {
+//				panic("mock out the ResultBundlePath method")
+//			},
 //			ShortCommandFunc: func() string {
 //				panic("mock out the ShortCommand method")
 //			},
@@ -79,6 +82,9 @@ type XcodeArgsMock struct {
 	// ResolvesPackagesFunc mocks the ResolvesPackages method.
 	ResolvesPackagesFunc func() bool
 
+	// ResultBundlePathFunc mocks the ResultBundlePath method.
+	ResultBundlePathFunc func() string
+
 	// ShortCommandFunc mocks the ShortCommand method.
 	ShortCommandFunc func() string
 
@@ -113,6 +119,9 @@ type XcodeArgsMock struct {
 		// ResolvesPackages holds details about calls to the ResolvesPackages method.
 		ResolvesPackages []struct {
 		}
+		// ResultBundlePath holds details about calls to the ResultBundlePath method.
+		ResultBundlePath []struct {
+		}
 		// ShortCommand holds details about calls to the ShortCommand method.
 		ShortCommand []struct {
 		}
@@ -128,6 +137,7 @@ type XcodeArgsMock struct {
 	lockProjectDir                  sync.RWMutex
 	lockProjectTempDir              sync.RWMutex
 	lockResolvesPackages            sync.RWMutex
+	lockResultBundlePath            sync.RWMutex
 	lockShortCommand                sync.RWMutex
 	lockUserOtherCFlags             sync.RWMutex
 }
@@ -374,6 +384,36 @@ func (mock *XcodeArgsMock) ResolvesPackagesCalls() []struct {
 	mock.lockResolvesPackages.RLock()
 	calls = mock.calls.ResolvesPackages
 	mock.lockResolvesPackages.RUnlock()
+	return calls
+}
+
+// ResultBundlePath calls ResultBundlePathFunc.
+func (mock *XcodeArgsMock) ResultBundlePath() string {
+	callInfo := struct {
+	}{}
+	mock.lockResultBundlePath.Lock()
+	mock.calls.ResultBundlePath = append(mock.calls.ResultBundlePath, callInfo)
+	mock.lockResultBundlePath.Unlock()
+	if mock.ResultBundlePathFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.ResultBundlePathFunc()
+}
+
+// ResultBundlePathCalls gets all the calls that were made to ResultBundlePath.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.ResultBundlePathCalls())
+func (mock *XcodeArgsMock) ResultBundlePathCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockResultBundlePath.RLock()
+	calls = mock.calls.ResultBundlePath
+	mock.lockResultBundlePath.RUnlock()
 	return calls
 }
 

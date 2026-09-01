@@ -11,7 +11,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
+//
 //go:generate moq -stub -out mocks/args_mock.go -pkg mocks . XcodeArgs
+//nolint:interfacebloat // set of accessors mirrors distinct xcodebuild argv properties the wrapper needs; splitting would fragment the mock without decoupling anything
 type XcodeArgs interface {
 	Args(additional map[string]string) []string
 	Command() string
@@ -23,6 +25,7 @@ type XcodeArgs interface {
 	ProjectTempDir() string
 	ProjectDir() string
 	UserOtherCFlags() string
+	ResultBundlePath() string
 }
 
 const (

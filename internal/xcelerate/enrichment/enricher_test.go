@@ -442,6 +442,72 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 	assert.NotEqual(t, "stray", captured.InvocationID, "orphan mint must not accidentally reuse an unrelated marker ID")
 }
 
+func TestEnricher_MatchedSuccess_TicksLastMatched(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+	hw := &enrichment.HealthWriter{Path: filepath.Join(dir, "health.json")}
+
+	base := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "kept-id",
+		StartTime:    base,
+		Duration:     10_000,
+	}))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Health: hw,
+		Now:    func() time.Time { return base },
+	}
+
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Status:    "S",
+		Start:     base.Add(2 * time.Second),
+		Stop:      base.Add(8 * time.Second),
+	})
+
+	snap, err := enrichment.LoadHealth(hw.Path)
+	require.NoError(t, err)
+	assert.Equal(t, base, snap.LastSuccess.UTC(), "watcher success must tick LastSuccess")
+	assert.Equal(t, base, snap.LastMatched.UTC(), "matched watcher success must also tick LastMatched")
+}
+
+func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+	hw := &enrichment.HealthWriter{Path: filepath.Join(dir, "health.json")}
+
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Health: hw,
+		Now:    func() time.Time { return now },
+	}
+
+	// No pending record → orphan mint path → unmatched.
+	e.Enrich(enrichment.ManifestEntry{
+		Signature: "Archive S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	})
+
+	snap, err := enrichment.LoadHealth(hw.Path)
+	require.NoError(t, err)
+	assert.Equal(t, now, snap.LastSuccess.UTC(), "unmatched success still ticks LastSuccess")
+	assert.True(t, snap.LastMatched.IsZero(),
+		"unmatched (orphan) success must NOT bump LastMatched — that field is reserved for the correlated path")
+}
+
 func TestEnricher_DurationIsFromManifest(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}

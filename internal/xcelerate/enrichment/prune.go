@@ -10,8 +10,6 @@ import (
 
 // PruneAll runs every enrichment-side startup sweep in one shot: handled
 // invocation markers, handled manifest UUIDs, and orphan pending records.
-// Called from the proxy entry point; Watcher and Retrier no longer prune on
-// their own paths.
 func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	l := logOr(logger)
 
@@ -23,7 +21,7 @@ func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	}
 
 	pending := &Store{Path: p.PendingInvocationsFile()}
-	if err := pending.PruneOrphansOlderThan(now, DefaultRetryMaxAge); err != nil {
+	if _, err := pending.PruneOrphansOlderThan(now, DefaultRetryMaxAge); err != nil {
 		l.Debugf("PruneAll: pending orphan prune failed: %s", err)
 	}
 }
