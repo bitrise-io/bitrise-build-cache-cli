@@ -203,3 +203,47 @@ interferes with the SPM package checkout that follows. Fixed by running
 `dependencies` **before** the CLI install, which also isolates the measurement —
 `xcodebuild -resolvePackageDependencies` never needed the cache and was adding
 noise to every arm.
+
+## What replaces KeepAlive
+
+`KeepAlive` is the one thing launchd gives that a shell-spawned proxy does not.
+Three ways to cover it, measured or read from the code:
+
+**1. The wrapper already does it.** `startProxy` reclaims a wedged proxy before
+anything else: if the singleton lock is held but the socket does not answer it
+SIGKILLs the holder, waits for a revival, and otherwise spawns its own. So a
+crashed proxy is repaired by the next xcodebuild invocation without any
+supervisor. What is missing is only repair *during* a build, and a build that
+loses its proxy mid-flight degrades to cache misses rather than failing.
+
+**2. A launchd job that only starts the proxy — does not work.** Two laptop
+measurements kill it:
+
+| setup | child survives job exit? | child priority |
+|---|---|---|
+| launchd `Background` job spawns detached child | **no**, killed with the job | — |
+| same + `AbandonProcessGroup` | **yes**, reparented to `ppid=1` | **pri 4** |
+| shell spawns the same command | yes | **pri 31** |
+
+`AbandonProcessGroup` buys survival and nothing else: the abandoned child still
+carries the launchd band. Scheduling treatment is inherited by descendants, so
+no arrangement with launchd as an ancestor escapes it. (Note `setsid` does not
+exist on macOS; an earlier version of this test silently spawned nothing.)
+
+**3. A supervisor descended from the shell.** The only arrangement that keeps
+shell scheduling is one where the shell is the ancestor — a small detached
+watcher started at activate time that re-spawns the proxy if it dies. It
+inherits the activating shell's treatment and passes it on.
+
+## Why the knobs only got 34%
+
+The CI daemon arm runs `ProcessType Interactive`, which measures **pri 31** —
+the same as a shell child. So the proxy is *not* in the Darwin background band
+there, C1 had nothing to clear, and the 2314ms → 1530ms improvement is D1
+alone.
+
+That leaves the real mechanism unexplained: priority is equal, yet `sched_p99`
+is 5-21ms against 229-328µs. The leading hypothesis is **coalition membership**
+— macOS applies resource control per coalition, a launchd job forms its own,
+and a wrapper-forked proxy joins the build's. No plist key changes that. This
+is a hypothesis, not a measurement.
