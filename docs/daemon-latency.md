@@ -267,10 +267,21 @@ lazily on their first `xcodebuild` anyway — one process start, once, against a
 When GUI support does arrive it cannot be solved by a LaunchAgent without
 inheriting the same penalty, because descendants inherit the band. The
 distinction that matters is not launchd versus not, but *what kind* of launchd
-job: an Aqua **application** and its children run at pri 31 — that is what a
-Terminal shell child is — while a background **agent** and everything it spawns
-runs throttled. A login item packaged as a real app bundle would land on the
-application side of that line; a LaunchAgent cannot.
+job. Measured with a throwaway `.app` launched via `open`:
+
+| process | pri | ni |
+|---|---|---|
+| the app bundle itself | 46 (GUI application band, as Finder) | 0 |
+| **the app bundle's child** | **31** | 0 |
+| shell child, for comparison | 31 | 5 |
+
+So a login item packaged as a real app bundle puts its child on the
+application side of the line, where a LaunchAgent cannot.
+
+**This is necessary but not sufficient.** Priority has already been shown to
+be a poor predictor here: `ProcessType Interactive` is also pri 31 and still
+367x slower. Anyone taking the app-bundle route must measure latency, not
+priority.
 
 ## Recommendation
 
