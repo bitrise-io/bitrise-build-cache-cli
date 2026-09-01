@@ -276,6 +276,40 @@ between two coalitions.
 That is why the published advice — "set ProcessType Interactive" — is right for
 the common case and insufficient for ours.
 
+### What the ecosystem does
+
+Searched the issue trackers of 18 macOS background-workload projects for
+`ProcessType`, `launchd priority`, `launchd slow` and `LaunchAgent
+performance`: sccache, bazel, ccache, actions/runner, buildkite/agent,
+gitlab-runner, tailscale, syncthing, ollama, lima, colima, restic, rclone,
+cloudflared, ZeroTier, mitmproxy, BOINC, xmrig, kopia.
+
+**Two projects hit this and both fixed it with `ProcessType Interactive`:**
+
+- `actions/runner` [#614](https://github.com/actions/runner/pull/614) "MacOS:
+  Fix poor performance of process spawned from svc daemon" — `shasum` on a
+  10GB file took 17s in a terminal and 24s under the service; the fix saved
+  ~30s on a 4-minute workflow.
+- `gitlab-runner` [#29089](https://gitlab.com/gitlab-org/gitlab-runner/-/work_items/29089)
+  — 36:42 as a service against 5:48 interactive, fixed to 5:48.
+
+Both are the **parent-child** case: the runner spawns the build as its own
+child, so it inherits the runner's coalition and lifting the parent's band
+lifts everything. Neither is our shape.
+
+**No project in the list reports our shape** — a daemon *serving* a separate
+foreground process that saturates the machine. That failure mode appears to be
+undocumented, which is consistent with it being invisible to error monitoring:
+nothing fails, everything is just slower.
+
+**The closest architectural analogue avoids launchd entirely.** sccache is a
+compile cache with a background server, exactly our shape, and its server is
+started *by the client on demand*: "The sccache command will spawn a server
+process if one is not already running", terminating "after (by default) 10
+minutes of inactivity". No launchd, no systemd, no supervision — which is
+precisely the model this document recommends, and sccache has no launchd
+throttling issues in its tracker.
+
 (Note the Apple docs describe Interactive as priority ~47; measured here it is
 31, matching a shell child.)
 
