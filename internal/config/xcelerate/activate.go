@@ -123,7 +123,7 @@ func Activate(
 
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
-	if err := runDaemonEnsure(ctx, logger, envs); err != nil {
+	if err := runDaemonEnsure(ctx, logger, envs, config.DebugLogging); err != nil {
 		logger.Warnf("Could not ensure Xcode background service state: %s", err)
 		logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
 	}
@@ -137,10 +137,13 @@ func Activate(
 // runDaemonEnsure reconciles the xcelerate proxy service with the saved
 // config. Errors are downgraded by the caller so a supervisor hiccup
 // cannot fail an otherwise-successful activation.
-func runDaemonEnsure(ctx context.Context, logger log.Logger, envs map[string]string) error {
+func runDaemonEnsure(ctx context.Context, logger log.Logger, envs map[string]string, debugLogging bool) error {
 	services := daemonpkg.ServicesForTools(true, false)
 
-	if err := ensureFn(ctx, logger, services, daemonpkg.EnsureDeps{Envs: envs}); err != nil {
+	if err := ensureFn(ctx, logger, services, daemonpkg.EnsureDeps{
+		Envs:         envs,
+		DebugLogging: debugLogging,
+	}); err != nil {
 		return fmt.Errorf("daemon ensure: %w", err)
 	}
 

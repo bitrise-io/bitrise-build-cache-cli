@@ -33,7 +33,12 @@ var installCmd = &cobra.Command{
 			return err //nolint:wrapcheck // already context-rich
 		}
 
-		result, err := daemonpkg.Install(cmd.Context(), backend, paths, daemonpkg.DefaultServices(), exe)
+		services := daemonpkg.DefaultServices()
+		if common.IsDebugLogMode {
+			services = daemonpkg.WithDebugLogging(services)
+		}
+
+		result, err := daemonpkg.Install(cmd.Context(), backend, paths, services, exe)
 		if err != nil {
 			if errors.Is(err, daemonpkg.ErrUnsupportedPlatform) {
 				return err //nolint:wrapcheck // sentinel

@@ -18,6 +18,7 @@ const EnvSkipEnsure = "BITRISE_BUILD_CACHE_SKIP_DAEMON_ENSURE"
 // EnsureDeps carries optional test seams; the zero value uses production defaults.
 type EnsureDeps struct {
 	Envs              map[string]string
+	DebugLogging      bool
 	BootstrapFn       func(ctx context.Context, logger log.Logger, services []Service) (InstallResult, Paths, error)
 	RestartFn         func(ctx context.Context, backend Backend, paths Paths, services []Service) (ControlResult, error)
 	BackendAndPathsFn func() (Backend, Paths, error)
@@ -49,6 +50,10 @@ func Ensure(ctx context.Context, logger log.Logger, services []Service, deps Ens
 
 	if len(services) == 0 {
 		return nil
+	}
+
+	if deps.DebugLogging {
+		services = WithDebugLogging(services)
 	}
 
 	backendAndPaths := deps.BackendAndPathsFn
