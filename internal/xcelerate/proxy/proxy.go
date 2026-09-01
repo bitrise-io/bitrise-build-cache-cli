@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +85,12 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	}
 
 	grpcServer := grpc.NewServer(
+		// Unbounded by default: gRPC spawns a goroutine per stream, and the
+		// compilation plugin opens hundreds at once. When the proxy is
+		// CPU-starved each one lives ~185x longer, so the runtime grows to 123
+		// OS threads and 1442 fds against 16 and 33 for a wrapper-forked proxy.
+		grpc.MaxConcurrentStreams(maxConcurrentStreams),
+		grpc.NumStreamWorkers(streamWorkers()),
 		grpc.UnaryInterceptor(func(
 			ctx context.Context,
 			req any,
@@ -112,6 +119,15 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	proxy.grpcServer = grpcServer
 
 	return proxy
+}
+
+// Sized off the machine, not the client: the plugin will open as many streams
+// as it has compiles, and the proxy's job is to keep its own thread count flat
+// while it drains them.
+const maxConcurrentStreams = 64
+
+func streamWorkers() uint32 {
+	return uint32(max(4, min(runtime.NumCPU()*2, 32))) //nolint:gosec // bounded to 32
 }
 
 // Serve delegates to the underlying gRPC server.

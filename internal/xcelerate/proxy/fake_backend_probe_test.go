@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc"
@@ -41,6 +42,10 @@ type fakeBackend struct {
 	remoteexecution.UnimplementedCapabilitiesServer
 
 	hitRate float64
+	// delay simulates a proxy that cannot keep up, which is what makes
+	// operations pile up and the runtime grow threads. Without it a loopback
+	// backend answers instantly and no concurrency ever builds.
+	delay time.Duration
 
 	mu    sync.Mutex
 	blobs map[string][]byte
@@ -112,6 +117,10 @@ func (f *fakeBackend) Put(stream grpc.ClientStreamingServer[bytestream.WriteRequ
 }
 
 func (f *fakeBackend) Get(req *bytestream.ReadRequest, stream grpc.ServerStreamingServer[bytestream.ReadResponse]) error {
+	if f.delay > 0 {
+		time.Sleep(f.delay)
+	}
+
 	if !f.isHit(req.GetResourceName()) {
 		return status.Error(codes.NotFound, "simulated miss")
 	}
@@ -161,7 +170,14 @@ func TestFakeBackendServe(t *testing.T) {
 		}
 	}
 
-	endpoint, stop, err := newFakeBackend(hitRate).serve()
+	backend := newFakeBackend(hitRate)
+	if v := os.Getenv("FAKE_BACKEND_DELAY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			backend.delay = d
+		}
+	}
+
+	endpoint, stop, err := backend.serve()
 	if err != nil {
 		t.Fatalf("serve fake backend: %v", err)
 	}

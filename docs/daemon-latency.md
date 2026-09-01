@@ -65,7 +65,7 @@ Tracked in the table below; each row links to the commit that tested it.
 
 | # | Candidate | Where tested | Result |
 |---|---|---|---|
-| D1 | Bound gRPC concurrency (`MaxConcurrentStreams`, `NumStreamWorkers`) | | |
+| D1 | Bound gRPC concurrency (`MaxConcurrentStreams`, `NumStreamWorkers`) | laptop: inconclusive | needs CI |
 | B1 | Self-daemonize: double-fork + `setsid`, no launchd | | |
 | A2 | `LimitLoadToSessionType` (Aqua / Background) | | |
 | A1 | `LaunchDaemon` in the system domain | | |
@@ -80,3 +80,29 @@ it needs a small machine under a real compile, and 6-core shows both bands
 identical. Local runs are therefore only good for *mechanism* checks: does the
 plist load, does the flag apply, do the thread and goroutine counts move. The
 verdict on latency comes from CI.
+
+## D1 — bound gRPC concurrency
+
+`grpc.NewServer()` was created with neither `MaxConcurrentStreams` nor
+`NumStreamWorkers`, so gRPC spawns one goroutine per stream with no ceiling.
+Set to 64 streams and `min(2*NumCPU, 32)` workers.
+
+**Laptop result: inconclusive, and the reason matters.** 400 operations at 200
+concurrent against a fake backend delayed 1.5s moved the proxy from 19 to 21
+threads — no signal either way:
+
+| | threads | fds | up_p50 |
+|---|---|---|---|
+| unbounded | 19 | 19 | 25ms |
+| bounded | 21 | 19 | 21ms |
+
+Go's netpoller parks goroutines blocked on *network* I/O without holding an OS
+thread, so a probe that only moves bytes over gRPC cannot grow the thread pool.
+The 123 threads seen on CI must come from blocking *file* syscalls against CAS
+blobs, which this probe never touches. Any local test of D1 is therefore
+meaningless; it has to be judged on the reference app.
+
+A byproduct: the probe used here (`latency_probe_test.go`) had been deleted as
+"temporary" in an earlier PR and was not recoverable from git, so it is
+rewritten and kept. `FAKE_BACKEND_DELAY` is new, for simulating a proxy that
+cannot keep up.
