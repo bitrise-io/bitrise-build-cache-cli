@@ -66,12 +66,7 @@ type Config struct {
 	DebugLogging           bool      `json:"debugLogging,omitempty"`
 	Silent                 bool      `json:"silent,omitempty"`
 	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
-	// SelfEnrich toggles the wrapper's Xcode-26-CLI attachment path:
-	// when true (default), the wrapper injects `-resultBundlePath` and appends
-	// xcresulttool-derived targets + failure summaries to its own invocation PUT
-	// instead of relying on the enrichment watcher (which no longer sees CLI
-	// Build activity logs on Xcode 26). Ops kill switch — SelfEnrichDisabled is
-	// the JSON tag so a missing field defaults to enabled.
+	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
 	// (single canonical source for auth credentials on disk). The JSON tag is

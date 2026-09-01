@@ -112,11 +112,7 @@ func diagnoseEnrichment(healthPath, pendingPath string, now func() time.Time) Re
 	return Result{State: StateOK, Detail: fmt.Sprintf("healthy (last success %s, %d pending)", formatOptionalTime(snap.LastSuccess), len(pending))}
 }
 
-// matchedLagging fires when the watcher's correlated PUT has fallen behind the
-// wrapper's slim PUT by more than enrichmentStaleLastMatchedLag. Requires
-// LastSuccess to be fresh — a stale LastSuccess is caught earlier. Also
-// requires LastMatched to be non-zero: a never-matched state is the norm on
-// wrapper-only installs and would false-positive here.
+// Never-matched is the norm on wrapper-only installs — do not false-positive.
 func matchedLagging(snap enrichment.HealthSnapshot, now time.Time) bool {
 	if snap.LastSuccess.IsZero() || snap.LastMatched.IsZero() {
 		return false

@@ -356,8 +356,7 @@ type XcodebuildRunner struct {
 	// NoManagedDD suppresses the wrapper-owned -derivedDataPath and PROJECT_TEMP_DIR
 	// substitution; user-supplied values are still honoured either way.
 	NoManagedDD bool
-	// NoXcresult suppresses wrapper self-enrich via -resultBundlePath for this
-	// invocation. Per-invocation counterpart to Config.SelfEnrichDisabled.
+	// Per-invocation counterpart to Config.SelfEnrichDisabled.
 	NoXcresult bool
 
 	// Doctor reports local setup problems around the build; nil disables it.
@@ -815,11 +814,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	return c.appendResultBundleArg(append(toPass, extraArgv...))
 }
 
-// appendResultBundleArg splices `-resultBundlePath <tmp>` into argv when self-enrich
-// is on and the user did not supply their own -resultBundlePath. The bundle
-// path is derived deterministically from InvocationID each call so argv-inject,
-// parse, and cleanup sites don't share state. No-op for query actions (no build →
-// no xcresult).
+// Deterministic per InvocationID so argv-inject, parse and cleanup agree without extra state.
 func (c *XcodebuildRunner) appendResultBundleArg(argv []string) []string {
 	if !c.selfEnrichEnabled() {
 		return argv
@@ -847,18 +842,11 @@ func (c *XcodebuildRunner) selfEnrichEnabled() bool {
 	return !c.NoXcresult
 }
 
-// wrapperResultBundlePath is the temp-dir path the wrapper hands to xcodebuild
-// and later parses. Deterministic on invocation ID so assembleArgs +
-// attachXcresultSummary + cleanup agree without extra state on the runner.
 func (c *XcodebuildRunner) wrapperResultBundlePath() string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("bitrise-xcelerate-%s.xcresult", c.InvocationID))
 }
 
-// attachXcresultSummary parses the wrapper-injected xcresult bundle and appends
-// targets + failure summaries to inv. No-op when self-enrich is off, when the
-// user supplied their own -resultBundlePath (we don't own it, so we don't parse
-// it), or when the parser returns no data. Cleanup removes the bundle whether
-// parsing succeeded or not.
+// Cleanup removes the wrapper-injected bundle whether parsing succeeded or not.
 func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analytics.Invocation) {
 	if !c.selfEnrichEnabled() || !c.XcodeArgs.HasBuildAction() {
 		return

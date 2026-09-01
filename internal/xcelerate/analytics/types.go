@@ -71,10 +71,7 @@ type Invocation struct {
 	ExternalBuildID      string            `json:"externalBuildId,omitempty"`
 	ExternalWorkflowName string            `json:"externalWorkflowName,omitempty"`
 	BenchmarkPhase       string            `json:"benchmarkPhase,omitempty"`
-	// Targets + Failures are populated from `xcrun xcresulttool get build-results`
-	// on the wrapper self-enrich path. Xcode 26 CLI no longer writes Build activity
-	// logs the enrichment watcher can parse, so the wrapper picks the fields up
-	// itself and ships them on the same PUT.
+	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
 	Targets  []TargetSummary  `json:"targets,omitempty"`
 	Failures []FailureSummary `json:"failures,omitempty"`
 }
