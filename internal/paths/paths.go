@@ -91,6 +91,9 @@ const (
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 
+	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
+	ProjectMarkerFilename = ".bitrise-build-cache.json"
+
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
@@ -257,6 +260,11 @@ func (p Paths) CcacheLogDir() string {
 // GradleInitScriptFile returns the absolute path of the generated gradle init script.
 func (p Paths) GradleInitScriptFile() string {
 	return filepath.Join(p.Home, gradleInitScriptRelative)
+}
+
+// ProjectMarkerFile returns the marker path composed against the given project root dir.
+func (p Paths) ProjectMarkerFile(root string) string {
+	return filepath.Join(root, ProjectMarkerFilename)
 }
 
 // XcodeManagedDerivedDataDir returns the wrapper-owned DerivedData dir for a given
