@@ -67,10 +67,10 @@ Tracked in the table below; each row links to the commit that tested it.
 |---|---|---|---|
 | D1 | Bound gRPC concurrency (`MaxConcurrentStreams`, `NumStreamWorkers`) | laptop: inconclusive | needs CI |
 | B1 | Self-daemonize: double-fork + `setsid`, no launchd | | |
-| A2 | `LimitLoadToSessionType` (Aqua / Background) | | |
+| A2 | `LimitLoadToSessionType` (Aqua / Background) | laptop: loads (Aqua only) | needs CI |
 | A1 | `LaunchDaemon` in the system domain | | |
-| A3 | `NSAppSleepDisabled=1` | | |
-| A4 | `EnablePressuredExit=false`, `LowPriorityIO=false` | | |
+| A3 | `NSAppSleepDisabled=1` | laptop: loads | needs CI |
+| A4 | `EnablePressuredExit=false`, `LowPriorityIO=false` | laptop: loads | needs CI |
 | C1 | `setpriority(PRIO_DARWIN_PROCESS, 0, 0)` at startup | | |
 
 ## Test method
@@ -106,3 +106,24 @@ A byproduct: the probe used here (`latency_probe_test.go`) had been deleted as
 "temporary" in an earlier PR and was not recoverable from git, so it is
 rewritten and kept. `FAKE_BACKEND_DELAY` is new, for simulating a proxy that
 cannot keep up.
+
+## A2/A3/A4 — launchd plist knobs
+
+Added behind env vars so one binary can test several variants on CI:
+`BITRISE_DAEMON_SESSION_TYPE`, `BITRISE_DAEMON_DISABLE_APP_NAP`,
+`BITRISE_DAEMON_NO_PRESSURED_EXIT`.
+
+Laptop mechanism check — does the job still load?
+
+| variant | keys in plist | launchd state |
+|---|---|---|
+| baseline | — | running |
+| A2 `Aqua` | `LimitLoadToSessionType` | running |
+| A2 `Background` | `LimitLoadToSessionType` | **not loaded** |
+| A3 | `NSAppSleepDisabled` | running |
+| A4 | `EnablePressuredExit`, `LowPriorityIO` | running |
+
+`Background` is not loadable in the `gui/<uid>` domain at all, so that half of
+A2 is only reachable via a LaunchDaemon in `system/` (A1). Everything else
+loads, so all are safe to try on CI — the laptop cannot say whether any of them
+changes latency.
