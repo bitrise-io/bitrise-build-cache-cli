@@ -242,11 +242,42 @@ the same as a shell child. So the proxy is *not* in the Darwin background band
 there, C1 had nothing to clear, and the 2314ms → 1530ms improvement is D1
 alone.
 
-That leaves the real mechanism unexplained: priority is equal, yet `sched_p99`
-is 5-21ms against 229-328µs. The leading hypothesis is **coalition membership**
-— macOS applies resource control per coalition, a launchd job forms its own,
-and a wrapper-forked proxy joins the build's. No plist key changes that. This
-is a hypothesis, not a measurement.
+That leaves the real mechanism, which is **coalition membership** — confirmed
+with `taskinfo` as root on an RDE:
+
+| process | RESOURCE coalition |
+|---|---|
+| launchd agent (`ProcessType Interactive`) | **1967** `io.bitrise.coaltest` — its own |
+| the shell | 1980 `com.openssh.sshd...` |
+| shell child | **1980** — same as the shell |
+| detached grandchild | **1980** — still the same |
+
+A launchd job forms its own coalition, named after its label. A forked child
+joins its session leader's, and detaching or reparenting to `ppid=1` does not
+move it. Every other policy field is identical between the two: `req role:
+TASK_UNSPECIFIED`, `req darwin BG: NO`, no QoS clamp, no App Nap suppression.
+
+macOS applies CPU and I/O resource control **per coalition**. So the proxy is
+not merely a low-priority process — it is in a different resource-control group
+from the compiler it serves, and when xcodebuild saturates every core from
+*its* coalition, the proxy's coalition gets what is left. No plist key changes
+coalition membership; it is fixed at `posix_spawn` time.
+
+### Why this looks different from the known launchd-is-slow precedent
+
+GitLab Runner hit a 6x slowdown running as a launchd service (36:42 against
+5:48 interactive) and `ProcessType Interactive` **fixed it completely**. Ours
+does not, and the difference is instructive: GitLab Runner's *jobs are its own
+children*, so they inherit its coalition and Interactive lifts the whole tree.
+Our proxy is a service in one coalition serving a CPU-saturating client in
+another. Lifting the proxy's own band does nothing about the competition
+between two coalitions.
+
+That is why the published advice — "set ProcessType Interactive" — is right for
+the common case and insufficient for ours.
+
+(Note the Apple docs describe Interactive as priority ~47; measured here it is
+31, matching a shell child.)
 
 ## What replaces start-at-login
 
