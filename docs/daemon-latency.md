@@ -368,9 +368,12 @@ problem.
 
 ## Decision
 
-Activation no longer supervises anything. `ServicesForTools` returns nothing,
-so neither `activate xcode` nor `activate c++` registers a LaunchAgent or a
-systemd unit. Each service is started by whoever needs it — the xcodebuild
+On macOS, activation no longer supervises anything: neither `activate xcode`
+nor `activate c++` registers a LaunchAgent.
+
+**Elsewhere the supervisor stays.** Coalitions are a macOS concept and the
+penalty has not been shown for systemd, so the Linux path is unchanged — there
+is no evidence to act on there. Each service is started by whoever needs it — the xcodebuild
 wrapper for the proxy, `activate c++` for the ccache helper — which puts it in
 the build's coalition.
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -156,6 +157,16 @@ func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
 	assert.Contains(t, err.Error(), "permission denied")
 }
 
+// darwinOrNames is nil on macOS, where nothing is supervised, and the given
+// names elsewhere.
+func darwinOrNames(names ...string) []string {
+	if runtime.GOOS == "darwin" {
+		return nil
+	}
+
+	return names
+}
+
 func TestServicesForTools_correctMappings(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -163,14 +174,20 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 		needsCcache    bool
 		wantNames      []string
 	}{
-		// Activation supervises nothing: a launchd job gets its own resource
-		// coalition and loses to the compiler it serves, so both services are
-		// started on demand by whoever needs them. `daemon install` still
-		// supervises them on request. See docs/daemon-latency.md.
+		// On macOS activation supervises nothing: a launchd job gets its own
+		// resource coalition and loses to the compiler it serves, so each
+		// service is started on demand by whoever needs it. Coalitions are a
+		// macOS concept, so elsewhere the supervisor stays.
+		// See docs/daemon-latency.md.
 		{name: "neither", wantNames: nil},
-		{name: "xcelerate only", needsXcelerate: true, wantNames: nil},
-		{name: "ccache only", needsCcache: true, wantNames: nil},
-		{name: "both", needsXcelerate: true, needsCcache: true, wantNames: nil},
+		{name: "xcelerate only", needsXcelerate: true, wantNames: darwinOrNames(ServiceXcelerateProxy)},
+		{name: "ccache only", needsCcache: true, wantNames: darwinOrNames(ServiceCcacheHelper)},
+		{
+			name:           "both",
+			needsXcelerate: true,
+			needsCcache:    true,
+			wantNames:      darwinOrNames(ServiceXcelerateProxy, ServiceCcacheHelper),
+		},
 	}
 
 	for _, tc := range cases {

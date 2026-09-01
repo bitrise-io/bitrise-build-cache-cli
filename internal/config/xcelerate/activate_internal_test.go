@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -141,7 +142,12 @@ func TestRunDaemonEnsure_wiresNoXcelerateProxyService(t *testing.T) {
 	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, false)
 	require.NoError(t, err)
 
-	assert.Empty(t, gotServices)
+	if runtime.GOOS == "darwin" {
+		assert.Empty(t, gotServices)
+	} else {
+		require.Len(t, gotServices, 1)
+		assert.Equal(t, daemonpkg.ServiceXcelerateProxy, gotServices[0].Name)
+	}
 }
 
 func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -101,17 +102,39 @@ func DefaultBackendAndPaths() (Backend, Paths, error) {
 	return backend, dPaths, nil
 }
 
-// ServicesForTools reports which services activation should supervise, which
-// is none of them.
+// ServicesForTools reports which services activation should supervise.
 //
-// macOS applies CPU and I/O limits per resource coalition and a launchd job is
-// placed in one of its own, so a supervised service competes with the compiler
-// it exists to serve and loses: 2314ms against 6.3ms per cache operation on a
-// 4-core machine. Coalition membership is fixed at spawn, so no plist key
-// changes it. Both services are instead started lazily by the process that
-// needs them — the xcodebuild wrapper for the proxy, `activate c++` for the
-// ccache helper — which puts them in the build's coalition.
+// On macOS: none. The OS applies CPU and I/O limits per resource coalition and
+// places a launchd job in one of its own, so a supervised service competes with
+// the compiler it exists to serve and loses — 2314ms against 6.3ms per cache
+// operation on a 4-core machine. Coalition membership is fixed at spawn, so no
+// plist key changes it. Both services are started instead by whoever needs
+// them: the xcodebuild wrapper for the proxy, `activate c++` for the ccache
+// helper, which puts them in the build's coalition.
 //
-// `daemon install` still supervises them if a user asks for it explicitly, and
-// warns. See docs/daemon-latency.md.
-func ServicesForTools(_, _ bool) []Service { return nil }
+// Elsewhere the supervisor stays. Coalitions are a macOS concept and the same
+// penalty has not been shown for systemd, so there is no evidence to act on.
+//
+// `daemon install` still supervises on request, on any platform, and warns.
+// See docs/daemon-latency.md.
+func ServicesForTools(needsXcelerate, needsCcache bool) []Service {
+	if runtime.GOOS == "darwin" {
+		return nil
+	}
+
+	var out []Service
+	for _, svc := range DefaultServices() {
+		switch svc.Name {
+		case ServiceXcelerateProxy:
+			if needsXcelerate {
+				out = append(out, svc)
+			}
+		case ServiceCcacheHelper:
+			if needsCcache {
+				out = append(out, svc)
+			}
+		}
+	}
+
+	return out
+}
