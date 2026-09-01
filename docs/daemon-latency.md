@@ -65,13 +65,13 @@ Tracked in the table below; each row links to the commit that tested it.
 
 | # | Candidate | Where tested | Result |
 |---|---|---|---|
-| D1 | Bound gRPC concurrency (`MaxConcurrentStreams`, `NumStreamWorkers`) | laptop: inconclusive | needs CI |
-| B1 | Self-daemonize: double-fork + `setsid`, no launchd | laptop: survives + serves | latency already known |
-| A2 | `LimitLoadToSessionType` (Aqua / Background) | laptop: loads (Aqua only) | needs CI |
+| D1 | Bound gRPC concurrency (`MaxConcurrentStreams`, `NumStreamWorkers`) | CI, with C1 | 1530ms p50 — 34% better, not a fix |
+| B1 | Self-daemonize: double-fork + `setsid`, no launchd | laptop + CI control | **6.3ms p50 — this is the fix** |
+| A2 | `LimitLoadToSessionType` (Aqua / Background) | CI | 1809ms p50 — no effect |
 | A1 | `LaunchDaemon` in the system domain | | |
-| A3 | `NSAppSleepDisabled=1` | laptop: loads | needs CI |
-| A4 | `EnablePressuredExit=false`, `LowPriorityIO=false` | laptop: loads | needs CI |
-| C1 | `setpriority(PRIO_DARWIN_PROCESS, 0, 0)` at startup | laptop: verified working | needs CI |
+| A3 | `NSAppSleepDisabled=1` | CI, with A4 | 1600ms p50 — no effect |
+| A4 | `EnablePressuredExit=false`, `LowPriorityIO=false` | CI, with A3 | 1600ms p50 — no effect |
+| C1 | `setpriority(PRIO_DARWIN_PROCESS, 0, 0)` at startup | CI, with D1 | folded into D1's 1530ms |
 
 ## Test method
 
@@ -170,3 +170,36 @@ launchd owning the proxy's scheduling.
 
 This makes B1 the leading candidate: the fastest measured configuration, and
 the persistence objection does not hold.
+
+## CI verdict
+
+All arms on the reference app, 4-core, same harness, `n=36285` operations each.
+Read only the per-invocation `xcelerate-<uuid>.log`: a daemon arm also ships
+`xcelerate-proxy.out.log`, which holds the same lines, and counting both
+doubles `n` without changing the percentiles.
+
+| arm | p50 | p90 | vs launchd baseline |
+|---|---|---|---|
+| **nodaemon (wrapper-forked)** | **6.3 ms** | 95.5 ms | **367x faster** |
+| launchd baseline | 2314 ms | 3833 ms | — |
+| D1 + C1 | 1530 ms | 2810 ms | 34% better |
+| A3 + A4 | 1600 ms | 3170 ms | 31% better |
+| A2 Aqua | 1809 ms | 3340 ms | 22% better |
+
+None of the launchd-side knobs comes close. The best of them, bounding gRPC
+concurrency and clearing the Darwin background band, takes 2314ms to 1530ms —
+real, and still **243x** slower than not using launchd at all. A2, A3 and A4
+are within noise of each other and of doing nothing.
+
+**The conclusion is that the supervisor is the problem, not its configuration.**
+No plist key reaches wrapper latency because the cost is in being a launchd job
+at all.
+
+### Harness note
+
+The three variant arms hung in SPM checkout on the first two attempts, 3 for 3
+on source-built runs against 0 for 6 on installer runs: `go build` on the VM
+interferes with the SPM package checkout that follows. Fixed by running
+`dependencies` **before** the CLI install, which also isolates the measurement —
+`xcodebuild -resolvePackageDependencies` never needed the cache and was adding
+noise to every arm.
