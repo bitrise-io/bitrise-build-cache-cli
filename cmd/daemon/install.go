@@ -18,7 +18,9 @@ var installCmd = &cobra.Command{
 	Short: "Register the Bitrise Build Cache services with the OS supervisor",
 	Long: `install registers the xcelerate proxy and the ccache storage helper with the host OS's per-user supervisor: ` +
 		`LaunchAgents on macOS, systemd --user units on Linux. ` +
-		`Safe to rerun after a CLI upgrade — the supervisor configs are rewritten and the services restarted.`,
+		`Safe to rerun after a CLI upgrade — the supervisor configs are rewritten and the services restarted.` + "\n\n" +
+		`Not the default, and not recommended: a supervised service is placed in its own resource coalition and ` +
+		`competes with the compiler it serves. Activation starts both services on demand instead.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -27,6 +29,8 @@ var installCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		logger.Warnf(daemonpkg.SupervisionWarning)
 
 		exe, err := daemonpkg.ResolveSupervisedBinary(logger)
 		if err != nil {

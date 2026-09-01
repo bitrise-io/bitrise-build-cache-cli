@@ -368,10 +368,14 @@ problem.
 
 ## Decision
 
-The xcelerate proxy is no longer installed as a supervised service on any
-platform. `ServicesForTools` returns nothing for Xcode, so `activate xcode`
-registers no LaunchAgent and no systemd unit; the xcodebuild wrapper forks the
-proxy, which puts it in the build's coalition.
+Activation no longer supervises anything. `ServicesForTools` returns nothing,
+so neither `activate xcode` nor `activate c++` registers a LaunchAgent or a
+systemd unit. Each service is started by whoever needs it — the xcodebuild
+wrapper for the proxy, `activate c++` for the ccache helper — which puts it in
+the build's coalition.
+
+`daemon install` and `daemon up` still work for anyone who wants supervision,
+and now warn that it costs performance.
 
 What that changes:
 
@@ -386,9 +390,11 @@ What that changes:
 - **Reboot**: the proxy does not come back on its own. Terminal builds restart
   it; Xcode.app users need the Run Script or one manual command per session.
 
-The ccache storage helper is still supervised. It has the same shape and
-probably the same problem, but it has not been measured and is out of scope
-here.
+The ccache storage helper gets the same treatment. It has the same shape — a
+background process serving compilers that saturate the machine — and the same
+lazy-start path already exists, added when the CI skip left it unstarted. Its
+latency has not been measured separately; it is changed on the strength of the
+architecture matching, not on its own numbers.
 
 D1 (bounded gRPC concurrency) ships alongside on its own merits: 34% faster and
 it bounds the thread and fd growth regardless of how the proxy is started.

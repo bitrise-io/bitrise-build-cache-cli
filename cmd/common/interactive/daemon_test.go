@@ -10,8 +10,6 @@ import (
 	"charm.land/huh/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 )
 
 // huh's accessible mode walks every group unconditionally, ignoring hide funcs —
@@ -48,11 +46,10 @@ func TestDaemonServicesForTools(t *testing.T) {
 
 	assert.Empty(t, names(), "no tools, no services")
 	assert.Empty(t, names("gradle", "bazel"), "Gradle and Bazel talk to the cache directly")
-	// Xcode needs no service: the xcodebuild wrapper forks the proxy, which
-	// keeps it in the build's resource coalition. See docs/daemon-latency.md.
+	// No tool needs a supervised service: each is started on demand by the
+	// process that needs it, which keeps it in the build's resource coalition.
+	// See docs/daemon-latency.md.
 	assert.Empty(t, names("xcode"), "the xcelerate proxy is never supervised")
-	assert.Equal(t, []string{daemonpkg.ServiceCcacheHelper}, names("ccache"))
-	assert.Equal(t,
-		[]string{daemonpkg.ServiceCcacheHelper},
-		names("gradle", "xcode", "ccache"))
+	assert.Empty(t, names("ccache"), "the ccache helper is never supervised")
+	assert.Empty(t, names("gradle", "xcode", "ccache"))
 }

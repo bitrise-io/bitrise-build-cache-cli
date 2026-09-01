@@ -101,25 +101,17 @@ func DefaultBackendAndPaths() (Backend, Paths, error) {
 	return backend, dPaths, nil
 }
 
-// ServicesForTools filters DefaultServices() down to what the given tools need;
-// tools with no background service (Gradle, Bazel) contribute none.
-func ServicesForTools(needsXcelerate, needsCcache bool) []Service {
-	var out []Service
-	for _, svc := range DefaultServices() {
-		switch svc.Name {
-		case ServiceXcelerateProxy:
-			// Never supervised. A launchd job gets its own resource coalition
-			// and loses to the compiler it serves: 2314ms against 6.3ms per
-			// cache operation on a 4-core machine, with no plist key able to
-			// close it. The xcodebuild wrapper forks the proxy instead, which
-			// puts it in the build's coalition. See docs/daemon-latency.md.
-			_ = needsXcelerate
-		case ServiceCcacheHelper:
-			if needsCcache {
-				out = append(out, svc)
-			}
-		}
-	}
-
-	return out
-}
+// ServicesForTools reports which services activation should supervise, which
+// is none of them.
+//
+// macOS applies CPU and I/O limits per resource coalition and a launchd job is
+// placed in one of its own, so a supervised service competes with the compiler
+// it exists to serve and loses: 2314ms against 6.3ms per cache operation on a
+// 4-core machine. Coalition membership is fixed at spawn, so no plist key
+// changes it. Both services are instead started lazily by the process that
+// needs them — the xcodebuild wrapper for the proxy, `activate c++` for the
+// ccache helper — which puts them in the build's coalition.
+//
+// `daemon install` still supervises them if a user asks for it explicitly, and
+// warns. See docs/daemon-latency.md.
+func ServicesForTools(_, _ bool) []Service { return nil }

@@ -163,3 +163,18 @@ func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 `ParseCcacheStats` parses the text output of `ccache -v -v -s`. It is line-by-line: indent depth (2 spaces = 1 level) builds a section path like `"Cacheable calls / Hits / Direct"`, which is dispatched to the matching `CcacheStats` field. `CacheHitRate` and `TotalCalls` are derived after parsing. Always returns `nil` error.
 
 `CcacheStats.HasActivity()` returns true when `CacheableCalls + UncacheableCalls > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.
+
+## The storage helper is not a background service
+
+`activate c++` starts the ccache storage helper itself and leaves it running
+for later builds. It is deliberately not registered with launchd or systemd:
+macOS applies CPU and I/O limits per resource coalition and places a supervised
+job in one of its own, where it competes with the compilers it serves rather
+than sharing their budget. The same change measured 2314ms against 6.3ms per
+cache operation for the Xcode proxy — see [daemon-latency.md](daemon-latency.md).
+
+The helper does not survive a reboot or logout. Running `activate c++` again
+starts it, and the command is safe to repeat.
+
+`bitrise-build-cache daemon install` will supervise it if you want that, and
+warns about the cost.

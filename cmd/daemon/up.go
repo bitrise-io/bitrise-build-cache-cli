@@ -28,6 +28,8 @@ var upCmd = &cobra.Command{
 			return err
 		}
 
+		logger.Warnf(daemonpkg.SupervisionWarning)
+
 		result, err := daemonpkg.Up(cmd.Context(), backend, paths, daemonpkg.DefaultServices())
 		if err != nil {
 			if errors.Is(err, daemonpkg.ErrNotInstalled) {

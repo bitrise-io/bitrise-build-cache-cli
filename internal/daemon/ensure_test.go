@@ -163,18 +163,14 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 		needsCcache    bool
 		wantNames      []string
 	}{
+		// Activation supervises nothing: a launchd job gets its own resource
+		// coalition and loses to the compiler it serves, so both services are
+		// started on demand by whoever needs them. `daemon install` still
+		// supervises them on request. See docs/daemon-latency.md.
 		{name: "neither", wantNames: nil},
-		// The xcelerate proxy is never supervised: a launchd job gets its own
-		// resource coalition and loses to the compiler it serves. The
-		// xcodebuild wrapper forks it instead. See docs/daemon-latency.md.
 		{name: "xcelerate only", needsXcelerate: true, wantNames: nil},
-		{name: "ccache only", needsCcache: true, wantNames: []string{ServiceCcacheHelper}},
-		{
-			name:           "both",
-			needsXcelerate: true,
-			needsCcache:    true,
-			wantNames:      []string{ServiceCcacheHelper},
-		},
+		{name: "ccache only", needsCcache: true, wantNames: nil},
+		{name: "both", needsXcelerate: true, needsCcache: true, wantNames: nil},
 	}
 
 	for _, tc := range cases {

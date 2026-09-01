@@ -47,8 +47,10 @@ This command will:
 			return fmt.Errorf("activate C++ cache: %w", err)
 		}
 
-		// daemon.Ensure skips the service on CI; ccache silently misses every
-		// lookup when nothing serves the socket. Best-effort — must not fail activation.
+		// The helper is never supervised — a launchd job lands in its own
+		// resource coalition and loses to the compiler it serves — so
+		// activation starts it. ccache silently misses every lookup when
+		// nothing serves the socket. Best-effort: must not fail activation.
 		socketPath := ccacheconfig.ResolveIPCSocketPath(
 			activateCppParams.IPCSocketPathOverride, utils.AllEnvs(), utils.DefaultOsProxy{},
 		)
