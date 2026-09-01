@@ -247,3 +247,37 @@ is 5-21ms against 229-328µs. The leading hypothesis is **coalition membership**
 — macOS applies resource control per coalition, a launchd job forms its own,
 and a wrapper-forked proxy joins the build's. No plist key changes that. This
 is a hypothesis, not a measurement.
+
+## What replaces start-at-login
+
+Today: nothing needs replacing, because start-at-login is not currently buying
+anything.
+
+`activate xcode` installs shims at `~/.bitrise-xcelerate/bin/{xcodebuild,xcrun}`
+and puts that directory on `PATH`. That reaches shells and nothing else — there
+is no xcconfig, no build setting, no `defaults` key, nothing Xcode.app reads.
+**A GUI Xcode build never goes through the wrapper and never contacts the
+proxy.** The epic that introduced the daemon says as much: "Xcode.app
+integration → M2 (separate story)", explicitly out of scope.
+
+So the agent starting at login serves only CLI builds, which would get a proxy
+lazily on their first `xcodebuild` anyway — one process start, once, against a
+367x per-operation penalty for the whole session.
+
+When GUI support does arrive it cannot be solved by a LaunchAgent without
+inheriting the same penalty, because descendants inherit the band. The
+distinction that matters is not launchd versus not, but *what kind* of launchd
+job: an Aqua **application** and its children run at pri 31 — that is what a
+Terminal shell child is — while a background **agent** and everything it spawns
+runs throttled. A login item packaged as a real app bundle would land on the
+application side of that line; a LaunchAgent cannot.
+
+## Recommendation
+
+Do not supervise the proxy with launchd. Keep the wrapper-forked proxy, which
+is already the fast path, already survives its shell, and already repairs a
+wedged predecessor. Ship D1 (bounded gRPC concurrency) on its own merits — it
+is a 34% improvement that costs nothing and bounds the thread and fd growth.
+
+Revisit only if Xcode.app integration lands, and then as an app-bundle login
+item rather than an agent.
