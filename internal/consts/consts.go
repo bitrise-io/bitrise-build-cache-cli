@@ -16,10 +16,10 @@ const (
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "1.3.4"
+	GradleRemoteBuildCachePluginDepVersion = "2.0.0"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "2.7.6"
+	GradleAnalyticsPluginDepVersion = "3.2.2"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsPort             = 443
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
