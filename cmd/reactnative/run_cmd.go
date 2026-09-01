@@ -26,7 +26,7 @@ the command to skip them for one run, or set ` + doctorpkg.EnvSkipDoctor + ` to 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r := rnpkg.NewRunner(rnpkg.RunnerParams{
 			ExecFn:       defaultExecFn,
-			DebugLogging: common.DebugEnabled(false),
+			DebugLogging: common.DebugFromFlag(),
 		})
 
 		exitCode, err := r.Run(cmd.Context(), args, os.Getenv("BITRISE_INVOCATION_ID"), os.Environ())

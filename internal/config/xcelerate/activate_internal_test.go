@@ -135,7 +135,7 @@ func TestRunDaemonEnsure_wiresXcelerateProxyService(t *testing.T) {
 		return nil
 	})
 
-	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{})
+	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, false)
 	require.NoError(t, err)
 
 	require.Len(t, gotServices, 1)
@@ -152,7 +152,7 @@ func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {
 
 	envs := map[string]string{daemonpkg.EnvSkipEnsure: "1"}
 
-	err := runDaemonEnsure(t.Context(), log.NewLogger(), envs)
+	err := runDaemonEnsure(t.Context(), log.NewLogger(), envs, false)
 	require.NoError(t, err)
 	assert.Equal(t, "1", gotEnvs[daemonpkg.EnvSkipEnsure])
 }
@@ -162,7 +162,21 @@ func TestXcelerateRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
 		return errors.New("launchctl bootstrap: permission denied")
 	})
 
-	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{})
+	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "permission denied")
+}
+
+// A launchd job is started by the service manager, not the shell, so the flag
+// has to travel through EnsureDeps or the daemon can never log at debug level.
+func TestRunDaemonEnsure_forwardsDebugLogging(t *testing.T) {
+	var gotDebug bool
+	swapEnsureFn(t, func(_ context.Context, _ log.Logger, _ []daemonpkg.Service, deps daemonpkg.EnsureDeps) error {
+		gotDebug = deps.DebugLogging
+
+		return nil
+	})
+
+	require.NoError(t, runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, true))
+	assert.True(t, gotDebug)
 }

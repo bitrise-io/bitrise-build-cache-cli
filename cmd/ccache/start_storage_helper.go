@@ -38,7 +38,7 @@ var (
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			helper, err := ccachepkg.NewStorageHelper(ccachepkg.StorageHelperParams{
 				InvocationID: initialInvocationID,
-				DebugLogging: common.IsDebugLogMode,
+				DebugLogging: common.DebugFromFlag(),
 			})
 			if err != nil {
 				if errors.Is(err, fs.ErrNotExist) {

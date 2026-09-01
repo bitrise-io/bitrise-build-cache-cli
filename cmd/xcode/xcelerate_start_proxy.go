@@ -82,7 +82,7 @@ var (
 				}
 
 				logger := log.NewLogger(
-					log.WithDebugLog(config.DebugLogging || common.IsDebugLogMode),
+					log.WithDebugLog(common.DebugEnabled(config.DebugLogging)),
 					log.WithOutput(io.MultiWriter(os.Stdout, f)),
 				)
 
@@ -170,6 +170,7 @@ func StartXcodeCacheProxy(
 		CapabilitiesClient: capabilitiesClient,
 		InvocationID:       initialInvocationID,
 		SkipCapabilities:   true, // proxy handles capabilities calls internally
+		DebugLogging:       config.DebugLogging,
 	})
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)

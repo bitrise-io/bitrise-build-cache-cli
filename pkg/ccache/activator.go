@@ -168,7 +168,10 @@ func (a *Activator) Activate(ctx context.Context) error {
 func (a *Activator) runDaemonEnsure(ctx context.Context) error {
 	services := daemonpkg.ServicesForTools(false, true)
 
-	if err := ensureFn(ctx, a.logger, services, daemonpkg.EnsureDeps{Envs: a.envs}); err != nil {
+	if err := ensureFn(ctx, a.logger, services, daemonpkg.EnsureDeps{
+		Envs:         a.envs,
+		DebugLogging: a.debugLogging,
+	}); err != nil {
 		return fmt.Errorf("daemon ensure: %w", err)
 	}
 

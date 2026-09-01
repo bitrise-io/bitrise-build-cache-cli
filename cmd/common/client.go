@@ -35,6 +35,10 @@ type CreateKVClientParams struct {
 	BitriseKVClient    kv_storage.KVStorageClient         // nullable, if not provided, a new client will be created
 	CapabilitiesClient remoteexecution.CapabilitiesClient // nullable, if not provided, a new client will be created
 	SkipCapabilities   bool                               // if true, GetCapabilities will not be called
+	// DebugLogging is the caller's own setting; the global --debug flag is
+	// OR-ed in via DebugEnabled, so a supervised process started without the
+	// flag still honours its config.
+	DebugLogging bool
 }
 
 func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Client, error) {
@@ -63,7 +67,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		BitriseKVClient:     params.BitriseKVClient,
 		CapabilitiesClient:  params.CapabilitiesClient,
 		InvocationID:        params.InvocationID,
-		DebugLogging:        IsDebugLogMode,
+		DebugLogging:        DebugEnabled(params.DebugLogging),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)
