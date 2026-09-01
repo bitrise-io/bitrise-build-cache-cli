@@ -102,31 +102,27 @@ func DefaultBackendAndPaths() (Backend, Paths, error) {
 	return backend, dPaths, nil
 }
 
-// ServicesForTools reports which services activation should supervise.
+// ServicesForTools filters DefaultServices() down to what the given tools need.
 //
-// On macOS: none. The OS applies CPU and I/O limits per resource coalition and
-// places a launchd job in one of its own, so a supervised service competes with
-// the compiler it exists to serve and loses — 2314ms against 6.3ms per cache
-// operation on a 4-core machine. Coalition membership is fixed at spawn, so no
-// plist key changes it. Both services are started instead by whoever needs
-// them: the xcodebuild wrapper for the proxy, `activate c++` for the ccache
-// helper, which puts them in the build's coalition.
+// The xcelerate proxy is not supervised on macOS. The OS applies CPU and I/O
+// limits per resource coalition and places a launchd job in one of its own, so
+// the proxy competes with the compiler it exists to serve and loses: 2314ms
+// against 6.3ms per cache operation on a 4-core machine, and no plist key
+// closes it. The xcodebuild wrapper forks it instead, which puts it in the
+// build's coalition.
 //
-// Elsewhere the supervisor stays. Coalitions are a macOS concept and the same
-// penalty has not been shown for systemd, so there is no evidence to act on.
+// The ccache helper *is* still supervised, everywhere. The same A/B on a
+// 4-core macOS machine over a saturating C++ compile found no penalty —
+// 3.8ms supervised against 2.4ms lazy at p50, with better tails supervised —
+// so the argument that carried for the proxy does not carry here.
 //
-// `daemon install` still supervises on request, on any platform, and warns.
 // See docs/daemon-latency.md.
 func ServicesForTools(needsXcelerate, needsCcache bool) []Service {
-	if runtime.GOOS == "darwin" {
-		return nil
-	}
-
 	var out []Service
 	for _, svc := range DefaultServices() {
 		switch svc.Name {
 		case ServiceXcelerateProxy:
-			if needsXcelerate {
+			if needsXcelerate && runtime.GOOS != "darwin" {
 				out = append(out, svc)
 			}
 		case ServiceCcacheHelper:

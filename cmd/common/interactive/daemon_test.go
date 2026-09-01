@@ -53,12 +53,10 @@ func TestDaemonServicesForTools(t *testing.T) {
 	// See docs/daemon-latency.md.
 	if runtime.GOOS == "darwin" {
 		assert.Empty(t, names("xcode"), "the xcelerate proxy is not supervised on macOS")
-		assert.Empty(t, names("ccache"), "the ccache helper is not supervised on macOS")
-		assert.Empty(t, names("gradle", "xcode", "ccache"))
-
-		return
+	} else {
+		assert.Equal(t, []string{daemonpkg.ServiceXcelerateProxy}, names("xcode"))
 	}
 
-	assert.Equal(t, []string{daemonpkg.ServiceXcelerateProxy}, names("xcode"))
+	// The ccache helper is supervised everywhere: measured, no penalty.
 	assert.Equal(t, []string{daemonpkg.ServiceCcacheHelper}, names("ccache"))
 }

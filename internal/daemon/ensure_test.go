@@ -157,14 +157,13 @@ func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
 	assert.Contains(t, err.Error(), "permission denied")
 }
 
-// darwinOrNames is nil on macOS, where nothing is supervised, and the given
-// names elsewhere.
-func darwinOrNames(names ...string) []string {
+// proxyNames is empty on macOS, where the proxy is not supervised.
+func proxyNames() []string {
 	if runtime.GOOS == "darwin" {
 		return nil
 	}
 
-	return names
+	return []string{ServiceXcelerateProxy}
 }
 
 func TestServicesForTools_correctMappings(t *testing.T) {
@@ -174,19 +173,18 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 		needsCcache    bool
 		wantNames      []string
 	}{
-		// On macOS activation supervises nothing: a launchd job gets its own
-		// resource coalition and loses to the compiler it serves, so each
-		// service is started on demand by whoever needs it. Coalitions are a
-		// macOS concept, so elsewhere the supervisor stays.
+		// The proxy is not supervised on macOS -- a launchd job gets its own
+		// resource coalition and loses to the compiler it serves. The ccache
+		// helper is, everywhere: the same A/B found no penalty for it.
 		// See docs/daemon-latency.md.
 		{name: "neither", wantNames: nil},
-		{name: "xcelerate only", needsXcelerate: true, wantNames: darwinOrNames(ServiceXcelerateProxy)},
-		{name: "ccache only", needsCcache: true, wantNames: darwinOrNames(ServiceCcacheHelper)},
+		{name: "xcelerate only", needsXcelerate: true, wantNames: proxyNames()},
+		{name: "ccache only", needsCcache: true, wantNames: []string{ServiceCcacheHelper}},
 		{
 			name:           "both",
 			needsXcelerate: true,
 			needsCcache:    true,
-			wantNames:      darwinOrNames(ServiceXcelerateProxy, ServiceCcacheHelper),
+			wantNames:      append(proxyNames(), ServiceCcacheHelper),
 		},
 	}
 

@@ -393,11 +393,28 @@ What that changes:
 - **Reboot**: the proxy does not come back on its own. Terminal builds restart
   it; Xcode.app users need the Run Script or one manual command per session.
 
-The ccache storage helper gets the same treatment. It has the same shape — a
-background process serving compilers that saturate the machine — and the same
-lazy-start path already exists, added when the CI skip left it unstarted. Its
-latency has not been measured separately; it is changed on the strength of the
-architecture matching, not on its own numbers.
+### The ccache helper was measured and left alone
+
+The helper has the same shape as the proxy — a background process serving
+compilers that saturate the machine — so the expectation was that it would show
+the same penalty. It does not.
+
+A/B on a 4-core macOS machine, 240 template-heavy translation units compiled at
+full parallelism, 960 helper operations per arm:
+
+| arm | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| lazily started | 2.4 ms | 13.5 ms | 126.8 ms | 984.6 ms |
+| **supervised** | 3.8 ms | **4.9 ms** | **10.1 ms** | **123.2 ms** |
+
+Both sit in low milliseconds and the supervised arm has the better tails.
+Nothing resembling the proxy's 6.3ms against 2314ms. The architecture matched
+and the behaviour did not, so the helper keeps its supervisor.
+
+Why the difference is not established. Plausibly the helper does far less work
+per operation, and 960 operations over a short compile is a much lighter load
+than 36285 over a 4-minute Xcode build — so this rules out a large effect, not
+a small one.
 
 D1 (bounded gRPC concurrency) ships alongside on its own merits: 34% faster and
 it bounds the thread and fd growth regardless of how the proxy is started.

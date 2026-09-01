@@ -164,17 +164,14 @@ func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 
 `CcacheStats.HasActivity()` returns true when `CacheableCalls + UncacheableCalls > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.
 
-## The storage helper is not a background service
+## The storage helper
 
-`activate c++` starts the ccache storage helper itself and leaves it running
-for later builds. It is deliberately not registered with launchd or systemd:
-macOS applies CPU and I/O limits per resource coalition and places a supervised
-job in one of its own, where it competes with the compilers it serves rather
-than sharing their budget. The same change measured 2314ms against 6.3ms per
-cache operation for the Xcode proxy — see [daemon-latency.md](daemon-latency.md).
+`activate c++` reconciles the ccache storage helper with the OS supervisor —
+a LaunchAgent on macOS, a systemd user unit on Linux — and also starts it
+directly if nothing is serving its socket.
 
-The helper does not survive a reboot or logout. Running `activate c++` again
-starts it, and the command is safe to repeat.
-
-`bitrise-build-cache daemon install` will supervise it if you want that, and
-warns about the cost.
+Supervision was measured against a lazily-started helper on a 4-core macOS
+machine under a saturating C++ compile, because the Xcode proxy suffers badly
+from it. The helper does not: **3.8ms supervised against 2.4ms lazy at p50**,
+with better tails supervised (p99 10.1ms against 126.8ms). It stays supervised.
+See [daemon-latency.md](daemon-latency.md).

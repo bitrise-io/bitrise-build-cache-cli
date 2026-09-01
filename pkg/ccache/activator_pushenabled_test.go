@@ -39,10 +39,7 @@ func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg
 	t.Cleanup(func() { ensureFn = prev })
 }
 
-// The helper is never supervised: a launchd job gets its own resource
-// coalition and loses to the compiler it serves, so activation starts it on
-// demand instead. See docs/daemon-latency.md.
-func TestRunDaemonEnsure_wiresNoCcacheHelperService(t *testing.T) {
+func TestRunDaemonEnsure_wiresCcacheHelperService(t *testing.T) {
 	var gotServices []daemonpkg.Service
 
 	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, _ daemonpkg.EnsureDeps) error {
@@ -55,7 +52,8 @@ func TestRunDaemonEnsure_wiresNoCcacheHelperService(t *testing.T) {
 	err := a.runDaemonEnsure(t.Context())
 	require.NoError(t, err)
 
-	assert.Empty(t, gotServices)
+	require.Len(t, gotServices, 1)
+	assert.Equal(t, daemonpkg.ServiceCcacheHelper, gotServices[0].Name)
 }
 
 func TestCcacheRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
