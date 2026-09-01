@@ -309,10 +309,28 @@ job. Measured with a throwaway `.app` launched via `open`:
 So a login item packaged as a real app bundle puts its child on the
 application side of the line, where a LaunchAgent cannot.
 
-**This is necessary but not sufficient.** Priority has already been shown to
-be a poor predictor here: `ProcessType Interactive` is also pri 31 and still
-367x slower. Anyone taking the app-bundle route must measure latency, not
-priority.
+**But the app bundle does not solve GUI Xcode**, which was the only reason to
+want it. Coalitions, measured on an RDE with root `taskinfo`:
+
+| process | pri | RESOURCE coalition |
+|---|---|---|
+| app bundle | 46 | **1989** `application.io.bitrise.pritest...` — its own |
+| the app's child | 31 | **1989** — joins the app |
+| shell | 31 | 1983 `com.openssh.sshd...` |
+| shell child | 31 | 1983 |
+
+An app bundle forms its *own* application coalition and its children join it.
+A proxy spawned from an app-bundle login item therefore lives in our app's
+coalition, not in Xcode.app's, and Xcode.app has its own. The cross-coalition
+mismatch that causes the slowdown is unchanged — the app bundle only
+guarantees the proxy is not in a *throttled* coalition, which is a weaker
+claim and is unmeasured for latency.
+
+**The only structurally correct answer for GUI Xcode is for Xcode itself to
+spawn the proxy** — a pre-action or "Run Script" build phase would put it in
+Xcode's coalition, the same way the wrapper puts it in the CLI build's. Any
+arrangement where something else owns the proxy's lifetime reproduces the
+problem.
 
 ## Recommendation
 
