@@ -41,7 +41,7 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 	defer cancel()
 
 	ch := c.pickChannel()
-	if err := ch.acquire(timeoutCtx); err != nil {
+	if err := c.acquireOn(timeoutCtx, ch); err != nil {
 		return err
 	}
 	defer ch.release()
@@ -94,7 +94,7 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	ch := c.pickChannel()
-	if err := ch.acquire(ctx); err != nil {
+	if err := c.acquireOn(ctx, ch); err != nil {
 		return nil, err
 	}
 
@@ -136,7 +136,7 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 	}
 
 	ch := c.pickChannel()
-	if err := ch.acquire(ctx); err != nil {
+	if err := c.acquireOn(ctx, ch); err != nil {
 		return nil, err
 	}
 
@@ -168,7 +168,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	defer cancel()
 
 	ch := c.pickChannel()
-	if err := ch.acquire(timeoutCtx); err != nil {
+	if err := c.acquireOn(timeoutCtx, ch); err != nil {
 		return err
 	}
 	defer ch.release()
@@ -202,7 +202,7 @@ func (c *Client) findMissing(ctx context.Context,
 		timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 
 		ch := c.pickChannel()
-		if err := ch.acquire(timeoutCtx); err != nil {
+		if err := c.acquireOn(timeoutCtx, ch); err != nil {
 			cancel()
 
 			return err, true
@@ -371,7 +371,7 @@ func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus
 	defer cancel()
 
 	ch := c.pickChannel()
-	if err := ch.acquire(timeoutCtx); err != nil {
+	if err := c.acquireOn(timeoutCtx, ch); err != nil {
 		return WriteStatus{}, err
 	}
 	defer ch.release()
