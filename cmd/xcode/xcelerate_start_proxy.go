@@ -96,6 +96,12 @@ var (
 
 			initialLogger.TInfof("Xcelerate Proxy")
 
+			// A service manager can place the job in Darwin's background band,
+			// which throttles CPU and I/O; see docs/daemon-latency.md.
+			if err := proxy.ClearBackgroundPriority(); err != nil {
+				initialLogger.Debugf("Could not clear the background priority band: %s", err)
+			}
+
 			return withProxySingleton(osProxy, initialLogger, func() error {
 				if err := os.Remove(config.ProxySocketPath); err != nil && !os.IsNotExist(err) {
 					return fmt.Errorf("failed to remove socket file, error: %w", err)

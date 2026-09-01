@@ -71,7 +71,7 @@ Tracked in the table below; each row links to the commit that tested it.
 | A1 | `LaunchDaemon` in the system domain | | |
 | A3 | `NSAppSleepDisabled=1` | laptop: loads | needs CI |
 | A4 | `EnablePressuredExit=false`, `LowPriorityIO=false` | laptop: loads | needs CI |
-| C1 | `setpriority(PRIO_DARWIN_PROCESS, 0, 0)` at startup | | |
+| C1 | `setpriority(PRIO_DARWIN_PROCESS, 0, 0)` at startup | laptop: verified working | needs CI |
 
 ## Test method
 
@@ -127,3 +127,23 @@ Laptop mechanism check — does the job still load?
 A2 is only reachable via a LaunchDaemon in `system/` (A1). Everything else
 loads, so all are safe to try on CI — the laptop cannot say whether any of them
 changes latency.
+
+## C1 — clear the Darwin background band
+
+`setpriority(PRIO_DARWIN_PROCESS, 0, 0)` at proxy startup, applied to every
+thread in the process. Unlike the plist knobs this needs no cooperation from
+launchd, so it also covers a job that was placed in the band for reasons the
+plist does not express.
+
+**Laptop: verified working**, the one candidate whose mechanism can be proven
+here. Forcing the process into the background band and clearing it again:
+
+| step | `getpriority(PRIO_DARWIN_PROCESS)` |
+|---|---|
+| start | 0 |
+| after `PRIO_DARWIN_BG` | 1 |
+| after `ClearBackgroundPriority()` | 0 |
+
+Whether the supervised proxy is *in* that band on CI is the open question; if
+it is, this is a one-line fix, and if it is not, the call is a harmless no-op
+(it returns an error, which is logged at debug and ignored).
