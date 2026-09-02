@@ -141,7 +141,7 @@ func TestResolve_Precedence(t *testing.T) {
 				},
 			}
 
-			cred, origin, err := r.ResolveNoRefresh(envs)
+			cred, origin, _, err := r.ResolveNoRefresh(envs)
 
 			if tc.wantBackend == auth.BackendNone {
 				require.Error(t, err)
@@ -167,7 +167,7 @@ func TestResolve_PreferStored_storeBeatsEnv(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	cred, origin, err := r.ResolveNoRefresh(envVars())
+	cred, origin, _, err := r.ResolveNoRefresh(envVars())
 
 	require.NoError(t, err)
 	assert.Equal(t, "kc-tok", cred.Token)
@@ -181,7 +181,7 @@ func TestResolve_PreferStored_fallsBackToEnvWhenNothingStored(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	cred, origin, err := r.ResolveNoRefresh(envVars())
+	cred, origin, _, err := r.ResolveNoRefresh(envVars())
 
 	require.NoError(t, err)
 	assert.Equal(t, envToken, cred.Token)
@@ -266,7 +266,7 @@ func TestResolveNoRefresh_neverRefreshes(t *testing.T) {
 		},
 	}
 
-	cred, _, err := r.ResolveNoRefresh(map[string]string{})
+	cred, _, _, err := r.ResolveNoRefresh(map[string]string{})
 
 	require.NoError(t, err)
 	assert.Equal(t, "stored", cred.Token)
@@ -279,7 +279,7 @@ func TestResolve_MalformedJWTIsReportedNotSwallowed(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	_, _, err := r.ResolveNoRefresh(map[string]string{auth.EnvJWT: "not-a-jwt"})
+	_, _, _, err := r.ResolveNoRefresh(map[string]string{auth.EnvJWT: "not-a-jwt"})
 
 	require.Error(t, err)
 }
@@ -290,10 +290,10 @@ func TestResolve_MissingWorkspaceIDIsDistinctFromMissingToken(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	_, _, err := r.ResolveNoRefresh(map[string]string{auth.EnvAuthToken: envToken})
+	_, _, _, err := r.ResolveNoRefresh(map[string]string{auth.EnvAuthToken: envToken})
 	require.ErrorIs(t, err, auth.ErrWorkspaceIDNotProvided)
 
-	_, _, err = r.ResolveNoRefresh(map[string]string{auth.EnvWorkspaceID: envWS})
+	_, _, _, err = r.ResolveNoRefresh(map[string]string{auth.EnvWorkspaceID: envWS})
 	require.ErrorIs(t, err, auth.ErrTokenNotProvided)
 }
 
@@ -308,7 +308,7 @@ func TestResolve_UnreadableBackendFallsThrough(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	cred, origin, err := r.ResolveNoRefresh(map[string]string{})
+	cred, origin, _, err := r.ResolveNoRefresh(map[string]string{})
 
 	require.NoError(t, err)
 	assert.Equal(t, "file-tok", cred.Token)
@@ -325,7 +325,7 @@ func TestResolve_PartialRecordIsSkipped(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	cred, _, err := r.ResolveNoRefresh(map[string]string{})
+	cred, _, _, err := r.ResolveNoRefresh(map[string]string{})
 
 	require.NoError(t, err)
 	assert.Equal(t, "file-tok", cred.Token)
@@ -443,7 +443,7 @@ func TestResolve_LegacyJWTKeepsItsOrigin(t *testing.T) {
 		},
 	}
 
-	cred, origin, err := r.ResolveNoRefresh(map[string]string{})
+	cred, origin, _, err := r.ResolveNoRefresh(map[string]string{})
 
 	require.NoError(t, err)
 	assert.Equal(t, "jwt-tok", auth.GradleToken(cred, origin), "a JWT must not be workspace-prefixed")

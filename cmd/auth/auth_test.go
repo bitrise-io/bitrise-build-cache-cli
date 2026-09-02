@@ -40,6 +40,59 @@ func TestAuthTokenCmd_stdoutIsGradleFormat(t *testing.T) {
 	assert.Equal(t, "ws-123:raw-token\n", stdout.String())
 }
 
+func TestAuthTokenCmd_workspaceFlagPicksPerWorkspaceEntry(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		AuthToken:   "machine-tok",
+		WorkspaceID: "machine-ws",
+		Workspaces: map[string]authpkg.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}))
+
+	tokenWorkspace = "acme"
+	t.Cleanup(func() { tokenWorkspace = "" })
+
+	cmd := authTokenCmd
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	assert.Equal(t, "acme:acme-tok\n", stdout.String())
+	assert.Empty(t, stderr.String(), "matching slug must not warn")
+}
+
+func TestAuthTokenCmd_workspaceFlagUnknownSlugFallsBackWithWarn(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		AuthToken:   "machine-tok",
+		WorkspaceID: "machine-ws",
+	}))
+
+	tokenWorkspace = "missing"
+	t.Cleanup(func() { tokenWorkspace = "" })
+
+	cmd := authTokenCmd
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	assert.Equal(t, "machine-ws:machine-tok\n", stdout.String(), "unknown workspace must fall back to the machine-wide credential")
+	assert.Contains(t, stderr.String(), "missing", "an unknown workspace must warn on stderr")
+}
+
 func TestAuthTokenCmd_stderrIsBoundedOnError(t *testing.T) {
 	cmd := authTokenCmd
 
@@ -231,8 +284,9 @@ authToken.set(providers.bitriseAuthToken())
 	assert.Empty(t, scrubbed.path, "value-source form has no literal to scrub")
 }
 
-func TestAuthSetCmd_persistsUsernameToKeychain(t *testing.T) {
+func TestAuthSetCmd_persistsWorkspaceScopedTokenToKeychain(t *testing.T) {
 	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
 	setToken = "tok-123"
 	setWorkspaceID = "ws-456"
 	setUsername = "alice"
@@ -242,15 +296,43 @@ func TestAuthSetCmd_persistsUsernameToKeychain(t *testing.T) {
 
 	creds, err := keychain.New().Load()
 	require.NoError(t, err)
-	assert.Equal(t, "tok-123", creds.AuthToken)
-	assert.Equal(t, "ws-456", creds.WorkspaceID)
-	assert.Equal(t, "alice", creds.Username)
+	ws, ok := creds.ForWorkspace("ws-456")
+	require.True(t, ok, "workspace slot must be populated")
+	assert.Equal(t, "tok-123", ws.AuthToken)
+	assert.Equal(t, "ws-456", ws.WorkspaceID)
+	assert.Equal(t, "alice", ws.Username)
+	assert.Empty(t, creds.AuthToken, "machine-wide slot must not be touched when --workspace-id is given")
+	assert.Empty(t, creds.WorkspaceID)
 }
 
-func TestAuthSetCmd_emptyUsernameLeavesFieldEmpty(t *testing.T) {
+func TestAuthSetCmd_repeatedRunsPopulateMultipleWorkspaceSlots(t *testing.T) {
 	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	setToken = "acme-tok"
+	setWorkspaceID = "acme"
+	t.Cleanup(func() { setToken, setWorkspaceID = "", "" })
+	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
+
+	setToken = "widgets-tok"
+	setWorkspaceID = "widgets"
+	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
+
+	creds, err := keychain.New().Load()
+	require.NoError(t, err)
+	acme, ok := creds.ForWorkspace("acme")
+	require.True(t, ok)
+	assert.Equal(t, "acme-tok", acme.AuthToken)
+	widgets, ok := creds.ForWorkspace("widgets")
+	require.True(t, ok)
+	assert.Equal(t, "widgets-tok", widgets.AuthToken)
+}
+
+func TestAuthSetCmd_machineWideSetWhenNoWorkspaceIDGiven(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
 	setToken = "tok"
-	setWorkspaceID = "ws"
+	setWorkspaceID = ""
 	setUsername = ""
 	t.Cleanup(func() { setToken, setWorkspaceID, setUsername = "", "", "" })
 
@@ -258,7 +340,9 @@ func TestAuthSetCmd_emptyUsernameLeavesFieldEmpty(t *testing.T) {
 
 	creds, err := keychain.New().Load()
 	require.NoError(t, err)
+	assert.Equal(t, "tok", creds.AuthToken, "no --workspace-id → machine-wide slot")
 	assert.Empty(t, creds.Username)
+	assert.Empty(t, creds.Workspaces)
 }
 
 func TestAuthSetCmd_storageFileWritesToMultiplatformConfig(t *testing.T) {
@@ -276,17 +360,11 @@ func TestAuthSetCmd_storageFileWritesToMultiplatformConfig(t *testing.T) {
 
 	creds, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.True(t, ok, "credentials must be present in multiplatform config after --storage=file")
-	assert.Equal(t, "tok-file", creds.AuthToken)
-	assert.Equal(t, "ws-file", creds.WorkspaceID)
-	assert.Equal(t, "bob", creds.Username)
-
-	mp, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
-	require.NoError(t, err)
-	assert.Equal(t, "tok-file", mp.AuthConfig.AuthToken, "AuthConfig must mirror for legacy reactnative/invocation readers")
-	assert.Equal(t, "ws-file", mp.AuthConfig.WorkspaceID)
-
-	_, err = keychain.New().Load()
-	assert.ErrorIs(t, err, keychain.ErrNotFound)
+	ws, ok := creds.ForWorkspace("ws-file")
+	require.True(t, ok)
+	assert.Equal(t, "tok-file", ws.AuthToken)
+	assert.Equal(t, "ws-file", ws.WorkspaceID)
+	assert.Equal(t, "bob", ws.Username)
 }
 
 func TestAuthSetCmd_ciDetectionRoutesToFile(t *testing.T) {
@@ -304,34 +382,54 @@ func TestAuthSetCmd_ciDetectionRoutesToFile(t *testing.T) {
 
 	creds, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.True(t, ok)
-	assert.Equal(t, "tok-ci", creds.AuthToken)
+	ws, ok := creds.ForWorkspace("ws-ci")
+	require.True(t, ok)
+	assert.Equal(t, "tok-ci", ws.AuthToken)
 
 	_, err := keychain.New().Load()
 	assert.ErrorIs(t, err, keychain.ErrNotFound)
 }
 
-func TestAuthSetCmd_preservesOAuthFieldsOnUsernameEdit(t *testing.T) {
+// A per-workspace set must not touch the machine-wide OAuth refresh machinery —
+// signing in once and then seeding a per-workspace PAT stayed refreshable before
+// the per-workspace map existed, and must stay refreshable after.
+func TestAuthSetCmd_preservesMachineWideOAuthOnWorkspaceSet(t *testing.T) {
 	keyring.MockInit()
 	kc := keychain.New()
 	require.NoError(t, kc.Save(authpkg.TokenSet{
-		AuthToken:    "old-tok",
-		WorkspaceID:  "old-ws",
+		AuthToken:    "machine-tok",
+		WorkspaceID:  "machine-ws",
 		RefreshToken: "refresh-abc",
 		JWT:          "jwt-xyz",
 	}))
 
-	setToken = "old-tok"
-	setWorkspaceID = "old-ws"
-	setUsername = "alice"
-	t.Cleanup(func() { setToken, setWorkspaceID, setUsername = "", "", "" })
+	setToken = "acme-tok"
+	setWorkspaceID = "acme"
+	t.Cleanup(func() { setToken, setWorkspaceID = "", "" })
 
 	require.NoError(t, authSetCmd.RunE(authSetCmd, nil))
 
 	creds, err := kc.Load()
 	require.NoError(t, err)
-	assert.Equal(t, "alice", creds.Username)
-	assert.Equal(t, "refresh-abc", creds.RefreshToken, "OAuth refresh token must survive auth set --username")
+	assert.Equal(t, "machine-tok", creds.AuthToken, "machine-wide token must survive a per-workspace set")
+	assert.Equal(t, "machine-ws", creds.WorkspaceID)
+	assert.Equal(t, "refresh-abc", creds.RefreshToken, "OAuth refresh token must survive a per-workspace set")
 	assert.Equal(t, "jwt-xyz", creds.JWT)
+	acme, ok := creds.ForWorkspace("acme")
+	require.True(t, ok)
+	assert.Equal(t, "acme-tok", acme.AuthToken)
+}
+
+func TestAuthSetCmd_rejectsMissingToken(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	setToken = ""
+	setWorkspaceID = "ws"
+	t.Cleanup(func() { setToken, setWorkspaceID = "", "" })
+
+	err := authSetCmd.RunE(authSetCmd, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--token")
 }
 
 // The keychain-unavailable case is not cosmetic: aborting on it left a Linux
@@ -385,4 +483,122 @@ func (s *fakeStore) Clear() error {
 	s.cleared = true
 
 	return nil
+}
+
+// The e2e script (`scripts/local_e2e_scenarios.sh`) runs `auth set --token X
+// --workspace-id ws` then greps `auth status` output for the workspace-id — a
+// v2-store write puts the credentials into the per-workspace map with the top-level
+// slot empty, so the reader must enumerate the map or the grep misses it.
+func TestAuthStatusCmd_rendersPerWorkspaceEntries(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		Workspaces: map[string]authpkg.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}))
+
+	cmd := authStatusCmd
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	out := stdout.String()
+	assert.Contains(t, out, "acme", "workspace slug must appear so the e2e grep passes")
+	assert.NotContains(t, out, "acme-tok", "raw token must stay masked in status output")
+}
+
+func TestAuthStatusCmd_scenarioSummary_machineWideOnly(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{AuthToken: "t", WorkspaceID: "ws"}))
+
+	assert.Contains(t, runAuthStatus(t), "Scenario: machine-wide only")
+}
+
+func TestAuthStatusCmd_scenarioSummary_perWorkspaceOnly(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		Workspaces: map[string]authpkg.TokenSet{"acme": {AuthToken: "t", WorkspaceID: "acme"}},
+	}))
+
+	assert.Contains(t, runAuthStatus(t), "Scenario: per-workspace only")
+}
+
+func TestAuthStatusCmd_scenarioSummary_both(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		AuthToken:   "t", WorkspaceID: "ws",
+		Workspaces: map[string]authpkg.TokenSet{"acme": {AuthToken: "t2", WorkspaceID: "acme"}},
+	}))
+
+	assert.Contains(t, runAuthStatus(t), "Scenario: both (machine-wide as fallback)")
+}
+
+func TestAuthStatusCmd_scenarioSummary_none(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	assert.Contains(t, runAuthStatus(t), "Scenario: none")
+}
+
+func runAuthStatus(t *testing.T) string {
+	t.Helper()
+	cmd := authStatusCmd
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	return stdout.String()
+}
+
+func TestAuthStatusCmd_rendersTopLevelAndPerWorkspaceTogether(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		AuthToken:   "machine-tok",
+		WorkspaceID: "machine-ws",
+		Workspaces: map[string]authpkg.TokenSet{
+			"acme":    {AuthToken: "acme-tok", WorkspaceID: "acme"},
+			"widgets": {AuthToken: "widgets-tok", WorkspaceID: "widgets"},
+		},
+	}))
+
+	cmd := authStatusCmd
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	out := stdout.String()
+	assert.Contains(t, out, "machine-ws")
+	assert.Contains(t, out, "acme")
+	assert.Contains(t, out, "widgets")
 }

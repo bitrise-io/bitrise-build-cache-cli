@@ -127,7 +127,7 @@ func DefaultParams() Params {
 }
 
 func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
-	authConfig, authOrigin, err := live.Default(nil).ResolveNoRefresh(envs)
+	authConfig, authOrigin, _, err := live.Default(nil).ResolveNoRefresh(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
@@ -225,7 +225,7 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 	}
 
 	// Resolved, never read out of this file — see the xcelerate ReadConfig note.
-	if cred, origin, credErr := live.Default(nil).ResolveNoRefresh(envs); credErr == nil {
+	if cred, origin, _, credErr := live.Default(nil).ResolveNoRefresh(envs); credErr == nil {
 		config.AuthConfig, config.AuthOrigin = cred, origin
 	}
 

@@ -30,8 +30,11 @@ func (d *Doctor) authBackendCheck() Check {
 	return Check{
 		Name: "auth-backend",
 		Diagnose: func(ctx context.Context) Result {
-			cfg, origin, err := d.resolver().ResolveNoRefresh(d.Envs)
+			cfg, origin, workspacesOnly, err := d.resolver().ResolveNoRefresh(d.Envs)
 			srcLabel := origin.ShortLabel()
+			if workspacesOnly {
+				return Result{State: StateOK, Detail: "skipped (per-workspace only: resolved per build via project marker)"}
+			}
 			if err != nil {
 				return Result{State: StateOK, Detail: "skipped (source=none, no credentials resolvable: " + err.Error() + ")"}
 			}

@@ -52,7 +52,7 @@ var browseCmd = &cobra.Command{
 		b := &browsepkg.Browser{Logger: browserLogger}
 		res, err := b.Open(cmd.Context(), params)
 		if err != nil {
-			if errors.Is(err, browsepkg.ErrWorkspaceNotConfigured) {
+			if errors.Is(err, browsepkg.ErrWorkspaceNotConfigured) || errors.Is(err, browsepkg.ErrAmbiguousWorkspace) {
 				return err //nolint:wrapcheck // sentinel
 			}
 

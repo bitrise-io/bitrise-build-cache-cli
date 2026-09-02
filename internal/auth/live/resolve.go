@@ -5,6 +5,7 @@ package live
 
 import (
 	"context"
+	"sort"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -67,6 +68,49 @@ func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Cr
 	return r.resolveAndRefresh(ctx, envs, auth.TokenSet.Populated)
 }
 
+// ResolveForWorkspace looks up the per-workspace entry first and only falls back
+// to the machine-wide chain when the slug is unknown. Going the other way round
+// short-circuits on `Resolve` errors — including the "nothing populated at the
+// top level" state a workspaces-only store legitimately produces — and would
+// hide the per-workspace credential the caller explicitly asked for.
+func (r *Resolver) ResolveForWorkspace(ctx context.Context, envs map[string]string, workspaceID string) (auth.Credential, auth.Origin, error) {
+	if workspaceID == "" {
+		return r.Resolve(ctx, envs)
+	}
+
+	if ws, ok, backend := r.lookupWorkspace(workspaceID); ok {
+		return ws.Credential(), ws.Origin(backend), nil
+	}
+
+	// Unknown slug falls back to the machine-wide chain rather than blocking the
+	// build. A resolve error here is the real "no credential anywhere" state and
+	// must surface unchanged.
+	cred, origin, err := r.Resolve(ctx, envs)
+	if err != nil {
+		return cred, origin, err
+	}
+
+	if r.Logger != nil {
+		r.Logger.Warnf("no per-workspace credential for %q; falling back to the machine-wide credential", workspaceID)
+	}
+
+	return cred, origin, nil
+}
+
+func (r *Resolver) lookupWorkspace(slug string) (auth.TokenSet, bool, auth.Backend) {
+	for _, s := range r.backends() {
+		ts, err := s.Load()
+		if err != nil {
+			continue
+		}
+		if entry, ok := ts.ForWorkspace(slug); ok {
+			return entry, true, s.Backend()
+		}
+	}
+
+	return auth.TokenSet{}, false, auth.BackendNone
+}
+
 func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, error) {
 	cred, origin, backing, err := r.resolveWith(envs, usable)
 	if err != nil || !origin.StoreManaged() {
@@ -89,10 +133,65 @@ func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string
 // ResolveNoRefresh is Resolve without the network or any write. `status` documents
 // that it never refreshes, and the doctor must report what is on the machine rather
 // than what a refresh would produce.
-func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, auth.Origin, error) {
+//
+// workspacesOnly is true when the store carries per-workspace entries but no
+// machine-wide token and no env vars.
+func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, auth.Origin, bool, error) {
 	cred, origin, _, err := r.resolve(envs)
+	if err != nil && r.storeHasWorkspacesOnly(envs) {
+		return auth.Credential{}, auth.Origin{}, true, nil
+	}
 
-	return cred, origin, err
+	return cred, origin, false, err
+}
+
+func (r *Resolver) storeHasWorkspacesOnly(envs map[string]string) bool {
+	if hasAuthEnvVars(envs) {
+		return false
+	}
+
+	hasWorkspaces := false
+	for _, s := range r.backends() {
+		ts, err := s.Load()
+		if err != nil {
+			continue
+		}
+		if ts.AuthToken != "" {
+			return false
+		}
+		if len(ts.Workspaces) > 0 {
+			hasWorkspaces = true
+		}
+	}
+
+	return hasWorkspaces
+}
+
+// StoredWorkspaceSlugs lists every workspace slug that has a stored per-workspace
+// credential, deduped across backends and sorted. Used as a last-resort default
+// for callers that need "the workspace" without a marker or env override.
+func (r *Resolver) StoredWorkspaceSlugs() []string {
+	seen := map[string]struct{}{}
+	for _, s := range r.backends() {
+		ts, err := s.Load()
+		if err != nil {
+			continue
+		}
+		for slug, ws := range ts.Workspaces {
+			if slug == "" || ws.AuthToken == "" {
+				continue
+			}
+			seen[slug] = struct{}{}
+		}
+	}
+
+	slugs := make([]string, 0, len(seen))
+	for slug := range seen {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
+
+	return slugs
 }
 
 // ResolveTokenOnly is Resolve for the one caller that needs a token before a

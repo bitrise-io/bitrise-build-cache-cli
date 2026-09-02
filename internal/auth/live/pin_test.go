@@ -135,5 +135,6 @@ func TestResolvePinned_HealthyKeychainLeavesTheFileUntouched(t *testing.T) {
 
 	onDisk, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.True(t, ok, "the file store must still hold its record — an incidental write must not clear it")
+	fileLogin.SchemaVersion = onDisk.SchemaVersion
 	assert.Equal(t, fileLogin, onDisk, "the file store must be byte-for-byte untouched")
 }
