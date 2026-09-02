@@ -49,6 +49,15 @@ type statusExitError struct{ code int }
 
 func (e *statusExitError) Error() string { return fmt.Sprintf("status exit code %d", e.code) }
 
+// ExitCode exposes the desired process exit code so other packages can raise
+// the same signal without importing the unexported type.
+func (e *statusExitError) ExitCode() int { return e.code }
+
+// NewExitError builds an error that Execute translates into os.Exit(code).
+// Use from subcommands that need a specific non-zero exit without letting
+// cobra print the error.
+func NewExitError(code int) error { return &statusExitError{code: code} }
+
 // HandleStatusExit converts a statusExitError returned by Execute into an
 // os.Exit code. Other errors fall through to the caller.
 func HandleStatusExit(err error) (int, bool) {
