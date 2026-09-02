@@ -3,19 +3,18 @@ package updater
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
 type Options struct {
-	Executable    string
-	Logger        log.Logger
-	DryRun        bool
-	RestartDaemon func(ctx context.Context) error
+	Executable string
+	Logger     log.Logger
+	DryRun     bool
 }
 
 func Update(ctx context.Context, opts Options) error {
@@ -38,23 +37,7 @@ func Update(ctx context.Context, opts Options) error {
 			return nil
 		}
 
-		home, homeErr := os.UserHomeDir()
-		if homeErr != nil || !DaemonInstalled(home) {
-			return nil //nolint:nilerr // missing home dir => skip daemon restart, not a fatal upgrade error
-		}
-
-		opts.Logger.Infof("Restarting daemon to pick up the new binary")
-
-		restart := opts.RestartDaemon
-		if restart == nil {
-			restart = defaultRestartDaemon
-		}
-
-		if err := restart(ctx); err != nil {
-			opts.Logger.Warnf("Daemon restart failed: %v — run `bitrise-build-cache daemon restart` manually.", err)
-		} else {
-			opts.Logger.Donef("Daemon restarted")
-		}
+		removeLegacySupervision(ctx, opts.Logger)
 	case InstallUnknown:
 		opts.Logger.Warnf("Could not classify the install method. Reinstall manually:")
 		opts.Logger.Warnf("  curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b <your-bindir>")
@@ -63,24 +46,18 @@ func Update(ctx context.Context, opts Options) error {
 	return nil
 }
 
-func defaultRestartDaemon(ctx context.Context) error {
-	backend, err := daemonpkg.DefaultBackend()
+// A CLI at or below v3.6.9 may have registered the cache services with the OS
+// supervisor, which is slower than letting the build start them. An upgrade is
+// the natural point to retire those registrations.
+func removeLegacySupervision(ctx context.Context, logger log.Logger) {
+	p, err := paths.Default()
 	if err != nil {
-		return err //nolint:wrapcheck // sentinel
+		return
 	}
 
-	paths, err := daemonpkg.NewPaths()
-	if err != nil {
-		return err //nolint:wrapcheck // already context-rich
+	for _, svc := range []spawn.Service{spawn.XcelerateProxy(), spawn.CcacheHelper()} {
+		if spawn.RemoveLegacySupervision(ctx, p, svc) {
+			logger.Donef("Removed the %s service registration; the build now starts it on demand.", svc.Name)
+		}
 	}
-
-	if _, err := daemonpkg.Down(ctx, backend, paths, daemonpkg.DefaultServices()); err != nil {
-		return err //nolint:wrapcheck // already context-rich
-	}
-
-	if _, err := daemonpkg.Up(ctx, backend, paths, daemonpkg.DefaultServices()); err != nil {
-		return err //nolint:wrapcheck // already context-rich
-	}
-
-	return nil
 }

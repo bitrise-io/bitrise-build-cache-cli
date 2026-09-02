@@ -3,14 +3,17 @@ package ccache
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -148,9 +151,53 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
+	a.ensureHelperServing(ctx, config.IPCEndpoint)
+
 	a.logger.TInfof(ActivateCppSuccessful)
 
 	return nil
+}
+
+const (
+	helperReadyBudget   = 5 * time.Second
+	helperReadyInterval = 100 * time.Millisecond
+)
+
+// ensureHelperServing starts the storage helper if nothing answers its socket.
+// ccache silently misses every lookup when the socket is dead, so this is
+// best-effort but must not fail activation.
+func (a *Activator) ensureHelperServing(ctx context.Context, socketPath string) {
+	if p, err := paths.Default(); err == nil {
+		if spawn.RemoveLegacySupervision(ctx, p, spawn.CcacheHelper()) {
+			a.logger.Warnf("Removed a leftover service registration for the ccache storage helper.")
+		}
+	}
+
+	if spawn.ProbeWith(ctx, socketPath, ccacheipc.SendHealthCheck) == spawn.Running {
+		return
+	}
+
+	opts := []ccacheipc.StartOption{}
+	if a.debugLogging {
+		opts = append(opts, ccacheipc.WithDebug())
+	}
+	if invID := a.envs["BITRISE_INVOCATION_ID"]; invID != "" {
+		opts = append(opts, ccacheipc.WithInvocationID(invID))
+	}
+
+	if err := ccacheipc.NewSocket(socketPath).Start(opts...); err != nil {
+		a.logger.Warnf("Could not start the ccache storage helper: %s", err)
+
+		return
+	}
+
+	if !spawn.AwaitSocketWith(ctx, socketPath, ccacheipc.SendHealthCheck, helperReadyBudget, helperReadyInterval) {
+		a.logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
+
+		return
+	}
+
+	a.logger.Debugf("Started the ccache storage helper on %s", socketPath)
 }
 
 // ActivateCppSuccessful is the success message printed after activation.

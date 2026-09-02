@@ -118,7 +118,7 @@ Now Xcode aborts compilation at the first target that sees the marker.
 
 ## Verify
 
-1. Break the setup on purpose (e.g. `bitrise-build-cache daemon down`).
+1. Break the setup on purpose (e.g. `pkill -f "xcelerate start-proxy"`).
 2. ⌘B a target that uses the scheme.
 3. The modal should appear within a second. Dismiss it.
 4. `cat "${TMPDIR:-/tmp}/bitrise-build-cache-doctor.log"` shows the exact `doctor` output including the `↳ rerun with --fix to repair` hint on fixable items.

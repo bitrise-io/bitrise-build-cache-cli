@@ -166,12 +166,11 @@ func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 
 ## The storage helper
 
-`activate c++` reconciles the ccache storage helper with the OS supervisor —
-a LaunchAgent on macOS, a systemd user unit on Linux — and also starts it
-directly if nothing is serving its socket.
+`activate c++` starts the ccache storage helper if nothing is serving its
+socket, and the helper keeps serving later builds. ccache silently misses every
+lookup when the socket is dead, so this runs on every activation.
 
-Supervision was measured against a lazily-started helper on a 4-core macOS
-machine under a saturating C++ compile, because the Xcode proxy suffers badly
-from it. The helper does not: **3.8ms supervised against 2.4ms lazy at p50**,
-with better tails supervised (p99 10.1ms against 126.8ms). It stays supervised.
-See [daemon-latency.md](daemon-latency.md).
+It is not registered with the OS supervisor. macOS applies CPU and I/O limits
+per resource coalition and places a launchd job in one of its own, so a
+supervised helper competes with the compiler it serves. See
+[daemon-latency.md](daemon-latency.md).

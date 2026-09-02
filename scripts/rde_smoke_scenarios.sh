@@ -14,7 +14,7 @@
 # ═════════════════════════════════════════════════════════════════════════════
 # SCENARIO A — Full local-dev journey on ONE fresh VM
 #              install → auth → activate → xcodebuild wrapper (mac) →
-#              gradle hydration (mac) → daemon full lifecycle → doctor
+#              gradle hydration (mac) → on-demand services → doctor
 # ═════════════════════════════════════════════════════════════════════════════
 scenario "SCENARIO A — Full local-dev journey (one fresh VM)"
 
@@ -107,56 +107,20 @@ if is_mac; then
     grep -qE '\\[Bitrise Analytics\\]|\\[Bitrise Build Session\\]' /tmp/gradle.out"
 fi
 
-if is_linux; then
-  step "activate c++ — daemon needs a ccache-helper socket to bind on"
-  remote_bash "$CLI activate c++ || true"
-fi
+step "activate c++ — must leave a storage helper serving"
+remote_bash "$CLI activate c++ || true"
 
-step "daemon install — writes service unit + bootstraps"
-remote_bash "$CLI daemon install"
-
-# Platform-agnostic 'unit is registered' check — used at multiple points below.
-daemon_registered_check() {
-  if is_mac; then
-    remote_bash "launchctl list | grep -q 'bitrise.*build.*cache'"
-  else
-    remote_bash "systemctl --user list-unit-files | grep -q 'bitrise.*build.*cache'"
-  fi
-}
-
-step "supervisor unit must be registered"
-daemon_registered_check || { echo "daemon unit not registered after install" >&2; exit 1; }
-
-step "daemon info reports at least one running service"
-info_out=$(remote_bash "$CLI daemon info")
-echo "$info_out"
-echo "$info_out" | grep -qiE 'running|healthy|active' || {
-  echo "daemon info didn't report any running/healthy service" >&2; exit 1
-}
-
-step "daemon down + info must report no running service"
-remote_bash "$CLI daemon down"
-down_out=$(remote_bash "$CLI daemon info")
-echo "$down_out"
-echo "$down_out" | grep -qiE 'running|healthy|active' && {
-  echo "daemon info still reports a running service after 'daemon down'" >&2; exit 1
-} || true
-
-step "daemon up brings services back"
-remote_bash "$CLI daemon up"
-up_out=$(remote_bash "$CLI daemon info")
-echo "$up_out" | grep -qiE 'running|healthy|active' || {
-  echo "daemon up did not restore a running service" >&2; exit 1
-}
-
-step "daemon restart survives"
-remote_bash "$CLI daemon restart"
-daemon_registered_check || { echo "daemon unit gone after restart" >&2; exit 1; }
-
-step "daemon uninstall — supervisor unit must be gone"
-remote_bash "$CLI daemon uninstall"
-if daemon_registered_check 2>/dev/null; then
-  echo "daemon unit still registered after uninstall" >&2; exit 1
+# Nothing is registered with the OS supervisor: a supervised service lands in
+# its own resource coalition and competes with the compiler it serves.
+step "no supervisor unit may be registered"
+if is_mac; then
+  remote_bash "ls ~/Library/LaunchAgents/io.bitrise.build-cache.*.plist >/dev/null 2>&1" && {
+    echo "activation registered a launch agent" >&2; exit 1
+  } || true
+else
+  remote_bash "systemctl --user list-unit-files | grep -q 'bitrise.*build.*cache'" && {
+    echo "activation registered a systemd unit" >&2; exit 1
+  } || true
 fi
 
 step "doctor snapshot + --fix (smoke: binary runs, exit codes tolerated)"

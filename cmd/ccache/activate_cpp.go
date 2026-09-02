@@ -7,10 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
-	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
@@ -45,29 +43,6 @@ This command will:
 			permhint.PrintIfApplicable(log.NewLogger(log.WithDebugLog(common.IsDebugLogMode)), err)
 
 			return fmt.Errorf("activate C++ cache: %w", err)
-		}
-
-		// The helper is never supervised — a launchd job lands in its own
-		// resource coalition and loses to the compiler it serves — so
-		// activation starts it. ccache silently misses every lookup when
-		// nothing serves the socket. Best-effort: must not fail activation.
-		socketPath := ccacheconfig.ResolveIPCSocketPath(
-			activateCppParams.IPCSocketPathOverride, utils.AllEnvs(), utils.DefaultOsProxy{},
-		)
-		socket := ccacheipc.NewSocket(socketPath)
-		if !socket.IsListening() {
-			startOpts := []ccacheipc.StartOption{ccacheipc.WithDebug()}
-			if invID := utils.AllEnvs()["BITRISE_INVOCATION_ID"]; invID != "" {
-				startOpts = append(startOpts, ccacheipc.WithInvocationID(invID))
-			}
-
-			if err := socket.Start(startOpts...); err != nil {
-				logger.Warnf("Could not start the ccache storage helper: %s", err)
-			} else if !socket.AwaitReady() {
-				logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
-			} else {
-				logger.Debugf("Started the ccache storage helper on %s", socketPath)
-			}
 		}
 
 		return nil

@@ -169,24 +169,21 @@ is being hit — for Gradle that's `gradle build -d`, for Bazel
 
 ---
 
-## Long-lived helper services (optional)
+## Helper services
 
-By default each `bitrise-build-cache activate` brings the helper processes
-up in foreground / per-build mode. For local development where you build
-repeatedly, registering the helpers as OS-supervised services keeps them
-warm across shells:
+The Xcode cache proxy and the ccache storage helper are started on demand: the
+`xcodebuild` wrapper starts the proxy on your first build, and `activate c++`
+starts the helper. Both keep serving later builds in the same login session,
+and neither survives a reboot — the next build starts them again.
 
-```sh
-bitrise-build-cache daemon install    # macOS LaunchAgent / Linux user systemd unit
-bitrise-build-cache daemon up         # start the registered services
-bitrise-build-cache daemon down       # stop without uninstalling
-bitrise-build-cache daemon restart    # after a CLI upgrade
-bitrise-build-cache daemon uninstall  # tear down
-```
+They are deliberately not registered with the OS supervisor. macOS applies CPU
+and I/O limits per resource coalition and gives a launchd job one of its own, so
+a supervised proxy competes with the compiler it exists to serve and loses. See
+[daemon-latency.md](daemon-latency.md).
 
-The daemon services are user-scoped (no root / sudo) and log to
-`~/.local/state/bitrise-build-cache/logs/` (macOS) or via `journalctl --user`
-(Linux).
+For builds started from Xcode.app rather than a terminal, see
+[xcode-scheme-self-check.md](xcode-scheme-self-check.md) for a scheme pre-action
+that starts the proxy.
 
 ---
 
@@ -198,7 +195,7 @@ The daemon services are user-scoped (no root / sudo) and log to
 | Stale config after a CLI upgrade         | Re-run the relevant `bitrise-build-cache activate <tool>` (the CLI nudges you with the exact command on the next run after a version bump). |
 | Auth errors / 401 from the cache backend | Re-check `BITRISE_BUILD_CACHE_AUTH_TOKEN` is exported and the PAT hasn't expired. |
 | Network errors / GitHub unreachable      | The GAR fallback should kick in automatically; if not, see the URLs `installer.sh` printed. |
-| Daemon services not running              | `bitrise-build-cache daemon up` (or `daemon install` if you never registered). |
+| Cache helper not running                 | `bitrise-build-cache doctor --fix`, or just run the build again — it starts them. |
 
 For deeper logging on any command, prepend `-d`
 (`bitrise-build-cache -d activate gradle ...`). If that doesn't surface

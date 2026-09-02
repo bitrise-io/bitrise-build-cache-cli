@@ -2,7 +2,7 @@
 #
 # Fails if the launchd-supervised proxy timed out on any cache operation.
 #
-#   ./scripts/assert_daemon_cache.sh <output-dir>
+#   ./scripts/assert_proxy_cache.sh <output-dir>
 #
 # A healthy proxy serves the whole build without a single DeadlineExceeded, so
 # the threshold is zero. The regression put 30-60% of operations there.
@@ -48,21 +48,19 @@ if [[ "$rc" != "0" ]]; then
     exit 1
 fi
 
-# Without this the workflow would still pass if the wrapper forked its own
-# proxy, which is the pre-v3.6.3 path and is not what this guards.
-daemon_pid=$(cat "$DIR/daemon.pid" 2>/dev/null)
-attached_pid=$(cat_logs | grep -aoE 'proxy already running \(pid: [0-9]+' | grep -oE '[0-9]+$' | head -1)
-
-if [[ -z "$daemon_pid" ]]; then
-    echo "INCONCLUSIVE: no launchd proxy pid was recorded at activate time" >&2
-    exit 1
+# The proxy must actually have served this build; a run where it never started
+# would report zero timeouts for the wrong reason.
+proxy_pid=$(cat_logs | grep -aoE 'Started xcelerate_proxy pid = [0-9]+' | grep -oE '[0-9]+$' | head -1)
+if [[ -z "$proxy_pid" ]]; then
+    proxy_pid=$(cat_logs | grep -aoE 'proxy already running \(pid: [0-9]+' | grep -oE '[0-9]+$' | head -1)
 fi
-if [[ "$attached_pid" != "$daemon_pid" ]]; then
-    echo "FAIL: the build did not go through the launchd proxy (daemon pid $daemon_pid, wrapper attached to '${attached_pid:-none}')" >&2
+
+if [[ -z "$proxy_pid" ]]; then
+    echo "INCONCLUSIVE: the wrapper never reported a proxy" >&2
     exit 1
 fi
 
-echo "built through the launchd proxy (pid $daemon_pid)"
+echo "built through the wrapper-forked proxy (pid $proxy_pid)"
 
 ops=$(count 'Cache (hit|miss)|(Get|Put|Load|Save|GetValue|PutValue) (took|ok)')
 if [[ "$ops" -eq 0 ]]; then

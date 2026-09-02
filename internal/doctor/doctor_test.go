@@ -223,10 +223,8 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
-// The proxy is started on demand rather than supervised, so doctor probes the
-// socket and not the service manager. That is what keeps this warning working
-// after `daemon uninstall`, and it is the only signal that the cache is not
-// serving. See docs/daemon-latency.md.
+// Probing the socket rather than a service manager is the only signal that the
+// cache is not serving.
 func TestXcelerateProxyCheck_warnsWhenNotRunning(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
@@ -669,7 +667,7 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 	assert.Len(t, k, len("doctor-probe-")+2*backendProbeKeyBytes, "8 hex chars expected for 4 random bytes")
 }
 
-// ──────────────────────────── daemon-up + update fixes ────────────────────────────
+// ──────────────────────────── start-service + update fixes ────────────────────────────
 
 // The proxy is started on demand, never supervised, so the remedy must spawn
 // one rather than poke a service manager. See docs/daemon-latency.md.
@@ -684,7 +682,7 @@ func TestXcelerateProxyCheck_fixerStartsAProxyWhenNoSocket(t *testing.T) {
 	require.IsType(t, StartServiceFixer{}, res.Fixer)
 }
 
-func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
+func TestCcacheHelperCheck_noSocketIsFixable(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },

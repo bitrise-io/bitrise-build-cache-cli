@@ -26,9 +26,6 @@ const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
 	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
 
-	// The proxy is deliberately not a supervised service: a launchd job lands
-	// in its own resource coalition and loses to the compiler it serves, which
-	// cost 2314ms against 6.3ms per cache operation. See docs/daemon-latency.md.
 	ProxyLifecycleNotice = "ℹ️ The cache proxy starts automatically with your first `xcodebuild` and keeps serving later builds."
 	ProxyRestartNotice   = "ℹ️ It does not survive a reboot or logout. Terminal builds restart it on their own; " +
 		"for builds started from Xcode.app, run `bitrise-build-cache xcelerate start-proxy` first — " +

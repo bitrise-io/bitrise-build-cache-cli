@@ -71,8 +71,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
-	// group hide funcs, so the daemon question below can only be conditional if
-	// the group doesn't exist yet when the tools are unknown.
+	// group hide funcs, so a later group can only depend on the selection if it
+	// does not exist yet while the tools are unknown.
 	if err := tui.RunForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Which build tools should I set up?").

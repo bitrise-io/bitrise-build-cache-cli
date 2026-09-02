@@ -23,7 +23,8 @@ var updateCmd = &cobra.Command{
 - Homebrew install: prints the exact ` + "`brew upgrade ...`" + ` command to run. We don't invoke brew from inside the Cellar to avoid lock clashes.
 - Manual install (` + "`installer.sh`" + ` to a custom bindir): re-downloads installer.sh and runs it against the same bindir, replacing the binary in place.
 
-After a successful manual upgrade, prints a hint to restart the daemon (` + "`bitrise-build-cache daemon restart`" + `) when one is installed.`,
+After a successful manual upgrade, retires any service registration left by an
+older CLI; the build starts the cache services on demand.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))

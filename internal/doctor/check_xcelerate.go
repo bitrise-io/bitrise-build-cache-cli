@@ -7,12 +7,13 @@ import (
 )
 
 func (d *Doctor) xcelerateProxyCheck() Check {
-	// Started on demand by the xcodebuild wrapper, not supervised, so the
-	// remedy is to spawn one rather than to poke a service manager.
-	return d.socketDaemonCheck(
-		"xcelerate-proxy", toolconfig.Xcelerate, "xcode", d.xcelerateSocketPath(),
-		StartProxyFixer(), StartProxyFixer(),
-	)
+	return d.socketCheck(socketCheckParams{
+		Name:       "xcelerate-proxy",
+		Tool:       toolconfig.Xcelerate,
+		ToolLabel:  "xcode",
+		SocketPath: d.xcelerateSocketPath(),
+		Fixer:      StartProxyFixer(),
+	})
 }
 
 // xcelerateSocketPath prefers the path activation recorded, because that is the one

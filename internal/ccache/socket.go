@@ -3,9 +3,9 @@ package ccache
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
 const (
@@ -56,25 +56,15 @@ func (s *Socket) Start(opts ...StartOption) error {
 		opt(&cfg)
 	}
 
-	bin, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("get executable path: %w", err)
-	}
-
-	args := make([]string, 0, 5)
+	svc := spawn.CcacheHelper()
 	if cfg.debug {
-		args = append(args, "--debug")
+		svc = svc.WithDebug()
 	}
-	args = append(args, "ccache", "storage-helper", "start")
 	if cfg.invocationID != "" {
-		args = append(args, "--invocation-id="+cfg.invocationID)
+		svc = svc.WithArgs("--invocation-id=" + cfg.invocationID)
 	}
 
-	cmd := exec.Command(bin, args...) //nolint:gosec,noctx // intentionally detached: the helper must outlive this command
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
+	if _, err := spawn.Detached(svc); err != nil {
 		return fmt.Errorf("start storage helper process: %w", err)
 	}
 

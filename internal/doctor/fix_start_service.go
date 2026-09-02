@@ -1,64 +1,47 @@
 package doctor
 
 import (
+	"context"
 	"fmt"
-	"os/exec"
-	"syscall"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
-// StartServiceFixer starts a cache service the way a build does: as a detached
-// child of this process, not as a supervised one. That keeps it in the caller's
-// resource coalition, which is the whole reason neither service is a LaunchAgent
-// any more — see docs/daemon-latency.md.
+// StartServiceFixer starts a cache service the way a build does.
 type StartServiceFixer struct {
-	Name string
-	Args []string
+	Label   string
+	Service spawn.Service
 
 	// Start is a test seam; nil uses the real spawn.
-	Start func(exe string, args []string) error
+	Start func(spawn.Service) (int, error)
 }
 
-// StartProxyFixer starts the xcelerate proxy.
 func StartProxyFixer() StartServiceFixer {
-	return StartServiceFixer{Name: "xcelerate proxy", Args: []string{"xcelerate", "start-proxy"}}
+	return StartServiceFixer{Label: "xcelerate proxy", Service: spawn.XcelerateProxy()}
 }
 
-// StartCcacheHelperFixer starts the ccache storage helper.
 func StartCcacheHelperFixer() StartServiceFixer {
-	return StartServiceFixer{Name: "ccache storage helper", Args: []string{"ccache", "storage-helper", "start"}}
+	return StartServiceFixer{Label: "ccache storage helper", Service: spawn.CcacheHelper()}
 }
 
 func (f StartServiceFixer) Fix() (string, error) {
-	exe, err := utils.DefaultOsProxy{}.Executable()
-	if err != nil {
-		return "", fmt.Errorf("resolve the CLI path: %w", err)
+	ctx := context.Background()
+
+	// A leftover agent from an older CLI would restart it under the supervisor.
+	if p, err := paths.Default(); err == nil {
+		_ = spawn.RemoveLegacySupervision(ctx, p, f.Service)
 	}
 
 	start := f.Start
 	if start == nil {
-		start = spawnDetached
+		start = spawn.Detached
 	}
 
-	if err := start(exe, f.Args); err != nil {
-		return "", fmt.Errorf("start the %s: %w", f.Name, err)
+	pid, err := start(f.Service)
+	if err != nil {
+		return "", fmt.Errorf("start the %s: %w", f.Label, err)
 	}
 
-	return fmt.Sprintf("started the %s (it serves this login session; a build would have started it too)", f.Name), nil
-}
-
-//nolint:noctx // intentionally detached: the service must outlive this command
-func spawnDetached(exe string, args []string) error {
-	cmd := exec.Command(exe, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("spawn: %w", err)
-	}
-
-	// Not waited on deliberately: the service runs until the session ends.
-	go func() { _ = cmd.Wait() }()
-
-	return nil
+	return fmt.Sprintf("started the %s (pid %d); a build would have started it too", f.Label, pid), nil
 }

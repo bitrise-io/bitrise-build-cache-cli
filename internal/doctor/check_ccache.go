@@ -3,16 +3,21 @@ package doctor
 import (
 	"context"
 
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func (d *Doctor) ccacheHelperCheck() Check {
-	return d.socketDaemonCheck(
-		"ccache-helper", toolconfig.Ccache, "c++", d.ccacheSocketPath(),
-		StartCcacheHelperFixer(), StartCcacheHelperFixer(),
-	)
+	return d.socketCheck(socketCheckParams{
+		Name:       "ccache-helper",
+		Tool:       toolconfig.Ccache,
+		ToolLabel:  "c++",
+		SocketPath: d.ccacheSocketPath(),
+		Fixer:      StartCcacheHelperFixer(),
+		Handshake:  ccacheipc.SendHealthCheck,
+	})
 }
 
 // ccacheSocketPath prefers the endpoint activation recorded, for the same reason as

@@ -1,6 +1,6 @@
 // Package paths centralises the on-disk locations the CLI reads and writes.
 // One package so the layout under ~/.local/state/bitrise-build-cache stays
-// consistent across versioncheck, refresh, daemon supervisor logs, and the
+// consistent across versioncheck, refresh, and the
 // future Xcelerate / ccache state dirs.
 package paths
 
@@ -62,9 +62,6 @@ const (
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
 
-	// daemonLogsSubdir is the daemon supervisor stdout/stderr log dir.
-	daemonLogsSubdir = "logs"
-
 	// invocationsSubdir holds the per-day NDJSON invocation log files.
 	invocationsSubdir = "invocations"
 
@@ -76,7 +73,7 @@ const (
 
 	bazelCredHelperWarnFilename = "bazel-credhelper-warned" //nolint:gosec // marker filename, not a credential
 
-	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
+	// bitriseBinSubdir holds the stable CLI binary copy.
 	bitriseBinSubdir = "bin"
 
 	// bitriseCacheSubdir is the per-tool cache/marker root used by activate, refresh, and child-stats.
@@ -102,7 +99,7 @@ const (
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
 
-// CLIBinaryName is the on-disk name of the CLI executable (daemon plist entry, PATH lookup).
+// CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
 
 // Paths resolves on-disk locations rooted at a single home directory.
@@ -153,11 +150,6 @@ func (p Paths) SystemdUserDir() string {
 	return filepath.Join(p.Home, SystemdUserDirRelative)
 }
 
-// DaemonLogDir is the absolute path of the daemon supervisor stdout/stderr log dir.
-func (p Paths) DaemonLogDir() string {
-	return filepath.Join(p.StateDir(), daemonLogsSubdir)
-}
-
 func (p Paths) InvocationsDir() string {
 	return filepath.Join(p.StateDir(), invocationsSubdir)
 }
@@ -182,16 +174,6 @@ func (p Paths) PlistPath(label string) string {
 // UnitPath returns the systemd --user unit file path for the given name.
 func (p Paths) UnitPath(unitName string) string {
 	return filepath.Join(p.SystemdUserDir(), unitName+".service")
-}
-
-// DaemonStdoutPath returns the supervisor stdout log file path for a service.
-func (p Paths) DaemonStdoutPath(service string) string {
-	return filepath.Join(p.DaemonLogDir(), service+".out.log")
-}
-
-// DaemonStderrPath returns the supervisor stderr log file path for a service.
-func (p Paths) DaemonStderrPath(service string) string {
-	return filepath.Join(p.DaemonLogDir(), service+".err.log")
 }
 
 // BitriseRoot is the absolute path of the per-user ~/.bitrise dir.
