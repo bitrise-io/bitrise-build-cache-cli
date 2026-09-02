@@ -96,10 +96,10 @@ func TestDeactivateAll_FanOutInvokesEveryTool(t *testing.T) {
 	}{}
 
 	restore := common.SwapDeactivateAllFansForTest(
-		func(log.Logger, bool) error { counts.rn++; return nil },
-		func(log.Logger, bool) error { counts.gradle++; return nil },
-		func(log.Logger, bool) error { counts.bazel++; return nil },
-		func(log.Logger, bool) error { counts.xcode++; return nil },
+		func(context.Context, log.Logger, bool) error { counts.rn++; return nil },
+		func(context.Context, log.Logger, bool) error { counts.gradle++; return nil },
+		func(context.Context, log.Logger, bool) error { counts.bazel++; return nil },
+		func(context.Context, log.Logger, bool) error { counts.xcode++; return nil },
 		func(context.Context, log.Logger, bool) error { counts.ccache++; return nil },
 	)
 	t.Cleanup(restore)

@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	bazelpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/bazel"
 )
 
 //nolint:gochecknoglobals
@@ -23,12 +24,15 @@ This command will:
 The .bazelrc file itself is preserved. If nothing was activated the command
 reports "already absent" for each step and returns success.`,
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Deactivate Bitrise Build Cache for Bazel")
 
-		return common.DeactivateBazel(logger, deactivateBazelDryRun)
+		return bazelpkg.NewDeactivator(bazelpkg.DeactivatorParams{
+			DryRun: deactivateBazelDryRun,
+			Logger: logger,
+		}).Deactivate(cmd.Context())
 	},
 }
 

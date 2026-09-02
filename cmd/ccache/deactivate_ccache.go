@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
 //nolint:gochecknoglobals
@@ -32,7 +33,11 @@ each step and returns success.`,
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Deactivate Bitrise Build Cache for C++")
 
-		return common.DeactivateCcacheWithSocket(cmd.Context(), logger, deactivateCcacheSocketPth, deactivateCcacheDryRun)
+		return ccachepkg.NewDeactivator(ccachepkg.DeactivatorParams{
+			DryRun:             deactivateCcacheDryRun,
+			SocketPathOverride: deactivateCcacheSocketPth,
+			Logger:             logger,
+		}).Deactivate(cmd.Context())
 	},
 }
 

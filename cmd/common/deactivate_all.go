@@ -6,20 +6,28 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
+
+	bazelpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/bazel"
+	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
+	gradlepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/gradle"
+	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
+	xcodepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode"
 )
 
 //nolint:gochecknoglobals
 var deactivateAllDryRun bool
 
-// Fan-out hooks — package-scoped vars so tests can spy on them.
-//
+// deactivateFunc runs one per-tool deactivation. Package-scoped vars below so
+// tests can spy on them without invoking the real filesystem work.
+type deactivateFunc func(context.Context, log.Logger, bool) error
+
 //nolint:gochecknoglobals
 var (
-	deactivateAllReactNativeFn = RemoveReactNativeMarker
-	deactivateAllGradleFn      = DeactivateGradle
-	deactivateAllBazelFn       = DeactivateBazel
-	deactivateAllXcodeFn       = DeactivateXcode
-	deactivateAllCcacheFn      = DeactivateCcache
+	deactivateAllReactNativeFn deactivateFunc = runReactNativeDeactivate
+	deactivateAllGradleFn      deactivateFunc = runGradleDeactivate
+	deactivateAllBazelFn       deactivateFunc = runBazelDeactivate
+	deactivateAllXcodeFn       deactivateFunc = runXcodeDeactivate
+	deactivateAllCcacheFn      deactivateFunc = runCcacheDeactivate
 )
 
 var DeactivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
@@ -37,29 +45,45 @@ var DeactivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
 }
 
 func runDeactivateAll(ctx context.Context, logger log.Logger, dryRun bool) error {
+	fns := []deactivateFunc{
+		deactivateAllReactNativeFn,
+		deactivateAllGradleFn,
+		deactivateAllBazelFn,
+		deactivateAllXcodeFn,
+		deactivateAllCcacheFn,
+	}
+
 	var errs []error
-
-	if err := deactivateAllReactNativeFn(logger, dryRun); err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := deactivateAllGradleFn(logger, dryRun); err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := deactivateAllBazelFn(logger, dryRun); err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := deactivateAllXcodeFn(logger, dryRun); err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := deactivateAllCcacheFn(ctx, logger, dryRun); err != nil {
-		errs = append(errs, err)
+	for _, fn := range fns {
+		if err := fn(ctx, logger, dryRun); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	return errors.Join(errs...)
+}
+
+// Each runXxxDeactivate is a thin passthrough; the pkg Deactivator has already
+// wrapped its errors with the per-tool prefix.
+
+func runReactNativeDeactivate(ctx context.Context, logger log.Logger, dryRun bool) error {
+	return rnpkg.NewDeactivator(rnpkg.DeactivatorParams{DryRun: dryRun, Logger: logger}).Deactivate(ctx) //nolint:wrapcheck
+}
+
+func runGradleDeactivate(ctx context.Context, logger log.Logger, dryRun bool) error {
+	return gradlepkg.NewDeactivator(gradlepkg.DeactivatorParams{DryRun: dryRun, Logger: logger}).Deactivate(ctx) //nolint:wrapcheck
+}
+
+func runBazelDeactivate(ctx context.Context, logger log.Logger, dryRun bool) error {
+	return bazelpkg.NewDeactivator(bazelpkg.DeactivatorParams{DryRun: dryRun, Logger: logger}).Deactivate(ctx) //nolint:wrapcheck
+}
+
+func runXcodeDeactivate(ctx context.Context, logger log.Logger, dryRun bool) error {
+	return xcodepkg.NewDeactivator(xcodepkg.DeactivatorParams{DryRun: dryRun, Logger: logger}).Deactivate(ctx) //nolint:wrapcheck
+}
+
+func runCcacheDeactivate(ctx context.Context, logger log.Logger, dryRun bool) error {
+	return ccachepkg.NewDeactivator(ccachepkg.DeactivatorParams{DryRun: dryRun, Logger: logger}).Deactivate(ctx) //nolint:wrapcheck
 }
 
 func init() {

@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	xcodepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode"
 )
 
 //nolint:gochecknoglobals
@@ -26,12 +27,15 @@ for debugging. Credentials in ~/.bitrise/analytics/multiplatform/config.json
 are owned by "auth logout" and are NOT touched here. If nothing was activated
 the command reports "already absent" for each step and returns success.`,
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Deactivate Bitrise Build Cache for Xcode")
 
-		return common.DeactivateXcode(logger, deactivateXcodeDryRun)
+		return xcodepkg.NewDeactivator(xcodepkg.DeactivatorParams{
+			DryRun: deactivateXcodeDryRun,
+			Logger: logger,
+		}).Deactivate(cmd.Context())
 	},
 }
 
