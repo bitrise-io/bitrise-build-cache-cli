@@ -223,8 +223,7 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
-// Probing the socket rather than a service manager is the only signal that the
-// cache is not serving.
+// The socket is the only signal that the cache is not serving.
 func TestXcelerateProxyCheck_warnsWhenNotRunning(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
@@ -669,8 +668,7 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 
 // ──────────────────────────── start-service + update fixes ────────────────────────────
 
-// The proxy is started on demand, never supervised, so the remedy must spawn
-// one rather than poke a service manager. See docs/daemon-latency.md.
+// The remedy must spawn a proxy, not poke a service manager.
 func TestXcelerateProxyCheck_fixerStartsAProxyWhenNoSocket(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},

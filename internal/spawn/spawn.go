@@ -9,14 +9,12 @@ import (
 	"syscall"
 )
 
-// ErrUnderTest is returned instead of re-execing a test binary. Detached
-// re-execs os.Executable(), which under `go test` is the test binary itself: it
-// would rerun the whole package, which would spawn again, exponentially. Tests
-// must stub the spawn rather than reach this.
+// ErrUnderTest guards a fork bomb: os.Executable() under `go test` is the test
+// binary, so one spawn reruns the package, which spawns again. Stub it instead.
 var ErrUnderTest = errors.New("refusing to re-exec the test binary; stub the spawn instead")
 
-// Detached starts svc in its own process group so it outlives the caller and
-// can be signalled as a group.
+// Detached puts svc in its own process group so it outlives the caller and can
+// be signalled as a group.
 //
 //nolint:noctx // intentionally detached: the service must outlive this command
 func Detached(svc Service) (int, error) {
@@ -38,16 +36,14 @@ func Detached(svc Service) (int, error) {
 
 	pid := cmd.Process.Pid
 
-	// Not waited on deliberately, but reaped so the service does not linger as
-	// a zombie for the lifetime of this process.
+	// Reaped, not awaited: an unreaped child stays a zombie for our lifetime.
 	go func() { _ = cmd.Wait() }()
 
 	return pid, nil
 }
 
-// underTest reports whether this binary is a `go test` binary. The test flags
-// are registered by the generated test main, so their presence is the signal;
-// importing testing from production code is not.
+// underTest keys off the flags the generated test main registers, rather than
+// importing testing from production code.
 func underTest() bool {
 	return flag.Lookup("test.v") != nil
 }

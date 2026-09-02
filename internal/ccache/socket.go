@@ -13,8 +13,7 @@ const (
 	awaitReadyInterval = 100 * time.Millisecond
 )
 
-// HelperArgs is the argv the given options produce, so callers can assert on
-// what a start would actually run.
+// HelperArgs exposes the argv the options produce, for assertions.
 func HelperArgs(opts ...StartOption) []string {
 	cfg := startConfig{}
 	for _, opt := range opts {

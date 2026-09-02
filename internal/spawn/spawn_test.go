@@ -141,9 +141,8 @@ func TestDetached_RefusesToReExecTheTestBinary(t *testing.T) {
 	assert.Zero(t, pid)
 }
 
-// A crashed service leaves its socket file behind, so the stat cannot tell it
-// from a live one — the handshake is what does. Without this the service would
-// be reported healthy while every cache operation failed for the whole build.
+// A crashed service leaves its socket file behind, so only the handshake tells
+// it from a live one.
 func TestProbe_Handshake_ConsultsTheHandshakeForAStaleSocketFile(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "stale.sock")
 	require.NoError(t, os.WriteFile(path, nil, 0o600))
@@ -159,8 +158,7 @@ func TestProbe_Handshake_ConsultsTheHandshakeForAStaleSocketFile(t *testing.T) {
 	assert.Equal(t, Stuck, state)
 }
 
-// Accepting a connection is not the same as answering: the handshake is the
-// only thing that separates a live service from a listener that never replies.
+// Accepting is not answering.
 func TestProbe_Handshake_ReportsStuckWhenTheHandshakeFails(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "mute.sock")
 	l, err := net.Listen("unix", path)
@@ -185,8 +183,8 @@ func TestProbe_Handshake_ReportsRunningWhenTheHandshakeSucceeds(t *testing.T) {
 	assert.Equal(t, Running, state)
 }
 
-// The handshake has to be honoured on every poll, or a service that only comes
-// up late is reported ready as soon as its socket file appears.
+// Honoured on every poll, or a late service is ready the moment its socket
+// file appears.
 func TestAwaitSocket_Handshake_UsesTheHandshake(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "late.sock")
 	l, err := net.Listen("unix", path)

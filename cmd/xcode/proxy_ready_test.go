@@ -45,8 +45,7 @@ func TestAwaitProxySocket_AbsentSocketTimesOut(t *testing.T) {
 	assert.Less(t, time.Since(start), 5*time.Second, "must give up at the timeout, not hang the build")
 }
 
-// The spawned proxy needs a moment to bind, so the wrapper has to keep waiting
-// after it starts one.
+// The spawned proxy needs a moment to bind.
 func TestAwaitProxySocket_WaitsForALateSocket(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "late.sock")
 

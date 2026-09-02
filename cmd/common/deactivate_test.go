@@ -52,9 +52,9 @@ func TestDeactivateAll_DryRun_NoFilesystemMutation(t *testing.T) {
 	t.Setenv("GRADLE_USER_HOME", "")
 
 	seed := map[string]string{
-		filepath.Join(tmpHome, ".bashrc"):        "# [start] Bitrise Xcelerate\nexport PATH=/x:$PATH\n# [end] Bitrise Xcelerate\n",
-		filepath.Join(tmpHome, ".zshrc"):         "user=alice\n",
-		filepath.Join(tmpHome, ".bazelrc"):       "# [start] generated-by-bitrise-build-cache\nbuild --remote_cache=x\n# [end] generated-by-bitrise-build-cache\n",
+		filepath.Join(tmpHome, ".bashrc"):                      "# [start] Bitrise Xcelerate\nexport PATH=/x:$PATH\n# [end] Bitrise Xcelerate\n",
+		filepath.Join(tmpHome, ".zshrc"):                       "user=alice\n",
+		filepath.Join(tmpHome, ".bazelrc"):                     "# [start] generated-by-bitrise-build-cache\nbuild --remote_cache=x\n# [end] generated-by-bitrise-build-cache\n",
 		filepath.Join(tmpHome, ".gradle", "gradle.properties"): "# [start] generated-by-bitrise-build-cache\norg.gradle.caching=true\n# [end] generated-by-bitrise-build-cache\n",
 	}
 	for path, content := range seed {

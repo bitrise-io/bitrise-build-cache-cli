@@ -9,10 +9,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 )
 
-// dialHelper connects to the storage helper and reads its greeting.
-//
-// The deadline matters: DialContext honours ctx but the protocol reads do not,
-// so a helper that accepts a connection and never answers would block forever.
+// dialHelper sets a deadline because DialContext honours ctx but the protocol
+// reads do not, so a helper that never answers would block forever.
 func dialHelper(ctx context.Context, socketPath string) (net.Conn, error) {
 	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
 	if err != nil {

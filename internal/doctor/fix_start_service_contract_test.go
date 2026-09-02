@@ -11,9 +11,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
-// `doctor --fix` is a service entry point like the wrapper is, so it has to
-// start the same thing. Carrying its own argv would let it drift and start a
-// service the build never talks to.
+// Carrying its own argv would let doctor start a service the build never
+// talks to.
 func TestFixers_CarryTheServicesSpawnDefines(t *testing.T) {
 	assert.Equal(t, spawn.XcelerateProxy(), StartProxyFixer().Service)
 	assert.Equal(t, spawn.CcacheHelper(), StartCcacheHelperFixer().Service)

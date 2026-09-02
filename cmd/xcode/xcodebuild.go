@@ -1077,9 +1077,8 @@ func startProxy(
 		}
 	}
 
-	// Holding the singleton is not the same as serving: a proxy can hold it
-	// while wedged, and attaching to one that never answers silently drops
-	// every cache operation for the build.
+	// Holding the singleton is not serving: attaching to a wedged proxy silently
+	// drops every cache operation for the build.
 	if pid, running := xcelerate.ProxyOwner(osProxy); running {
 		if spawn.Probe(ctx, socketPath, nil) == spawn.Running {
 			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
@@ -1114,8 +1113,7 @@ func startProxy(
 		return fmt.Errorf(errFmtFailedToStartProxy, err)
 	}
 
-	// Reaped, never waited on: the proxy outlives this command, but an
-	// unreaped child stays a zombie for as long as the wrapper runs.
+	// Reaped, not awaited: an unreaped child stays a zombie for the whole build.
 	go func() { _ = cmd.Wait() }()
 
 	logger.TDonef(startedProxy, cmd.PID())

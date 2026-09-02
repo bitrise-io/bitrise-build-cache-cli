@@ -26,9 +26,8 @@ func captureSpawn(t *testing.T) *spawn.Service {
 	return &got
 }
 
-// Socket.Start is the single funnel every ccache caller reaches — `activate
-// c++`, the React Native runner and `doctor --fix` — so the argv it spawns has
-// to be the one internal/spawn defines rather than a local copy.
+// Socket.Start is the funnel every ccache caller reaches, so its argv has to be
+// the one internal/spawn defines rather than a local copy.
 func TestSocketStart_SpawnsTheServiceSpawnDefines(t *testing.T) {
 	got := captureSpawn(t)
 

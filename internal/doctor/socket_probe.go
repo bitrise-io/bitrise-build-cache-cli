@@ -14,11 +14,9 @@ type socketCheckParams struct {
 	SocketPath string
 	Fixer      Fixer
 
-	// Handshake proves the service answers; nil means a plain dial suffices.
 	Handshake spawn.Handshake
 }
 
-// socketCheck reports a service as running iff its socket answers.
 func (d *Doctor) socketCheck(p socketCheckParams) Check {
 	return Check{
 		Name: p.Name,

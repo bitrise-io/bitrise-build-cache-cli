@@ -1,13 +1,10 @@
 // Package spawn starts the cache services on demand and probes their sockets.
 //
-// The services are deliberately not supervised: macOS applies CPU and I/O
-// limits per resource coalition, and a launchd job forms its own, so a
-// supervised proxy competes with the compiler it serves and loses. Forking it
-// from whoever needs it puts it in the build's coalition instead. See
-// docs/daemon-latency.md.
+// Not supervised, deliberately: macOS applies CPU and I/O limits per resource
+// coalition and a launchd job forms its own, so forking from whoever needs the
+// service puts it in the build's coalition. See docs/daemon-latency.md.
 package spawn
 
-// Service is a cache service that is started on demand.
 type Service struct {
 	Name string
 	Args []string

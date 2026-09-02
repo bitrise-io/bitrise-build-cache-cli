@@ -35,8 +35,7 @@ type helperStart struct {
 	socket string
 }
 
-// The real starter re-execs this binary, which under `go test` is the test
-// binary — it would re-run the suite recursively.
+// The real starter re-execs the test binary and would rerun the suite.
 func fakeHelperStart(t *testing.T) *helperStart {
 	t.Helper()
 
@@ -57,9 +56,8 @@ func fakeHelperStart(t *testing.T) *helperStart {
 	return rec
 }
 
-// Starting the helper used to live in cmd/, so pkg/ consumers — the wizard
-// among them — activated ccache and left nothing serving the socket. ccache
-// then misses every lookup for the whole build, silently.
+// A pkg/ consumer that activates ccache and leaves nothing serving the socket
+// makes ccache miss every lookup for the whole build, silently.
 func TestEnsureHelperServing_StartsTheHelperWhenTheSocketIsDead(t *testing.T) {
 	rec := fakeHelperStart(t)
 	socketPath := filepath.Join(shortTempDir(t), "ipc.sock")
@@ -71,8 +69,7 @@ func TestEnsureHelperServing_StartsTheHelperWhenTheSocketIsDead(t *testing.T) {
 	assert.Equal(t, socketPath, rec.socket, "and on the socket the config records")
 }
 
-// The invocation ID ties the helper's analytics to this build; the detached
-// helper starts in a shell that never saw the env var.
+// The detached helper starts in a shell that never saw the env var.
 func TestEnsureHelperServing_ForwardsTheInvocationID(t *testing.T) {
 	rec := fakeHelperStart(t)
 
@@ -105,9 +102,8 @@ func TestEnsureHelperServing_DebugLoggingReachesTheHelper(t *testing.T) {
 		"--debug is a persistent root flag, so it has to precede the subcommand")
 }
 
-// The case that bites: a crashed helper leaves its socket file behind, so a
-// stat-only check would call it healthy and every ccache lookup would miss for
-// the whole build. The handshake is what distinguishes the two.
+// A crashed helper leaves its socket file behind, so only the handshake tells
+// it from a live one.
 func TestEnsureHelperServing_StartsOverAStaleSocketFile(t *testing.T) {
 	rec := fakeHelperStart(t)
 	socketPath := filepath.Join(shortTempDir(t), "stale.sock")
@@ -119,8 +115,7 @@ func TestEnsureHelperServing_StartsOverAStaleSocketFile(t *testing.T) {
 	assert.Equal(t, 1, rec.calls, "a leftover socket file must not pass as a serving helper")
 }
 
-// Activation is where a user migrates off a supervised helper, so it has to
-// retire a launch agent an older CLI left behind.
+// Activation is where a user migrates off a supervised helper.
 func TestEnsureHelperServing_RetiresALegacyLaunchAgent(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("launchd-only: the linux arm shells out to systemctl")

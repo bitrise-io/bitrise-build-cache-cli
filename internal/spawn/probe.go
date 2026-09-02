@@ -24,8 +24,7 @@ const ProbeTimeout = 500 * time.Millisecond
 // "Capabilities check failed" in its log, and CI asserts on those lines.
 type Handshake func(ctx context.Context, socketPath string) error
 
-// Probe reports whether a service is serving on path. A nil handshake settles
-// it with a dial, which a hung accept still passes.
+// Probe settles a nil handshake with a dial, which a hung accept still passes.
 func Probe(ctx context.Context, path string, handshake Handshake) SocketState {
 	if _, err := os.Stat(path); err != nil {
 		return Stopped
@@ -51,8 +50,8 @@ func Probe(ctx context.Context, path string, handshake Handshake) SocketState {
 	return Running
 }
 
-// AwaitSocket polls until the service answers or the budget runs out.
-// Returning early lets the build race it and fail its first cache operations.
+// AwaitSocket returning early would let the build race the service and fail
+// its first cache operations.
 func AwaitSocket(ctx context.Context, path string, handshake Handshake, budget, interval time.Duration) bool {
 	deadline := time.Now().Add(budget)
 	for time.Now().Before(deadline) {

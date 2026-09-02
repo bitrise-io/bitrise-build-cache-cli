@@ -8,7 +8,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
-// StartServiceFixer starts a cache service the way a build does.
+// StartServiceFixer starts a service the way a build does: detached, unsupervised.
 type StartServiceFixer struct {
 	Label   string
 	Service spawn.Service

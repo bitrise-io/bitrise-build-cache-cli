@@ -18,10 +18,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// The wrapper is the only thing that starts the proxy for a terminal build, so
-// the argv it spawns has to be the one internal/spawn defines. Building it from
-// the cobra command names instead matched only by naming coincidence, and would
-// drift the moment either side was renamed.
+// Built from the cobra command names, the argv matched internal/spawn only by
+// naming coincidence, and would drift on either rename.
 func TestStartProxy_SpawnsTheArgvSpawnDefines(t *testing.T) {
 	shortenProxyReadyBudget(t)
 
@@ -32,8 +30,7 @@ func TestStartProxy_SpawnsTheArgvSpawnDefines(t *testing.T) {
 	recording := func(ctx context.Context, name string, args ...string) utils.Command {
 		gotArgs = args
 
-		// Something that exits immediately: the wrapper only needs a process to
-		// start, and awaiting the socket is covered elsewhere.
+		// Exits immediately: only the spawn matters here, not the socket wait.
 		return utils.DefaultCommandFunc()(ctx, "/usr/bin/true")
 	}
 
@@ -42,9 +39,7 @@ func TestStartProxy_SpawnsTheArgvSpawnDefines(t *testing.T) {
 	assert.Equal(t, spawn.XcelerateProxy().Args, gotArgs)
 }
 
-// A launch agent from a CLI at or below v3.6.9 restarts the proxy under the
-// supervisor, which is the slow path this release exists to leave. Ensuring the
-// proxy has to retire it, or an upgraded user never actually migrates.
+// Without this an upgraded user never leaves the supervised path.
 func TestStartProxy_RetiresALegacyLaunchAgent(t *testing.T) {
 	if _, err := os.Stat("/bin/launchctl"); err != nil {
 		t.Skip("launchd-only")
@@ -70,8 +65,7 @@ func TestStartProxy_RetiresALegacyLaunchAgent(t *testing.T) {
 	assert.NoFileExists(t, plist, "the wrapper must retire a leftover launch agent")
 }
 
-// startProxy waits for the socket after spawning; these tests spawn something
-// that never binds, so the wait is pure dead time.
+// These spawn something that never binds, so the wait is pure dead time.
 func shortenProxyReadyBudget(t *testing.T) {
 	t.Helper()
 

@@ -15,10 +15,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// The React Native runner starts the ccache storage helper for RN builds. It
-// must do so through the shared internal/ccache socket, whose Start goes to
-// internal/spawn — not through a spawn of its own. A local copy elsewhere in
-// this repo forgot to detach, and the helper died with the shell that made it.
+// RN must reach the helper through the shared socket, not a spawn of its own:
+// a local copy elsewhere forgot to detach and died with its shell.
 func TestNewRunner_WiresTheSharedCcacheSocket(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

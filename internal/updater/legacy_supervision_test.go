@@ -17,9 +17,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
-// An upgrade is the one moment we know a user is moving off a CLI that may have
-// registered the services. Missing either one leaves them on the supervised —
-// and slower — path indefinitely.
+// Missing either service leaves the user on the supervised path indefinitely.
 func TestRemoveLegacySupervision_RetiresBothServices(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("launchd-only: the linux arm shells out to systemctl")
