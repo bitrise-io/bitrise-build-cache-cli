@@ -3,7 +3,6 @@
 package xcelerate
 
 import (
-	"context"
 	"errors"
 	"io"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
@@ -118,67 +116,4 @@ func TestEnsureLogDir_FailureDoesNotStopActivation(t *testing.T) {
 		UserHomeDirFunc: func() (string, error) { return "", errors.New("no home") },
 		MkdirAllFunc:    func(string, os.FileMode) error { return errors.New("read-only fs") },
 	})
-}
-
-func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error) {
-	t.Helper()
-	prev := ensureFn
-	ensureFn = fn
-	t.Cleanup(func() { ensureFn = prev })
-}
-
-// The proxy is never supervised: a launchd job lands in its own resource
-// coalition and loses to the compiler it serves. The xcodebuild wrapper forks
-// it instead. See docs/daemon-latency.md.
-func TestRunDaemonEnsure_wiresNoXcelerateProxyService(t *testing.T) {
-	var gotServices []daemonpkg.Service
-	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, _ daemonpkg.EnsureDeps) error {
-		gotServices = services
-
-		return nil
-	})
-
-	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, false)
-	require.NoError(t, err)
-
-	assert.Empty(t, gotServices)
-}
-
-func TestRunDaemonEnsure_forwardsSkipEnvVarViaEnvs(t *testing.T) {
-	var gotEnvs map[string]string
-	swapEnsureFn(t, func(_ context.Context, _ log.Logger, _ []daemonpkg.Service, deps daemonpkg.EnsureDeps) error {
-		gotEnvs = deps.Envs
-
-		return nil
-	})
-
-	envs := map[string]string{daemonpkg.EnvSkipEnsure: "1"}
-
-	err := runDaemonEnsure(t.Context(), log.NewLogger(), envs, false)
-	require.NoError(t, err)
-	assert.Equal(t, "1", gotEnvs[daemonpkg.EnvSkipEnsure])
-}
-
-func TestXcelerateRunDaemonEnsure_propagatesEnsureError(t *testing.T) {
-	swapEnsureFn(t, func(context.Context, log.Logger, []daemonpkg.Service, daemonpkg.EnsureDeps) error {
-		return errors.New("launchctl bootstrap: permission denied")
-	})
-
-	err := runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "permission denied")
-}
-
-// A launchd job is started by the service manager, not the shell, so the flag
-// has to travel through EnsureDeps or the daemon can never log at debug level.
-func TestRunDaemonEnsure_forwardsDebugLogging(t *testing.T) {
-	var gotDebug bool
-	swapEnsureFn(t, func(_ context.Context, _ log.Logger, _ []daemonpkg.Service, deps daemonpkg.EnsureDeps) error {
-		gotDebug = deps.DebugLogging
-
-		return nil
-	})
-
-	require.NoError(t, runDaemonEnsure(t.Context(), log.NewLogger(), map[string]string{}, true))
-	assert.True(t, gotDebug)
 }

@@ -109,9 +109,10 @@ cannot keep up.
 
 ## A2/A3/A4 — launchd plist knobs
 
-Added behind env vars so one binary can test several variants on CI:
+Added behind env vars so one binary could test several variants on CI:
 `BITRISE_DAEMON_SESSION_TYPE`, `BITRISE_DAEMON_DISABLE_APP_NAP`,
-`BITRISE_DAEMON_NO_PRESSURED_EXIT`.
+`BITRISE_DAEMON_NO_PRESSURED_EXIT`. Every arm lost to the wrapper, so the knobs
+were removed once the conclusion held; the numbers below are what they produced.
 
 Laptop mechanism check — does the job still load?
 

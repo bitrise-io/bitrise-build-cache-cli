@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -65,28 +64,6 @@ func resolvePath(p string) string {
 	return resolved
 }
 
-// Bootstrap registers services with the OS supervisor and starts them, resolving
-// the backend, paths and CLI binary itself. Install already starts what it
-// writes, so this is install-only by design.
-func Bootstrap(ctx context.Context, logger log.Logger, services []Service) (InstallResult, Paths, error) {
-	backend, dPaths, err := DefaultBackendAndPaths()
-	if err != nil {
-		return InstallResult{}, Paths{}, err
-	}
-
-	exe, err := ResolveSupervisedBinary(logger)
-	if err != nil {
-		return InstallResult{}, dPaths, err
-	}
-
-	result, err := Install(ctx, backend, dPaths, services, exe)
-	if err != nil {
-		return result, dPaths, fmt.Errorf("install daemon: %w", err)
-	}
-
-	return result, dPaths, nil
-}
-
 func DefaultBackendAndPaths() (Backend, Paths, error) {
 	backend, err := DefaultBackend()
 	if err != nil {
@@ -100,27 +77,3 @@ func DefaultBackendAndPaths() (Backend, Paths, error) {
 
 	return backend, dPaths, nil
 }
-
-// ServicesForTools reports which services activation should supervise, which
-// is none of them.
-//
-// The xcelerate proxy is measured: macOS applies CPU and I/O limits per
-// resource coalition and places a launchd job in one of its own, so the proxy
-// competes with the compiler it exists to serve and loses — 2314ms against
-// 6.3ms per cache operation on a 4-core machine, with no plist key able to
-// close it.
-//
-// The ccache helper is **not** measured as harmful. The same A/B found no
-// penalty for it (3.8ms supervised against 2.4ms lazy at p50, with better
-// tails supervised). It is unsupervised anyway, on every platform, for
-// consistency and out of caution: it has the same shape as the proxy, that
-// test ruled out a large effect rather than a small one, and one lifecycle is
-// easier to reason about than two. The same caution covers Linux, where
-// coalitions do not exist and nothing was measured at all.
-//
-// Both are started by whoever needs them — the xcodebuild wrapper for the
-// proxy, `activate c++` for the helper — which puts them in the build's
-// coalition. `daemon install` still supervises on request, and warns.
-//
-// See docs/daemon-latency.md.
-func ServicesForTools(_, _ bool) []Service { return nil }

@@ -17,14 +17,10 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
-
-//nolint:gochecknoglobals // test seam for daemon.Ensure
-var ensureFn = daemonpkg.Ensure
 
 const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
@@ -131,30 +127,10 @@ func Activate(
 
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
-	if err := runDaemonEnsure(ctx, logger, envs, config.DebugLogging); err != nil {
-		logger.Warnf("Could not ensure Xcode background service state: %s", err)
-	}
-
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
 	logger.TInfof(ProxyLifecycleNotice)
 	logger.TInfof(ProxyRestartNotice)
-
-	return nil
-}
-
-// runDaemonEnsure reconciles the xcelerate proxy service with the saved
-// config. Errors are downgraded by the caller so a supervisor hiccup
-// cannot fail an otherwise-successful activation.
-func runDaemonEnsure(ctx context.Context, logger log.Logger, envs map[string]string, debugLogging bool) error {
-	services := daemonpkg.ServicesForTools(true, false)
-
-	if err := ensureFn(ctx, logger, services, daemonpkg.EnsureDeps{
-		Envs:         envs,
-		DebugLogging: debugLogging,
-	}); err != nil {
-		return fmt.Errorf("daemon ensure: %w", err)
-	}
 
 	return nil
 }

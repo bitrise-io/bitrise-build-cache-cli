@@ -11,7 +11,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 	// remedy is to spawn one rather than to poke a service manager.
 	return d.socketDaemonCheck(
 		"xcelerate-proxy", toolconfig.Xcelerate, "xcode", d.xcelerateSocketPath(),
-		StartProxyFixer{}, StartProxyFixer{},
+		StartProxyFixer(), StartProxyFixer(),
 	)
 }
 

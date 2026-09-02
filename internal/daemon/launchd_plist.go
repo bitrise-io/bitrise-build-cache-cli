@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"os"
 	"strings"
 	"text/template"
 )
@@ -38,20 +37,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 	     Background timed out 128 of 620 cache operations while Interactive
 	     timed out none. On a 6-core machine both bands measure identically, so
 	     do not re-tune this from a microbenchmark or a larger VM. -->
-{{if .SessionType}}	<key>LimitLoadToSessionType</key>
-	<string>{{.SessionType}}</string>
-{{end}}{{if .DisableAppNap}}	<key>EnvironmentVariables</key>
-	<dict>
-		<key>NSAppSleepDisabled</key>
-		<string>1</string>
-	</dict>
-{{end}}{{if .NoPressuredExit}}	<key>EnablePressuredExit</key>
-	<false/>
-	<key>LowPriorityIO</key>
-	<false/>
-	<key>LowPriorityBackgroundIO</key>
-	<false/>
-{{end}}	<key>ThrottleInterval</key>
+	<key>ThrottleInterval</key>
 	<integer>10</integer>
 	<key>ProcessType</key>
 	<string>Interactive</string>
@@ -68,19 +54,7 @@ type plistData struct {
 	ProgramArguments []string
 	StdoutPath       string
 	StderrPath       string
-	SessionType      string
-	DisableAppNap    bool
-	NoPressuredExit  bool
 }
-
-// Experiment knobs for docs/daemon-latency.md. A launchd job serves cache
-// operations ~185x slower than a wrapper-forked one and these are the
-// candidates; they are env-gated so one binary can test several on CI.
-const (
-	EnvSessionType     = "BITRISE_DAEMON_SESSION_TYPE"
-	EnvDisableAppNap   = "BITRISE_DAEMON_DISABLE_APP_NAP"
-	EnvNoPressuredExit = "BITRISE_DAEMON_NO_PRESSURED_EXIT"
-)
 
 func GeneratePlist(svc Service, executable string, paths Paths) (string, error) {
 	if executable == "" {
@@ -101,9 +75,6 @@ func GeneratePlist(svc Service, executable string, paths Paths) (string, error) 
 		ProgramArguments: args,
 		StdoutPath:       paths.DaemonStdoutPath(svc.Name),
 		StderrPath:       paths.DaemonStderrPath(svc.Name),
-		SessionType:      os.Getenv(EnvSessionType),
-		DisableAppNap:    os.Getenv(EnvDisableAppNap) != "",
-		NoPressuredExit:  os.Getenv(EnvNoPressuredExit) != "",
 	}
 
 	var buf bytes.Buffer
