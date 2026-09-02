@@ -390,6 +390,12 @@ What that changes:
 - **Crash recovery**: `startProxy` already reclaims a proxy that holds the
   singleton lock but is not serving, so a dead proxy is repaired by the next
   build instead of by `KeepAlive`.
+- **`doctor`** still reports a proxy that is not serving, including after
+  `daemon uninstall`: the check probes the socket, not the supervisor, so it
+  does not care whether a service is registered. Its remedy changed — it now
+  spawns a detached proxy instead of running `daemon up`, which would have put
+  the user back on the slow path. The ccache helper keeps the `daemon up`
+  remedy, because it keeps its supervisor.
 - **Reboot**: the proxy does not come back on its own. Terminal builds restart
   it; Xcode.app users need the Run Script or one manual command per session.
 

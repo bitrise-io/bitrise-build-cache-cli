@@ -9,7 +9,13 @@ import (
 )
 
 func (d *Doctor) ccacheHelperCheck() Check {
-	return d.socketDaemonCheck("ccache-helper", toolconfig.Ccache, "c++", d.ccacheSocketPath())
+	// Still a supervised service — measured, and unlike the proxy it shows no
+	// penalty — so the service manager is the right remedy. See
+	// docs/daemon-latency.md.
+	return d.socketDaemonCheck(
+		"ccache-helper", toolconfig.Ccache, "c++", d.ccacheSocketPath(),
+		DaemonUpFixer{}, DaemonRestartFixer{},
+	)
 }
 
 // ccacheSocketPath prefers the endpoint activation recorded, for the same reason as

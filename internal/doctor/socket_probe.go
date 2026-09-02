@@ -15,7 +15,11 @@ import (
 // socketDaemonCheck returns a Check that reports "running" iff `socketPath`
 // exists and accepts a unix-domain connection within probeTimeout. The check
 // short-circuits to StateOK when the referenced tool isn't activated.
-func (d *Doctor) socketDaemonCheck(name string, tool toolconfig.Tool, toolLabel, socketPath string) Check {
+// socketDaemonCheck reports on a socket-served helper. It probes the socket
+// rather than the supervisor, so it still warns for a helper that is started on
+// demand instead of being registered as a service — which is how the xcelerate
+// proxy works on macOS. notRunningFixer decides what to offer as the remedy.
+func (d *Doctor) socketDaemonCheck(name string, tool toolconfig.Tool, toolLabel, socketPath string, notRunningFixer, stuckFixer Fixer) Check {
 	return Check{
 		Name: name,
 		Diagnose: func(ctx context.Context) Result {
@@ -29,7 +33,7 @@ func (d *Doctor) socketDaemonCheck(name string, tool toolconfig.Tool, toolLabel,
 						State:   StateWarn,
 						Detail:  "not running (no socket file)",
 						Fixable: true,
-						Fixer:   DaemonUpFixer{},
+						Fixer:   notRunningFixer,
 					}
 				}
 
@@ -45,7 +49,7 @@ func (d *Doctor) socketDaemonCheck(name string, tool toolconfig.Tool, toolLabel,
 					State:   StateWarn,
 					Detail:  fmt.Sprintf("stuck: socket %s present but not accepting connections (%v) — fixable", socketPath, dialErr),
 					Fixable: true,
-					Fixer:   DaemonRestartFixer{},
+					Fixer:   stuckFixer,
 				}
 			}
 			_ = conn.Close()

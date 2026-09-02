@@ -223,7 +223,11 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
-func TestXcelerateProxyCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
+// The proxy is started on demand rather than supervised, so doctor probes the
+// socket and not the service manager. That is what keeps this warning working
+// after `daemon uninstall`, and it is the only signal that the cache is not
+// serving. See docs/daemon-latency.md.
+func TestXcelerateProxyCheck_warnsWhenNotRunning(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
@@ -667,14 +671,17 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 
 // ──────────────────────────── daemon-up + update fixes ────────────────────────────
 
-func TestXcelerateProxyCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
+// The proxy is started on demand, never supervised, so the remedy must spawn
+// one rather than poke a service manager. See docs/daemon-latency.md.
+func TestXcelerateProxyCheck_fixerStartsAProxyWhenNoSocket(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	require.IsType(t, DaemonUpFixer{}, res.Fixer)
+	assert.Equal(t, StateWarn, res.State, "a missing proxy must still warn")
+	require.IsType(t, StartProxyFixer{}, res.Fixer)
 }
 
 func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
@@ -748,7 +755,7 @@ func TestCLIVersionCheck_fixerIsUpdateFixer(t *testing.T) {
 	require.IsType(t, UpdateFixer{}, res.Fixer)
 }
 
-func TestXcelerateProxyCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
+func TestXcelerateProxyCheck_stuckSocketFixerStartsAProxy(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "doctor-xcelerate-stuck-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
@@ -765,7 +772,7 @@ func TestXcelerateProxyCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "stuck")
-	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
+	require.IsType(t, StartProxyFixer{}, res.Fixer)
 }
 
 func TestDaemonUpFix_propagatesError(t *testing.T) {
