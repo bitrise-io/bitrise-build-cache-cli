@@ -40,8 +40,8 @@ func NewDeactivator(params DeactivatorParams) *Deactivator {
 	}
 }
 
-func (d *Deactivator) Deactivate(_ context.Context) error {
-	if err := xcelerate.Deactivate(d.logger, xcelerate.DeactivateParams{
+func (d *Deactivator) Deactivate(ctx context.Context) error {
+	if err := xcelerate.Deactivate(ctx, d.logger, xcelerate.DeactivateParams{
 		Envs:   d.envs,
 		DryRun: d.dryRun,
 	}); err != nil {
