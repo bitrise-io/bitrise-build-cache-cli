@@ -651,14 +651,22 @@ func clearTargets(logger log.Logger, targets []store.Store) error {
 }
 
 // nolint:gochecknoglobals
+var (
+	tokenWorkspace string
+)
+
+// nolint:gochecknoglobals
 var authTokenCmd = &cobra.Command{
 	Use:           "token",
 	Short:         "Resolve and print the Bitrise Build Cache auth token to stdout",
-	Long:          "Resolves the auth token via the same precedence chain as the rest of the CLI (env vars → OS keychain → multiplatform analytics config) and prints it to stdout. Intended for build-time consumers (Gradle init script, future Bazel workspace_status_command) that need the resolved token without baking it into a config file. On failure exits non-zero with a short one-line message on stderr (no cobra Error: prefix) — callers framing the wrapper script own the wording.",
+	Long:          "Resolves the auth token via the same precedence chain as the rest of the CLI (env vars → OS keychain → multiplatform analytics config) and prints it to stdout. Intended for build-time consumers (Gradle init script, future Bazel workspace_status_command) that need the resolved token without baking it into a config file. On failure exits non-zero with a short one-line message on stderr (no cobra Error: prefix) — callers framing the wrapper script own the wording.\n\n--workspace <slug> asks for a per-workspace credential from the store (seeded by repeat `auth set` runs with different workspace IDs). Unknown slug falls back to the machine-wide token with a warning on stderr.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cred, origin, err := live.Default(nil).Resolve(cmd.Context(), utils.AllEnvs())
+		logger := log.NewLogger(log.WithOutput(cmd.ErrOrStderr()), log.WithDebugLog(common.IsDebugLogMode))
+		resolver := live.Default(logger)
+
+		cred, origin, err := resolver.ResolveForWorkspace(cmd.Context(), utils.AllEnvs(), strings.TrimSpace(tokenWorkspace))
 		if err != nil {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 
@@ -759,6 +767,8 @@ func init() {
 	_ = authSetCmd.MarkFlagRequired("workspace-id")
 
 	authClearCmd.Flags().StringVar(&clearStorage, "storage", "", "Which backend to clear: keychain | file | auto (default auto clears both).")
+
+	authTokenCmd.Flags().StringVar(&tokenWorkspace, "workspace", "", "Prefer the credential stored under this workspace slug (falls back to the machine-wide token with a warning if the slug is unknown).")
 
 	authUsernameCmd.Flags().StringVar(&usernameSetValue, "set", "", "Persist this display name into the store holding your credentials (token/workspace untouched). Empty clears the stored override. Omit the flag to print the resolved name instead.")
 	authUsernameCmd.Flags().BoolVar(&usernameJSONOut, "json", false, "Print the resolved name as JSON {username, source} instead of a bare line. Ignored with --set.")

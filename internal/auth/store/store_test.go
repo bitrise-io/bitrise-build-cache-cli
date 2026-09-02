@@ -48,6 +48,17 @@ func TestKeychainStore_LoadNotFoundMapsToErrNotFound(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
+func TestKeychainStore_RoundTripStampsSchemaCurrent(t *testing.T) {
+	keyring.MockInit()
+
+	s := NewKeychain()
+	require.NoError(t, s.Save(auth.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
+
+	got, err := s.Load()
+	require.NoError(t, err)
+	assert.Equal(t, auth.SchemaVersionCurrent, got.SchemaVersion, "writer must stamp the current schema tag")
+}
+
 func TestSaveExclusive_ClearsOtherBackend(t *testing.T) {
 	keyring.MockInit()
 	home := t.TempDir()
@@ -118,7 +129,10 @@ func TestFileStore_RoundTrip(t *testing.T) {
 
 	got, err := s.Load()
 	require.NoError(t, err)
+	// Save stamps the current schema tag; ignore it from the round-trip diff.
+	want.SchemaVersion = got.SchemaVersion
 	assert.Equal(t, want, got)
+	assert.Equal(t, auth.SchemaVersionCurrent, got.SchemaVersion, "writer must stamp the current schema tag")
 
 	require.NoError(t, s.Clear())
 	_, err = s.Load()
@@ -168,5 +182,78 @@ func TestSetWorkspaceID_withNothingStoredErrors(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	_, err := SetWorkspaceID(false, "ws-slug")
+	require.Error(t, err)
+}
+
+// A schema-1 blob has no `schema` key; the reader must still see it as the
+// machine-wide credential, and the next Save must upgrade it to the current tag.
+func TestFileStore_ReadsSchemaOneBlobAndUpgradesOnWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir := filepath.Join(home, ".bitrise", "analytics", "multiplatform")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+
+	// Old shape: no `schema`, no `workspaces`. A CLI written against schema 1
+	// would have produced exactly this.
+	legacyBlob := `{
+  "authConfig": {"AuthToken":"legacy-tok","WorkspaceID":"legacy-ws","IsJWT":false},
+  "credentials": {"auth_token":"legacy-tok","workspace_id":"legacy-ws","username":"erin"}
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(legacyBlob), 0o600))
+
+	s := NewFile()
+	got, err := s.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-tok", got.AuthToken)
+	assert.Equal(t, "legacy-ws", got.WorkspaceID)
+	assert.Equal(t, "erin", got.Username)
+	assert.Zero(t, got.SchemaVersion, "reader must treat absent schema key as v1, not the current version")
+	assert.Nil(t, got.Workspaces, "schema-1 blob has no per-workspace map")
+
+	// Round-trip: save without touching the fields.
+	require.NoError(t, s.Save(got))
+
+	after, err := s.Load()
+	require.NoError(t, err)
+	assert.Equal(t, auth.SchemaVersionCurrent, after.SchemaVersion, "the first write after read must upgrade the tag")
+	assert.Equal(t, "legacy-tok", after.AuthToken, "credentials must survive the upgrade")
+	assert.Equal(t, "legacy-ws", after.WorkspaceID)
+	assert.Equal(t, "erin", after.Username)
+}
+
+func TestSaveWorkspaceToken_roundTripInFileStore(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	target := NewFile()
+	require.NoError(t, target.Save(auth.TokenSet{AuthToken: "machine-tok", WorkspaceID: "machine-ws"}))
+
+	require.NoError(t, SaveWorkspaceToken(target, "acme", auth.TokenSet{AuthToken: "acme-tok", WorkspaceID: "acme"}))
+	require.NoError(t, SaveWorkspaceToken(target, "widgets", auth.TokenSet{AuthToken: "widgets-tok", WorkspaceID: "widgets"}))
+
+	got, err := target.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "machine-tok", got.AuthToken, "machine-wide fields must survive per-workspace writes")
+	assert.Equal(t, "machine-ws", got.WorkspaceID)
+	assert.Equal(t, auth.SchemaVersionCurrent, got.SchemaVersion)
+
+	acme, ok := got.ForWorkspace("acme")
+	require.True(t, ok)
+	assert.Equal(t, "acme-tok", acme.AuthToken)
+
+	widgets, ok := got.ForWorkspace("widgets")
+	require.True(t, ok)
+	assert.Equal(t, "widgets-tok", widgets.AuthToken)
+
+	_, ok = got.ForWorkspace("missing")
+	assert.False(t, ok, "unknown slug is a miss, not a zero-value hit")
+}
+
+func TestSaveWorkspaceToken_emptySlugErrors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	err := SaveWorkspaceToken(NewFile(), "  ", auth.TokenSet{AuthToken: "t"})
 	require.Error(t, err)
 }

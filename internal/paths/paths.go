@@ -74,6 +74,8 @@ const (
 
 	authRefreshLockFilename = "auth-refresh.lock"
 
+	authWorkspaceLockFilename = "auth-workspace.lock"
+
 	bazelCredHelperWarnFilename = "bazel-credhelper-warned" //nolint:gosec // marker filename, not a credential
 
 	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
@@ -140,6 +142,10 @@ func (p Paths) StateFile(name string) string {
 
 func (p Paths) AuthRefreshLockFile() string {
 	return p.StateFile(authRefreshLockFilename)
+}
+
+func (p Paths) AuthWorkspaceLockFile() string {
+	return p.StateFile(authWorkspaceLockFilename)
 }
 
 func (p Paths) BazelCredHelperWarnFile() string {

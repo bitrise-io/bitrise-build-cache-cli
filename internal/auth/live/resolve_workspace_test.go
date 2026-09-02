@@ -4,6 +4,7 @@ package live
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,3 +77,89 @@ func TestResolveWithNothingStoredReportsMissingEnv(t *testing.T) {
 	_, _, err := r.Resolve(context.Background(), map[string]string{})
 	require.ErrorIs(t, err, auth.ErrTokenNotProvided)
 }
+
+func machineTokenWithWorkspaces() auth.TokenSet {
+	return auth.TokenSet{
+		AuthToken:   "machine-tok",
+		WorkspaceID: "machine-ws",
+		Workspaces: map[string]auth.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}
+}
+
+func TestResolveForWorkspace_picksThePerWorkspaceEntry(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, origin, err := r.ResolveForWorkspace(context.Background(), map[string]string{}, "acme")
+	require.NoError(t, err)
+	assert.Equal(t, "acme-tok", cred.Token)
+	assert.Equal(t, "acme", cred.WorkspaceID)
+	assert.Equal(t, auth.BackendKeychain, origin.Backend)
+}
+
+func TestResolveForWorkspace_emptySlugMatchesResolve(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, _, err := r.ResolveForWorkspace(context.Background(), map[string]string{}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "machine-tok", cred.Token, "empty slug must not shadow the machine-wide credential")
+}
+
+// Unknown slug warns and falls back rather than blocking the build.
+func TestResolveForWorkspace_unknownSlugFallsBackWithWarn(t *testing.T) {
+	logger := &captureLogger{}
+	r := &Resolver{
+		Logger:         logger,
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, _, err := r.ResolveForWorkspace(context.Background(), map[string]string{}, "missing")
+	require.NoError(t, err)
+	assert.Equal(t, "machine-tok", cred.Token, "unknown workspace must fall back to the machine-wide credential")
+	require.NotEmpty(t, logger.warns, "unknown workspace must emit a warning")
+	assert.Contains(t, logger.warns[0], "missing")
+}
+
+// The store lookup is not gated on where Resolve got its answer: an env-var
+// machine-wide token still loses to a per-workspace entry when the caller asks
+// for that workspace by slug.
+func TestResolveForWorkspace_perWorkspaceEntryWinsOverEnvMachineWide(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, origin, err := r.ResolveForWorkspace(context.Background(), envVars(), "acme")
+	require.NoError(t, err)
+	assert.Equal(t, "acme-tok", cred.Token, "per-workspace entry must win over the env-var machine-wide token")
+	assert.Equal(t, "acme", cred.WorkspaceID)
+	assert.Equal(t, auth.BackendKeychain, origin.Backend, "origin follows the store the entry came from, not the env")
+}
+
+type captureLogger struct {
+	warns []string
+	debug []string
+}
+
+func (c *captureLogger) Printf(string, ...any)             {}
+func (c *captureLogger) Println()                          {}
+func (c *captureLogger) Debugf(format string, args ...any) { c.debug = append(c.debug, fmt.Sprintf(format, args...)) }
+func (c *captureLogger) Infof(string, ...any)              {}
+func (c *captureLogger) Donef(string, ...any)              {}
+func (c *captureLogger) Errorf(string, ...any)             {}
+func (c *captureLogger) Warnf(format string, args ...any)  { c.warns = append(c.warns, fmt.Sprintf(format, args...)) }
+func (c *captureLogger) TDebugf(string, ...any)            {}
+func (c *captureLogger) TInfof(string, ...any)             {}
+func (c *captureLogger) TDonef(string, ...any)             {}
+func (c *captureLogger) TErrorf(string, ...any)            {}
+func (c *captureLogger) TWarnf(format string, args ...any) { c.warns = append(c.warns, fmt.Sprintf(format, args...)) }
+func (c *captureLogger) TPrintf(string, ...any)            {}
+func (c *captureLogger) EnableDebugLog(bool)               {}
