@@ -86,9 +86,9 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 
 	grpcServer := grpc.NewServer(
 		// Unbounded by default: gRPC spawns a goroutine per stream, and the
-		// compilation plugin opens hundreds at once. When the proxy is
-		// CPU-starved each one lives ~185x longer, so the runtime grows to 123
-		// OS threads and 1442 fds against 16 and 33 for a wrapper-forked proxy.
+		// compilation plugin opens hundreds at once. A CPU-starved proxy holds
+		// each one far longer, so threads and fds grow with service time. See
+		// docs/daemon-latency.md.
 		grpc.MaxConcurrentStreams(maxConcurrentStreams),
 		grpc.NumStreamWorkers(streamWorkers()),
 		grpc.UnaryInterceptor(func(

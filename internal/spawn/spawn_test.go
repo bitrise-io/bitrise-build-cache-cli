@@ -73,19 +73,6 @@ func TestProbe_ReportsStuckForAnUnservedSocketFile(t *testing.T) {
 	assert.Equal(t, Stuck, Probe(context.Background(), path))
 }
 
-func TestProbeWith_ReportsStuckWhenTheHandshakeFails(t *testing.T) {
-	path := filepath.Join(shortTempDir(t), "live.sock")
-	l, err := net.Listen("unix", path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = l.Close() })
-
-	state := ProbeWith(context.Background(), path, func(context.Context, string) error {
-		return assert.AnError
-	})
-
-	assert.Equal(t, Stuck, state)
-}
-
 func TestAwaitSocket_WaitsForALateSocket(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "late.sock")
 

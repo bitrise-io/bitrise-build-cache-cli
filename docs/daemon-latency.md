@@ -433,3 +433,40 @@ a small one.
 
 D1 (bounded gRPC concurrency) ships alongside on its own merits: 34% faster and
 it bounds the thread and fd growth regardless of how the proxy is started.
+
+## Reference numbers
+
+Collected here so the code and the CI scripts can point at one place instead of
+carrying measurements in comments that go stale silently.
+
+### Thread and fd growth (why D1 bounds gRPC concurrency)
+
+gRPC serves one goroutine per stream and the compilation plugin opens hundreds
+at once, so the runtime grows with service time rather than with request rate —
+Little's Law. A CPU-starved proxy held each stream ~185x longer:
+
+| proxy | OS threads | fds |
+|---|---|---|
+| wrapper-forked | 16 | 33 |
+| supervised, CPU-starved | 123 | 1442 |
+
+### Why the CI gate counts timeouts and not percentiles
+
+`e2e-proxy-cache-macos` fails on any `DeadlineExceeded` and ignores the latency
+percentiles that `scripts/xcelerate_op_latency.sh` reports. Against the local
+fake backend the percentiles do not separate a throttled proxy from a healthy
+one — they rank backwards, because loopback latency is dominated by the build:
+
+| arm | p90 | max | timeouts |
+|---|---|---|---|
+| healthy (`Interactive`) | 483 ms | ~998 ms | **0** |
+| throttled (`Background`) | 393 ms | ~998 ms | **38** |
+
+Percentiles only separate the two against the real backend (1931 ms against
+5637 ms), which the gate deliberately does not use — no credentials, no
+cross-DC variance, no probe blobs in a real workspace. The real backend
+produced 128 timeouts where loopback produced 38, so loopback is the weaker
+signal but still a decisive one.
+
+Re-run that control before changing the harness: a fake backend that has become
+too fast would leave the gate green on a regression.

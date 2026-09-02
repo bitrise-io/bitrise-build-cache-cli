@@ -31,9 +31,9 @@ sleep 2
 # no cross-DC variance, and no probe blobs written into a real workspace.
 #
 # Verified to still catch the regression rather than merely being cheaper: a
-# deliberately throttled proxy recorded 38 timeouts here against 0 unthrottled.
-# Loopback is fast enough that this was in doubt — the real backend produced 128
-# — so re-run that control before trusting any change here.
+# deliberately throttled proxy times out here and an unthrottled one does not.
+# Loopback is fast enough that this was in doubt, so re-run that control before
+# trusting any change here. Numbers in docs/daemon-latency.md.
 ENDPOINT_ARGS=""
 if [[ "${PROXY_E2E_FAKE_BACKEND:-0}" == "1" ]]; then
     REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

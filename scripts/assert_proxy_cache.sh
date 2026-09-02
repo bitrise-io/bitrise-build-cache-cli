@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 #
-# Fails if the launchd-supervised proxy timed out on any cache operation.
+# Fails if the proxy timed out on any cache operation.
 #
 #   ./scripts/assert_proxy_cache.sh <output-dir>
 #
 # A healthy proxy serves the whole build without a single DeadlineExceeded, so
-# the threshold is zero. The regression put 30-60% of operations there.
+# the threshold is zero.
 #
-# The count, not a latency percentile. Against the local fake backend the two
-# configurations are indistinguishable by latency and in fact rank backwards —
-# measured p90 was 483ms on the healthy Interactive proxy against 393ms on a
-# throttled Background one, both topping out near 998ms — while timeouts
-# separated cleanly at 0 against 38. Latency percentiles only tell the two apart
-# against the real backend (1931ms vs 5637ms), which this deliberately does not
-# use. OPLAT is reported for diagnosis; do not gate on it.
+# Gate on the count, never a latency percentile: against the local fake backend
+# the healthy and throttled proxies are indistinguishable by percentile and in
+# fact rank backwards, while the timeout count separates them cleanly. OPLAT is
+# reported for diagnosis only. Numbers in docs/daemon-latency.md.
 
 set -uo pipefail
 

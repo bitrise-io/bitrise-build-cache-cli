@@ -16,7 +16,7 @@ func (d *Doctor) ccacheHelperCheck() Check {
 		ToolLabel:  "c++",
 		SocketPath: d.ccacheSocketPath(),
 		Fixer:      StartCcacheHelperFixer(),
-		Handshake:  ccacheipc.SendHealthCheck,
+		Probe:      ccacheipc.ProbeSocket,
 	})
 }
 

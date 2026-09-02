@@ -14,8 +14,8 @@ type socketCheckParams struct {
 	SocketPath string
 	Fixer      Fixer
 
-	// Handshake replaces the raw dial, for a service that logs a failed one.
-	Handshake func(context.Context, string) error
+	// Probe overrides the plain socket dial; nil uses it.
+	Probe func(context.Context, string) spawn.SocketState
 }
 
 // socketCheck reports a service as running iff its socket answers.
@@ -27,10 +27,12 @@ func (d *Doctor) socketCheck(p socketCheckParams) Check {
 				return Result{State: StateOK, Detail: "skipped (" + p.ToolLabel + " not activated)"}
 			}
 
-			state := spawn.Probe(ctx, p.SocketPath)
-			if p.Handshake != nil {
-				state = spawn.ProbeWith(ctx, p.SocketPath, p.Handshake)
+			probe := p.Probe
+			if probe == nil {
+				probe = spawn.Probe
 			}
+
+			state := probe(ctx, p.SocketPath)
 
 			switch state {
 			case spawn.Stopped:
