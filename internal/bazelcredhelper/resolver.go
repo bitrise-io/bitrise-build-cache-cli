@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // Pulls the cache hint inside oauth's refresh window. MUST stay below
@@ -23,21 +24,21 @@ const staleCacheHint = time.Minute
 // Rate-limits the warning across the many helper processes one build spawns.
 const warnCooldown = 10 * time.Minute
 
-// warn must not be stdout.
+// warn must not be stdout — Bazel's credential-helper protocol writes to stdout.
 func NewResolver(envs map[string]string, warn io.Writer) Resolver {
 	// Logger stays nil: go-utils' logger writes to stdout, which is the protocol channel.
-	return newResolver(live.Default(nil), envs, warn)
+	return newResolver(live.Default(nil), envs, warn, discoverFromCWD(utils.DefaultOsProxy{}, warn))
 }
 
 // newResolver holds Bazel's failure policy and nothing else; resolution and
 // refresh belong to live.
-func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer) Resolver {
+func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer, workspaceSlug string) Resolver {
 	// FailFast so a dead login is reported here rather than silently served: Bazel
 	// treats a short expiry as a soft cache miss, which is the graceful degradation.
 	resolver.OnRefreshFailure = live.FailFast
 
 	return func(ctx context.Context) (Credential, error) {
-		cred, origin, err := resolver.Resolve(ctx, envs)
+		cred, origin, err := resolver.ResolveForWorkspace(ctx, envs, workspaceSlug)
 		switch {
 		case err != nil && !origin.Resolved():
 			return Credential{}, fmt.Errorf("resolve stored credentials: %w", err)
