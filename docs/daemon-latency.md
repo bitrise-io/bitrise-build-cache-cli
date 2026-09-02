@@ -45,7 +45,7 @@ Two things this rules out:
 - **Pool saturation.** The launchd proxy's kv channel pool was *emptier*
   (0-10 of 16, mostly 0) than the wrapper's (5-12 of 16). It is not queueing on
   channels.
-- **The ccache helper.** `daemon install` starts it too, but its log is 216
+- **The ccache helper.** Supervision started it too, but its log is 216
   bytes of "Helper idle".
 
 ## Why the e2e gate does not catch this
@@ -112,7 +112,8 @@ cannot keep up.
 Added behind env vars so one binary could test several variants on CI:
 `BITRISE_DAEMON_SESSION_TYPE`, `BITRISE_DAEMON_DISABLE_APP_NAP`,
 `BITRISE_DAEMON_NO_PRESSURED_EXIT`. Every arm lost to the wrapper, so the knobs
-were removed once the conclusion held; the numbers below are what they produced.
+went with the rest of the supervision code; the numbers below are what they
+produced.
 
 Laptop mechanism check — does the job still load?
 
@@ -372,14 +373,18 @@ problem.
 On macOS, activation no longer supervises anything: neither `activate xcode`
 nor `activate c++` registers a LaunchAgent.
 
-**Elsewhere the supervisor stays.** Coalitions are a macOS concept and the
-penalty has not been shown for systemd, so the Linux path is unchanged — there
-is no evidence to act on there. Each service is started by whoever needs it — the xcodebuild
-wrapper for the proxy, `activate c++` for the ccache helper — which puts it in
-the build's coalition.
+**Nothing is supervised, on any platform.** Each service is started by whoever
+needs it — the xcodebuild wrapper for the proxy, `activate c++` for the ccache
+helper — which puts it in the build's coalition. The `daemon` subcommands and
+the package behind them are gone: keeping a supervision path nobody should take
+meant carrying a launchd and a systemd backend to serve it.
 
-`daemon install` and `daemon up` still work for anyone who wants supervision,
-and now warn that it costs performance.
+Linux is included for consistency and caution rather than measurement.
+Coalitions are a macOS concept and no penalty was ever shown for systemd.
+
+A CLI at or below v3.6.9 may have left a launch agent or unit on disk, and it
+would keep restarting a supervised service after the upgrade. The wrapper,
+activation, `doctor --fix` and `update` retire any they find.
 
 What that changes:
 
@@ -391,12 +396,9 @@ What that changes:
 - **Crash recovery**: `startProxy` already reclaims a proxy that holds the
   singleton lock but is not serving, so a dead proxy is repaired by the next
   build instead of by `KeepAlive`.
-- **`doctor`** still reports a proxy that is not serving, including after
-  `daemon uninstall`: the check probes the socket, not the supervisor, so it
-  does not care whether a service is registered. Its remedy changed — it now
-  spawns a detached proxy instead of running `daemon up`, which would have put
-  the user back on the slow path. The ccache helper keeps the `daemon up`
-  remedy, because it keeps its supervisor.
+- **`doctor`** still reports a service that is not serving: the check probes the
+  socket, so it does not care whether anything is registered. Its remedy is to
+  spawn a detached service, for both the proxy and the ccache helper.
 - **Reboot**: the proxy does not come back on its own. Terminal builds restart
   it; Xcode.app users need the Run Script or one manual command per session.
 
@@ -421,7 +423,8 @@ and the behaviour did not.
 The helper is nevertheless unsupervised, as a deliberate choice rather than a
 finding: this test ruled out a large effect, not a small one, and running both
 services through one lifecycle is simpler than justifying two. If the helper
-ever needs a supervisor back, this measurement is the argument for it.
+ever needs a supervisor back, this measurement is the argument for it — and the
+deleted code is in this branch's history.
 
 Why the difference is not established. Plausibly the helper does far less work
 per operation, and 960 operations over a short compile is a much lighter load
