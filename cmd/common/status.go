@@ -49,6 +49,11 @@ type statusExitError struct{ code int }
 
 func (e *statusExitError) Error() string { return fmt.Sprintf("status exit code %d", e.code) }
 
+func (e *statusExitError) ExitCode() int { return e.code }
+
+// NewExitError returns an error that Execute translates into os.Exit(code).
+func NewExitError(code int) error { return &statusExitError{code: code} }
+
 // HandleStatusExit converts a statusExitError returned by Execute into an
 // os.Exit code. Other errors fall through to the caller.
 func HandleStatusExit(err error) (int, bool) {
