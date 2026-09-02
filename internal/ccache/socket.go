@@ -13,6 +13,11 @@ const (
 	awaitReadyInterval = 100 * time.Millisecond
 )
 
+// Test seam for the detached spawn.
+//
+//nolint:gochecknoglobals
+var detach = spawn.Detached
+
 // Socket provides IPC communication and lifecycle management for the ccache
 // storage helper at a given Unix socket path.
 type Socket struct {
@@ -64,7 +69,7 @@ func (s *Socket) Start(opts ...StartOption) error {
 		svc = svc.WithArgs("--invocation-id=" + cfg.invocationID)
 	}
 
-	if _, err := spawn.Detached(svc); err != nil {
+	if _, err := detach(svc); err != nil {
 		return fmt.Errorf("start storage helper process: %w", err)
 	}
 

@@ -1051,10 +1051,12 @@ func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
 	return out
 }
 
-const (
-	proxyReadyBudget   = 30 * time.Second
-	proxyReadyInterval = 500 * time.Millisecond
-)
+const proxyReadyInterval = 500 * time.Millisecond
+
+// Overridden in tests so a spawn that never binds does not cost the full budget.
+//
+//nolint:gochecknoglobals
+var proxyReadyBudget = 30 * time.Second
 
 func awaitProxySocket(ctx context.Context, socketPath string, budget time.Duration) bool {
 	return spawn.AwaitSocket(ctx, socketPath, budget, proxyReadyInterval)
@@ -1097,7 +1099,7 @@ func startProxy(
 		return fmt.Errorf(errFmtExecutable, err)
 	}
 
-	cmd := commandFunc(context.Background(), exe, xcelerateCommand.Use, xcelerateProxyCmd.Use)
+	cmd := commandFunc(context.Background(), exe, spawn.XcelerateProxy().Args...)
 
 	// Detach into new process group so we can signal the whole group.
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{

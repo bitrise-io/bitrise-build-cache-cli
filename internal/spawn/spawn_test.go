@@ -144,3 +144,14 @@ func TestRemoveLegacySupervision_DeletesALeftoverConfig(t *testing.T) {
 	assert.True(t, RemoveLegacySupervision(context.Background(), p, XcelerateProxy()))
 	assert.NoFileExists(t, plist)
 }
+
+// This is the guard, not a quirk: Detached re-execs os.Executable(), which
+// under `go test` is the test binary. Without the refusal a single call reruns
+// the package, which calls again — the fork bomb that froze a laptop while this
+// branch was being written.
+func TestDetached_RefusesToReExecTheTestBinary(t *testing.T) {
+	pid, err := Detached(XcelerateProxy())
+
+	require.ErrorIs(t, err, ErrUnderTest)
+	assert.Zero(t, pid)
+}

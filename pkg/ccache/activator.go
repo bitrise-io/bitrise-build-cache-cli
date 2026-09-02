@@ -158,9 +158,17 @@ func (a *Activator) Activate(ctx context.Context) error {
 	return nil
 }
 
-const (
-	helperReadyBudget   = 5 * time.Second
-	helperReadyInterval = 100 * time.Millisecond
+const helperReadyInterval = 100 * time.Millisecond
+
+// Test seams. spawn.Detached re-execs this binary, which under `go test` is the
+// test binary itself, so a test must never reach the real starter.
+//
+//nolint:gochecknoglobals
+var (
+	helperReadyBudget = 5 * time.Second
+	startHelperFn     = func(socketPath string, opts ...ccacheipc.StartOption) error {
+		return ccacheipc.NewSocket(socketPath).Start(opts...)
+	}
 )
 
 // ensureHelperServing starts the storage helper if nothing answers its socket.
@@ -185,7 +193,7 @@ func (a *Activator) ensureHelperServing(ctx context.Context, socketPath string) 
 		opts = append(opts, ccacheipc.WithInvocationID(invID))
 	}
 
-	if err := ccacheipc.NewSocket(socketPath).Start(opts...); err != nil {
+	if err := startHelperFn(socketPath, opts...); err != nil {
 		a.logger.Warnf("Could not start the ccache storage helper: %s", err)
 
 		return

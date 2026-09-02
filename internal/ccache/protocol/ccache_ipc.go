@@ -10,13 +10,13 @@ const (
 	ProtocolVersion = 0x01
 	Cap0            = 0x00 // get/put/remove/stop operations
 
-	RequestGet              = 0x00
-	RequestPut              = 0x01
-	RequestRemove           = 0x02
-	RequestStop             = 0x03
-	RequestSetInvocationID  = 0xB1
-	RequestGetSessionStats  = 0xB2
-	RequestHealthCheck      = 0xB3
+	RequestGet             = 0x00
+	RequestPut             = 0x01
+	RequestRemove          = 0x02
+	RequestStop            = 0x03
+	RequestSetInvocationID = 0xB1
+	RequestGetSessionStats = 0xB2
+	RequestHealthCheck     = 0xB3
 
 	ResponseOK   = 0x00
 	ResponseNoop = 0x01
