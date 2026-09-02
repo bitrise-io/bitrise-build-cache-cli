@@ -142,3 +142,69 @@ func TestDetached_RefusesToReExecTheTestBinary(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnderTest)
 	assert.Zero(t, pid)
 }
+
+// A crashed service leaves its socket file behind, so the stat cannot tell it
+// from a live one — the handshake is what does. Without this the service would
+// be reported healthy while every cache operation failed for the whole build.
+func TestProbeWith_ConsultsTheHandshakeForAStaleSocketFile(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "stale.sock")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+
+	called := false
+	state := ProbeWith(context.Background(), path, func(context.Context, string) error {
+		called = true
+
+		return assert.AnError
+	})
+
+	assert.True(t, called, "a socket file that exists still has to be handshaked")
+	assert.Equal(t, Stuck, state)
+}
+
+// Accepting a connection is not the same as answering: the handshake is the
+// only thing that separates a live service from a listener that never replies.
+func TestProbeWith_ReportsStuckWhenTheHandshakeFails(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "mute.sock")
+	l, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+
+	state := ProbeWith(context.Background(), path, func(context.Context, string) error {
+		return assert.AnError
+	})
+
+	assert.Equal(t, Stuck, state)
+}
+
+func TestProbeWith_ReportsRunningWhenTheHandshakeSucceeds(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "live.sock")
+	l, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+
+	state := ProbeWith(context.Background(), path, func(context.Context, string) error { return nil })
+
+	assert.Equal(t, Running, state)
+}
+
+// The handshake has to be honoured on every poll, or a service that only comes
+// up late is reported ready as soon as its socket file appears.
+func TestAwaitSocketWith_UsesTheHandshake(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "late.sock")
+	l, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+
+	calls := 0
+	ok := AwaitSocketWith(context.Background(), path, func(context.Context, string) error {
+		calls++
+		if calls < 2 {
+			return assert.AnError
+		}
+
+		return nil
+	}, 3*time.Second, 20*time.Millisecond)
+
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, calls, 2, "a failed handshake must not end the wait")
+}
