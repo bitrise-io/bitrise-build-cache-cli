@@ -9,27 +9,74 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 // bake the token literal instead — the same token is already in env vars on the
 // CI VM, and embedding it keeps the init.kts byte-stable across configuration-cache
 // save/restore VMs.
-abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
+abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, BitriseAuthTokenSource.Params> {
+    interface Params : org.gradle.api.provider.ValueSourceParameters {
+        val workspace: org.gradle.api.provider.Property<String>
+    }
     @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
     override fun obtain(): String {
         val out = java.io.ByteArrayOutputStream()
         val err = java.io.ByteArrayOutputStream()
+        val args = mutableListOf("{{ .Common.CLIPath }}", "auth", "token")
+        val ws = parameters.workspace.getOrElse("")
+        if (ws.isNotEmpty()) args.add("--workspace=$ws")
         val result = execOps.exec {
-            commandLine("{{ .Common.CLIPath }}", "auth", "token")
+            commandLine(args)
             standardOutput = out
             errorOutput = err
             isIgnoreExitValue = true
         }
         if (result.exitValue != 0) {
-            System.err.println("bitrise-build-cache auth token exited ${result.exitValue}: ${err.toString().trim()}")
+            org.gradle.api.logging.Logging.getLogger("bitrise-build-cache").warn("bitrise-build-cache auth token exited ${result.exitValue}: ${err.toString().trim()}")
             return ""
         }
         return out.toString().trim()
     }
 }
 
-fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
-    of(BitriseAuthTokenSource::class.java) {}.get()
+fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(workspace: String = ""): String =
+    of(BitriseAuthTokenSource::class.java) { parameters.workspace.set(workspace) }.get()
+{{ end -}}
+{{- if and (not .Common.CIProvider) (or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled")) -}}
+
+// Empty on exit 2 (no marker) or exit 1 (parse error, logged before fallback).
+abstract class BitriseWorkspaceForRootSource : org.gradle.api.provider.ValueSource<String, BitriseWorkspaceForRootSource.Params> {
+    interface Params : org.gradle.api.provider.ValueSourceParameters {
+        val rootDir: org.gradle.api.provider.Property<String>
+        // markerContents is unused at obtain() time; declaring it as a parameter
+        // wires the marker file into the ValueSource's configuration-cache inputs
+        // so edits invalidate the cached result on the next build.
+        val markerContents: org.gradle.api.provider.Property<String>
+    }
+    @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
+    override fun obtain(): String {
+        val out = java.io.ByteArrayOutputStream()
+        val err = java.io.ByteArrayOutputStream()
+        val result = execOps.exec {
+            commandLine("{{ .Common.CLIPath }}", "workspace-for", "--path", parameters.rootDir.get())
+            standardOutput = out
+            errorOutput = err
+            isIgnoreExitValue = true
+        }
+        return when (result.exitValue) {
+            0 -> out.toString().trim()
+            2 -> ""
+            else -> {
+                org.gradle.api.logging.Logging.getLogger("bitrise-build-cache").warn("bitrise-build-cache workspace-for exited ${result.exitValue}: ${err.toString().trim()} — falling back to machine-wide credentials")
+                ""
+            }
+        }
+    }
+}
+
+fun bitriseWorkspaceForRoot(settings: org.gradle.api.initialization.Settings): String {
+    val markerFile = settings.layout.rootDirectory.file("{{ .Common.ProjectMarkerFilename }}")
+    val markerContents = settings.providers.fileContents(markerFile).asText.orElse("")
+    return settings.providers.of(BitriseWorkspaceForRootSource::class.java) {
+        parameters.rootDir.set(settings.rootDir.absolutePath)
+        parameters.markerContents.set(markerContents)
+    }.get()
+}
 {{ end -}}
 
 initscript {
@@ -69,6 +116,9 @@ initscript {
 }
 {{- if or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") }}
 settingsEvaluated {
+    {{- if not .Common.CIProvider }}
+    val bitriseWorkspaceSlug = bitriseWorkspaceForRoot(this)
+    {{- end }}
     {{- if eq .Cache.Usage "enabled" }}
     buildCache {
         local {
@@ -78,7 +128,7 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "{{ .Cache.EndpointURLWithPort }}"
-            authToken = {{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }}
+            authToken = {{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(bitriseWorkspaceSlug){{ end }}
             isPush = {{ .Cache.IsPushEnabled }}
             debug = {{ .Common.Debug }}
             blobValidationLevel = "{{ .Cache.ValidationLevel }}"
@@ -88,32 +138,28 @@ settingsEvaluated {
             {{- end }}
         }
     }
-    rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
-    }
+    apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}
-    rootProject {
-        extensions.create("analytics", AnalyticsPluginExtension::class.java)
-        extensions.configure(AnalyticsPluginExtension::class.java) {
-            endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
-            httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
-            grpcEndpoint.set("{{ .Analytics.GRPCEndpoint }}")
-            authToken.set({{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }})
-            dumpEventsToFiles.set({{ .Common.Debug }})
-            debug.set({{ .Common.Debug }})
-            enabled.set(true)
+    extensions.create("analytics", AnalyticsPluginExtension::class.java)
+    extensions.configure(AnalyticsPluginExtension::class.java) {
+        endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
+        httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
+        grpcEndpoint.set("{{ .Analytics.GRPCEndpoint }}")
+        authToken.set({{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(bitriseWorkspaceSlug){{ end }})
+        dumpEventsToFiles.set({{ .Common.Debug }})
+        debug.set({{ .Common.Debug }})
+        enabled.set(true)
 
-            providerName.set("{{ .Common.CIProvider }}")
+        providerName.set("{{ .Common.CIProvider }}")
 
-            bitrise {
-                {{- if .Common.AppSlug }}
-                appSlug.set("{{ .Common.AppSlug }}")
-                {{- end }}
-            }
+        bitrise {
+            {{- if .Common.AppSlug }}
+            appSlug.set("{{ .Common.AppSlug }}")
+            {{- end }}
         }
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     {{- end }}
 }
 {{- end -}}
@@ -122,6 +168,7 @@ rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
         endpoint.set("{{ .TestDistro.Endpoint }}")
         kvEndpoint.set("{{ .TestDistro.KvEndpoint }}")
+        // TODO: thread the per-project workspace slug into providers.bitriseAuthToken() when a marker exists.
         authToken.set({{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }})
         logLevel.set("{{ .TestDistro.LogLevel }}")
         shardSize.set({{ .TestDistro.ShardSize }})
