@@ -10,19 +10,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/stringmerge"
 )
 
-// DeactivateParams controls the bazel deactivate flow.
 type DeactivateParams struct {
-	// BazelrcPath is the target ~/.bazelrc.
 	BazelrcPath string
-	// Home is the user's home dir, used to locate the sidecar under ~/.bitrise/cache/bazel.
-	Home string
-	// DryRun logs intended actions instead of performing them.
-	DryRun bool
+	Home        string
+	DryRun      bool
 }
 
-// Deactivate undoes what Activate wrote for Bazel:
-//   - strips the marker block from ~/.bazelrc
-//   - deletes ~/.bitrise/cache/bazel/config.json and its containing dir when empty
 func Deactivate(logger log.Logger, params DeactivateParams) error {
 	var errs []error
 

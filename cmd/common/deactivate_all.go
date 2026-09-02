@@ -11,8 +11,7 @@ import (
 //nolint:gochecknoglobals
 var deactivateAllDryRun bool
 
-// Fan-out hooks. Exported (via package-scoped vars) so tests can spy on them
-// without executing the real per-tool cleanup. Production wiring is inline.
+// Fan-out hooks — package-scoped vars so tests can spy on them.
 //
 //nolint:gochecknoglobals
 var (
@@ -23,7 +22,6 @@ var (
 	deactivateAllCcacheFn      = DeactivateCcache
 )
 
-// DeactivateAllCmd fans out `deactivate` to every supported tool.
 var DeactivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:          "all",
 	Short:        "Deactivate Bitrise Build Cache for all supported tools",

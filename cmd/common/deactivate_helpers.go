@@ -17,9 +17,6 @@ import (
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
-// DeactivateGradle wraps gradleconfig.Deactivate with the same param resolution
-// the standalone `deactivate gradle` cmd uses. Shared with `deactivate react-native`
-// and `deactivate all`.
 func DeactivateGradle(logger log.Logger, dryRun bool) error {
 	p, err := paths.Default()
 	if err != nil {
@@ -40,7 +37,6 @@ func DeactivateGradle(logger log.Logger, dryRun bool) error {
 	return nil
 }
 
-// DeactivateBazel wraps bazelconfig.Deactivate for the `deactivate all` fan-out.
 func DeactivateBazel(logger log.Logger, dryRun bool) error {
 	p, err := paths.Default()
 	if err != nil {
@@ -58,7 +54,6 @@ func DeactivateBazel(logger log.Logger, dryRun bool) error {
 	return nil
 }
 
-// DeactivateXcode wraps xcelerate.Deactivate for the RN + `deactivate all` fan-outs.
 func DeactivateXcode(logger log.Logger, dryRun bool) error {
 	if err := xcelerate.Deactivate(logger, xcelerate.DeactivateParams{
 		Envs:   utils.AllEnvs(),
@@ -70,15 +65,12 @@ func DeactivateXcode(logger log.Logger, dryRun bool) error {
 	return nil
 }
 
-// DeactivateCcache stops the running storage helper (best-effort) then invokes
-// ccacheconfig.Deactivate to drop the config file. Shared by the standalone,
-// RN and `deactivate all` code paths.
 func DeactivateCcache(ctx context.Context, logger log.Logger, dryRun bool) error {
 	return DeactivateCcacheWithSocket(ctx, logger, "", dryRun)
 }
 
-// DeactivateCcacheWithSocket is DeactivateCcache with an explicit socket path
-// override (matches the `--socket` flag on `deactivate ccache`).
+// DeactivateCcacheWithSocket accepts an explicit socket path override for the
+// `--socket` flag on `deactivate ccache`.
 func DeactivateCcacheWithSocket(ctx context.Context, logger log.Logger, socketOverride string, dryRun bool) error {
 	var errs []error
 
@@ -99,9 +91,8 @@ func DeactivateCcacheWithSocket(ctx context.Context, logger log.Logger, socketOv
 	return errors.Join(errs...)
 }
 
-// RemoveReactNativeMarker removes only the RN marker file — the tool-specific
-// cleanup is invoked separately by the callers so the accumulated error list
-// stays granular per-tool.
+// RemoveReactNativeMarker drops only the RN marker; callers fan out to
+// gradle/xcode/ccache separately so each per-tool error stays granular.
 func RemoveReactNativeMarker(logger log.Logger, dryRun bool) error {
 	if err := rnconfig.Deactivate(logger, rnconfig.DeactivateParams{DryRun: dryRun}); err != nil {
 		return fmt.Errorf("deactivate react-native marker: %w", err)

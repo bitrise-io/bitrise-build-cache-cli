@@ -10,22 +10,13 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// DeactivateParams controls the ccache config cleanup half of deactivate.
-// Stopping the running storage helper lives in pkg/ccache to keep this
-// package free of the internal/ccache IPC dep.
 type DeactivateParams struct {
-	// DryRun logs intended actions instead of performing them.
 	DryRun bool
 }
 
-// Deactivate removes the ccache config artefact:
-//   - ~/.bitrise/cache/ccache/config.json
-//   - the containing dir when it's empty
-//
-// Log files under ~/.local/state/ccache/logs are intentionally preserved.
-// Stopping the running storage helper is done from the cmd/pkg layer via
-// pkg/ccache.StopStorageHelperAt so this package does not pull in
-// internal/ccache (which itself imports us).
+// Deactivate removes the ccache config artefact. Stopping the running storage
+// helper is done from the cmd/pkg layer via pkg/ccache.StopStorageHelperAt so
+// this package does not pull in internal/ccache (which itself imports us).
 func Deactivate(logger log.Logger, params DeactivateParams) error {
 	var errs []error
 

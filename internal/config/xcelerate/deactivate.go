@@ -12,30 +12,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// XcelerateShellRCBlockName is the marker block name shared by activate (via
-// envexport.ExportToShellRC) and deactivate (via RemoveFromShellRC), so the two
-// sides cannot drift.
+// XcelerateShellRCBlockName is shared with activate so the two sides can't drift.
 const XcelerateShellRCBlockName = "Bitrise Xcelerate"
 
-// DeactivateParams controls the xcelerate/Xcode deactivate flow.
 type DeactivateParams struct {
-	// Envs is the environment map (used by RemoveFromShellRC to locate $HOME).
-	Envs map[string]string
-	// DryRun logs intended actions instead of performing them.
+	Envs   map[string]string
 	DryRun bool
 }
 
-// Deactivate undoes what Activate wrote for Xcode:
-//   - stops the running xcelerate proxy (best-effort)
-//   - deletes ~/.bitrise-xcelerate/ (config + wrapper scripts + copied CLI)
-//   - strips the "Bitrise Xcelerate" export block from ~/.bashrc and ~/.zshrc
-//
-// Logs and enrichment queue under ~/.local/state/xcelerate/* are intentionally
-// preserved for debugging. The auth credential store under
-// ~/.bitrise/analytics/multiplatform/config.json is owned by auth logout.
-//
-// Home resolution honours envs["HOME"] first (so t.Setenv("HOME", ...) works
-// end-to-end), else falls back to paths.Default().
+// Deactivate stops the proxy, removes ~/.bitrise-xcelerate/, and strips the
+// shell RC block. Log/queue state under ~/.local/state/xcelerate/* is kept for
+// debugging; the auth credential store is owned by `auth logout`.
 func Deactivate(logger log.Logger, params DeactivateParams) error {
 	var errs []error
 
@@ -77,8 +64,6 @@ func stopProxyForDeactivate(logger log.Logger, osProxy utils.OsProxy, dryRun boo
 	return nil
 }
 
-// resolveHome prefers envs["HOME"] (so a t.Setenv("HOME", ...) works from tests
-// and CI-provided overrides propagate) and falls back to paths.Default().
 func resolveHome(envs map[string]string) (string, error) {
 	if v := envs["HOME"]; v != "" {
 		return v, nil

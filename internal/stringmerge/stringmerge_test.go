@@ -142,6 +142,64 @@ other=stuff
 `,
 		},
 		{
+			name: "blank line before block is preserved",
+			content: `user=alice
+
+# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+other=stuff
+`,
+			want: `user=alice
+
+other=stuff
+`,
+		},
+		{
+			// The seam-collapse heuristic that makes append→remove round-trip
+			// clean can't tell the difference between the "\n" separator
+			// ChangeContentInBlock inserts and a user's own blank line; when
+			// the block sits at the seam we lose the blank. Preserve the pre-
+			// block blank instead by placing intentional gaps ABOVE the block.
+			name: "blank line right after block is collapsed with seam separator",
+			content: `user=alice
+# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+
+other=stuff
+`,
+			want: `user=alice
+other=stuff
+`,
+		},
+		{
+			name: "blank lines on both sides of block: pre-block blank kept",
+			content: `user=alice
+
+# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+
+other=stuff
+`,
+			want: `user=alice
+
+other=stuff
+`,
+		},
+		{
+			name: "trailing blank lines at EOF collapse to one",
+			content: `user=alice
+# [start] generated-by-bitrise-build-cache
+managed=true
+# [end] generated-by-bitrise-build-cache
+
+`,
+			want: `user=alice
+`,
+		},
+		{
 			name:    "missing end marker leaves input unchanged",
 			content: "user=alice\n# [start] generated-by-bitrise-build-cache\nmanaged=true\nother=stuff\n",
 			want:    "user=alice\n# [start] generated-by-bitrise-build-cache\nmanaged=true\nother=stuff\n",

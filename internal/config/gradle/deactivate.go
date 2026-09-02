@@ -16,23 +16,12 @@ const (
 	gradleBlockEnd   = "# [end] generated-by-bitrise-build-cache"
 )
 
-// DeactivateParams controls the gradle deactivate flow.
 type DeactivateParams struct {
-	// GradleHome is the resolved ~/.gradle (or $GRADLE_USER_HOME) directory.
 	GradleHome string
-	// Home is the user's home dir, used to locate the sidecar under ~/.bitrise/cache/gradle.
-	Home string
-	// DryRun logs intended actions instead of performing them.
-	DryRun bool
+	Home       string
+	DryRun     bool
 }
 
-// Deactivate undoes what Activate wrote for Gradle:
-//   - deletes the generated ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
-//   - strips the marker block from ~/.gradle/gradle.properties
-//   - deletes ~/.bitrise/cache/gradle/config.json and its containing dir when empty
-//
-// Every step swallows "already absent" errors. Real errors are collected and
-// returned as one at the end so a failure in step 1 does not skip step 2 or 3.
 func Deactivate(logger log.Logger, params DeactivateParams) error {
 	var errs []error
 
@@ -136,7 +125,6 @@ func removeGradleSidecar(logger log.Logger, home string, dryRun bool) error {
 	}
 
 	if err := os.Remove(sidecarDir); err != nil && !os.IsNotExist(err) {
-		// Non-empty is normal (user extras left behind); do not treat as failure.
 		logger.Debugf("Leaving gradle sidecar dir in place (%s): %s", sidecarDir, err)
 	}
 

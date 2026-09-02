@@ -10,17 +10,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// DeactivateParams controls the react-native deactivate flow.
 type DeactivateParams struct {
-	// DryRun logs intended actions instead of performing them.
 	DryRun bool
 }
 
-// Deactivate removes ~/.bitrise/cache/reactnative/config.json (the marker
-// consumers check to decide whether the RN wrapper should engage) and its
-// containing dir when empty. It does NOT fan out to gradle/xcode/ccache — the
-// caller (`deactivate react-native` cmd) does that so cmd-layer wiring stays
-// visible.
+// Deactivate removes only the RN marker file. Fan-out to gradle/xcode/ccache
+// lives at the cmd layer so wiring stays visible.
 func Deactivate(logger log.Logger, params DeactivateParams) error {
 	var errs []error
 
