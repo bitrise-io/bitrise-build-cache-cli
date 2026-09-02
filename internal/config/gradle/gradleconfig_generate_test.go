@@ -107,12 +107,13 @@ func Test_GenerateInitGradle(t *testing.T) {
 			name: "Activated plugins on local dev (empty CIProvider) shells out to CLI for auth token",
 			inventory: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:  "AuthTokenValue",
-					Debug:      true,
-					AppSlug:    "AppSlugValue",
-					CIProvider: "",
-					Version:    "CommonVersionValue",
-					CLIPath:    "CLIPathValue",
+					AuthToken:             "AuthTokenValue",
+					Debug:                 true,
+					AppSlug:               "AppSlugValue",
+					CIProvider:            "",
+					Version:               "CommonVersionValue",
+					CLIPath:               "CLIPathValue",
+					ProjectMarkerFilename: "MarkerFilenameValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -157,6 +158,74 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
+func Test_GenerateInitGradle_ProjectMarkerGate(t *testing.T) {
+	localDev := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			CIProvider:            "",
+			CLIPath:               "/opt/bitrise-build-cache",
+			ProjectMarkerFilename: ".bitrise-build-cache.json",
+			Version:               "commonV",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "cacheV",
+			EndpointURLWithPort: "grpcs://cache",
+			ValidationLevel:     "warning",
+		},
+	}
+
+	got, err := localDev.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.Contains(t, got, `commandLine("/opt/bitrise-build-cache", "workspace-for", "--path", parameters.rootDir.get())`)
+	assert.Contains(t, got, `settings.layout.rootDirectory.file(".bitrise-build-cache.json")`)
+	assert.Contains(t, got, `val bitriseWorkspaceSlug = bitriseWorkspaceForRoot(this)`)
+	assert.Contains(t, got, `providers.bitriseAuthToken(bitriseWorkspaceSlug)`)
+	assert.Contains(t, got, `settings.providers.fileContents(markerFile).asText.orElse("")`)
+	assert.Contains(t, got, `parameters.markerContents.set(markerContents)`)
+
+	ci := localDev
+	ci.Common.CIProvider = "bitrise"
+	ci.Common.AuthToken = "baked-token"
+
+	gotCI, err := ci.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.NotContains(t, gotCI, "BitriseWorkspaceForRootSource")
+	assert.NotContains(t, gotCI, "bitriseWorkspaceForRoot")
+	assert.NotContains(t, gotCI, "bitriseWorkspaceSlug")
+	assert.Contains(t, gotCI, `authToken = "baked-token"`)
+}
+
+// When only TestDistro is enabled (Cache=none, Analytics=none), the marker-gate
+// machinery must not appear — TestDistro auth stays machine-wide in this phase.
+func Test_GenerateInitGradle_TestDistroOnly_NoMarkerGate(t *testing.T) {
+	inv := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			CIProvider:            "",
+			CLIPath:               "/opt/bitrise-build-cache",
+			ProjectMarkerFilename: ".bitrise-build-cache.json",
+			Version:               "commonV",
+		},
+		Cache:     CacheTemplateInventory{Usage: UsageLevelNone},
+		Analytics: AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{
+			Usage:      UsageLevelEnabled,
+			Version:    "testDistroV",
+			Endpoint:   "TestDistroEndpointValue",
+			KvEndpoint: "TestDistroKvEndpointValue",
+			LogLevel:   "info",
+		},
+	}
+
+	got, err := inv.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.NotContains(t, got, "bitriseWorkspaceForRoot")
+	assert.NotContains(t, got, "bitriseWorkspaceSlug")
+	assert.NotContains(t, got, "BitriseWorkspaceForRootSource")
+}
+
 const expectedImports = `import io.bitrise.gradle.analytics.AnalyticsPluginExtension
 import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`
@@ -192,27 +261,71 @@ const expectedAuthTokenResolver = `// Local-dev only: resolve the auth token at 
 // bake the token literal instead — the same token is already in env vars on the
 // CI VM, and embedding it keeps the init.kts byte-stable across configuration-cache
 // save/restore VMs.
-abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
+abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, BitriseAuthTokenSource.Params> {
+    interface Params : org.gradle.api.provider.ValueSourceParameters {
+        val workspace: org.gradle.api.provider.Property<String>
+    }
     @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
     override fun obtain(): String {
         val out = java.io.ByteArrayOutputStream()
         val err = java.io.ByteArrayOutputStream()
+        val args = mutableListOf("CLIPathValue", "auth", "token")
+        val ws = parameters.workspace.getOrElse("")
+        if (ws.isNotEmpty()) args.add("--workspace=$ws")
         val result = execOps.exec {
-            commandLine("CLIPathValue", "auth", "token")
+            commandLine(args)
             standardOutput = out
             errorOutput = err
             isIgnoreExitValue = true
         }
         if (result.exitValue != 0) {
-            System.err.println("bitrise-build-cache auth token exited ${result.exitValue}: ${err.toString().trim()}")
+            org.gradle.api.logging.Logging.getLogger("bitrise-build-cache").warn("bitrise-build-cache auth token exited ${result.exitValue}: ${err.toString().trim()}")
             return ""
         }
         return out.toString().trim()
     }
 }
 
-fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
-    of(BitriseAuthTokenSource::class.java) {}.get()
+fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(workspace: String = ""): String =
+    of(BitriseAuthTokenSource::class.java) { parameters.workspace.set(workspace) }.get()
+// Empty on exit 2 (no marker) or exit 1 (parse error, logged before fallback).
+abstract class BitriseWorkspaceForRootSource : org.gradle.api.provider.ValueSource<String, BitriseWorkspaceForRootSource.Params> {
+    interface Params : org.gradle.api.provider.ValueSourceParameters {
+        val rootDir: org.gradle.api.provider.Property<String>
+        // markerContents is unused at obtain() time; declaring it as a parameter
+        // wires the marker file into the ValueSource's configuration-cache inputs
+        // so edits invalidate the cached result on the next build.
+        val markerContents: org.gradle.api.provider.Property<String>
+    }
+    @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
+    override fun obtain(): String {
+        val out = java.io.ByteArrayOutputStream()
+        val err = java.io.ByteArrayOutputStream()
+        val result = execOps.exec {
+            commandLine("CLIPathValue", "workspace-for", "--path", parameters.rootDir.get())
+            standardOutput = out
+            errorOutput = err
+            isIgnoreExitValue = true
+        }
+        return when (result.exitValue) {
+            0 -> out.toString().trim()
+            2 -> ""
+            else -> {
+                org.gradle.api.logging.Logging.getLogger("bitrise-build-cache").warn("bitrise-build-cache workspace-for exited ${result.exitValue}: ${err.toString().trim()} — falling back to machine-wide credentials")
+                ""
+            }
+        }
+    }
+}
+
+fun bitriseWorkspaceForRoot(settings: org.gradle.api.initialization.Settings): String {
+    val markerFile = settings.layout.rootDirectory.file("MarkerFilenameValue")
+    val markerContents = settings.providers.fileContents(markerFile).asText.orElse("")
+    return settings.providers.of(BitriseWorkspaceForRootSource::class.java) {
+        parameters.rootDir.set(settings.rootDir.absolutePath)
+        parameters.markerContents.set(markerContents)
+    }.get()
+}
 `
 
 //nolint:gosec // expected snippet of generated kotlin script for test assertion, not credentials
@@ -261,6 +374,7 @@ rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
         endpoint.set("TestDistroEndpointValue")
         kvEndpoint.set("TestDistroKvEndpointValue")
+        // TODO: thread the per-project workspace slug into providers.bitriseAuthToken() when a marker exists.
         authToken.set("AuthTokenValue")
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
@@ -281,6 +395,7 @@ const expectedAllPluginsLocal = expectedImports + "\n" +
 	expectedDependencies + "\n}" +
 	`
 settingsEvaluated {
+    val bitriseWorkspaceSlug = bitriseWorkspaceForRoot(this)
     buildCache {
         local {
             isEnabled = false
@@ -289,7 +404,7 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = providers.bitriseAuthToken()
+            authToken = providers.bitriseAuthToken(bitriseWorkspaceSlug)
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -303,7 +418,7 @@ settingsEvaluated {
         endpoint.set("AnalyticsEndpointURLValue:123")
         httpEndpoint.set("AnalyticsHttpEndpointValue")
         grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-        authToken.set(providers.bitriseAuthToken())
+        authToken.set(providers.bitriseAuthToken(bitriseWorkspaceSlug))
         dumpEventsToFiles.set(true)
         debug.set(true)
         enabled.set(true)
@@ -320,6 +435,7 @@ rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
         endpoint.set("TestDistroEndpointValue")
         kvEndpoint.set("TestDistroKvEndpointValue")
+        // TODO: thread the per-project workspace slug into providers.bitriseAuthToken() when a marker exists.
         authToken.set(providers.bitriseAuthToken())
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
