@@ -7,6 +7,9 @@ import (
 )
 
 func (d *Doctor) xcelerateProxyCheck() Check {
+	// No handshake: a gRPC health check costs more than it is worth here, so a
+	// proxy that accepts but never answers reads as running. See the gap noted
+	// in docs/daemon-latency.md.
 	return d.socketCheck(socketCheckParams{
 		Name:       "xcelerate-proxy",
 		Tool:       toolconfig.Xcelerate,

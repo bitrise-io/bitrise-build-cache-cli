@@ -470,3 +470,27 @@ signal but still a decisive one.
 
 Re-run that control before changing the harness: a fake backend that has become
 too fast would leave the gate green on a regression.
+
+## Known gaps
+
+Two things this change ships with, recorded so neither is discovered by
+surprise.
+
+**Bounded gRPC concurrency is not validated for throughput.** D1 caps the proxy
+at 64 concurrent streams, and the compilation plugin opens more than that at
+once, so work that previously ran in parallel now queues. It measured 34% faster
+under a supervised proxy, which is the case this change removes, and the CI
+guard that has run green since counts timeouts rather than throughput — so
+nothing here has actually measured whether the cap helps or hurts a
+wrapper-forked proxy on a healthy machine. Shipping it deliberately, with
+post-release monitoring: watch xcode invocation duration and cache-operation
+latency, and raise or drop the cap if either regresses.
+
+**The proxy is probed with a bare dial, the ccache helper with a handshake.**
+`doctor` and the xcodebuild wrapper settle "is the proxy serving?" by dialling
+its socket, so a proxy that accepts a connection and never answers reads as
+running — the same "holds the singleton but is not serving" state the wrapper
+otherwise goes out of its way to reclaim. The ccache helper gets a real
+handshake because a bare dial pollutes its log with lines CI asserts on; the
+proxy has no equally cheap check, and a gRPC health check was judged not worth
+the cost. If a wedged proxy is ever reported as healthy, this is why.
