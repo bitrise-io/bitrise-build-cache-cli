@@ -101,7 +101,7 @@ func NewActivator(params ActivatorParams) *Activator {
 }
 
 // Activate runs the full React Native build cache activation flow: install
-// dependencies, activate each sub-system (which reconciles its own daemon),
+// dependencies, activate each sub-system,
 // save config.
 func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)

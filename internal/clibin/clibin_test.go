@@ -80,10 +80,6 @@ func TestResolve_PrefersPATH(t *testing.T) {
 	t.Setenv("PATH", fakeBin)
 
 	assert.Empty(t, Resolve(newTestLogger()))
-
-	stable, err := StablePath()
-	require.NoError(t, err)
-	assert.NoFileExists(t, stable, "resolving must not copy the binary anywhere")
 }
 
 func TestResolve_TransientPathWithNothingOnPATH(t *testing.T) {

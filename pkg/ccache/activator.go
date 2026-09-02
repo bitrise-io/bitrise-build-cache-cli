@@ -181,7 +181,7 @@ func (a *Activator) ensureHelperServing(ctx context.Context, socketPath string) 
 		}
 	}
 
-	if spawn.ProbeWith(ctx, socketPath, ccacheipc.SendHealthCheck) == spawn.Running {
+	if spawn.Probe(ctx, socketPath, ccacheipc.SendHealthCheck) == spawn.Running {
 		return
 	}
 
@@ -199,7 +199,7 @@ func (a *Activator) ensureHelperServing(ctx context.Context, socketPath string) 
 		return
 	}
 
-	if !spawn.AwaitSocketWith(ctx, socketPath, ccacheipc.SendHealthCheck, helperReadyBudget, helperReadyInterval) {
+	if !spawn.AwaitSocket(ctx, socketPath, ccacheipc.SendHealthCheck, helperReadyBudget, helperReadyInterval) {
 		a.logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
 
 		return

@@ -31,7 +31,7 @@ func shortTempDir(t *testing.T) string {
 
 type helperStart struct {
 	calls  int
-	opts   []ccacheipc.StartOption
+	args   []string
 	socket string
 }
 
@@ -45,7 +45,9 @@ func fakeHelperStart(t *testing.T) *helperStart {
 	startHelperFn = func(socketPath string, opts ...ccacheipc.StartOption) error {
 		rec.calls++
 		rec.socket = socketPath
-		rec.opts = opts
+		// Resolve the options to the argv they produce, so an assertion cannot
+		// pass on the wrong option merely because the count matches.
+		rec.args = ccacheipc.HelperArgs(opts...)
 
 		return nil
 	}
@@ -81,7 +83,9 @@ func TestEnsureHelperServing_ForwardsTheInvocationID(t *testing.T) {
 	a.ensureHelperServing(context.Background(), filepath.Join(shortTempDir(t), "ipc.sock"))
 
 	require.Equal(t, 1, rec.calls)
-	assert.Len(t, rec.opts, 1, "the invocation ID must reach the helper")
+	assert.Equal(t,
+		[]string{"ccache", "storage-helper", "start", "--invocation-id=inv-1"},
+		rec.args)
 }
 
 func TestEnsureHelperServing_DebugLoggingReachesTheHelper(t *testing.T) {
@@ -95,7 +99,10 @@ func TestEnsureHelperServing_DebugLoggingReachesTheHelper(t *testing.T) {
 	a.ensureHelperServing(context.Background(), filepath.Join(shortTempDir(t), "ipc.sock"))
 
 	require.Equal(t, 1, rec.calls)
-	assert.Len(t, rec.opts, 1, "--debug must reach the supervised-free helper")
+	assert.Equal(t,
+		[]string{"--debug", "ccache", "storage-helper", "start"},
+		rec.args,
+		"--debug is a persistent root flag, so it has to precede the subcommand")
 }
 
 // The case that bites: a crashed helper leaves its socket file behind, so a

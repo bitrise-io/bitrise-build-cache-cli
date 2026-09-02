@@ -27,12 +27,7 @@ func (d *Doctor) socketCheck(p socketCheckParams) Check {
 				return Result{State: StateOK, Detail: "skipped (" + p.ToolLabel + " not activated)"}
 			}
 
-			state := spawn.Probe(ctx, p.SocketPath)
-			if p.Handshake != nil {
-				state = spawn.ProbeWith(ctx, p.SocketPath, p.Handshake)
-			}
-
-			switch state {
+			switch spawn.Probe(ctx, p.SocketPath, p.Handshake) {
 			case spawn.Stopped:
 				return Result{State: StateWarn, Detail: "not running (no socket file)", Fixable: true, Fixer: p.Fixer}
 			case spawn.Stuck:
@@ -43,7 +38,6 @@ func (d *Doctor) socketCheck(p socketCheckParams) Check {
 					Fixer:   p.Fixer,
 				}
 			case spawn.Running:
-				return Result{State: StateOK, Detail: "running (" + p.SocketPath + ")"}
 			}
 
 			return Result{State: StateOK, Detail: "running (" + p.SocketPath + ")"}

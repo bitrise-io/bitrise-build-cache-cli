@@ -28,7 +28,6 @@ func StartCcacheHelperFixer() StartServiceFixer {
 func (f StartServiceFixer) Fix() (string, error) {
 	ctx := context.Background()
 
-	// A leftover agent from an older CLI would restart it under the supervisor.
 	if p, err := paths.Default(); err == nil {
 		_ = spawn.RemoveLegacySupervision(ctx, p, f.Service)
 	}

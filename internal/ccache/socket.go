@@ -13,6 +13,29 @@ const (
 	awaitReadyInterval = 100 * time.Millisecond
 )
 
+// HelperArgs is the argv the given options produce, so callers can assert on
+// what a start would actually run.
+func HelperArgs(opts ...StartOption) []string {
+	cfg := startConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return helperService(cfg).Args
+}
+
+func helperService(cfg startConfig) spawn.Service {
+	svc := spawn.CcacheHelper()
+	if cfg.debug {
+		svc = svc.WithDebug()
+	}
+	if cfg.invocationID != "" {
+		svc = svc.WithArgs("--invocation-id=" + cfg.invocationID)
+	}
+
+	return svc
+}
+
 // Test seam for the detached spawn.
 //
 //nolint:gochecknoglobals
@@ -61,15 +84,7 @@ func (s *Socket) Start(opts ...StartOption) error {
 		opt(&cfg)
 	}
 
-	svc := spawn.CcacheHelper()
-	if cfg.debug {
-		svc = svc.WithDebug()
-	}
-	if cfg.invocationID != "" {
-		svc = svc.WithArgs("--invocation-id=" + cfg.invocationID)
-	}
-
-	if _, err := detach(svc); err != nil {
+	if _, err := detach(helperService(cfg)); err != nil {
 		return fmt.Errorf("start storage helper process: %w", err)
 	}
 

@@ -51,7 +51,7 @@ func TestWithArgs_DoesNotMutateTheReceiver(t *testing.T) {
 func TestProbe_ReportsStoppedWhenNoSocketFile(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "missing.sock")
 
-	assert.Equal(t, Stopped, Probe(context.Background(), path))
+	assert.Equal(t, Stopped, Probe(context.Background(), path, nil))
 }
 
 func TestProbe_ReportsRunningForAServingSocket(t *testing.T) {
@@ -60,7 +60,7 @@ func TestProbe_ReportsRunningForAServingSocket(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
 
-	assert.Equal(t, Running, Probe(context.Background(), path))
+	assert.Equal(t, Running, Probe(context.Background(), path, nil))
 }
 
 // A leftover socket file after a crash is the case that matters: it exists, so
@@ -70,7 +70,7 @@ func TestProbe_ReportsStuckForAnUnservedSocketFile(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "stale.sock")
 	require.NoError(t, os.WriteFile(path, nil, 0o600))
 
-	assert.Equal(t, Stuck, Probe(context.Background(), path))
+	assert.Equal(t, Stuck, Probe(context.Background(), path, nil))
 }
 
 func TestAwaitSocket_WaitsForALateSocket(t *testing.T) {
@@ -91,14 +91,14 @@ func TestAwaitSocket_WaitsForALateSocket(t *testing.T) {
 		}
 	})
 
-	assert.True(t, AwaitSocket(context.Background(), path, 3*time.Second, 50*time.Millisecond))
+	assert.True(t, AwaitSocket(context.Background(), path, nil, 3*time.Second, 50*time.Millisecond))
 }
 
 func TestAwaitSocket_GivesUpAtTheBudget(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "missing.sock")
 
 	start := time.Now()
-	assert.False(t, AwaitSocket(context.Background(), path, 300*time.Millisecond, 50*time.Millisecond))
+	assert.False(t, AwaitSocket(context.Background(), path, nil, 300*time.Millisecond, 50*time.Millisecond))
 	assert.Less(t, time.Since(start), 3*time.Second, "must give up at the budget, not hang the build")
 }
 
@@ -107,7 +107,7 @@ func TestAwaitSocket_HonoursContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	assert.False(t, AwaitSocket(ctx, path, time.Minute, 50*time.Millisecond))
+	assert.False(t, AwaitSocket(ctx, path, nil, time.Minute, 50*time.Millisecond))
 }
 
 func TestRemoveLegacySupervision_NoopWhenNothingWasInstalled(t *testing.T) {
@@ -132,10 +132,8 @@ func TestRemoveLegacySupervision_DeletesALeftoverConfig(t *testing.T) {
 	assert.NoFileExists(t, plist)
 }
 
-// This is the guard, not a quirk: Detached re-execs os.Executable(), which
-// under `go test` is the test binary. Without the refusal a single call reruns
-// the package, which calls again — the fork bomb that froze a laptop while this
-// branch was being written.
+// Detached re-execs os.Executable(), which under `go test` is the test binary:
+// without the refusal one call reruns the package, which calls again.
 func TestDetached_RefusesToReExecTheTestBinary(t *testing.T) {
 	pid, err := Detached(XcelerateProxy())
 
@@ -146,12 +144,12 @@ func TestDetached_RefusesToReExecTheTestBinary(t *testing.T) {
 // A crashed service leaves its socket file behind, so the stat cannot tell it
 // from a live one — the handshake is what does. Without this the service would
 // be reported healthy while every cache operation failed for the whole build.
-func TestProbeWith_ConsultsTheHandshakeForAStaleSocketFile(t *testing.T) {
+func TestProbe_Handshake_ConsultsTheHandshakeForAStaleSocketFile(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "stale.sock")
 	require.NoError(t, os.WriteFile(path, nil, 0o600))
 
 	called := false
-	state := ProbeWith(context.Background(), path, func(context.Context, string) error {
+	state := Probe(context.Background(), path, func(context.Context, string) error {
 		called = true
 
 		return assert.AnError
@@ -163,40 +161,40 @@ func TestProbeWith_ConsultsTheHandshakeForAStaleSocketFile(t *testing.T) {
 
 // Accepting a connection is not the same as answering: the handshake is the
 // only thing that separates a live service from a listener that never replies.
-func TestProbeWith_ReportsStuckWhenTheHandshakeFails(t *testing.T) {
+func TestProbe_Handshake_ReportsStuckWhenTheHandshakeFails(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "mute.sock")
 	l, err := net.Listen("unix", path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
 
-	state := ProbeWith(context.Background(), path, func(context.Context, string) error {
+	state := Probe(context.Background(), path, func(context.Context, string) error {
 		return assert.AnError
 	})
 
 	assert.Equal(t, Stuck, state)
 }
 
-func TestProbeWith_ReportsRunningWhenTheHandshakeSucceeds(t *testing.T) {
+func TestProbe_Handshake_ReportsRunningWhenTheHandshakeSucceeds(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "live.sock")
 	l, err := net.Listen("unix", path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
 
-	state := ProbeWith(context.Background(), path, func(context.Context, string) error { return nil })
+	state := Probe(context.Background(), path, func(context.Context, string) error { return nil })
 
 	assert.Equal(t, Running, state)
 }
 
 // The handshake has to be honoured on every poll, or a service that only comes
 // up late is reported ready as soon as its socket file appears.
-func TestAwaitSocketWith_UsesTheHandshake(t *testing.T) {
+func TestAwaitSocket_Handshake_UsesTheHandshake(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "late.sock")
 	l, err := net.Listen("unix", path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
 
 	calls := 0
-	ok := AwaitSocketWith(context.Background(), path, func(context.Context, string) error {
+	ok := AwaitSocket(context.Background(), path, func(context.Context, string) error {
 		calls++
 		if calls < 2 {
 			return assert.AnError

@@ -73,9 +73,6 @@ const (
 
 	bazelCredHelperWarnFilename = "bazel-credhelper-warned" //nolint:gosec // marker filename, not a credential
 
-	// bitriseBinSubdir holds the stable CLI binary copy.
-	bitriseBinSubdir = "bin"
-
 	// bitriseCacheSubdir is the per-tool cache/marker root used by activate, refresh, and child-stats.
 	bitriseCacheSubdir = "cache"
 
@@ -179,16 +176,6 @@ func (p Paths) UnitPath(unitName string) string {
 // BitriseRoot is the absolute path of the per-user ~/.bitrise dir.
 func (p Paths) BitriseRoot() string {
 	return filepath.Join(p.Home, BitriseRootRelative)
-}
-
-// BitriseBinDir is the absolute path of ~/.bitrise/bin (stable CLI copy).
-func (p Paths) BitriseBinDir() string {
-	return filepath.Join(p.BitriseRoot(), bitriseBinSubdir)
-}
-
-// BitriseBinFile returns a file path under BitriseBinDir.
-func (p Paths) BitriseBinFile(name string) string {
-	return filepath.Join(p.BitriseBinDir(), name)
 }
 
 // BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.

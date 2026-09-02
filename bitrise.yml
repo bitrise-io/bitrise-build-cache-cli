@@ -293,9 +293,8 @@ workflows:
     description: |
       Linux twin of rde-mac-local-dx-smoke. Same script, but the
       xcodebuild-wrapper scenario is skipped (macOS-only) and the
-      daemon-lifecycle scenario asserts against systemctl --user
-      instead of launchctl. See scripts/rde_smoke_test.sh for the
-      OS-branching logic.
+      no-supervision assertion checks systemctl --user instead of
+      launchctl. See scripts/rde_smoke_test.sh for the OS-branching logic.
 
       Wired into the features-e2e PR pipeline; also triggerable on demand.
     envs:
@@ -1574,7 +1573,8 @@ workflows:
 
       Builds a real project with every compile key busted, so the cache runs
       cold and every operation is an upload — the path that failed in v3.6.3,
-      when a supervised proxy timed out 30-60% of operations in production. Any
+      when a supervised proxy timed out on a large share of them in production.
+      Any
       DeadlineExceeded fails the workflow.
 
       Two things are load-bearing and easy to undo by accident:
@@ -1865,9 +1865,11 @@ workflows:
 
   e2e-scenarios-macos:
     description: |
-      Portable e2e scenarios + macOS daemon lifecycle (install / up / down /
-      restart, socket unlink, launchctl kickstart). See scripts/local_e2e_scenarios.sh
-      and scripts/local_e2e_scenarios_macos.sh.
+      Portable e2e scenarios + the macOS-only ones: that activation and the
+      wizard register no supervised service, that `activate c++` leaves a
+      storage helper serving, that a launch agent left by an older CLI is
+      retired, and the xcodebuild wrapper's health check. See
+      scripts/local_e2e_scenarios.sh and scripts/local_e2e_scenarios_macos.sh.
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
@@ -1886,7 +1888,7 @@ workflows:
             go build -o "$HOME/.bitrise/bin/bitrise-build-cache" .
             CLI="$HOME/.bitrise/bin/bitrise-build-cache" bash ./scripts/local_e2e_scenarios.sh
     - script@1:
-        title: run macOS-only daemon-lifecycle e2e scenarios
+        title: run macOS-only e2e scenarios
         inputs:
         - content: |-
             #!/bin/bash

@@ -11,9 +11,9 @@ import (
 )
 
 // CLI versions up to v3.6.9 registered the cache services with the OS
-// supervisor. Those agents outlive the upgrade and keep restarting a
-// supervised — and therefore slow — proxy, so they are torn down wherever the
-// services are started.
+// supervisor. Those registrations outlive the upgrade and keep restarting a
+// supervised service, which is the slow path this replaced, so every code path
+// that starts a service retires one first.
 const (
 	legacyLabelPrefix = "io.bitrise.build-cache."
 	legacyUnitPrefix  = "bitrise-build-cache-"

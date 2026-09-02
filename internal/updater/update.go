@@ -46,9 +46,7 @@ func Update(ctx context.Context, opts Options) error {
 	return nil
 }
 
-// A CLI at or below v3.6.9 may have registered the cache services with the OS
-// supervisor, which is slower than letting the build start them. An upgrade is
-// the natural point to retire those registrations.
+// An upgrade is the natural point to retire what an older CLI registered.
 func removeLegacySupervision(ctx context.Context, logger log.Logger) {
 	p, err := paths.Default()
 	if err != nil {

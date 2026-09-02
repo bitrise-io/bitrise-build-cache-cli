@@ -1059,7 +1059,7 @@ const proxyReadyInterval = 500 * time.Millisecond
 var proxyReadyBudget = 30 * time.Second
 
 func awaitProxySocket(ctx context.Context, socketPath string, budget time.Duration) bool {
-	return spawn.AwaitSocket(ctx, socketPath, budget, proxyReadyInterval)
+	return spawn.AwaitSocket(ctx, socketPath, nil, budget, proxyReadyInterval)
 }
 
 func startProxy(
@@ -1081,7 +1081,7 @@ func startProxy(
 	// while wedged, and attaching to one that never answers silently drops
 	// every cache operation for the build.
 	if pid, running := xcelerate.ProxyOwner(osProxy); running {
-		if spawn.Probe(ctx, socketPath) == spawn.Running {
+		if spawn.Probe(ctx, socketPath, nil) == spawn.Running {
 			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
 			return nil
@@ -1113,6 +1113,10 @@ func startProxy(
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf(errFmtFailedToStartProxy, err)
 	}
+
+	// Reaped, never waited on: the proxy outlives this command, but an
+	// unreaped child stays a zombie for as long as the wrapper runs.
+	go func() { _ = cmd.Wait() }()
 
 	logger.TDonef(startedProxy, cmd.PID())
 

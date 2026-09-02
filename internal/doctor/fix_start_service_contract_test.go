@@ -37,11 +37,3 @@ func TestStartServiceFixer_SpawnsTheServiceItCarries(t *testing.T) {
 		})
 	}
 }
-
-// Both doctor checks must offer a remedy that starts the service; a check that
-// warns without a fixer is the state this replaced, where doctor offered
-// `daemon up` for a service nothing supervised.
-func TestBothSocketChecks_OfferAStartServiceFixer(t *testing.T) {
-	assert.IsType(t, StartServiceFixer{}, StartProxyFixer())
-	assert.IsType(t, StartServiceFixer{}, StartCcacheHelperFixer())
-}

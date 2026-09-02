@@ -78,7 +78,7 @@ printf '%s cache operations, %s DeadlineExceeded (%s waiting for a pool slot)\n'
 "$(dirname "${BASH_SOURCE[0]}")/xcelerate_op_latency.sh" "$DIR"
 
 if [[ "$errs" -ne 0 ]]; then
-    echo "FAIL: the launchd proxy timed out on $errs cache operations" >&2
+    echo "FAIL: the proxy timed out on $errs cache operations" >&2
     cat_logs | grep -aE 'DeadlineExceeded' | head -5 >&2
 
     exit 1

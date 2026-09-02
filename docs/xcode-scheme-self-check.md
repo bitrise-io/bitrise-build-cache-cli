@@ -152,9 +152,8 @@ Open issues at [github.com/bitrise-io/bitrise-build-cache-cli](https://github.co
 
 The proxy is not a background service. macOS applies CPU and I/O limits per
 resource coalition and puts a launchd job in one of its own, where it competes
-with the compiler it exists to serve — measured at **2314ms against 6.3ms** per
-cache operation on a 4-core machine, with no plist setting able to close it.
-See [daemon-latency.md](daemon-latency.md).
+with the compiler it exists to serve, and no plist setting closes the gap. The
+measurements are in [daemon-latency.md](daemon-latency.md).
 
 Terminal builds are unaffected: the `xcodebuild` wrapper starts the proxy on the
 first build and later builds reuse it. Builds started from Xcode.app do not go

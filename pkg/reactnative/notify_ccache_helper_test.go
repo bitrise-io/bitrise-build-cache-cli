@@ -38,7 +38,7 @@ func (s *stubSocket) Start(_ ...ccacheipc.StartOption) error {
 
 	return s.startErr
 }
-func (s *stubSocket) AwaitReady() bool  { s.awaitCalled = true; return s.awaitResult }
+func (s *stubSocket) AwaitReady() bool { s.awaitCalled = true; return s.awaitResult }
 func (s *stubSocket) HealthCheck(_ context.Context) error {
 	s.healthCheckCalled = true
 	return s.healthCheckErr

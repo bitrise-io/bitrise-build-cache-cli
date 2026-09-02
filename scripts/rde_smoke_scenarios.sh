@@ -108,10 +108,11 @@ if is_mac; then
 fi
 
 step "activate c++ — must leave a storage helper serving"
-remote_bash "$CLI activate c++ || true"
+remote_bash "$CLI activate c++"
+remote_bash 'test -e "${TMPDIR:-/tmp}/ccache-ipc.sock"' || {
+  echo "activate c++ left no storage helper serving" >&2; exit 1
+}
 
-# Nothing is registered with the OS supervisor: a supervised service lands in
-# its own resource coalition and competes with the compiler it serves.
 step "no supervisor unit may be registered"
 if is_mac; then
   remote_bash "ls ~/Library/LaunchAgents/io.bitrise.build-cache.*.plist >/dev/null 2>&1" && {
