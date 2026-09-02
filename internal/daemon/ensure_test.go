@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -157,15 +156,6 @@ func TestEnsure_bootstrapFailure_propagates(t *testing.T) {
 	assert.Contains(t, err.Error(), "permission denied")
 }
 
-// proxyNames is empty on macOS, where the proxy is not supervised.
-func proxyNames() []string {
-	if runtime.GOOS == "darwin" {
-		return nil
-	}
-
-	return []string{ServiceXcelerateProxy}
-}
-
 func TestServicesForTools_correctMappings(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -173,19 +163,14 @@ func TestServicesForTools_correctMappings(t *testing.T) {
 		needsCcache    bool
 		wantNames      []string
 	}{
-		// The proxy is not supervised on macOS -- a launchd job gets its own
-		// resource coalition and loses to the compiler it serves. The ccache
-		// helper is, everywhere: the same A/B found no penalty for it.
-		// See docs/daemon-latency.md.
+		// Activation supervises nothing. The proxy is measured -- a launchd
+		// job gets its own resource coalition and loses to the compiler it
+		// serves. The ccache helper is not measured as harmful; it is
+		// unsupervised for consistency and caution. See docs/daemon-latency.md.
 		{name: "neither", wantNames: nil},
-		{name: "xcelerate only", needsXcelerate: true, wantNames: proxyNames()},
-		{name: "ccache only", needsCcache: true, wantNames: []string{ServiceCcacheHelper}},
-		{
-			name:           "both",
-			needsXcelerate: true,
-			needsCcache:    true,
-			wantNames:      append(proxyNames(), ServiceCcacheHelper),
-		},
+		{name: "xcelerate only", needsXcelerate: true, wantNames: nil},
+		{name: "ccache only", needsCcache: true, wantNames: nil},
+		{name: "both", needsXcelerate: true, needsCcache: true, wantNames: nil},
 	}
 
 	for _, tc := range cases {

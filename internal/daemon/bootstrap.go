@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -102,35 +101,26 @@ func DefaultBackendAndPaths() (Backend, Paths, error) {
 	return backend, dPaths, nil
 }
 
-// ServicesForTools filters DefaultServices() down to what the given tools need.
+// ServicesForTools reports which services activation should supervise, which
+// is none of them.
 //
-// The xcelerate proxy is not supervised on macOS. The OS applies CPU and I/O
-// limits per resource coalition and places a launchd job in one of its own, so
-// the proxy competes with the compiler it exists to serve and loses: 2314ms
-// against 6.3ms per cache operation on a 4-core machine, and no plist key
-// closes it. The xcodebuild wrapper forks it instead, which puts it in the
-// build's coalition.
+// The xcelerate proxy is measured: macOS applies CPU and I/O limits per
+// resource coalition and places a launchd job in one of its own, so the proxy
+// competes with the compiler it exists to serve and loses — 2314ms against
+// 6.3ms per cache operation on a 4-core machine, with no plist key able to
+// close it.
 //
-// The ccache helper *is* still supervised, everywhere. The same A/B on a
-// 4-core macOS machine over a saturating C++ compile found no penalty —
-// 3.8ms supervised against 2.4ms lazy at p50, with better tails supervised —
-// so the argument that carried for the proxy does not carry here.
+// The ccache helper is **not** measured as harmful. The same A/B found no
+// penalty for it (3.8ms supervised against 2.4ms lazy at p50, with better
+// tails supervised). It is unsupervised anyway, on every platform, for
+// consistency and out of caution: it has the same shape as the proxy, that
+// test ruled out a large effect rather than a small one, and one lifecycle is
+// easier to reason about than two. The same caution covers Linux, where
+// coalitions do not exist and nothing was measured at all.
+//
+// Both are started by whoever needs them — the xcodebuild wrapper for the
+// proxy, `activate c++` for the helper — which puts them in the build's
+// coalition. `daemon install` still supervises on request, and warns.
 //
 // See docs/daemon-latency.md.
-func ServicesForTools(needsXcelerate, needsCcache bool) []Service {
-	var out []Service
-	for _, svc := range DefaultServices() {
-		switch svc.Name {
-		case ServiceXcelerateProxy:
-			if needsXcelerate && runtime.GOOS != "darwin" {
-				out = append(out, svc)
-			}
-		case ServiceCcacheHelper:
-			if needsCcache {
-				out = append(out, svc)
-			}
-		}
-	}
-
-	return out
-}
+func ServicesForTools(_, _ bool) []Service { return nil }

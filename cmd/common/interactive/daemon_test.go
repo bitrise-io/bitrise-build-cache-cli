@@ -4,8 +4,6 @@ package interactive
 
 import (
 	"bytes"
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -51,12 +49,10 @@ func TestDaemonServicesForTools(t *testing.T) {
 	// On macOS nothing is supervised: each service is started on demand by the
 	// process that needs it, which keeps it in the build's resource coalition.
 	// See docs/daemon-latency.md.
-	if runtime.GOOS == "darwin" {
-		assert.Empty(t, names("xcode"), "the xcelerate proxy is not supervised on macOS")
-	} else {
-		assert.Equal(t, []string{daemonpkg.ServiceXcelerateProxy}, names("xcode"))
-	}
-
-	// The ccache helper is supervised everywhere: measured, no penalty.
-	assert.Equal(t, []string{daemonpkg.ServiceCcacheHelper}, names("ccache"))
+	// Activation supervises nothing: each service is started on demand by the
+	// process that needs it, which keeps it in the build's resource coalition.
+	// See docs/daemon-latency.md.
+	assert.Empty(t, names("xcode"))
+	assert.Empty(t, names("ccache"))
+	assert.Empty(t, names("gradle", "xcode", "ccache"))
 }

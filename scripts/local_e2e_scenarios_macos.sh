@@ -73,8 +73,7 @@ FAKE_WS=${FAKE_WS:-fake-workspace-id}
 # Accessible-mode answers: 0 = confirm the default (all four tools preselected),
 # '' = keep display name, n = no cache push, y = yes to keeping the proxies
 # running. Multi-toggle across huh accessible-mode redraws is not portable across
-# huh versions, so the scenario accepts the default selection and asserts both
-# supervised services are installed.
+# huh versions, so the scenario accepts the default selection.
 TERM=dumb "$CLI" activate --interactive <<'EOF'
 0
 
@@ -82,15 +81,25 @@ n
 y
 EOF
 
+# Nothing is supervised any more: a launchd job lands in its own resource
+# coalition and competes with the compiler it serves, so both the proxy and the
+# ccache helper are started by whoever needs them. `daemon install` still
+# supervises on request. See docs/daemon-latency.md.
+[ ! -f ~/Library/LaunchAgents/io.bitrise.build-cache.xcelerate-proxy.plist ] \
+  || fail "wizard wrote an xcelerate-proxy plist; activation must not supervise"
+[ ! -f ~/Library/LaunchAgents/io.bitrise.build-cache.ccache-helper.plist ] \
+  || fail "wizard wrote a ccache-helper plist; activation must not supervise"
+pass "wizard activated without registering any supervised service"
+
+# Explicit opt-in still works, and warns.
+INSTALL_OUT=$("$CLI" daemon install 2>&1)
+echo "$INSTALL_OUT" | grep -q "Supervised services are measurably slower" \
+  || fail "daemon install did not warn about supervision"
 [ -f ~/Library/LaunchAgents/io.bitrise.build-cache.xcelerate-proxy.plist ] \
-  || fail "wizard did not write the xcelerate-proxy plist"
+  || fail "daemon install did not write the xcelerate-proxy plist"
 launchctl list | grep -q io.bitrise.build-cache.xcelerate-proxy \
-  || fail "wizard did not register xcelerate-proxy with launchd"
-[ -f ~/Library/LaunchAgents/io.bitrise.build-cache.ccache-helper.plist ] \
-  || fail "wizard did not write the ccache-helper plist"
-launchctl list | grep -q io.bitrise.build-cache.ccache-helper \
-  || fail "wizard did not register ccache-helper with launchd"
-pass "wizard installed + started the supervised services"
+  || fail "daemon install did not register xcelerate-proxy with launchd"
+pass "daemon install still supervises on request, with a warning"
 
 "$CLI" daemon uninstall >/dev/null
 

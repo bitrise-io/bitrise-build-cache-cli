@@ -385,7 +385,7 @@ What that changes:
 - **Terminal builds**: nothing to do. The wrapper starts the proxy on the first
   build and later builds attach to it, which is what already happened.
 - **Xcode.app builds**: the proxy must be running first. `activate` now says so,
-  and [xcode-app.md](xcode-app.md) carries a Run Script build phase that starts
+  and [xcode-scheme-self-check.md](xcode-scheme-self-check.md) carries a Run Script build phase that starts
   it — spawned by Xcode, so it lands in Xcode's coalition.
 - **Crash recovery**: `startProxy` already reclaims a proxy that holds the
   singleton lock but is not serving, so a dead proxy is repaired by the next
@@ -415,7 +415,12 @@ full parallelism, 960 helper operations per arm:
 
 Both sit in low milliseconds and the supervised arm has the better tails.
 Nothing resembling the proxy's 6.3ms against 2314ms. The architecture matched
-and the behaviour did not, so the helper keeps its supervisor.
+and the behaviour did not.
+
+The helper is nevertheless unsupervised, as a deliberate choice rather than a
+finding: this test ruled out a large effect, not a small one, and running both
+services through one lifecycle is simpler than justifying two. If the helper
+ever needs a supervisor back, this measurement is the argument for it.
 
 Why the difference is not established. Plausibly the helper does far less work
 per operation, and 960 operations over a short compile is a much lighter load

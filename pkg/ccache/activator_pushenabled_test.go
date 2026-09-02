@@ -39,7 +39,9 @@ func swapEnsureFn(t *testing.T, fn func(context.Context, log.Logger, []daemonpkg
 	t.Cleanup(func() { ensureFn = prev })
 }
 
-func TestRunDaemonEnsure_wiresCcacheHelperService(t *testing.T) {
+// Activation supervises nothing; the helper is started directly instead.
+// See docs/daemon-latency.md.
+func TestRunDaemonEnsure_wiresNoCcacheHelperService(t *testing.T) {
 	var gotServices []daemonpkg.Service
 
 	swapEnsureFn(t, func(_ context.Context, _ log.Logger, services []daemonpkg.Service, _ daemonpkg.EnsureDeps) error {
@@ -52,8 +54,7 @@ func TestRunDaemonEnsure_wiresCcacheHelperService(t *testing.T) {
 	err := a.runDaemonEnsure(t.Context())
 	require.NoError(t, err)
 
-	require.Len(t, gotServices, 1)
-	assert.Equal(t, daemonpkg.ServiceCcacheHelper, gotServices[0].Name)
+	assert.Empty(t, gotServices)
 }
 
 func TestCcacheRunDaemonEnsure_propagatesEnsureError(t *testing.T) {

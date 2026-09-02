@@ -145,3 +145,37 @@ Only shared schemes work for this — per-user schemes (`xcuserdata/…`) aren't
 | Pre-action runs but `osascript` blocks headlessly on CI VMs | The pre-action is intentionally scoped to Xcode.app GUI. For `xcodebuild` CLI builds, the CLI wrapper step handles health checks — remove or guard the alert behind `[ -t 0 ]` if a scheme runs in both contexts. |
 
 Open issues at [github.com/bitrise-io/bitrise-build-cache-cli](https://github.com/bitrise-io/bitrise-build-cache-cli/issues).
+
+---
+
+## Starting the cache proxy from the pre-action
+
+The proxy is not a background service. macOS applies CPU and I/O limits per
+resource coalition and puts a launchd job in one of its own, where it competes
+with the compiler it exists to serve — measured at **2314ms against 6.3ms** per
+cache operation on a 4-core machine, with no plist setting able to close it.
+See [daemon-latency.md](daemon-latency.md).
+
+Terminal builds are unaffected: the `xcodebuild` wrapper starts the proxy on the
+first build and later builds reuse it. Builds started from Xcode.app do not go
+through that wrapper, so the proxy has to be running before you press ⌘B, and it
+does not come back after a reboot or logout.
+
+`doctor --fix` handles both halves — it warns when the proxy is not serving and
+starts one — so a single pre-action covers the self-check *and* the proxy:
+
+```sh
+bitrise-build-cache doctor --fix
+```
+
+Use that in place of the plain `doctor` above if you build from Xcode.app. The
+proxy it starts is a child of Xcode, which is exactly where you want it: it
+shares Xcode's resource coalition rather than sitting in one of its own.
+
+To start it by hand instead:
+
+```sh
+bitrise-build-cache xcelerate start-proxy
+```
+
+Safe to re-run — it exits immediately if a proxy is already serving.

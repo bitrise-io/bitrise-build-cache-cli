@@ -36,7 +36,7 @@ const (
 	ProxyLifecycleNotice = "ℹ️ The cache proxy starts automatically with your first `xcodebuild` and keeps serving later builds."
 	ProxyRestartNotice   = "ℹ️ It does not survive a reboot or logout. Terminal builds restart it on their own; " +
 		"for builds started from Xcode.app, run `bitrise-build-cache xcelerate start-proxy` first — " +
-		"see docs/xcode-app.md for a Run Script that does it for you."
+		"see docs/xcode-scheme-self-check.md for a scheme pre-action that does it for you."
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
 	cliBasename                    = "bitrise-build-cache-cli"
