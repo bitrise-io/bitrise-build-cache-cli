@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -176,7 +175,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 		return fmt.Errorf("expand home path: %w", err)
 	}
 
-	bazelrcPath := filepath.Join(homeDir, ".bazelrc")
+	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 	params := bazelconfig.DefaultActivateBazelParams()
 	params.Cache.PushEnabled = pushEnabled
 

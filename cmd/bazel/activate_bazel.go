@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -14,6 +13,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -65,7 +65,7 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("expand home path, error: %w", err)
 	}
-	bazelrcPath := filepath.Join(homeDir, ".bazelrc")
+	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
 
