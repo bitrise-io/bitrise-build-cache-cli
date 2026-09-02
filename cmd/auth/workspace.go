@@ -73,7 +73,7 @@ terminal — an agent driving the CLI on a remote host, a script — can sign in
 }
 
 func printWorkspace(cmd *cobra.Command, envs map[string]string, jsonOut bool) error {
-	cred, origin, err := live.Default(nil).ResolveNoRefresh(envs)
+	cred, origin, _, err := live.Default(nil).ResolveNoRefresh(envs)
 	// Not-selected-yet is what this command exists to report, not a failure.
 	if err != nil && !errors.Is(err, authpkg.ErrWorkspaceNotSelected) {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())

@@ -15,7 +15,7 @@ L5  CONSUMERS
     pkg/{file,browse,ccache,reactnative}
     internal/config/{gradle,bazel,ccache,xcelerate}
     internal/{doctor,bazelcredhelper,build_cache/kv,xcelerate/proxy}
-         │  imports: live, auth · (store/oauth only for login, logout, clear)
+         │  imports: live, auth · (store/oauth only for login, logout, set, clear)
          ▼
 L4  internal/auth/live                  the resolver
          │  imports: auth, store, oauth
@@ -24,13 +24,13 @@ L3  internal/auth/oauth                 sign-in · refresh · token exchange
          │  imports: auth, store
          ▼
 L2  internal/auth/store                 backend selection · persistence
-         │  imports: auth, keychain, config/multiplatform
-         ├────────────────────────┐
-         ▼                        ▼
-L1  internal/auth/keychain   internal/config/multiplatform
-         │  imports: auth          │  imports: auth
-         └───────────┬─────────────┘
-                     ▼
+         │  imports: auth, keychain, config/multiplatform, authlock
+         ├────────────────────────┬──────────────────────┐
+         ▼                        ▼                      ▼
+L1  internal/auth/keychain   internal/config/multiplatform   internal/auth/authlock
+         │  imports: auth          │  imports: auth              │  imports: nothing internal
+         └───────────┬─────────────┘                             │  (used by oauth L3 too)
+                     ▼                                            │
 L0  internal/auth                       Credential · TokenSet · Origin
                      imports: nothing internal
 ```
@@ -157,6 +157,16 @@ OS keyring I/O and nothing else.
 | `ErrNotFound` | Nothing stored. |
 | `ErrUnavailable` | No usable keyring on this host — headless Linux, containers. Different user advice from `ErrNotFound`. |
 | `Unavailable(err) bool` | Classifies a backend error as "no keyring". |
+
+### `internal/auth/authlock` (L1)
+
+Shared cross-process flock primitive. One place owns the wait/release discipline
+so `oauth` (refresh) and `store` (per-workspace write) cannot drift. Imports
+nothing internal.
+
+| Export | Purpose |
+|---|---|
+| `Acquire(ctx, path, wait) (release, error)` | Blocks up to `wait` for an exclusive kernel lock on `path`. `release` is idempotent and safe to call even when `err` is non-nil — a `defer` before the error check will not panic on a nil. |
 
 ### `internal/config/multiplatform` (L1)
 

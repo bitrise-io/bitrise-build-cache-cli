@@ -155,8 +155,10 @@ type statusOutput struct {
 // currentAuthStatus reports the credential commands would use. Never refreshes
 // or writes.
 func currentAuthStatus() authStatusInfo {
-	cred, origin, err := live.Default(nil).ResolveNoRefresh(utils.AllEnvs())
+	cred, origin, workspacesOnly, err := live.Default(nil).ResolveNoRefresh(utils.AllEnvs())
 	switch {
+	case workspacesOnly:
+		return authStatusInfo{Source: "per-workspace-only"}
 	case errors.Is(err, authpkg.ErrTokenNotProvided), errors.Is(err, authpkg.ErrWorkspaceIDNotProvided):
 		return authStatusInfo{Source: "none"}
 	case err != nil:

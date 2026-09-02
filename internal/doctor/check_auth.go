@@ -14,7 +14,10 @@ func (d *Doctor) authCheck() Check {
 		Diagnose: func(_ context.Context) Result {
 			// Read-only: report the credential that is on the machine, not the one a
 			// refresh would produce.
-			cred, origin, err := d.storedFirstResolver().ResolveNoRefresh(d.Envs)
+			cred, origin, workspacesOnly, err := d.storedFirstResolver().ResolveNoRefresh(d.Envs)
+			if workspacesOnly {
+				return Result{State: StateOK, Detail: "per-workspace only (resolved per build via project marker)"}
+			}
 			// A workspace-less login is still unusable auth, so it fails the check —
 			// but the fix is picking one, not signing in again.
 			if errors.Is(err, auth.ErrWorkspaceNotSelected) {

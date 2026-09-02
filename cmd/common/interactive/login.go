@@ -316,7 +316,7 @@ func saveLoginWithFallback(logger log.Logger, target store.Store, storage string
 
 // shadowingAuthEnv returns the env var that shadows the stored login, or "".
 func shadowingAuthEnv() string {
-	switch _, origin, _ := live.Default(nil).ResolveNoRefresh(utils.AllEnvs()); origin.Backend {
+	switch _, origin, _, _ := live.Default(nil).ResolveNoRefresh(utils.AllEnvs()); origin.Backend {
 	case auth.BackendEnv:
 		return auth.EnvAuthToken
 	case auth.BackendJWT:

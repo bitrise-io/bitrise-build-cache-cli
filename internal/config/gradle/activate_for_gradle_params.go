@@ -92,7 +92,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
+	authConfig, authOrigin, _, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}

@@ -12,8 +12,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/browse"
 )
+
+type fakeAuthResolver struct {
+	cred           auth.Credential
+	workspacesOnly bool
+	err            error
+	slugs          []string
+}
+
+func (f fakeAuthResolver) ResolveNoRefresh(_ map[string]string) (auth.Credential, auth.Origin, bool, error) {
+	return f.cred, auth.Origin{}, f.workspacesOnly, f.err
+}
+
+func (f fakeAuthResolver) StoredWorkspaceSlugs() []string { return f.slugs }
 
 // browse_ErrNoOpener returns the internal sentinel so the public-API
 // test can drive the warn-path branch without importing the internal
@@ -145,6 +159,43 @@ func TestBrowse_openerErrNoOpener_emitsNoSupportedLauncherWarn(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, got.URL)
 	assert.Contains(t, buf.String(), "No default browser launcher for this OS")
+}
+
+// A workspaces-only auth store with a single per-workspace entry and no marker
+// upstack: the sole slug is the default so `browse` still resolves.
+func TestWorkspaceFromAuth_workspacesOnlySingleSlugDefaults(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	resolver := fakeAuthResolver{workspacesOnly: true, slugs: []string{"acme"}}
+
+	slug, err := workspaceFromAuth(resolver, map[string]string{})
+	require.NoError(t, err)
+	assert.Equal(t, "acme", slug)
+}
+
+// Multiple stored workspaces with no marker: the caller cannot pick, so we
+// surface the ambiguity with an actionable enumeration.
+func TestWorkspaceFromAuth_workspacesOnlyMultipleSlugsErrors(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	resolver := fakeAuthResolver{workspacesOnly: true, slugs: []string{"acme", "beta"}}
+
+	_, err := workspaceFromAuth(resolver, map[string]string{})
+	require.ErrorIs(t, err, ErrAmbiguousWorkspace)
+	assert.Contains(t, err.Error(), "acme")
+	assert.Contains(t, err.Error(), "beta")
+}
+
+// Nothing at all in a workspaces-only state is a soft signal so the caller can
+// render `ErrWorkspaceNotConfigured` — never an internal error string.
+func TestWorkspaceFromAuth_workspacesOnlyZeroSlugsSoftlyReturnsEmpty(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	resolver := fakeAuthResolver{workspacesOnly: true}
+
+	slug, err := workspaceFromAuth(resolver, map[string]string{})
+	require.NoError(t, err)
+	assert.Empty(t, slug)
 }
 
 func TestBrowse_openerGenericError_emitsCouldNotAutoLaunchWarn(t *testing.T) {

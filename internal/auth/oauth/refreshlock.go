@@ -3,49 +3,26 @@ package oauth
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"time"
-
-	"github.com/gofrs/flock"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/authlock"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-const refreshLockPoll = 50 * time.Millisecond
-
-// A non-nil error means "proceed unserialised".
-//
-// The kernel owns the lock, so a holder that is killed releases it immediately and
-// cannot wedge the next refresh. The lock file is deliberately never removed:
-// unlinking it would let a process holding the old inode and a process locking a
-// newly created one both believe they own it.
+// A non-nil error means "proceed unserialised". The refresh lock path is
+// oauth's concern; the flock discipline lives in internal/auth/authlock.
 func acquireRefreshLock(ctx context.Context) (func() error, error) {
-	noop := func() error { return nil }
-
 	p, err := paths.Default()
 	if err != nil {
-		return noop, fmt.Errorf("resolve refresh lock path: %w", err)
-	}
-	path := p.AuthRefreshLockFile()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return noop, fmt.Errorf("create refresh lock dir: %w", err)
+		return func() error { return nil }, fmt.Errorf("resolve refresh lock path: %w", err)
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, refreshLockWait)
-	defer cancel()
-
-	lock := flock.New(path)
-	locked, err := lock.TryLockContext(waitCtx, refreshLockPoll)
+	release, err := authlock.Acquire(ctx, p.AuthRefreshLockFile(), refreshLockWait)
 	if err != nil {
-		return noop, fmt.Errorf("acquire refresh lock %s: %w", path, err)
-	}
-	if !locked {
-		return noop, fmt.Errorf("refresh lock %s still held after %s", path, refreshLockWait)
+		return release, fmt.Errorf("refresh lock: %w", err)
 	}
 
-	return lock.Unlock, nil
+	return release, nil
 }
 
 // A process we queued behind may have already refreshed, and spending an

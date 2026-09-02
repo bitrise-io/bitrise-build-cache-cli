@@ -155,7 +155,7 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
 	resolver := live.Default(nil)
 
-	authConfig, _, err := resolver.ResolveNoRefresh(h.envs)
+	authConfig, _, _, err := resolver.ResolveNoRefresh(h.envs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve auth config: %w", err)
 	}

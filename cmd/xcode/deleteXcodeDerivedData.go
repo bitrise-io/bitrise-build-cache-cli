@@ -71,7 +71,7 @@ func deleteXcodeDerivedDataCmdFn(ctx context.Context,
 	commandFunc func(string, ...string) (string, error),
 ) error {
 	logger.Infof("(i) Check Auth Config")
-	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
+	authConfig, _, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
 	if err != nil {
 		return fmt.Errorf("resolve auth config: %w", err)
 	}

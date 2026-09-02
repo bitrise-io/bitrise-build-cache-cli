@@ -104,7 +104,7 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 	// The credential is resolved, never read out of this file: the invocation PUT
 	// and the doctor must agree on which credential is current, and only one
 	// resolution path can guarantee that.
-	if cred, origin, credErr := live.Default(nil).ResolveNoRefresh(envs); credErr == nil {
+	if cred, origin, _, credErr := live.Default(nil).ResolveNoRefresh(envs); credErr == nil {
 		config.AuthConfig, config.AuthOrigin = cred, origin
 	} else if config.LegacyAuthConfig.Populated() {
 		// Nothing resolvable, but an older CLI left a credential in this file.
@@ -146,7 +146,7 @@ func NewConfig(ctx context.Context,
 ) (Config, error) {
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
+	authConfig, authOrigin, _, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

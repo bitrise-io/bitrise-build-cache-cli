@@ -234,7 +234,7 @@ func (r *Runner) isReactNativeReady() bool {
 		return false
 	}
 
-	cred, _, err := r.resolver.ResolveNoRefresh(utils.AllEnvs())
+	cred, _, _, err := r.resolver.ResolveNoRefresh(utils.AllEnvs())
 
 	return err == nil && cred.WorkspaceID != ""
 }

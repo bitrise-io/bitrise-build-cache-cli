@@ -79,7 +79,7 @@ func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry
 
 	resolver := live.Default(nil)
 
-	cred, origin, err := resolver.ResolveNoRefresh(params.Envs)
+	cred, origin, _, err := resolver.ResolveNoRefresh(params.Envs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve auth config: %w", err)
 	}

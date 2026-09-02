@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -51,11 +52,13 @@ func (*huhWizard) Run(ctx context.Context) error {
 	storedUsername := storedCreds.Username
 
 	var (
-		selectedTools = defaultSelectedTools()
-		workspaceID   = auth.Config.WorkspaceID
-		authToken     = auth.Config.Token
-		username      = storedUsername
-		pushEnabled   = true
+		selectedTools     = defaultSelectedTools()
+		workspaceID       = auth.Config.WorkspaceID
+		authToken         = auth.Config.Token
+		username          = storedUsername
+		pushEnabled       = true
+		bindToWorkspace   bool
+		workspaceBindSlug string
 	)
 
 	toolOptions := []huh.Option[string]{
@@ -95,6 +98,24 @@ func (*huhWizard) Run(ctx context.Context) error {
 
 	if auth.NeedsManualPrompt() {
 		groups = append(groups, authprompt.Group(&workspaceID, &authToken))
+		groups = append(groups,
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Bind this credential to a specific workspace?").
+					Description("Yes: saves under a workspace slug so per-project projects pick it up via `auth token --workspace=<slug>`.\nNo (default): saves as the machine-wide credential — every build on this host uses it.").
+					Affirmative("Yes, bind to a workspace").
+					Negative("No, save machine-wide").
+					Value(&bindToWorkspace),
+			),
+		)
+		groups = append(groups,
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Workspace slug to bind this credential to").
+					Description("The slug you use with `auth token --workspace=<slug>`. Only asked when you chose to bind above.").
+					Value(&workspaceBindSlug),
+			).WithHideFunc(func() bool { return !bindToWorkspace }),
+		)
 	}
 
 	if usernamePersistable(origin) {
@@ -123,11 +144,14 @@ func (*huhWizard) Run(ctx context.Context) error {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
+	//nolint:contextcheck // SaveWorkspaceToken uses its own bounded flock ctx; wizard has no io deadline to hand it.
 	persistWizardCredentials(logger, credStore, auth, wizardCredentials{
-		WorkspaceID:    workspaceID,
-		AuthToken:      authToken,
-		Username:       username,
-		StoredUsername: storedUsername,
+		WorkspaceID:       workspaceID,
+		AuthToken:         authToken,
+		Username:          username,
+		StoredUsername:    storedUsername,
+		BindWorkspaceSlug: strings.TrimSpace(workspaceBindSlug),
+		BindToWorkspace:   bindToWorkspace,
 	})
 
 	envs[authpkg.EnvWorkspaceID] = workspaceID
@@ -144,10 +168,12 @@ func (*huhWizard) Run(ctx context.Context) error {
 
 // wizardCredentials are the credential values the form ended up with.
 type wizardCredentials struct {
-	WorkspaceID    string
-	AuthToken      string
-	Username       string
-	StoredUsername string
+	WorkspaceID       string
+	AuthToken         string
+	Username          string
+	StoredUsername    string
+	BindToWorkspace   bool
+	BindWorkspaceSlug string
 }
 
 type saveWithFallbackFn func(target store.Store, creds authpkg.TokenSet, allowFallback bool) (store.SaveResult, error)
@@ -163,6 +189,23 @@ func persistWizardCredentialsTo(
 	auth wizardAuth,
 	creds wizardCredentials,
 ) {
+	// Bind-to-workspace routes a manually entered credential into the per-workspace
+	// map; nothing else in the persist logic below applies.
+	if creds.BindToWorkspace && creds.BindWorkspaceSlug != "" {
+		ws := authpkg.TokenSet{AuthToken: creds.AuthToken, WorkspaceID: creds.BindWorkspaceSlug, Username: creds.Username}
+		if err := store.SaveWorkspaceToken(target, creds.BindWorkspaceSlug, ws); err != nil {
+			logger.Warnf("Could not save the per-workspace credential (%v). Continuing with values for this run only.", err)
+
+			return
+		}
+		logger.TInfof("Saved credentials for workspace %q into the %s.", creds.BindWorkspaceSlug, target.Backend())
+		if creds.Username != "" {
+			logger.Infof("Saved display name %q for local invocations.", creds.Username)
+		}
+
+		return
+	}
+
 	merged := auth.Stored
 	merged.AuthToken = creds.AuthToken
 	merged.WorkspaceID = creds.WorkspaceID

@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/browse"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // ciProviderUnknown filters the dashboard's invocation list to local runs
@@ -18,6 +22,11 @@ import (
 const ciProviderUnknown = "unknown"
 
 var ErrWorkspaceNotConfigured = errors.New(auth.EnvWorkspaceID + " not set — pass --workspace, export the env var, or run `bitrise-build-cache auth set` so the dashboard can pick a workspace")
+
+// ErrAmbiguousWorkspace is returned when the auth store holds credentials for
+// more than one workspace and the caller has neither passed --workspace nor
+// dropped a project marker. The error string enumerates the available slugs.
+var ErrAmbiguousWorkspace = errors.New("multiple workspaces have stored credentials — specify --workspace <slug>")
 
 // WorkspaceResolver is called when --workspace + env var have both come up empty.
 type WorkspaceResolver func(envs map[string]string) (string, error)
@@ -54,7 +63,11 @@ func (b *Browser) Open(ctx context.Context, p Params) (Result, error) {
 			resolver = defaultWorkspaceFromAuth
 		}
 
-		if id, err := resolver(p.Envs); err == nil && id != "" {
+		id, err := resolver(p.Envs)
+		if errors.Is(err, ErrAmbiguousWorkspace) {
+			return Result{}, err
+		}
+		if err == nil && id != "" {
 			workspaceID = id
 		}
 	}
@@ -107,11 +120,43 @@ func (b *Browser) Open(ctx context.Context, p Params) (Result, error) {
 	return res, nil
 }
 
+// authResolver is the resolver seam. Tests satisfy it in-memory; production uses
+// the live.Default resolver via defaultWorkspaceFromAuth.
+type authResolver interface {
+	ResolveNoRefresh(envs map[string]string) (auth.Credential, auth.Origin, bool, error)
+	StoredWorkspaceSlugs() []string
+}
+
 func defaultWorkspaceFromAuth(envs map[string]string) (string, error) {
-	cfg, _, err := live.Default(nil).ResolveNoRefresh(envs)
+	return workspaceFromAuth(live.Default(nil), envs)
+}
+
+func workspaceFromAuth(resolver authResolver, envs map[string]string) (string, error) {
+	cfg, _, workspacesOnly, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return "", err //nolint:wrapcheck // surfaced only as a fallback signal, never propagated to the user
 	}
 
-	return cfg.WorkspaceID, nil
+	if !workspacesOnly {
+		return cfg.WorkspaceID, nil
+	}
+
+	// Marker in or above CWD wins: it's the explicit per-project choice.
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		if _, marker, mErr := configcommon.WalkUpFindMarker(cwd, utils.DefaultOsProxy{}); mErr == nil && marker != nil && marker.Workspace != "" {
+			return marker.Workspace, nil
+		}
+	}
+
+	// No marker: a single stored workspace is the unambiguous default. More than
+	// one and we can't pick for the user; surface the ambiguity with the choices.
+	slugs := resolver.StoredWorkspaceSlugs()
+	switch len(slugs) {
+	case 0:
+		return "", nil //nolint:nilerr // no marker + no workspace entries: caller renders "no workspace configured"
+	case 1:
+		return slugs[0], nil
+	default:
+		return "", fmt.Errorf("%w (available: %s)", ErrAmbiguousWorkspace, strings.Join(slugs, ", "))
+	}
 }
