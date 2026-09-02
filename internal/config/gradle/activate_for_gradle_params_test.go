@@ -2,6 +2,8 @@
 package gradleconfig
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -11,12 +13,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
+
+func minimalJWT(t *testing.T, workspaceID string) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"authorization": map[string]any{
+			"permissions": []map[string]any{
+				{"rsname": "default", "claims": map[string]any{"org_id": []string{workspaceID}}},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	return "hdr." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+}
 
 func Test_activateGradleParams(t *testing.T) {
 	prep := func() log.Logger {
@@ -76,9 +95,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -113,9 +133,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:   UsageLevelDependency,
@@ -154,9 +175,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -195,9 +217,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -256,9 +279,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -300,11 +324,12 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
-					AppSlug:    "AppSlugValue",
-					CIProvider: "bitrise",
-					Version:    consts.GradleCommonPluginDepVersion,
-					CLIPath:    "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					AppSlug:               "AppSlugValue",
+					CIProvider:            "bitrise",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -347,12 +372,13 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
-					Debug:      true,
-					AppSlug:    "AppSlugValue",
-					CIProvider: "bitrise",
-					Version:    consts.GradleCommonPluginDepVersion,
-					CLIPath:    "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Debug:                 true,
+					AppSlug:               "AppSlugValue",
+					CIProvider:            "bitrise",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -383,6 +409,74 @@ func Test_activateGradleParams(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// A JWT-only auth resolution (no stored PAT / no BITRISE_BUILD_CACHE_AUTH_TOKEN)
+// must blank Common.AuthToken so the template skips baking the JWT into the init
+// script — leakage that scripts/check_gradle_jwt_auth.sh grep-fails on.
+func Test_TemplateInventory_JWTOnly_BlanksBakedAuthToken(t *testing.T) {
+	logger := &mocks.Logger{}
+	logger.On("Infof", mock.Anything).Return()
+	logger.On("Infof", mock.Anything, mock.Anything).Return()
+	logger.On("Debugf", mock.Anything).Return()
+	logger.On("Debugf", mock.Anything, mock.Anything).Return()
+	logger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
+	logger.On("Errorf", mock.Anything).Return()
+	logger.On("Errorf", mock.Anything, mock.Anything).Return()
+	logger.On("Warnf", mock.Anything).Return()
+	logger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+	envs := map[string]string{
+		"BITRISE_IO":         "true",
+		"BITRISE_BUILD_SLUG": "build-slug",
+		"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": minimalJWT(t, "jwt-ws"),
+	}
+
+	params := DefaultActivateGradleParams()
+	params.Cache.Enabled = true
+	params.Cache.PushEnabled = true
+
+	inv, err := params.TemplateInventory(logger, envs, false, nil)
+	require.NoError(t, err)
+	assert.NotEmpty(t, inv.Common.CIProvider, "CI-context guard: this test asserts the CI-side gating")
+	assert.Empty(t, inv.Common.AuthToken, "JWT-only auth must not surface a bakeable token")
+
+	got, err := inv.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "authToken", "the check script grep-fails on any authToken occurrence in the init script")
+}
+
+func Test_TemplateInventory_WorkspacesOnly_BlanksBakedAuthToken(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	require.NoError(t, store.NewKeychain().Save(auth.TokenSet{
+		Workspaces: map[string]auth.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}))
+
+	logger := &mocks.Logger{}
+	logger.On("Infof", mock.Anything).Return()
+	logger.On("Infof", mock.Anything, mock.Anything).Return()
+	logger.On("Debugf", mock.Anything).Return()
+	logger.On("Debugf", mock.Anything, mock.Anything).Return()
+	logger.On("Errorf", mock.Anything).Return()
+	logger.On("Errorf", mock.Anything, mock.Anything).Return()
+	logger.On("Warnf", mock.Anything).Return()
+	logger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+	params := DefaultActivateGradleParams()
+	params.Cache.Enabled = true
+	params.Cache.PushEnabled = true
+
+	inv, err := params.TemplateInventory(logger, map[string]string{}, false, nil)
+	require.NoError(t, err, "scenario B must not fail the resolve")
+	assert.Empty(t, inv.Common.AuthToken, "workspaces-only auth must not surface a bakeable token")
+
+	got, err := inv.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "authToken=\"", "the ValueSource must resolve per build, not a baked literal")
 }
 
 func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {

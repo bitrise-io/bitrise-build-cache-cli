@@ -6,6 +6,7 @@ package live
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -365,7 +366,8 @@ func hasAuthEnvVars(envs map[string]string) bool {
 }
 
 func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
-	token, workspaceID := envs[auth.EnvAuthToken], envs[auth.EnvWorkspaceID]
+	token := strings.TrimSpace(envs[auth.EnvAuthToken])
+	workspaceID := strings.TrimSpace(envs[auth.EnvWorkspaceID])
 
 	if token != "" && workspaceID != "" {
 		return auth.Credential{Token: token, WorkspaceID: workspaceID},
