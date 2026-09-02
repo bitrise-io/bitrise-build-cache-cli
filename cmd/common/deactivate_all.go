@@ -17,8 +17,7 @@ import (
 //nolint:gochecknoglobals
 var deactivateAllDryRun bool
 
-// deactivateFunc runs one per-tool deactivation. Package-scoped vars below so
-// tests can spy on them without invoking the real filesystem work.
+// deactivateFunc — package-scoped so tests can spy on the fan-out.
 type deactivateFunc func(context.Context, log.Logger, bool) error
 
 //nolint:gochecknoglobals
@@ -62,9 +61,6 @@ func runDeactivateAll(ctx context.Context, logger log.Logger, dryRun bool) error
 
 	return errors.Join(errs...)
 }
-
-// Each runXxxDeactivate is a thin passthrough; the pkg Deactivator has already
-// wrapped its errors with the per-tool prefix.
 
 func runReactNativeDeactivate(ctx context.Context, logger log.Logger, dryRun bool) error {
 	return rnpkg.NewDeactivator(rnpkg.DeactivatorParams{DryRun: dryRun, Logger: logger}).Deactivate(ctx) //nolint:wrapcheck
