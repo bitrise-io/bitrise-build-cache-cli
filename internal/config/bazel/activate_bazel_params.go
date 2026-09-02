@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -92,10 +93,15 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, _, _, err := resolver.ResolveNoRefresh(envs)
+	authConfig, _, workspacesOnly, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("resolve auth config: %w", err)
+	}
+	// The credential helper resolves per RPC via the marker, so nothing gets
+	// baked into the .bazelrc — the helper URL line stays.
+	if workspacesOnly {
+		authConfig = authpkg.Credential{}
 	}
 
 	username, _ := resolver.ResolveUsername(envs)
@@ -114,7 +120,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		WorkflowName: cacheConfig.BitriseWorkflowName,
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
-		CLIPath:      credentialHelperPath(params.CLIPath),
+		CLIPath:      credentialHelperPath(params.CLIPath, workspacesOnly),
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,
@@ -215,11 +221,15 @@ func (params ActivateBazelParams) rbeTemplateInventory(
 // reads an empty CLIPath as "embed the token instead" — a config with a token on
 // disk still authenticates, whereas a helper that can never be spawned fails
 // every build.
-func credentialHelperPath(cliPath string) string {
+//
+// On a workspaces-only auth store there is no token to embed, so the bare name
+// is emitted unconditionally: a build with a broken $PATH would fail regardless,
+// and the operator wants the helper URL block to survive the render.
+func credentialHelperPath(cliPath string, workspacesOnly bool) string {
 	switch {
 	case cliPath != "":
 		return cliPath
-	case clibin.OnPATH():
+	case clibin.OnPATH(), workspacesOnly:
 		return paths.CLIBinaryName
 	}
 
