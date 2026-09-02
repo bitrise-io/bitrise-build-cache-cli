@@ -45,6 +45,9 @@ type PluginCommonTemplateInventory struct {
 	Version    string
 
 	CLIPath string
+
+	// ProjectMarkerFilename routes auth to a specific workspace.
+	ProjectMarkerFilename string
 }
 
 type TemplateInventory struct {

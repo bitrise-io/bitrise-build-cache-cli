@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 const (
@@ -92,9 +93,14 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, _, err := resolver.ResolveNoRefresh(envs)
+	authConfig, authOrigin, workspacesOnly, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
+	}
+	// Per-workspace-only store: Gradle init resolves the credential per build via
+	// the ValueSource that calls `auth token --workspace=<slug>` off the marker.
+	if workspacesOnly {
+		authConfig, authOrigin = authpkg.Credential{}, authpkg.Origin{}
 	}
 
 	username, _ := resolver.ResolveUsername(envs)
@@ -144,13 +150,21 @@ func (params ActivateGradleParams) commonTemplateInventory(
 		cliPath = "bitrise-build-cache"
 	}
 
+	// Baking the JWT into the init script would leak a per-build token into a file
+	// that outlives the build.
+	var token string
+	if authOrigin.Backend != authpkg.BackendJWT {
+		token = authpkg.GradleToken(authConfig, authOrigin)
+	}
+
 	return PluginCommonTemplateInventory{
-		AuthToken:  authpkg.GradleToken(authConfig, authOrigin),
-		Debug:      isDebug,
-		AppSlug:    metadata.BitriseAppID,
-		CIProvider: metadata.CIProvider,
-		Version:    consts.GradleCommonPluginDepVersion,
-		CLIPath:    cliPath,
+		AuthToken:             token,
+		Debug:                 isDebug,
+		AppSlug:               metadata.BitriseAppID,
+		CIProvider:            metadata.CIProvider,
+		Version:               consts.GradleCommonPluginDepVersion,
+		CLIPath:               cliPath,
+		ProjectMarkerFilename: paths.ProjectMarkerFilename,
 	}
 }
 
