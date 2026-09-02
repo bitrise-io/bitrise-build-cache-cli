@@ -33,8 +33,10 @@ const (
 	defaultDownloadRetryWait time.Duration = 1 * time.Second
 	defaultUploadRetryWait   time.Duration = 1 * time.Second
 
-	keepaliveTime    = 30 * time.Second
-	keepaliveTimeout = 10 * time.Second
+	// keepaliveTime must exceed the gRPC server's EnforcementPolicy.MinTime
+	// (default 5min) or the server sends GOAWAY ENHANCE_YOUR_CALM.
+	keepaliveTime    = 6 * time.Minute
+	keepaliveTimeout = 20 * time.Second
 )
 
 // Sizing mirrors the Gradle plugin's ClientBalancer, except for the floor:
