@@ -14,6 +14,7 @@ import (
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/invocations"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/reactnative"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/update"
+	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/workspacefor"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
 )
 
