@@ -11,7 +11,6 @@ import (
 //nolint:gochecknoglobals
 var deactivateBazelDryRun bool
 
-// DeactivateBazelCmd represents the `bazel` subcommand under `deactivate`.
 var DeactivateBazelCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "bazel",
 	Short: "Deactivate Bitrise Build Cache for Bazel",

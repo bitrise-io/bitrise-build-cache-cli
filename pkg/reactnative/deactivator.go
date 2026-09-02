@@ -9,23 +9,18 @@ import (
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 )
 
-// DeactivatorParams configures the React Native deactivation.
 type DeactivatorParams struct {
-	// DryRun logs intended removals without executing them.
 	DryRun bool
-
-	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
 }
 
-// Deactivator removes the React Native marker file. Fan-out to gradle, xcode
-// and ccache stays at the cmd/ layer so per-tool errors remain granular.
+// Deactivator removes only the React Native marker; the cmd/ layer fans out to
+// gradle, xcode and ccache so per-tool errors stay separate.
 type Deactivator struct {
 	logger log.Logger
 	dryRun bool
 }
 
-// NewDeactivator creates a Deactivator with production defaults.
 func NewDeactivator(params DeactivatorParams) *Deactivator {
 	logger := params.Logger
 	if logger == nil {
@@ -38,7 +33,6 @@ func NewDeactivator(params DeactivatorParams) *Deactivator {
 	}
 }
 
-// Deactivate removes the React Native marker.
 func (d *Deactivator) Deactivate(_ context.Context) error {
 	if err := rnconfig.Deactivate(d.logger, rnconfig.DeactivateParams{DryRun: d.dryRun}); err != nil {
 		return fmt.Errorf("deactivate react-native marker: %w", err)

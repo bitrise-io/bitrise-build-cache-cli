@@ -11,27 +11,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// DeactivatorParams configures the ccache deactivation.
 type DeactivatorParams struct {
-	// DryRun logs intended removals without executing them.
-	DryRun bool
-
-	// SocketPathOverride is the IPC socket path the storage helper is expected
-	// to listen on. Empty falls back to ccacheconfig.ResolveIPCSocketPath.
+	DryRun             bool
 	SocketPathOverride string
-
-	// Envs is the env var source consulted for the socket-path env override.
-	// Nil means utils.AllEnvs().
-	Envs map[string]string
-
-	// Logger overrides the default logger. If nil, a default logger is created.
-	Logger log.Logger
-
-	// OsProxy overrides the default OS proxy. If nil, utils.DefaultOsProxy{} is used.
-	OsProxy utils.OsProxy
+	Envs               map[string]string
+	Logger             log.Logger
+	OsProxy            utils.OsProxy
 }
 
-// Deactivator stops the ccache storage helper and removes the ccache config.
 type Deactivator struct {
 	logger             log.Logger
 	osProxy            utils.OsProxy
@@ -40,7 +27,6 @@ type Deactivator struct {
 	dryRun             bool
 }
 
-// NewDeactivator creates a Deactivator with production defaults.
 func NewDeactivator(params DeactivatorParams) *Deactivator {
 	logger := params.Logger
 	if logger == nil {
@@ -66,8 +52,6 @@ func NewDeactivator(params DeactivatorParams) *Deactivator {
 	}
 }
 
-// Deactivate stops the running storage helper (best-effort) and drops the
-// ccache config artefact.
 func (d *Deactivator) Deactivate(ctx context.Context) error {
 	var errs []error
 

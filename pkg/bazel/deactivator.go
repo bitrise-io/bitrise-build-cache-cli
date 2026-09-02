@@ -1,4 +1,3 @@
-// Package bazel is the public API for the Bazel deactivate flow.
 package bazel
 
 import (
@@ -11,22 +10,16 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// DeactivatorParams configures the Bazel deactivation.
 type DeactivatorParams struct {
-	// DryRun logs intended removals without executing them.
 	DryRun bool
-
-	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
 }
 
-// Deactivator removes the Bazel activation artefacts (bazelrc block, sidecar).
 type Deactivator struct {
 	logger log.Logger
 	dryRun bool
 }
 
-// NewDeactivator creates a Deactivator with production defaults.
 func NewDeactivator(params DeactivatorParams) *Deactivator {
 	logger := params.Logger
 	if logger == nil {
@@ -39,7 +32,6 @@ func NewDeactivator(params DeactivatorParams) *Deactivator {
 	}
 }
 
-// Deactivate removes the Bazel activation artefacts.
 func (d *Deactivator) Deactivate(_ context.Context) error {
 	p, err := paths.Default()
 	if err != nil {

@@ -14,7 +14,6 @@ var (
 	deactivateCcacheSocketPth string
 )
 
-// DeactivateCcacheCmd represents the `ccache` subcommand under `deactivate`.
 var DeactivateCcacheCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "ccache",
 	Short: "Deactivate Bitrise Build Cache for C++ (ccache)",

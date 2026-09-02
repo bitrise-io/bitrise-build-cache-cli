@@ -17,7 +17,6 @@ import (
 //nolint:gochecknoglobals
 var deactivateAllDryRun bool
 
-// deactivateFunc — package-scoped so tests can spy on the fan-out.
 type deactivateFunc func(context.Context, log.Logger, bool) error
 
 //nolint:gochecknoglobals

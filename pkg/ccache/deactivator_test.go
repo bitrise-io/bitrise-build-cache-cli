@@ -24,9 +24,9 @@ func TestDeactivator_DryRun_NoError(t *testing.T) {
 	require.NoError(t, d.Deactivate(context.Background()))
 }
 
+// Deactivate is best-effort by design: an explicit socket override with nothing
+// listening must not blow up.
 func TestDeactivator_SocketOverride_Retained(t *testing.T) {
-	// Constructor with an explicit socket override must not blow up even when
-	// nothing is listening — deactivate is best-effort by design.
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 

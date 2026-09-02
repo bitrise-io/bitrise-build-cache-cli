@@ -11,7 +11,6 @@ import (
 //nolint:gochecknoglobals
 var deactivateXcodeDryRun bool
 
-// DeactivateXcodeCmd represents the `xcode` subcommand under `deactivate`.
 var DeactivateXcodeCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "xcode",
 	Short: "Deactivate Bitrise Build Cache for Xcode",

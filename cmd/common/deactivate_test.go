@@ -15,8 +15,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 
-	// Blank imports register each per-tool deactivate subcommand.
-	// Without them the `deactivate` root reports zero subcommands.
+	// Blank imports register each per-tool deactivate subcommand via init().
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/bazel"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/ccache"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
@@ -45,17 +44,13 @@ func TestDeactivate_HelpListsAllSubcommands(t *testing.T) {
 	}
 }
 
-// End-to-end smoke test: `deactivate all --dry-run` against a faked $HOME must
-// exit 0 and leave the fake home byte-identical. Guards against a future change
-// that would slip an unconditional os.Remove past the dry-run gate.
+// Guards against a future change slipping an unconditional os.Remove past the
+// dry-run gate.
 func TestDeactivateAll_DryRun_NoFilesystemMutation(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	// Prevent gradle from picking up a real GRADLE_USER_HOME.
 	t.Setenv("GRADLE_USER_HOME", "")
 
-	// Seed a couple of files that Deactivate would otherwise touch. If any of
-	// them changes after the dry-run, the test fails.
 	seed := map[string]string{
 		filepath.Join(tmpHome, ".bashrc"):        "# [start] Bitrise Xcelerate\nexport PATH=/x:$PATH\n# [end] Bitrise Xcelerate\n",
 		filepath.Join(tmpHome, ".zshrc"):         "user=alice\n",
@@ -88,7 +83,6 @@ func TestDeactivateAll_DryRun_NoFilesystemMutation(t *testing.T) {
 	}
 }
 
-// Fan-out spy: `deactivate all` must invoke every per-tool helper exactly once.
 // Guards against a future change silently dropping a tool from the fan-out list.
 func TestDeactivateAll_FanOutInvokesEveryTool(t *testing.T) {
 	counts := struct {

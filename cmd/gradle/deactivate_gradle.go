@@ -11,7 +11,6 @@ import (
 //nolint:gochecknoglobals
 var deactivateGradleDryRun bool
 
-// DeactivateGradleCmd represents the `gradle` subcommand under `deactivate`.
 var DeactivateGradleCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "gradle",
 	Short: "Deactivate Bitrise Build Cache for Gradle",

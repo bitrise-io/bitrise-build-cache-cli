@@ -1,6 +1,3 @@
-// Package gradle is the public API for the Gradle deactivate flow. The
-// Activator lives under pkg/gradle/mirrors — this package will grow additional
-// entry points as more Gradle-side commands migrate down from cmd/.
 package gradle
 
 import (
@@ -14,28 +11,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// DeactivatorParams configures the Gradle deactivation.
 type DeactivatorParams struct {
-	// DryRun logs intended removals without executing them.
 	DryRun bool
-
-	// Envs is the env var source used to resolve GRADLE_USER_HOME. Nil means
-	// utils.AllEnvs().
-	Envs map[string]string
-
-	// Logger overrides the default logger. If nil, a default logger is created.
+	Envs   map[string]string
 	Logger log.Logger
 }
 
-// Deactivator removes the Gradle activation artefacts (init script,
-// gradle.properties block, sidecar).
 type Deactivator struct {
 	logger log.Logger
 	envs   map[string]string
 	dryRun bool
 }
 
-// NewDeactivator creates a Deactivator with production defaults.
 func NewDeactivator(params DeactivatorParams) *Deactivator {
 	logger := params.Logger
 	if logger == nil {
@@ -54,7 +41,6 @@ func NewDeactivator(params DeactivatorParams) *Deactivator {
 	}
 }
 
-// Deactivate removes the Gradle activation artefacts.
 func (d *Deactivator) Deactivate(_ context.Context) error {
 	p, err := paths.Default()
 	if err != nil {

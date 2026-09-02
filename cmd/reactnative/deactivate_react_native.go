@@ -17,14 +17,10 @@ import (
 //nolint:gochecknoglobals
 var deactivateReactNativeDryRun bool
 
-// deactivator is the minimal interface every per-tool Deactivator satisfies.
-// Declared locally so cmd/reactnative can hold both the RN marker Deactivator
-// and the Gradle/Xcode/ccache ones in one slice.
 type deactivator interface {
 	Deactivate(ctx context.Context) error
 }
 
-// DeactivateReactNativeCmd represents the `react-native` subcommand under `deactivate`.
 var DeactivateReactNativeCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Use:   "react-native",
 	Short: "Deactivate Bitrise Build Cache for React Native",
