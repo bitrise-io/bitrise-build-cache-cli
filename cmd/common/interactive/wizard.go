@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -13,7 +12,6 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -58,7 +56,6 @@ func (*huhWizard) Run(ctx context.Context) error {
 		authToken     = auth.Config.Token
 		username      = storedUsername
 		pushEnabled   bool
-		startDaemon   = true
 	)
 
 	toolOptions := []huh.Option[string]{
@@ -74,8 +71,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
-	// group hide funcs, so the daemon question below can only be conditional if
-	// the group doesn't exist yet when the tools are unknown.
+	// group hide funcs, so a later group can only depend on the selection if it
+	// does not exist yet while the tools are unknown.
 	if err := tui.RunForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Which build tools should I set up?").
@@ -122,20 +119,6 @@ func (*huhWizard) Run(ctx context.Context) error {
 		),
 	)
 
-	needsDaemon := len(daemonServicesForTools(selectedTools)) > 0
-	if needsDaemon {
-		groups = append(groups,
-			huh.NewGroup(
-				huh.NewConfirm().
-					Title("Keep the cache proxies running in the background?").
-					Description("Registers them with the OS supervisor (LaunchAgents on macOS, systemd --user on Linux) and starts them, so you don't have to run them per terminal session.").
-					Affirmative("Yes, install + start").
-					Negative("No, I'll start them myself").
-					Value(&startDaemon),
-			),
-		)
-	}
-
 	if err := tui.RunForm(groups...); err != nil {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
@@ -150,19 +133,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[authpkg.EnvWorkspaceID] = workspaceID
 	envs[authpkg.EnvAuthToken] = authToken
 
-	// Wizard's own daemon prompt is authoritative — suppress sub-activators' Ensure.
-	if err := os.Setenv(daemonpkg.EnvSkipEnsure, "1"); err != nil {
-		logger.Debugf("Could not set %s: %v", daemonpkg.EnvSkipEnsure, err)
-	}
-
-	envs[daemonpkg.EnvSkipEnsure] = "1"
-
 	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled); err != nil {
 		return err
-	}
-
-	if needsDaemon && startDaemon {
-		startDaemonForTools(ctx, logger, selectedTools)
 	}
 
 	warnRestartStale(ctx, logger, selectedTools)

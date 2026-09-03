@@ -1,12 +1,10 @@
 // Package clibin decides how a generated config should name the CLI, given that
 // other processes run it later: build tools call back into it (the Bazel
-// credential helper, the Gradle token resolver) and supervisors pin it into their
-// configs, so what gets written has to still work after the command exits.
+// credential helper, the Gradle token resolver), so what gets written has to
+// still work after the command exits.
 package clibin
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,16 +36,6 @@ func IsTransientPath(exe string) bool {
 	}
 
 	return false
-}
-
-// StablePath returns ~/.bitrise/bin/bitrise-build-cache.
-func StablePath() (string, error) {
-	p, err := paths.Default()
-	if err != nil {
-		return "", fmt.Errorf("resolve stable bin path: %w", err)
-	}
-
-	return p.BitriseBinFile(paths.CLIBinaryName), nil
 }
 
 // Resolve returns how a generated config should name the CLI: "" when a bare
@@ -141,43 +129,4 @@ func OnPATH() bool {
 
 func warnNotOnPATH(logger log.Logger) {
 	logger.Warnf("`%s` is not on your $PATH either, so those calls will fail. Install the CLI, or rerun this command from an installed copy.", paths.CLIBinaryName)
-}
-
-// CopyToStable copies src to StablePath() with 0o755 perms, creating the parent
-// directory if needed. Returns the destination path.
-func CopyToStable(src string) (string, error) {
-	dst, err := StablePath()
-	if err != nil {
-		return "", err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return "", fmt.Errorf("create stable bin dir: %w", err)
-	}
-
-	in, err := os.Open(src) //nolint:gosec // src is the running CLI's own executable path
-	if err != nil {
-		return "", fmt.Errorf("open source binary %s: %w", src, err)
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755) //nolint:gosec // executable must be runnable
-	if err != nil {
-		return "", fmt.Errorf("open destination %s: %w", dst, err)
-	}
-
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		_ = os.Remove(dst)
-
-		return "", fmt.Errorf("copy %s -> %s: %w", src, dst, err)
-	}
-
-	if err := out.Close(); err != nil {
-		_ = os.Remove(dst)
-
-		return "", fmt.Errorf("close destination %s: %w", dst, err)
-	}
-
-	return dst, nil
 }

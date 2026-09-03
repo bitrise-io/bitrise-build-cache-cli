@@ -448,4 +448,3 @@ func TestResolve_LegacyJWTKeepsItsOrigin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "jwt-tok", auth.GradleToken(cred, origin), "a JWT must not be workspace-prefixed")
 }
-

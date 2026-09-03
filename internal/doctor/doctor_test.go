@@ -223,7 +223,8 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
-func TestXcelerateProxyCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
+// The socket is the only signal that the cache is not serving.
+func TestXcelerateProxyCheck_warnsWhenNotRunning(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
@@ -665,19 +666,21 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 	assert.Len(t, k, len("doctor-probe-")+2*backendProbeKeyBytes, "8 hex chars expected for 4 random bytes")
 }
 
-// ──────────────────────────── daemon-up + update fixes ────────────────────────────
+// ──────────────────────────── start-service + update fixes ────────────────────────────
 
-func TestXcelerateProxyCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
+// The remedy must spawn a proxy, not poke a service manager.
+func TestXcelerateProxyCheck_fixerStartsAProxyWhenNoSocket(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	require.IsType(t, DaemonUpFixer{}, res.Fixer)
+	assert.Equal(t, StateWarn, res.State, "a missing proxy must still warn")
+	require.IsType(t, StartServiceFixer{}, res.Fixer)
 }
 
-func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
+func TestCcacheHelperCheck_noSocketIsFixable(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
@@ -687,17 +690,17 @@ func TestCcacheHelperCheck_noSocketIsFixableViaDaemonUp(t *testing.T) {
 	assert.True(t, res.Fixable)
 }
 
-func TestCcacheHelperCheck_fixerIsDaemonUpWhenNoSocket(t *testing.T) {
+func TestCcacheHelperCheck_fixerStartsHelperWhenNoSocket(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_CCACHE_IPC_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Ccache: true} },
 	}
 
 	res := r.ccacheHelperCheck().Diagnose(context.Background())
-	require.IsType(t, DaemonUpFixer{}, res.Fixer)
+	require.IsType(t, StartServiceFixer{}, res.Fixer)
 }
 
-func TestCcacheHelperCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
+func TestCcacheHelperCheck_stuckSocketFixerStartsHelper(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "doctor-ccache-stuck-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
@@ -714,7 +717,7 @@ func TestCcacheHelperCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
 	res := r.ccacheHelperCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "stuck")
-	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
+	require.IsType(t, StartServiceFixer{}, res.Fixer)
 }
 
 func TestCLIVersionCheck_behindIsFixable(t *testing.T) {
@@ -748,7 +751,7 @@ func TestCLIVersionCheck_fixerIsUpdateFixer(t *testing.T) {
 	require.IsType(t, UpdateFixer{}, res.Fixer)
 }
 
-func TestXcelerateProxyCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
+func TestXcelerateProxyCheck_stuckSocketFixerStartsAProxy(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "doctor-xcelerate-stuck-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
@@ -765,54 +768,7 @@ func TestXcelerateProxyCheck_stuckSocketFixerIsDaemonRestart(t *testing.T) {
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "stuck")
-	require.IsType(t, DaemonRestartFixer{}, res.Fixer)
-}
-
-func TestDaemonUpFix_propagatesError(t *testing.T) {
-	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) { return nil, errors.New("exit status 1") }}
-
-	_, err := f.Fix()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exit status 1")
-}
-
-func TestDaemonUpFixer_listsStartedServices(t *testing.T) {
-	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) {
-		return []string{"xcelerate-proxy", "ccache-helper"}, nil
-	}}
-
-	detail, err := f.Fix()
-	require.NoError(t, err)
-	assert.Contains(t, detail, "xcelerate-proxy")
-	assert.Contains(t, detail, "ccache-helper")
-}
-
-func TestDaemonUpFixer_noServicesIsNoop(t *testing.T) {
-	f := DaemonUpFixer{Up: func(context.Context) ([]string, error) { return nil, nil }}
-
-	detail, err := f.Fix()
-	require.NoError(t, err)
-	assert.Contains(t, detail, "no services")
-}
-
-func TestDaemonRestartFixer_listsRestartedServices(t *testing.T) {
-	f := DaemonRestartFixer{Restart: func(context.Context) ([]string, error) {
-		return []string{"xcelerate-proxy"}, nil
-	}}
-
-	detail, err := f.Fix()
-	require.NoError(t, err)
-	assert.Contains(t, detail, "xcelerate-proxy")
-}
-
-func TestDaemonRestartFixer_propagatesError(t *testing.T) {
-	f := DaemonRestartFixer{Restart: func(context.Context) ([]string, error) {
-		return nil, errors.New("Down failed")
-	}}
-
-	_, err := f.Fix()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Down failed")
+	require.IsType(t, StartServiceFixer{}, res.Fixer)
 }
 
 func TestUpdateFixer_invokesInjectedUpdate(t *testing.T) {

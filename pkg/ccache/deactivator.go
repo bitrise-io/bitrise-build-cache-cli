@@ -8,6 +8,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -59,8 +61,12 @@ func (d *Deactivator) Deactivate(ctx context.Context) error {
 
 	if d.dryRun {
 		d.logger.TInfof("[dry-run] would stop ccache storage helper on %s", socketPath)
-	} else if err := StopStorageHelperAt(ctx, d.logger, socketPath); err != nil {
-		errs = append(errs, fmt.Errorf("stop ccache storage helper: %w", err))
+	} else {
+		d.retireLegacyRegistration(ctx)
+
+		if err := StopStorageHelperAt(ctx, d.logger, socketPath); err != nil {
+			errs = append(errs, fmt.Errorf("stop ccache storage helper: %w", err))
+		}
 	}
 
 	if err := ccacheconfig.Deactivate(d.logger, ccacheconfig.DeactivateParams{DryRun: d.dryRun}); err != nil {
@@ -68,4 +74,17 @@ func (d *Deactivator) Deactivate(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// Ordered before the stop: a registration left by an older CLI restarts the
+// helper, so deactivating would not deactivate anything.
+func (d *Deactivator) retireLegacyRegistration(ctx context.Context) {
+	p, err := paths.Default()
+	if err != nil {
+		return
+	}
+
+	if spawn.RemoveLegacySupervision(ctx, p, spawn.CcacheHelper()) {
+		d.logger.TInfof("Removed a leftover service registration for the ccache storage helper")
+	}
 }

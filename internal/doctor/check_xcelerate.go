@@ -7,7 +7,15 @@ import (
 )
 
 func (d *Doctor) xcelerateProxyCheck() Check {
-	return d.socketDaemonCheck("xcelerate-proxy", toolconfig.Xcelerate, "xcode", d.xcelerateSocketPath())
+	// No handshake, so a proxy that accepts but never answers reads as running —
+	// a gRPC health check costs more than that is worth. See docs/daemon-latency.md.
+	return d.socketCheck(socketCheckParams{
+		Name:       "xcelerate-proxy",
+		Tool:       toolconfig.Xcelerate,
+		ToolLabel:  "xcode",
+		SocketPath: d.xcelerateSocketPath(),
+		Fixer:      StartProxyFixer(),
+	})
 }
 
 // xcelerateSocketPath prefers the path activation recorded, because that is the one

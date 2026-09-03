@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc"
@@ -24,14 +25,14 @@ import (
 )
 
 // fakeBackend is a local stand-in for bitrise-accelerate, served over loopback
-// for e2e-daemon-cache-macos.
+// for e2e-proxy-cache-macos.
 //
 // Using it keeps a PR gate off the shared backend: no credentials, no cross-DC
-// variance, and no build artifacts written into a real workspace. It was adopted
-// only after confirming it still catches the regression — with the proxy flipped
-// to ProcessType Background it recorded 38 timed-out operations against 0 on
-// Interactive. Loopback is fast enough that this was genuinely in doubt, so
-// re-run that control before changing anything here.
+// variance, and no build artifacts written into a real workspace. Loopback is
+// fast enough that its sensitivity was in doubt, so it was adopted only after
+// confirming a throttled proxy still times out here and an unthrottled one does
+// not — re-run that control before changing anything here. Numbers in
+// docs/daemon-latency.md.
 //
 // Hits and misses are decided by hashing the key rather than randomly, so a run
 // is reproducible: a miss costs the client seconds, and a random draw makes two
@@ -41,6 +42,10 @@ type fakeBackend struct {
 	remoteexecution.UnimplementedCapabilitiesServer
 
 	hitRate float64
+	// delay simulates a proxy that cannot keep up, which is what makes
+	// operations pile up and the runtime grow threads. Without it a loopback
+	// backend answers instantly and no concurrency ever builds.
+	delay time.Duration
 
 	mu    sync.Mutex
 	blobs map[string][]byte
@@ -112,6 +117,10 @@ func (f *fakeBackend) Put(stream grpc.ClientStreamingServer[bytestream.WriteRequ
 }
 
 func (f *fakeBackend) Get(req *bytestream.ReadRequest, stream grpc.ServerStreamingServer[bytestream.ReadResponse]) error {
+	if f.delay > 0 {
+		time.Sleep(f.delay)
+	}
+
 	if !f.isHit(req.GetResourceName()) {
 		return status.Error(codes.NotFound, "simulated miss")
 	}
@@ -161,7 +170,14 @@ func TestFakeBackendServe(t *testing.T) {
 		}
 	}
 
-	endpoint, stop, err := newFakeBackend(hitRate).serve()
+	backend := newFakeBackend(hitRate)
+	if v := os.Getenv("FAKE_BACKEND_DELAY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			backend.delay = d
+		}
+	}
+
+	endpoint, stop, err := backend.serve()
 	if err != nil {
 		t.Fatalf("serve fake backend: %v", err)
 	}

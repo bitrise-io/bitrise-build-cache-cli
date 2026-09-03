@@ -36,8 +36,8 @@ type CreateKVClientParams struct {
 	CapabilitiesClient remoteexecution.CapabilitiesClient // nullable, if not provided, a new client will be created
 	SkipCapabilities   bool                               // if true, GetCapabilities will not be called
 	// DebugLogging is the caller's own setting; the global --debug flag is
-	// OR-ed in via DebugEnabled, so a supervised process started without the
-	// flag still honours its config.
+	// OR-ed in via DebugEnabled, so a service started without the flag still
+	// honours its config.
 	DebugLogging bool
 }
 

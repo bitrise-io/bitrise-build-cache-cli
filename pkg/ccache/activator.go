@@ -3,20 +3,19 @@ package ccache
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
-	daemonpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
-
-//nolint:gochecknoglobals // test seam for daemon.Ensure
-var ensureFn = daemonpkg.Ensure
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -152,30 +151,61 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
-	if err := a.runDaemonEnsure(ctx); err != nil {
-		a.logger.Warnf("Could not ensure ccache background service state: %s", err)
-		a.logger.Infof("Your build tools are activated. Start the services later with: bitrise-build-cache daemon install")
-	}
+	a.ensureHelperServing(ctx, config.IPCEndpoint)
 
 	a.logger.TInfof(ActivateCppSuccessful)
 
 	return nil
 }
 
-// runDaemonEnsure reconciles the ccache helper service with the saved
-// config. Errors are downgraded by the caller so a supervisor hiccup
-// cannot fail an otherwise-successful activation.
-func (a *Activator) runDaemonEnsure(ctx context.Context) error {
-	services := daemonpkg.ServicesForTools(false, true)
+const helperReadyInterval = 100 * time.Millisecond
 
-	if err := ensureFn(ctx, a.logger, services, daemonpkg.EnsureDeps{
-		Envs:         a.envs,
-		DebugLogging: a.debugLogging,
-	}); err != nil {
-		return fmt.Errorf("daemon ensure: %w", err)
+// Test seams. spawn.Detached re-execs this binary, which under `go test` is the
+// test binary itself, so a test must never reach the real starter.
+//
+//nolint:gochecknoglobals
+var (
+	helperReadyBudget = 5 * time.Second
+	startHelperFn     = func(socketPath string, opts ...ccacheipc.StartOption) error {
+		return ccacheipc.NewSocket(socketPath).Start(opts...)
+	}
+)
+
+// ensureHelperServing starts the storage helper if nothing answers its socket.
+// ccache silently misses every lookup when the socket is dead, so this is
+// best-effort but must not fail activation.
+func (a *Activator) ensureHelperServing(ctx context.Context, socketPath string) {
+	if p, err := paths.Default(); err == nil {
+		if spawn.RemoveLegacySupervision(ctx, p, spawn.CcacheHelper()) {
+			a.logger.Warnf("Removed a leftover service registration for the ccache storage helper.")
+		}
 	}
 
-	return nil
+	if spawn.Probe(ctx, socketPath, ccacheipc.SendHealthCheck) == spawn.Running {
+		return
+	}
+
+	opts := []ccacheipc.StartOption{}
+	if a.debugLogging {
+		opts = append(opts, ccacheipc.WithDebug())
+	}
+	if invID := a.envs["BITRISE_INVOCATION_ID"]; invID != "" {
+		opts = append(opts, ccacheipc.WithInvocationID(invID))
+	}
+
+	if err := startHelperFn(socketPath, opts...); err != nil {
+		a.logger.Warnf("Could not start the ccache storage helper: %s", err)
+
+		return
+	}
+
+	if !spawn.AwaitSocket(ctx, socketPath, ccacheipc.SendHealthCheck, helperReadyBudget, helperReadyInterval) {
+		a.logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
+
+		return
+	}
+
+	a.logger.Debugf("Started the ccache storage helper on %s", socketPath)
 }
 
 // ActivateCppSuccessful is the success message printed after activation.

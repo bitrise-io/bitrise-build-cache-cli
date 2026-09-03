@@ -8,9 +8,9 @@
 # reports count/p50/p90/p99 in milliseconds, as: OPLAT n=… p50=… p90=… p99=…
 #
 # Diagnostics only. Against the local fake backend these percentiles do not
-# distinguish a throttled proxy from a healthy one — they came out backwards,
-# p90 483ms healthy against 393ms throttled — because loopback latency is
-# dominated by the build, not the proxy. The timeout count is what gates.
+# distinguish a throttled proxy from a healthy one — they come out backwards,
+# because loopback latency is dominated by the build, not the proxy. The timeout
+# count is what gates. Numbers in docs/daemon-latency.md.
 #
 # Sorting happens outside awk because macOS awk has no asort.
 

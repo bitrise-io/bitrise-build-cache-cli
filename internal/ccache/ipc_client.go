@@ -9,6 +9,31 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 )
 
+// dialHelper sets a deadline because DialContext honours ctx but the protocol
+// reads do not, so a helper that never answers would block forever.
+func dialHelper(ctx context.Context, socketPath string) (net.Conn, error) {
+	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			_ = conn.Close()
+
+			return nil, fmt.Errorf("set deadline: %w", err)
+		}
+	}
+
+	if err := protocol.ReadGreeting(conn); err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("read greeting: %w", err)
+	}
+
+	return conn, nil
+}
+
 const (
 	defaultDialTimeout = 2 * time.Second
 	isListeningTimeout = 100 * time.Millisecond
@@ -41,15 +66,11 @@ func IsListening(socketPath string) bool {
 // the server to flush final stats and shut down. Blocks until the server ACKs, meaning
 // the onShutdown callback has completed before this returns.
 func SendStop(ctx context.Context, socketPath string) error {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestStop); err != nil {
 		return fmt.Errorf("send stop request: %w", err)
@@ -76,9 +97,9 @@ func SendStop(ctx context.Context, socketPath string) error {
 // accumulated downloaded and uploaded byte counts for the active session, along with
 // the active invocation ID and parent invocation ID.
 func SendGetSessionStats(ctx context.Context, socketPath string) (SessionStats, error) {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return SessionStats{}, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return SessionStats{}, err
 	}
 	defer conn.Close()
 
@@ -120,15 +141,11 @@ func SendGetSessionStats(ctx context.Context, socketPath string) (SessionStats, 
 // SendHealthCheck connects to the ccache storage helper and sends a health-check request.
 // Returns nil if the server is up and responding, or an error if unreachable or unhealthy.
 func SendHealthCheck(ctx context.Context, socketPath string) error {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestHealthCheck); err != nil {
 		return fmt.Errorf("send health-check request: %w", err)
@@ -156,15 +173,11 @@ func SendHealthCheck(ctx context.Context, socketPath string) error {
 // logging and session tracking, and registers the parent→child relationship.
 // Returns an error if the connection or protocol exchange fails.
 func SendInvocationID(ctx context.Context, socketPath, parentID, childID string) error {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteSetInvocationID(conn, parentID, childID); err != nil {
 		return fmt.Errorf("send invocation ID: %w", err)

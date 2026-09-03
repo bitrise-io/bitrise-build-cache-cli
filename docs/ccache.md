@@ -163,3 +163,14 @@ func (c *Client) PutCcacheInvocation(inv CcacheInvocation) error
 `ParseCcacheStats` parses the text output of `ccache -v -v -s`. It is line-by-line: indent depth (2 spaces = 1 level) builds a section path like `"Cacheable calls / Hits / Direct"`, which is dispatched to the matching `CcacheStats` field. `CacheHitRate` and `TotalCalls` are derived after parsing. Always returns `nil` error.
 
 `CcacheStats.HasActivity()` returns true when `CacheableCalls + UncacheableCalls > 0`. Used by `StorageHelper.CollectAndSendStats` to gate analytics.
+
+## The storage helper
+
+`activate c++` starts the ccache storage helper if nothing is serving its
+socket, and the helper keeps serving later builds. ccache silently misses every
+lookup when the socket is dead, so this runs on every activation.
+
+It is not registered with the OS supervisor. macOS applies CPU and I/O limits
+per resource coalition and places a launchd job in one of its own, so a
+supervised helper competes with the compiler it serves. See
+[daemon-latency.md](daemon-latency.md).

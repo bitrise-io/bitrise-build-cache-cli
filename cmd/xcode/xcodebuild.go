@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -31,9 +30,9 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/daemon"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -1052,29 +1051,15 @@ func replaceOrAppendBuildSetting(argv []string, key, value string) []string {
 	return out
 }
 
-// launchd only revives a killed proxy after its ThrottleInterval (10s), so the
-// total wait has to comfortably exceed that.
-const (
-	proxyReadyAttempts = 60
-	proxyReadyInterval = 500 * time.Millisecond
-)
+const proxyReadyInterval = 500 * time.Millisecond
 
-var errProxyNotServing = errors.New("xcelerate proxy is not serving yet")
+// Overridden in tests so a spawn that never binds does not cost the full budget.
+//
+//nolint:gochecknoglobals
+var proxyReadyBudget = 30 * time.Second
 
-func awaitProxySocket(ctx context.Context, socketPath string, attempts uint) bool {
-	err := retry.Times(attempts).Wait(proxyReadyInterval).TryWithAbort(func(_ uint) (error, bool) {
-		if ctx.Err() != nil {
-			return errProxyNotServing, true
-		}
-
-		if daemon.ProbeSocket(ctx, socketPath) != daemon.ProbeRunning {
-			return errProxyNotServing, false
-		}
-
-		return nil, true
-	})
-
-	return err == nil
+func awaitProxySocket(ctx context.Context, socketPath string, budget time.Duration) bool {
+	return spawn.AwaitSocket(ctx, socketPath, nil, budget, proxyReadyInterval)
 }
 
 func startProxy(
@@ -1086,11 +1071,16 @@ func startProxy(
 ) error {
 	ctx := context.Background()
 
-	// Holding the singleton is not the same as serving: a supervised proxy
-	// (launchd/systemd) can hold it while wedged or mid-respawn, and attaching to
-	// one that never answers silently drops every cache operation for the build.
+	if p, err := paths.Default(); err == nil {
+		if spawn.RemoveLegacySupervision(ctx, p, spawn.XcelerateProxy()) {
+			logger.TWarnf("Removed a leftover launch agent for the xcelerate proxy; it made builds slower.")
+		}
+	}
+
+	// Holding the singleton is not serving: attaching to a wedged proxy silently
+	// drops every cache operation for the build.
 	if pid, running := xcelerate.ProxyOwner(osProxy); running {
-		if daemon.ProbeSocket(ctx, socketPath) == daemon.ProbeRunning {
+		if spawn.Probe(ctx, socketPath, nil) == spawn.Running {
 			logger.TDonef("Xcelerate proxy already running (pid: %d)", pid)
 
 			return nil
@@ -1101,14 +1091,6 @@ func startProxy(
 		if pid > 0 && kill != nil {
 			kill(pid, syscall.SIGKILL)
 		}
-
-		// A supervised proxy is revived by launchd/systemd, not by us — spawning here
-		// would only lose the race for the singleton.
-		if awaitProxySocket(ctx, socketPath, proxyReadyAttempts) {
-			logger.TDonef("Xcelerate proxy recovered on %s", socketPath)
-
-			return nil
-		}
 	}
 
 	exe, err := osProxy.Executable()
@@ -1116,7 +1098,7 @@ func startProxy(
 		return fmt.Errorf(errFmtExecutable, err)
 	}
 
-	cmd := commandFunc(context.Background(), exe, xcelerateCommand.Use, xcelerateProxyCmd.Use)
+	cmd := commandFunc(context.Background(), exe, spawn.XcelerateProxy().Args...)
 
 	// Detach into new process group so we can signal the whole group.
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{
@@ -1131,11 +1113,14 @@ func startProxy(
 		return fmt.Errorf(errFmtFailedToStartProxy, err)
 	}
 
+	// Reaped, not awaited: an unreaped child stays a zombie for the whole build.
+	go func() { _ = cmd.Wait() }()
+
 	logger.TDonef(startedProxy, cmd.PID())
 
 	// Returning before the socket answers lets xcodebuild race the proxy and fail its
 	// first cache operations. A cache that cannot start must not fail the build.
-	if !awaitProxySocket(ctx, socketPath, proxyReadyAttempts) {
+	if !awaitProxySocket(ctx, socketPath, proxyReadyBudget) {
 		logger.TWarnf("Xcelerate proxy did not start serving on %s, continuing with caching degraded", socketPath)
 	}
 

@@ -32,7 +32,7 @@ func TestAwaitProxySocket_ServingSocketIsReady(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
 
-	assert.True(t, awaitProxySocket(context.Background(), path, proxyReadyAttempts))
+	assert.True(t, awaitProxySocket(context.Background(), path, proxyReadyBudget))
 }
 
 // A proxy holding the singleton without serving must not be reported ready, or
@@ -41,12 +41,11 @@ func TestAwaitProxySocket_AbsentSocketTimesOut(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "missing.sock")
 
 	start := time.Now()
-	assert.False(t, awaitProxySocket(context.Background(), path, 2))
+	assert.False(t, awaitProxySocket(context.Background(), path, time.Second))
 	assert.Less(t, time.Since(start), 5*time.Second, "must give up at the timeout, not hang the build")
 }
 
-// A supervised proxy is revived by launchd/systemd, so the socket can appear well
-// after the wrapper starts waiting.
+// The spawned proxy needs a moment to bind.
 func TestAwaitProxySocket_WaitsForALateSocket(t *testing.T) {
 	path := filepath.Join(shortTempDir(t), "late.sock")
 
@@ -65,7 +64,7 @@ func TestAwaitProxySocket_WaitsForALateSocket(t *testing.T) {
 		}
 	})
 
-	assert.True(t, awaitProxySocket(context.Background(), path, proxyReadyAttempts))
+	assert.True(t, awaitProxySocket(context.Background(), path, proxyReadyBudget))
 }
 
 func TestAwaitProxySocket_HonoursContextCancellation(t *testing.T) {
@@ -73,5 +72,5 @@ func TestAwaitProxySocket_HonoursContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	assert.False(t, awaitProxySocket(ctx, path, proxyReadyAttempts))
+	assert.False(t, awaitProxySocket(ctx, path, proxyReadyBudget))
 }

@@ -4,7 +4,7 @@
 # the cache runs cold and every operation is an upload — the path that
 # regressed in v3.6.3.
 #
-#   ./scripts/daemon_cache_build.sh <output-dir>
+#   ./scripts/proxy_cache_build.sh <output-dir>
 #
 # Runs as its own step so the xcodebuild shim activate published through envman
 # is on PATH.
@@ -27,7 +27,7 @@ xcodebuild build \
     -scheme ComposableArchitecture \
     -destination "generic/platform=iOS" \
     -skipMacroValidation \
-    "OTHER_SWIFT_FLAGS=\$(inherited) -DDAEMON_E2E_${BITRISE_BUILD_NUMBER:-local}" \
+    "OTHER_SWIFT_FLAGS=\$(inherited) -DPROXY_E2E_${BITRISE_BUILD_NUMBER:-local}" \
     2>"$OUT/wrapper.log" | tee "$OUT/xcodebuild.log" >/dev/null
 echo "${PIPESTATUS[0]}" >"$OUT/xcodebuild.exit"
 

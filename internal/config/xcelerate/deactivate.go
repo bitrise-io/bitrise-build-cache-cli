@@ -1,6 +1,7 @@
 package xcelerate
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -23,7 +25,7 @@ type DeactivateParams struct {
 // Deactivate stops the proxy, removes ~/.bitrise-xcelerate/, and strips the
 // shell RC block. Log/queue state under ~/.local/state/xcelerate/* is kept for
 // debugging; the auth credential store is owned by `auth logout`.
-func Deactivate(logger log.Logger, params DeactivateParams) error {
+func Deactivate(ctx context.Context, logger log.Logger, params DeactivateParams) error {
 	var errs []error
 
 	osProxy := utils.DefaultOsProxy{}
@@ -33,7 +35,7 @@ func Deactivate(logger log.Logger, params DeactivateParams) error {
 		return fmt.Errorf("resolve home dir: %w", err)
 	}
 
-	if err := stopProxyForDeactivate(logger, osProxy, params.DryRun); err != nil {
+	if err := stopProxyForDeactivate(ctx, logger, osProxy, params.DryRun); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -46,7 +48,7 @@ func Deactivate(logger log.Logger, params DeactivateParams) error {
 	return errors.Join(errs...)
 }
 
-func stopProxyForDeactivate(logger log.Logger, osProxy utils.OsProxy, dryRun bool) error {
+func stopProxyForDeactivate(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, dryRun bool) error {
 	if dryRun {
 		if _, running := ProxyOwner(osProxy); running {
 			logger.TInfof("[dry-run] would stop xcelerate-proxy")
@@ -55,6 +57,14 @@ func stopProxyForDeactivate(logger log.Logger, osProxy utils.OsProxy, dryRun boo
 		}
 
 		return nil
+	}
+
+	// Ordered before the stop: a launch agent left by an older CLI restarts the
+	// proxy, so deactivating would not deactivate anything.
+	if p, err := paths.Default(); err == nil {
+		if spawn.RemoveLegacySupervision(ctx, p, spawn.XcelerateProxy()) {
+			logger.TInfof("Removed a leftover launch agent for xcelerate-proxy")
+		}
 	}
 
 	if err := StopProxy(logger, osProxy); err != nil {

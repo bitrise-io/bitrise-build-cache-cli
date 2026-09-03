@@ -45,14 +45,14 @@ func TestLoadManifest_ParsesEntries(t *testing.T) {
 
 func TestCommand_GerundForms(t *testing.T) {
 	cases := map[string]enrichment.Command{
-		"Build MyScheme":          enrichment.CommandBuild,
-		"Building MyScheme":       enrichment.CommandBuild,
-		"Cleaning MyScheme":       enrichment.CommandBuild,
-		"Test MySchemeTests":      enrichment.CommandTest,
-		"Testing MySchemeTests":   enrichment.CommandTest,
-		"Archive MyScheme":        enrichment.CommandArchive,
-		"Archiving MyScheme":      enrichment.CommandArchive,
-		"Analyzing MyScheme":      enrichment.CommandUnknown,
+		"Build MyScheme":        enrichment.CommandBuild,
+		"Building MyScheme":     enrichment.CommandBuild,
+		"Cleaning MyScheme":     enrichment.CommandBuild,
+		"Test MySchemeTests":    enrichment.CommandTest,
+		"Testing MySchemeTests": enrichment.CommandTest,
+		"Archive MyScheme":      enrichment.CommandArchive,
+		"Archiving MyScheme":    enrichment.CommandArchive,
+		"Analyzing MyScheme":    enrichment.CommandUnknown,
 	}
 	for sig, want := range cases {
 		got := enrichment.ManifestEntry{Signature: sig}.Command()

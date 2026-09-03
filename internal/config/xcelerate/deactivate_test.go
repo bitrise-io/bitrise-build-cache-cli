@@ -5,6 +5,7 @@ package xcelerate_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
 func TestDeactivate_Xcode_RemovesRootAndShellBlocks(t *testing.T) {
@@ -31,7 +33,7 @@ func TestDeactivate_Xcode_RemovesRootAndShellBlocks(t *testing.T) {
 	require.NoError(t, os.WriteFile(bashRC, []byte(bashBefore), 0o644))
 	require.NoError(t, os.WriteFile(zshRC, []byte(zshBefore), 0o644))
 
-	require.NoError(t, xcelerate.Deactivate(mockLogger, xcelerate.DeactivateParams{
+	require.NoError(t, xcelerate.Deactivate(t.Context(), mockLogger, xcelerate.DeactivateParams{
 		Envs: map[string]string{"HOME": tmpHome},
 	}))
 
@@ -51,8 +53,8 @@ func TestDeactivate_Xcode_Idempotent(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	require.NoError(t, xcelerate.Deactivate(mockLogger, xcelerate.DeactivateParams{Envs: map[string]string{"HOME": tmpHome}}))
-	require.NoError(t, xcelerate.Deactivate(mockLogger, xcelerate.DeactivateParams{Envs: map[string]string{"HOME": tmpHome}}))
+	require.NoError(t, xcelerate.Deactivate(t.Context(), mockLogger, xcelerate.DeactivateParams{Envs: map[string]string{"HOME": tmpHome}}))
+	require.NoError(t, xcelerate.Deactivate(t.Context(), mockLogger, xcelerate.DeactivateParams{Envs: map[string]string{"HOME": tmpHome}}))
 }
 
 func TestDeactivate_Xcode_DryRunPreservesArtefacts(t *testing.T) {
@@ -68,7 +70,7 @@ func TestDeactivate_Xcode_DryRunPreservesArtefacts(t *testing.T) {
 	before := "# [start] Bitrise Xcelerate\nexport PATH=/x:$PATH\n# [end] Bitrise Xcelerate\n"
 	require.NoError(t, os.WriteFile(bashRC, []byte(before), 0o644))
 
-	require.NoError(t, xcelerate.Deactivate(mockLogger, xcelerate.DeactivateParams{
+	require.NoError(t, xcelerate.Deactivate(t.Context(), mockLogger, xcelerate.DeactivateParams{
 		Envs:   map[string]string{"HOME": tmpHome},
 		DryRun: true,
 	}))
@@ -81,4 +83,27 @@ func TestDeactivate_Xcode_DryRunPreservesArtefacts(t *testing.T) {
 	bashAfter, err := os.ReadFile(bashRC)
 	require.NoError(t, err)
 	assert.Equal(t, before, string(bashAfter))
+}
+
+// Deactivate stops the proxy by pid. A launch agent left by an older CLI would
+// restart it moments later, so deactivating has to retire that first or it does
+// not deactivate anything.
+func TestDeactivate_RetiresALeftoverLaunchAgent(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("launchd-only: the linux arm shells out to systemctl")
+	}
+
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	p := paths.FromHome(tmpHome)
+	require.NoError(t, os.MkdirAll(p.LaunchAgentsDir(), 0o755))
+	plist := p.PlistPath("io.bitrise.build-cache." + spawn.NameXcelerateProxy)
+	require.NoError(t, os.WriteFile(plist, []byte("<plist/>"), 0o644))
+
+	require.NoError(t, xcelerate.Deactivate(t.Context(), mockLogger, xcelerate.DeactivateParams{
+		Envs: map[string]string{"HOME": tmpHome},
+	}))
+
+	assert.NoFileExists(t, plist)
 }

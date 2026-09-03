@@ -570,7 +570,9 @@ func Test_XcodebuildRunner_assembleArgs_DoesNotClobberUserResultBundlePath(t *te
 	argsMock := &xcodeargsMocks.XcodeArgsMock{
 		HasBuildActionFunc:   func() bool { return true },
 		ResultBundlePathFunc: func() string { return "/user/path/result.xcresult" },
-		ArgsFunc:             func(_ map[string]string) []string { return []string{"xcodebuild", "-resultBundlePath", "/user/path/result.xcresult"} },
+		ArgsFunc: func(_ map[string]string) []string {
+			return []string{"xcodebuild", "-resultBundlePath", "/user/path/result.xcresult"}
+		},
 	}
 	r := &XcodebuildRunner{
 		Config:       xcelerate.Config{BuildCacheEnabled: false},
