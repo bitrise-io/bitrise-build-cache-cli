@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
@@ -96,6 +97,36 @@ func TestFlushCurrentSession_noOpWhenNoSession(t *testing.T) {
 	p.FlushCurrentSession(context.Background())
 
 	assert.Empty(t, emitter.captured())
+}
+
+func TestSetSession_forwardsWorkspaceFromContextMetadata(t *testing.T) {
+	var capturedWorkspace string
+	kvClient := &mocks.ClientMock{
+		ChangeSessionFunc: func(_, _, _, _, workspaceID string) {
+			capturedWorkspace = workspaceID
+		},
+	}
+	loggerFactory := func(string) (log.Logger, error) { return mockLogger, nil }
+	emitter := &capturingEmitter{}
+	p := proxy.NewProxy(kvClient, false, mockLogger, loggerFactory, emitter)
+
+	// SetSession pulls workspace out of INCOMING metadata; construct it directly
+	// rather than round-tripping through gRPC's outgoing→incoming transport.
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-bitrise-workspace-id", "acme"))
+
+	_, err := p.SetSession(ctx, &sessionproto.SetSessionRequest{
+		InvocationId: "inv-ws", AppSlug: "app", BuildSlug: "b", StepSlug: "s",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "acme", capturedWorkspace, "kvClient.ChangeSession must receive the workspace from ctx metadata")
+
+	_, err = p.SetSession(context.Background(), &sessionproto.SetSessionRequest{InvocationId: "inv-next"})
+	require.NoError(t, err)
+
+	calls := emitter.captured()
+	require.Len(t, calls, 1, "second SetSession emits the first")
+	assert.Equal(t, "acme", calls[0].meta.WorkspaceID)
 }
 
 func TestFlushCurrentSession_noOpWhenEmitterNil(t *testing.T) {
