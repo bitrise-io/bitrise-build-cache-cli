@@ -14,7 +14,7 @@ Non-Bitrise hosts are out of scope here: the Gradle init script also resolves de
 | `xcode-analytics.services.bitrise.io` | 443 | HTTPS | Xcode invocation analytics, DerivedData save/restore |
 | `multiplatform-analytics.services.bitrise.io` | 443 | HTTPS | ccache, React Native and `xcodebuild` invocation analytics |
 | `flare-bes.services.bitrise.io` | 443 | gRPC/TLS | Bazel Build Event Service |
-| `repository-manager.services.bitrise.io` | **8090** | HTTPS | Maven mirror — only when `activate gradle-mirrors` is used |
+| `repository-manager.services.bitrise.io` | **8090** | HTTPS | Maven mirror — always in play on Bitrise CI, not used for local dev runs |
 
 ## Control plane — activation and login
 
@@ -38,7 +38,7 @@ Drop `oauth.bitrise.io` and `api.bitrise.io` if you authenticate with `BITRISE_B
 ## Gotchas
 
 - **Port 444 on `gradle-analytics`.** A 443-only rule silently breaks Gradle analytics while the build cache itself keeps working.
-- **Port 8090 on `repository-manager`.** Non-standard, and the mirror activation soft-fails, so a blocked port shows up as Maven Central traffic bypassing the proxy rather than as a build error.
+- **Port 8090 on `repository-manager`.** Non-standard, and the mirror activation soft-fails, so a blocked port shows up as Maven Central traffic bypassing the proxy rather than as a build error. The default Bitrise workflow activates the mirrors unconditionally, so this applies to every CI build, not just ones that opt in; local dev runs don't use it.
 - **DC-local resolution on Bitrise VMs.** `bitrise-accelerate` and `repository-manager` are redirected to datacenter-internal IPs via `/etc/hosts` written by the preboot reconciler, so on Bitrise-managed VMs that traffic never leaves the datacenter. The public names matter for self-hosted or BYO runners.
 - **No separate task-analytics host.** Per-task and task-IO data is uploaded by the Gradle analytics plugin over the `gradle-analytics` / `gradle-sink` hosts above; there is nothing extra to allowlist for it.
 - **Overrides.** The cache and RBE endpoints can be repointed at a proxy with `BITRISE_BUILD_CACHE_ENDPOINT` and `BITRISE_RBE_ENDPOINT`.
