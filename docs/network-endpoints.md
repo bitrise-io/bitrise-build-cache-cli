@@ -6,15 +6,42 @@ Non-Bitrise hosts are out of scope here: the Gradle init script also resolves de
 
 ## Data plane — hit on every build
 
-| Host | Port | Protocol | Used by |
+Grouped by build tool: allowlist the section(s) matching what you actually run. React Native builds need the union of the Gradle, Xcode and ccache sections.
+
+### Gradle
+
+| Host | Port | Protocol | Purpose |
 |---|---|---|---|
-| `bitrise-accelerate.services.bitrise.io` | 443 | gRPC/TLS | Gradle remote build cache, Bazel remote cache + RBE, Xcode (xcelerate proxy, XCC/Swift cache), ccache storage helper, Gradle Test Distribution |
-| `gradle-analytics.services.bitrise.io` | 443 **and 444** | gRPC/TLS | Gradle plugin analytics, including per-task and task-IO (input files) data |
-| `gradle-sink.services.bitrise.io` | 443 | HTTPS | Gradle analytics HTTP sink |
-| `xcode-analytics.services.bitrise.io` | 443 | HTTPS | Xcode invocation analytics, DerivedData save/restore |
-| `multiplatform-analytics.services.bitrise.io` | 443 | HTTPS | ccache, React Native and `xcodebuild` invocation analytics |
-| `flare-bes.services.bitrise.io` | 443 | gRPC/TLS | Bazel Build Event Service |
+| `bitrise-accelerate.services.bitrise.io` | 443 | gRPC/TLS | Remote build cache; also the Test Distribution endpoint |
+| `gradle-analytics.services.bitrise.io` | 443 **and 444** | gRPC/TLS | Plugin analytics, including per-task and task-IO (input files) data |
+| `gradle-sink.services.bitrise.io` | 443 | HTTPS | Analytics HTTP sink |
 | `repository-manager.services.bitrise.io` | **8090** | HTTPS | Maven mirror — always in play on Bitrise CI, not used for local dev runs |
+
+### Bazel
+
+| Host | Port | Protocol | Purpose |
+|---|---|---|---|
+| `bitrise-accelerate.services.bitrise.io` | 443 | gRPC/TLS | Remote cache and Remote Build Execution |
+| `flare-bes.services.bitrise.io` | 443 | gRPC/TLS | Build Event Service |
+
+### Xcode
+
+| Host | Port | Protocol | Purpose |
+|---|---|---|---|
+| `bitrise-accelerate.services.bitrise.io` | 443 | gRPC/TLS | xcelerate proxy — XCC/Swift compilation cache |
+| `xcode-analytics.services.bitrise.io` | 443 | HTTPS | Invocation analytics, DerivedData save/restore |
+| `multiplatform-analytics.services.bitrise.io` | 443 | HTTPS | `xcodebuild` wrapper invocation analytics |
+
+### ccache (C/C++)
+
+| Host | Port | Protocol | Purpose |
+|---|---|---|---|
+| `bitrise-accelerate.services.bitrise.io` | 443 | gRPC/TLS | Storage helper — object cache |
+| `multiplatform-analytics.services.bitrise.io` | 443 | HTTPS | Invocation analytics |
+
+### React Native
+
+Everything from the Gradle, Xcode and ccache sections, plus `multiplatform-analytics.services.bitrise.io` for the React Native invocation record.
 
 ## Control plane — activation and login
 
