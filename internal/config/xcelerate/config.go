@@ -146,7 +146,7 @@ func NewConfig(ctx context.Context,
 ) (Config, error) {
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, _, err := resolver.ResolveNoRefresh(envs)
+	authConfig, authOrigin, workspacesOnly, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
@@ -162,8 +162,10 @@ func NewConfig(ctx context.Context,
 
 	// Check benchmark phase and override params if needed (only on CI).
 	// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
-	// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json
-	if metadata.CIProvider != "" && benchmarkProvider != nil {
+	// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json.
+	// Skip on workspaces-only: the benchmark HTTP client needs a live credential
+	// that only exists once the wrapper resolves it per invocation.
+	if metadata.CIProvider != "" && benchmarkProvider != nil && !workspacesOnly {
 		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
 		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, exporter)
 	}

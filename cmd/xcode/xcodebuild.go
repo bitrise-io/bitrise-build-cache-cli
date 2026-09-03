@@ -213,6 +213,16 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 
 	logger.EnableDebugLog(config.DebugLogging)
 
+	envs := utils.AllEnvs()
+	scope := resolveWorkspaceScope(ctx, xcodeArgs.ProjectDir(), envs, osProxy, os.Stderr)
+	if scope.Matched {
+		config.AuthConfig = scope.Credential
+		config.AuthOrigin = scope.Origin
+		logger.TDebugf("Using per-project workspace credential: %s", scope.Slug)
+	} else if scope.Slug != "" {
+		logger.TDebugf("Project marker names workspace %s but no matching credential is stored — falling back to machine-wide", scope.Slug)
+	}
+
 	var proxySessionClient session.SessionClient
 	if isBuildAction && config.BuildCacheEnabled {
 		logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
