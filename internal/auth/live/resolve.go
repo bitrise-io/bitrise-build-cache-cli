@@ -132,6 +132,25 @@ func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, au
 	return cred, origin, err
 }
 
+// ResolveNoRefreshForWorkspace is ResolveNoRefresh with a workspace hint. The
+// matched bool is true when a per-workspace record was found; an empty or
+// unknown slug silently falls back to the machine-wide credential with
+// matched=false, so callers on the wrapper hot path never block a build on a
+// bad marker.
+func (r *Resolver) ResolveNoRefreshForWorkspace(_ context.Context, envs map[string]string, workspaceID string) (auth.Credential, auth.Origin, bool, error) {
+	cred, origin, err := r.ResolveNoRefresh(envs)
+	if err != nil || workspaceID == "" {
+		return cred, origin, false, err
+	}
+
+	ws, ok, backend := r.lookupWorkspace(workspaceID)
+	if !ok {
+		return cred, origin, false, nil
+	}
+
+	return ws.Credential(), ws.Origin(backend), true, nil
+}
+
 // ResolveTokenOnly is Resolve for the one caller that needs a token before a
 // workspace exists: the `auth workspace` listing. The Credential it returns may
 // carry an empty WorkspaceID, so nothing that talks to the cache may use it.
