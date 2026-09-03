@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -155,9 +156,18 @@ func (h *Helper) Restore(ctx context.Context, key, filePath string) error {
 func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
 	resolver := live.Default(nil)
 
-	authConfig, _, _, err := resolver.ResolveNoRefresh(h.envs)
+	authConfig, _, workspacesOnly, err := resolver.ResolveNoRefresh(h.envs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve auth config: %w", err)
+	}
+	// The file API has no project cwd to walk for a marker, so this is the
+	// actionable "give me a slug" error rather than a silent fall-through that
+	// would surface as a 401 later.
+	if workspacesOnly {
+		return nil, fmt.Errorf(
+			"no credential resolvable — set %s + %s or a per-workspace credential",
+			authpkg.EnvAuthToken, authpkg.EnvWorkspaceID,
+		)
 	}
 
 	hostUsername, _ := resolver.ResolveUsername(h.envs)

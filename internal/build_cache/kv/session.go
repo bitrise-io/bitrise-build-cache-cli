@@ -1,6 +1,6 @@
 package kv
 
-func (c *Client) ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string) {
+func (c *Client) ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string, workspaceID string) {
 	c.sessionMutex.Lock()
 	defer c.sessionMutex.Unlock()
 
@@ -8,4 +8,5 @@ func (c *Client) ChangeSession(invocationID string, appSlug string, buildSlug st
 	c.cacheConfigMetadata.BitriseAppID = appSlug
 	c.cacheConfigMetadata.BitriseBuildID = buildSlug
 	c.cacheConfigMetadata.BitriseStepExecutionID = stepSlug
+	c.sessionWorkspaceID = workspaceID
 }

@@ -13,6 +13,7 @@ type SessionMeta struct {
 	AppSlug      string
 	BuildSlug    string
 	StepSlug     string
+	WorkspaceID  string
 	StartTime    time.Time
 	// EndTime is the wall-clock of the last RPC on this session (or zero if
 	// none were observed). Emit callers use it to compute Duration accurately —

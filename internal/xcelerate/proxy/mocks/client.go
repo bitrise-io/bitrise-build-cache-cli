@@ -21,7 +21,7 @@ var _ proxy.Client = &ClientMock{}
 //
 //		// make and configure a mocked proxy.Client
 //		mockedClient := &ClientMock{
-//			ChangeSessionFunc: func(invocationID string, appSlug string, buildSlug string, stepSlug string)  {
+//			ChangeSessionFunc: func(invocationID string, appSlug string, buildSlug string, stepSlug string, workspaceID string)  {
 //				panic("mock out the ChangeSession method")
 //			},
 //			DownloadStreamFunc: func(ctx context.Context, writer io.Writer, key string) error {
@@ -44,7 +44,7 @@ var _ proxy.Client = &ClientMock{}
 //	}
 type ClientMock struct {
 	// ChangeSessionFunc mocks the ChangeSession method.
-	ChangeSessionFunc func(invocationID string, appSlug string, buildSlug string, stepSlug string)
+	ChangeSessionFunc func(invocationID string, appSlug string, buildSlug string, stepSlug string, workspaceID string)
 
 	// DownloadStreamFunc mocks the DownloadStream method.
 	DownloadStreamFunc func(ctx context.Context, writer io.Writer, key string) error
@@ -70,6 +70,8 @@ type ClientMock struct {
 			BuildSlug string
 			// StepSlug is the stepSlug argument value.
 			StepSlug string
+			// WorkspaceID is the workspaceID argument value.
+			WorkspaceID string
 		}
 		// DownloadStream holds details about calls to the DownloadStream method.
 		DownloadStream []struct {
@@ -110,17 +112,19 @@ type ClientMock struct {
 }
 
 // ChangeSession calls ChangeSessionFunc.
-func (mock *ClientMock) ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string) {
+func (mock *ClientMock) ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string, workspaceID string) {
 	callInfo := struct {
 		InvocationID string
 		AppSlug      string
 		BuildSlug    string
 		StepSlug     string
+		WorkspaceID  string
 	}{
 		InvocationID: invocationID,
 		AppSlug:      appSlug,
 		BuildSlug:    buildSlug,
 		StepSlug:     stepSlug,
+		WorkspaceID:  workspaceID,
 	}
 	mock.lockChangeSession.Lock()
 	mock.calls.ChangeSession = append(mock.calls.ChangeSession, callInfo)
@@ -128,7 +132,7 @@ func (mock *ClientMock) ChangeSession(invocationID string, appSlug string, build
 	if mock.ChangeSessionFunc == nil {
 		return
 	}
-	mock.ChangeSessionFunc(invocationID, appSlug, buildSlug, stepSlug)
+	mock.ChangeSessionFunc(invocationID, appSlug, buildSlug, stepSlug, workspaceID)
 }
 
 // ChangeSessionCalls gets all the calls that were made to ChangeSession.
@@ -140,12 +144,14 @@ func (mock *ClientMock) ChangeSessionCalls() []struct {
 	AppSlug      string
 	BuildSlug    string
 	StepSlug     string
+	WorkspaceID  string
 } {
 	var calls []struct {
 		InvocationID string
 		AppSlug      string
 		BuildSlug    string
 		StepSlug     string
+		WorkspaceID  string
 	}
 	mock.lockChangeSession.RLock()
 	calls = mock.calls.ChangeSession
