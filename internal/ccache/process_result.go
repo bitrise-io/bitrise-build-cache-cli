@@ -18,6 +18,8 @@ type processResult struct {
 	Outcome            processResultOutcome
 	InvocationParentID string
 	InvocationChildID  string
+	// WorkspaceID is populated only by the SetInvocationIDWithWorkspace handler.
+	WorkspaceID string
 }
 
 func (result processResult) OutcomeString() string {

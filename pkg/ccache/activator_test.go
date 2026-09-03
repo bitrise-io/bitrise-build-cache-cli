@@ -70,6 +70,7 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 		OpenFileFunc: func(_ string, _ int, _ os.FileMode) (*os.File, error) {
 			return nil, fs.ErrNotExist
 		},
+		ReadFileIfExistsFunc: func(_ string) (string, bool, error) { return "", false, nil },
 	}
 }
 
@@ -243,5 +244,43 @@ func TestActivator_Activate(t *testing.T) {
 
 		err := a.Activate(context.Background())
 		assert.ErrorContains(t, err, "failed to save ccache config")
+	})
+
+	t.Run("marker at cwd exports BITRISE_BUILD_CACHE_WORKSPACE_ID for the build", func(t *testing.T) {
+		const projectDir = "/work/dir"
+		markerPath := projectDir + "/.bitrise-build-cache.json"
+
+		osProxy := newOsProxyMock(t)
+		osProxy.GetwdFunc = func() (string, error) { return projectDir, nil }
+		osProxy.ReadFileIfExistsFunc = func(pth string) (string, bool, error) {
+			if pth == markerPath {
+				return `{"workspace":"marker-workspace"}`, true, nil
+			}
+
+			return "", false, nil
+		}
+
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        validEnvs(),
+			OsProxy:     osProxy,
+		})
+
+		require.NoError(t, a.Activate(context.Background()))
+		assert.Equal(t, "marker-workspace", envVars["BITRISE_BUILD_CACHE_WORKSPACE_ID"])
+	})
+
+	t.Run("no marker leaves workspace env untouched", func(t *testing.T) {
+		envs := validEnvs()
+		envs["BITRISE_BUILD_CACHE_WORKSPACE_ID"] = "test-workspace"
+
+		a, envVars := newTestActivator(t, ccachepkg.ActivatorParams{
+			PushEnabled: ccacheconfig.DefaultParams().PushEnabled,
+			Envs:        envs,
+		})
+
+		require.NoError(t, a.Activate(context.Background()))
+		_, exists := envVars["BITRISE_BUILD_CACHE_WORKSPACE_ID"]
+		assert.False(t, exists, "no marker → activator does not export the workspace env")
 	})
 }

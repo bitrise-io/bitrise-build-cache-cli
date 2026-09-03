@@ -70,3 +70,72 @@ func TestClient_getMethodCallMetadata_StableWhenSourceStable(t *testing.T) {
 	assert.Equal(t, md1.Get("authorization"), md2.Get("authorization"))
 	assert.Equal(t, md1.Get("x-org-id"), md2.Get("x-org-id"))
 }
+
+type workspaceAuthSourceFake struct {
+	defaultCred   authpkg.Credential
+	perWorkspace  map[string]authpkg.Credential
+	lastWorkspace atomic.Value // holds string
+}
+
+func (w *workspaceAuthSourceFake) Get(context.Context) authpkg.Credential {
+	return w.defaultCred
+}
+
+func (w *workspaceAuthSourceFake) GetForWorkspace(_ context.Context, workspaceID string) authpkg.Credential {
+	w.lastWorkspace.Store(workspaceID)
+	if cred, ok := w.perWorkspace[workspaceID]; ok {
+		return cred
+	}
+
+	return w.defaultCred
+}
+
+func TestClient_getMethodCallMetadata_PerWorkspaceSwap(t *testing.T) {
+	src := &workspaceAuthSourceFake{
+		defaultCred: authpkg.Credential{Token: "default-tok", WorkspaceID: "default-ws"},
+		perWorkspace: map[string]authpkg.Credential{
+			"acme": {Token: "acme-tok", WorkspaceID: "acme"},
+		},
+	}
+
+	c := &Client{
+		clientName: "test-tool",
+		authSource: src,
+		logger:     log.NewLogger(),
+	}
+
+	// No session workspace → machine-wide credential.
+	md1 := c.getMethodCallMetadata(t.Context(), false)
+	assert.Equal(t, []string{"bearer default-tok"}, md1.Get("authorization"))
+	assert.Equal(t, []string{"default-ws"}, md1.Get("x-org-id"))
+
+	// Session workspace → per-workspace credential resolved.
+	c.ChangeSession("inv-1", "app", "build", "step", "acme")
+	md2 := c.getMethodCallMetadata(t.Context(), false)
+	assert.Equal(t, []string{"bearer acme-tok"}, md2.Get("authorization"))
+	assert.Equal(t, []string{"acme"}, md2.Get("x-org-id"))
+
+	// Clearing back to empty falls back to machine-wide.
+	c.ChangeSession("inv-2", "app", "build", "step", "")
+	md3 := c.getMethodCallMetadata(t.Context(), false)
+	assert.Equal(t, []string{"bearer default-tok"}, md3.Get("authorization"))
+}
+
+// A plain AuthSource that does not implement WorkspaceAuthSource never sees the
+// session workspace ID: the swap is skipped and the machine-wide credential is
+// returned. Guards against source implementations changing behavior silently.
+func TestClient_getMethodCallMetadata_PlainSourceIgnoresWorkspace(t *testing.T) {
+	src := staticAuthSource{cfg: authpkg.Credential{Token: "static-tok", WorkspaceID: "static-ws"}}
+
+	c := &Client{
+		clientName: "test-tool",
+		authSource: src,
+		logger:     log.NewLogger(),
+	}
+
+	c.ChangeSession("inv", "app", "build", "step", "acme")
+
+	md := c.getMethodCallMetadata(t.Context(), false)
+	assert.Equal(t, []string{"bearer static-tok"}, md.Get("authorization"))
+	assert.Equal(t, []string{"static-ws"}, md.Get("x-org-id"))
+}

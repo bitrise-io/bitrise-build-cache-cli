@@ -83,6 +83,20 @@ func buildSetInvocationIDRequest(parentID, childID string) []byte {
 	return buf.Bytes()
 }
 
+// buildSetInvocationIDWithWorkspaceRequest builds a SetInvocationIDWithWorkspace
+// request: [0xB4][parentLen][parent...][childLen][child...][workspaceLen][workspace...]
+func buildSetInvocationIDWithWorkspaceRequest(parentID, childID, workspaceID string) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(protocol.RequestSetInvocationIDWithWorkspace)
+	buf.WriteByte(byte(len(parentID)))
+	buf.WriteString(parentID)
+	buf.WriteByte(byte(len(childID)))
+	buf.WriteString(childID)
+	buf.WriteByte(byte(len(workspaceID)))
+	buf.WriteString(workspaceID)
+	return buf.Bytes()
+}
+
 var noOpCaps = func(context.Context) error { return nil }
 
 func defaultConfig() ccacheconfig.Config {
@@ -311,12 +325,12 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			return factoryLogger, nil
 		})
 
-		var changeSessionCalls []struct{ invocationID, appSlug, buildSlug, stepID string }
+		var changeSessionCalls []struct{ invocationID, appSlug, buildSlug, stepID, workspaceID string }
 		client := &ClientMock{
-			ChangeSessionFunc: func(invocationID, appSlug, buildSlug, stepID string) {
+			ChangeSessionFunc: func(invocationID, appSlug, buildSlug, stepID, workspaceID string) {
 				changeSessionCalls = append(changeSessionCalls, struct {
-					invocationID, appSlug, buildSlug, stepID string
-				}{invocationID, appSlug, buildSlug, stepID})
+					invocationID, appSlug, buildSlug, stepID, workspaceID string
+				}{invocationID, appSlug, buildSlug, stepID, workspaceID})
 			},
 		}
 
@@ -349,6 +363,58 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		assert.Equal(t, "my-app", changeSessionCalls[0].appSlug)
 		assert.Equal(t, "my-build", changeSessionCalls[0].buildSlug)
 		assert.Equal(t, "my-step", changeSessionCalls[0].stepID)
+		assert.Empty(t, changeSessionCalls[0].workspaceID, "V1 opcode leaves session workspace empty")
+	})
+
+	t.Run("SET_INVOCATION_ID_WITH_WORKSPACE forwards workspace to ChangeSession", func(t *testing.T) {
+		parentID := "parent-w"
+		childID := "child-w"
+		workspaceID := "acme"
+
+		factoryLogger := &utilsMocks.Logger{}
+		for _, method := range []string{"TDebugf", "TInfof", "TErrorf", "Warnf", "Infof", "Debugf"} {
+			registerLoggerMethod(factoryLogger, method)
+		}
+
+		loggerFactory := LoggerFactory(func(_ string) (log.Logger, error) {
+			return factoryLogger, nil
+		})
+
+		var changeSessionCalls []struct{ invocationID, appSlug, buildSlug, stepID, workspaceID string }
+		client := &ClientMock{
+			ChangeSessionFunc: func(invocationID, appSlug, buildSlug, stepID, workspaceID string) {
+				changeSessionCalls = append(changeSessionCalls, struct {
+					invocationID, appSlug, buildSlug, stepID, workspaceID string
+				}{invocationID, appSlug, buildSlug, stepID, workspaceID})
+			},
+		}
+
+		conn := &connStub{
+			r: bytes.NewBuffer(buildSetInvocationIDWithWorkspaceRequest(parentID, childID, workspaceID)),
+			w: &bytes.Buffer{},
+		}
+
+		meta := configcommon.CacheConfigMetadata{
+			BitriseAppID:           "app",
+			BitriseBuildID:         "build",
+			BitriseStepExecutionID: "step",
+		}
+
+		proc := newRequestProcessor(conn, defaultConfig(), meta, client, mockLogger, loggerFactory, noOpCaps)
+		result := proc.processRequest(context.Background())
+
+		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
+		resp := conn.w.Bytes()
+		require.NotEmpty(t, resp)
+		assert.Equal(t, byte(protocol.ResponseOK), resp[0])
+
+		assert.Equal(t, parentID, result.InvocationParentID)
+		assert.Equal(t, childID, result.InvocationChildID)
+		assert.Equal(t, workspaceID, result.WorkspaceID)
+
+		require.Len(t, changeSessionCalls, 1)
+		assert.Equal(t, childID, changeSessionCalls[0].invocationID)
+		assert.Equal(t, workspaceID, changeSessionCalls[0].workspaceID)
 	})
 
 	t.Run("HEALTH_CHECK returns OK", func(t *testing.T) {

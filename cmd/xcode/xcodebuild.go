@@ -37,6 +37,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
@@ -258,6 +259,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		Config:             config,
 		Metadata:           metadata,
 		InvocationID:       invocationID,
+		WorkspaceID:        scope.Slug,
 		Logger:             logger,
 		CacheLogger:        cacheLogger,
 		XcodeRunner:        xcodeRunner,
@@ -354,6 +356,7 @@ type XcodebuildRunner struct {
 	Config             xcelerate.Config
 	Metadata           configcommon.CacheConfigMetadata
 	InvocationID       string
+	WorkspaceID        string
 	Logger             log.Logger
 	CacheLogger        log.Logger
 	XcodeRunner        XcodeRunner
@@ -405,7 +408,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}
 
 	if c.ProxySessionClient != nil {
-		_, err := c.ProxySessionClient.SetSession(ctx, &session.SetSessionRequest{
+		setSessionCtx := proxy.ContextWithWorkspaceID(ctx, c.WorkspaceID)
+		_, err := c.ProxySessionClient.SetSession(setSessionCtx, &session.SetSessionRequest{
 			InvocationId: c.InvocationID,
 			AppSlug:      c.Metadata.BitriseAppID,
 			BuildSlug:    c.Metadata.BitriseBuildID,

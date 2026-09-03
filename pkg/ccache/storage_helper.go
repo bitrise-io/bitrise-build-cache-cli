@@ -538,12 +538,15 @@ func createKVClient(
 	logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 	commandFunc := newCommandFunc(ctx)
 
+	authProvider := live.Default(logger).Bind(envs)
+
 	client, err := kv.NewClient(kv.NewClientParams{
 		UseInsecure:         insecureGRPC,
 		Host:                buildCacheHost,
 		DialTimeout:         5 * time.Second,
 		ClientName:          "ccache",
 		AuthConfig:          config.AuthConfig,
+		AuthSource:          authProvider,
 		Logger:              logger,
 		CacheConfigMetadata: configcommon.NewMetadata(envs, hostUsername(envs), commandFunc, logger),
 		CacheOperationID:    uuid.NewString(),

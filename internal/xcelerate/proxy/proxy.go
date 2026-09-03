@@ -33,7 +33,7 @@ var (
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/client.go . Client
 type Client interface {
-	ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string)
+	ChangeSession(invocationID string, appSlug string, buildSlug string, stepSlug string, workspaceID string)
 	SetLogger(logger log.Logger)
 	DownloadStream(ctx context.Context, writer io.Writer, key string) error
 	UploadStreamToBuildCache(ctx context.Context, reader io.ReadSeeker, key string, size int64) error
@@ -251,7 +251,9 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 
 	p.capabilitiesCalled = false
 
-	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug())
+	workspaceID := WorkspaceIDFromContext(ctx)
+
+	p.kvClient.ChangeSession(request.GetInvocationId(), request.GetAppSlug(), request.GetBuildSlug(), request.GetStepSlug(), workspaceID)
 
 	p.sessionState = newSessionState()
 	p.currentSession = &SessionMeta{
@@ -259,6 +261,7 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 		AppSlug:      request.GetAppSlug(),
 		BuildSlug:    request.GetBuildSlug(),
 		StepSlug:     request.GetStepSlug(),
+		WorkspaceID:  workspaceID,
 		StartTime:    time.Now(),
 	}
 	p.lastActivity = time.Time{}
@@ -271,11 +274,12 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 	p.logger = logger
 	p.kvClient.SetLogger(p.logger)
 
-	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s",
+	p.logger.TInfof("SetSession called with invocation ID: %s, app slug: %s, build slug: %s, step slug: %s, workspace ID: %s",
 		request.GetInvocationId(),
 		request.GetAppSlug(),
 		request.GetBuildSlug(),
 		request.GetStepSlug(),
+		workspaceID,
 	)
 
 	return &emptypb.Empty{}, nil

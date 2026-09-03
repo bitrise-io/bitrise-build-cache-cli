@@ -108,6 +108,31 @@ func Test_WriteSetInvocationID(t *testing.T) {
 	})
 }
 
+func Test_WriteSetInvocationIDWithWorkspace(t *testing.T) {
+	t.Run("roundtrip preserves parent, child and workspace", func(t *testing.T) {
+		parentID := "parent-w"
+		childID := "child-w"
+		workspaceID := "acme"
+
+		var buf bytes.Buffer
+		require.NoError(t, protocol.WriteSetInvocationIDWithWorkspace(&buf, parentID, childID, workspaceID))
+
+		firstByte, err := protocol.ReadByte(&buf)
+		require.NoError(t, err)
+		assert.Equal(t, byte(protocol.RequestSetInvocationIDWithWorkspace), firstByte)
+
+		gotParent, gotChild, gotWorkspace, err := protocol.ReadSetInvocationIDWithWorkspace(&buf)
+		require.NoError(t, err)
+		assert.Equal(t, parentID, gotParent)
+		assert.Equal(t, childID, gotChild)
+		assert.Equal(t, workspaceID, gotWorkspace)
+	})
+
+	t.Run("opcode 0xB4 distinct from 0xB1 keeps V1 wire compatible", func(t *testing.T) {
+		assert.NotEqual(t, byte(protocol.RequestSetInvocationID), byte(protocol.RequestSetInvocationIDWithWorkspace))
+	})
+}
+
 func Test_ReadKey(t *testing.T) {
 	t.Run("reads length-prefixed key correctly", func(t *testing.T) {
 		key := []byte{0xAB, 0xCD, 0xEF}

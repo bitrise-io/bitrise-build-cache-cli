@@ -50,6 +50,13 @@ type AuthSource interface {
 	Get(ctx context.Context) auth.Credential
 }
 
+// WorkspaceAuthSource resolves per-workspace credentials. kv.Client type-asserts
+// its AuthSource against this interface at RPC time; sources that only need the
+// machine-wide credential can skip implementing it.
+type WorkspaceAuthSource interface {
+	GetForWorkspace(ctx context.Context, workspaceID string) auth.Credential
+}
+
 type staticAuthSource struct {
 	cfg auth.Credential
 }
@@ -104,6 +111,7 @@ type Client struct {
 	logger              log.Logger
 	cacheOperationID    string
 	invocationID        string
+	sessionWorkspaceID  string
 	sessionMutex        sync.Mutex
 	downloadRetry       uint
 	downloadRetryWait   time.Duration
