@@ -9,7 +9,7 @@ Non-Bitrise hosts are out of scope here: the Gradle init script also resolves de
 | Host | Port | Protocol | Used by |
 |---|---|---|---|
 | `bitrise-accelerate.services.bitrise.io` | 443 | gRPC/TLS | Gradle remote build cache, Bazel remote cache + RBE, Xcode (xcelerate proxy, XCC/Swift cache), ccache storage helper, Gradle Test Distribution |
-| `gradle-analytics.services.bitrise.io` | 443 **and 444** | gRPC/TLS | Gradle plugin analytics |
+| `gradle-analytics.services.bitrise.io` | 443 **and 444** | gRPC/TLS | Gradle plugin analytics, including per-task and task-IO (input files) data |
 | `gradle-sink.services.bitrise.io` | 443 | HTTPS | Gradle analytics HTTP sink |
 | `xcode-analytics.services.bitrise.io` | 443 | HTTPS | Xcode invocation analytics, DerivedData save/restore |
 | `multiplatform-analytics.services.bitrise.io` | 443 | HTTPS | ccache, React Native and `xcodebuild` invocation analytics |
@@ -40,4 +40,5 @@ Drop `oauth.bitrise.io` and `api.bitrise.io` if you authenticate with `BITRISE_B
 - **Port 444 on `gradle-analytics`.** A 443-only rule silently breaks Gradle analytics while the build cache itself keeps working.
 - **Port 8090 on `repository-manager`.** Non-standard, and the mirror activation soft-fails, so a blocked port shows up as Maven Central traffic bypassing the proxy rather than as a build error.
 - **DC-local resolution on Bitrise VMs.** `bitrise-accelerate` and `repository-manager` are redirected to datacenter-internal IPs via `/etc/hosts` written by the preboot reconciler, so on Bitrise-managed VMs that traffic never leaves the datacenter. The public names matter for self-hosted or BYO runners.
+- **No separate task-analytics host.** Per-task and task-IO data is uploaded by the Gradle analytics plugin over the `gradle-analytics` / `gradle-sink` hosts above; there is nothing extra to allowlist for it.
 - **Overrides.** The cache and RBE endpoints can be repointed at a proxy with `BITRISE_BUILD_CACHE_ENDPOINT` and `BITRISE_RBE_ENDPOINT`.
