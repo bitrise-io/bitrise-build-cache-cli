@@ -14,8 +14,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	authstore "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
@@ -690,4 +692,33 @@ func TestConfig_NewConfig(t *testing.T) {
 
 		assert.True(t, actual.BuildCacheEnabled)
 	})
+}
+
+func TestConfig_NewConfig_WorkspacesOnly(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	require.NoError(t, authstore.NewKeychain().Save(authpkg.TokenSet{
+		Workspaces: map[string]authpkg.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}))
+
+	cmdMock := &utilsMocks.CommandMock{
+		CombinedOutputFunc: func() ([]byte, error) {
+			return []byte("/usr/bin/xcodebuild"), nil
+		},
+	}
+	osProxyMock := &utilsMocks.OsProxyMock{
+		TempDirFunc: func() string { return t.TempDir() },
+	}
+
+	cfg, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
+		BuildCacheEnabled: true,
+	}, map[string]string{}, osProxyMock, func(_ context.Context, _ string, _ ...string) utils.Command {
+		return cmdMock
+	}, &noopExporter{}, nil)
+	require.NoError(t, err, "scenario B must not block NewConfig")
+	assert.True(t, cfg.BuildCacheEnabled, "cache enabled param still surfaces")
+	assert.Equal(t, authpkg.Credential{}, cfg.AuthConfig, "no baked auth in scenario B; wrapper resolves per invocation")
 }
