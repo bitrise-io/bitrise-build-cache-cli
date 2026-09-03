@@ -55,7 +55,7 @@ func noOpLogger() log.Logger {
 // Unset methods are nil-safe due to moq's -stub generation.
 func noOpClient() *ClientMock {
 	return &ClientMock{
-		ChangeSessionFunc:            func(_, _, _, _ string) {},
+		ChangeSessionFunc:            func(_, _, _, _, _ string) {},
 		GetCapabilitiesWithRetryFunc: func(_ context.Context) error { return nil },
 	}
 }

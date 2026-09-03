@@ -52,6 +52,9 @@ type Config struct {
 	Enabled            bool          `json:"enabled"`
 	DebugLogging       bool          `json:"debugLogging,omitempty"`
 	BuildCacheEndpoint string        `json:"buildCacheEndpoint,omitempty"`
+	// WorkspaceID is the marker-resolved workspace slug; empty means
+	// machine-wide activation.
+	WorkspaceID string `json:"workspaceID,omitempty"`
 
 	// AuthConfig is populated at runtime from the multiplatform analytics
 	// config (single canonical source for auth credentials on disk). Not
@@ -150,7 +153,7 @@ func (config Config) CRSHRemoteStorageURL() string {
 // BuildEnv serves both delivery paths — envman on CI, the wrapped build's own
 // environment off it — so the two cannot drift.
 func (config Config) BuildEnv(baseDir string) map[string]string {
-	return map[string]string{
+	env := map[string]string{
 		"CCACHE_BASEDIR": baseDir,
 		// ccache's default mtime check rotates every key on CI, where a toolchain installed
 		// per build (e.g. an NDK from sdkmanager) is stamped with the install time.
@@ -161,6 +164,11 @@ func (config Config) BuildEnv(baseDir string) map[string]string {
 		"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
 		"CMAKE_C_COMPILER_LAUNCHER":   "ccache",
 	}
+	if config.WorkspaceID != "" {
+		env[authpkg.EnvWorkspaceID] = config.WorkspaceID
+	}
+
+	return env
 }
 
 func (config Config) Save(logger log.Logger, osProxy utils.OsProxy, encoderFactory utils.EncoderFactory) error {

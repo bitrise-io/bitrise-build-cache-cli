@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 )
 
@@ -308,8 +309,24 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 	return out
 }
 
+// per-workspace swap when the source implements WorkspaceAuthSource; falls back to Get() otherwise.
+func (c *Client) resolveAuthForRPC(ctx context.Context) authpkg.Credential {
+	c.sessionMutex.Lock()
+	workspaceID := c.sessionWorkspaceID
+	c.sessionMutex.Unlock()
+
+	if workspaceID != "" {
+		if ws, ok := c.authSource.(WorkspaceAuthSource); ok {
+			return ws.GetForWorkspace(ctx, workspaceID)
+		}
+		c.logger.Debugf("session workspace %q ignored: auth source does not implement WorkspaceAuthSource", workspaceID)
+	}
+
+	return c.authSource.Get(ctx)
+}
+
 func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata.MD {
-	auth := c.authSource.Get(ctx)
+	auth := c.resolveAuthForRPC(ctx)
 	md := metadata.Pairs(
 		"authorization", fmt.Sprintf("bearer %s", auth.Token),
 		"x-flare-buildtool", c.clientName)

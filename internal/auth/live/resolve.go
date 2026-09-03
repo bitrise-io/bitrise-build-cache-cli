@@ -185,6 +185,18 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 	return cred
 }
 
+// GetForWorkspace satisfies kv.WorkspaceAuthSource. Empty workspaceID or an
+// unknown slug fall through to the machine-wide credential; kv.Client swaps
+// credentials per RPC without knowing which resolver backs its AuthSource.
+func (b *Bound) GetForWorkspace(ctx context.Context, workspaceID string) auth.Credential {
+	cred, _, err := b.resolver.ResolveForWorkspace(ctx, b.envs, workspaceID)
+	if err != nil {
+		b.resolver.debugf("no credential for workspace %q: %s", workspaceID, err)
+	}
+
+	return cred
+}
+
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
 	return r.resolveWith(envs, auth.TokenSet.Populated)
 }

@@ -264,6 +264,27 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 
 	p.logger.TDebugf("[SetInvocationID] parent=%s child=%s", parentID, childID) // CI: asserted by cache-ccache-test workflow (requires --debug)
 
+	return p.applySetInvocation(statBuilder, parentID, childID, "")
+}
+
+func (p *requestProcessor) handleSetInvocationIDWithWorkspace() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_SET_INVOCATION_ID)
+
+	parentID, childID, workspaceID, err := protocol.ReadSetInvocationIDWithWorkspace(p.reader)
+	if err != nil {
+		return processResult{
+			Outcome:   PROCESS_REQUEST_ERROR,
+			Err:       fmt.Errorf("failed to read invocation ID: %w", err),
+			CallStats: statBuilder.build(),
+		}
+	}
+
+	p.logger.TDebugf("[SetInvocationIDWithWorkspace] parent=%s child=%s workspace=%s", parentID, childID, workspaceID)
+
+	return p.applySetInvocation(statBuilder, parentID, childID, workspaceID)
+}
+
+func (p *requestProcessor) applySetInvocation(statBuilder *statBuilder, parentID, childID, workspaceID string) processResult {
 	if p.loggerFactory != nil {
 		newLogger, logErr := p.loggerFactory(childID)
 		if logErr != nil {
@@ -273,13 +294,14 @@ func (p *requestProcessor) handleSetInvocationID() processResult {
 		}
 	}
 
-	p.client.ChangeSession(childID, p.metadata.BitriseAppID, p.metadata.BitriseBuildID, p.metadata.BitriseStepExecutionID)
+	p.client.ChangeSession(childID, p.metadata.BitriseAppID, p.metadata.BitriseBuildID, p.metadata.BitriseStepExecutionID, workspaceID)
 
 	return p.notifyClient(processResult{
 		Outcome:            PROCESS_REQUEST_OK,
 		CallStats:          statBuilder.build(),
 		InvocationParentID: parentID,
 		InvocationChildID:  childID,
+		WorkspaceID:        workspaceID,
 	})
 }
 
@@ -360,6 +382,11 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 
 	case protocol.RequestSetInvocationID:
 		result = p.handleSetInvocationID()
+
+		return result
+
+	case protocol.RequestSetInvocationIDWithWorkspace:
+		result = p.handleSetInvocationIDWithWorkspace()
 
 		return result
 

@@ -3,6 +3,7 @@ package ccache
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -113,7 +114,13 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return fmt.Errorf("failed to create ccache config: %w", err)
 	}
 
+	wd, wdErr := a.osProxy.Getwd()
+	if wdErr != nil {
+		a.logger.Warnf("Failed to get working directory: %s", wdErr)
+	}
+
 	config.DebugLogging = a.debugLogging
+	config.WorkspaceID = a.discoverWorkspaceSlug(wd)
 
 	if err := config.Save(a.logger, a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
@@ -139,12 +146,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 
 	baseDir := a.baseDirOverride
 	if baseDir == "" {
-		wd, err := a.osProxy.Getwd()
-		if err != nil {
-			a.logger.Warnf("Failed to get working directory for CCACHE_BASEDIR: %s", err)
-		} else {
-			baseDir = wd
-		}
+		baseDir = wd
 	}
 
 	for key, value := range config.BuildEnv(baseDir) {
@@ -229,6 +231,15 @@ func addEnvVarToEnvman(
 	}
 
 	logger.TInfof("Set %s=%s via envman", key, value)
+}
+
+// Empty return → machine-wide activation.
+func (a *Activator) discoverWorkspaceSlug(wd string) string {
+	if wd == "" {
+		return ""
+	}
+
+	return configcommon.DiscoverWorkspaceSlug(wd, a.osProxy, os.Stderr)
 }
 
 // ensureLogDir creates the dir the storage helper would otherwise create on its
