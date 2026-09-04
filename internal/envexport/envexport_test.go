@@ -10,6 +10,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
 
 func TestExport_SetsOsEnv(t *testing.T) {
@@ -20,6 +22,24 @@ func TestExport_SetsOsEnv(t *testing.T) {
 
 	assert.Equal(t, "test_value", os.Getenv("TEST_ENVEXPORT_KEY"))
 	t.Cleanup(func() { os.Unsetenv("TEST_ENVEXPORT_KEY") })
+}
+
+func TestExportCLIPath_ExportsRunningBinary(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	envFile := filepath.Join(tmpDir, "github_env")
+
+	New(map[string]string{"GITHUB_ENV": envFile}, log.NewLogger()).ExportCLIPath()
+
+	exe, err := os.Executable()
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(envFile)
+	require.NoError(t, err)
+	assert.Equal(t, consts.EnvCLIPath+"="+exe+"\n", string(content))
+	assert.Equal(t, exe, os.Getenv(consts.EnvCLIPath))
+	t.Cleanup(func() { os.Unsetenv(consts.EnvCLIPath) })
 }
 
 func TestExport_WritesToGitHubEnvFile(t *testing.T) {

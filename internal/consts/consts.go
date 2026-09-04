@@ -25,6 +25,8 @@ const (
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsGRPCEndpoint     = "grpcs://gradle-analytics.services.bitrise.io:444"
 
+	EnvCLIPath = "BITRISE_BUILD_CACHE_CLI"
+
 	// Gradle Common Plugin version
 	GradleCommonPluginDepVersion = "1.0.8"
 
