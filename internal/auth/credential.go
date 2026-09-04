@@ -17,18 +17,38 @@ func (c Credential) Expired() bool {
 	return !c.Expiry.IsZero() && time.Now().After(c.Expiry)
 }
 
+// Absent (0) is read as v1 (pre-Workspaces).
+const SchemaVersionCurrent = 2
+
 // TokenSet is the persisted record, identical for both backends. AuthToken +
 // WorkspaceID are always present; the rest is set only by an OAuth login, where
 // AuthToken is the minted PAT and the refresh token drives transparent refresh.
+//
+// Workspaces holds per-workspace credentials keyed by slug, siblings of the
+// top-level (machine-wide) fields. The resolver with a workspace hint prefers
+// the matching entry; without a hint the top-level fields are used.
 type TokenSet struct {
-	AuthToken          string    `json:"auth_token"`
-	WorkspaceID        string    `json:"workspace_id"`
-	Username           string    `json:"username,omitempty"`
-	PATExpiry          time.Time `json:"pat_expiry,omitempty"`
-	JWT                string    `json:"jwt,omitempty"`
-	JWTExpiry          time.Time `json:"jwt_expiry,omitempty"`
-	RefreshToken       string    `json:"refresh_token,omitempty"`
-	RefreshTokenExpiry time.Time `json:"refresh_token_expiry,omitempty"`
+	SchemaVersion      int                 `json:"schema,omitempty"`
+	AuthToken          string              `json:"auth_token"`
+	WorkspaceID        string              `json:"workspace_id"`
+	Username           string              `json:"username,omitempty"`
+	PATExpiry          time.Time           `json:"pat_expiry,omitempty"`
+	JWT                string              `json:"jwt,omitempty"`
+	JWTExpiry          time.Time           `json:"jwt_expiry,omitempty"`
+	RefreshToken       string              `json:"refresh_token,omitempty"`
+	RefreshTokenExpiry time.Time           `json:"refresh_token_expiry,omitempty"`
+	Workspaces         map[string]TokenSet `json:"workspaces,omitempty"`
+}
+
+// ForWorkspace returns the per-workspace entry keyed by slug, or the zero value
+// with ok=false when nothing is stored for it. Empty slug is a miss.
+func (t TokenSet) ForWorkspace(slug string) (TokenSet, bool) {
+	if slug == "" || t.Workspaces == nil {
+		return TokenSet{}, false
+	}
+	ws, ok := t.Workspaces[slug]
+
+	return ws, ok && ws.AuthToken != ""
 }
 
 // IsOAuthManaged reports whether the record came from `auth login` rather than a

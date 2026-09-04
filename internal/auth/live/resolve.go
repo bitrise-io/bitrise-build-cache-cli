@@ -67,6 +67,43 @@ func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Cr
 	return r.resolveAndRefresh(ctx, envs, auth.TokenSet.Populated)
 }
 
+// ResolveForWorkspace is Resolve with a workspace hint. An empty slug is
+// identical to Resolve. A matching per-workspace entry in any store backend
+// wins over whatever Resolve returned — an env-var or static-file credential
+// is machine-wide, and the caller asked for the workspace-scoped one. An
+// unknown slug warns and falls back so a build is never blocked.
+func (r *Resolver) ResolveForWorkspace(ctx context.Context, envs map[string]string, workspaceID string) (auth.Credential, auth.Origin, error) {
+	cred, origin, err := r.Resolve(ctx, envs)
+	if err != nil || workspaceID == "" {
+		return cred, origin, err
+	}
+
+	ws, ok, backend := r.lookupWorkspace(workspaceID)
+	if !ok {
+		if r.Logger != nil {
+			r.Logger.Warnf("no per-workspace credential for %q; falling back to the machine-wide credential", workspaceID)
+		}
+
+		return cred, origin, nil
+	}
+
+	return ws.Credential(), ws.Origin(backend), nil
+}
+
+func (r *Resolver) lookupWorkspace(slug string) (auth.TokenSet, bool, auth.Backend) {
+	for _, s := range r.backends() {
+		ts, err := s.Load()
+		if err != nil {
+			continue
+		}
+		if entry, ok := ts.ForWorkspace(slug); ok {
+			return entry, true, s.Backend()
+		}
+	}
+
+	return auth.TokenSet{}, false, auth.BackendNone
+}
+
 func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, error) {
 	cred, origin, backing, err := r.resolveWith(envs, usable)
 	if err != nil || !origin.StoreManaged() {
