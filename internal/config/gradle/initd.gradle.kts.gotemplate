@@ -78,7 +78,6 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "{{ .Cache.EndpointURLWithPort }}"
-            authToken = {{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }}
             isPush = {{ .Cache.IsPushEnabled }}
             debug = {{ .Common.Debug }}
             blobValidationLevel = "{{ .Cache.ValidationLevel }}"
@@ -96,7 +95,6 @@ settingsEvaluated {
         endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")
         httpEndpoint.set("{{ .Analytics.HTTPEndpoint }}")
         grpcEndpoint.set("{{ .Analytics.GRPCEndpoint }}")
-        authToken.set({{ if .Common.CIProvider }}"{{ .Common.AuthToken }}"{{ else }}providers.bitriseAuthToken(){{ end }})
         dumpEventsToFiles.set({{ .Common.Debug }})
         debug.set({{ .Common.Debug }})
         enabled.set(true)

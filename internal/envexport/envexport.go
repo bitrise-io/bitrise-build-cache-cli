@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/stringmerge"
 )
@@ -79,6 +80,20 @@ func (e *EnvExporter) exportViaGitHubEnv(key, value string) {
 		return
 	}
 	e.logger.Infof("Appended %s to %s", key, filePath)
+}
+
+// ExportCLIPath publishes this binary's path as BITRISE_BUILD_CACHE_CLI. The Gradle plugins run
+// the CLI to resolve their auth token but look only there, on $PATH and in ~/.bitrise/bin, while
+// the step installs into /tmp/bin. A stale path is safe: they skip what they cannot execute.
+func (e *EnvExporter) ExportCLIPath() {
+	exe, err := os.Executable()
+	if err != nil {
+		e.logger.Debugf("Could not resolve the CLI's own path, build tools will fall back to $PATH: %v", err)
+
+		return
+	}
+
+	e.Export(consts.EnvCLIPath, exe)
 }
 
 // ExportToShellRC writes an export statement to ~/.bashrc and ~/.zshrc using a marker block.

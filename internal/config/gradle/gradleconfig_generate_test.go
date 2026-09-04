@@ -230,7 +230,6 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = "AuthTokenValue"
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -244,7 +243,6 @@ settingsEvaluated {
         endpoint.set("AnalyticsEndpointURLValue:123")
         httpEndpoint.set("AnalyticsHttpEndpointValue")
         grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-        authToken.set("AuthTokenValue")
         dumpEventsToFiles.set(true)
         debug.set(true)
         enabled.set(true)
@@ -289,7 +287,6 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = providers.bitriseAuthToken()
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -303,7 +300,6 @@ settingsEvaluated {
         endpoint.set("AnalyticsEndpointURLValue:123")
         httpEndpoint.set("AnalyticsHttpEndpointValue")
         grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-        authToken.set(providers.bitriseAuthToken())
         dumpEventsToFiles.set(true)
         debug.set(true)
         enabled.set(true)

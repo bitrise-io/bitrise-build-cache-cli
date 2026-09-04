@@ -47,7 +47,9 @@ func Activate(
 			return string(output), err
 		}, logger)
 	if metadata.CIProvider != "" {
-		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envProvider, logger))
+		exporter := envexport.New(envProvider, logger)
+		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
+		exporter.ExportCLIPath()
 	}
 
 	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)

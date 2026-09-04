@@ -16,20 +16,22 @@ const (
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
 
 	// Gradle Remote Build Cache related consts
-	GradleRemoteBuildCachePluginDepVersion = "2.0.0"
+	GradleRemoteBuildCachePluginDepVersion = "2.1.0"
 
 	// Gradle Analytics related consts
-	GradleAnalyticsPluginDepVersion = "3.2.2"
+	GradleAnalyticsPluginDepVersion = "3.2.3"
 	GradleAnalyticsEndpoint         = "gradle-analytics.services.bitrise.io"
 	GradleAnalyticsPort             = 443
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsGRPCEndpoint     = "grpcs://gradle-analytics.services.bitrise.io:444"
 
+	EnvCLIPath = "BITRISE_BUILD_CACHE_CLI"
+
 	// Gradle Common Plugin version
-	GradleCommonPluginDepVersion = "1.0.7"
+	GradleCommonPluginDepVersion = "1.0.8"
 
 	// Gradle Test Distribution Plugin version
-	GradleTestDistributionPluginDepVersion = "2.2.10"
+	GradleTestDistributionPluginDepVersion = "2.2.11"
 	GradleTestDistributionEndpoint         = "grpcs://bitrise-accelerate.services.bitrise.io"
 	GradleTestDistributionKvEndpoint       = "grpcs://bitrise-accelerate.services.bitrise.io"
 	GradleTestDistributionPort             = 443
