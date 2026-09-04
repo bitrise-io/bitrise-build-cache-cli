@@ -183,6 +183,48 @@ func TestAuthCheck_fixerIsAuthPromptFixer(t *testing.T) {
 	require.IsType(t, AuthPromptFixer{}, res.Fixer)
 }
 
+func TestAuthCheck_scenarioA_machineWideOnly(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "t", WorkspaceID: "w"}}}
+
+	res := r.authCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "scenario A")
+}
+
+func TestAuthCheck_scenarioB_perWorkspaceOnly(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{
+		Workspaces: map[string]authpkg.TokenSet{"acme": {AuthToken: "t", WorkspaceID: "acme"}},
+	}}}
+
+	res := r.authCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "scenario B")
+	assert.Contains(t, res.Detail, "per-workspace only")
+}
+
+func TestAuthCheck_scenarioC_bothMachineWideAndPerWorkspace(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{
+		AuthToken: "t", WorkspaceID: "w",
+		Workspaces: map[string]authpkg.TokenSet{"acme": {AuthToken: "t2", WorkspaceID: "acme"}},
+	}}}
+
+	res := r.authCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "scenario C")
+}
+
+func TestAuthCheck_scenarioNone_reportsInDetail(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
+
+	res := r.authCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "scenario None")
+}
+
 func TestAuthCheck_workspacelessLoginFailsWithThePickerFixer(t *testing.T) {
 	r := newMinimalDoctor(t)
 	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "pat", RefreshToken: "refresh"}}}
