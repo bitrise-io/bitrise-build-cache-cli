@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 const (
@@ -145,12 +146,13 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	}
 
 	return PluginCommonTemplateInventory{
-		AuthToken:  authpkg.GradleToken(authConfig, authOrigin),
-		Debug:      isDebug,
-		AppSlug:    metadata.BitriseAppID,
-		CIProvider: metadata.CIProvider,
-		Version:    consts.GradleCommonPluginDepVersion,
-		CLIPath:    cliPath,
+		AuthToken:             authpkg.GradleToken(authConfig, authOrigin),
+		Debug:                 isDebug,
+		AppSlug:               metadata.BitriseAppID,
+		CIProvider:            metadata.CIProvider,
+		Version:               consts.GradleCommonPluginDepVersion,
+		CLIPath:               cliPath,
+		ProjectMarkerFilename: paths.ProjectMarkerFilename,
 	}
 }
 

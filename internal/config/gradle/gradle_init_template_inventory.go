@@ -45,6 +45,10 @@ type PluginCommonTemplateInventory struct {
 	Version    string
 
 	CLIPath string
+
+	// ProjectMarkerFilename is the per-project opt-in filename the init script
+	// looks up under settings.rootDir to route auth to a specific workspace.
+	ProjectMarkerFilename string
 }
 
 type TemplateInventory struct {
