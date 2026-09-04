@@ -719,6 +719,31 @@ workflows:
         inputs:
           - verbose: 'true'
     - script:
+        title: Clear the PAT so auth falls through to the CI JWT
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # ACI-5338: the plugins resolve their own token, so nothing lands in the init
+            # script. The CLI prefers the env credentials only when BOTH the token and the
+            # workspace ID are set, so clearing the token makes `auth token` fall through to
+            # the per-build JWT. The workspace ID stays for the invocation API assertions.
+            if [[ -z "${BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN:-}" ]]; then
+              echo "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN is not set; this workflow needs the CI JWT."
+              exit 1
+            fi
+
+            # Pin the API PAT before blanking its source, since MONOLITH_API_PAT is defined as
+            # $BITRISE_BUILD_CACHE_AUTH_TOKEN and the assertions below still need it.
+            envman add --key MONOLITH_API_PAT --value "$MONOLITH_API_PAT"
+            envman add --key BITRISE_BUILD_CACHE_AUTH_TOKEN --value ""
+
+            # A stored credential outranks the JWT in the CLI's precedence chain, and earlier
+            # steps in this build have already pinned one.
+            ../bitrise-build-cache-cli auth clear || true
+            ../bitrise-build-cache-cli auth status --debug || true
+    - script:
         title: Enable build cache
         inputs:
         - content: |-
@@ -762,6 +787,12 @@ workflows:
         - content: |-
             set -exo pipefail
             (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Assert JWT auth with no baked token
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/check_gradle_jwt_auth.sh "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
