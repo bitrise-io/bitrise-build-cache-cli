@@ -62,7 +62,7 @@ func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 		return authpkg.TokenSet{}, nil
 	}
 
-	got, err := newResolver(testResolver(ensureFresh), envs, nil)(t.Context())
+	got, err := newResolver(testResolver(ensureFresh), envs, nil, "")(t.Context())
 
 	require.NoError(t, err)
 	assert.Equal(t, "env-token", got.Token)
@@ -81,7 +81,7 @@ func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
 		return authpkg.TokenSet{}, nil
 	}
 
-	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn)(t.Context())
+	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn, "")(t.Context())
 
 	require.NoError(t, err, "a token we cannot refresh is still better than failing the RPC")
 	assert.Equal(t, "bitpat_legacy", got.Token)
@@ -97,7 +97,7 @@ func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
 		return authpkg.TokenSet{AuthToken: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
 	}
 
-	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, nil)(t.Context())
+	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, nil, "")(t.Context())
 
 	require.NoError(t, err)
 	assert.Equal(t, "fresh-pat", got.Token)
@@ -120,7 +120,7 @@ func TestResolver_FileStore_TakesRefreshPath(t *testing.T) {
 		return authpkg.TokenSet{AuthToken: "fresh-pat", PATExpiry: patExpiry, WorkspaceID: "ws-1"}, nil
 	}
 
-	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, nil)(t.Context())
+	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, nil, "")(t.Context())
 
 	require.NoError(t, err)
 	assert.True(t, called, "a file-stored credential must be refreshed, not served verbatim")
@@ -137,7 +137,7 @@ func TestResolver_RefreshFails_ServesStoredToken_WithShortExpiry(t *testing.T) {
 	}
 
 	before := time.Now()
-	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn)(t.Context())
+	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn, "")(t.Context())
 
 	require.NoError(t, err, "a transient refresh failure must not fail the RPC")
 	assert.Equal(t, "stored-pat", got.Token)
@@ -154,7 +154,7 @@ func TestResolver_LoginRequired_WarnsOnce(t *testing.T) {
 	}
 
 	warn := &bytes.Buffer{}
-	resolve := newResolver(testResolver(ensureFresh), map[string]string{}, warn)
+	resolve := newResolver(testResolver(ensureFresh), map[string]string{}, warn, "")
 
 	got, err := resolve(t.Context())
 	require.NoError(t, err)
@@ -179,7 +179,7 @@ func TestResolver_NoCredentialsAnywhere_ReturnsError(t *testing.T) {
 		return authpkg.TokenSet{}, oauth.ErrNotLoggedIn
 	}
 
-	_, err := newResolver(testResolver(ensureFresh), map[string]string{}, nil)(t.Context())
+	_, err := newResolver(testResolver(ensureFresh), map[string]string{}, nil, "")(t.Context())
 
 	require.Error(t, err, "with nothing stored there is no token to fall back to")
 }

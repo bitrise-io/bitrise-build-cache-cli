@@ -19,6 +19,9 @@ import (
 // Budget leaves headroom under Bazel's --credential_helper_timeout (10s default).
 const Budget = 8 * time.Second
 
+// caps Bazel's credential cache TTL.
+const maxCacheHint = 5 * time.Minute
+
 // URI is ignored: our headers are endpoint-agnostic, matching the bare-header
 // behavior of the pre-helper `--remote_header`/`--bes_header` lines.
 type GetCredentialsRequest struct {
@@ -28,8 +31,8 @@ type GetCredentialsRequest struct {
 // Headers values are string arrays per the spec even for a single value.
 type GetCredentialsResponse struct {
 	Headers map[string][]string `json:"headers"`
-	// RFC 3339 cache hint — Bazel reuses the credential until then. Omitted when
-	// the lifetime is unknown, falling back to --credential_helper_cache_duration.
+	// RFC 3339 cache hint — Bazel reuses the credential until then. Capped at
+	// maxCacheHint so a project-marker edit is picked up within a bounded window.
 	Expires string `json:"expires,omitempty"`
 }
 
@@ -62,9 +65,7 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, res
 		Headers: map[string][]string{
 			"authorization": {"Bearer " + cred.Token},
 		},
-	}
-	if !cred.Expiry.IsZero() {
-		resp.Expires = cred.Expiry.UTC().Format(time.RFC3339)
+		Expires: capCacheHint(cred.Expiry, time.Now()).UTC().Format(time.RFC3339),
 	}
 
 	if resolveRepoURL != nil {
@@ -78,4 +79,17 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, res
 	}
 
 	return nil
+}
+
+// capCacheHint returns whichever comes first: the credential's own expiry, or
+// now + maxCacheHint. A zero credExpiry means "unknown lifetime" and takes the
+// cap. A credExpiry already in the past also takes the cap — Bazel would treat
+// a past expiry as a soft cache miss, spawning the helper per RPC.
+func capCacheHint(credExpiry, now time.Time) time.Time {
+	ceiling := now.Add(maxCacheHint)
+	if credExpiry.IsZero() || !credExpiry.After(now) || credExpiry.After(ceiling) {
+		return ceiling
+	}
+
+	return credExpiry
 }

@@ -92,8 +92,33 @@ func TestRun_NoCredentials_PointsAtDoctor(t *testing.T) {
 	assert.NotContains(t, err.Error(), "\n", "Bazel prints this per failing RPC; keep it to one line")
 }
 
-func TestRun_EmitsExpires_FromCredentialExpiry(t *testing.T) {
+// A credential expiring well after the cap is truncated to now + maxCacheHint,
+// so a marker edit is picked up within a bounded window without per-RPC spawn.
+func TestRun_EmitsExpires_CappedAtMaxCacheHint(t *testing.T) {
 	expiry := time.Now().Add(42 * time.Minute).Truncate(time.Second)
+	resolve := func(context.Context) (Credential, error) {
+		return Credential{Token: "tok", Expiry: expiry}, nil
+	}
+
+	before := time.Now()
+	out := &bytes.Buffer{}
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil))
+	after := time.Now()
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+
+	got, err := time.Parse(time.RFC3339, resp.Expires)
+	require.NoError(t, err, "expires must be RFC 3339 per the EngFlow spec")
+	assert.WithinRange(t, got, before.Add(maxCacheHint).Truncate(time.Second), after.Add(maxCacheHint))
+	assert.True(t, got.Before(expiry), "cap must truncate a long-lived credential")
+}
+
+// A credential expiring inside the cap is honoured — the serve-stale path in
+// resolver.go sets a short expiry deliberately, and stretching it would defeat
+// the "repaired login gets picked up soon" contract.
+func TestRun_EmitsExpires_UsesShorterCredentialExpiry(t *testing.T) {
+	expiry := time.Now().Add(time.Minute).Truncate(time.Second)
 	resolve := func(context.Context) (Credential, error) {
 		return Credential{Token: "tok", Expiry: expiry}, nil
 	}
@@ -105,23 +130,49 @@ func TestRun_EmitsExpires_FromCredentialExpiry(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
 
 	got, err := time.Parse(time.RFC3339, resp.Expires)
-	require.NoError(t, err, "expires must be RFC 3339 per the EngFlow spec")
-	assert.True(t, got.Equal(expiry), "got %s, want %s", got, expiry)
+	require.NoError(t, err)
+	assert.True(t, got.Equal(expiry), "shorter credential expiry must win over the cap")
 }
 
-// Bazel only falls back to --credential_helper_cache_duration when the key is
-// absent; a zero-time value would be a past expiry.
-func TestRun_OmitsExpires_WhenExpiryUnknown(t *testing.T) {
+// A credExpiry already in the past takes the cap — otherwise Bazel would treat
+// the response as an instant cache miss and spawn the helper per RPC.
+func TestRun_EmitsExpires_PastExpiryTakesCap(t *testing.T) {
+	past := time.Now().Add(-time.Minute).Truncate(time.Second)
+	resolve := func(context.Context) (Credential, error) {
+		return Credential{Token: "tok", Expiry: past}, nil
+	}
+
+	before := time.Now()
+	out := &bytes.Buffer{}
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil))
+	after := time.Now()
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+
+	got, err := time.Parse(time.RFC3339, resp.Expires)
+	require.NoError(t, err)
+	assert.WithinRange(t, got, before.Add(maxCacheHint).Truncate(time.Second), after.Add(maxCacheHint))
+}
+
+// An unknown lifetime takes the cap so Bazel does not spawn the helper per RPC
+// (a zero-time serialises as year 1 and reads as a past expiry).
+func TestRun_EmitsExpires_WhenExpiryUnknown(t *testing.T) {
 	resolve := func(context.Context) (Credential, error) {
 		return Credential{Token: "tok"}, nil
 	}
 
+	before := time.Now()
 	out := &bytes.Buffer{}
 	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil))
+	after := time.Now()
 
-	var raw map[string]any
-	require.NoError(t, json.Unmarshal(out.Bytes(), &raw))
-	assert.NotContains(t, raw, "expires")
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+
+	got, err := time.Parse(time.RFC3339, resp.Expires)
+	require.NoError(t, err)
+	assert.WithinRange(t, got, before.Add(maxCacheHint).Truncate(time.Second), after.Add(maxCacheHint))
 }
 
 func TestRun_ResolverError_NoPartialOutput(t *testing.T) {
