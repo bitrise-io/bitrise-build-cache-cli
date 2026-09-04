@@ -15,7 +15,7 @@ rm -rf ~/.bitrise/cache/ ~/.local/state/bitrise-build-cache/ ~/.gradle/init.d/bi
 
 log "auth set / status / token / clear"
 "$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS"
-STATUS_OUT=$("$CLI" auth status 2>&1)
+STATUS_OUT=$("$CLI" auth status 2>&1 || true)
 echo "$STATUS_OUT" | grep -q "$FAKE_WS" || fail "auth status missing workspace (got: $STATUS_OUT)"
 if echo "$STATUS_OUT" | grep -qi "Local invocation display name"; then
   pass "auth status surfaces username (ACI-5180 landed)"
@@ -25,7 +25,7 @@ fi
 TOKEN_OUT=$("$CLI" auth token --workspace "$FAKE_WS" 2>&1)
 echo "$TOKEN_OUT" | grep -q "^${FAKE_WS}:${FAKE_TOKEN}$" || fail "auth token payload mismatch (got: $TOKEN_OUT)"
 "$CLI" auth clear
-STATUS_OUT=$("$CLI" auth status 2>&1)
+STATUS_OUT=$("$CLI" auth status 2>&1 || true)
 echo "$STATUS_OUT" | grep -qi "not configured\|no credentials" || fail "auth clear did not reset (got: $STATUS_OUT)"
 pass "auth CRUD ok"
 
@@ -119,5 +119,34 @@ log "browse --print / --json"
 "$CLI" browse --json | jq -e --arg ws "$FAKE_WS" '.workspace_id == $ws' >/dev/null || fail "browse --json workspace_id mismatch"
 "$CLI" browse "test-inv-id" --print | grep -q "test-inv-id" || fail "browse deep-link missing invocation id"
 pass "browse ok"
+
+log "scenario B — per-workspace only"
+"$CLI" auth clear
+"$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS"
+STATUS_OUT=$("$CLI" auth status 2>&1 || true)
+echo "$STATUS_OUT" | grep -q "Scenario: per-workspace only" || fail "expected 'Scenario: per-workspace only', got: $STATUS_OUT"
+TOKEN_OUT=$("$CLI" auth token --workspace "$FAKE_WS" 2>&1)
+echo "$TOKEN_OUT" | grep -q "^${FAKE_WS}:${FAKE_TOKEN}$" || fail "auth token --workspace payload mismatch under B (got: $TOKEN_OUT)"
+"$CLI" activate gradle --cache-push=false >/dev/null || fail "scenario B activate gradle failed"
+IS_CI=${BITRISE_APP_SLUG:-${CI:-}}
+if [ -z "$IS_CI" ]; then
+  grep -q "$FAKE_TOKEN" ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts && fail "scenario B leaked plaintext token into gradle init"
+fi
+pass "scenario B ok — activate succeeds, no baked auth"
+
+log "scenario C — both (machine-wide via env vars + per-workspace via store)"
+"$CLI" auth clear
+"$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS"
+STATUS_OUT=$(BITRISE_BUILD_CACHE_AUTH_TOKEN=machine-tok BITRISE_BUILD_CACHE_WORKSPACE_ID=machine-ws "$CLI" auth status 2>&1 || true)
+echo "$STATUS_OUT" | grep -q "Scenario: both" || fail "expected 'Scenario: both', got: $STATUS_OUT"
+TOKEN_OUT=$(BITRISE_BUILD_CACHE_AUTH_TOKEN=machine-tok BITRISE_BUILD_CACHE_WORKSPACE_ID=machine-ws "$CLI" auth token --workspace "$FAKE_WS" 2>&1 || true)
+echo "$TOKEN_OUT" | grep -q "^${FAKE_WS}:${FAKE_TOKEN}$" || fail "auth token --workspace returned wrong entry under C (got: $TOKEN_OUT)"
+TOKEN_OUT=$(BITRISE_BUILD_CACHE_AUTH_TOKEN=machine-tok BITRISE_BUILD_CACHE_WORKSPACE_ID=machine-ws "$CLI" auth token 2>&1 || true)
+echo "$TOKEN_OUT" | grep -q "^machine-ws:machine-tok$" || fail "auth token (no --workspace) must return machine-wide under C (got: $TOKEN_OUT)"
+pass "scenario C ok — per-workspace + machine-wide fallback"
+
+# Restore scenario A state for downstream tests.
+"$CLI" auth clear
+"$CLI" auth set --token "$FAKE_TOKEN" --workspace-id "$FAKE_WS" >/dev/null
 
 printf '\n\033[32mAll portable e2e scenarios passed.\033[0m\n'
