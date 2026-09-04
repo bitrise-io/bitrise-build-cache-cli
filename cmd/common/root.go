@@ -68,6 +68,8 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		return true
 	case "token", "username":
 		return true
+	case "workspace-for":
+		return true
 	default:
 		return false
 	}
