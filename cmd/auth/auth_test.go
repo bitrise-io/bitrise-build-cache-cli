@@ -40,6 +40,59 @@ func TestAuthTokenCmd_stdoutIsGradleFormat(t *testing.T) {
 	assert.Equal(t, "ws-123:raw-token\n", stdout.String())
 }
 
+func TestAuthTokenCmd_workspaceFlagPicksPerWorkspaceEntry(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		AuthToken:   "machine-tok",
+		WorkspaceID: "machine-ws",
+		Workspaces: map[string]authpkg.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}))
+
+	tokenWorkspace = "acme"
+	t.Cleanup(func() { tokenWorkspace = "" })
+
+	cmd := authTokenCmd
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	assert.Equal(t, "acme:acme-tok\n", stdout.String())
+	assert.Empty(t, stderr.String(), "matching slug must not warn")
+}
+
+func TestAuthTokenCmd_workspaceFlagUnknownSlugFallsBackWithWarn(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
+	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
+	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+
+	require.NoError(t, store.NewKeychain().Save(authpkg.TokenSet{
+		AuthToken:   "machine-tok",
+		WorkspaceID: "machine-ws",
+	}))
+
+	tokenWorkspace = "missing"
+	t.Cleanup(func() { tokenWorkspace = "" })
+
+	cmd := authTokenCmd
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	assert.Equal(t, "machine-ws:machine-tok\n", stdout.String(), "unknown workspace must fall back to the machine-wide credential")
+	assert.Contains(t, stderr.String(), "missing", "an unknown workspace must warn on stderr")
+}
+
 func TestAuthTokenCmd_stderrIsBoundedOnError(t *testing.T) {
 	cmd := authTokenCmd
 
