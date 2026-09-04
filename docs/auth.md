@@ -86,6 +86,46 @@ turned back into a `TokenSet`. Writes load the existing record, mutate the field
 they own, and save it back — so a write path can never drop a refresh token, a JWT or
 a display name it wasn't thinking about.
 
+### Per-workspace records (schema v2)
+
+`TokenSet` carries an optional `Workspaces map[string]TokenSet` — a per-slug map
+of records that sit alongside the machine-wide top-level fields:
+
+```
+   TokenSet (machine-wide record)
+   ├── AuthToken, WorkspaceID, Username, PATExpiry, JWT, RefreshToken, …
+   └── Workspaces
+       ├── "acme"    → TokenSet{AuthToken: "…", WorkspaceID: "acme", …}
+       └── "widgets" → TokenSet{AuthToken: "…", WorkspaceID: "widgets", …}
+```
+
+Every write stamps `SchemaVersion = 2`. A store that reads back
+`SchemaVersion == 0` (absent, i.e. a blob written by the pre-v2 CLI) is
+treated as v1 and behaves exactly like today's machine-wide credential —
+the top-level fields — with an empty `Workspaces` map.
+
+Migration semantics, in both directions:
+
+- **New CLI reading an old (v1) blob** — the top-level fields resolve as
+  the machine-wide credential; `Workspaces` is empty; a resolver called
+  with a workspace hint falls back to the machine-wide credential with a
+  warning. The blob is upgraded to v2 on the next write (`stampSchema`).
+- **Old CLI reading a new (v2) blob** — JSON keys the old CLI does not
+  recognise (`workspaces`, `schema`) are ignored; the top-level fields
+  still resolve as they always did. The `Workspaces` entries are dead
+  weight in that reader but do not corrupt any pre-existing behaviour.
+  This is the "additive schema" property that keeps a downgrade safe for
+  one release cycle.
+
+The per-workspace shape is populated by `store.SaveWorkspaceToken(target,
+slug, ts)` — a serialised read-modify-write behind a per-machine
+filesystem lock (see `AuthWorkspaceLockFile`). Callers that need to write
+one workspace entry without disturbing the machine-wide slot go through
+that primitive rather than a full `Save`.
+
+See [`docs/per-project-scoping.md`](./per-project-scoping.md) for the
+end-user flow that populates and consumes the per-workspace map.
+
 ### Origin
 
 `Origin` splits two independent axes that a single enum conflates:
@@ -131,10 +171,12 @@ The shared vocabulary. Imports nothing internal.
 |---|---|
 | `Credential{Token, WorkspaceID, Expiry}` | The boundary type. What you authenticate with — and nothing else. A display name is not a credential; it lives on `TokenSet` and is fetched by `live.ResolveUsername`. |
 | `Credential.Expired() bool` | Known expiry is in the past. |
-| `TokenSet{AuthToken, WorkspaceID, Username, PATExpiry, JWT, JWTExpiry, RefreshToken, RefreshTokenExpiry}` | The persisted record, identical for both backends. |
+| `TokenSet{AuthToken, WorkspaceID, Username, PATExpiry, JWT, JWTExpiry, RefreshToken, RefreshTokenExpiry, SchemaVersion, Workspaces}` | The persisted record, identical for both backends. `SchemaVersion` is stamped on every write (`SchemaVersionCurrent = 2`); absent (`0`) reads as v1 and behaves as today's machine-wide credential. `Workspaces map[string]TokenSet` holds per-slug records that sit alongside the machine-wide top-level fields — populated by `store.SaveWorkspaceToken` and read by the workspace-hinted resolver methods. |
 | `TokenSet.Credential() Credential` | The only conversion. Narrows the record to the boundary. |
+| `TokenSet.ForWorkspace(slug) (TokenSet, bool)` | Looks up a per-workspace entry from `Workspaces`. Returns `ok == false` for empty slug, a missing key, or a record with no `AuthToken`, so the caller does not have to re-implement the "is this record actually usable" check. |
 | `TokenSet.Origin(Backend) Origin` | Pairs a backend with the provenance implied by the record. |
 | `TokenSet.IsOAuthManaged() bool` | Has a refresh token, so it came from `auth login`. |
+| `SchemaVersionCurrent int` | The version stamped on every write. Bump only alongside a documented reader-migration path in this doc. |
 | `Backend`, `Provenance`, `Origin` | Where a credential lives, and how it got there. |
 | `Origin.StoreManaged() bool` | Gates refresh. |
 | `Origin.Label() string` | Prose name — `"OAuth login (config file)"`. |
@@ -191,6 +233,7 @@ Which backend a credential lives in, and getting it in and out.
 | `SaveResult.WarnFallback(log.Logger)` | The one place the fallback warning is written. |
 | `SetUsername(isCI bool, name) (auth.Origin, error)` | Writes a display name into whichever backend already holds credentials, so it can't strand an empty-token record in the other one. |
 | `SetWorkspaceID(isCI bool, slug) (auth.Origin, error)` | Same, for the workspace: completes a `auth login --no-workspace` (and re-pins an existing login) without a second browser round-trip, leaving the token and refresh machinery untouched. |
+| `SaveWorkspaceToken(target Store, slug string, ws auth.TokenSet) error` | Merges `ws` into `target.Load().Workspaces[slug]`, leaving the machine-wide top-level fields intact. Serialised through `AuthWorkspaceLockFile` so two per-workspace writes cannot lose an update, and routed through `SaveWithFallback` so a keychain refusal on headless Linux falls through to the file store. Empty slug is an error. |
 | `ErrNotFound` | Backend-agnostic "nothing stored". Wraps the keychain sentinel (`ErrNotFound` or `ErrUnavailable`) rather than replacing it, so `errors.Is` still answers "is there no keyring on this host" and no caller needs to bypass the interface. |
 
 `store` takes `isCI bool`, never an env map. CI-ness affects only the *write* target;
@@ -228,10 +271,13 @@ The resolver. The only package a consumer needs.
 | `(*Resolver).Resolve(ctx, envs) (Credential, Origin, error)` | **The one resolve path.** Precedence, then refresh when store-managed. |
 | `Resolver.OnRefreshFailure` (`ServeStale` default, `FailFast`) | What to do when a store-managed credential cannot be refreshed. `ServeStale` hands back the stored token — a slightly stale token still authenticates far more often than it doesn't, and failing would take a build down over a transient error. `FailFast` reports it: the wizard and the Bazel helper both need to act on a dead refresh token rather than serve one the backend will reject. |
 | `(*Resolver).ResolveNoRefresh(envs) (Credential, Origin, error)` | Same precedence, no network, no writes. For `status`, which documents that it never refreshes. |
+| `(*Resolver).ResolveForWorkspace(ctx, envs, slug) (Credential, Origin, error)` | `Resolve` with a workspace hint. Empty slug is identical to `Resolve`. A matching per-workspace entry in any store backend wins over the machine-wide credential — env-var or static-file credentials are machine-wide, and the caller has asked for the workspace-scoped one. An unknown slug warns via the resolver's logger and falls back to `Resolve`'s answer so a build is never blocked on a missing per-workspace token. Backs the `auth token --workspace=<slug>` shell-out consumed by the Gradle init script and the Bazel credential helper. |
+| `(*Resolver).ResolveNoRefreshForWorkspace(ctx, envs, slug) (Credential, Origin, matched bool, error)` | `ResolveNoRefresh` with a workspace hint. `matched == true` only when a per-workspace record was found; empty or unknown slugs silently return the machine-wide credential with `matched == false`. On the wrapper hot path (Xcode wrapper, doctor's `project-scope` check) — a bad marker should never fail a build, so this variant never warns and never refreshes. |
 | `(*Resolver).ResolveTokenOnly(ctx, envs) (Credential, Origin, error)` | Same precedence and refresh, but a stored record counts as usable on its token alone. **For `auth workspace` only** — it asks the API which workspaces the token can access, which is the one question that precedes having a workspace. The Credential it returns can carry an empty `WorkspaceID`, so nothing that talks to the cache may use it. |
 | `(*Resolver).ResolvePinned(ctx, envs, isCI) (Credential, Origin, error)` | Resolve, and materialise an ephemeral env- or JWT-sourced credential to disk so processes started by `activate` can find it without the env vars. Read-modify-write, and **not** exclusive — see `store.SaveWithFallback`. Returns the origin the credential *resolved* from, not where the copy landed. |
 | `(*Resolver).Bind(envs) *Bound` | Pins the environment for a long-lived process. |
 | `(*Bound).Get(ctx) auth.Credential` | Per-RPC credential. Structurally satisfies `kv.AuthSource` without `live` importing `kv`. |
+| `(*Bound).GetForWorkspace(ctx, workspaceID) auth.Credential` | Per-RPC credential swapped for a workspace-scoped one. Satisfies `kv.WorkspaceAuthSource`; `kv.Client` type-asserts the source at RPC time and calls this method when a per-session `x-bitrise-workspace-id` metadata header is present, without knowing which resolver backs its source. Unknown slug falls through to `Get(ctx)`, so a proxy session for a slug the store has never heard of keeps working. |
 | `(*Resolver).ResolveUsername(envs) (string, UsernameSource)` | Names the person behind a local invocation, for analytics attribution: env → stored record → OS user. Deliberately **not** part of `Resolve` — `auth username` writes the name independently of the token, so finding it costs a store read that the per-RPC callers must not pay for a value they never use. |
 | `Describe(Credential, Origin) string` | The one-line human description. Pure formatting, no I/O — `Origin` already carries everything it needs. |
 
