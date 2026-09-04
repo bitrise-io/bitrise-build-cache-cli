@@ -145,6 +145,18 @@ func (r *Resolver) ResolveNoRefresh(envs map[string]string) (auth.Credential, au
 	return cred, origin, false, err
 }
 
+// StoreHasAnyWorkspaces reports whether any backend carries a non-empty
+// Workspaces map.
+func (r *Resolver) StoreHasAnyWorkspaces() bool {
+	for _, s := range r.backends() {
+		if ts, err := s.Load(); err == nil && len(ts.Workspaces) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (r *Resolver) storeHasWorkspacesOnly(envs map[string]string) bool {
 	if hasAuthEnvVars(envs) {
 		return false
