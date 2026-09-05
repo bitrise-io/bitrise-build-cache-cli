@@ -36,6 +36,11 @@ else
 fi
 
 # --- Ccache invocation relation ---
+# EXPECT_CCACHE=true says this workflow activated ccache and compiled C++, so a
+# missing ccache invocation is a regression — most likely the storage helper died
+# mid-build, which also takes every later remote cache hit with it — and not the
+# "ccache wasn't in play" case the iOS workflow legitimately hits.
+EXPECT_CCACHE="${EXPECT_CCACHE:-false}"
 
 if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
   echo "Ccache invocation ID present ✅"
@@ -45,6 +50,10 @@ if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
     exit 1
   fi
   echo "Parent invocation ID present ✅"
+elif [ "$EXPECT_CCACHE" = "true" ]; then
+  echo "Ccache invocation ID missing although ccache was activated ❌"
+  grep -E "Failed to (load session info|get session stats) from storage helper|No ccache activity detected|No invocation ID available for ccache stats" "$RN_CLI_LOG" || true
+  exit 1
 else
   echo "Ccache invocation ID not present (ccache not active or no activity) ℹ️"
   if grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
