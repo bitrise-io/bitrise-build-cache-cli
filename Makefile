@@ -22,6 +22,10 @@ govulncheck:				## Runs govulncheck
 test-unit:				## Runs all tests
 	go test -tags unit -race ./...
 
+.PHONY: test-integration
+test-integration:			## Runs the integration-tagged tests (local IPC round-trips, no network)
+	go test -tags integration -race ./...
+
 .PHONY: protoc
 protoc:
 	protoc -I=./proto --go_out=./proto --go_opt=paths=source_relative --go-grpc_out=./proto --go-grpc_opt=paths=source_relative proto/build/bazel/remote/execution/v2/remote_execution.proto

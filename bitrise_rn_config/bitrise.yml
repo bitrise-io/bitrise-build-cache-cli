@@ -957,8 +957,17 @@ step_bundles:
         title: Assert ccache GET calls via storage helper logs
         inputs:
         - content: |-
-            # Stop the storage helper so logs are fully flushed before asserting
-            ./bitrise-build-cache-cli ccache storage-helper stop || true
+            # Stop the storage helper so logs are fully flushed before asserting.
+            # The helper must still be up at this point: one that exited during the
+            # build (idle timeout) silently drops every later remote lookup and the
+            # ccache invocation analytics.
+            stop_output=$(./bitrise-build-cache-cli ccache storage-helper stop 2>&1 || true)
+            echo "$stop_output"
+            if echo "$stop_output" | grep -q "Storage helper is not running"; then
+              echo "Storage helper was already gone when the build finished ❌"
+              exit 1
+            fi
+            echo "Storage helper outlived the build ✅"
             LOG_DIR="$HOME/.local/state/ccache/logs"
             if ! grep -rl '\[Get - [0-9a-f]\+\]' "$LOG_DIR" 2>/dev/null | grep -q .; then
               echo "No remote GET calls found in storage helper logs ❌"
@@ -969,7 +978,7 @@ step_bundles:
     - script:
         title: Assert analytics were sent
         inputs:
-        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+        - content: EXPECT_CCACHE=true bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
 
   rn-seek-ios-e2e-body:
     steps:
