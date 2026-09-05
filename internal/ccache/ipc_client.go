@@ -17,12 +17,15 @@ func dialHelper(ctx context.Context, socketPath string) (net.Conn, error) {
 		return nil, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
 	}
 
-	if deadline, ok := ctx.Deadline(); ok {
-		if err := conn.SetDeadline(deadline); err != nil {
-			_ = conn.Close()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(defaultRequestTimeout)
+	}
 
-			return nil, fmt.Errorf("set deadline: %w", err)
-		}
+	if err := conn.SetDeadline(deadline); err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("set deadline: %w", err)
 	}
 
 	if err := protocol.ReadGreeting(conn); err != nil {
@@ -35,8 +38,9 @@ func dialHelper(ctx context.Context, socketPath string) (net.Conn, error) {
 }
 
 const (
-	defaultDialTimeout = 2 * time.Second
-	isListeningTimeout = 100 * time.Millisecond
+	defaultDialTimeout    = 2 * time.Second
+	defaultRequestTimeout = 30 * time.Second
+	isListeningTimeout    = 100 * time.Millisecond
 )
 
 // SessionStats holds the stats returned by a GetSessionStats IPC call.
@@ -102,10 +106,6 @@ func SendGetSessionStats(ctx context.Context, socketPath string) (SessionStats, 
 		return SessionStats{}, err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return SessionStats{}, fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestGetSessionStats); err != nil {
 		return SessionStats{}, fmt.Errorf("send get-session-stats request: %w", err)
