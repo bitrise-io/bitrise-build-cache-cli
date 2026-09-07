@@ -548,11 +548,20 @@ workflows:
               fi
               cat "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
     - script:
-        title: Build and capture logs
+        title: Build with no credential in the environment
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            # Strip both credential env vars: the build can then only authenticate on what
+            # activate pinned to disk, the shape of a GitHub Actions job that scopes the secret.
+            (env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN \
+              ./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Assert auth came from the pinned credential
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/check_gradle_auth_from_pinned_credential.sh "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:

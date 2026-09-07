@@ -19,6 +19,9 @@ import (
 
 func Test_activateGradleCmdFn(t *testing.T) {
 	t.Run("When no error activateGradleCmdFn creates template inventory and writes gradle config file", func(t *testing.T) {
+		// Activation pins the resolved credential — keep it off the real store.
+		t.Setenv("HOME", t.TempDir())
+
 		templateInventory := gradleconfig.TemplateInventory{
 			Common: gradleconfig.PluginCommonTemplateInventory{
 				AppSlug: "AppSlugValue",
@@ -38,9 +41,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue", "BITRISE_IO": "true"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
@@ -66,6 +70,9 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	})
 
 	t.Run("When templateInventory creation fails activateGradleCmdFn throws error", func(t *testing.T) {
+		// Activation pins the resolved credential — keep it off the real store.
+		t.Setenv("HOME", t.TempDir())
+
 		inventoryCreationError := errors.New("failed to create inventory")
 
 		mockOsProxy := &mocks.OsProxyMock{
@@ -79,9 +86,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue", "BITRISE_IO": "true"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
@@ -102,6 +110,9 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	})
 
 	t.Run("When template writing fails activateGradleCmdFn throws error", func(t *testing.T) {
+		// Activation pins the resolved credential — keep it off the real store.
+		t.Setenv("HOME", t.TempDir())
+
 		templateWriteError := errors.New("failed to write template")
 
 		mockOsProxy := &mocks.OsProxyMock{
@@ -115,9 +126,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue", "BITRISE_IO": "true"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
@@ -138,6 +150,9 @@ func Test_activateGradleCmdFn(t *testing.T) {
 	})
 
 	t.Run("When gradle.property update fails activateGradleCmdFn throws error", func(t *testing.T) {
+		// Activation pins the resolved credential — keep it off the real store.
+		t.Setenv("HOME", t.TempDir())
+
 		gradlePropertiesUpdateError := errors.New("failed to update gradle.properties")
 
 		mockOsProxy := &mocks.OsProxyMock{
@@ -151,9 +166,10 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
+			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue", "BITRISE_IO": "true"},
 			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},

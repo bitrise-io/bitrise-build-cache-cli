@@ -1,6 +1,7 @@
 package gradle
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,6 +55,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
 		if err := gradleconfig.Activate(
+			cmd.Context(),
 			logger,
 			gradleHome,
 			allEnvs,
@@ -125,6 +127,7 @@ var ErrFmtFailedToUpdateProps = gradleconfig.ErrFmtFailedToUpdateProps //nolint:
 // ActivateGradleCmdFn is a backward-compatible wrapper around gradleconfig.Activate
 // that reads IsDebugLogMode from the global flag. Prefer gradleconfig.Activate directly.
 func ActivateGradleCmdFn(
+	ctx context.Context,
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
@@ -133,5 +136,5 @@ func ActivateGradleCmdFn(
 	updater gradleconfig.GradlePropertiesUpdater,
 	params gradleconfig.ActivateGradleParams,
 ) error {
-	return gradleconfig.Activate(logger, gradleHomePath, envProvider, common.IsDebugLogMode, templateInventoryProvider, templateWriter, updater, params) //nolint:wrapcheck // thin wrapper, error context added by caller
+	return gradleconfig.Activate(ctx, logger, gradleHomePath, envProvider, common.IsDebugLogMode, templateInventoryProvider, templateWriter, updater, params) //nolint:wrapcheck // thin wrapper, error context added by caller
 }
