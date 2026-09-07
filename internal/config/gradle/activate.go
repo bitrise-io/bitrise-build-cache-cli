@@ -39,8 +39,8 @@ func Activate(
 
 	resolver := newResolver(logger)
 
-	// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, from a step that may
-	// no longer carry the env vars activation had.
+	// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, by which time the env
+	// vars activation resolved from may be gone.
 	authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.DetectCIProvider(envProvider) != "")
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
