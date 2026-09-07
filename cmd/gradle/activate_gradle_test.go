@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,17 +18,25 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
-// authEnvsWithScratchStore keeps the credential activation pins out of the real
-// keychain: a CI provider selects the file store, and HOME points it at a temp dir.
+// authEnvsWithScratchStore keeps the credential activation pins out of the real keychain,
+// whose writes block indefinitely on a CI agent: a detected CI provider selects the file
+// store, and HOME points it at a temp dir.
 func authEnvsWithScratchStore(t *testing.T) map[string]string {
 	t.Helper()
 
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Guards the CI detection above: a miss silently sends the write to the keychain.
+	t.Cleanup(func() {
+		assert.FileExists(t, filepath.Join(home, ".bitrise/analytics/multiplatform/config.json"))
+	})
 
 	return map[string]string{
 		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		"BITRISE_IO":                       "true",
+		"BITRISE_BUILD_SLUG":               "build-slug",
 	}
 }
 
