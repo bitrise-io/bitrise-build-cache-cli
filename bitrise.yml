@@ -339,6 +339,13 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
+    - script@1:
+        title: integration tests
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
+            make test-integration
     - bundle::generate_gradle_verification_reference: { }
     - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2:

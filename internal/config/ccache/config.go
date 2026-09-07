@@ -21,9 +21,19 @@ const (
 
 	defaultLogFile            = "ccache-%s.log"
 	defaultErrLogFile         = "ccache-err.log"
-	defaultIdleTimeout        = "15m"
 	defaultCRSHDataTimeout    = "5s"
 	defaultCRSHRequestTimeout = "20s"
+
+	// The idle timer only reaps a helper nothing else stopped, so it has to
+	// outlast the longest gap a build leaves between ccache requests — a React
+	// Native run bundles JS for a quarter of an hour after the last C++ file.
+	// A helper that exits mid-build leaves CCACHE_REMOTE_STORAGE pointing at a
+	// dead socket and loses the invocation's analytics.
+	defaultIdleTimeout = time.Hour
+	// On CI the build bounds the helper's life and the wrapper, the Gradle
+	// plugin and deactivate all stop it explicitly; the timer only keeps a
+	// leaked helper on a persistent runner from living forever.
+	ciIdleTimeout = 6 * time.Hour
 
 	ErrFmtOpenConfigFile   = "open ccache config file (%s): %w"
 	ErrFmtDecodeConfigFile = "decode ccache config file (%s): %w"
@@ -125,7 +135,6 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 	ipcEndpoint := ResolveIPCSocketPath(params.IPCSocketPathOverride, envs, osProxy)
 
 	buildCacheEndpoint := common.SelectCacheEndpointURL(params.BuildCacheEndpoint, envs)
-	idleTimeout, _ := time.ParseDuration(defaultIdleTimeout)
 
 	return Config{
 		AuthConfig:         authConfig,
@@ -135,11 +144,19 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 		IPCEndpoint:        ipcEndpoint,
 		LogFile:            defaultLogFile,
 		ErrLogFile:         defaultErrLogFile,
-		IdleTimeout:        idleTimeout,
+		IdleTimeout:        idleTimeoutFor(envs),
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,
 	}, nil
+}
+
+func idleTimeoutFor(envs map[string]string) time.Duration {
+	if common.DetectCIProvider(envs) != "" {
+		return ciIdleTimeout
+	}
+
+	return defaultIdleTimeout
 }
 
 func (config Config) CRSHRemoteStorageURL() string {
