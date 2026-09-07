@@ -68,6 +68,8 @@ func snapshotDir(t *testing.T, root string) map[string][]byte {
 }
 
 func TestDeactivate_Gradle_RoundTrip(t *testing.T) {
+	useTempCredentialStore(t)
+
 	tmpHome := t.TempDir()
 	gradleHome := filepath.Join(tmpHome, ".gradle")
 	require.NoError(t, os.MkdirAll(gradleHome, 0o755))
@@ -97,6 +99,7 @@ func TestDeactivate_Gradle_RoundTrip(t *testing.T) {
 	}
 
 	require.NoError(t, Activate(
+		t.Context(),
 		logger,
 		gradleHome,
 		envs,

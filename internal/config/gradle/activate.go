@@ -1,6 +1,7 @@
 package gradleconfig
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 
@@ -16,9 +17,15 @@ const (
 	ErrFmtFailedToUpdateProps = "failed to update gradle.properties: %w"
 )
 
+// Seam: tests point activation at a temporary credential store instead of the real one.
+//
+//nolint:gochecknoglobals
+var newResolver = live.Default
+
 // Activate creates the Gradle init script and updates gradle.properties
 // to enable Bitrise Build Cache.
 func Activate(
+	ctx context.Context,
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
@@ -30,9 +37,11 @@ func Activate(
 ) error {
 	NormalizeParams(&params)
 
-	resolver := live.Default(nil)
+	resolver := newResolver(logger)
 
-	authConfig, _, err := resolver.ResolveNoRefresh(envProvider)
+	// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, by which time the env
+	// vars activation resolved from may be gone.
+	authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.DetectCIProvider(envProvider) != "")
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
@@ -49,7 +58,7 @@ func Activate(
 	if metadata.CIProvider != "" {
 		exporter := envexport.New(envProvider, logger)
 		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
-		exporter.ExportCLIPath()
+		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
 	}
 
 	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)

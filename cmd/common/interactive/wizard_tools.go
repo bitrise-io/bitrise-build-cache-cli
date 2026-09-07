@@ -89,7 +89,7 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 		var err error
 		switch interactiveTool(t) {
 		case toolGradle:
-			err = runInteractiveGradle(logger, envs, pushEnabled)
+			err = runInteractiveGradle(ctx, logger, envs, pushEnabled)
 		case toolBazel:
 			err = runInteractiveBazel(logger, envs, pushEnabled)
 		case toolXcode:
@@ -121,7 +121,7 @@ func activateReactNativeBasedOnSelection(ctx context.Context, logger log.Logger,
 	return nil
 }
 
-func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
 	gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")
 	if err != nil {
 		return fmt.Errorf("expand Gradle home path: %w", err)
@@ -134,6 +134,7 @@ func runInteractiveGradle(logger log.Logger, envs map[string]string, pushEnabled
 	params.CLIPath = clibin.Resolve(logger)
 
 	if err := gradleconfig.Activate(
+		ctx,
 		logger,
 		gradleHome,
 		envs,

@@ -116,7 +116,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 	if a.gradle != nil {
 		a.logger.TInfof("Activating Gradle build cache...")
 
-		if err := a.gradle.activate(); err != nil {
+		if err := a.gradle.activate(ctx); err != nil {
 			return fmt.Errorf("activate Gradle build cache: %w", err)
 		}
 	}
@@ -277,7 +277,7 @@ type gradleActivator struct {
 	pushEnabled  bool
 }
 
-func (g *gradleActivator) activate() error {
+func (g *gradleActivator) activate(ctx context.Context) error {
 	allEnvs := utils.AllEnvs()
 
 	p, err := paths.Default()
@@ -292,6 +292,7 @@ func (g *gradleActivator) activate() error {
 	gradleParams.Cache.PushEnabled = g.pushEnabled
 
 	if err := gradleconfig.Activate(
+		ctx,
 		g.logger,
 		gradleHome,
 		allEnvs,
