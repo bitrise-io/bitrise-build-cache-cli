@@ -78,7 +78,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 
 		// Check cache configuration (enabled by default)
 		assert.True(t, inventory.Cache.Enabled)
-		assert.False(t, inventory.Cache.IsPushEnabled)
+		assert.True(t, inventory.Cache.IsPushEnabled)
 		assert.NotEmpty(t, inventory.Cache.EndpointURLWithPort)
 
 		// Check BES configuration (enabled by default)
