@@ -2,6 +2,7 @@ package ccache
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -133,6 +134,10 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 			s.handleGetSessionStatsResult(conn, conID)
 		}
 
+		if result.CallStats.method == CALL_METHOD_GET_BLOB_STATS && result.Outcome == PROCESS_REQUEST_OK {
+			s.handleGetBlobStatsResult(conn, conID)
+		}
+
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
 			s.handleStopResult(conn, conID, cancelFn)
 
@@ -187,6 +192,19 @@ func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 
 	if err := protocol.WriteSessionStats(conn, dl, ul, invocationID, parentID); err != nil {
 		s.logger.TErrorf("[%s] Failed to write session stats response: %v", conID, err)
+	}
+}
+
+func (s *IpcServer) handleGetBlobStatsResult(conn net.Conn, conID string) {
+	payload, err := json.Marshal(s.sessionState.blobStatsSnapshot())
+	if err != nil {
+		s.logger.TWarnf("[%s] Failed to marshal blob stats: %v", conID, err)
+
+		return
+	}
+
+	if err := protocol.WriteBlobStats(conn, payload); err != nil {
+		s.logger.TErrorf("[%s] Failed to write blob stats response: %v", conID, err)
 	}
 }
 

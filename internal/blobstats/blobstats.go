@@ -1,0 +1,335 @@
+// Package blobstats records per-blob cache transfer distributions per direction. Bucket
+// boundaries and payload shape match the Gradle plugins' io.bitrise.gradle.common.CacheBlobStats,
+// so the two tools' numbers are comparable.
+package blobstats
+
+import (
+	"math"
+	"sort"
+	"sync"
+	"time"
+)
+
+// SchemaVersion is bumped when the bucket boundaries or the field meanings change.
+const SchemaVersion = 1
+
+// Fixed, never derived from the data: histograms only sum across invocations on one scale.
+// Keep in sync with BlobStatsBuckets in gradle-plugins
+// common/src/main/kotlin/io/bitrise/gradle/common/CacheBlobStats.kt (bitrise-io/gradle-plugins#99);
+// changing either side without the other makes the two tools' histograms unmergeable.
+//
+//nolint:gochecknoglobals // fixed scale, shared by every recorder
+var (
+	// ×2 from 1 ms: in-datacenter cache medians 6 ms, macOS 17 ms.
+	LatencyMsBuckets = []int64{1, 2, 4, 8, 16, 32, 64, 128, 256}
+
+	// ×4 from 512 B: observed blobs run ~500 B to >100 MB.
+	SizeBytesBuckets = []int64{512, 2_048, 8_192, 32_768, 131_072, 524_288, 2_097_152, 8_388_608, 33_554_432}
+
+	// ×2 from 512 kB/s: nothing above ThroughputMinBlobBytes was observed below ~1.5 MB/s.
+	ThroughputBytesPerSecBuckets = []int64{
+		524_288, 1_048_576, 2_097_152, 4_194_304, 8_388_608,
+		16_777_216, 33_554_432, 67_108_864, 134_217_728,
+	}
+)
+
+const (
+	// Below this, per-op throughput measures the round trip, not the bandwidth: including small
+	// blobs drops the median from ~6.6 MB/s to ~0.15 MB/s. They still count in latency and size.
+	ThroughputMinBlobBytes = 16_384
+
+	// Past this, percentiles come from the samples retained so far.
+	maxThroughputSamples = 200_000
+)
+
+type HistogramSnapshot struct {
+	Boundaries []int64 `json:"boundaries"`
+	// One longer than Boundaries; the last entry is the overflow bucket.
+	Counts []int64 `json:"counts"`
+	Count  int64   `json:"count"`
+	Sum    int64   `json:"sum"`
+	Min    int64   `json:"min"`
+	Max    int64   `json:"max"`
+}
+
+// The percentiles are exact; the histogram is what makes them mergeable across invocations.
+type ThroughputSnapshot struct {
+	Histogram        HistogramSnapshot `json:"histogram"`
+	P10BytesPerSec   int64             `json:"p10BytesPerSec"`
+	P50BytesPerSec   int64             `json:"p50BytesPerSec"`
+	P90BytesPerSec   int64             `json:"p90BytesPerSec"`
+	MinBlobBytes     int64             `json:"minBlobBytes"`
+	ExcludedSmallOps int64             `json:"excludedSmallOps"`
+}
+
+// OpCount + ErrorCount + MissCount reconciles against LatencyMs.Count; SkippedAlreadySavedCount
+// stays out of that sum because it is not a transfer.
+type DirectionSnapshot struct {
+	OpCount    int64 `json:"opCount"`
+	ErrorCount int64 `json:"errorCount"`
+	// Downloads only, counted rather than timed: a cheap round trip would pull the latency down.
+	MissCount int64 `json:"missCount"`
+	// Uploads only: the blob was already stored in this session, so nothing went over the wire.
+	SkippedAlreadySavedCount int64              `json:"skippedAlreadySavedCount"`
+	BytesTotal               int64              `json:"bytesTotal"`
+	LatencyMs                HistogramSnapshot  `json:"latencyMs"`
+	SizeBytes                HistogramSnapshot  `json:"sizeBytes"`
+	Throughput               ThroughputSnapshot `json:"throughput"`
+}
+
+func (s DirectionSnapshot) IsEmpty() bool {
+	return s.OpCount == 0 && s.ErrorCount == 0 && s.MissCount == 0 && s.SkippedAlreadySavedCount == 0
+}
+
+type Snapshot struct {
+	SchemaVersion int               `json:"schemaVersion"`
+	Upload        DirectionSnapshot `json:"upload"`
+	Download      DirectionSnapshot `json:"download"`
+}
+
+func (s Snapshot) IsEmpty() bool {
+	return s.Upload.IsEmpty() && s.Download.IsEmpty()
+}
+
+type Collector struct {
+	Upload   *Recorder
+	Download *Recorder
+}
+
+func NewCollector() *Collector {
+	return &Collector{
+		Upload:   &Recorder{boundaries: defaultBoundaries()},
+		Download: &Recorder{boundaries: defaultBoundaries()},
+	}
+}
+
+// Safe on a nil Collector, so a caller that never wired one up still marshals.
+func (c *Collector) Snapshot() Snapshot {
+	if c == nil {
+		return Snapshot{SchemaVersion: SchemaVersion} //nolint:exhaustruct // zeroed directions
+	}
+
+	return Snapshot{
+		SchemaVersion: SchemaVersion,
+		Upload:        c.Upload.Snapshot(),
+		Download:      c.Download.Snapshot(),
+	}
+}
+
+// TakeSnapshot zeroes both directions, for a helper that serves several invocations in a row.
+func (c *Collector) TakeSnapshot() Snapshot {
+	if c == nil {
+		return Snapshot{SchemaVersion: SchemaVersion} //nolint:exhaustruct // zeroed directions
+	}
+
+	snapshot := c.Snapshot()
+	c.Upload.reset()
+	c.Download.reset()
+
+	return snapshot
+}
+
+// One lock keeps a snapshot from catching the counters and the histograms disagreeing.
+type Recorder struct {
+	mu         sync.Mutex
+	boundaries boundarySet
+
+	latency    histogram
+	size       histogram
+	throughput histogram
+
+	// Retained so the percentiles are exact rather than interpolated from the buckets.
+	throughputSamples []int64
+
+	opCount                  int64
+	errorCount               int64
+	missCount                int64
+	skippedAlreadySavedCount int64
+	bytesTotal               int64
+	excludedSmallOps         int64
+}
+
+// RecordTransfer takes the wall clock of the whole operation, retries included.
+func (r *Recorder) RecordTransfer(bytes int64, duration time.Duration) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.opCount++
+	r.bytesTotal += bytes
+	r.latency.record(r.boundaries.latencyMs, duration.Milliseconds())
+	r.size.record(r.boundaries.sizeBytes, bytes)
+
+	if bytes < ThroughputMinBlobBytes {
+		r.excludedSmallOps++
+
+		return
+	}
+
+	// Millisecond resolution, so a fast op can arrive as 0.
+	elapsedMs := max(duration.Milliseconds(), 1)
+	bytesPerSec := bytes * 1000 / elapsedMs
+
+	r.throughput.record(r.boundaries.throughputBytesPerSec, bytesPerSec)
+	if len(r.throughputSamples) < maxThroughputSamples {
+		r.throughputSamples = append(r.throughputSamples, bytesPerSec)
+	}
+}
+
+func (r *Recorder) RecordError() {
+	r.addCounter(&r.errorCount)
+}
+
+func (r *Recorder) RecordMiss() {
+	r.addCounter(&r.missCount)
+}
+
+// RecordSkippedAlreadySaved is uploads only: nothing went over the wire.
+func (r *Recorder) RecordSkippedAlreadySaved() {
+	r.addCounter(&r.skippedAlreadySavedCount)
+}
+
+func (r *Recorder) Snapshot() DirectionSnapshot {
+	if r == nil {
+		return DirectionSnapshot{} //nolint:exhaustruct // zero value is the empty snapshot
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	sorted := make([]int64, len(r.throughputSamples))
+	copy(sorted, r.throughputSamples)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	return DirectionSnapshot{
+		OpCount:                  r.opCount,
+		ErrorCount:               r.errorCount,
+		MissCount:                r.missCount,
+		SkippedAlreadySavedCount: r.skippedAlreadySavedCount,
+		BytesTotal:               r.bytesTotal,
+		LatencyMs:                r.latency.snapshot(r.boundaries.latencyMs),
+		SizeBytes:                r.size.snapshot(r.boundaries.sizeBytes),
+		Throughput: ThroughputSnapshot{
+			Histogram:        r.throughput.snapshot(r.boundaries.throughputBytesPerSec),
+			P10BytesPerSec:   percentile(sorted, 0.10),
+			P50BytesPerSec:   percentile(sorted, 0.50),
+			P90BytesPerSec:   percentile(sorted, 0.90),
+			MinBlobBytes:     ThroughputMinBlobBytes,
+			ExcludedSmallOps: r.excludedSmallOps,
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Private
+// ---------------------------------------------------------------------------
+
+type boundarySet struct {
+	latencyMs             []int64
+	sizeBytes             []int64
+	throughputBytesPerSec []int64
+}
+
+func defaultBoundaries() boundarySet {
+	return boundarySet{
+		latencyMs:             LatencyMsBuckets,
+		sizeBytes:             SizeBytesBuckets,
+		throughputBytesPerSec: ThroughputBytesPerSecBuckets,
+	}
+}
+
+func (r *Recorder) addCounter(counter *int64) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	*counter++
+}
+
+func (r *Recorder) reset() {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.latency = histogram{}    //nolint:exhaustruct // zero value is the empty histogram
+	r.size = histogram{}       //nolint:exhaustruct // zero value is the empty histogram
+	r.throughput = histogram{} //nolint:exhaustruct // zero value is the empty histogram
+	r.throughputSamples = nil
+	r.opCount = 0
+	r.errorCount = 0
+	r.missCount = 0
+	r.skippedAlreadySavedCount = 0
+	r.bytesTotal = 0
+	r.excludedSmallOps = 0
+}
+
+type histogram struct {
+	counts []int64
+	count  int64
+	sum    int64
+	minVal int64
+	maxVal int64
+}
+
+func (h *histogram) record(boundaries []int64, value int64) {
+	if h.counts == nil {
+		h.counts = make([]int64, len(boundaries)+1)
+	}
+
+	h.counts[bucketOf(boundaries, value)]++
+	h.count++
+	h.sum += value
+
+	if h.count == 1 {
+		h.minVal, h.maxVal = value, value
+
+		return
+	}
+
+	h.minVal = min(h.minVal, value)
+	h.maxVal = max(h.maxVal, value)
+}
+
+func (h *histogram) snapshot(boundaries []int64) HistogramSnapshot {
+	counts := make([]int64, len(boundaries)+1)
+	copy(counts, h.counts)
+
+	return HistogramSnapshot{
+		Boundaries: boundaries,
+		Counts:     counts,
+		Count:      h.count,
+		Sum:        h.sum,
+		Min:        h.minVal,
+		Max:        h.maxVal,
+	}
+}
+
+// A nine-element scan avoids the floating point drift of a log at the boundaries.
+func bucketOf(boundaries []int64, value int64) int {
+	for i, boundary := range boundaries {
+		if value <= boundary {
+			return i
+		}
+	}
+
+	return len(boundaries)
+}
+
+// percentile is nearest-rank, on an ascending slice.
+func percentile(sorted []int64, quantile float64) int64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+
+	rank := int(math.Ceil(quantile*float64(len(sorted)))) - 1
+
+	return sorted[min(max(rank, 0), len(sorted)-1)]
+}

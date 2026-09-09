@@ -3,6 +3,8 @@ package proxy
 import (
 	"context"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
 // SessionMeta is the identity of the session being emitted.
@@ -28,6 +30,8 @@ type SessionStats struct {
 	UploadBytes   int64
 	DownloadBytes int64
 	KVUploadBytes int64
+	// BlobStats is nil when no blob moved on this session.
+	BlobStats *blobstats.Snapshot
 }
 
 // InvocationEmitter emits a slim analytics invocation for a closed proxy session.
@@ -59,5 +63,14 @@ func (s stats) toPublic() SessionStats {
 		UploadBytes:   s.uploadBytes,
 		DownloadBytes: s.downloadBytes,
 		KVUploadBytes: s.kvUploadBytes,
+		BlobStats:     blobStatsOrNil(s.blobStats),
 	}
+}
+
+func blobStatsOrNil(snapshot blobstats.Snapshot) *blobstats.Snapshot {
+	if snapshot.IsEmpty() {
+		return nil
+	}
+
+	return &snapshot
 }

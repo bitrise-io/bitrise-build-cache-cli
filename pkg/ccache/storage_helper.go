@@ -18,6 +18,7 @@ import (
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
@@ -83,6 +84,7 @@ type StorageHelper struct {
 	parentID     string
 	downloaded   int64
 	uploaded     int64
+	blobStats    *blobstats.Snapshot
 }
 
 // NewStorageHelper reads the ccache configuration from the default config path
@@ -247,6 +249,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	dl, ul := h.downloaded, h.uploaded
 	invocationID := h.invocationID
 	parentID := h.parentID
+	blobStats := h.blobStats
 	h.sessionMu.RUnlock()
 
 	iccache.CacheEffectiveness{
@@ -284,7 +287,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	metadata := configcommon.NewMetadata(h.params.Envs, hostUsername(h.params.Envs), newCommandFunc(ctx), h.logger)
 
-	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, h.config.AuthConfig, metadata)
+	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, blobStats, h.config.AuthConfig, metadata)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
 	}
@@ -413,6 +416,18 @@ func (h *StorageHelper) logFilePath(invocationID string) (string, error) {
 	return filepath.Join(dir, fmt.Sprintf(h.config.LogFile, invocationID)), nil
 }
 
+// Best-effort: a helper from an older CLI does not answer, and the rest is still worth sending.
+func (h *StorageHelper) loadBlobStats(ctx context.Context, socketPath string) *blobstats.Snapshot {
+	snapshot, err := iccache.SendGetBlobStats(ctx, socketPath)
+	if err != nil {
+		h.logger.TDebugf("No blob stats available from storage helper: %v", err)
+
+		return nil
+	}
+
+	return snapshot
+}
+
 func (h *StorageHelper) loadSessionInfo(ctx context.Context, invocationIDOverride, parentIDOverride string) (iccache.SessionStats, error) {
 	socketPath := h.socketPath()
 
@@ -449,6 +464,7 @@ func (h *StorageHelper) loadSessionInfo(ctx context.Context, invocationIDOverrid
 
 	h.uploaded = stats.UploadedBytes
 	h.downloaded = stats.DownloadedBytes
+	h.blobStats = h.loadBlobStats(ctx, socketPath)
 	h.sessionMu.Unlock()
 
 	return stats, nil

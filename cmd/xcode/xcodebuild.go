@@ -27,6 +27,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -441,6 +442,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		Error:            runStats.Error,
 		XcodeVersion:     runStats.XcodeVersion,
 		XcodeBuildNumber: runStats.XcodeBuildNumber,
+		CacheBlobStats:   proxyOutcome.BlobStats,
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.attachXcresultSummary(ctx, inv)
@@ -665,6 +667,7 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 		} else {
 			outcome.Errors = proxyStats.GetErrors()
 			outcome.FirstError = proxyStats.GetFirstError()
+			outcome.BlobStats = blobstats.FromProto(proxyStats.GetCacheBlobStats())
 			// Lowest prio: blob-based hit rate
 			if proxyStats.GetHits()+proxyStats.GetMisses() > 0 {
 				hitRate = float32(proxyStats.GetHits()) / float32(proxyStats.GetHits()+proxyStats.GetMisses())

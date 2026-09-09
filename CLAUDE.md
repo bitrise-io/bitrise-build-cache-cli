@@ -48,6 +48,7 @@ internal/     → Core business logic, config, protocols
 - `internal/xcelerate/` — Xcode compilation caching (proxy server, derived data, arg parsing, analytics)
 - `internal/build_cache/kv/` — key-value storage client for the build cache GRPC protocol
 - `internal/hash/` — blake3 hashing utilities
+- `internal/blobstats/` — per-blob cache transfer distributions (latency/size/throughput histograms + exact throughput percentiles) sent on the analytics invocation as `cacheBlobStats`. Bucket boundaries mirror the Gradle plugins' `io.bitrise.gradle.common.CacheBlobStats` so the two tools' numbers are comparable — do not change them without bumping `SchemaVersion` on both sides. Written by the xcelerate proxy and the ccache IPC server, read by the xcodebuild wrapper (over `GetSessionStats`) and the ccache storage helper (over the `RequestGetBlobStats` IPC call).
 - `internal/stringmerge/` — merges content into config files using `# [start]/[end] generated-by-bitrise-build-cache` marker blocks
 - `internal/paths/` — single source of truth for every on-disk location the CLI reads or writes. Filenames, dir layouts, socket/pid names live as constants in `paths.go`; per-`Paths` methods compose them against a home dir.
 

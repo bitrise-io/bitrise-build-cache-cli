@@ -3,6 +3,9 @@ package proxy
 import (
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
 type sessionState struct {
@@ -17,6 +20,7 @@ type sessionState struct {
 	errors        atomic.Int64
 	firstError    atomic.Pointer[string]
 	savedKeys     sync.Map
+	blobStats     *blobstats.Collector
 }
 
 const errorMessageMax = 300
@@ -32,10 +36,12 @@ type stats struct {
 	kvUploadBytes int64
 	errors        int64
 	firstError    string
+	blobStats     blobstats.Snapshot
 }
 
 func newSessionState() *sessionState {
-	return &sessionState{}
+	//nolint:exhaustruct // the atomics and the key map start zeroed
+	return &sessionState{blobStats: blobstats.NewCollector()}
 }
 
 func (s *sessionState) addDownloadBytes(n int64) {
@@ -62,11 +68,28 @@ func (s *sessionState) getStats() stats {
 		kvUploadBytes: s.kvUploadBytes.Load(),
 		errors:        s.errors.Load(),
 		firstError:    s.loadFirstError(),
+		blobStats:     s.blobStats.Snapshot(),
 	}
+}
+
+// Recorded for every remote transfer, CAS and KV alike, so BytesTotal reconciles with the
+// downloadBytes/uploadBytes counters. Timed around the KV call alone: the hashing and gob
+// coding around it is local work.
+func (s *sessionState) recordDownload(bytes int64, duration time.Duration) {
+	s.blobStats.Download.RecordTransfer(bytes, duration)
+}
+
+func (s *sessionState) recordUpload(bytes int64, duration time.Duration) {
+	s.blobStats.Upload.RecordTransfer(bytes, duration)
 }
 
 func (s *sessionState) recordError(op string, err error) {
 	s.errors.Add(1)
+	if isDownloadOp(op) {
+		s.blobStats.Download.RecordError()
+	} else {
+		s.blobStats.Upload.RecordError()
+	}
 
 	msg := op + ": " + err.Error()
 	if len(msg) > errorMessageMax {
@@ -86,6 +109,7 @@ func (s *sessionState) loadFirstError() string {
 
 func (s *sessionState) incrementMisses() {
 	s.misses.Add(1)
+	s.blobStats.Download.RecordMiss()
 }
 
 func (s *sessionState) incrementHits() {
@@ -108,6 +132,21 @@ func (s *sessionState) saveKeyOnce(key string) bool {
 	_, loaded := s.savedKeys.LoadOrStore(key, struct{}{})
 
 	return loaded
+}
+
+// Local dedup, kept apart from the transfers: timing it would make the latency distribution
+// incomparable with Gradle's.
+func (s *sessionState) recordSkippedAlreadySaved() {
+	s.blobStats.Upload.RecordSkippedAlreadySaved()
+}
+
+func isDownloadOp(op string) bool {
+	switch op {
+	case "Get", "Load", "GetValue":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *sessionState) markKeyUnsaved(key string) {

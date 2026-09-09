@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -318,6 +320,62 @@ func Test_IpcServer_Integration_GetSessionStats_returns_active_invocation_IDs(t 
 	require.NoError(t, err)
 	assert.Equal(t, "my-child", stats.InvocationID)
 	assert.Equal(t, "my-parent", stats.ParentID)
+
+	cancel()
+	<-serverDone
+}
+
+func Test_IpcServer_Integration_GetBlobStats_returns_the_transfer_distribution(t *testing.T) {
+	socketPath := integrationTempSocket(t, "bs.sock")
+
+	const downloadData = "hello ccache"
+	client := noOpClient()
+	client.DownloadStreamFunc = func(_ context.Context, w io.Writer, key string) error {
+		if key == "02" {
+			return kv.ErrCacheNotFound
+		}
+
+		_, err := w.Write([]byte(downloadData))
+
+		return err
+	}
+
+	_, cancel, serverDone := startTestServer(t, socketPath, client, nil)
+	defer cancel()
+
+	resp, data := sendGetAndReadValue(t, socketPath, []byte{0x01})
+	require.Equal(t, byte(protocol.ResponseOK), resp)
+	require.Equal(t, []byte(downloadData), data)
+
+	// A miss is counted, never timed.
+	missResp, _ := sendGetAndReadValue(t, socketPath, []byte{0x02})
+	require.Equal(t, byte(protocol.ResponseNoop), missResp)
+
+	snapshot, err := SendGetBlobStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+
+	assert.Equal(t, blobstats.SchemaVersion, snapshot.SchemaVersion)
+	assert.Equal(t, int64(1), snapshot.Download.OpCount)
+	assert.Equal(t, int64(len(downloadData)), snapshot.Download.BytesTotal)
+	assert.Equal(t, int64(1), snapshot.Download.LatencyMs.Count)
+	assert.Equal(t, int64(1), snapshot.Download.SizeBytes.Count)
+	assert.Equal(t, int64(1), snapshot.Download.MissCount)
+	assert.True(t, snapshot.Upload.IsEmpty())
+
+	cancel()
+	<-serverDone
+}
+
+func Test_IpcServer_Integration_GetBlobStats_nil_when_no_activity(t *testing.T) {
+	socketPath := integrationTempSocket(t, "bs-empty.sock")
+
+	_, cancel, serverDone := startTestServer(t, socketPath, noOpClient(), nil)
+	defer cancel()
+
+	snapshot, err := SendGetBlobStats(context.Background(), socketPath)
+	require.NoError(t, err)
+	assert.Nil(t, snapshot)
 
 	cancel()
 	<-serverDone
