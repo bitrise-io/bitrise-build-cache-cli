@@ -34,7 +34,7 @@ func Test_NewServer_initializes_activeInvocationID(t *testing.T) {
 func Test_handleSetInvocationIDResult(t *testing.T) {
 	t.Run("updates active ID and resets stats on new invocation", func(t *testing.T) {
 		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
-		s.sessionState.downloadBytes.Store(100)
+		s.sessionState.updateWithResult(getResult(PROCESS_REQUEST_OK, 100))
 		s.activeInvocationID = "old-id"
 
 		s.handleSetInvocationIDResult(processResult{InvocationParentID: "parent-1", InvocationChildID: "new-id"})
@@ -52,7 +52,7 @@ func Test_handleSetInvocationIDResult(t *testing.T) {
 
 	t.Run("duplicate invocation ID does not reset stats or change active ID", func(t *testing.T) {
 		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
-		s.sessionState.downloadBytes.Store(200)
+		s.sessionState.updateWithResult(getResult(PROCESS_REQUEST_OK, 200))
 		s.activeInvocationID = "same-id"
 		s.activeParentID = "parent-orig"
 
@@ -73,8 +73,8 @@ func Test_handleSetInvocationIDResult(t *testing.T) {
 func Test_IpcServer_SessionBytes(t *testing.T) {
 	t.Run("returns accumulated download and upload bytes from session state", func(t *testing.T) {
 		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
-		s.sessionState.downloadBytes.Store(1024)
-		s.sessionState.uploadBytes.Store(4096)
+		s.sessionState.updateWithResult(getResult(PROCESS_REQUEST_OK, 1024))
+		s.sessionState.updateWithResult(putResult(PROCESS_REQUEST_OK, 4096))
 
 		dl, ul := s.SessionBytes()
 
@@ -93,11 +93,11 @@ func Test_IpcServer_SessionBytes(t *testing.T) {
 
 	t.Run("reflects reset after SetInvocationID", func(t *testing.T) {
 		s := &IpcServer{sessionState: newSessionState(), logger: mockLogger}
-		s.sessionState.downloadBytes.Store(512)
-		s.sessionState.uploadBytes.Store(1024)
+		s.sessionState.updateWithResult(getResult(PROCESS_REQUEST_OK, 512))
+		s.sessionState.updateWithResult(putResult(PROCESS_REQUEST_OK, 1024))
 
 		// This is what handleConnection does when SetInvocationID succeeds
-		s.sessionState.resetAndGet()
+		s.sessionState.takeEffectiveness()
 
 		dl, ul := s.SessionBytes()
 		assert.Equal(t, int64(0), dl)
@@ -109,8 +109,7 @@ func Test_handleSetInvocationIDResult_logsOutgoingInvocation(t *testing.T) {
 	logger := &utilsMocks.Logger{}
 	registerLoggerMethod(logger, "TInfof")
 	s := &IpcServer{sessionState: newSessionState(), logger: logger, activeInvocationID: "old-id"}
-	s.sessionState.getHits.Store(1)
-	s.sessionState.downloadBytes.Store(2048)
+	s.sessionState.updateWithResult(getResult(PROCESS_REQUEST_OK, 2048))
 
 	s.handleSetInvocationIDResult(processResult{InvocationChildID: "new-id"})
 

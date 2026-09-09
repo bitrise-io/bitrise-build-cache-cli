@@ -77,8 +77,17 @@ message BlobStats {
   ThroughputStats throughput = 8;
 }
 
+// cas and kv break the totals down by wire protocol. The totals stay the fields both build
+// tools always send; Gradle has one protocol and omits the breakdown.
+message ProtocolBlobStats {
+  BlobStats upload = 1;
+  BlobStats download = 2;
+}
+
 message CacheBlobStats {
   int32 schema_version = 1;
   BlobStats upload = 2;
   BlobStats download = 3;
+  optional ProtocolBlobStats cas = 4;
+  optional ProtocolBlobStats kv = 5;
 }

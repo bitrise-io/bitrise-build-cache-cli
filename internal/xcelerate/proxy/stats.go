@@ -9,21 +9,29 @@ import (
 )
 
 type sessionState struct {
-	downloadBytes atomic.Int64
-	uploadBytes   atomic.Int64
-	uploads       atomic.Int64
-	hits          atomic.Int64
-	misses        atomic.Int64
-	kvHits        atomic.Int64
-	kvMisses      atomic.Int64
-	kvUploadBytes atomic.Int64
-	errors        atomic.Int64
-	firstError    atomic.Pointer[string]
-	savedKeys     sync.Map
-	blobStats     *blobstats.Collector
+	// blobStats is the single source of truth for every counter getStats reports: each hit,
+	// miss, upload, byte and error is one of its records, recorded against the protocol it
+	// travelled on, so the totals and the KV subset cannot drift from each other.
+	blobStats *blobstats.ProtocolCollector
+
+	firstError atomic.Pointer[string]
+	savedKeys  sync.Map
 }
 
 const errorMessageMax = 300
+
+// cacheOp names one proxy RPC. Typed because it selects which protocol lane a record lands in,
+// so a mistyped name has to fail the build rather than skew the KV subset.
+type cacheOp string
+
+const (
+	opGet      cacheOp = "Get"
+	opPut      cacheOp = "Put"
+	opLoad     cacheOp = "Load"
+	opSave     cacheOp = "Save"
+	opGetValue cacheOp = "GetValue"
+	opPutValue cacheOp = "PutValue"
+)
 
 type stats struct {
 	downloadBytes int64
@@ -40,58 +48,53 @@ type stats struct {
 }
 
 func newSessionState() *sessionState {
-	//nolint:exhaustruct // the atomics and the key map start zeroed
-	return &sessionState{blobStats: blobstats.NewCollector()}
-}
-
-func (s *sessionState) addDownloadBytes(n int64) {
-	s.downloadBytes.Add(n)
-}
-
-func (s *sessionState) addUploadBytes(n int64) {
-	s.uploadBytes.Add(n)
-}
-
-func (s *sessionState) addKVUploadBytes(n int64) {
-	s.kvUploadBytes.Add(n)
+	//nolint:exhaustruct // the atomic and the key map start zeroed
+	return &sessionState{blobStats: blobstats.NewProtocolCollector()}
 }
 
 func (s *sessionState) getStats() stats {
+	blobStats := s.blobStats.Snapshot()
+
+	// hits/misses fold CAS and KV together; the kv* fields are the KV subset, which is what
+	// defines the session hit rate — a KV lookup is one compilation-cache-key decision, while
+	// a CAS get fetches a blob that decision already pointed at, so counting blobs overstates
+	// the rate. kvUploadBytes only feeds the wrapper's summary log line.
 	return stats{
-		downloadBytes: s.downloadBytes.Load(),
-		uploadBytes:   s.uploadBytes.Load(),
-		uploads:       s.uploads.Load(),
-		hits:          s.hits.Load(),
-		misses:        s.misses.Load(),
-		kvHits:        s.kvHits.Load(),
-		kvMisses:      s.kvMisses.Load(),
-		kvUploadBytes: s.kvUploadBytes.Load(),
-		errors:        s.errors.Load(),
+		downloadBytes: blobStats.Download.BytesTotal,
+		uploadBytes:   blobStats.Upload.BytesTotal,
+		uploads:       blobStats.Upload.OpCount,
+		hits:          blobStats.Download.OpCount,
+		misses:        blobStats.Download.MissCount,
+		kvHits:        blobStats.KV.Download.OpCount,
+		kvMisses:      blobStats.KV.Download.MissCount,
+		kvUploadBytes: blobStats.KV.Upload.BytesTotal,
+		errors:        blobStats.Download.ErrorCount + blobStats.Upload.ErrorCount,
 		firstError:    s.loadFirstError(),
-		blobStats:     s.blobStats.Snapshot(),
+		blobStats:     blobStats,
 	}
 }
 
-// Recorded for every remote transfer, CAS and KV alike, so BytesTotal reconciles with the
-// downloadBytes/uploadBytes counters. Timed around the KV call alone: the hashing and gob
-// coding around it is local work.
-func (s *sessionState) recordDownload(bytes int64, duration time.Duration) {
-	s.blobStats.Download.RecordTransfer(bytes, duration)
+// Timed around the cache client call alone: the hashing and gob coding around it is local work.
+func (s *sessionState) recordDownload(op cacheOp, bytes int64, duration time.Duration) {
+	s.lane(op).Download.RecordTransfer(bytes, duration)
 }
 
-func (s *sessionState) recordUpload(bytes int64, duration time.Duration) {
-	s.blobStats.Upload.RecordTransfer(bytes, duration)
+func (s *sessionState) recordUpload(op cacheOp, bytes int64, duration time.Duration) {
+	s.lane(op).Upload.RecordTransfer(bytes, duration)
 }
 
-func (s *sessionState) recordError(op string, err error) {
-	s.errors.Add(1)
+func (s *sessionState) recordMiss(op cacheOp) {
+	s.lane(op).Download.RecordMiss()
+}
+
+func (s *sessionState) recordError(op cacheOp, err error) {
 	if isDownloadOp(op) {
-		s.blobStats.Download.RecordError()
+		s.lane(op).Download.RecordError()
 	} else {
-		s.blobStats.Upload.RecordError()
+		s.lane(op).Upload.RecordError()
 	}
 
-	msg := op + ": " + err.Error()
+	msg := string(op) + ": " + err.Error()
 	if len(msg) > errorMessageMax {
 		msg = msg[:errorMessageMax] + "…"
 	}
@@ -107,48 +110,41 @@ func (s *sessionState) loadFirstError() string {
 	return ""
 }
 
-func (s *sessionState) incrementMisses() {
-	s.misses.Add(1)
-	s.blobStats.Download.RecordMiss()
-}
-
-func (s *sessionState) incrementHits() {
-	s.hits.Add(1)
-}
-
-func (s *sessionState) incrementKVMisses() {
-	s.kvMisses.Add(1)
-}
-
-func (s *sessionState) incrementKVHits() {
-	s.kvHits.Add(1)
-}
-
-func (s *sessionState) incrementUploads() {
-	s.uploads.Add(1)
-}
-
 func (s *sessionState) saveKeyOnce(key string) bool {
 	_, loaded := s.savedKeys.LoadOrStore(key, struct{}{})
 
 	return loaded
 }
 
-// Local dedup, kept apart from the transfers: timing it would make the latency distribution
-// incomparable with Gradle's.
-func (s *sessionState) recordSkippedAlreadySaved() {
-	s.blobStats.Upload.RecordSkippedAlreadySaved()
+func (s *sessionState) markKeyUnsaved(key string) {
+	s.savedKeys.Delete(key)
 }
 
-func isDownloadOp(op string) bool {
+// recordSkippedAlreadySaved keeps local dedup apart from the transfers: timing it would make
+// the latency distribution incomparable with Gradle's.
+func (s *sessionState) recordSkippedAlreadySaved(op cacheOp) {
+	s.lane(op).Upload.RecordSkippedAlreadySaved()
+}
+
+func (s *sessionState) lane(op cacheOp) *blobstats.Collector {
+	if isKVOp(op) {
+		return s.blobStats.KV
+	}
+
+	return s.blobStats.CAS
+}
+
+func isDownloadOp(op cacheOp) bool {
 	switch op {
-	case "Get", "Load", "GetValue":
+	case opGet, opLoad, opGetValue:
 		return true
+	case opPut, opSave, opPutValue:
+		return false
 	default:
 		return false
 	}
 }
 
-func (s *sessionState) markKeyUnsaved(key string) {
-	s.savedKeys.Delete(key)
+func isKVOp(op cacheOp) bool {
+	return op == opGetValue || op == opPutValue
 }

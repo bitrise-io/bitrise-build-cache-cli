@@ -164,8 +164,7 @@ func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
 	s.activeInvocationMu.Lock()
 	isDuplicate := result.InvocationChildID == s.activeInvocationID
 	if !isDuplicate {
-		outgoing = s.sessionState.effectiveness()
-		s.sessionState.resetAndGet()
+		outgoing = s.sessionState.takeEffectiveness()
 		s.activeInvocationID = result.InvocationChildID
 		s.activeParentID = result.InvocationParentID
 	}
@@ -184,8 +183,7 @@ func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn conte
 
 func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	s.activeInvocationMu.Lock()
-	dl := s.sessionState.downloadBytes.Load()
-	ul := s.sessionState.uploadBytes.Load()
+	dl, ul := s.sessionState.sessionBytes()
 	invocationID := s.activeInvocationID
 	parentID := s.activeParentID
 	s.activeInvocationMu.Unlock()
@@ -208,9 +206,14 @@ func (s *IpcServer) handleGetBlobStatsResult(conn net.Conn, conID string) {
 	}
 }
 
+// SessionEffectiveness returns the current invocation's summary without resetting it.
+func (s *IpcServer) SessionEffectiveness() CacheEffectiveness {
+	return s.sessionState.effectiveness()
+}
+
 // SessionBytes returns the accumulated bytes downloaded and uploaded since the last SetInvocationID reset.
 func (s *IpcServer) SessionBytes() (int64, int64) {
-	return s.sessionState.downloadBytes.Load(), s.sessionState.uploadBytes.Load()
+	return s.sessionState.sessionBytes()
 }
 
 func (s *IpcServer) resetIdleTimer(cancelFn context.CancelFunc) {

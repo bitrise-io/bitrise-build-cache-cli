@@ -330,7 +330,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.incrementMisses()
+			p.sessionState.recordMiss(opGet)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -338,7 +338,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			}
 		}
 
-		p.sessionState.recordError("Get", err)
+		p.sessionState.recordError(opGet, err)
 		p.logger.TErrorf("Get error: %s", err)
 
 		return &llvmcas.CASGetResponse{
@@ -374,9 +374,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	hit = true
-	p.sessionState.addDownloadBytes(size)
-	p.sessionState.incrementHits()
-	p.sessionState.recordDownload(size, transferElapsed)
+	p.sessionState.recordDownload(opGet, size, transferElapsed)
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -401,7 +399,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	errorHandler := func(err error) *llvmcas.CASPutResponse {
 		p.sessionState.markKeyUnsaved(key)
 
-		p.sessionState.recordError("Put", err)
+		p.sessionState.recordError(opPut, err)
 		p.logger.TErrorf("Put error: %s", err)
 
 		return &llvmcas.CASPutResponse{
@@ -454,7 +452,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	if p.sessionState.saveKeyOnce(key) {
 		p.logger.TDebugf("Put: CAS ID already saved in this session: %s", key)
-		p.sessionState.recordSkippedAlreadySaved()
+		p.sessionState.recordSkippedAlreadySaved(opPut)
 
 		return &llvmcas.CASPutResponse{
 			Contents: &llvmcas.CASPutResponse_CasId{
@@ -482,9 +480,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
 
-	p.sessionState.addUploadBytes(size)
-	p.sessionState.incrementUploads()
-	p.sessionState.recordUpload(size, transferElapsed)
+	p.sessionState.recordUpload(opPut, size, transferElapsed)
 
 	return &llvmcas.CASPutResponse{
 		Contents: &llvmcas.CASPutResponse_CasId{
@@ -507,7 +503,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.incrementMisses()
+			p.sessionState.recordMiss(opLoad)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -515,7 +511,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 			}
 		}
 
-		p.sessionState.recordError("Load", err)
+		p.sessionState.recordError(opLoad, err)
 		p.logger.TErrorf("Load error: %s", err)
 
 		return &llvmcas.CASLoadResponse{
@@ -545,9 +541,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	hit = true
-	p.sessionState.addDownloadBytes(size)
-	p.sessionState.incrementHits()
-	p.sessionState.recordDownload(size, transferElapsed)
+	p.sessionState.recordDownload(opLoad, size, transferElapsed)
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -569,7 +563,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 	errorHandler := func(err error) *llvmcas.CASSaveResponse {
 		p.sessionState.markKeyUnsaved(key)
 
-		p.sessionState.recordError("Save", err)
+		p.sessionState.recordError(opSave, err)
 		p.logger.TErrorf("Save error: %s", err)
 
 		return &llvmcas.CASSaveResponse{
@@ -625,7 +619,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 
 	if p.sessionState.saveKeyOnce(key) {
 		p.logger.TDebugf("Save: CAS ID already saved in this session: %s", key)
-		p.sessionState.recordSkippedAlreadySaved()
+		p.sessionState.recordSkippedAlreadySaved(opSave)
 
 		return &llvmcas.CASSaveResponse{
 			Contents: &llvmcas.CASSaveResponse_CasId{
@@ -661,9 +655,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		return errorHandler(fmt.Errorf("%s: failed to upload data: %w", key, err)), nil
 	}
 
-	p.sessionState.addUploadBytes(size)
-	p.sessionState.incrementUploads()
-	p.sessionState.recordUpload(size, transferElapsed)
+	p.sessionState.recordUpload(opSave, size, transferElapsed)
 
 	return &llvmcas.CASSaveResponse{
 		Contents: &llvmcas.CASSaveResponse_CasId{
@@ -686,8 +678,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.incrementMisses()
-			p.sessionState.incrementKVMisses()
+			p.sessionState.recordMiss(opGetValue)
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -695,7 +686,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 			}
 		}
 
-		p.sessionState.recordError("GetValue", err)
+		p.sessionState.recordError(opGetValue, err)
 		p.logger.TErrorf("GetValue error: %s", err)
 
 		return &llvmkv.GetValueResponse{
@@ -724,10 +715,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	hit = true
-	p.sessionState.addDownloadBytes(size)
-	p.sessionState.incrementHits()
-	p.sessionState.incrementKVHits()
-	p.sessionState.recordDownload(size, transferElapsed)
+	p.sessionState.recordDownload(opGetValue, size, transferElapsed)
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -750,7 +738,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}()
 
 	errorHandler := func(err error) *llvmkv.PutValueResponse {
-		p.sessionState.recordError("PutValue", err)
+		p.sessionState.recordError(opPutValue, err)
 		p.logger.TErrorf("PutValue error: %s", err)
 
 		return &llvmkv.PutValueResponse{
@@ -780,10 +768,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 		return errorHandler(fmt.Errorf("%s: failed to upload value: %w", key, err)), nil
 	}
 
-	p.sessionState.addUploadBytes(size)
-	p.sessionState.addKVUploadBytes(size)
-	p.sessionState.incrementUploads()
-	p.sessionState.recordUpload(size, transferElapsed)
+	p.sessionState.recordUpload(opPutValue, size, transferElapsed)
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil

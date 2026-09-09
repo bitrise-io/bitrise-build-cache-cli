@@ -85,6 +85,16 @@ type Snapshot struct {
 	SchemaVersion int               `json:"schemaVersion"`
 	Upload        DirectionSnapshot `json:"upload"`
 	Download      DirectionSnapshot `json:"download"`
+	// CAS and KV break the totals above down by wire protocol, for the tools that have more
+	// than one. Absent for ccache, and absent from the Gradle payload, which is why the totals
+	// stay the top-level fields both tools always send.
+	CAS *ProtocolSnapshot `json:"cas,omitempty"`
+	KV  *ProtocolSnapshot `json:"kv,omitempty"`
+}
+
+type ProtocolSnapshot struct {
+	Upload   DirectionSnapshot `json:"upload"`
+	Download DirectionSnapshot `json:"download"`
 }
 
 func (s Snapshot) IsEmpty() bool {
@@ -127,6 +137,35 @@ func (c *Collector) TakeSnapshot() Snapshot {
 	c.Download.reset()
 
 	return snapshot
+}
+
+// ProtocolCollector records CAS and KV separately and reports the totals as their union, so a
+// consumer that wants only the totals cannot see them drift from the breakdown.
+type ProtocolCollector struct {
+	CAS *Collector
+	KV  *Collector
+}
+
+func NewProtocolCollector() *ProtocolCollector {
+	return &ProtocolCollector{CAS: NewCollector(), KV: NewCollector()}
+}
+
+func (c *ProtocolCollector) Snapshot() Snapshot {
+	if c == nil {
+		return Snapshot{SchemaVersion: SchemaVersion} //nolint:exhaustruct // zeroed directions
+	}
+
+	cas, kv := c.CAS.Snapshot(), c.KV.Snapshot()
+
+	return Snapshot{
+		SchemaVersion: SchemaVersion,
+		// Merged from the retained samples rather than from the two snapshots, so the total
+		// percentiles stay exact instead of being averaged.
+		Upload:   mergeDirections(c.CAS.Upload, c.KV.Upload),
+		Download: mergeDirections(c.CAS.Download, c.KV.Download),
+		CAS:      &ProtocolSnapshot{Upload: cas.Upload, Download: cas.Download},
+		KV:       &ProtocolSnapshot{Upload: kv.Upload, Download: kv.Download},
+	}
 }
 
 // One lock keeps a snapshot from catching the counters and the histograms disagreeing.
@@ -226,6 +265,70 @@ func (r *Recorder) Snapshot() DirectionSnapshot {
 // ---------------------------------------------------------------------------
 // Private
 // ---------------------------------------------------------------------------
+
+// mergeDirections combines two recorders' raw state. Locked CAS-first everywhere, so the two
+// locks can never be taken in opposing order.
+func mergeDirections(first, second *Recorder) DirectionSnapshot {
+	first.mu.Lock()
+	defer first.mu.Unlock()
+	second.mu.Lock()
+	defer second.mu.Unlock()
+
+	samples := make([]int64, 0, len(first.throughputSamples)+len(second.throughputSamples))
+	samples = append(samples, first.throughputSamples...)
+	samples = append(samples, second.throughputSamples...)
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+
+	boundaries := first.boundaries
+
+	return DirectionSnapshot{
+		OpCount:                  first.opCount + second.opCount,
+		ErrorCount:               first.errorCount + second.errorCount,
+		MissCount:                first.missCount + second.missCount,
+		SkippedAlreadySavedCount: first.skippedAlreadySavedCount + second.skippedAlreadySavedCount,
+		BytesTotal:               first.bytesTotal + second.bytesTotal,
+		LatencyMs:                mergeHistograms(&first.latency, &second.latency, boundaries.latencyMs),
+		SizeBytes:                mergeHistograms(&first.size, &second.size, boundaries.sizeBytes),
+		Throughput: ThroughputSnapshot{
+			Histogram: mergeHistograms(&first.throughput, &second.throughput,
+				boundaries.throughputBytesPerSec),
+			P10BytesPerSec:   percentile(samples, 0.10),
+			P50BytesPerSec:   percentile(samples, 0.50),
+			P90BytesPerSec:   percentile(samples, 0.90),
+			MinBlobBytes:     ThroughputMinBlobBytes,
+			ExcludedSmallOps: first.excludedSmallOps + second.excludedSmallOps,
+		},
+	}
+}
+
+func mergeHistograms(first, second *histogram, boundaries []int64) HistogramSnapshot {
+	merged := histogram{ //nolint:exhaustruct // filled below
+		counts: make([]int64, len(boundaries)+1),
+		count:  first.count + second.count,
+		sum:    first.sum + second.sum,
+	}
+
+	for i := range merged.counts {
+		if i < len(first.counts) {
+			merged.counts[i] += first.counts[i]
+		}
+		if i < len(second.counts) {
+			merged.counts[i] += second.counts[i]
+		}
+	}
+
+	switch {
+	case first.count == 0:
+		merged.minVal, merged.maxVal = second.minVal, second.maxVal
+	case second.count == 0:
+		merged.minVal, merged.maxVal = first.minVal, first.maxVal
+	default:
+		merged.minVal = min(first.minVal, second.minVal)
+		merged.maxVal = max(first.maxVal, second.maxVal)
+	}
+
+	return merged.snapshot(boundaries)
+}
 
 type boundarySet struct {
 	latencyMs             []int64

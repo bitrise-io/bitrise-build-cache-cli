@@ -59,10 +59,18 @@ func Test_IpcServer_Integration_BlobStatsOverFakeBackend(t *testing.T) {
 	assert.Equal(t, int64(1), snapshot.Download.LatencyMs.Count)
 	assert.Positive(t, snapshot.Download.Throughput.P50BytesPerSec)
 
+	assert.Equal(t, blobstats.SchemaVersion, snapshot.SchemaVersion)
+
+	// The session summary is derived from the snapshot, so the two cannot drift.
 	dl, ul := srv.SessionBytes()
 	assert.Equal(t, snapshot.Download.BytesTotal, dl)
 	assert.Equal(t, snapshot.Upload.BytesTotal, ul)
-	assert.Equal(t, blobstats.SchemaVersion, snapshot.SchemaVersion)
+
+	effectiveness := srv.SessionEffectiveness()
+	assert.Equal(t, snapshot.Download.OpCount, effectiveness.Hits)
+	assert.Equal(t, snapshot.Download.OpCount+snapshot.Download.MissCount, effectiveness.Total)
+	assert.Equal(t, snapshot.Download.BytesTotal, effectiveness.DownloadBytes)
+	assert.Equal(t, snapshot.Upload.BytesTotal, effectiveness.UploadBytes)
 
 	cancel()
 	<-serverDone

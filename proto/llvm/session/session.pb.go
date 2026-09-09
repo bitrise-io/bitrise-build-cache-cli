@@ -544,18 +544,74 @@ func (x *BlobStats) GetThroughput() *ThroughputStats {
 	return nil
 }
 
+// cas and kv break the totals down by wire protocol. The totals stay the fields both build
+// tools always send; Gradle has one protocol and omits the breakdown.
+type ProtocolBlobStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Upload        *BlobStats             `protobuf:"bytes,1,opt,name=upload,proto3" json:"upload,omitempty"`
+	Download      *BlobStats             `protobuf:"bytes,2,opt,name=download,proto3" json:"download,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProtocolBlobStats) Reset() {
+	*x = ProtocolBlobStats{}
+	mi := &file_llvm_session_session_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProtocolBlobStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProtocolBlobStats) ProtoMessage() {}
+
+func (x *ProtocolBlobStats) ProtoReflect() protoreflect.Message {
+	mi := &file_llvm_session_session_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProtocolBlobStats.ProtoReflect.Descriptor instead.
+func (*ProtocolBlobStats) Descriptor() ([]byte, []int) {
+	return file_llvm_session_session_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ProtocolBlobStats) GetUpload() *BlobStats {
+	if x != nil {
+		return x.Upload
+	}
+	return nil
+}
+
+func (x *ProtocolBlobStats) GetDownload() *BlobStats {
+	if x != nil {
+		return x.Download
+	}
+	return nil
+}
+
 type CacheBlobStats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SchemaVersion int32                  `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	Upload        *BlobStats             `protobuf:"bytes,2,opt,name=upload,proto3" json:"upload,omitempty"`
 	Download      *BlobStats             `protobuf:"bytes,3,opt,name=download,proto3" json:"download,omitempty"`
+	Cas           *ProtocolBlobStats     `protobuf:"bytes,4,opt,name=cas,proto3,oneof" json:"cas,omitempty"`
+	Kv            *ProtocolBlobStats     `protobuf:"bytes,5,opt,name=kv,proto3,oneof" json:"kv,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CacheBlobStats) Reset() {
 	*x = CacheBlobStats{}
-	mi := &file_llvm_session_session_proto_msgTypes[6]
+	mi := &file_llvm_session_session_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -567,7 +623,7 @@ func (x *CacheBlobStats) String() string {
 func (*CacheBlobStats) ProtoMessage() {}
 
 func (x *CacheBlobStats) ProtoReflect() protoreflect.Message {
-	mi := &file_llvm_session_session_proto_msgTypes[6]
+	mi := &file_llvm_session_session_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -580,7 +636,7 @@ func (x *CacheBlobStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheBlobStats.ProtoReflect.Descriptor instead.
 func (*CacheBlobStats) Descriptor() ([]byte, []int) {
-	return file_llvm_session_session_proto_rawDescGZIP(), []int{6}
+	return file_llvm_session_session_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CacheBlobStats) GetSchemaVersion() int32 {
@@ -600,6 +656,20 @@ func (x *CacheBlobStats) GetUpload() *BlobStats {
 func (x *CacheBlobStats) GetDownload() *BlobStats {
 	if x != nil {
 		return x.Download
+	}
+	return nil
+}
+
+func (x *CacheBlobStats) GetCas() *ProtocolBlobStats {
+	if x != nil {
+		return x.Cas
+	}
+	return nil
+}
+
+func (x *CacheBlobStats) GetKv() *ProtocolBlobStats {
+	if x != nil {
+		return x.Kv
 	}
 	return nil
 }
@@ -664,11 +734,18 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"size_bytes\x18\a \x01(\v2\x12.session.HistogramR\tsizeBytes\x128\n" +
 	"\n" +
 	"throughput\x18\b \x01(\v2\x18.session.ThroughputStatsR\n" +
-	"throughput\"\x93\x01\n" +
+	"throughput\"o\n" +
+	"\x11ProtocolBlobStats\x12*\n" +
+	"\x06upload\x18\x01 \x01(\v2\x12.session.BlobStatsR\x06upload\x12.\n" +
+	"\bdownload\x18\x02 \x01(\v2\x12.session.BlobStatsR\bdownload\"\x86\x02\n" +
 	"\x0eCacheBlobStats\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\x05R\rschemaVersion\x12*\n" +
 	"\x06upload\x18\x02 \x01(\v2\x12.session.BlobStatsR\x06upload\x12.\n" +
-	"\bdownload\x18\x03 \x01(\v2\x12.session.BlobStatsR\bdownload2\xe0\x01\n" +
+	"\bdownload\x18\x03 \x01(\v2\x12.session.BlobStatsR\bdownload\x121\n" +
+	"\x03cas\x18\x04 \x01(\v2\x1a.session.ProtocolBlobStatsH\x00R\x03cas\x88\x01\x01\x12/\n" +
+	"\x02kv\x18\x05 \x01(\v2\x1a.session.ProtocolBlobStatsH\x01R\x02kv\x88\x01\x01B\x06\n" +
+	"\x04_casB\x05\n" +
+	"\x03_kv2\xe0\x01\n" +
 	"\aSession\x12B\n" +
 	"\n" +
 	"SetSession\x12\x1a.session.SetSessionRequest\x1a\x16.google.protobuf.Empty\"\x00\x12B\n" +
@@ -688,7 +765,7 @@ func file_llvm_session_session_proto_rawDescGZIP() []byte {
 	return file_llvm_session_session_proto_rawDescData
 }
 
-var file_llvm_session_session_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_llvm_session_session_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_llvm_session_session_proto_goTypes = []any{
 	(*SetSessionRequest)(nil),       // 0: session.SetSessionRequest
 	(*EndSessionRequest)(nil),       // 1: session.EndSessionRequest
@@ -696,28 +773,33 @@ var file_llvm_session_session_proto_goTypes = []any{
 	(*Histogram)(nil),               // 3: session.Histogram
 	(*ThroughputStats)(nil),         // 4: session.ThroughputStats
 	(*BlobStats)(nil),               // 5: session.BlobStats
-	(*CacheBlobStats)(nil),          // 6: session.CacheBlobStats
-	(*emptypb.Empty)(nil),           // 7: google.protobuf.Empty
+	(*ProtocolBlobStats)(nil),       // 6: session.ProtocolBlobStats
+	(*CacheBlobStats)(nil),          // 7: session.CacheBlobStats
+	(*emptypb.Empty)(nil),           // 8: google.protobuf.Empty
 }
 var file_llvm_session_session_proto_depIdxs = []int32{
-	6,  // 0: session.GetSessionStatsResponse.cache_blob_stats:type_name -> session.CacheBlobStats
+	7,  // 0: session.GetSessionStatsResponse.cache_blob_stats:type_name -> session.CacheBlobStats
 	3,  // 1: session.ThroughputStats.histogram:type_name -> session.Histogram
 	3,  // 2: session.BlobStats.latency_ms:type_name -> session.Histogram
 	3,  // 3: session.BlobStats.size_bytes:type_name -> session.Histogram
 	4,  // 4: session.BlobStats.throughput:type_name -> session.ThroughputStats
-	5,  // 5: session.CacheBlobStats.upload:type_name -> session.BlobStats
-	5,  // 6: session.CacheBlobStats.download:type_name -> session.BlobStats
-	0,  // 7: session.Session.SetSession:input_type -> session.SetSessionRequest
-	1,  // 8: session.Session.EndSession:input_type -> session.EndSessionRequest
-	7,  // 9: session.Session.GetSessionStats:input_type -> google.protobuf.Empty
-	7,  // 10: session.Session.SetSession:output_type -> google.protobuf.Empty
-	7,  // 11: session.Session.EndSession:output_type -> google.protobuf.Empty
-	2,  // 12: session.Session.GetSessionStats:output_type -> session.GetSessionStatsResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	5,  // 5: session.ProtocolBlobStats.upload:type_name -> session.BlobStats
+	5,  // 6: session.ProtocolBlobStats.download:type_name -> session.BlobStats
+	5,  // 7: session.CacheBlobStats.upload:type_name -> session.BlobStats
+	5,  // 8: session.CacheBlobStats.download:type_name -> session.BlobStats
+	6,  // 9: session.CacheBlobStats.cas:type_name -> session.ProtocolBlobStats
+	6,  // 10: session.CacheBlobStats.kv:type_name -> session.ProtocolBlobStats
+	0,  // 11: session.Session.SetSession:input_type -> session.SetSessionRequest
+	1,  // 12: session.Session.EndSession:input_type -> session.EndSessionRequest
+	8,  // 13: session.Session.GetSessionStats:input_type -> google.protobuf.Empty
+	8,  // 14: session.Session.SetSession:output_type -> google.protobuf.Empty
+	8,  // 15: session.Session.EndSession:output_type -> google.protobuf.Empty
+	2,  // 16: session.Session.GetSessionStats:output_type -> session.GetSessionStatsResponse
+	14, // [14:17] is the sub-list for method output_type
+	11, // [11:14] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_llvm_session_session_proto_init() }
@@ -726,13 +808,14 @@ func file_llvm_session_session_proto_init() {
 		return
 	}
 	file_llvm_session_session_proto_msgTypes[2].OneofWrappers = []any{}
+	file_llvm_session_session_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llvm_session_session_proto_rawDesc), len(file_llvm_session_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

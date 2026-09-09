@@ -14,6 +14,8 @@ func ToProto(snapshot Snapshot) *session.CacheBlobStats {
 		SchemaVersion: int32(snapshot.SchemaVersion), //nolint:gosec // small constant
 		Upload:        directionToProto(snapshot.Upload),
 		Download:      directionToProto(snapshot.Download),
+		Cas:           protocolToProto(snapshot.CAS),
+		Kv:            protocolToProto(snapshot.KV),
 	}
 }
 
@@ -26,12 +28,36 @@ func FromProto(pb *session.CacheBlobStats) *Snapshot {
 		SchemaVersion: int(pb.GetSchemaVersion()),
 		Upload:        directionFromProto(pb.GetUpload()),
 		Download:      directionFromProto(pb.GetDownload()),
+		CAS:           protocolFromProto(pb.GetCas()),
+		KV:            protocolFromProto(pb.GetKv()),
 	}
 }
 
 // ---------------------------------------------------------------------------
 // Private
 // ---------------------------------------------------------------------------
+
+func protocolToProto(p *ProtocolSnapshot) *session.ProtocolBlobStats {
+	if p == nil {
+		return nil
+	}
+
+	return &session.ProtocolBlobStats{ //nolint:exhaustruct // proto internals
+		Upload:   directionToProto(p.Upload),
+		Download: directionToProto(p.Download),
+	}
+}
+
+func protocolFromProto(pb *session.ProtocolBlobStats) *ProtocolSnapshot {
+	if pb == nil {
+		return nil
+	}
+
+	return &ProtocolSnapshot{
+		Upload:   directionFromProto(pb.GetUpload()),
+		Download: directionFromProto(pb.GetDownload()),
+	}
+}
 
 func directionToProto(d DirectionSnapshot) *session.BlobStats {
 	return &session.BlobStats{ //nolint:exhaustruct // proto internals

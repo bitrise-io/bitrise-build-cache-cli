@@ -161,3 +161,91 @@ func Test_Recorder_measuredDistributionLandsInTheExpectedBuckets(t *testing.T) {
 	assert.Zero(t, got.SizeBytes.Counts[len(got.SizeBytes.Counts)-1], "nothing overflows")
 	assert.Equal(t, int64(len(blobstats.SizeBytesBuckets)), got.LatencyMs.Counts[0])
 }
+
+func Test_ProtocolCollector_totalsAreTheUnionOfTheLanes(t *testing.T) {
+	c := blobstats.NewProtocolCollector()
+
+	c.CAS.Download.RecordTransfer(64*1024, 4*time.Millisecond)
+	c.CAS.Download.RecordTransfer(128*1024, 8*time.Millisecond)
+	c.CAS.Download.RecordMiss()
+	c.CAS.Upload.RecordTransfer(32*1024, 2*time.Millisecond)
+	c.CAS.Upload.RecordSkippedAlreadySaved()
+	c.KV.Download.RecordTransfer(256*1024, 16*time.Millisecond)
+	c.KV.Download.RecordError()
+	c.KV.Upload.RecordTransfer(512*1024, 32*time.Millisecond)
+
+	got := c.Snapshot()
+	require.NotNil(t, got.CAS)
+	require.NotNil(t, got.KV)
+
+	assert.Equal(t, int64(3), got.Download.OpCount, "2 CAS + 1 KV")
+	assert.Equal(t, int64(1), got.Download.MissCount)
+	assert.Equal(t, int64(1), got.Download.ErrorCount)
+	assert.Equal(t, int64((64+128+256)*1024), got.Download.BytesTotal)
+	assert.Equal(t, int64(2), got.Upload.OpCount)
+	assert.Equal(t, int64(1), got.Upload.SkippedAlreadySavedCount)
+	assert.Equal(t, int64((32+512)*1024), got.Upload.BytesTotal)
+
+	// Every total is the sum of the two lanes, so a consumer of the totals cannot see them
+	// disagree with the breakdown.
+	assert.Equal(t, got.CAS.Download.OpCount+got.KV.Download.OpCount, got.Download.OpCount)
+	assert.Equal(t, got.CAS.Upload.BytesTotal+got.KV.Upload.BytesTotal, got.Upload.BytesTotal)
+	assert.Equal(t, got.CAS.Download.LatencyMs.Sum+got.KV.Download.LatencyMs.Sum, got.Download.LatencyMs.Sum)
+	assert.Equal(t, int64(4), got.Download.LatencyMs.Min, "the lower of the two lanes")
+	assert.Equal(t, int64(16), got.Download.LatencyMs.Max, "the higher of the two lanes")
+
+	for i := range got.Download.LatencyMs.Counts {
+		assert.Equal(t,
+			got.CAS.Download.LatencyMs.Counts[i]+got.KV.Download.LatencyMs.Counts[i],
+			got.Download.LatencyMs.Counts[i], "latency bucket %d", i)
+	}
+}
+
+// The merged percentiles come from the concatenated samples, not from averaging the lanes'
+// percentiles, so they stay exact.
+func Test_ProtocolCollector_mergedPercentilesAreExact(t *testing.T) {
+	c := blobstats.NewProtocolCollector()
+
+	// One slow CAS op against nine fast KV ops. Each lane's own median is at one extreme, so
+	// averaging them would give ~505 MB/s — a value no sample has.
+	c.CAS.Download.RecordTransfer(1_048_576, 100*time.Millisecond)
+	for range 9 {
+		c.KV.Download.RecordTransfer(1_048_576, time.Millisecond)
+	}
+
+	got := c.Snapshot()
+
+	const slow, fast = int64(10_485_760), int64(1_048_576_000)
+	require.Equal(t, slow, got.CAS.Download.Throughput.P50BytesPerSec)
+	require.Equal(t, fast, got.KV.Download.Throughput.P50BytesPerSec)
+
+	// Nearest-rank over the union of the ten samples: the 5th ascending is a fast one.
+	assert.Equal(t, fast, got.Download.Throughput.P50BytesPerSec)
+	assert.NotEqual(t, (slow+fast)/2, got.Download.Throughput.P50BytesPerSec,
+		"a merged percentile must not be the mean of the lanes' percentiles")
+	// The slowest op is the 1st ascending, so p10 is where it lands.
+	assert.Equal(t, slow, got.Download.Throughput.P10BytesPerSec)
+	assert.Equal(t, int64(10), got.Download.Throughput.Histogram.Count)
+}
+
+func Test_ProtocolCollector_emptyLanesStayEmpty(t *testing.T) {
+	got := blobstats.NewProtocolCollector().Snapshot()
+
+	assert.True(t, got.IsEmpty())
+	assert.Nil(t, blobstats.ToProto(got))
+}
+
+// A plain collector sends no breakdown, which is the shape the Gradle plugin also sends.
+func Test_Collector_omitsTheProtocolBreakdown(t *testing.T) {
+	c := blobstats.NewCollector()
+	c.Download.RecordTransfer(1024, time.Millisecond)
+
+	got := c.Snapshot()
+	assert.Nil(t, got.CAS)
+	assert.Nil(t, got.KV)
+
+	payload, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.NotContains(t, string(payload), `"cas"`)
+	assert.NotContains(t, string(payload), `"kv"`)
+}

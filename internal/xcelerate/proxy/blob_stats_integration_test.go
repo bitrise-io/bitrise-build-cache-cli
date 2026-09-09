@@ -74,6 +74,10 @@ func Test_Proxy_Integration_BlobStatsOverFakeBackend(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	kvGet, err := kvClient.GetValue(context.Background(), &llvmkv.GetValueRequest{Key: []byte("kv-key")})
+	require.NoError(t, err)
+	require.Equal(t, llvmkv.GetValueResponse_SUCCESS, kvGet.GetOutcome())
+
 	stats, err := sessionClient.GetSessionStats(context.Background(), &emptypb.Empty{})
 	require.NoError(t, err)
 
@@ -83,21 +87,32 @@ func Test_Proxy_Integration_BlobStatsOverFakeBackend(t *testing.T) {
 	// One CAS save plus one KV put; the deduped save is counted apart.
 	assert.Equal(t, int64(2), blobStats.Upload.OpCount, "uploads")
 	assert.Equal(t, int64(1), blobStats.Upload.SkippedAlreadySavedCount, "deduped saves")
-	assert.Equal(t, stats.GetUploadedBytes(), blobStats.Upload.BytesTotal)
-	assert.Equal(t, int64(2), blobStats.Upload.LatencyMs.Count)
 	assert.Equal(t, int64(2), blobStats.Upload.Throughput.Histogram.Count, "both clear the floor")
 	assert.Zero(t, blobStats.Upload.MissCount)
 
-	assert.Equal(t, int64(1), blobStats.Download.OpCount, "downloads")
+	// One CAS load plus one KV get.
+	assert.Equal(t, int64(2), blobStats.Download.OpCount, "downloads")
 	assert.Equal(t, int64(1), blobStats.Download.MissCount, "the miss is counted, not timed")
-	assert.Equal(t, stats.GetDownloadedBytes(), blobStats.Download.BytesTotal)
-	assert.Equal(t, int64(1), blobStats.Download.LatencyMs.Count)
-	assert.Equal(t, int64(len(payload)), blobStats.Download.SizeBytes.Sum)
 	assert.Positive(t, blobStats.Download.Throughput.P50BytesPerSec)
 
 	// Only transfers are timed, so the latency histogram matches the op count exactly.
 	assert.Equal(t, blobStats.Download.OpCount, blobStats.Download.LatencyMs.Count)
 	assert.Equal(t, blobStats.Upload.OpCount, blobStats.Upload.LatencyMs.Count)
+
+	// The flat session counters are derived from the snapshot, so they cannot drift from it.
+	assert.Equal(t, blobStats.Download.OpCount, stats.GetHits(), "hits")
+	assert.Equal(t, blobStats.Download.MissCount, stats.GetMisses(), "misses")
+	assert.Equal(t, blobStats.Upload.OpCount, stats.GetUploads(), "uploads")
+	assert.Equal(t, blobStats.Download.BytesTotal, stats.GetDownloadedBytes())
+	assert.Equal(t, blobStats.Upload.BytesTotal, stats.GetUploadedBytes())
+	assert.Equal(t,
+		blobStats.Download.ErrorCount+blobStats.Upload.ErrorCount, stats.GetErrors(), "errors")
+
+	// The kv* fields are the KV subset of the totals, not a parallel set of counters.
+	assert.Equal(t, int64(1), stats.GetKvHits(), "one KV get")
+	assert.Zero(t, stats.GetKvMisses())
+	assert.Less(t, stats.GetKvHits(), stats.GetHits(), "CAS traffic is in hits but not kvHits")
+	assert.Positive(t, stats.GetKvUploadedBytes())
 }
 
 func startProxyAgainstFakeBackend(t *testing.T) (
