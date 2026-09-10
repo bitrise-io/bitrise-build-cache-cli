@@ -2,10 +2,12 @@ package ccache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 )
 
@@ -197,5 +199,48 @@ func SendInvocationID(ctx context.Context, socketPath, parentID, childID string)
 		return fmt.Errorf("server error: %s", msg)
 	default:
 		return fmt.Errorf("unexpected response: 0x%02x", resp)
+	}
+}
+
+// Returns nil without an error when no blob moved; errors when the helper predates 0xB4.
+func SendGetBlobStats(ctx context.Context, socketPath string) (*blobstats.Snapshot, error) {
+	conn, err := dialHelper(ctx, socketPath)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	if err := protocol.WriteByte(conn, protocol.RequestGetBlobStats); err != nil {
+		return nil, fmt.Errorf("send get-blob-stats request: %w", err)
+	}
+
+	resp, err := protocol.ReadByte(conn)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	switch resp {
+	case protocol.ResponseOK:
+		payload, err := protocol.ReadBlobStats(conn)
+		if err != nil {
+			return nil, fmt.Errorf("read blob stats: %w", err)
+		}
+
+		var snapshot blobstats.Snapshot
+		if err := json.Unmarshal(payload, &snapshot); err != nil {
+			return nil, fmt.Errorf("unmarshal blob stats: %w", err)
+		}
+
+		if snapshot.IsEmpty() {
+			return nil, nil //nolint:nilnil // no blob moved is not an error
+		}
+
+		return &snapshot, nil
+	case protocol.ResponseErr:
+		msg, _ := protocol.ReadMsg(conn)
+
+		return nil, fmt.Errorf("server error: %s", msg)
+	default:
+		return nil, fmt.Errorf("unexpected response: 0x%02x", resp)
 	}
 }

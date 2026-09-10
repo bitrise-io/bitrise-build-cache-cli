@@ -134,7 +134,9 @@ func (p *requestProcessor) handleGet(ctx context.Context) processResult {
 	p.logger.TDebugf("%s Called", statBuilder.Prefix())
 
 	buffer := bytes.NewBuffer(nil)
+	transferStart := time.Now()
 	err = p.client.DownloadStream(ctx, buffer, key)
+	statBuilder.withTransfer(time.Since(transferStart))
 
 	switch {
 	case err == nil:
@@ -214,7 +216,11 @@ func (p *requestProcessor) handlePut(ctx context.Context) processResult {
 	statBuilder.withUploadBytes(size)
 	p.logger.TDebugf("%s Called (%d bytes)", statBuilder.Prefix(), size)
 
-	if err = p.client.UploadStreamToBuildCache(ctx, bytes.NewReader(value), key, size); err != nil {
+	transferStart := time.Now()
+	err = p.client.UploadStreamToBuildCache(ctx, bytes.NewReader(value), key, size)
+	statBuilder.withTransfer(time.Since(transferStart))
+
+	if err != nil {
 		return p.notifyClient(processResult{
 			Outcome:   PROCESS_REQUEST_ERROR,
 			Err:       fmt.Errorf("failed to upload data: %w", err),
@@ -305,6 +311,17 @@ func (p *requestProcessor) handleGetSessionStats() processResult {
 	}
 }
 
+func (p *requestProcessor) handleGetBlobStats() processResult {
+	statBuilder := newStatBuilder(CALL_METHOD_GET_BLOB_STATS)
+	p.logger.TDebugf("%s received", statBuilder.Prefix())
+
+	// Response (OK + payload) is written by handleConnection which has access to sessionState.
+	return processResult{
+		Outcome:   PROCESS_REQUEST_OK,
+		CallStats: statBuilder.build(),
+	}
+}
+
 func (p *requestProcessor) handleHealthCheck() processResult {
 	statBuilder := newStatBuilder(CALL_METHOD_HEALTH_CHECK)
 	p.logger.TDebugf("%s received", statBuilder.Prefix())
@@ -370,6 +387,11 @@ func (p *requestProcessor) processRequest(ctx context.Context) processResult {
 
 	case protocol.RequestHealthCheck:
 		result = p.handleHealthCheck()
+
+		return result
+
+	case protocol.RequestGetBlobStats:
+		result = p.handleGetBlobStats()
 
 		return result
 

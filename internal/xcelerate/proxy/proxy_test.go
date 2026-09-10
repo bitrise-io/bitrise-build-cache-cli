@@ -2,6 +2,7 @@ package proxy_test
 
 import (
 	"context"
+	"encoding/gob"
 	"errors"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy/mocks"
@@ -208,4 +210,80 @@ func Test_Proxy_SessionStatsKeepsTheFirstErrorMessage(t *testing.T) {
 	assert.Contains(t, stats.GetFirstError(), "connection refused")
 	assert.Contains(t, stats.GetFirstError(), "Get", "the message names the operation")
 	assert.NotContains(t, stats.GetFirstError(), "later, different")
+}
+
+// The session-stats payload is what the wrapper forwards to analytics.
+func Test_Proxy_SessionStatsCarryBlobStats(t *testing.T) {
+	const payload = "a blob big enough to clear the throughput floor"
+
+	kvClient := &mocks.ClientMock{
+		DownloadStreamFunc: func(_ context.Context, w io.Writer, _ string) error {
+			return gob.NewEncoder(w).Encode(struct {
+				Data       []byte
+				References [][]byte
+			}{Data: []byte(payload)})
+		},
+		UploadStreamToBuildCacheFunc: func(context.Context, io.ReadSeeker, string, int64) error { return nil },
+	}
+
+	listener := bufconn.Listen(1024 * 1024)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	resolver.SetDefaultScheme("passthrough")
+	client, err := grpc.NewClient("bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+
+	go func() {
+		p := proxy.NewProxy(kvClient, true, mockLogger, func(string) (log.Logger, error) {
+			return mockLogger, nil
+		}, nil)
+		_ = p.Serve(listener)
+	}()
+
+	casClient := llvmcas.NewCASDBServiceClient(client)
+
+	getResponse, err := casClient.Get(context.Background(), &llvmcas.CASGetRequest{
+		CasId: &llvmcas.CASDataID{Id: []byte("present-key")},
+	})
+	require.NoError(t, err)
+	require.Equal(t, llvmcas.CASGetResponse_SUCCESS, getResponse.GetOutcome())
+
+	putResponse, err := casClient.Put(context.Background(), &llvmcas.CASPutRequest{
+		Data: &llvmcas.CASObject{
+			Blob: &llvmcas.CASBytes{Contents: &llvmcas.CASBytes_Data{Data: []byte(payload)}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The same key a second time is local dedup, counted apart from the transfers.
+	_, err = casClient.Put(context.Background(), &llvmcas.CASPutRequest{
+		Data: &llvmcas.CASObject{
+			Blob: &llvmcas.CASBytes{Contents: &llvmcas.CASBytes_Data{Data: []byte(payload)}},
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, putResponse.GetCasId().GetId())
+
+	stats, err := session.NewSessionClient(client).GetSessionStats(context.Background(), &emptypb.Empty{})
+	require.NoError(t, err)
+
+	blobStats := blobstats.FromProto(stats.GetCacheBlobStats())
+	require.NotNil(t, blobStats)
+	assert.Equal(t, blobstats.SchemaVersion, blobStats.SchemaVersion)
+
+	assert.Equal(t, int64(1), blobStats.Download.OpCount)
+	assert.Equal(t, stats.GetDownloadedBytes(), blobStats.Download.BytesTotal)
+	assert.Equal(t, int64(1), blobStats.Download.LatencyMs.Count)
+	assert.Equal(t, int64(1), blobStats.Download.SizeBytes.Count)
+
+	assert.Equal(t, int64(1), blobStats.Upload.OpCount)
+	assert.Equal(t, stats.GetUploadedBytes(), blobStats.Upload.BytesTotal)
+	assert.Equal(t, int64(1), blobStats.Upload.SkippedAlreadySavedCount)
+
+	// Both blobs are well under 16 KB, so nothing enters the throughput histogram.
+	assert.Equal(t, int64(1), blobStats.Download.Throughput.ExcludedSmallOps)
+	assert.Zero(t, blobStats.Download.Throughput.Histogram.Count)
+	assert.Equal(t, int64(blobstats.ThroughputMinBlobBytes), blobStats.Download.Throughput.MinBlobBytes)
 }

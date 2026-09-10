@@ -2,6 +2,7 @@ package ccache
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -133,6 +134,10 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 			s.handleGetSessionStatsResult(conn, conID)
 		}
 
+		if result.CallStats.method == CALL_METHOD_GET_BLOB_STATS && result.Outcome == PROCESS_REQUEST_OK {
+			s.handleGetBlobStatsResult(conn, conID)
+		}
+
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
 			s.handleStopResult(conn, conID, cancelFn)
 
@@ -159,8 +164,7 @@ func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
 	s.activeInvocationMu.Lock()
 	isDuplicate := result.InvocationChildID == s.activeInvocationID
 	if !isDuplicate {
-		outgoing = s.sessionState.effectiveness()
-		s.sessionState.resetAndGet()
+		outgoing = s.sessionState.takeEffectiveness()
 		s.activeInvocationID = result.InvocationChildID
 		s.activeParentID = result.InvocationParentID
 	}
@@ -179,8 +183,7 @@ func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn conte
 
 func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	s.activeInvocationMu.Lock()
-	dl := s.sessionState.downloadBytes.Load()
-	ul := s.sessionState.uploadBytes.Load()
+	dl, ul := s.sessionState.sessionBytes()
 	invocationID := s.activeInvocationID
 	parentID := s.activeParentID
 	s.activeInvocationMu.Unlock()
@@ -190,9 +193,27 @@ func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	}
 }
 
+func (s *IpcServer) handleGetBlobStatsResult(conn net.Conn, conID string) {
+	payload, err := json.Marshal(s.sessionState.blobStatsSnapshot())
+	if err != nil {
+		s.logger.TWarnf("[%s] Failed to marshal blob stats: %v", conID, err)
+
+		return
+	}
+
+	if err := protocol.WriteBlobStats(conn, payload); err != nil {
+		s.logger.TErrorf("[%s] Failed to write blob stats response: %v", conID, err)
+	}
+}
+
+// SessionEffectiveness returns the current invocation's summary without resetting it.
+func (s *IpcServer) SessionEffectiveness() CacheEffectiveness {
+	return s.sessionState.effectiveness()
+}
+
 // SessionBytes returns the accumulated bytes downloaded and uploaded since the last SetInvocationID reset.
 func (s *IpcServer) SessionBytes() (int64, int64) {
-	return s.sessionState.downloadBytes.Load(), s.sessionState.uploadBytes.Load()
+	return s.sessionState.sessionBytes()
 }
 
 func (s *IpcServer) resetIdleTimer(cancelFn context.CancelFunc) {

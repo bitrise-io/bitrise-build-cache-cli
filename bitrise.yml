@@ -1457,6 +1457,13 @@ workflows:
             # wrapper in debug mode, so the report lands in wrapper.log.
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Running health checks'
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Health check result:'
+    - script:
+        title: 'ACI-4782: assert the cacheBlobStats payload is present and self-consistent'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            ../scripts/assert_cache_blob_stats.sh "$BITRISE_DEPLOY_DIR/wrapper.log"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-cas-key-stable:
@@ -1549,6 +1556,19 @@ workflows:
             echo "Checkout B invocation ID: $invocation_id_b"
 
             assert_xcode_invocation_hit_rate_at_least "$invocation_id_b" 80
+    - script:
+        title: 'ACI-4782: collect the xcelerate log'
+        is_always_run: true
+        inputs:
+        - content: cp ~/.local/state/xcelerate/logs/* "$BITRISE_DEPLOY_DIR" 2>/dev/null || true
+    - script:
+        title: 'ACI-4782: assert the cacheBlobStats payload is present and self-consistent'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Checkout B is the warm build, so its payload carries the reuse this workflow is about.
+            ../scripts/assert_cache_blob_stats.sh "$BITRISE_DEPLOY_DIR/wrapper-B.log"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-wrapper-watcher-race:

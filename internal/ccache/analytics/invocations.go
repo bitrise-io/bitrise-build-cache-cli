@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
@@ -110,6 +111,7 @@ func NewCcacheInvocation(
 	invocationDate time.Time,
 	stats CcacheStats,
 	downloadedBytes, uploadedBytes int64,
+	blobStats *blobstats.Snapshot,
 	authMetadata auth.Credential,
 	commonMetadata common.CacheConfigMetadata,
 ) *CcacheInvocation {
@@ -133,6 +135,7 @@ func NewCcacheInvocation(
 		BuildToolStats:     stats,
 		DownloadedBytes:    downloadedBytes,
 		UploadedBytes:      uploadedBytes,
+		CacheBlobStats:     blobStats,
 	}
 }
 

@@ -17,6 +17,7 @@ const (
 	RequestSetInvocationID = 0xB1
 	RequestGetSessionStats = 0xB2
 	RequestHealthCheck     = 0xB3
+	RequestGetBlobStats    = 0xB4
 
 	ResponseOK   = 0x00
 	ResponseNoop = 0x01
@@ -207,6 +208,25 @@ func ReadSessionStats(r io.Reader) (downloadBytes, uploadBytes int64, invocation
 	}
 
 	return downloadBytes, uploadBytes, invocationID, parentID, nil
+}
+
+// Its own request type rather than extra fields on the session-stats response: an older helper
+// closes the connection instead of leaving the client blocked on bytes that never arrive.
+func WriteBlobStats(w io.Writer, blobStatsJSON []byte) error {
+	if err := WriteByte(w, ResponseOK); err != nil {
+		return err
+	}
+
+	return WriteValue(w, blobStatsJSON)
+}
+
+func ReadBlobStats(r io.Reader) ([]byte, error) {
+	payload, err := ReadValue(r)
+	if err != nil {
+		return nil, fmt.Errorf("read blob stats: %w", err)
+	}
+
+	return payload, nil
 }
 
 func ReadSetInvocationID(r io.Reader) (parentID, childID string, err error) {

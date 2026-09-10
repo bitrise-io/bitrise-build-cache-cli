@@ -375,6 +375,7 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 			InvocationDate: meta.StartTime,
 			InvocationID:   meta.InvocationID,
 			HitRate:        hitRate,
+			CacheBlobStats: stats.BlobStats,
 		}, b.authProvider.Get(ctx), b.metadata)
 
 		if err := putter.PutInvocation(*inv); err != nil {
