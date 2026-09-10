@@ -713,8 +713,7 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 	return hitRate, outcome
 }
 
-// logBlobStatsProfile prints the transfer distributions per direction. Latency and size are
-// bucket bounds; only throughput retains samples for an exact percentile.
+// Latency and size are bucket bounds; only throughput retains samples for an exact percentile.
 func logBlobStatsProfile(logger log.Logger, snapshot *blobstats.Snapshot) {
 	if snapshot == nil {
 		return

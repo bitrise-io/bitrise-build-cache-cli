@@ -9,9 +9,8 @@ import (
 )
 
 type sessionState struct {
-	// blobStats is the single source of truth for every counter getStats reports: each hit,
-	// miss, upload, byte and error is one of its records, recorded against the protocol it
-	// travelled on, so the totals and the KV subset cannot drift from each other.
+	// Single source of truth for every counter getStats reports, so the totals and the KV
+	// subset cannot drift. Add a counter by recording it here, never beside it.
 	blobStats *blobstats.ProtocolCollector
 
 	firstError atomic.Pointer[string]
@@ -20,8 +19,8 @@ type sessionState struct {
 
 const errorMessageMax = 300
 
-// cacheOp names one proxy RPC. Typed because it selects which protocol a record is filed under,
-// so a mistyped name has to fail the build rather than skew the KV subset.
+// Typed because it selects the protocol a record is filed under: a typo must fail the build
+// rather than skew the KV subset.
 type cacheOp string
 
 const (
@@ -55,10 +54,8 @@ func newSessionState() *sessionState {
 func (s *sessionState) getStats() stats {
 	blobStats := s.blobStats.Snapshot()
 
-	// hits/misses fold CAS and KV together; the kv* fields are the KV subset, which is what
-	// defines the session hit rate — a KV lookup is one compilation-cache-key decision, while
-	// a CAS get fetches a blob that decision already pointed at, so counting blobs overstates
-	// the rate. kvUploadBytes only feeds the wrapper's summary log line.
+	// kv* is the KV subset of hits/misses, and what defines the hit rate: a KV lookup is one
+	// cache-key decision, while a CAS get fetches a blob that decision already pointed at.
 	return stats{
 		downloadBytes: blobStats.Download.BytesTotal,
 		uploadBytes:   blobStats.Upload.BytesTotal,
@@ -120,8 +117,7 @@ func (s *sessionState) markKeyUnsaved(key string) {
 	s.savedKeys.Delete(key)
 }
 
-// recordSkippedAlreadySaved keeps local dedup apart from the transfers: timing it would make
-// the latency distribution incomparable with Gradle's.
+// Local dedup, kept out of the transfers: timing it would skew the latency distribution.
 func (s *sessionState) recordSkippedAlreadySaved(op cacheOp) {
 	s.protocolFor(op).Upload.RecordSkippedAlreadySaved()
 }

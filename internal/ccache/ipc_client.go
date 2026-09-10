@@ -202,8 +202,7 @@ func SendInvocationID(ctx context.Context, socketPath, parentID, childID string)
 	}
 }
 
-// SendGetBlobStats returns nil without an error when the session moved no blob, and an error
-// when the helper predates the request type.
+// Returns nil without an error when no blob moved; errors when the helper predates 0xB4.
 func SendGetBlobStats(ctx context.Context, socketPath string) (*blobstats.Snapshot, error) {
 	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {

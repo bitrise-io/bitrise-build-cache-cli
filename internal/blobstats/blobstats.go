@@ -1,6 +1,5 @@
-// Package blobstats records per-blob cache transfer distributions per direction. Bucket
-// boundaries and payload shape match the Gradle plugins' io.bitrise.gradle.common.CacheBlobStats,
-// so the two tools' numbers are comparable.
+// Package blobstats records per-blob cache transfer distributions per direction, in the payload
+// shape of the Gradle plugins' io.bitrise.gradle.common.CacheBlobStats.
 package blobstats
 
 import (
@@ -14,31 +13,21 @@ import (
 	"github.com/dustin/go-humanize"
 )
 
-// SchemaVersion is bumped when a field's meaning changes, not when a boundary moves:
-// boundaries travel in the payload precisely so a rescale needs no version bump.
+// Bumped when a field's meaning changes, not when a boundary moves — boundaries are sent too.
 const SchemaVersion = 1
 
-// Fixed, never derived from the data: histograms only sum across invocations on one scale.
-// Calibrated in gradle-plugins#100 on 293k Gradle and 1.76M Xcode blob operations; size and
-// throughput match BlobStatsBuckets in
-// common/src/main/kotlin/io/bitrise/gradle/common/CacheBlobStats.kt, so those two stay
-// mergeable across the tools and must move together.
-//
-// Latency deliberately does not: macOS is slower, and on Gradle's 2..512 scale Xcode overflows
-// 1.4-1.7% against Gradle's 0.08%. gradle-plugins#100 measures 4..1024 at 0.40% and hands the
-// CLI that scale, which the payload's own boundaries make safe. ccache shares it for want of
-// its own measurement.
+// Size and throughput must move together with BlobStatsBuckets in gradle-plugins; latency
+// deliberately differs, because macOS overflows Gradle's 2..512 scale ~20x more.
 //
 //nolint:gochecknoglobals // fixed scale, shared by every recorder
 var (
-	// ×2 from 4 ms: a ≤2 ms bucket held 0.06% of downloads, so the step buys more at the tail.
+	// ×2 from 4 ms: a ≤2 ms bucket held 0.06% of downloads, so the step went to the tail.
 	LatencyMsBuckets = []int64{4, 8, 16, 32, 64, 128, 256, 512, 1_024}
 
-	// ×4 from 512 B: downloads put 91.8% in the bottom four buckets, uploads spread across seven.
+	// ×4 from 512 B: downloads sit in the bottom four buckets, uploads spread across seven.
 	SizeBytesBuckets = []int64{512, 2_048, 8_192, 32_768, 131_072, 524_288, 2_097_152, 8_388_608, 33_554_432}
 
-	// ×2 from 256 kB/s: nothing above 128 MB/s and 0.03% above 64, while 1.10% of downloads
-	// transfer at or below 512 kB/s.
+	// ×2 from 256 kB/s: nothing observed above 128 MB/s, and 1.1% of downloads at or below 512 kB/s.
 	ThroughputBytesPerSecBuckets = []int64{
 		262_144, 524_288, 1_048_576, 2_097_152, 4_194_304,
 		8_388_608, 16_777_216, 33_554_432, 67_108_864,
@@ -47,8 +36,7 @@ var (
 
 const (
 	// Below this, per-op throughput measures the round trip, not the bandwidth: including small
-	// blobs drops the download median from 7.32 MB/s to 0.16 MB/s. They still count in latency
-	// and size.
+	// blobs drops the download median from 7.32 to 0.16 MB/s. They still count in latency and size.
 	ThroughputMinBlobBytes = 16_384
 
 	// Past this, percentiles come from the samples retained so far.
@@ -75,14 +63,12 @@ type ThroughputSnapshot struct {
 	ExcludedSmallOps int64             `json:"excludedSmallOps"`
 }
 
-// OpCount + ErrorCount + MissCount reconciles against LatencyMs.Count; SkippedAlreadySavedCount
-// stays out of that sum because it is not a transfer.
 type DirectionSnapshot struct {
 	OpCount    int64 `json:"opCount"`
 	ErrorCount int64 `json:"errorCount"`
 	// Downloads only, counted rather than timed: a cheap round trip would pull the latency down.
 	MissCount int64 `json:"missCount"`
-	// Uploads only: the blob was already stored in this session, so nothing went over the wire.
+	// Uploads only: already stored this session, so nothing went over the wire.
 	SkippedAlreadySavedCount int64              `json:"skippedAlreadySavedCount"`
 	BytesTotal               int64              `json:"bytesTotal"`
 	LatencyMs                HistogramSnapshot  `json:"latencyMs"`
@@ -98,9 +84,8 @@ type Snapshot struct {
 	SchemaVersion int               `json:"schemaVersion"`
 	Upload        DirectionSnapshot `json:"upload"`
 	Download      DirectionSnapshot `json:"download"`
-	// CAS and KV break the totals above down by wire protocol, for the tools that have more
-	// than one. Absent for ccache, and absent from the Gradle payload, which is why the totals
-	// stay the top-level fields both tools always send.
+	// Optional breakdown for the tools with more than one protocol; ccache and Gradle omit it,
+	// which is why the totals stay the top-level fields.
 	CAS *ProtocolSnapshot `json:"cas,omitempty"`
 	KV  *ProtocolSnapshot `json:"kv,omitempty"`
 }
@@ -114,9 +99,8 @@ func (s Snapshot) IsEmpty() bool {
 	return s.Upload.IsEmpty() && s.Download.IsEmpty()
 }
 
-// PercentileBucket returns the upper boundary of the bucket holding the qth value, so a
-// histogram can answer "p50" without retaining samples. The second result is true when the
-// value lands in the unbounded top bucket, where that boundary is a floor, not a ceiling.
+// PercentileBucket answers "p50" without retained samples, as the bucket's upper boundary. The
+// second result marks the unbounded top bucket, where that boundary is a floor not a ceiling.
 func (h HistogramSnapshot) PercentileBucket(quantile float64) (int64, bool) {
 	if h.Count == 0 || len(h.Boundaries) == 0 {
 		return 0, false
@@ -142,9 +126,8 @@ func (h HistogramSnapshot) PercentileBucket(quantile float64) (int64, bool) {
 	return h.Boundaries[len(h.Boundaries)-1], true
 }
 
-// ProfileLine summarises the three distributions for an operator-facing log line. Latency and
-// size read as bucket bounds because only throughput retains samples. Empty when nothing
-// transferred, so a caller can skip the line entirely.
+// ProfileLine is the operator-facing log line; latency and size read as bucket bounds because
+// only throughput retains samples. Empty when nothing transferred, so the caller can skip it.
 func (s DirectionSnapshot) ProfileLine() string {
 	if s.OpCount == 0 {
 		return ""
@@ -222,8 +205,7 @@ func (c *Collector) TakeSnapshot() Snapshot {
 	return snapshot
 }
 
-// ProtocolCollector records CAS and KV separately and reports the totals as their union, so a
-// consumer that wants only the totals cannot see them drift from the breakdown.
+// ProtocolCollector reports the totals as the union of CAS and KV, so the two cannot drift.
 type ProtocolCollector struct {
 	CAS *Collector
 	KV  *Collector
@@ -242,8 +224,7 @@ func (c *ProtocolCollector) Snapshot() Snapshot {
 
 	return Snapshot{
 		SchemaVersion: SchemaVersion,
-		// Merged from the retained samples rather than from the two snapshots, so the total
-		// percentiles stay exact instead of being averaged.
+		// From the retained samples, not the two snapshots: averaging would not be exact.
 		Upload:   mergeDirections(c.CAS.Upload, c.KV.Upload),
 		Download: mergeDirections(c.CAS.Download, c.KV.Download),
 		CAS:      &ProtocolSnapshot{Upload: cas.Upload, Download: cas.Download},
@@ -349,8 +330,7 @@ func (r *Recorder) Snapshot() DirectionSnapshot {
 // Private
 // ---------------------------------------------------------------------------
 
-// mergeDirections combines two recorders' raw state. Locked CAS-first everywhere, so the two
-// locks can never be taken in opposing order.
+// Locked CAS-first everywhere, so the two locks cannot be taken in opposing order.
 func mergeDirections(first, second *Recorder) DirectionSnapshot {
 	first.mu.Lock()
 	defer first.mu.Unlock()

@@ -28,8 +28,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
-// Drives the proxy against the fake cache backend over a real kv.Client, so the blob counts
-// are asserted over the same code path a build takes rather than against a mocked client.
+// Over a real kv.Client, so the counts are asserted on the code path a build takes.
 func Test_Proxy_Integration_BlobStatsOverFakeBackend(t *testing.T) {
 	// 32 KB clears the 16 KB throughput floor, so throughput is exercised too.
 	payload := make([]byte, 32*1024)

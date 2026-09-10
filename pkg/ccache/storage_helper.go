@@ -427,7 +427,7 @@ func (h *StorageHelper) logFilePath(invocationID string) (string, error) {
 	return filepath.Join(dir, fmt.Sprintf(h.config.LogFile, invocationID)), nil
 }
 
-// Best-effort: a helper from an older CLI does not answer, and the rest is still worth sending.
+// Best-effort: an older helper does not answer, and the rest is still worth sending.
 func (h *StorageHelper) loadBlobStats(ctx context.Context, socketPath string) *blobstats.Snapshot {
 	snapshot, err := iccache.SendGetBlobStats(ctx, socketPath)
 	if err != nil {

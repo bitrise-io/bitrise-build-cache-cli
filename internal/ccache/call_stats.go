@@ -25,7 +25,7 @@ type callStats struct {
 	start  time.Time
 	method callMethod
 	key    string
-	// transfer times the cache client call alone; start also covers reading the request off the socket.
+	// transfer times the cache client call; start also covers reading the request off the socket.
 	transfer      time.Duration
 	uploadBytes   int64
 	downloadBytes int64
@@ -78,13 +78,10 @@ func (b *statBuilder) Prefix() string {
 
 // sessionState aggregates the counters of the invocation currently being served.
 type sessionState struct {
-	// blobStats is the single source of truth for the transfer counters: every hit, miss and
-	// byte is one of its records, so effectiveness derives them rather than keeping a second
-	// set of atomics that can disagree.
+	// Single source of truth for the transfer counters; effectiveness derives them.
 	blobStats *blobstats.Collector
 
-	// errors is not derivable: it also counts Remove/Stop/SetInvocationID protocol failures,
-	// which never move a blob.
+	// Not derivable: also counts Remove/Stop/SetInvocationID failures, which move no blob.
 	errors atomic.Int64
 }
 

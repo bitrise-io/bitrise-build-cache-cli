@@ -210,8 +210,7 @@ func ReadSessionStats(r io.Reader) (downloadBytes, uploadBytes int64, invocation
 	return downloadBytes, uploadBytes, invocationID, parentID, nil
 }
 
-// WriteBlobStats answers RequestGetBlobStats with a JSON blobstats.Snapshot. Its own request
-// type rather than extra fields on the session-stats response, so a helper from an older CLI
+// Its own request type rather than extra fields on the session-stats response: an older helper
 // closes the connection instead of leaving the client blocked on bytes that never arrive.
 func WriteBlobStats(w io.Writer, blobStatsJSON []byte) error {
 	if err := WriteByte(w, ResponseOK); err != nil {

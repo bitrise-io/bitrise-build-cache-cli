@@ -23,8 +23,7 @@ func Test_Recorder_emptySnapshotIsEmpty(t *testing.T) {
 	assert.Zero(t, snapshot.Download.LatencyMs.Max)
 }
 
-// Pins the boundaries themselves: they are copied from gradle-plugins and a silent rescale
-// would make every stored histogram incomparable with the ones already sent.
+// A silent rescale would make new histograms incomparable with the ones already sent.
 func Test_Buckets_areTheCalibratedScale(t *testing.T) {
 	assert.Equal(t, []int64{4, 8, 16, 32, 64, 128, 256, 512, 1024}, blobstats.LatencyMsBuckets)
 	assert.Equal(t,
@@ -202,8 +201,7 @@ func Test_ProtocolCollector_totalsAreTheUnionOfTheProtocols(t *testing.T) {
 	assert.Equal(t, int64(1), got.Upload.SkippedAlreadySavedCount)
 	assert.Equal(t, int64((32+512)*1024), got.Upload.BytesTotal)
 
-	// Every total is the sum of the two protocols, so a consumer of the totals cannot see
-	// them disagree with the breakdown.
+	// Every total is the sum of the two protocols, so the two cannot disagree.
 	assert.Equal(t, got.CAS.Download.OpCount+got.KV.Download.OpCount, got.Download.OpCount)
 	assert.Equal(t, got.CAS.Upload.BytesTotal+got.KV.Upload.BytesTotal, got.Upload.BytesTotal)
 	assert.Equal(t, got.CAS.Download.LatencyMs.Sum+got.KV.Download.LatencyMs.Sum, got.Download.LatencyMs.Sum)
@@ -217,13 +215,11 @@ func Test_ProtocolCollector_totalsAreTheUnionOfTheProtocols(t *testing.T) {
 	}
 }
 
-// The merged percentiles come from the concatenated samples, not from averaging the two
-// protocols' percentiles, so they stay exact.
+// Merged from the concatenated samples, not by averaging the two protocols' percentiles.
 func Test_ProtocolCollector_mergedPercentilesAreExact(t *testing.T) {
 	c := blobstats.NewProtocolCollector()
 
-	// One slow CAS op against nine fast KV ops. Each protocol's own median is at one extreme,
-	// averaging them would give ~505 MB/s — a value no sample has.
+	// Averaging the two protocols' medians would give ~505 MB/s, a value no sample has.
 	c.CAS.Download.RecordTransfer(1_048_576, 100*time.Millisecond)
 	for range 9 {
 		c.KV.Download.RecordTransfer(1_048_576, time.Millisecond)
