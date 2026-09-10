@@ -682,6 +682,8 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 				humanize.Bytes(uint64(proxyStats.GetUploadedBytes())), // nolint: gosec
 			)
 
+			logBlobStatsProfile(logger, outcome.BlobStats)
+
 			// If we have KV stats, use that instead of blob stats.
 			if proxyStats.GetKvHits()+proxyStats.GetKvMisses() > 0 {
 				hitRate = float32(proxyStats.GetKvHits()) / float32(proxyStats.GetKvHits()+proxyStats.GetKvMisses())
@@ -709,6 +711,23 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 	}
 
 	return hitRate, outcome
+}
+
+// logBlobStatsProfile prints the transfer distributions per direction. Latency and size are
+// bucket bounds; only throughput retains samples for an exact percentile.
+func logBlobStatsProfile(logger log.Logger, snapshot *blobstats.Snapshot) {
+	if snapshot == nil {
+		return
+	}
+
+	for _, d := range []struct {
+		name string
+		snap blobstats.DirectionSnapshot
+	}{{"download", snapshot.Download}, {"upload", snapshot.Upload}} {
+		if line := d.snap.ProfileLine(); line != "" {
+			logger.Infof("Proxy %s profile: %s", d.name, line)
+		}
+	}
 }
 
 // resolveBenchmarkPhase reads the benchmark phase from:

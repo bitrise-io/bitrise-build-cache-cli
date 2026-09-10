@@ -265,3 +265,62 @@ func Test_Collector_omitsTheProtocolBreakdown(t *testing.T) {
 	assert.NotContains(t, string(payload), `"cas"`)
 	assert.NotContains(t, string(payload), `"kv"`)
 }
+
+func Test_HistogramSnapshot_PercentileBucket(t *testing.T) {
+	c := blobstats.NewCollector()
+	// 10 ops: 5 at 1ms (bucket 0, <=4), 4 at 20ms (bucket 2, <=32), 1 at 5s (overflow).
+	for range 5 {
+		c.Download.RecordTransfer(1024, time.Millisecond)
+	}
+	for range 4 {
+		c.Download.RecordTransfer(1024, 20*time.Millisecond)
+	}
+	c.Download.RecordTransfer(1024, 5*time.Second)
+
+	h := c.Snapshot().Download.LatencyMs
+
+	p50, over := h.PercentileBucket(0.50)
+	assert.Equal(t, int64(4), p50, "the 5th of 10 is still in the first bucket")
+	assert.False(t, over)
+
+	p90, over := h.PercentileBucket(0.90)
+	assert.Equal(t, int64(32), p90, "the 9th of 10 is the last 20ms op")
+	assert.False(t, over)
+
+	p100, over := h.PercentileBucket(1.0)
+	assert.True(t, over, "the 10th is the 5s op, in the unbounded bucket")
+	assert.Equal(t, int64(1024), p100, "reported against the top boundary")
+}
+
+func Test_HistogramSnapshot_PercentileBucket_emptyIsZero(t *testing.T) {
+	h := blobstats.NewCollector().Snapshot().Download.LatencyMs
+
+	bound, over := h.PercentileBucket(0.50)
+	assert.Zero(t, bound)
+	assert.False(t, over)
+}
+
+func Test_DirectionSnapshot_ProfileLine(t *testing.T) {
+	t.Run("empty direction yields no line, so the caller can skip it", func(t *testing.T) {
+		assert.Empty(t, blobstats.NewCollector().Snapshot().Upload.ProfileLine())
+	})
+
+	t.Run("reports all three distributions", func(t *testing.T) {
+		c := blobstats.NewCollector()
+		c.Download.RecordTransfer(64*1024, 10*time.Millisecond)
+
+		line := c.Snapshot().Download.ProfileLine()
+		assert.Contains(t, line, "latency p50 <=16ms")
+		assert.Contains(t, line, "size p50 <=131 kB")
+		assert.Contains(t, line, "throughput p50 6.6 MB/s")
+	})
+
+	t.Run("says so when every op was below the throughput floor", func(t *testing.T) {
+		c := blobstats.NewCollector()
+		c.Download.RecordTransfer(512, 2*time.Millisecond)
+
+		line := c.Snapshot().Download.ProfileLine()
+		assert.Contains(t, line, "throughput n/a (all 1 ops below the 16 kB floor)")
+		assert.Contains(t, line, "latency p50 <=4ms", "latency still counts small ops")
+	})
+}

@@ -4,10 +4,14 @@
 package blobstats
 
 import (
+	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/dustin/go-humanize"
 )
 
 // SchemaVersion is bumped when a field's meaning changes, not when a boundary moves:
@@ -108,6 +112,76 @@ type ProtocolSnapshot struct {
 
 func (s Snapshot) IsEmpty() bool {
 	return s.Upload.IsEmpty() && s.Download.IsEmpty()
+}
+
+// PercentileBucket returns the upper boundary of the bucket holding the qth value, so a
+// histogram can answer "p50" without retaining samples. The second result is true when the
+// value lands in the unbounded top bucket, where that boundary is a floor, not a ceiling.
+func (h HistogramSnapshot) PercentileBucket(quantile float64) (int64, bool) {
+	if h.Count == 0 || len(h.Boundaries) == 0 {
+		return 0, false
+	}
+
+	rank := int64(math.Ceil(quantile * float64(h.Count)))
+	if rank < 1 {
+		rank = 1
+	}
+
+	var cumulative int64
+	for i, count := range h.Counts {
+		cumulative += count
+		if cumulative >= rank {
+			if i < len(h.Boundaries) {
+				return h.Boundaries[i], false
+			}
+
+			return h.Boundaries[len(h.Boundaries)-1], true
+		}
+	}
+
+	return h.Boundaries[len(h.Boundaries)-1], true
+}
+
+// ProfileLine summarises the three distributions for an operator-facing log line. Latency and
+// size read as bucket bounds because only throughput retains samples. Empty when nothing
+// transferred, so a caller can skip the line entirely.
+func (s DirectionSnapshot) ProfileLine() string {
+	if s.OpCount == 0 {
+		return ""
+	}
+
+	parts := []string{
+		"latency " + percentilePair(s.LatencyMs, func(v int64) string { return fmt.Sprintf("%dms", v) }),
+		"size " + percentilePair(s.SizeBytes, func(v int64) string { return humanize.Bytes(uint64(v)) }), //nolint:gosec // non-negative
+	}
+
+	if s.Throughput.Histogram.Count > 0 {
+		parts = append(parts, fmt.Sprintf("throughput p50 %s/s, p90 %s/s",
+			humanize.Bytes(uint64(s.Throughput.P50BytesPerSec)), //nolint:gosec // non-negative
+			humanize.Bytes(uint64(s.Throughput.P90BytesPerSec)), //nolint:gosec // non-negative
+		))
+	} else {
+		parts = append(parts, fmt.Sprintf("throughput n/a (all %d ops below the %s floor)",
+			s.Throughput.ExcludedSmallOps,
+			humanize.Bytes(uint64(s.Throughput.MinBlobBytes)))) //nolint:gosec // non-negative
+	}
+
+	return strings.Join(parts, " | ")
+}
+
+func percentilePair(h HistogramSnapshot, format func(int64) string) string {
+	p50, over50 := h.PercentileBucket(0.50)
+	p90, over90 := h.PercentileBucket(0.90)
+
+	return fmt.Sprintf("p50 %s%s, p90 %s%s", boundPrefix(over50), format(p50), boundPrefix(over90), format(p90))
+}
+
+func boundPrefix(overflow bool) string {
+	if overflow {
+		return ">"
+	}
+
+	return "<="
 }
 
 type Collector struct {

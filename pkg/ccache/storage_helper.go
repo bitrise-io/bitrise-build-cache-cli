@@ -260,6 +260,17 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 		UploadBytes:   ul,
 	}.Log(h.logger)
 
+	if blobStats != nil {
+		for _, d := range []struct {
+			name string
+			snap blobstats.DirectionSnapshot
+		}{{"download", blobStats.Download}, {"upload", blobStats.Upload}} {
+			if line := d.snap.ProfileLine(); line != "" {
+				h.logger.TInfof("Ccache %s profile: %s", d.name, line)
+			}
+		}
+	}
+
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {
 		h.logger.TInfof("No ccache activity detected, skipping analytics")
