@@ -162,7 +162,7 @@ func Test_Recorder_measuredDistributionLandsInTheExpectedBuckets(t *testing.T) {
 	assert.Equal(t, int64(len(blobstats.SizeBytesBuckets)), got.LatencyMs.Counts[0])
 }
 
-func Test_ProtocolCollector_totalsAreTheUnionOfTheLanes(t *testing.T) {
+func Test_ProtocolCollector_totalsAreTheUnionOfTheProtocols(t *testing.T) {
 	c := blobstats.NewProtocolCollector()
 
 	c.CAS.Download.RecordTransfer(64*1024, 4*time.Millisecond)
@@ -186,13 +186,13 @@ func Test_ProtocolCollector_totalsAreTheUnionOfTheLanes(t *testing.T) {
 	assert.Equal(t, int64(1), got.Upload.SkippedAlreadySavedCount)
 	assert.Equal(t, int64((32+512)*1024), got.Upload.BytesTotal)
 
-	// Every total is the sum of the two lanes, so a consumer of the totals cannot see them
-	// disagree with the breakdown.
+	// Every total is the sum of the two protocols, so a consumer of the totals cannot see
+	// them disagree with the breakdown.
 	assert.Equal(t, got.CAS.Download.OpCount+got.KV.Download.OpCount, got.Download.OpCount)
 	assert.Equal(t, got.CAS.Upload.BytesTotal+got.KV.Upload.BytesTotal, got.Upload.BytesTotal)
 	assert.Equal(t, got.CAS.Download.LatencyMs.Sum+got.KV.Download.LatencyMs.Sum, got.Download.LatencyMs.Sum)
-	assert.Equal(t, int64(4), got.Download.LatencyMs.Min, "the lower of the two lanes")
-	assert.Equal(t, int64(16), got.Download.LatencyMs.Max, "the higher of the two lanes")
+	assert.Equal(t, int64(4), got.Download.LatencyMs.Min, "the lower of the two protocols")
+	assert.Equal(t, int64(16), got.Download.LatencyMs.Max, "the higher of the two protocols")
 
 	for i := range got.Download.LatencyMs.Counts {
 		assert.Equal(t,
@@ -201,12 +201,12 @@ func Test_ProtocolCollector_totalsAreTheUnionOfTheLanes(t *testing.T) {
 	}
 }
 
-// The merged percentiles come from the concatenated samples, not from averaging the lanes'
-// percentiles, so they stay exact.
+// The merged percentiles come from the concatenated samples, not from averaging the two
+// protocols' percentiles, so they stay exact.
 func Test_ProtocolCollector_mergedPercentilesAreExact(t *testing.T) {
 	c := blobstats.NewProtocolCollector()
 
-	// One slow CAS op against nine fast KV ops. Each lane's own median is at one extreme, so
+	// One slow CAS op against nine fast KV ops. Each protocol's own median is at one extreme,
 	// averaging them would give ~505 MB/s — a value no sample has.
 	c.CAS.Download.RecordTransfer(1_048_576, 100*time.Millisecond)
 	for range 9 {
@@ -222,13 +222,13 @@ func Test_ProtocolCollector_mergedPercentilesAreExact(t *testing.T) {
 	// Nearest-rank over the union of the ten samples: the 5th ascending is a fast one.
 	assert.Equal(t, fast, got.Download.Throughput.P50BytesPerSec)
 	assert.NotEqual(t, (slow+fast)/2, got.Download.Throughput.P50BytesPerSec,
-		"a merged percentile must not be the mean of the lanes' percentiles")
+		"a merged percentile must not be the mean of the protocols' percentiles")
 	// The slowest op is the 1st ascending, so p10 is where it lands.
 	assert.Equal(t, slow, got.Download.Throughput.P10BytesPerSec)
 	assert.Equal(t, int64(10), got.Download.Throughput.Histogram.Count)
 }
 
-func Test_ProtocolCollector_emptyLanesStayEmpty(t *testing.T) {
+func Test_ProtocolCollector_emptyProtocolsStayEmpty(t *testing.T) {
 	got := blobstats.NewProtocolCollector().Snapshot()
 
 	assert.True(t, got.IsEmpty())

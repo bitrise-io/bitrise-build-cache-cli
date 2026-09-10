@@ -20,7 +20,7 @@ type sessionState struct {
 
 const errorMessageMax = 300
 
-// cacheOp names one proxy RPC. Typed because it selects which protocol lane a record lands in,
+// cacheOp names one proxy RPC. Typed because it selects which protocol a record is filed under,
 // so a mistyped name has to fail the build rather than skew the KV subset.
 type cacheOp string
 
@@ -76,22 +76,22 @@ func (s *sessionState) getStats() stats {
 
 // Timed around the cache client call alone: the hashing and gob coding around it is local work.
 func (s *sessionState) recordDownload(op cacheOp, bytes int64, duration time.Duration) {
-	s.lane(op).Download.RecordTransfer(bytes, duration)
+	s.protocolFor(op).Download.RecordTransfer(bytes, duration)
 }
 
 func (s *sessionState) recordUpload(op cacheOp, bytes int64, duration time.Duration) {
-	s.lane(op).Upload.RecordTransfer(bytes, duration)
+	s.protocolFor(op).Upload.RecordTransfer(bytes, duration)
 }
 
 func (s *sessionState) recordMiss(op cacheOp) {
-	s.lane(op).Download.RecordMiss()
+	s.protocolFor(op).Download.RecordMiss()
 }
 
 func (s *sessionState) recordError(op cacheOp, err error) {
 	if isDownloadOp(op) {
-		s.lane(op).Download.RecordError()
+		s.protocolFor(op).Download.RecordError()
 	} else {
-		s.lane(op).Upload.RecordError()
+		s.protocolFor(op).Upload.RecordError()
 	}
 
 	msg := string(op) + ": " + err.Error()
@@ -123,10 +123,10 @@ func (s *sessionState) markKeyUnsaved(key string) {
 // recordSkippedAlreadySaved keeps local dedup apart from the transfers: timing it would make
 // the latency distribution incomparable with Gradle's.
 func (s *sessionState) recordSkippedAlreadySaved(op cacheOp) {
-	s.lane(op).Upload.RecordSkippedAlreadySaved()
+	s.protocolFor(op).Upload.RecordSkippedAlreadySaved()
 }
 
-func (s *sessionState) lane(op cacheOp) *blobstats.Collector {
+func (s *sessionState) protocolFor(op cacheOp) *blobstats.Collector {
 	if isKVOp(op) {
 		return s.blobStats.KV
 	}
