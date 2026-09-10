@@ -23,14 +23,28 @@ func Test_Recorder_emptySnapshotIsEmpty(t *testing.T) {
 	assert.Zero(t, snapshot.Download.LatencyMs.Max)
 }
 
+// Pins the boundaries themselves: they are copied from gradle-plugins and a silent rescale
+// would make every stored histogram incomparable with the ones already sent.
+func Test_Buckets_areTheCalibratedScale(t *testing.T) {
+	assert.Equal(t, []int64{4, 8, 16, 32, 64, 128, 256, 512, 1024}, blobstats.LatencyMsBuckets)
+	assert.Equal(t,
+		[]int64{512, 2048, 8192, 32768, 131072, 524288, 2097152, 8388608, 33554432},
+		blobstats.SizeBytesBuckets)
+	assert.Equal(t,
+		[]int64{262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864},
+		blobstats.ThroughputBytesPerSecBuckets)
+	assert.Equal(t, int64(16384), int64(blobstats.ThroughputMinBlobBytes))
+}
+
 func Test_Recorder_valueEqualToBoundaryStaysInThatBucket(t *testing.T) {
 	c := blobstats.NewCollector()
 
-	// 8 ms is the boundary of bucket index 3 ({1,2,4,8,...}).
+	// 8 ms is the boundary of bucket index 1 ({4, 8, 16, ...}), not the start of index 2.
 	c.Download.RecordTransfer(1024, 8*time.Millisecond)
 
 	h := c.Snapshot().Download.LatencyMs
-	assert.Equal(t, int64(1), h.Counts[3])
+	assert.Equal(t, int64(1), h.Counts[1])
+	assert.Zero(t, h.Counts[2])
 	assert.Equal(t, int64(1), h.Count)
 	assert.Equal(t, int64(8), h.Sum)
 }
@@ -43,6 +57,7 @@ func Test_Recorder_overflowBucketKeepsSumMinMax(t *testing.T) {
 
 	h := c.Snapshot().Download.LatencyMs
 	require.Len(t, h.Counts, len(blobstats.LatencyMsBuckets)+1)
+	assert.Equal(t, int64(1), h.Counts[1], "5ms lands in the 8ms bucket")
 	assert.Equal(t, int64(1), h.Counts[len(h.Counts)-1], "10s lands in the overflow bucket")
 	assert.Equal(t, int64(2), h.Count)
 	assert.Equal(t, int64(10_005), h.Sum)
@@ -159,7 +174,8 @@ func Test_Recorder_measuredDistributionLandsInTheExpectedBuckets(t *testing.T) {
 		assert.Equal(t, int64(1), got.SizeBytes.Counts[i], "bucket %d", i)
 	}
 	assert.Zero(t, got.SizeBytes.Counts[len(got.SizeBytes.Counts)-1], "nothing overflows")
-	assert.Equal(t, int64(len(blobstats.SizeBytesBuckets)), got.LatencyMs.Counts[0])
+	assert.Equal(t, int64(len(blobstats.SizeBytesBuckets)), got.LatencyMs.Counts[0],
+		"all at 1ms, which is the first latency bucket")
 }
 
 func Test_ProtocolCollector_totalsAreTheUnionOfTheProtocols(t *testing.T) {

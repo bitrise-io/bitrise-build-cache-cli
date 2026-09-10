@@ -10,32 +10,41 @@ import (
 	"time"
 )
 
-// SchemaVersion is bumped when the bucket boundaries or the field meanings change.
+// SchemaVersion is bumped when a field's meaning changes, not when a boundary moves:
+// boundaries travel in the payload precisely so a rescale needs no version bump.
 const SchemaVersion = 1
 
 // Fixed, never derived from the data: histograms only sum across invocations on one scale.
-// Keep in sync with BlobStatsBuckets in gradle-plugins
-// common/src/main/kotlin/io/bitrise/gradle/common/CacheBlobStats.kt (bitrise-io/gradle-plugins#99);
-// changing either side without the other makes the two tools' histograms unmergeable.
+// Calibrated in gradle-plugins#100 on 293k Gradle and 1.76M Xcode blob operations; size and
+// throughput match BlobStatsBuckets in
+// common/src/main/kotlin/io/bitrise/gradle/common/CacheBlobStats.kt, so those two stay
+// mergeable across the tools and must move together.
+//
+// Latency deliberately does not: macOS is slower, and on Gradle's 2..512 scale Xcode overflows
+// 1.4-1.7% against Gradle's 0.08%. gradle-plugins#100 measures 4..1024 at 0.40% and hands the
+// CLI that scale, which the payload's own boundaries make safe. ccache shares it for want of
+// its own measurement.
 //
 //nolint:gochecknoglobals // fixed scale, shared by every recorder
 var (
-	// ×2 from 1 ms: in-datacenter cache medians 6 ms, macOS 17 ms.
-	LatencyMsBuckets = []int64{1, 2, 4, 8, 16, 32, 64, 128, 256}
+	// ×2 from 4 ms: a ≤2 ms bucket held 0.06% of downloads, so the step buys more at the tail.
+	LatencyMsBuckets = []int64{4, 8, 16, 32, 64, 128, 256, 512, 1_024}
 
-	// ×4 from 512 B: observed blobs run ~500 B to >100 MB.
+	// ×4 from 512 B: downloads put 91.8% in the bottom four buckets, uploads spread across seven.
 	SizeBytesBuckets = []int64{512, 2_048, 8_192, 32_768, 131_072, 524_288, 2_097_152, 8_388_608, 33_554_432}
 
-	// ×2 from 512 kB/s: nothing above ThroughputMinBlobBytes was observed below ~1.5 MB/s.
+	// ×2 from 256 kB/s: nothing above 128 MB/s and 0.03% above 64, while 1.10% of downloads
+	// transfer at or below 512 kB/s.
 	ThroughputBytesPerSecBuckets = []int64{
-		524_288, 1_048_576, 2_097_152, 4_194_304, 8_388_608,
-		16_777_216, 33_554_432, 67_108_864, 134_217_728,
+		262_144, 524_288, 1_048_576, 2_097_152, 4_194_304,
+		8_388_608, 16_777_216, 33_554_432, 67_108_864,
 	}
 )
 
 const (
 	// Below this, per-op throughput measures the round trip, not the bandwidth: including small
-	// blobs drops the median from ~6.6 MB/s to ~0.15 MB/s. They still count in latency and size.
+	// blobs drops the download median from 7.32 MB/s to 0.16 MB/s. They still count in latency
+	// and size.
 	ThroughputMinBlobBytes = 16_384
 
 	// Past this, percentiles come from the samples retained so far.
