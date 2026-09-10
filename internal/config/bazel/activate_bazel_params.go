@@ -43,7 +43,7 @@ func DefaultActivateBazelParams() ActivateBazelParams {
 	return ActivateBazelParams{
 		Cache: CacheParams{
 			Enabled:     true,
-			PushEnabled: false,
+			PushEnabled: true,
 		},
 		BES: BESParams{
 			Enabled: true,

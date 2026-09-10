@@ -56,7 +56,7 @@ func DefaultActivateGradleParams() ActivateGradleParams {
 		Cache: CacheParams{
 			Enabled:         false,
 			JustDependency:  false,
-			PushEnabled:     false,
+			PushEnabled:     true,
 			ValidationLevel: string(CacheValidationLevelWarning),
 		},
 		Analytics: AnalyticsParams{

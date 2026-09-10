@@ -55,7 +55,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		workspaceID   = auth.Config.WorkspaceID
 		authToken     = auth.Config.Token
 		username      = storedUsername
-		pushEnabled   bool
+		pushEnabled   = true
 	)
 
 	toolOptions := []huh.Option[string]{
@@ -112,7 +112,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Enable cache push?").
-				Description("Default off — recommended for local dev (so a flaky local build can't poison the shared cache).").
+				Description("Default on — the build reads from and writes to the shared cache.").
 				Affirmative("Yes, push too").
 				Negative("No, pull only").
 				Value(&pushEnabled),

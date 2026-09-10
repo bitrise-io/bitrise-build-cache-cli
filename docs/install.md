@@ -148,6 +148,8 @@ bitrise-build-cache activate xcode   --cache
 bitrise-build-cache activate 'c++'
 ```
 
+Cache push is on by default; pass `--cache-push=false` to any of the above for a read-only, pull-only trial.
+
 Pass `--help` to any of those for the full flag list.
 
 ---
