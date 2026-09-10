@@ -68,6 +68,37 @@ func TestResolveRepoURL(t *testing.T) {
 			remote: "git@github.com:org/repo.git",
 			want:   "git@github.com:org/repo.git",
 		},
+		{
+			name:   "an scp-form remote without a user is left alone",
+			remote: "github.com:org/repo.git",
+			want:   "github.com:org/repo.git",
+		},
+		{
+			name:   "a local path remote falls back to the env var",
+			remote: ".\n",
+			envs:   map[string]string{"GIT_REPOSITORY_URL": "https://github.com/org/from-env.git"},
+			want:   "https://github.com/org/from-env.git",
+		},
+		{
+			name:   "a local path remote with no env var yields nothing",
+			remote: "../sibling-checkout",
+			envs:   map[string]string{},
+			want:   "",
+		},
+		{
+			name:   "a file:// remote yields nothing",
+			remote: "file:///Users/vagrant/git",
+			envs:   map[string]string{},
+			want:   "",
+		},
+		{
+			name:   "a local path env var yields nothing",
+			gitErr: errors.New("exit status 1"),
+			envs:   map[string]string{"GIT_REPOSITORY_URL": "."},
+			want:   "",
+			// The git failure is still reported.
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
