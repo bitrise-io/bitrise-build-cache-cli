@@ -11,8 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
 
 func Test_ActivateBazelParams(t *testing.T) {
@@ -255,4 +257,32 @@ func Test_ActivateBazelParams(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, inventory.Common.Timestamps)
 	})
+}
+
+func Test_ActivateBazelParams_WorkspacesOnlyStoresNoAuthBlock(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	require.NoError(t, store.NewKeychain().Save(auth.TokenSet{
+		Workspaces: map[string]auth.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}))
+
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+
+	params := DefaultActivateBazelParams()
+
+	inventory, err := params.TemplateInventory(mockLogger, map[string]string{}, func(_ string, _ ...string) (string, error) {
+		return "", nil
+	}, false)
+
+	require.NoError(t, err)
+	assert.Empty(t, inventory.Common.AuthToken, "workspaces-only auth must not surface a bakeable token")
+	assert.Empty(t, inventory.Common.WorkspaceID, "workspaces-only auth must not surface a bakeable workspace id")
+	assert.Contains(t, inventory.Common.CLIPath, "bitrise-build-cache", "credential-helper URL must still be rendered")
 }
