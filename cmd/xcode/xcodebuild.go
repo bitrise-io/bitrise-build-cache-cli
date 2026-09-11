@@ -539,8 +539,13 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv an
 	hw := c.resolveHealthWriter()
 	enrichment.TickAttempt(hw, c.Logger, time.Now())
 
+	// Before the PUT, not after: the consumers check-then-PUT, so a later claim
+	// lets one of them clobber this row while the PUT is still in flight.
+	enrichment.WriteMarker(c.Logger, c.InvocationID)
+
 	if err := saver.PutInvocation(inv); err != nil {
 		c.Logger.Errorf("Failed to send invocation analytics: %v", err)
+		enrichment.RemoveMarker(c.Logger, c.InvocationID)
 		enrichment.TickFailure(hw, c.Logger, time.Now(), err)
 		if c.Doctor != nil {
 			c.Doctor.OnInvocationSaveFailure(ctx)
@@ -552,8 +557,6 @@ func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv an
 	// Wrapper self-enrich never runs through Correlate, so tick success with
 	// matched=false — LastMatched must stay reserved for the watcher path.
 	enrichment.TickSuccess(hw, c.Logger, time.Now(), false)
-
-	enrichment.WriteMarker(c.Logger, c.InvocationID)
 
 	c.Logger.TInfof(MsgInvocationSaved, c.InvocationID)
 
