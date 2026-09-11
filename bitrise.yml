@@ -41,8 +41,8 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
 
-            asdf install golang 1.25.9
-            asdf global golang 1.25.9
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - script:
         title: Install Goreleaser
         inputs:
@@ -328,8 +328,8 @@ workflows:
             #!/usr/bin/env bash
             set -ex
 
-            asdf install golang 1.25.9
-            asdf global golang 1.25.9
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - go-list@1: {}
     - script@1:
         title: golangci-lint
@@ -1901,8 +1901,8 @@ workflows:
             - content: |-
                 #!/usr/bin/env bash
 
-                asdf install golang 1.25.9
-                asdf global golang 1.25.9
+                asdf install golang 1.26.8
+                asdf global golang 1.26.8
       - bundle::update-step:
           envs:
             - STEP_NAME: bitrise-step-activate-gradle-remote-cache
@@ -2051,8 +2051,8 @@ step_bundles:
             #!/usr/bin/env bash
             set -ex
 
-            asdf install golang 1.25.9
-            asdf global golang 1.25.9
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - script:
         title: Syntax-check installer.sh (POSIX sh)
         inputs:
@@ -2342,6 +2342,15 @@ step_bundles:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone: {}
+    - script:
+        title: asdf use latest go
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -ex
+
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - script:
         title: Build CLI + record absolute path
         inputs:
