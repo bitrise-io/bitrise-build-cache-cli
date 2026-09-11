@@ -50,8 +50,12 @@ func (m ManifestEntry) Command() Command {
 	}
 }
 
+// Deliberately a blacklist: the full highLevelStatus set is undocumented, and
+// requiring "S" mislabelled every warning-carrying build as failed.
+const manifestStatusError = "E"
+
 func (m ManifestEntry) Success() bool {
-	return m.Status == "S"
+	return m.Status != manifestStatusError
 }
 
 // WalkManifests expands each glob against homeDir, loads every matched
