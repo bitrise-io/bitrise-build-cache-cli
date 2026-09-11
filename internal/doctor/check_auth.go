@@ -15,15 +15,16 @@ func (d *Doctor) authCheck() Check {
 			// Read-only: report the credential that is on the machine, not the one a
 			// refresh would produce.
 			cred, origin, workspacesOnly, err := d.storedFirstResolver().ResolveNoRefresh(d.Envs)
+			scenario := d.authScenario(workspacesOnly, origin, err)
 			if workspacesOnly {
-				return Result{State: StateOK, Detail: "per-workspace only (resolved per build via project marker)"}
+				return Result{State: StateOK, Detail: "scenario B (per-workspace only): resolved per build via project marker"}
 			}
 			// A workspace-less login is still unusable auth, so it fails the check —
 			// but the fix is picking one, not signing in again.
 			if errors.Is(err, auth.ErrWorkspaceNotSelected) {
 				return Result{
 					State:   StateError,
-					Detail:  "signed in, but no workspace is selected",
+					Detail:  "signed in, but no workspace is selected (scenario " + scenario + ")",
 					Fixable: true,
 					Fixer:   WorkspacePickFixer{Prompt: d.WorkspacePickPrompt},
 				}
@@ -31,15 +32,35 @@ func (d *Doctor) authCheck() Check {
 			if err != nil || !origin.Resolved() {
 				return Result{
 					State:   StateError,
-					Detail:  "no credentials found",
+					Detail:  "no credentials found (scenario " + scenario + ")",
 					Fixable: true,
 					Fixer:   AuthPromptFixer{Prompt: d.AuthFixPrompt},
 				}
 			}
 
-			return Result{State: StateOK, Detail: live.Describe(cred, origin)}
+			return Result{State: StateOK, Detail: "scenario " + scenario + ": " + live.Describe(cred, origin)}
 		},
 	}
+}
+
+// authScenario names the store layout: A (machine-wide only), B (per-workspace
+// only), C (both — machine-wide as fallback), None.
+func (d *Doctor) authScenario(workspacesOnly bool, origin auth.Origin, resolveErr error) string {
+	if workspacesOnly {
+		return "B"
+	}
+
+	hasPerWorkspace := d.storedFirstResolver().StoreHasAnyWorkspaces()
+
+	machineWide := origin.Resolved() && resolveErr == nil
+	switch {
+	case machineWide && hasPerWorkspace:
+		return "C"
+	case machineWide:
+		return "A"
+	}
+
+	return "None"
 }
 
 // storedFirstResolver reports what is stored on this machine. The `auth` check
