@@ -253,6 +253,77 @@ func TestResolvePinned_workspacesOnlyNoOp(t *testing.T) {
 	assert.Nil(t, target.saved, "workspaces-only pin must not write anything")
 }
 
+func TestResolveNoRefreshForWorkspace_emptySlugFallsBackToMachineWide(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, _, matched, err := r.ResolveNoRefreshForWorkspace(context.Background(), map[string]string{}, "")
+	require.NoError(t, err)
+	assert.False(t, matched, "empty slug means no per-workspace hit")
+	assert.Equal(t, "machine-tok", cred.Token, "empty slug must not shadow the machine-wide credential")
+}
+
+func TestResolveNoRefreshForWorkspace_perWorkspaceHit(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, origin, matched, err := r.ResolveNoRefreshForWorkspace(context.Background(), map[string]string{}, "acme")
+	require.NoError(t, err)
+	assert.True(t, matched, "known workspace must report matched=true")
+	assert.Equal(t, "acme-tok", cred.Token)
+	assert.Equal(t, "acme", cred.WorkspaceID)
+	assert.Equal(t, auth.BackendKeychain, origin.Backend)
+}
+
+func TestResolveNoRefreshForWorkspace_unknownSlugFallsBackMatchedFalse(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: machineTokenWithWorkspaces(), present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, _, matched, err := r.ResolveNoRefreshForWorkspace(context.Background(), map[string]string{}, "missing")
+	require.NoError(t, err)
+	assert.False(t, matched, "unknown workspace must report matched=false so the wrapper keeps its own AuthConfig")
+	assert.Equal(t, "machine-tok", cred.Token, "unknown workspace must fall back to the machine-wide credential")
+}
+
+func TestResolveNoRefreshForWorkspace_noStoreCredentialSurfacesError(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	_, _, matched, err := r.ResolveNoRefreshForWorkspace(context.Background(), map[string]string{}, "acme")
+	require.ErrorIs(t, err, auth.ErrTokenNotProvided)
+	assert.False(t, matched)
+}
+
+// Workspaces-only case for the no-refresh sibling too: with the old (Resolve
+// first) order, ResolveNoRefreshForWorkspace would error before ever looking up
+// the per-workspace entry.
+func TestResolveNoRefreshForWorkspace_workspacesOnlyStoreServesTheEntry(t *testing.T) {
+	workspacesOnly := auth.TokenSet{
+		Workspaces: map[string]auth.TokenSet{
+			"acme": {AuthToken: "acme-tok", WorkspaceID: "acme"},
+		},
+	}
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: workspacesOnly, present: true}},
+		AnalyticsBlock: noAnalytics(),
+	}
+
+	cred, origin, matched, err := r.ResolveNoRefreshForWorkspace(context.Background(), map[string]string{}, "acme")
+	require.NoError(t, err)
+	assert.True(t, matched)
+	assert.Equal(t, "acme-tok", cred.Token)
+	assert.Equal(t, "acme", cred.WorkspaceID)
+	assert.Equal(t, auth.BackendKeychain, origin.Backend)
+}
+
 type captureLogger struct {
 	warns []string
 	debug []string

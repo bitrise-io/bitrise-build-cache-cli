@@ -194,6 +194,26 @@ func (r *Resolver) StoredWorkspaceSlugs() []string {
 	return slugs
 }
 
+// Looks up the per-workspace entry first so a workspaces-only store still
+// serves its credential — the old order errored on ResolveNoRefresh before the
+// lookup could run. Empty or unknown slugs fall back to the machine-wide
+// credential with matched=false so a bad marker never blocks a build.
+func (r *Resolver) ResolveNoRefreshForWorkspace(_ context.Context, envs map[string]string, workspaceID string) (auth.Credential, auth.Origin, bool, error) {
+	if workspaceID == "" {
+		cred, origin, _, err := r.ResolveNoRefresh(envs)
+
+		return cred, origin, false, err
+	}
+
+	if ws, ok, backend := r.lookupWorkspace(workspaceID); ok {
+		return ws.Credential(), ws.Origin(backend), true, nil
+	}
+
+	cred, origin, _, err := r.ResolveNoRefresh(envs)
+
+	return cred, origin, false, err
+}
+
 // ResolveTokenOnly is Resolve for the one caller that needs a token before a
 // workspace exists: the `auth workspace` listing. The Credential it returns may
 // carry an empty WorkspaceID, so nothing that talks to the cache may use it.
