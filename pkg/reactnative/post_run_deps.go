@@ -65,9 +65,17 @@ type postRunDeps struct {
 }
 
 func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
-	cred, origin, _, err := resolver.ResolveNoRefresh(utils.AllEnvs())
+	cred, origin, workspacesOnly, err := resolver.ResolveNoRefresh(utils.AllEnvs())
 	if err != nil {
 		logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
+
+		return nil
+	}
+	// Scenario B: no upfront credential; analytics client resolves lazily via the
+	// marker during the per-invocation flow. Skip the post-run hook rather than
+	// build a client with a zero token that the backend would reject.
+	if workspacesOnly {
+		logger.TDebugf("Skipping post-run analytics hook: workspaces-only auth resolves per invocation")
 
 		return nil
 	}

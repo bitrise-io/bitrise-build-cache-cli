@@ -18,6 +18,7 @@ type processResult struct {
 	Outcome            processResultOutcome
 	InvocationParentID string
 	InvocationChildID  string
+	WorkspaceID        string
 }
 
 func (result processResult) OutcomeString() string {

@@ -79,9 +79,17 @@ func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry
 
 	resolver := live.Default(nil)
 
-	cred, origin, _, err := resolver.ResolveNoRefresh(params.Envs)
+	cred, origin, workspacesOnly, err := resolver.ResolveNoRefresh(params.Envs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve auth config: %w", err)
+	}
+	// The registry has no cwd to walk for a project marker; the caller has to
+	// name the workspace explicitly.
+	if workspacesOnly {
+		return nil, fmt.Errorf(
+			"no credential resolvable — set %s + %s or a per-workspace credential",
+			authpkg.EnvAuthToken, authpkg.EnvWorkspaceID,
+		)
 	}
 
 	username, _ := resolver.ResolveUsername(params.Envs)

@@ -10,14 +10,15 @@ const (
 	ProtocolVersion = 0x01
 	Cap0            = 0x00 // get/put/remove/stop operations
 
-	RequestGet             = 0x00
-	RequestPut             = 0x01
-	RequestRemove          = 0x02
-	RequestStop            = 0x03
-	RequestSetInvocationID = 0xB1
-	RequestGetSessionStats = 0xB2
-	RequestHealthCheck     = 0xB3
-	RequestGetBlobStats    = 0xB4
+	RequestGet                          = 0x00
+	RequestPut                          = 0x01
+	RequestRemove                       = 0x02
+	RequestStop                         = 0x03
+	RequestSetInvocationID              = 0xB1
+	RequestGetSessionStats              = 0xB2
+	RequestHealthCheck                  = 0xB3
+	RequestGetBlobStats                 = 0xB4
+	RequestSetInvocationIDWithWorkspace = 0xB5
 
 	ResponseOK   = 0x00
 	ResponseNoop = 0x01
@@ -241,4 +242,37 @@ func ReadSetInvocationID(r io.Reader) (parentID, childID string, err error) {
 	}
 
 	return parentID, childID, nil
+}
+
+func WriteSetInvocationIDWithWorkspace(w io.Writer, parentID, childID, workspaceID string) error {
+	if err := WriteByte(w, RequestSetInvocationIDWithWorkspace); err != nil {
+		return err
+	}
+	if err := WriteMsg(w, parentID); err != nil {
+		return err
+	}
+	if err := WriteMsg(w, childID); err != nil {
+		return err
+	}
+
+	return WriteMsg(w, workspaceID)
+}
+
+func ReadSetInvocationIDWithWorkspace(r io.Reader) (parentID, childID, workspaceID string, err error) {
+	parentID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	childID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	workspaceID, err = ReadMsg(r)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return parentID, childID, workspaceID, nil
 }
