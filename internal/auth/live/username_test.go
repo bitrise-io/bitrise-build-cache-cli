@@ -61,7 +61,7 @@ func TestResolve_DoesNotLookUpTheDisplayName(t *testing.T) {
 		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
-	_, _, err := r.ResolveNoRefresh(envVars())
+	_, _, _, err := r.ResolveNoRefresh(envVars())
 
 	assert.NoError(t, err)
 	assert.Zero(t, stored.loadHits, "the env path must not touch the store")

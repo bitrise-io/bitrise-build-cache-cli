@@ -164,7 +164,7 @@ func (s keychainStore) Load() (auth.TokenSet, error) {
 }
 
 func (s keychainStore) Save(c auth.TokenSet) error {
-	return s.kc.Save(c) //nolint:wrapcheck
+	return s.kc.Save(stampSchema(c)) //nolint:wrapcheck
 }
 
 func (s keychainStore) Clear() error {
@@ -189,11 +189,18 @@ func (s fileStore) Load() (auth.TokenSet, error) {
 }
 
 func (s fileStore) Save(c auth.TokenSet) error {
-	if err := multiplatformconfig.SaveCredentials(s.osProxy, s.encoderFactory, s.decoderFactory, c); err != nil {
+	if err := multiplatformconfig.SaveCredentials(s.osProxy, s.encoderFactory, s.decoderFactory, stampSchema(c)); err != nil {
 		return fmt.Errorf("save credentials to multiplatform config: %w", err)
 	}
 
 	return nil
+}
+
+// Older readers ignore the new keys; the shape stays legible both ways.
+func stampSchema(c auth.TokenSet) auth.TokenSet {
+	c.SchemaVersion = auth.SchemaVersionCurrent
+
+	return c
 }
 
 func (s fileStore) Clear() error {

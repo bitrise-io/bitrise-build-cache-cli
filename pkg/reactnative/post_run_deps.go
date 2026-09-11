@@ -65,7 +65,7 @@ type postRunDeps struct {
 }
 
 func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
-	cred, origin, err := resolver.ResolveNoRefresh(utils.AllEnvs())
+	cred, origin, _, err := resolver.ResolveNoRefresh(utils.AllEnvs())
 	if err != nil {
 		logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
 

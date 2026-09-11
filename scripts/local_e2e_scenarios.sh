@@ -22,7 +22,7 @@ if echo "$STATUS_OUT" | grep -qi "Local invocation display name"; then
 else
   printf '\033[33m  ⚠ auth status missing username line — expected until ACI-5180 (PR #417) merges\033[0m\n'
 fi
-TOKEN_OUT=$("$CLI" auth token 2>&1)
+TOKEN_OUT=$("$CLI" auth token --workspace "$FAKE_WS" 2>&1)
 echo "$TOKEN_OUT" | grep -q "^${FAKE_WS}:${FAKE_TOKEN}$" || fail "auth token payload mismatch (got: $TOKEN_OUT)"
 "$CLI" auth clear
 STATUS_OUT=$("$CLI" auth status 2>&1)

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -60,25 +61,38 @@ var authSetCmd = &cobra.Command{
 		setWorkspaceID = strings.TrimSpace(setWorkspaceID)
 		setUsername = strings.TrimSpace(setUsername)
 
-		switch {
-		case setToken == "" && setWorkspaceID == "":
-			return errors.New("--token and --workspace-id are required and must not be empty")
-		case setToken == "":
+		if setToken == "" {
 			return errors.New("--token is required and must not be empty")
-		case setWorkspaceID == "":
-			return errors.New("--workspace-id is required and must not be empty")
 		}
 
 		target, err := store.Select(configcommon.DetectCIProvider(utils.AllEnvs()) != "", setStorage)
 		if err != nil {
 			return err //nolint:wrapcheck // already user-facing
 		}
+
+		// --workspace-id present: attach the credential to that slug in the
+		// per-workspace map (leaves the machine-wide slot alone). Absent: this is
+		// a machine-wide set, same shape as before per-workspace mode existed.
+		if setWorkspaceID != "" {
+			ws := authpkg.TokenSet{AuthToken: setToken, WorkspaceID: setWorkspaceID, Username: setUsername}
+			if err := store.SaveWorkspaceToken(target, setWorkspaceID, ws); err != nil {
+				return fmt.Errorf("save credentials: %w", err)
+			}
+
+			logger.TInfof("✅ Credentials saved for workspace %q to the %s", setWorkspaceID, target.Backend())
+			if setUsername != "" {
+				logger.TInfof("Display name for local invocations set to %q.", setUsername)
+			}
+			logger.Infof("Run `bitrise-build-cache auth token --workspace=%s` to verify.", setWorkspaceID)
+
+			return nil
+		}
+
 		existing, err := target.Load()
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("load existing credentials: %w", err)
 		}
 		existing.AuthToken = setToken
-		existing.WorkspaceID = setWorkspaceID
 		existing.Username = setUsername
 		result, err := store.SaveExclusiveWithFallback(target, existing, setStorage == "")
 		if err != nil {
@@ -307,14 +321,17 @@ var authStatusCmd = &cobra.Command{
 		"and the %s / %s / %s env vars. Use this to audit where your credentials live and to migrate them to the OS keychain.",
 		authpkg.EnvAuthToken, authpkg.EnvWorkspaceID, authpkg.EnvJWT),
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
-		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		logger := log.NewLogger(log.WithOutput(cmd.OutOrStdout()), log.WithDebugLog(common.IsDebugLogMode))
 
 		targets, migrationSources := credSources(utils.AllEnvs())
 
+		var targetAudits []credAudit
 		var targetPopulated bool
 		for _, t := range targets {
-			if renderSource(logger, t, t.probe()) {
+			audit := t.probe()
+			targetAudits = append(targetAudits, audit)
+			if renderSource(logger, t, audit) {
 				targetPopulated = true
 			}
 		}
@@ -337,6 +354,7 @@ var authStatusCmd = &cobra.Command{
 		}
 
 		logger.Println()
+		logger.Infof("Scenario: %s", scenarioSummary(targetAudits, utils.AllEnvs()))
 		renderUsername(logger, utils.AllEnvs())
 
 		if !targetPopulated && foundElsewhere {
@@ -348,6 +366,37 @@ var authStatusCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// scenarioSummary names the layout of the target stores + env vars as A (machine-wide),
+// B (per-workspace only), C (both) or None. Env vars force machine-wide reads at run time.
+func scenarioSummary(targets []credAudit, envs map[string]string) string {
+	var hasMachineWide, hasPerWorkspace bool
+	for _, a := range targets {
+		if a.authToken != "" {
+			hasMachineWide = true
+		}
+		if len(a.workspaces) > 0 {
+			hasPerWorkspace = true
+		}
+	}
+	if envs[authpkg.EnvAuthToken] != "" && envs[authpkg.EnvWorkspaceID] != "" {
+		hasMachineWide = true
+	}
+	if envs[authpkg.EnvJWT] != "" {
+		hasMachineWide = true
+	}
+
+	switch {
+	case hasMachineWide && hasPerWorkspace:
+		return "both (machine-wide as fallback)"
+	case hasPerWorkspace:
+		return "per-workspace only"
+	case hasMachineWide:
+		return "machine-wide only"
+	}
+
+	return "none"
 }
 
 func renderUsername(logger log.Logger, envs map[string]string) {
@@ -377,6 +426,14 @@ type credAudit struct {
 	username    string
 	note        string
 	err         error
+	// per-workspace slots lifted from TokenSet.Workspaces.
+	workspaces []workspaceAudit
+}
+
+type workspaceAudit struct {
+	slug      string
+	authToken string
+	username  string
 }
 
 type credSource struct {
@@ -442,17 +499,28 @@ func renderSource(logger log.Logger, s credSource, a credAudit) bool {
 
 		return false
 	case sourcePopulated:
-		if a.workspaceID == "" {
-			logger.Warnf("  Workspace ID: (not selected — `auth workspace --list`, then `auth workspace --set <slug>`)")
+		if a.authToken == "" && len(a.workspaces) > 0 {
+			logger.Infof("  Machine-wide slot: (not set — credentials live in the per-workspace map below)")
 		} else {
-			logger.Infof("  Workspace ID: %s", a.workspaceID)
-		}
-		logger.Infof("  Auth token:   %s", maskToken(a.authToken))
-		if a.username != "" {
-			logger.Infof("  Display name: %s", a.username)
+			if a.workspaceID == "" {
+				logger.Warnf("  Workspace ID: (not selected — `auth workspace --list`, then `auth workspace --set <slug>`)")
+			} else {
+				logger.Infof("  Workspace ID: %s", a.workspaceID)
+			}
+			logger.Infof("  Auth token:   %s", maskToken(a.authToken))
+			if a.username != "" {
+				logger.Infof("  Display name: %s", a.username)
+			}
 		}
 		if a.note != "" {
 			logger.Infof("  %s", a.note)
+		}
+		for _, ws := range a.workspaces {
+			logger.Infof("  Workspace %q:", ws.slug)
+			logger.Infof("    Auth token:   %s", maskToken(ws.authToken))
+			if ws.username != "" {
+				logger.Infof("    Display name: %s", ws.username)
+			}
 		}
 
 		return true
@@ -478,7 +546,7 @@ func probeKeychain() credAudit {
 		return credAudit{state: sourceReadError, err: err}
 	}
 
-	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
+	audit := auditFromTokenSet(creds)
 	if origin := creds.Origin(authpkg.BackendKeychain); origin.Provenance == authpkg.ProvenanceOAuthLogin {
 		audit.note = live.Describe(creds.Credential(), origin)
 	}
@@ -493,13 +561,45 @@ func probeFileStore() credAudit {
 	if !ok {
 		return credAudit{state: sourceAbsent, note: "not present"}
 	}
-	if creds.AuthToken == "" {
+	if creds.AuthToken == "" && len(creds.Workspaces) == 0 {
 		return credAudit{state: sourceAbsent, note: "credentials block present but empty"}
 	}
 
-	audit := credAudit{state: sourcePopulated, workspaceID: creds.WorkspaceID, authToken: creds.AuthToken, username: creds.Username}
+	audit := auditFromTokenSet(creds)
 	if origin := creds.Origin(authpkg.BackendFile); origin.Provenance == authpkg.ProvenanceOAuthLogin {
 		audit.note = live.Describe(creds.Credential(), origin)
+	}
+
+	return audit
+}
+
+func auditFromTokenSet(ts authpkg.TokenSet) credAudit {
+	audit := credAudit{
+		workspaceID: ts.WorkspaceID,
+		authToken:   ts.AuthToken,
+		username:    ts.Username,
+	}
+	if len(ts.Workspaces) > 0 {
+		slugs := make([]string, 0, len(ts.Workspaces))
+		for slug := range ts.Workspaces {
+			slugs = append(slugs, slug)
+		}
+		sort.Strings(slugs)
+		audit.workspaces = make([]workspaceAudit, 0, len(slugs))
+		for _, slug := range slugs {
+			ws := ts.Workspaces[slug]
+			audit.workspaces = append(audit.workspaces, workspaceAudit{
+				slug:      slug,
+				authToken: ws.AuthToken,
+				username:  ws.Username,
+			})
+		}
+	}
+
+	// Populated when either the machine-wide slot has a token or a per-workspace
+	// entry does.
+	if audit.authToken != "" || len(audit.workspaces) > 0 {
+		audit.state = sourcePopulated
 	}
 
 	return audit
@@ -651,14 +751,22 @@ func clearTargets(logger log.Logger, targets []store.Store) error {
 }
 
 // nolint:gochecknoglobals
+var (
+	tokenWorkspace string
+)
+
+// nolint:gochecknoglobals
 var authTokenCmd = &cobra.Command{
 	Use:           "token",
 	Short:         "Resolve and print the Bitrise Build Cache auth token to stdout",
-	Long:          "Resolves the auth token via the same precedence chain as the rest of the CLI (env vars → OS keychain → multiplatform analytics config) and prints it to stdout. Intended for build-time consumers (Gradle init script, future Bazel workspace_status_command) that need the resolved token without baking it into a config file. On failure exits non-zero with a short one-line message on stderr (no cobra Error: prefix) — callers framing the wrapper script own the wording.",
+	Long:          "Resolves the auth token via the same precedence chain as the rest of the CLI (env vars → OS keychain → multiplatform analytics config) and prints it to stdout. Intended for build-time consumers (Gradle init script, future Bazel workspace_status_command) that need the resolved token without baking it into a config file. On failure exits non-zero with a short one-line message on stderr (no cobra Error: prefix) — callers framing the wrapper script own the wording.\n\n--workspace <slug> asks for a per-workspace credential from the store (seeded by repeat `auth set` runs with different workspace IDs). Unknown slug falls back to the machine-wide token with a warning on stderr.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cred, origin, err := live.Default(nil).Resolve(cmd.Context(), utils.AllEnvs())
+		logger := log.NewLogger(log.WithOutput(cmd.ErrOrStderr()), log.WithDebugLog(common.IsDebugLogMode))
+		resolver := live.Default(logger)
+
+		cred, origin, err := resolver.ResolveForWorkspace(cmd.Context(), utils.AllEnvs(), strings.TrimSpace(tokenWorkspace))
 		if err != nil {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 
@@ -752,13 +860,14 @@ func maskToken(token string) string {
 
 func init() {
 	authSetCmd.Flags().StringVar(&setToken, "token", "", "Bitrise Build Cache auth token (required)")
-	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID (required)")
+	authSetCmd.Flags().StringVar(&setWorkspaceID, "workspace-id", "", "Bitrise workspace ID. When provided, the token is saved under this slug in the per-workspace map (readable via `auth token --workspace=<slug>`). When omitted, the token is saved as the machine-wide credential.")
 	authSetCmd.Flags().StringVar(&setUsername, "username", "", fmt.Sprintf("Display name for local invocations (optional). Overrides the OS username. Env var %s takes precedence for a single run.", authpkg.EnvUsername))
 	authSetCmd.Flags().StringVar(&setStorage, "storage", "", "Where to persist credentials: keychain (OS keychain) | file (multiplatform config on disk) | auto (default: CI→file, local→keychain). File storage is required on CI where fastlane setup_ci swaps the default keychain.")
 	_ = authSetCmd.MarkFlagRequired("token")
-	_ = authSetCmd.MarkFlagRequired("workspace-id")
 
 	authClearCmd.Flags().StringVar(&clearStorage, "storage", "", "Which backend to clear: keychain | file | auto (default auto clears both).")
+
+	authTokenCmd.Flags().StringVar(&tokenWorkspace, "workspace", "", "Prefer the credential stored under this workspace slug (falls back to the machine-wide token with a warning if the slug is unknown).")
 
 	authUsernameCmd.Flags().StringVar(&usernameSetValue, "set", "", "Persist this display name into the store holding your credentials (token/workspace untouched). Empty clears the stored override. Omit the flag to print the resolved name instead.")
 	authUsernameCmd.Flags().BoolVar(&usernameJSONOut, "json", false, "Print the resolved name as JSON {username, source} instead of a bare line. Ignored with --set.")

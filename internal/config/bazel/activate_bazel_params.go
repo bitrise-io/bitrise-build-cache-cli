@@ -92,7 +92,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, _, err := resolver.ResolveNoRefresh(envs)
+	authConfig, _, _, err := resolver.ResolveNoRefresh(envs)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("resolve auth config: %w", err)

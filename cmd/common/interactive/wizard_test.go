@@ -67,6 +67,27 @@ func TestUsernamePersistable(t *testing.T) {
 	assert.False(t, usernamePersistable(authpkg.Origin{Backend: authpkg.BackendJWT}))
 }
 
+func Test_persistWizardCredentials_workspaceScoped(t *testing.T) {
+	kc := &stubKeychain{}
+	silent := silentLogger()
+
+	persistWizardCredentialsTo(silent, kc, nil, wizardAuth{}, wizardCredentials{
+		WorkspaceID:       "acme",
+		AuthToken:         "acme-tok",
+		Username:          "alice",
+		BindToWorkspace:   true,
+		BindWorkspaceSlug: "acme",
+	})
+
+	require.NotEmpty(t, kc.saved.Workspaces, "workspace-bind must write into the Workspaces map")
+	entry, ok := kc.saved.Workspaces["acme"]
+	require.True(t, ok, "workspace-bind must key the entry by slug")
+	assert.Equal(t, "acme-tok", entry.AuthToken)
+	assert.Equal(t, "acme", entry.WorkspaceID)
+	assert.Equal(t, "alice", entry.Username)
+	assert.Empty(t, kc.saved.AuthToken, "machine-wide slot must be left empty in scenario B")
+}
+
 func TestDebugFlag_ORsGlobal_ActivateInteractive(t *testing.T) {
 	t.Cleanup(func() { common.IsDebugLogMode = false })
 
