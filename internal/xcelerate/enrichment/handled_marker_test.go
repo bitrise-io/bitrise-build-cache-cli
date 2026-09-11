@@ -93,3 +93,26 @@ func TestPruneStale_missingDirIsNoop(t *testing.T) {
 		enrichment.PruneStale(filepath.Join(t.TempDir(), "does-not-exist"), time.Hour)
 	})
 }
+
+func TestRemoveMarker_releasesClaim(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	enrichment.WriteMarker(newTestLogger(), "inv-abc")
+	require.True(t, enrichment.MarkerExists("inv-abc"))
+
+	enrichment.RemoveMarker(newTestLogger(), "inv-abc")
+
+	assert.False(t, enrichment.MarkerExists("inv-abc"),
+		"a released claim must let slim emit and the enrichment watcher write their own row")
+}
+
+func TestRemoveMarker_missingMarkerIsNoop(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	enrichment.RemoveMarker(newTestLogger(), "never-written")
+	enrichment.RemoveMarker(newTestLogger(), "")
+
+	assert.False(t, enrichment.MarkerExists("never-written"))
+}

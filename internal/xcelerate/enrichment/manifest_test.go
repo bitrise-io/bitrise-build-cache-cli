@@ -64,3 +64,21 @@ func TestLoadManifest_Missing(t *testing.T) {
 	_, err := enrichment.LoadManifest("testdata/does-not-exist.plist")
 	require.Error(t, err)
 }
+
+// A green xcodebuild whose manifest status is not "S" used to enrich as failed.
+func TestManifestEntry_SuccessOnlyFailsOnExplicitError(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   bool
+	}{
+		{status: "S", want: true},
+		{status: "W", want: true},
+		{status: "", want: true},
+		{status: "X", want: true},
+		{status: "E", want: false},
+	} {
+		t.Run("status="+tc.status, func(t *testing.T) {
+			assert.Equal(t, tc.want, enrichment.ManifestEntry{Status: tc.status}.Success())
+		})
+	}
+}

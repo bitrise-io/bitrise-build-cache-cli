@@ -15,9 +15,10 @@ import (
 // and the consumer (slim emit or enrichment watcher) firing.
 const HandledMarkerMaxAge = 24 * time.Hour
 
-// WriteMarker records that the wrapper already PUT a rich payload for
-// invocationID so slim emit and enrichment watcher skip their own PUT and preserve
-// the rich row from last-write-wins. Best-effort — failures downgrade to the
+// WriteMarker claims invocationID for the wrapper so slim emit and the enrichment
+// watcher skip their own PUT and preserve the rich row from last-write-wins.
+// Must precede the wrapper's PUT: both consumers check-then-PUT, so a later claim
+// leaves them a window to clobber it. Best-effort — failures downgrade to the
 // pre-fix behaviour and are logged only.
 func WriteMarker(logger log.Logger, invocationID string) {
 	if invocationID == "" {
@@ -46,6 +47,25 @@ func WriteMarker(logger log.Logger, invocationID string) {
 		return
 	}
 	_ = f.Close()
+}
+
+// RemoveMarker releases the claim when the wrapper's PUT failed, so the
+// slim/enrichment fallbacks may write their row instead.
+func RemoveMarker(logger log.Logger, invocationID string) {
+	if invocationID == "" {
+		return
+	}
+
+	p, err := paths.Default()
+	if err != nil {
+		logger.Debugf("Handled-invocation marker release skipped, cannot resolve paths: %v", err)
+
+		return
+	}
+
+	if err := os.Remove(p.XcelerateHandledInvocationFile(invocationID)); err != nil && !os.IsNotExist(err) {
+		logger.Warnf("Handled-invocation marker release failed: %v", err)
+	}
 }
 
 func MarkerExists(invocationID string) bool {
