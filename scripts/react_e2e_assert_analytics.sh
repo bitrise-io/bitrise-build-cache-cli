@@ -11,6 +11,15 @@ if ! grep -q "React Native invocation ID:" "$RN_CLI_LOG"; then
 fi
 echo "React Native invocation ID present ✅"
 
+# The ID is logged before the PUT, so it proves nothing was saved. Only the
+# post-PUT line does, and it is the one assertion that holds without debug logging.
+if ! grep -q "React Native invocation saved. Visit" "$RN_CLI_LOG"; then
+  echo "React Native invocation was not saved ❌"
+  grep -E "Failed to send run invocation analytics" "$RN_CLI_LOG" || true
+  exit 1
+fi
+echo "React Native invocation saved ✅"
+
 # --- Xcode parent-child invocation relation (checked via xcelerate log files) ---
 # The xcodebuild wrapper's output is captured by react-native build-ios and doesn't
 # reach $RN_CLI_LOG. Instead, TInfof messages are written to xcelerate log files
@@ -95,12 +104,12 @@ fi
 
 # --- Failure indicators (should be absent) ---
 
-if grep -q "Warning: failed to send run invocation analytics" "$RN_CLI_LOG"; then
+if grep -q "Failed to send run invocation analytics" "$RN_CLI_LOG"; then
   echo "React-native invocation send failed ❌"
   exit 1
 fi
 
-if grep -q "Warning: failed to register invocation relation" "$RN_CLI_LOG"; then
+if grep -q "Failed to register invocation relation" "$RN_CLI_LOG"; then
   echo "Invocation relation registration failed ❌"
   exit 1
 fi
