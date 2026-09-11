@@ -3,9 +3,21 @@ set -euo pipefail
 
 echo "Asserting react-native CLI analytics log: $RN_CLI_LOG"
 
+PLAIN_LOG="$(mktemp)"
+trap 'rm -f "$PLAIN_LOG"' EXIT
+LC_ALL=C sed $'s/\033\[[0-9;]*m//g' "$RN_CLI_LOG" > "$PLAIN_LOG"
+
+# The invocation payload carries BITRISE_GIT_MESSAGE, so under debug logging the
+# commit message is dumped into the log with the request body — a bare substring
+# grep then matches the commit text instead of a real log line. Every TInfof and
+# TWarnf line opens with "[HH:MM:SS] ", so anchor on that.
+cli_logged() {
+  grep -qE "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] $1" "$PLAIN_LOG"
+}
+
 # --- Invocation IDs ---
 
-if ! grep -q "React Native invocation ID:" "$RN_CLI_LOG"; then
+if ! cli_logged "React Native invocation ID:"; then
   echo "React Native invocation ID not found in CLI log ❌"
   exit 1
 fi
@@ -13,9 +25,9 @@ echo "React Native invocation ID present ✅"
 
 # The ID is logged before the PUT, so it proves nothing was saved. Only the
 # post-PUT line does, and it is the one assertion that holds without debug logging.
-if ! grep -q "React Native invocation saved. Visit" "$RN_CLI_LOG"; then
+if ! cli_logged "React Native invocation saved\. Visit"; then
   echo "React Native invocation was not saved ❌"
-  grep -E "Failed to send run invocation analytics" "$RN_CLI_LOG" || true
+  grep -E "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] Failed to send run invocation analytics" "$PLAIN_LOG" || true
   exit 1
 fi
 echo "React Native invocation saved ✅"
@@ -51,21 +63,21 @@ fi
 # "ccache wasn't in play" case the iOS workflow legitimately hits.
 EXPECT_CCACHE="${EXPECT_CCACHE:-false}"
 
-if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
+if cli_logged "Ccache invocation ID:"; then
   echo "Ccache invocation ID present ✅"
 
-  if ! grep -q "Parent invocation ID:" "$RN_CLI_LOG"; then
+  if ! cli_logged "Parent invocation ID:"; then
     echo "Parent invocation ID not found despite ccache being active ❌"
     exit 1
   fi
   echo "Parent invocation ID present ✅"
 elif [ "$EXPECT_CCACHE" = "true" ]; then
   echo "Ccache invocation ID missing although ccache was activated ❌"
-  grep -E "Failed to (load session info|get session stats) from storage helper|No ccache activity detected|No invocation ID available for ccache stats" "$RN_CLI_LOG" || true
+  grep -E "Failed to (load session info|get session stats) from storage helper|No ccache activity detected|No invocation ID available for ccache stats" "$PLAIN_LOG" || true
   exit 1
 else
   echo "Ccache invocation ID not present (ccache not active or no activity) ℹ️"
-  if grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
+  if grep -q "^HTTP PUT:.*/v1/invocations/.*/children/" "$PLAIN_LOG"; then
     echo "Unexpected ccache invocation relation HTTP call found when ccache was inactive ❌"
     exit 1
   fi
@@ -74,17 +86,17 @@ fi
 
 # --- HTTP responses (only when debug logging is active) ---
 
-if grep -q "HTTP PUT:" "$RN_CLI_LOG"; then
+if grep -q "^HTTP PUT:" "$PLAIN_LOG"; then
   # PutInvocation (react-native run invocation)
-  if ! grep -q "HTTP PUT:.*/v1/invocations/" "$RN_CLI_LOG"; then
+  if ! grep -q "^HTTP PUT:.*/v1/invocations/" "$PLAIN_LOG"; then
     echo "No PutInvocation HTTP call found ❌"
     exit 1
   fi
   echo "PutInvocation HTTP call present ✅"
 
   # PutInvocationRelation (parent→ccache) — only when ccache was activated
-  if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
-    if ! grep -q "HTTP PUT:.*/v1/invocations/.*/children/" "$RN_CLI_LOG"; then
+  if cli_logged "Ccache invocation ID:"; then
+    if ! grep -q "^HTTP PUT:.*/v1/invocations/.*/children/" "$PLAIN_LOG"; then
       echo "No PutInvocationRelation HTTP call found ❌"
       exit 1
     fi
@@ -92,9 +104,9 @@ if grep -q "HTTP PUT:" "$RN_CLI_LOG"; then
   fi
 
   # All HTTP responses should be 2xx
-  if grep -q "Response: [^2]" "$RN_CLI_LOG"; then
+  if grep -q "^Response: [^2]" "$PLAIN_LOG"; then
     echo "Non-2xx HTTP response detected ❌"
-    grep "Response: [^2]" "$RN_CLI_LOG"
+    grep "^Response: [^2]" "$PLAIN_LOG"
     exit 1
   fi
   echo "All analytics HTTP responses 2xx ✅"
@@ -104,12 +116,7 @@ fi
 
 # --- Failure indicators (should be absent) ---
 
-if grep -q "Failed to send run invocation analytics" "$RN_CLI_LOG"; then
-  echo "React-native invocation send failed ❌"
-  exit 1
-fi
-
-if grep -q "Failed to register invocation relation" "$RN_CLI_LOG"; then
+if cli_logged "Failed to register invocation relation"; then
   echo "Invocation relation registration failed ❌"
   exit 1
 fi
@@ -119,10 +126,10 @@ fi
 # its run and reports the mean on its own invocation. The ledger lives under
 # ~/.bitrise/cache/invocations/<parent-id>/ and must be cleaned up after.
 
-rn_invocation_id=$(grep -oE "React Native invocation ID: [a-zA-Z0-9-]+" "$RN_CLI_LOG" | head -1 | awk '{print $NF}' || true)
+rn_invocation_id=$(grep -oE "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] React Native invocation ID: [a-zA-Z0-9-]+" "$PLAIN_LOG" | head -1 | awk '{print $NF}' || true)
 
 has_child=false
-if grep -q "Ccache invocation ID:" "$RN_CLI_LOG"; then
+if cli_logged "Ccache invocation ID:"; then
   has_child=true
 fi
 if [ -n "${XCELERATE_LOGS:-}" ]; then
@@ -130,18 +137,18 @@ if [ -n "${XCELERATE_LOGS:-}" ]; then
 fi
 
 if [ "$has_child" = "true" ]; then
-  if ! grep -qE "Cache hit rate \(avg of [0-9]+ child invocations\): [0-9]+\.[0-9]+%" "$RN_CLI_LOG"; then
+  if ! cli_logged "Cache hit rate \(avg of [0-9]+ child invocations\): [0-9]+\.[0-9]+%"; then
     echo "Child hit rate aggregation log line missing ❌"
     exit 1
   fi
   echo "Child hit rate aggregation log line present ✅"
 
-  if grep -q "Failed to aggregate child invocation hit rates" "$RN_CLI_LOG"; then
+  if cli_logged "Failed to aggregate child invocation hit rates"; then
     echo "Aggregation reported an error ❌"
     exit 1
   fi
 
-  if grep -q "Failed to write child stats ledger" "$RN_CLI_LOG"; then
+  if cli_logged "Failed to write child stats ledger"; then
     echo "Ledger writer reported an error ❌"
     exit 1
   fi
