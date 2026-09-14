@@ -19,9 +19,9 @@ app:
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
     # Pinned because a backend "baseline" answer disables the cache outright,
     # failing every cache assertion here for an unrelated reason.
-  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: warmup
-  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: warmup
-  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: warmup
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: established
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: established
 
 include:
 - path: bitrise_rn_config/bitrise.yml
@@ -1775,7 +1775,7 @@ workflows:
     - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     # A brand-new workflow name resolves to the baseline phase, which disables
     # the cache outright and would leave nothing to measure.
-    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: warmup
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
     - PROXY_E2E_FAKE_BACKEND: "1"
     steps:
     - bundle::feature-e2e-setup: {}
