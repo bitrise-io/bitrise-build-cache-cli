@@ -17,13 +17,8 @@ app:
   - WORKSPACE_SLUG: 322a005426441b60
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
-    # Pin the benchmark phase for every workflow here. Left unset, the CLI asks
-    # the backend which phase a build is in, and a "baseline" answer turns the
-    # cache off outright -- ApplyBenchmarkPhase clears Cache.Enabled and
-    # PushEnabled -- so every cache assertion in this file would fail for a
-    # reason that has nothing to do with the change under test. "warmup" is the
-    # phase that leaves caching on, and the env var is read before the backend
-    # is consulted at all.
+    # Pinned because a backend "baseline" answer disables the cache outright,
+    # failing every cache assertion here for an unrelated reason.
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: warmup
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: warmup
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: warmup
@@ -523,26 +518,17 @@ workflows:
 
   feature-e2e-github-actions:
     description: |
-      Exercises this PR's CLI on GitHub Actions, on a Bitrise Build Hub machine
-      pool -- the one environment the other feature-e2e workflows cannot cover,
-      because they run the binary on the Bitrise machine itself.
-
-      It dispatches the workflow in bitrise-io/duckduckgo-android-e2e with this
-      commit as cli_ref, so the GitHub job builds the CLI from the PR rather
-      than installing the released one, then asserts the invocation the run
-      produced.
-
-      The invocation arrives as github-actions with no project or build slug:
-      the CLI reports the original CI provider on Build Hub, which sets
-      BITRISE_IO but not BITRISE_BUILD_SLUG. E2E_CI_PROVIDER switches the shared
-      assertions to that shape.
+      Runs this PR's CLI on GitHub Actions, on a Build Hub machine pool, by
+      dispatching the duckduckgo-android-e2e workflow with this commit as
+      cli_ref.
     envs:
     - GHA_REPO: bitrise-io/duckduckgo-android-e2e
     - GHA_WORKFLOW_FILE: bitrise-build-cache-e2e.yml
     - GHA_REF: develop
+    # Build Hub reports github-actions, not bitrise: it sets BITRISE_IO but not
+    # BITRISE_BUILD_SLUG, so the invocation has no project or build slug.
     - E2E_CI_PROVIDER: github-actions
-    # Above the suite's own 2700s: this run also builds the CLI from source in
-    # the job, and waits out the pool's cold-start before anything begins.
+    # Covers the pool's cold start plus building the CLI in the job.
     - BUILD_TIMEOUT: 3300
     steps:
     - bundle::e2e-repo-checkout: {}
@@ -557,9 +543,8 @@ workflows:
 
             require_github_env
 
-            # Without a commit the GitHub job would install the released CLI and
-            # this workflow would report on a binary the PR never touched, which
-            # is worse than failing.
+            # Without a ref the job installs the released CLI, reporting on a
+            # binary this PR never touched.
             cli_ref="${BITRISE_GIT_COMMIT:-}"
             if [[ -z "$cli_ref" ]]; then
               fatal "No BITRISE_GIT_COMMIT to build the CLI from"
@@ -611,14 +596,9 @@ workflows:
             assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
             assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
             assert_invocation_tasks_gradle "$INVOCATION_ID"
-            # No assert_build_performance: it is keyed by Bitrise app and build
-            # slug, which an off-Bitrise invocation has neither of.
-            #
-            # No assert_invocation_taskio either: every run rebuilds the same
-            # fixture commit, so a warm cache serves every cacheable task,
-            # nothing executes, and only executed tasks record their inputs.
-            # The first CI run of this workflow failed on exactly that. The
-            # other feature-e2e workflows cover task IO.
+            # No build performance: it is keyed by app and build slug, which
+            # this invocation has neither of. No task IO: a warm cache executes
+            # no tasks, and only executed tasks record inputs.
 
   feature-e2e-gradle-duckduck:
     envs:
@@ -1458,10 +1438,6 @@ workflows:
               head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
               tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
 
-              # From the API rather than wrapper.log: the log line is a
-              # presentation detail that moves with CLI output, and the API
-              # lookup retries while analytics ingestion catches up. The logs
-              # above are still deployed, for debugging a failure.
               source ../_e2e/scripts/extract_invocation_id_from_api.sh
 
               invocation_id=$(extract_invocation_id_xcode_from_api "$BITRISE_BUILD_SLUG")
@@ -1734,10 +1710,6 @@ workflows:
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               cp wrapper.log $BITRISE_DEPLOY_DIR
 
-              # From the API rather than wrapper.log: the log line is a
-              # presentation detail that moves with CLI output, and the API
-              # lookup retries while analytics ingestion catches up. The logs
-              # above are still deployed, for debugging a failure.
               source ../_e2e/scripts/extract_invocation_id_from_api.sh
 
               invocation_id=$(extract_invocation_id_xcode_from_api "$BITRISE_BUILD_SLUG")
@@ -2376,9 +2348,7 @@ step_bundles:
   e2e-repo-checkout:
     description: |
       Clone the shared assertion scripts from build-cache-e2e-testing into
-      ./_e2e. Split out of feature-e2e-setup so a workflow that drives a build
-      elsewhere -- feature-e2e-github-actions -- can reuse the scripts without
-      also cloning a test app and switching working directory.
+      ./_e2e, for workflows that need them without a test app checkout.
     steps:
       - activate-ssh-key:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
