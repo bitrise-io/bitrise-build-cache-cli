@@ -17,6 +17,16 @@ app:
   - WORKSPACE_SLUG: 322a005426441b60
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
+    # Pin the benchmark phase for every workflow here. Left unset, the CLI asks
+    # the backend which phase a build is in, and a "baseline" answer turns the
+    # cache off outright -- ApplyBenchmarkPhase clears Cache.Enabled and
+    # PushEnabled -- so every cache assertion in this file would fail for a
+    # reason that has nothing to do with the change under test. "warmup" is the
+    # phase that leaves caching on, and the env var is read before the backend
+    # is consulted at all.
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: warmup
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: warmup
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: warmup
 
 include:
 - path: bitrise_rn_config/bitrise.yml
@@ -1448,13 +1458,13 @@ workflows:
               head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
               tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
 
-              source ../_e2e/scripts/error.sh
-              source ../_e2e/scripts/extract_invocation_id.sh
+              # From the API rather than wrapper.log: the log line is a
+              # presentation detail that moves with CLI output, and the API
+              # lookup retries while analytics ingestion catches up. The logs
+              # above are still deployed, for debugging a failure.
+              source ../_e2e/scripts/extract_invocation_id_from_api.sh
 
-              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
-              if [[ -z "$invocation_id" ]]; then
-                fatal "Invocation ID not found in logs"
-              fi
+              invocation_id=$(extract_invocation_id_xcode_from_api "$BITRISE_BUILD_SLUG")
 
               echo "Found Invocation ID: $invocation_id"
               envman add --key INVOCATION_ID --value "$invocation_id"
@@ -1724,13 +1734,13 @@ workflows:
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               cp wrapper.log $BITRISE_DEPLOY_DIR
 
-              source ../_e2e/scripts/error.sh
-              source ../_e2e/scripts/extract_invocation_id.sh
+              # From the API rather than wrapper.log: the log line is a
+              # presentation detail that moves with CLI output, and the API
+              # lookup retries while analytics ingestion catches up. The logs
+              # above are still deployed, for debugging a failure.
+              source ../_e2e/scripts/extract_invocation_id_from_api.sh
 
-              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
-              if [[ -z "$invocation_id" ]]; then
-                fatal "Invocation ID not found in logs"
-              fi
+              invocation_id=$(extract_invocation_id_xcode_from_api "$BITRISE_BUILD_SLUG")
 
               echo "Found Invocation ID: $invocation_id"
               envman add --key INVOCATION_ID --value "$invocation_id"
