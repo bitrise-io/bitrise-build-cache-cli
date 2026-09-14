@@ -601,9 +601,14 @@ workflows:
             assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
             assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
             assert_invocation_tasks_gradle "$INVOCATION_ID"
-            assert_invocation_taskio "$INVOCATION_ID" "gradle"
             # No assert_build_performance: it is keyed by Bitrise app and build
             # slug, which an off-Bitrise invocation has neither of.
+            #
+            # No assert_invocation_taskio either: every run rebuilds the same
+            # fixture commit, so a warm cache serves every cacheable task,
+            # nothing executes, and only executed tasks record their inputs.
+            # The first CI run of this workflow failed on exactly that. The
+            # other feature-e2e workflows cover task IO.
 
   feature-e2e-gradle-duckduck:
     envs:
