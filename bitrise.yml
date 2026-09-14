@@ -511,6 +511,100 @@ workflows:
           title: Send slack if failed
           run_if: ".IsBuildFailed"
 
+  feature-e2e-github-actions:
+    description: |
+      Exercises this PR's CLI on GitHub Actions, on a Bitrise Build Hub machine
+      pool -- the one environment the other feature-e2e workflows cannot cover,
+      because they run the binary on the Bitrise machine itself.
+
+      It dispatches the workflow in bitrise-io/duckduckgo-android-e2e with this
+      commit as cli_ref, so the GitHub job builds the CLI from the PR rather
+      than installing the released one, then asserts the invocation the run
+      produced.
+
+      The invocation arrives as github-actions with no project or build slug:
+      the CLI reports the original CI provider on Build Hub, which sets
+      BITRISE_IO but not BITRISE_BUILD_SLUG. E2E_CI_PROVIDER switches the shared
+      assertions to that shape.
+    envs:
+    - GHA_REPO: bitrise-io/duckduckgo-android-e2e
+    - GHA_WORKFLOW_FILE: bitrise-build-cache-e2e.yml
+    - GHA_REF: develop
+    - E2E_CI_PROVIDER: github-actions
+    # Above the suite's own 2700s: this run also builds the CLI from source in
+    # the job, and waits out the pool's cold-start before anything begins.
+    - BUILD_TIMEOUT: 3300
+    steps:
+    - bundle::e2e-repo-checkout: {}
+    - script:
+        title: Dispatch GitHub Actions run for this commit
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+
+            require_github_env
+
+            # Without a commit the GitHub job would install the released CLI and
+            # this workflow would report on a binary the PR never touched, which
+            # is worse than failing.
+            cli_ref="${BITRISE_GIT_COMMIT:-}"
+            if [[ -z "$cli_ref" ]]; then
+              fatal "No BITRISE_GIT_COMMIT to build the CLI from"
+            fi
+
+            correlation_id="cli-${BITRISE_BUILD_SLUG:-local}-${BITRISE_BUILD_NUMBER:-0}"
+            trigger_github_workflow "$GHA_REPO" "$GHA_WORKFLOW_FILE" "$GHA_REF" \
+              "$correlation_id" "$cli_ref"
+
+            run_id=$(find_github_run "$GHA_REPO" "$GHA_WORKFLOW_FILE" "$correlation_id")
+
+            echo "Run URL: https://github.com/$GHA_REPO/actions/runs/$run_id"
+            envman add --key GHA_RUN_ID --value "$run_id"
+    - script:
+        title: Wait for run
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+
+            wait_for_github_run "$GHA_REPO" "$GHA_RUN_ID" "$BUILD_TIMEOUT"
+    - script:
+        title: Extract Invocation ID
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+            source ./_e2e/scripts/extract_invocation_id.sh
+
+            invocation_id=$(extract_invocation_id_from_github_logs \
+              extract_invocation_id_gradle "$GHA_REPO" "$GHA_RUN_ID" "gha-logs.txt")
+
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/assert_invocations.sh
+            source ./_e2e/scripts/assert_taskio.sh
+
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            assert_invocation_taskio "$INVOCATION_ID" "gradle"
+            # No assert_build_performance: it is keyed by Bitrise app and build
+            # slug, which an off-Bitrise invocation has neither of.
+
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -2264,7 +2358,12 @@ step_bundles:
                   exit 0
                 fi
 
-  feature-e2e-setup:
+  e2e-repo-checkout:
+    description: |
+      Clone the shared assertion scripts from build-cache-e2e-testing into
+      ./_e2e. Split out of feature-e2e-setup so a workflow that drives a build
+      elsewhere -- feature-e2e-github-actions -- can reuse the scripts without
+      also cloning a test app and switching working directory.
     steps:
       - activate-ssh-key:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -2299,6 +2398,10 @@ step_bundles:
                 git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
 
                 ls -la ./_e2e
+
+  feature-e2e-setup:
+    steps:
+      - bundle::e2e-repo-checkout: {}
       - script:
           title: Delete _tmp dirs
           inputs:
@@ -2443,6 +2546,7 @@ pipelines:
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
+      feature-e2e-github-actions: {}
 
       # Cross-DC configuration-cache reuse: 5 parallel saves blanket the
       # DC pool, then 3 parallel restores per platform exercise the read
