@@ -19,6 +19,7 @@ type XcodeArgs interface {
 	Command() string
 	ShortCommand() string
 	HasBuildAction() bool
+	AcceptsDerivedDataPath() bool
 	DerivedDataPath() string
 	ClonedSourcePackagesDirPath() string
 	ResolvesPackages() bool
@@ -95,9 +96,9 @@ var buildActions = []string{
 	"clean",
 }
 
-// queryActions are the xcodebuild action keywords that do not build. If one
-// of these is in argv and no build action is present, xcodebuild rejects
-// -derivedDataPath — skip injection.
+// queryActions are the xcodebuild action keywords that do not build. One of
+// these with no build action present means no cache wiring; -derivedDataPath
+// still applies when AcceptsDerivedDataPath reports argv allows it.
 var queryActions = []string{
 	"-showsdks",
 	"-showBuildSettings",
@@ -189,6 +190,26 @@ func HasBuildAction(argv []string) bool {
 
 func (p Default) HasBuildAction() bool {
 	return HasBuildAction(p.OriginalArgs)
+}
+
+// xcodebuild rejects -derivedDataPath unless argv also carries one of these.
+var derivedDataPathEnablingFlags = []string{"-scheme", "-testProductsPath", "-xctestrun"}
+
+// AcceptsDerivedDataPath reports whether argv lets xcodebuild accept
+// -derivedDataPath. Independent of the action: a query action does not rule it out.
+func AcceptsDerivedDataPath(argv []string) bool {
+	for _, arg := range argv {
+		name, _, _ := strings.Cut(arg, "=")
+		if slices.Contains(derivedDataPathEnablingFlags, name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (p Default) AcceptsDerivedDataPath() bool {
+	return AcceptsDerivedDataPath(p.OriginalArgs)
 }
 
 // packageResolvingQueryActions still populate SPM checkouts despite not building.
