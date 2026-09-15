@@ -1011,6 +1011,10 @@ step_bundles:
             cd _seek
             ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
+        title: Assert a query action is told about the managed DerivedData
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_derived_data_query.sh
+    - script:
         title: Assert CLI invocation analytics were sent
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh

@@ -782,11 +782,13 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		return c.appendResultBundleArg(c.XcodeArgs.Args(additional))
 	}
 
-	// Query-only invocations (-list, -version, -showBuildSettings, ...) reject -derivedDataPath and
-	// need no cache wiring, but they still take their argv from here. Run's short-circuit is separate:
-	// it skips session and analytics, not argument assembly.
+	// Query-only invocations (-list, -version, -showBuildSettings, ...) need no cache wiring, but
+	// they still take their argv from here. Run's short-circuit is separate: it skips session and
+	// analytics, not argument assembly.
 	if !c.XcodeArgs.HasBuildAction() {
-		return append(c.XcodeArgs.Args(additional), c.sourcePackagesArgvForQueryAction()...)
+		argv := append(c.XcodeArgs.Args(additional), c.sourcePackagesArgvForQueryAction()...)
+
+		return append(argv, c.derivedDataArgvForQueryAction()...)
 	}
 
 	additional["COMPILATION_CACHE_REMOTE_SERVICE_PATH"] = c.Config.ProxySocketPath
@@ -941,6 +943,25 @@ func (c *XcodebuildRunner) sourcePackagesArgvForQueryAction() []string {
 	}
 
 	return []string{xcodeargs.ClonedSourcePackagesDirPathFlag, filepath.Join(dd, "SourcePackages")}
+}
+
+// derivedDataArgvForQueryAction makes a query action report the DerivedData the build uses, so
+// consumers resolving products via TARGET_BUILD_DIR (React Native's installApp) find them. Gated
+// exactly like the build-path injection so query and build cannot disagree.
+func (c *XcodebuildRunner) derivedDataArgvForQueryAction() []string {
+	if c.Config.BuildCacheSkipFlags || c.Config.DisablePrefixMapping || c.NoPrefixMap {
+		return nil
+	}
+	if !c.XcodeArgs.AcceptsDerivedDataPath() || c.XcodeArgs.DerivedDataPath() != "" {
+		return nil
+	}
+
+	ps, _ := c.resolvePrefixMapPaths()
+	if ps.DerivedDataPath == "" {
+		return nil
+	}
+
+	return []string{xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath}
 }
 
 const (
