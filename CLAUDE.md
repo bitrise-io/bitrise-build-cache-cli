@@ -161,7 +161,9 @@ The file I/O is in `internal/config/common/benchmark.go` (`WriteBenchmarkPhaseFi
 
 ## Go Version
 
-Keep the `go` directive in `go.mod` at **1.24**. Do not bump it to 1.25 or later. This is a hard requirement imposed by the step libraries that depend on this CLI — they need Go 1.24 compatibility. When running `go mod tidy` or updating dependencies, pin any transitive packages that would require Go 1.25+ (typically `golang.org/x/{net,sys,text,tools}` and `google.golang.org/genproto`) to versions that are compatible with Go 1.24.
+The `go` directive in `go.mod` follows the Renovate bumps — currently **1.26.0**.
+
+The former "pin at 1.24" rule is gone: #403 took it to 1.25.0, #408 to 1.25.8 and #447 to 1.26.0, and CI installs a matching toolchain. It was documented as a hard requirement from the step libraries that depend on this CLI, but that constraint was never re-verified as the pin drifted. Before assuming a Go version is safe for those consumers, check them rather than this file.
 
 ## Bitrise Workflow Scripts
 
