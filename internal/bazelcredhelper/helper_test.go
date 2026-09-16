@@ -198,7 +198,7 @@ func TestRun_ProjectModeOptInWithMarkerStillAuths(t *testing.T) {
 
 func writeMachineConfig(t *testing.T, home, body string) {
 	t.Helper()
-	dir := home + "/.bitrise/build-cache"
+	dir := home + "/.bitrise/cache"
 	require.NoError(t, mustMkdir(dir))
 	require.NoError(t, mustWrite(dir+"/config.json", body))
 }
