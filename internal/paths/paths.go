@@ -91,6 +91,9 @@ const (
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 
+	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
+	ProjectMarkerFilename = ".bitrise-build-cache.json"
+
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
