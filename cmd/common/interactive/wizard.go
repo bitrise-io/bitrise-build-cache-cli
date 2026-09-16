@@ -91,6 +91,11 @@ func (*huhWizard) Run(ctx context.Context) error {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
+	projectMode, err := projectModePrompt(logger)
+	if err != nil {
+		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
+	}
+
 	var groups []*huh.Group
 
 	if auth.NeedsManualPrompt() {
@@ -133,7 +138,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[authpkg.EnvWorkspaceID] = workspaceID
 	envs[authpkg.EnvAuthToken] = authToken
 
-	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled); err != nil {
+	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled, projectMode); err != nil {
 		return err
 	}
 

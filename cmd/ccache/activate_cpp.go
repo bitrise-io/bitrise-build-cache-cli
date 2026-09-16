@@ -16,6 +16,9 @@ import (
 var activateCppParams = ccacheconfig.DefaultParams()
 
 //nolint:gochecknoglobals
+var activateCppProjectMode string
+
+//nolint:gochecknoglobals
 var activateCppCmd = &cobra.Command{
 	Use:   "c++",
 	Short: "Activate Bitrise Build Cache for C++",
@@ -31,12 +34,18 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
+		mode, err := common.ResolveAndPersistProjectMode(activateCppProjectMode, logger)
+		if err != nil {
+			return fmt.Errorf("resolve project mode: %w", err)
+		}
+
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,
 			PushEnabled:           activateCppParams.PushEnabled,
 			IPCSocketPathOverride: activateCppParams.IPCSocketPathOverride,
 			BaseDirOverride:       activateCppParams.BaseDirOverride,
 			DebugLogging:          common.DebugFromFlag(),
+			ProjectMode:           mode,
 		})
 
 		if err := activator.Activate(cmd.Context()); err != nil {
@@ -75,4 +84,5 @@ func init() {
 		activateCppParams.BaseDirOverride,
 		"Override the base directory for ccache (CCACHE_BASEDIR). Defaults to the current working directory.",
 	)
+	activateCppCmd.Flags().StringVar(&activateCppProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }

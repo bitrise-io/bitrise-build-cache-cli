@@ -11,6 +11,7 @@ import (
 	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
@@ -28,6 +29,7 @@ type ActivatorParams struct {
 	IPCSocketPathOverride string
 	BaseDirOverride       string
 	DebugLogging          bool
+	ProjectMode           machineconfig.Mode
 	Envs                  map[string]string
 
 	// Logger overrides the default logger. If nil, a default logger is created.
@@ -52,6 +54,7 @@ type Activator struct {
 	ipcSocketPathOverride string
 	baseDirOverride       string
 	debugLogging          bool
+	projectMode           machineconfig.Mode
 	envs                  map[string]string
 }
 
@@ -93,6 +96,7 @@ func NewActivator(params ActivatorParams) *Activator {
 		ipcSocketPathOverride: params.IPCSocketPathOverride,
 		baseDirOverride:       params.BaseDirOverride,
 		debugLogging:          params.DebugLogging,
+		projectMode:           params.ProjectMode,
 		envs:                  envs,
 	}
 }
@@ -103,11 +107,14 @@ func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
+	previous := a.readCurrentConfig()
+
 	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
 		BuildCacheEndpoint:    a.buildCacheEndpoint,
 		PushEnabled:           a.pushEnabled,
 		IPCSocketPathOverride: a.ipcSocketPathOverride,
 		BaseDirOverride:       a.baseDirOverride,
+		ProjectMode:           a.projectMode,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ccache config: %w", err)
@@ -118,6 +125,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 	if err := config.Save(a.logger, a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
+
+	a.restartHelperOnConfigDelta(ctx, previous, config)
 
 	a.ensureLogDir()
 
@@ -229,6 +238,36 @@ func addEnvVarToEnvman(
 	}
 
 	logger.TInfof("Set %s=%s via envman", key, value)
+}
+
+// readCurrentConfig loads the ccache config already on disk, or returns the zero
+// value when it does not exist yet — used only to spot activation-time deltas
+// (like a project-mode flip) that require a helper restart.
+func (a *Activator) readCurrentConfig() ccacheconfig.Config {
+	cfg, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
+	if err != nil {
+		return ccacheconfig.Config{}
+	}
+
+	return cfg
+}
+
+// restartHelperOnConfigDelta stops a helper whose in-memory config no longer
+// matches the freshly-written one on disk so the next request picks up the new
+// project mode instead of serving the previous invocation's setting.
+func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, next ccacheconfig.Config) {
+	if previous.ProjectMode == next.ProjectMode {
+		return
+	}
+	if !ccacheipc.IsListening(next.IPCEndpoint) { //nolint:contextcheck // IsListening uses its own short-lived context
+		return
+	}
+
+	a.logger.TInfof("ccache project scoping changed (%q → %q); restarting the storage helper.",
+		string(previous.ProjectMode), string(next.ProjectMode))
+	if err := StopStorageHelperAt(ctx, a.logger, next.IPCEndpoint); err != nil {
+		a.logger.Warnf("Failed to stop the ccache storage helper for project-mode reload: %s", err)
+	}
 }
 
 // ensureLogDir creates the dir the storage helper would otherwise create on its

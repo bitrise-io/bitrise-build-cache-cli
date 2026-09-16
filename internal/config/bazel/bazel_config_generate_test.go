@@ -555,3 +555,27 @@ build --bes_upload_mode=wait_for_upload_complete
 build --build_event_publish_all_actions
 build --bes_header='x-app-id=AppSlugValue'
 `
+
+func Test_Generate_ProjectMode(t *testing.T) {
+	got, err := TemplateInventory{
+		Common:                CommonTemplateInventory{AppSlug: "AppSlugValue"},
+		Cache:                 CacheTemplateInventory{Enabled: false},
+		BES:                   BESTemplateInventory{Enabled: false},
+		ProjectMode:           "opt-in",
+		ProjectMarkerFilename: ".bitrise-build-cache.json",
+	}.GenerateBazelrc(utils.DefaultTemplateProxy())
+	require.NoError(t, err)
+	assert.Contains(t, got, "common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MODE=opt-in")
+	assert.Contains(t, got, "common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MARKER=.bitrise-build-cache.json")
+}
+
+func Test_Generate_ProjectMode_EmptyOmitsLines(t *testing.T) {
+	got, err := TemplateInventory{
+		Common: CommonTemplateInventory{AppSlug: "AppSlugValue"},
+		Cache:  CacheTemplateInventory{Enabled: false},
+		BES:    BESTemplateInventory{Enabled: false},
+	}.GenerateBazelrc(utils.DefaultTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MODE")
+	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MARKER")
+}

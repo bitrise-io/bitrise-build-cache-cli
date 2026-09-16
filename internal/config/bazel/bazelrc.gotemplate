@@ -16,6 +16,10 @@ CLIPath is empty when the CLI is neither at a usable path nor on $PATH, and
 that takes the literal-header branch: a token on disk still authenticates,
 a helper that can't be spawned fails every build.
 */ -}}
+{{- if .ProjectMode }}
+common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MODE={{ .ProjectMode }}
+common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MARKER={{ .ProjectMarkerFilename }}
+{{ end }}
 {{- $useHelper := .Common.CLIPath -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
 build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}

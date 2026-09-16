@@ -23,6 +23,8 @@ func TestProjectScopeCheck_noMarkerIsOK(t *testing.T) {
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "no .bitrise-build-cache.json")
+	assert.Contains(t, res.Detail, "mode=always")
+	assert.Contains(t, res.Detail, "would gate this directory: no")
 }
 
 func TestProjectScopeCheck_emptyMarkerReportsPath(t *testing.T) {
@@ -92,7 +94,49 @@ func TestRun_includesProjectScopeCheck(t *testing.T) {
 	assert.True(t, found, "project-scope check should be part of the default check set")
 }
 
+func TestProjectScopeCheck_optInModeWithoutMarkerGates(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeMachineMode(t, home, "opt-in")
+
+	build := filepath.Join(home, "unrelated-project")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	t.Chdir(build)
+
+	d := &Doctor{Envs: map[string]string{}}
+
+	res := d.projectScopeCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "mode=opt-in")
+	assert.Contains(t, res.Detail, "would gate this directory: yes")
+}
+
+func TestProjectScopeCheck_optInModeWithMarkerDoesNotGate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeMachineMode(t, home, "opt-in")
+
+	build := filepath.Join(home, "opted-in")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	writeMarker(t, build, `{}`)
+	t.Chdir(build)
+
+	d := &Doctor{Envs: map[string]string{}}
+
+	res := d.projectScopeCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "mode=opt-in")
+	assert.Contains(t, res.Detail, "would gate this directory: no")
+}
+
 func writeMarker(t *testing.T, dir, body string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.ProjectMarkerFilename), []byte(body), 0o600))
+}
+
+func writeMachineMode(t *testing.T, home, mode string) {
+	t.Helper()
+	dir := filepath.Join(home, paths.BuildCacheMachineConfigDirRelative)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.BuildCacheMachineConfigFilename), []byte(`{"project_mode":"`+mode+`"}`), 0o644))
 }

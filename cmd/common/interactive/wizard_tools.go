@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
@@ -84,18 +85,18 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 	}
 }
 
-func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool) error {
+func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
 	for _, t := range tools {
 		var err error
 		switch interactiveTool(t) {
 		case toolGradle:
-			err = runInteractiveGradle(ctx, logger, envs, pushEnabled)
+			err = runInteractiveGradle(ctx, logger, envs, pushEnabled, projectMode)
 		case toolBazel:
-			err = runInteractiveBazel(logger, envs, pushEnabled)
+			err = runInteractiveBazel(logger, envs, pushEnabled, projectMode)
 		case toolXcode:
-			err = runInteractiveXcode(ctx, logger, envs, pushEnabled)
+			err = runInteractiveXcode(ctx, logger, envs, pushEnabled, projectMode)
 		case toolCcache:
-			err = runInteractiveCcache(ctx, logger, envs, pushEnabled)
+			err = runInteractiveCcache(ctx, logger, envs, pushEnabled, projectMode)
 		default:
 			err = fmt.Errorf("unsupported tool: %s", t)
 		}
@@ -121,7 +122,7 @@ func activateReactNativeBasedOnSelection(ctx context.Context, logger log.Logger,
 	return nil
 }
 
-func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
 	gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")
 	if err != nil {
 		return fmt.Errorf("expand Gradle home path: %w", err)
@@ -130,6 +131,7 @@ func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[strin
 	params := gradleconfig.DefaultActivateGradleParams()
 	params.Cache.Enabled = true
 	params.Cache.PushEnabled = pushEnabled
+	params.ProjectMode = projectMode
 
 	params.CLIPath = clibin.Resolve(logger)
 
@@ -170,7 +172,7 @@ func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[strin
 	return nil
 }
 
-func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
 	homeDir, err := pathutil.NewPathModifier().AbsPath("~")
 	if err != nil {
 		return fmt.Errorf("expand home path: %w", err)
@@ -179,6 +181,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 	params := bazelconfig.DefaultActivateBazelParams()
 	params.Cache.PushEnabled = pushEnabled
+	params.ProjectMode = projectMode
 
 	// Without this the bazelrc falls back to a literal Bearer token: it leaks the
 	// credential onto disk, and an OAuth PAT baked in that way expires with no way
@@ -221,12 +224,13 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	return nil
 }
 
-func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
 	activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 		PushEnabled:  pushEnabled,
 		DebugLogging: common.DebugFromFlag(),
 		Envs:         envs,
 		Logger:       logger,
+		ProjectMode:  projectMode,
 	})
 
 	if err := activator.Activate(ctx); err != nil {
@@ -236,10 +240,11 @@ func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[strin
 	return nil
 }
 
-func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
 	params := xcelerate.DefaultParams()
 	params.DebugLogging = common.DebugEnabled(params.DebugLogging)
 	params.PushEnabled = pushEnabled
+	params.ProjectMode = projectMode
 
 	if err := xcelerate.Activate(
 		ctx,

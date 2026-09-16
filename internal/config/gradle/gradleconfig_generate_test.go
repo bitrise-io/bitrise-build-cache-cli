@@ -157,6 +157,58 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
+func Test_GenerateInitGradle_ProjectModeOptInInjectsWalkUp(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode:           "opt-in",
+			ProjectMarkerFilename: ".bitrise-build-cache.json",
+			CIProvider:            "CIProviderValue",
+			Version:               "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.Contains(t, got, "var _bitriseMarkerDir: java.io.File? = settings.rootDir")
+	assert.Contains(t, got, `java.io.File(_bitriseMarkerDir, ".bitrise-build-cache.json").exists()`)
+	assert.Contains(t, got, "[bitrise-build-cache] project-mode=opt-in")
+	assert.Contains(t, got, "return@settingsEvaluated")
+}
+
+func Test_GenerateInitGradle_ProjectModeAlwaysOmitsWalkUp(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode:           "always",
+			ProjectMarkerFilename: ".bitrise-build-cache.json",
+			CIProvider:            "CIProviderValue",
+			Version:               "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "_bitriseMarkerDir")
+	assert.NotContains(t, got, "return@settingsEvaluated")
+}
+
 const expectedImports = `import io.bitrise.gradle.analytics.AnalyticsPluginExtension
 import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`

@@ -159,11 +159,36 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 		return fmt.Errorf("create IPC server: %w", err)
 	}
 
+	server.SetProjectMarkerFinder(h.newProjectMarkerFinder())
+
 	if err := server.Run(ctx); err != nil {
 		return fmt.Errorf("run IPC server: %w", err)
 	}
 
 	return nil
+}
+
+// newProjectMarkerFinder returns nil when scoping is not opt-in, so the request
+// processor treats every request as in-scope. Under opt-in it walks up from the
+// storage helper's cwd (which reflects the client's build root under detached
+// spawn) and returns whether a marker exists.
+func (h *StorageHelper) newProjectMarkerFinder() iccache.ProjectMarkerFinder {
+	if h.config.ProjectMode != "opt-in" {
+		return nil
+	}
+
+	return func() bool {
+		cwd, err := h.osProxy.Getwd()
+		if err != nil {
+			return false
+		}
+		_, marker, err := configcommon.WalkUpFindMarker(cwd, h.osProxy)
+		if err != nil {
+			return false
+		}
+
+		return marker != nil
+	}
 }
 
 // Stop gracefully shuts down a running storage helper. Returns nil without

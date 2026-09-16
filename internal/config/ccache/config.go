@@ -10,6 +10,7 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -49,19 +50,24 @@ type Params struct {
 	PushEnabled           bool
 	IPCSocketPathOverride string
 	BaseDirOverride       string
+	// ProjectMode is the machine-wide project scoping mode baked into the
+	// ccache config; the storage helper's request processor consults it and
+	// silently skips GET/PUT work when opt-in and no marker is found.
+	ProjectMode machineconfig.Mode
 }
 
 type Config struct {
-	ConfigVersion      string        `json:"configVersion,omitempty"`
-	WrittenAt          time.Time     `json:"writtenAt,omitzero"`
-	LogFile            string        `json:"logFile,omitempty"`
-	ErrLogFile         string        `json:"errLogFile,omitempty"`
-	IPCEndpoint        string        `json:"ipcEndpoint,omitempty"`
-	IdleTimeout        time.Duration `json:"idleTimeout,omitempty"`
-	PushEnabled        bool          `json:"pushEnabled"`
-	Enabled            bool          `json:"enabled"`
-	DebugLogging       bool          `json:"debugLogging,omitempty"`
-	BuildCacheEndpoint string        `json:"buildCacheEndpoint,omitempty"`
+	ConfigVersion      string             `json:"configVersion,omitempty"`
+	WrittenAt          time.Time          `json:"writtenAt,omitzero"`
+	LogFile            string             `json:"logFile,omitempty"`
+	ErrLogFile         string             `json:"errLogFile,omitempty"`
+	IPCEndpoint        string             `json:"ipcEndpoint,omitempty"`
+	IdleTimeout        time.Duration      `json:"idleTimeout,omitempty"`
+	PushEnabled        bool               `json:"pushEnabled"`
+	Enabled            bool               `json:"enabled"`
+	DebugLogging       bool               `json:"debugLogging,omitempty"`
+	BuildCacheEndpoint string             `json:"buildCacheEndpoint,omitempty"`
+	ProjectMode        machineconfig.Mode `json:"projectMode,omitempty"`
 
 	// AuthConfig is populated at runtime from the multiplatform analytics
 	// config (single canonical source for auth credentials on disk). Not
@@ -148,6 +154,7 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,
+		ProjectMode:        params.ProjectMode,
 	}, nil
 }
 

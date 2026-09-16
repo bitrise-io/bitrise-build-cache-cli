@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -38,6 +39,9 @@ type ActivatorParams struct {
 	NoSwiftCache         bool
 	BuildCacheSkipFlags  bool
 	DebugLogging         bool
+	// ProjectMode is the machine-wide project scoping mode threaded through to
+	// each sub-tool activator; sub-tools bake it into their own artifacts.
+	ProjectMode machineconfig.Mode
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -69,6 +73,7 @@ func NewActivator(params ActivatorParams) *Activator {
 			logger:       logger,
 			debugLogging: params.DebugLogging,
 			pushEnabled:  params.PushEnabled,
+			projectMode:  params.ProjectMode,
 		}
 	}
 
@@ -80,6 +85,7 @@ func NewActivator(params ActivatorParams) *Activator {
 			disablePrefixMapping: params.DisablePrefixMapping,
 			noSwiftCache:         params.NoSwiftCache,
 			buildCacheSkipFlags:  params.BuildCacheSkipFlags,
+			projectMode:          params.ProjectMode,
 		}
 	}
 
@@ -92,6 +98,7 @@ func NewActivator(params ActivatorParams) *Activator {
 			PushEnabled:  params.PushEnabled,
 			DebugLogging: params.DebugLogging,
 			Logger:       logger,
+			ProjectMode:  params.ProjectMode,
 		})
 	} else if params.CppEnabled && !params.GradleEnabled {
 		logger.Infof("(i) Skipping C++ (ccache) activation: Gradle is disabled — ccache only wraps the Android/Gradle native build path.")
@@ -275,6 +282,7 @@ type gradleActivator struct {
 	logger       log.Logger
 	debugLogging bool
 	pushEnabled  bool
+	projectMode  machineconfig.Mode
 }
 
 func (g *gradleActivator) activate(ctx context.Context) error {
@@ -290,6 +298,7 @@ func (g *gradleActivator) activate(ctx context.Context) error {
 	gradleParams := gradleconfig.DefaultActivateGradleParams()
 	gradleParams.Cache.Enabled = true
 	gradleParams.Cache.PushEnabled = g.pushEnabled
+	gradleParams.ProjectMode = g.projectMode
 
 	if err := gradleconfig.Activate(
 		ctx,
@@ -322,6 +331,7 @@ type xcodeActivator struct {
 	disablePrefixMapping bool
 	noSwiftCache         bool
 	buildCacheSkipFlags  bool
+	projectMode          machineconfig.Mode
 }
 
 func (x *xcodeActivator) activate(ctx context.Context) error {
@@ -331,6 +341,7 @@ func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping
 	xcodeParams.NoSwiftCache = x.noSwiftCache
 	xcodeParams.BuildCacheSkipFlags = x.buildCacheSkipFlags
+	xcodeParams.ProjectMode = x.projectMode
 
 	if err := xcelerate.Activate(
 		ctx,

@@ -10,8 +10,10 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 const (
@@ -49,6 +51,11 @@ type ActivateGradleParams struct {
 	TestDistro TestDistroParams
 
 	CLIPath string
+
+	// ProjectMode is the machine-wide project scoping mode baked into the init
+	// script; on ModeOptIn the settingsEvaluated block walks up from the build's
+	// root dir and skips buildCache/analytics wiring when no marker is found.
+	ProjectMode machineconfig.Mode
 }
 
 func DefaultActivateGradleParams() ActivateGradleParams {
@@ -145,12 +152,14 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	}
 
 	return PluginCommonTemplateInventory{
-		AuthToken:  authpkg.GradleToken(authConfig, authOrigin),
-		Debug:      isDebug,
-		AppSlug:    metadata.BitriseAppID,
-		CIProvider: metadata.CIProvider,
-		Version:    consts.GradleCommonPluginDepVersion,
-		CLIPath:    cliPath,
+		AuthToken:             authpkg.GradleToken(authConfig, authOrigin),
+		Debug:                 isDebug,
+		AppSlug:               metadata.BitriseAppID,
+		CIProvider:            metadata.CIProvider,
+		Version:               consts.GradleCommonPluginDepVersion,
+		CLIPath:               cliPath,
+		ProjectMode:           string(params.ProjectMode),
+		ProjectMarkerFilename: paths.ProjectMarkerFilename,
 	}
 }
 

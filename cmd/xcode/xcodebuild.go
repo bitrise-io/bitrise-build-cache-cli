@@ -50,6 +50,28 @@ func mergeDebugFlag(cfg xcelerate.Config) xcelerate.Config {
 	return cfg
 }
 
+// projectModeGates reports whether the machine-wide opt-in mode should silence
+// the wrapper for this invocation: only when opt-in is active AND no marker is
+// found walking up from the current dir. Any resolution error is treated as
+// "no marker" — the wrapper never fails a build because of the check.
+func projectModeGates(cfg xcelerate.Config, osProxy utils.OsProxy) bool {
+	if cfg.ProjectMode != "opt-in" {
+		return false
+	}
+
+	cwd, err := osProxy.Getwd()
+	if err != nil {
+		return true
+	}
+
+	_, marker, err := configcommon.WalkUpFindMarker(cwd, osProxy)
+	if err != nil {
+		return true
+	}
+
+	return marker == nil
+}
+
 const (
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
@@ -59,6 +81,7 @@ const (
 	NoXcresultFlag              = "--no-xcresult"
 	CreateXCFrameworkFlag       = "-create-xcframework"
 	ResultBundlePathFlag        = "-resultBundlePath"
+	ProjectModeOptInReason      = "project-mode=opt-in"
 	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
@@ -171,6 +194,11 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	if slices.Contains(origArgs, CreateXCFrameworkFlag) {
 		config.BuildCacheEnabled = false
 		disabledBy = append(disabledBy, CreateXCFrameworkFlag)
+	}
+
+	if projectModeGates(config, osProxy) {
+		config.BuildCacheEnabled = false
+		disabledBy = append(disabledBy, ProjectModeOptInReason)
 	}
 
 	// Query invocations short-circuit before creating the per-invocation log

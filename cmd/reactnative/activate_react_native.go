@@ -3,6 +3,7 @@ package reactnative
 import (
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
@@ -18,6 +19,7 @@ var (
 	disablePrefixMapping bool
 	noSwiftCache         bool
 	buildCacheSkipFlags  bool
+	projectMode          string
 )
 
 //nolint:gochecknoglobals
@@ -36,6 +38,12 @@ Note: This is a convenience activation method, if your activation requires fine-
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+		mode, err := common.ResolveAndPersistProjectMode(projectMode, logger)
+		if err != nil {
+			return fmt.Errorf("resolve project mode: %w", err)
+		}
+
 		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
 			GradleEnabled:        gradleEnabled,
 			XcodeEnabled:         xcodeEnabled,
@@ -45,6 +53,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 			NoSwiftCache:         noSwiftCache,
 			BuildCacheSkipFlags:  buildCacheSkipFlags,
 			DebugLogging:         common.DebugFromFlag(),
+			ProjectMode:          mode,
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
@@ -64,4 +73,5 @@ func init() {
 	activateReactNativeCmd.Flags().BoolVar(&disablePrefixMapping, "disable-prefix-mapping", false, "Disable Clang prefix-mapping flags for the Xcode build cache (see `activate xcode --disable-prefix-mapping`).")
 	activateReactNativeCmd.Flags().BoolVar(&noSwiftCache, "no-swift-cache", false, "Cache clang/Objective-C compilation only, leaving Swift uncached (see `activate xcode --no-swift-cache`).")
 	activateReactNativeCmd.Flags().BoolVar(&buildCacheSkipFlags, "cache-skip-flags", false, "Skip passing cache flags to xcodebuild except the socket path (see `activate xcode --cache-skip-flags`).")
+	activateReactNativeCmd.Flags().StringVar(&projectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }

@@ -69,6 +69,21 @@ initscript {
 }
 {{- if or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") }}
 settingsEvaluated {
+    {{- if eq .Common.ProjectMode "opt-in" }}
+    var _bitriseMarkerDir: java.io.File? = settings.rootDir
+    var _bitriseMarkerFound = false
+    while (_bitriseMarkerDir != null) {
+        if (java.io.File(_bitriseMarkerDir, "{{ .Common.ProjectMarkerFilename }}").exists()) {
+            _bitriseMarkerFound = true
+            break
+        }
+        _bitriseMarkerDir = _bitriseMarkerDir.parentFile
+    }
+    if (!_bitriseMarkerFound) {
+        println("[bitrise-build-cache] project-mode=opt-in, no {{ .Common.ProjectMarkerFilename }} at or above ${settings.rootDir}; skipping activation")
+        return@settingsEvaluated
+    }
+    {{- end }}
     {{- if eq .Cache.Usage "enabled" }}
     buildCache {
         local {

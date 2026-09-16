@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 func Test_activateGradleParams(t *testing.T) {
@@ -76,9 +77,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -113,9 +115,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:   UsageLevelDependency,
@@ -154,9 +157,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -195,9 +199,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -256,9 +261,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken: "WorkspaceIDValue:AuthTokenValue",
-					Version:   consts.GradleCommonPluginDepVersion,
-					CLIPath:   "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -300,11 +306,12 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
-					AppSlug:    "AppSlugValue",
-					CIProvider: "bitrise",
-					Version:    consts.GradleCommonPluginDepVersion,
-					CLIPath:    "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					AppSlug:               "AppSlugValue",
+					CIProvider:            "bitrise",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -347,12 +354,13 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:  "WorkspaceIDValue:AuthTokenValue",
-					Debug:      true,
-					AppSlug:    "AppSlugValue",
-					CIProvider: "bitrise",
-					Version:    consts.GradleCommonPluginDepVersion,
-					CLIPath:    "bitrise-build-cache",
+					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
+					Debug:                 true,
+					AppSlug:               "AppSlugValue",
+					CIProvider:            "bitrise",
+					Version:               consts.GradleCommonPluginDepVersion,
+					CLIPath:               "bitrise-build-cache",
+					ProjectMarkerFilename: paths.ProjectMarkerFilename,
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
