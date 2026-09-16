@@ -172,7 +172,7 @@ func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[strin
 	return nil
 }
 
-func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
+func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled bool, _ machineconfig.Mode) error {
 	homeDir, err := pathutil.NewPathModifier().AbsPath("~")
 	if err != nil {
 		return fmt.Errorf("expand home path: %w", err)
@@ -181,7 +181,6 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 	params := bazelconfig.DefaultActivateBazelParams()
 	params.Cache.PushEnabled = pushEnabled
-	params.ProjectMode = projectMode
 
 	// Without this the bazelrc falls back to a literal Bearer token: it leaks the
 	// credential onto disk, and an OAuth PAT baked in that way expires with no way

@@ -556,20 +556,11 @@ build --build_event_publish_all_actions
 build --bes_header='x-app-id=AppSlugValue'
 `
 
-func Test_Generate_ProjectMode(t *testing.T) {
-	got, err := TemplateInventory{
-		Common:                CommonTemplateInventory{AppSlug: "AppSlugValue"},
-		Cache:                 CacheTemplateInventory{Enabled: false},
-		BES:                   BESTemplateInventory{Enabled: false},
-		ProjectMode:           "opt-in",
-		ProjectMarkerFilename: ".bitrise-build-cache.json",
-	}.GenerateBazelrc(utils.DefaultTemplateProxy())
-	require.NoError(t, err)
-	assert.Contains(t, got, "common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MODE=opt-in")
-	assert.Contains(t, got, "common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MARKER=.bitrise-build-cache.json")
-}
-
-func Test_Generate_ProjectMode_EmptyOmitsLines(t *testing.T) {
+// The bazelrc must not carry a documentary --repo_env for project mode:
+// Bazel does not propagate --repo_env to credential-helper subprocesses, so a
+// user grepping the credhelper source for the env var finds nothing and files
+// a confused bug. The credhelper reads the machine config directly.
+func Test_Generate_ProjectMode_NotWrittenToBazelrc(t *testing.T) {
 	got, err := TemplateInventory{
 		Common: CommonTemplateInventory{AppSlug: "AppSlugValue"},
 		Cache:  CacheTemplateInventory{Enabled: false},

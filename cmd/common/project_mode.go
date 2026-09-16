@@ -10,12 +10,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// ProjectModeFlagName is the CLI flag every activate subcommand exposes to
-// override the machine-wide project scoping mode.
 const ProjectModeFlagName = "project-mode"
 
-// ProjectModeFlagUsage is the shared --project-mode help text so every activate
-// subcommand documents the flag the same way.
 const ProjectModeFlagUsage = "Project scoping mode ('always' or 'opt-in'). " +
 	"'always' activates cache for every project; 'opt-in' only activates when a " +
 	".bitrise-build-cache.json marker is found walking up from the build's CWD. " +
@@ -44,7 +40,10 @@ func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig
 		cfg = machineconfig.Config{}
 	}
 
-	effective := machineconfig.Effective(flag, cfg.ProjectMode)
+	effective, err := machineconfig.Effective(flag, cfg.ProjectMode)
+	if err != nil {
+		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
+	}
 
 	if flag != "" && cfg.ProjectMode != effective {
 		cfg.ProjectMode = effective

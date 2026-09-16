@@ -1,6 +1,4 @@
-// Package machine holds the machine-wide build-cache config file that records
-// user-level preferences the CLI carries across activations, such as the
-// project scoping mode.
+// Package machine holds the machine-wide build-cache config file.
 package machine
 
 import (
@@ -75,19 +73,22 @@ func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
 // Effective picks the mode a tool should honour given an explicit flag value
 // (empty when unset) and the mode currently on disk. Empty flag + empty current
 // falls back to ModeAlways so a machine without a stored preference keeps the
-// prior behavior.
-func Effective(flag string, current Mode) Mode {
+// prior behavior. An unknown flag returns an error — callers are expected to
+// pre-validate with ValidateFlag, so this is a safety net for a bypassed check.
+func Effective(flag string, current Mode) (Mode, error) {
 	if flag != "" {
 		switch Mode(flag) {
 		case ModeAlways, ModeOptIn:
-			return Mode(flag)
+			return Mode(flag), nil
 		}
+
+		return "", fmt.Errorf("invalid project mode %q", flag)
 	}
 	if current == ModeAlways || current == ModeOptIn {
-		return current
+		return current, nil
 	}
 
-	return ModeAlways
+	return ModeAlways, nil
 }
 
 // ValidateFlag is the flag-parsing companion to Effective: it accepts the empty

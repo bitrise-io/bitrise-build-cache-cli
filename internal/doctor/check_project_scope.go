@@ -14,7 +14,13 @@ func (d *Doctor) projectScopeCheck() Check {
 	return Check{
 		Name: "project-scope",
 		Diagnose: func(_ context.Context) Result {
-			mode := d.effectiveProjectMode()
+			mode, cfgErr := d.effectiveProjectMode()
+			if cfgErr != nil {
+				return Result{
+					State:  StateWarn,
+					Detail: fmt.Sprintf("machine config unreadable: %s", cfgErr),
+				}
+			}
 
 			cwd, err := d.osProxy().Getwd()
 			if err != nil {
@@ -46,21 +52,26 @@ func (d *Doctor) projectScopeCheck() Check {
 	}
 }
 
-func (d *Doctor) effectiveProjectMode() machineconfig.Mode {
+// effectiveProjectMode returns the mode currently on disk, or the fallback when
+// no preference was ever recorded. A read failure surfaces so the caller can
+// distinguish a genuinely-empty config from an unreadable one.
+func (d *Doctor) effectiveProjectMode() (machineconfig.Mode, error) {
 	p, err := paths.Default()
 	if err != nil {
-		return machineconfig.ModeAlways
+		// A machine without a resolvable home dir can never have stored a
+		// preference; treat that as the same "no override" case, not as an error.
+		return machineconfig.ModeAlways, nil //nolint:nilerr // see comment
 	}
 
 	cfg, err := machineconfig.Read(d.osProxy(), p, nil)
 	if err != nil {
-		return machineconfig.ModeAlways
+		return "", fmt.Errorf("read machine config: %w", err)
 	}
 	if cfg.ProjectMode == "" {
-		return machineconfig.ModeAlways
+		return machineconfig.ModeAlways, nil
 	}
 
-	return cfg.ProjectMode
+	return cfg.ProjectMode, nil
 }
 
 func yesNo(b bool) string {

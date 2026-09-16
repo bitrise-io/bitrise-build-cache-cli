@@ -8,7 +8,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
@@ -38,9 +37,6 @@ type ActivateBazelParams struct {
 	// absolute path normally; empty means fall back to the bare binary name,
 	// which Bazel looks up in $PATH.
 	CLIPath string
-	// ProjectMode is the machine-wide project scoping mode written into the
-	// generated bazelrc; the credential helper also consults it directly.
-	ProjectMode machineconfig.Mode
 }
 
 func DefaultActivateBazelParams() ActivateBazelParams {
@@ -77,12 +73,10 @@ func (params ActivateBazelParams) TemplateInventory(
 	rbeInventory := params.rbeTemplateInventory(logger, envs)
 
 	return TemplateInventory{
-		Common:                commonInventory,
-		Cache:                 cacheInventory,
-		BES:                   besInventory,
-		RBE:                   rbeInventory,
-		ProjectMode:           string(params.ProjectMode),
-		ProjectMarkerFilename: paths.ProjectMarkerFilename,
+		Common: commonInventory,
+		Cache:  cacheInventory,
+		BES:    besInventory,
+		RBE:    rbeInventory,
 	}, nil
 }
 

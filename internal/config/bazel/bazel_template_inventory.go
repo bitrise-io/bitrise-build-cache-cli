@@ -54,13 +54,6 @@ type TemplateInventory struct {
 	Cache  CacheTemplateInventory
 	BES    BESTemplateInventory
 	RBE    RBETemplateInventory
-	// ProjectMode is the machine-wide project scoping mode. Rendered into the
-	// bazelrc as `common --repo_env=BITRISE_BUILD_CACHE_PROJECT_MODE=<mode>`
-	// so the credential helper can consult it per-invocation.
-	ProjectMode string
-	// ProjectMarkerFilename is the marker filename the credential helper walks
-	// up looking for when ProjectMode is "opt-in".
-	ProjectMarkerFilename string
 }
 
 func (i CommonTemplateInventory) BuildUserHeaderValue() string {

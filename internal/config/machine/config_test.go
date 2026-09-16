@@ -89,16 +89,24 @@ func TestEffective(t *testing.T) {
 		flag    string
 		current Mode
 		want    Mode
+		wantErr bool
 	}{
-		{"flag wins over current", "opt-in", ModeAlways, ModeOptIn},
-		{"empty flag uses current", "", ModeOptIn, ModeOptIn},
-		{"empty flag + empty current falls back to always", "", "", ModeAlways},
-		{"invalid flag falls back to current", "garbage", ModeOptIn, ModeOptIn},
-		{"invalid flag + empty current falls back to always", "garbage", "", ModeAlways},
+		{name: "flag wins over current", flag: "opt-in", current: ModeAlways, want: ModeOptIn},
+		{name: "empty flag uses current", flag: "", current: ModeOptIn, want: ModeOptIn},
+		{name: "empty flag + empty current falls back to always", flag: "", current: "", want: ModeAlways},
+		{name: "invalid flag returns error", flag: "garbage", current: ModeOptIn, wantErr: true},
+		{name: "invalid flag + empty current returns error", flag: "garbage", current: "", wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, Effective(tc.flag, tc.current))
+			got, err := Effective(tc.flag, tc.current)
+			if tc.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

@@ -50,10 +50,7 @@ type Params struct {
 	PushEnabled           bool
 	IPCSocketPathOverride string
 	BaseDirOverride       string
-	// ProjectMode is the machine-wide project scoping mode baked into the
-	// ccache config; the storage helper's request processor consults it and
-	// silently skips GET/PUT work when opt-in and no marker is found.
-	ProjectMode machineconfig.Mode
+	ProjectMode           machineconfig.Mode
 }
 
 type Config struct {

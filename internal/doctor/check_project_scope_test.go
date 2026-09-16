@@ -111,6 +111,25 @@ func TestProjectScopeCheck_optInModeWithoutMarkerGates(t *testing.T) {
 	assert.Contains(t, res.Detail, "would gate this directory: yes")
 }
 
+func TestProjectScopeCheck_corruptMachineConfigSurfacesWarning(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir := filepath.Join(home, paths.BuildCacheMachineConfigDirRelative)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.BuildCacheMachineConfigFilename), []byte(`{not json`), 0o644))
+
+	build := filepath.Join(home, "some-project")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	t.Chdir(build)
+
+	d := &Doctor{Envs: map[string]string{}}
+
+	res := d.projectScopeCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "machine config unreadable")
+}
+
 func TestProjectScopeCheck_optInModeWithMarkerDoesNotGate(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

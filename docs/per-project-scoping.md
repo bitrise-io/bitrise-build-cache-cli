@@ -98,11 +98,9 @@ helper when it detects the delta so the next build reflects the new setting.
 
 ### Bazel: reactivation reload
 
-`.bazelrc` records `--repo_env=BITRISE_BUILD_CACHE_PROJECT_MODE=…`, but the
-credential helper reads the mode from `~/.bitrise/build-cache/config.json`
-directly (Bazel does not propagate `--repo_env` to credential-helper
-subprocesses). A mid-session mode flip therefore takes effect on the next
-`bazel` invocation.
+The credential helper reads the mode from `~/.bitrise/build-cache/config.json`
+directly. A mid-session mode flip therefore takes effect on the next `bazel`
+invocation.
 
 ## What this file used to describe (retracted)
 

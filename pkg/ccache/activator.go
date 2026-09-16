@@ -127,6 +127,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 	}
 
 	a.restartHelperOnConfigDelta(ctx, previous, config)
+	a.ensureHelperServing(ctx, config.IPCEndpoint)
 
 	a.ensureLogDir()
 
@@ -160,8 +161,6 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
-	a.ensureHelperServing(ctx, config.IPCEndpoint)
-
 	a.logger.TInfof(ActivateCppSuccessful)
 
 	return nil
@@ -178,6 +177,8 @@ var (
 	startHelperFn     = func(socketPath string, opts ...ccacheipc.StartOption) error {
 		return ccacheipc.NewSocket(socketPath).Start(opts...)
 	}
+	isListeningFn = ccacheipc.IsListening
+	stopHelperFn  = StopStorageHelperAt
 )
 
 // ensureHelperServing starts the storage helper if nothing answers its socket.
@@ -240,9 +241,8 @@ func addEnvVarToEnvman(
 	logger.TInfof("Set %s=%s via envman", key, value)
 }
 
-// readCurrentConfig loads the ccache config already on disk, or returns the zero
-// value when it does not exist yet — used only to spot activation-time deltas
-// (like a project-mode flip) that require a helper restart.
+// readCurrentConfig returns the zero value when nothing is on disk yet, so
+// callers can diff against the freshly-built config unconditionally.
 func (a *Activator) readCurrentConfig() ccacheconfig.Config {
 	cfg, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
 	if err != nil {
@@ -259,13 +259,13 @@ func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, ne
 	if previous.ProjectMode == next.ProjectMode {
 		return
 	}
-	if !ccacheipc.IsListening(next.IPCEndpoint) { //nolint:contextcheck // IsListening uses its own short-lived context
+	if !isListeningFn(next.IPCEndpoint) {
 		return
 	}
 
 	a.logger.TInfof("ccache project scoping changed (%q → %q); restarting the storage helper.",
 		string(previous.ProjectMode), string(next.ProjectMode))
-	if err := StopStorageHelperAt(ctx, a.logger, next.IPCEndpoint); err != nil {
+	if err := stopHelperFn(ctx, a.logger, next.IPCEndpoint); err != nil {
 		a.logger.Warnf("Failed to stop the ccache storage helper for project-mode reload: %s", err)
 	}
 }
