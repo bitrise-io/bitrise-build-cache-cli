@@ -48,7 +48,7 @@ func TestWrite_AtomicRenameLeavesNoTempFile(t *testing.T) {
 	p := paths.FromHome(home)
 	require.NoError(t, Write(Config{ProjectMode: ModeAlways}, utils.DefaultOsProxy{}, p))
 
-	entries, err := os.ReadDir(p.BuildCacheMachineConfigDir())
+	entries, err := os.ReadDir(p.BitriseCacheRoot())
 	require.NoError(t, err)
 
 	for _, e := range entries {
@@ -61,7 +61,7 @@ func TestRead_MalformedJSONSurfacesError(t *testing.T) {
 
 	home := t.TempDir()
 	p := paths.FromHome(home)
-	require.NoError(t, os.MkdirAll(p.BuildCacheMachineConfigDir(), 0o755))
+	require.NoError(t, os.MkdirAll(p.BitriseCacheRoot(), 0o755))
 	require.NoError(t, os.WriteFile(p.MachineConfigFile(), []byte(`{not json`), 0o644))
 
 	_, err := Read(utils.DefaultOsProxy{}, p, nil)
@@ -73,7 +73,7 @@ func TestRead_UnknownModeNormalisesToAlways(t *testing.T) {
 
 	home := t.TempDir()
 	p := paths.FromHome(home)
-	require.NoError(t, os.MkdirAll(p.BuildCacheMachineConfigDir(), 0o755))
+	require.NoError(t, os.MkdirAll(p.BitriseCacheRoot(), 0o755))
 	require.NoError(t, os.WriteFile(p.MachineConfigFile(), []byte(`{"project_mode":"weird"}`), 0o644))
 
 	cfg, err := Read(utils.DefaultOsProxy{}, p, nil)
@@ -127,7 +127,7 @@ func TestWrite_CreatesParentDir(t *testing.T) {
 	p := paths.FromHome(home)
 
 	// The parent dir does not exist yet.
-	_, err := os.Stat(p.BuildCacheMachineConfigDir())
+	_, err := os.Stat(p.BitriseCacheRoot())
 	require.True(t, os.IsNotExist(err))
 
 	require.NoError(t, Write(Config{ProjectMode: ModeAlways}, utils.DefaultOsProxy{}, p))

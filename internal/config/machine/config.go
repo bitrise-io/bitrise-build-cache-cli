@@ -48,7 +48,7 @@ func Read(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (Config, erro
 
 // Write atomically persists the config file, creating its parent dir on demand.
 func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
-	dir := p.BuildCacheMachineConfigDir()
+	dir := p.BitriseCacheRoot()
 	if err := osProxy.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create machine config dir %s: %w", dir, err)
 	}

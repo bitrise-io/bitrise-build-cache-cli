@@ -44,7 +44,7 @@ same as no marker at all.
 ## Mode
 
 The CLI remembers a machine-wide `project_mode` in
-`~/.bitrise/build-cache/config.json`:
+`~/.bitrise/cache/config.json`:
 
 ```json
 {
@@ -98,7 +98,7 @@ helper when it detects the delta so the next build reflects the new setting.
 
 ### Bazel: reactivation reload
 
-The credential helper reads the mode from `~/.bitrise/build-cache/config.json`
+The credential helper reads the mode from `~/.bitrise/cache/config.json`
 directly. A mid-session mode flip therefore takes effect on the next `bazel`
 invocation.
 

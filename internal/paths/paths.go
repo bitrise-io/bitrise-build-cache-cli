@@ -94,10 +94,6 @@ const (
 	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
 	ProjectMarkerFilename = ".bitrise-build-cache.json"
 
-	// BuildCacheMachineConfigDirRelative is the per-user dir holding the machine-wide
-	// build-cache config file (~/.bitrise/build-cache).
-	BuildCacheMachineConfigDirRelative = BitriseRootRelative + "/build-cache"
-
 	// BuildCacheMachineConfigFilename is the filename of the machine-wide config
 	// file that records the project scoping mode.
 	BuildCacheMachineConfigFilename = "config.json"
@@ -189,19 +185,19 @@ func (p Paths) BitriseRoot() string {
 	return filepath.Join(p.Home, BitriseRootRelative)
 }
 
-// BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.
-func (p Paths) BitriseCacheDir(tool string) string {
-	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir, tool)
+// BitriseCacheRoot is the per-user cache root ~/.bitrise/cache.
+func (p Paths) BitriseCacheRoot() string {
+	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir)
 }
 
-// BuildCacheMachineConfigDir is the per-user dir holding the machine-wide config.
-func (p Paths) BuildCacheMachineConfigDir() string {
-	return filepath.Join(p.Home, BuildCacheMachineConfigDirRelative)
+// BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.
+func (p Paths) BitriseCacheDir(tool string) string {
+	return filepath.Join(p.BitriseCacheRoot(), tool)
 }
 
 // MachineConfigFile is the absolute path of the machine-wide build-cache config file.
 func (p Paths) MachineConfigFile() string {
-	return filepath.Join(p.BuildCacheMachineConfigDir(), BuildCacheMachineConfigFilename)
+	return filepath.Join(p.BitriseCacheRoot(), BuildCacheMachineConfigFilename)
 }
 
 // BitriseCacheFile returns a file path under BitriseCacheDir(tool).
