@@ -166,7 +166,6 @@ func TestRun_ProjectModeOptInWithoutMarkerReturnsEmptyHeaders(t *testing.T) {
 	t.Setenv("HOME", home)
 	writeMachineConfig(t, home, `{"project_mode":"opt-in"}`)
 
-	// A brand-new build dir without a marker file.
 	buildDir := home + "/build-a"
 	require.NoError(t, mustMkdir(buildDir))
 	t.Chdir(buildDir)

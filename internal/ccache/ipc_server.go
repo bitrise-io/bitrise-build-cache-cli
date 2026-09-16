@@ -55,8 +55,6 @@ func NewServer(
 	}, nil
 }
 
-// SetProjectMarkerFinder installs the marker finder consulted by the request
-// processor when the config is in opt-in mode. Nil means "no gating".
 func (s *IpcServer) SetProjectMarkerFinder(f ProjectMarkerFinder) {
 	s.projectMarkerPresent = f
 }

@@ -106,9 +106,6 @@ func optedOut() bool {
 		return false
 	}
 
-	// A transient read failure treats the request as opted-in: the helper has no
-	// stderr channel Bazel surfaces, so silently authorising the build beats
-	// failing every RPC on a flake.
 	cfg, err := machineconfig.Read(osProxy, p, nil)
 	if err != nil || cfg.ProjectMode != machineconfig.ModeOptIn {
 		return false

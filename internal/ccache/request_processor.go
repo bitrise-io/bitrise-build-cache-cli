@@ -64,8 +64,6 @@ func newRequestProcessor(
 	}
 }
 
-// optedOut reports whether the machine-wide opt-in mode should silence this
-// request. A nil finder is treated as always in-scope.
 func (p *requestProcessor) optedOut() bool {
 	if p.config.ProjectMode != machineconfig.ModeOptIn {
 		return false

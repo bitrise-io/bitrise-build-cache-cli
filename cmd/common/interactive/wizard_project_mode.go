@@ -10,11 +10,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// projectModePrompt runs the tool selection step's sibling: it asks whether to
-// activate for every project on this machine or gate on an opt-in marker file.
-// The chosen mode is written back to the machine config so subsequent
-// activations inherit it. A read failure surfaces as "always" — the wizard is
-// never allowed to block on a missing/malformed config file.
 func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 	osProxy := utils.DefaultOsProxy{}
 

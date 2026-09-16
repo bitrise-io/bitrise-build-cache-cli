@@ -42,10 +42,7 @@ type Params struct {
 	ProxySocketPathOverride     string
 	PushEnabled                 bool
 	XcodebuildTimestampsEnabled bool
-	// ProjectMode is the machine-wide project scoping mode baked into the
-	// xcelerate config; the xcodebuild wrapper gates the proxy startup on the
-	// marker walk-up when it is "opt-in".
-	ProjectMode machineconfig.Mode
+	ProjectMode                 machineconfig.Mode
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -85,14 +82,11 @@ type Config struct {
 	LegacyAuthConfig multiplatformconfig.AnalyticsAuthConfig `json:"authConfig,omitzero"`
 	// AuthOrigin says where AuthConfig came from. Runtime only — it is what
 	// tells a CI JWT (sent as-is) from a PAT (prefixed with the workspace).
-	AuthOrigin           authpkg.Origin `json:"-"`
-	ExternalAppID        string         `json:"externalAppId,omitempty"`
-	ExternalBuildID      string         `json:"externalBuildId,omitempty"`
-	ExternalWorkflowName string         `json:"externalWorkflowName,omitempty"`
-	// ProjectMode is the machine-wide project scoping mode captured at activate
-	// time. The xcodebuild wrapper reads it and, when "opt-in", walks up from
-	// the CWD looking for the project marker before starting the proxy.
-	ProjectMode machineconfig.Mode `json:"projectMode,omitempty"`
+	AuthOrigin           authpkg.Origin     `json:"-"`
+	ExternalAppID        string             `json:"externalAppId,omitempty"`
+	ExternalBuildID      string             `json:"externalBuildId,omitempty"`
+	ExternalWorkflowName string             `json:"externalWorkflowName,omitempty"`
+	ProjectMode          machineconfig.Mode `json:"projectMode,omitempty"`
 }
 
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs map[string]string) (Config, error) {

@@ -17,10 +17,6 @@ const ProjectModeFlagUsage = "Project scoping mode ('always' or 'opt-in'). " +
 	".bitrise-build-cache.json marker is found walking up from the build's CWD. " +
 	"Empty keeps the machine-wide setting; setting a value updates and persists it."
 
-// ResolveAndPersistProjectMode reads the machine-wide config, resolves the
-// effective mode from an optional explicit flag value, and persists the value
-// back when the flag was set. Returns the effective mode the caller should
-// bake into the tool's activation artifact.
 func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig.Mode, error) {
 	if err := machineconfig.ValidateFlag(flag); err != nil {
 		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)

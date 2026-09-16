@@ -126,7 +126,6 @@ func TestWrite_CreatesParentDir(t *testing.T) {
 	home := t.TempDir()
 	p := paths.FromHome(home)
 
-	// The parent dir does not exist yet.
 	_, err := os.Stat(p.BitriseCacheRoot())
 	require.True(t, os.IsNotExist(err))
 

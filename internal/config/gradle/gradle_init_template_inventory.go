@@ -46,11 +46,7 @@ type PluginCommonTemplateInventory struct {
 
 	CLIPath string
 
-	// ProjectMode is the machine-wide project scoping mode. When "opt-in", the
-	// init script gates buildCache/analytics wiring on the presence of
-	// ProjectMarkerFilename walking up from settings.rootDir.
-	ProjectMode string
-	// ProjectMarkerFilename is the marker filename the walk-up looks for.
+	ProjectMode           string
 	ProjectMarkerFilename string
 }
 

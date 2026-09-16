@@ -52,9 +52,6 @@ type ActivateGradleParams struct {
 
 	CLIPath string
 
-	// ProjectMode is the machine-wide project scoping mode baked into the init
-	// script; on ModeOptIn the settingsEvaluated block walks up from the build's
-	// root dir and skips buildCache/analytics wiring when no marker is found.
 	ProjectMode machineconfig.Mode
 }
 

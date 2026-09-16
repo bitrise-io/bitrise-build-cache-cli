@@ -39,9 +39,7 @@ type ActivatorParams struct {
 	NoSwiftCache         bool
 	BuildCacheSkipFlags  bool
 	DebugLogging         bool
-	// ProjectMode is the machine-wide project scoping mode threaded through to
-	// each sub-tool activator; sub-tools bake it into their own artifacts.
-	ProjectMode machineconfig.Mode
+	ProjectMode          machineconfig.Mode
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger

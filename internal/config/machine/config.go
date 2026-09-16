@@ -20,7 +20,6 @@ const (
 	ModeOptIn  Mode = "opt-in"
 )
 
-// Config is the shape of the machine-wide config file.
 type Config struct {
 	ProjectMode Mode `json:"project_mode,omitempty"`
 }
@@ -91,8 +90,6 @@ func Effective(flag string, current Mode) (Mode, error) {
 	return ModeAlways, nil
 }
 
-// ValidateFlag is the flag-parsing companion to Effective: it accepts the empty
-// string (meaning "keep the stored value") and either of the two known modes.
 func ValidateFlag(flag string) error {
 	if flag == "" {
 		return nil

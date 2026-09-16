@@ -13,8 +13,6 @@ import (
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 )
 
-// fakeRestartSeams swaps isListeningFn / stopHelperFn with recording fakes and
-// restores the previous values on t.Cleanup. Returns a stop-call counter.
 func fakeRestartSeams(t *testing.T, listening bool) *int {
 	t.Helper()
 

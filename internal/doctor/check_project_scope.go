@@ -52,9 +52,6 @@ func (d *Doctor) projectScopeCheck() Check {
 	}
 }
 
-// effectiveProjectMode returns the mode currently on disk, or the fallback when
-// no preference was ever recorded. A read failure surfaces so the caller can
-// distinguish a genuinely-empty config from an unreadable one.
 func (d *Doctor) effectiveProjectMode() (machineconfig.Mode, error) {
 	p, err := paths.Default()
 	if err != nil {
