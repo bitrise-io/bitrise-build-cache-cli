@@ -30,7 +30,7 @@ const (
 	ProjectTempDirKey           = "PROJECT_TEMP_DIR"
 	DerivedDataPathFlag         = "-derivedDataPath"
 
-	// Used instead of -derivedDataPath on query actions, which reject that without -scheme.
+	// Points a query action at the build's checkout dir when -derivedDataPath is not accepted.
 	ClonedSourcePackagesDirPathFlag = "-clonedSourcePackagesDirPath"
 )
 

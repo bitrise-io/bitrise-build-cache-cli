@@ -1543,6 +1543,26 @@ workflows:
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Running health checks'
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Health check result:'
     - script:
+        title: Assert a query action is told about the managed DerivedData
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # React Native's installApp locates the built .app from -showBuildSettings,
+            # so a query action has to be handed the same DerivedData as the build.
+            # This scheme is package-backed and reports no build settings at all, so
+            # assert on the argv the wrapper ran; rn-seek-ios-e2e asserts the path that
+            # comes back out.
+            # No -json: it flips the wrapper to silent logging, which keeps the argv
+            # line out of stderr and in the xcelerate log only.
+            xcodebuild -showBuildSettings \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture > /dev/null 2> query.log
+
+            cp query.log "$BITRISE_DEPLOY_DIR/"
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/query.log" \
+              "derivedDataPath ${BITRISE_XCODE_DERIVED_DATA_PATH:?activate must export the DerivedData root}"
+    - script:
         title: 'ACI-4782: assert the cacheBlobStats payload is present and self-consistent'
         inputs:
         - content: |-

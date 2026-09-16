@@ -603,6 +603,103 @@ func Test_queryActionSourcePackages(t *testing.T) {
 	})
 }
 
+// A query action must report the DerivedData the build writes to, or consumers resolving products
+// via TARGET_BUILD_DIR (React Native's installApp) look in the default location.
+func Test_queryActionDerivedData(t *testing.T) {
+	newRunner := func(argsMock *xcodeargsMocks.XcodeArgsMock, capturedArgs *[]string, opts ...func(*xcode.XcodebuildRunner)) *xcode.XcodebuildRunner {
+		r := &xcode.XcodebuildRunner{
+			Config:       xcelerate.Config{BuildCacheEnabled: true, ProxySocketPath: "/tmp/p.sock"},
+			Metadata:     common.CacheConfigMetadata{},
+			InvocationID: uuid.NewString(),
+			Logger:       mockLogger,
+			CacheLogger:  mockLogger,
+			XcodeRunner: &mocks.XcodeRunnerMock{
+				RunFunc: func(_ context.Context, args []string) xcodeargs.RunStats {
+					*capturedArgs = append([]string(nil), args...)
+
+					return xcodeargs.RunStats{}
+				},
+			},
+			ProxySessionClient: &mocks.SessionClientMock{},
+			XcodeArgs:          argsMock,
+			Paths:              paths.FromHome("/h"),
+		}
+		for _, o := range opts {
+			o(r)
+		}
+
+		return r
+	}
+
+	newArgs := func(accepts bool, userDD string) *xcodeargsMocks.XcodeArgsMock {
+		return &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc:         func() bool { return false },
+			AcceptsDerivedDataPathFunc: func() bool { return accepts },
+			ResolvesPackagesFunc:       func() bool { return false },
+			DerivedDataPathFunc:        func() string { return userDD },
+			ProjectDirFunc:             func() string { return "/work/app" },
+			ProjectTempDirFunc:         func() string { return "" },
+			UserOtherCFlagsFunc:        func() string { return "" },
+			ArgsFunc:                   func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			CommandFunc:                func() string { return "xcodebuild" },
+			ShortCommandFunc:           func() string { return "xcodebuild" },
+		}
+	}
+
+	t.Run("injects the managed DerivedData when argv accepts the flag", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(true, ""), &captured)
+
+		_ = r.Run(context.Background())
+
+		require.Contains(t, captured, xcodeargs.DerivedDataPathFlag)
+		idx := indexOf(captured, xcodeargs.DerivedDataPathFlag)
+		require.Less(t, idx+1, len(captured))
+		assert.Contains(t, captured[idx+1], "/h/.bitrise/cache/xcode-dd/")
+	})
+
+	t.Run("matches the path the build action injects", func(t *testing.T) {
+		var queryArgv, buildArgv []string
+		_ = newRunner(newArgs(true, ""), &queryArgv).Run(context.Background())
+
+		buildArgs := newArgs(true, "")
+		buildArgs.HasBuildActionFunc = func() bool { return true }
+		_ = newRunner(buildArgs, &buildArgv).Run(context.Background())
+
+		qi, bi := indexOf(queryArgv, xcodeargs.DerivedDataPathFlag), indexOf(buildArgv, xcodeargs.DerivedDataPathFlag)
+		require.GreaterOrEqual(t, qi, 0)
+		require.GreaterOrEqual(t, bi, 0)
+		assert.Equal(t, buildArgv[bi+1], queryArgv[qi+1])
+	})
+
+	t.Run("skips argv that xcodebuild would reject the flag on", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(false, ""), &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.DerivedDataPathFlag)
+	})
+
+	t.Run("leaves a user-supplied derivedDataPath alone", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(true, "/user/dd"), &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.DerivedDataPathFlag)
+	})
+
+	t.Run("--no-prefix-map opts out", func(t *testing.T) {
+		var captured []string
+		r := newRunner(newArgs(true, ""), &captured, func(rr *xcode.XcodebuildRunner) { rr.NoPrefixMap = true })
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.DerivedDataPathFlag)
+	})
+}
+
 func Test_xcodebuildCmdFn_NoSwiftCache(t *testing.T) {
 	var receivedAdditional map[string]string
 	xcodeArgProvider := xcodeargsMocks.XcodeArgsMock{
