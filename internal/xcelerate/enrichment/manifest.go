@@ -227,6 +227,10 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 
 // Command mirrors "<primary command> <scheme>". Empty scheme collapses to just
 // the command. Unknown-command primary returns empty (caller should skip).
+// Divergence from the wrapper's `ShortCommand()` is intentional: the wrapper
+// renders `build [scheme / testPlan / config]` from argv, but the manifest
+// carries only the scheme name — so downstream analytics for wrapper-less
+// runs shows a coarser command string here.
 func (g ManifestEntryGroup) Command() string {
 	p := g.Primary()
 	if p.Command() == CommandUnknown {
