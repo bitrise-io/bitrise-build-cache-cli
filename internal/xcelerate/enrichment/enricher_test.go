@@ -19,6 +19,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
+// singleEntryGroup wraps one entry as a group so the pre-grouping test cases
+// keep exercising the same enricher behaviour after the signature switch.
+func singleEntryGroup(e enrichment.ManifestEntry) enrichment.ManifestEntryGroup {
+	return enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{e}}
+}
+
 func TestEnricher_MatchedPendingReusesID(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
@@ -46,14 +52,14 @@ func TestEnricher_MatchedPendingReusesID(t *testing.T) {
 		XcodeBuildNumber: "16C5032a",
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		UUID:       "manifest-uuid",
 		Signature:  "Build MyScheme",
 		SchemeName: "MyScheme",
 		Status:     "S",
 		Start:      base.Add(2 * time.Second),
 		Stop:       base.Add(8 * time.Second),
-	})
+	}))
 
 	assert.Equal(t, "kept-id", captured.InvocationID)
 	assert.Equal(t, "build MyScheme", captured.Command)
@@ -89,7 +95,7 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 		Start:     time.Now(),
 		Stop:      time.Now().Add(3 * time.Second),
 	}
-	e.Enrich(entry)
+	e.Enrich(singleEntryGroup(entry))
 
 	assert.NotEmpty(t, captured.InvocationID)
 	assert.False(t, captured.Success)
@@ -118,13 +124,13 @@ func TestEnricher_CommandUnknown_SkipsPUT(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	for _, sig := range []string{"Resolve Packages", "Update Signing", "Sync Localizations"} {
-		e.Enrich(enrichment.ManifestEntry{
+		e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 			UUID:      "side-effect-" + sig,
 			Signature: sig,
 			Status:    "S",
 			Start:     base.Add(1 * time.Second),
 			Stop:      base.Add(2 * time.Second),
-		})
+		}))
 	}
 
 	assert.Zero(t, puts, "side-effect manifests must not trigger PutInvocation")
@@ -153,10 +159,11 @@ func TestEnricher_PutFailure_DoesNotRemovePending(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(enrichment.ManifestEntry{
-		Start: base.Add(1 * time.Second),
-		Stop:  base.Add(2 * time.Second),
-	})
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     base.Add(1 * time.Second),
+		Stop:      base.Add(2 * time.Second),
+	}))
 
 	remaining, err := store.Load()
 	require.NoError(t, err)
@@ -188,11 +195,11 @@ func TestEnricher_MetadataForwarded(t *testing.T) {
 		Client: mock,
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
-	})
+	}))
 
 	assert.Equal(t, "ws-1", captured.BitriseOrgSlug)
 	assert.Equal(t, "app-1", captured.BitriseAppSlug)
@@ -215,11 +222,11 @@ func TestEnricher_UpdatesHealth_OnSuccess(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
-	})
+	}))
 
 	snap, err := enrichment.LoadHealth(hw.Path)
 	require.NoError(t, err)
@@ -246,11 +253,11 @@ func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
-	})
+	}))
 
 	snap, err := enrichment.LoadHealth(hw.Path)
 	require.NoError(t, err)
@@ -281,11 +288,11 @@ func TestEnricher_PutFailure_RecordsAttempt(t *testing.T) {
 		Now:    func() time.Time { return base.Add(time.Minute) },
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     base.Add(2 * time.Second),
 		Stop:      base.Add(8 * time.Second),
-	})
+	}))
 
 	loaded, err := store.Load()
 	require.NoError(t, err)
@@ -313,12 +320,12 @@ func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		UUID:      "orphan",
 		Signature: "Archive S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
-	})
+	}))
 
 	loaded, err := store.Load()
 	require.NoError(t, err)
@@ -358,13 +365,13 @@ func TestEnricher_MatchedWithHandledMarker_SkipsPUT(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature:  "Build MyScheme",
 		SchemeName: "MyScheme",
 		Status:     "S",
 		Start:      base.Add(2 * time.Second),
 		Stop:       base.Add(8 * time.Second),
-	})
+	}))
 
 	assert.Zero(t, putCalls, "PUT must be skipped when the wrapper already handled the invocation")
 
@@ -399,13 +406,13 @@ func TestEnricher_MatchedWithoutHandledMarker_PUTs(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature:  "Build MyScheme",
 		SchemeName: "MyScheme",
 		Status:     "S",
 		Start:      base.Add(2 * time.Second),
 		Stop:       base.Add(8 * time.Second),
-	})
+	}))
 
 	assert.Equal(t, "kept-id", captured.InvocationID, "matched pending without marker must PUT the enriched payload")
 }
@@ -432,11 +439,11 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
-	})
+	}))
 
 	assert.NotEmpty(t, captured.InvocationID)
 	assert.NotEqual(t, "stray", captured.InvocationID, "orphan mint must not accidentally reuse an unrelated marker ID")
@@ -464,12 +471,12 @@ func TestEnricher_MatchedSuccess_TicksLastMatched(t *testing.T) {
 		Now:    func() time.Time { return base },
 	}
 
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Status:    "S",
 		Start:     base.Add(2 * time.Second),
 		Stop:      base.Add(8 * time.Second),
-	})
+	}))
 
 	snap, err := enrichment.LoadHealth(hw.Path)
 	require.NoError(t, err)
@@ -495,11 +502,11 @@ func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
 	}
 
 	// No pending record → orphan mint path → unmatched.
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
-	})
+	}))
 
 	snap, err := enrichment.LoadHealth(hw.Path)
 	require.NoError(t, err)
@@ -531,13 +538,88 @@ func TestEnricher_DurationIsFromManifest(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(enrichment.ManifestEntry{
+	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Status:    "S",
 		Start:     base.Add(1 * time.Second),
 		Stop:      base.Add(43 * time.Second),
-	})
+	}))
 
 	assert.Equal(t, "manifest-authoritative", captured.InvocationID)
 	assert.Equal(t, int64(42_000), captured.DurationMs, "watcher duration must come from Stop-Start of the manifest entry, not the pending record's wrapper-side value")
+}
+
+func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u2", SchemeName: "S", Signature: "Test S", Status: "S", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
+	}}
+	e.Enrich(group)
+
+	assert.Equal(t, "test S", captured.Command, "aggregate command uses the primary (test > build) plus scheme")
+	assert.Equal(t, "Test S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
+	assert.Equal(t, int64(45_000), captured.DurationMs, "aggregate duration = max(Stop) − min(Start)")
+	assert.True(t, captured.Success)
+	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")
+}
+
+func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u2", SchemeName: "S", Signature: "Test S", Status: "E", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
+	}}
+	e.Enrich(group)
+
+	assert.False(t, captured.Success, "any failed entry fails the aggregate")
+}
+
+func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	puts := 0
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error {
+			puts++
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich(enrichment.ManifestEntryGroup{})
+
+	assert.Zero(t, puts)
 }

@@ -41,8 +41,12 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-func (e *Enricher) Enrich(entry ManifestEntry) {
+func (e *Enricher) Enrich(group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
+
+	if len(group.Entries) == 0 {
+		return
+	}
 
 	var (
 		pending []PendingRecord
@@ -56,13 +60,14 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 		}
 	}
 
-	if entry.Command() == CommandUnknown {
-		logger.Debugf("Enrichment PUT skipped for manifest %s: side-effect (sig=%q scheme=%q)", entry.UUID, entry.Signature, entry.SchemeName)
+	command := group.Command()
+	if command == "" {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: side-effect only (uuids=%v)", group.SchemeName(), group.UUIDs())
 
 		return
 	}
 
-	invocationID, matched := Correlate(entry, pending)
+	invocationID, matched := Correlate(groupAsCorrelationSpan(group), pending)
 	if !matched {
 		invocationID = uuid.NewString()
 	}
@@ -80,19 +85,15 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 	}
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
-		InvocationDate:   entry.Start,
+		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
-		Duration:         entry.Stop.Sub(entry.Start).Milliseconds(),
-		Command:          string(entry.Command()),
-		FullCommand:      entry.Signature,
-		Success:          entry.Success(),
+		Duration:         group.Duration().Milliseconds(),
+		Command:          command,
+		FullCommand:      group.FullCommand(),
+		Success:          group.Success(),
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 	}, e.Auth, e.Metadata)
-
-	if scheme := entry.SchemeName; scheme != "" {
-		inv.Command = string(entry.Command()) + " " + scheme
-	}
 
 	TickAttempt(e.Health, e.Logger, e.now())
 
@@ -106,13 +107,24 @@ func (e *Enricher) Enrich(entry ManifestEntry) {
 
 	TickSuccess(e.Health, e.Logger, e.now(), matched)
 
-	logger.Infof("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s)", invocationID, matched, entry.SchemeName, entry.Command())
+	logger.Infof("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s entries=%d)", invocationID, matched, group.SchemeName(), command, len(group.Entries))
 
 	if matched && e.Store != nil {
 		if err := e.Store.Remove(invocationID); err != nil {
 			logger.Warnf("Failed to remove pending invocation %s after enrichment: %s", invocationID, err)
 		}
 	}
+}
+
+// groupAsCorrelationSpan collapses a group into a ManifestEntry for Correlate.
+// The correlator only reads Start/Stop, so aggregate span + primary metadata
+// suffice.
+func groupAsCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
+	p := g.Primary()
+	p.Start = g.Start()
+	p.Stop = g.Stop()
+
+	return p
 }
 
 func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analytics.Invocation, putErr error) {
