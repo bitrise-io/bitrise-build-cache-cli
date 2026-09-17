@@ -129,36 +129,36 @@ func (g ManifestEntryGroup) SchemeName() string {
 
 // Start returns the earliest Start across the group (zero if none).
 func (g ManifestEntryGroup) Start() time.Time {
-	var min time.Time
+	var earliest time.Time
 
 	for _, e := range g.Entries {
 		if e.Start.IsZero() {
 			continue
 		}
 
-		if min.IsZero() || e.Start.Before(min) {
-			min = e.Start
+		if earliest.IsZero() || e.Start.Before(earliest) {
+			earliest = e.Start
 		}
 	}
 
-	return min
+	return earliest
 }
 
 // Stop returns the latest Stop across the group (zero if none).
 func (g ManifestEntryGroup) Stop() time.Time {
-	var max time.Time
+	var latest time.Time
 
 	for _, e := range g.Entries {
 		if e.Stop.IsZero() {
 			continue
 		}
 
-		if max.IsZero() || e.Stop.After(max) {
-			max = e.Stop
+		if latest.IsZero() || e.Stop.After(latest) {
+			latest = e.Stop
 		}
 	}
 
-	return max
+	return latest
 }
 
 // Duration is Stop − Start across the group. Zero if either bound is missing.
@@ -204,9 +204,11 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 			return 2
 		case CommandBuild:
 			return 1
-		default:
+		case CommandUnknown:
 			return 0
 		}
+
+		return 0
 	}
 
 	best := g.Entries[0]
@@ -262,7 +264,7 @@ func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []Mani
 		byScheme[e.SchemeName] = append(byScheme[e.SchemeName], e)
 	}
 
-	var out []ManifestEntryGroup
+	out := make([]ManifestEntryGroup, 0, len(schemeOrder))
 
 	for _, scheme := range schemeOrder {
 		bucket := byScheme[scheme]

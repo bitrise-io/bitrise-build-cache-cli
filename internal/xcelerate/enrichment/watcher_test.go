@@ -39,10 +39,10 @@ func TestWatcher_EmitsOnlyNewEntries(t *testing.T) {
 		HomeDir:      home,
 		PollInterval: 20 * time.Millisecond,
 		Now:          func() time.Time { return fixtureNow },
-		Handle: func(e enrichment.ManifestEntry) {
+		Handle: func(g enrichment.ManifestEntryGroup) {
 			mu.Lock()
 			defer mu.Unlock()
-			collected = append(collected, e.UUID)
+			collected = append(collected, g.UUIDs()...)
 		},
 	}
 

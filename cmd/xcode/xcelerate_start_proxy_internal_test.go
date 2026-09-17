@@ -192,7 +192,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsTrueOnOverlap(t *testing.T) 
 		Start: start.Add(5 * time.Second),
 		Stop:  start.Add(30 * time.Second),
 	}
-	assert.True(t, w.MatchProbe(entry))
+	assert.True(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T) {
@@ -214,7 +214,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T)
 		Start: start.Add(1 * time.Hour),
 		Stop:  start.Add(1 * time.Hour).Add(1 * time.Minute),
 	}
-	assert.False(t, w.MatchProbe(entry))
+	assert.False(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testing.T) {
@@ -229,7 +229,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testi
 		Start: time.Now(),
 		Stop:  time.Now().Add(time.Minute),
 	}
-	assert.False(t, w.MatchProbe(entry))
+	assert.False(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_retrier_populatedFields(t *testing.T) {

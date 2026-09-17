@@ -295,7 +295,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
 	}
 
-	matchProbe := func(entry enrichment.ManifestEntry) bool {
+	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {
 			return false
 		}
@@ -305,7 +305,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 			return false
 		}
 
-		_, matched := enrichment.Correlate(entry, records)
+		_, matched := enrichment.Correlate(groupAsCorrelationSpan(group), records)
 
 		return matched
 	}
@@ -320,8 +320,32 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		Logger:                logger,
 		MatchProbe:            matchProbe,
 		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
+		TimeGap:               watcherTimeGap(),
 		HandledStore:          b.handledManifests,
 	}
+}
+
+// groupAsCorrelationSpan mirrors the same helper in the enrichment package so
+// the matchProbe uses the aggregate span (min Start, max Stop) for overlap.
+func groupAsCorrelationSpan(g enrichment.ManifestEntryGroup) enrichment.ManifestEntry {
+	entry := enrichment.ManifestEntry{}
+	if len(g.Entries) > 0 {
+		entry = g.Entries[0]
+	}
+	entry.Start = g.Start()
+	entry.Stop = g.Stop()
+
+	return entry
+}
+
+// watcherTimeGap picks the manifest-grouping window from the CI signal. Bitrise
+// CI wall-clock skew warrants a longer window than a local dev machine.
+func watcherTimeGap() time.Duration {
+	if os.Getenv("CI") == "true" || os.Getenv("BITRISE_IO") != "" {
+		return enrichment.CIGroupTimeGap
+	}
+
+	return enrichment.LocalGroupTimeGap
 }
 
 func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
