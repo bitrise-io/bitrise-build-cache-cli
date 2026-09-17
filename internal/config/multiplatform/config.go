@@ -35,6 +35,37 @@ type AnalyticsAuthConfig struct {
 	AuthToken   string
 	WorkspaceID string
 	IsJWT       bool
+	// Provenance is how a JWT was obtained. Empty in files written before the CLI
+	// could broker one, where a JWT could only have been injected.
+	Provenance string
+}
+
+// Values for AnalyticsAuthConfig.Provenance.
+const (
+	ProvenanceInjected = "injected"
+	ProvenanceBrokered = "brokered"
+)
+
+// NewAnalyticsAuthConfig records a resolved credential for the analytics readers.
+func NewAnalyticsAuthConfig(cred auth.Credential, origin auth.Origin) AnalyticsAuthConfig {
+	return AnalyticsAuthConfig{
+		AuthToken:   cred.Token,
+		WorkspaceID: cred.WorkspaceID,
+		IsJWT:       origin.Backend == auth.BackendJWT,
+		Provenance:  jwtProvenance(origin),
+	}
+}
+
+func jwtProvenance(origin auth.Origin) string {
+	if origin.Backend != auth.BackendJWT {
+		return ""
+	}
+
+	if origin.Provenance == auth.ProvenanceBrokered {
+		return ProvenanceBrokered
+	}
+
+	return ProvenanceInjected
 }
 
 func (l AnalyticsAuthConfig) Populated() bool {
@@ -49,7 +80,12 @@ func (l AnalyticsAuthConfig) Credential() auth.Credential {
 // load-bearing: a JWT is sent as-is, a PAT is prefixed with the workspace.
 func (l AnalyticsAuthConfig) Origin() auth.Origin {
 	if l.IsJWT {
-		return auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceInjected}
+		provenance := auth.ProvenanceInjected
+		if l.Provenance == ProvenanceBrokered {
+			provenance = auth.ProvenanceBrokered
+		}
+
+		return auth.Origin{Backend: auth.BackendJWT, Provenance: provenance}
 	}
 
 	return auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}

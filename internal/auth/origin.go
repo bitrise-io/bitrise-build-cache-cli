@@ -27,6 +27,10 @@ const (
 	// the analytics authConfig block, and the pre-v3 xcelerate config it shares a
 	// shape with. Never refreshable, whatever backend it sits in.
 	ProvenanceStatic
+	// ProvenanceBrokered is a JWT this CLI fetched from the Bitrise Build Hub
+	// instance-manager rather than one the environment handed it. Same backend as
+	// the CI JWT, different origin, so diagnostics can tell them apart.
+	ProvenanceBrokered
 )
 
 type Origin struct {
@@ -57,6 +61,10 @@ func (o Origin) Label() string {
 	case BackendEnv:
 		return "environment variables"
 	case BackendJWT:
+		if o.Provenance == ProvenanceBrokered {
+			return "Build Hub token (brokered)"
+		}
+
 		return "CI JWT (" + EnvJWT + ")"
 	case BackendKeychain:
 		if o.Provenance == ProvenanceOAuthLogin {
@@ -70,7 +78,7 @@ func (o Origin) Label() string {
 			return "OAuth login (config file)"
 		case ProvenanceStatic:
 			return "multiplatform config"
-		case ProvenanceNone, ProvenanceInjected, ProvenanceManual:
+		case ProvenanceNone, ProvenanceInjected, ProvenanceManual, ProvenanceBrokered:
 		}
 
 		return "config file (CI-safe)"
@@ -86,6 +94,10 @@ func (o Origin) ShortLabel() string {
 	case BackendEnv:
 		return "env"
 	case BackendJWT:
+		if o.Provenance == ProvenanceBrokered {
+			return "brokered"
+		}
+
 		return "jwt"
 	case BackendKeychain:
 		return "keychain"
