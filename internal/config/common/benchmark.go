@@ -85,6 +85,12 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 		return "", nil
 	}
 
+	if metadata.GitMetadata.Branch != "" {
+		// Lets the API hold a baseline back for a default-branch build, where a deliberately
+		// uncached run is least disruptive.
+		params.Set("branch", metadata.GitMetadata.Branch)
+	}
+
 	if metadata.CIProvider == CIProviderBitrise {
 		if metadata.BitriseAppID == "" || metadata.BitriseWorkflowName == "" {
 			c.logger.Debugf("no Bitrise metadata found, skipping benchmark phase check")
