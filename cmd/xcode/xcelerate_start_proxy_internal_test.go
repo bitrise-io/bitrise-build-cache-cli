@@ -293,6 +293,39 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 	assert.True(t, os.IsNotExist(err), "pending file must not exist when b.pending is nil")
 }
 
+func Test_watcherTimeGap(t *testing.T) {
+	// Clear every CI signal DetectCIProvider observes so sub-tests can opt in
+	// selectively via t.Setenv without inheriting the surrounding shell.
+	clearCIEnv := func(t *testing.T) {
+		t.Helper()
+
+		for _, k := range []string{"CIRCLECI", "GITHUB_ACTIONS", "GITLAB_CI", "BITRISE_IO", "BITRISE_BUILD_SLUG"} {
+			t.Setenv(k, "")
+		}
+	}
+
+	t.Run("no CI signals -> local gap", func(t *testing.T) {
+		clearCIEnv(t)
+
+		assert.Equal(t, enrichment.LocalGroupTimeGap, watcherTimeGap())
+	})
+
+	t.Run("Bitrise CI -> CI gap", func(t *testing.T) {
+		clearCIEnv(t)
+		t.Setenv("BITRISE_IO", "true")
+		t.Setenv("BITRISE_BUILD_SLUG", "build-123")
+
+		assert.Equal(t, enrichment.CIGroupTimeGap, watcherTimeGap())
+	})
+
+	t.Run("GitHub Actions -> CI gap", func(t *testing.T) {
+		clearCIEnv(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+
+		assert.Equal(t, enrichment.CIGroupTimeGap, watcherTimeGap())
+	})
+}
+
 func Test_resolveInactivityTimeout(t *testing.T) {
 	t.Run("unset returns zero", func(t *testing.T) {
 		got := resolveInactivityTimeout(map[string]string{}, bundleTestLogger)

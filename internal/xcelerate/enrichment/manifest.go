@@ -101,14 +101,24 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 // ManifestEntryGroup is a set of ManifestEntry rows from the same xcodebuild
 // invocation. Grouping key is manifest-path + scheme + time-gap cluster; group
 // aggregation lets the watcher emit one PUT per invocation instead of one per
-// entry. Cross-manifest fusion (Logs/Build/... + Logs/Test/...) is a v1
-// limitation — those live under different Logs/<subdir>/LogStoreManifest.plist
-// paths and are grouped independently.
+// entry.
+//
+// Two known aggregation trade-offs:
+//   - Cross-manifest fusion (Logs/Build/... + Logs/Test/...) is not attempted:
+//     those live under different Logs/<subdir>/LogStoreManifest.plist paths
+//     and are grouped independently.
+//   - Command() diverges from the wrapper's ShortCommand() — the wrapper
+//     renders "build [scheme / testPlan / config]" from argv, but the manifest
+//     carries only the scheme name, so wrapper-less analytics runs show a
+//     coarser command string.
+//   - The aggregate span (Start = min, Stop = max) is wide by design: a burst
+//     entry plus a late entry within TimeGap collapses into one group whose
+//     span covers both. Correlation uses that span, so overlap-based matching
+//     can pick a pending record that only overlaps part of the window.
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
 }
 
-// UUIDs returns all UUIDs in the group in entry order.
 func (g ManifestEntryGroup) UUIDs() []string {
 	out := make([]string, 0, len(g.Entries))
 	for _, e := range g.Entries {
@@ -118,7 +128,6 @@ func (g ManifestEntryGroup) UUIDs() []string {
 	return out
 }
 
-// SchemeName returns the shared scheme name for the group.
 func (g ManifestEntryGroup) SchemeName() string {
 	if len(g.Entries) == 0 {
 		return ""
@@ -127,7 +136,6 @@ func (g ManifestEntryGroup) SchemeName() string {
 	return g.Entries[0].SchemeName
 }
 
-// Start returns the earliest Start across the group (zero if none).
 func (g ManifestEntryGroup) Start() time.Time {
 	var earliest time.Time
 
@@ -144,7 +152,6 @@ func (g ManifestEntryGroup) Start() time.Time {
 	return earliest
 }
 
-// Stop returns the latest Stop across the group (zero if none).
 func (g ManifestEntryGroup) Stop() time.Time {
 	var latest time.Time
 
@@ -161,7 +168,6 @@ func (g ManifestEntryGroup) Stop() time.Time {
 	return latest
 }
 
-// Duration is Stop − Start across the group. Zero if either bound is missing.
 func (g ManifestEntryGroup) Duration() time.Duration {
 	start := g.Start()
 	stop := g.Stop()
@@ -173,7 +179,6 @@ func (g ManifestEntryGroup) Duration() time.Duration {
 	return stop.Sub(start)
 }
 
-// Success is true iff every entry succeeded.
 func (g ManifestEntryGroup) Success() bool {
 	if len(g.Entries) == 0 {
 		return false
@@ -188,9 +193,8 @@ func (g ManifestEntryGroup) Success() bool {
 	return true
 }
 
-// Primary returns the outermost test / archive / build entry, or the first
-// entry when none classify. Ordering: test > archive > build. Ties are broken
-// by earliest Start.
+// Primary picks the outermost entry by command rank (test > archive > build >
+// unknown). Ties are broken by earliest Start.
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
@@ -206,9 +210,9 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 			return 1
 		case CommandUnknown:
 			return 0
+		default:
+			return 0
 		}
-
-		return 0
 	}
 
 	best := g.Entries[0]
@@ -227,10 +231,6 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 
 // Command mirrors "<primary command> <scheme>". Empty scheme collapses to just
 // the command. Unknown-command primary returns empty (caller should skip).
-// Divergence from the wrapper's `ShortCommand()` is intentional: the wrapper
-// renders `build [scheme / testPlan / config]` from argv, but the manifest
-// carries only the scheme name — so downstream analytics for wrapper-less
-// runs shows a coarser command string here.
 func (g ManifestEntryGroup) Command() string {
 	p := g.Primary()
 	if p.Command() == CommandUnknown {
@@ -244,7 +244,6 @@ func (g ManifestEntryGroup) Command() string {
 	return string(p.Command()) + " " + p.SchemeName
 }
 
-// FullCommand is the primary entry's signature.
 func (g ManifestEntryGroup) FullCommand() string {
 	return g.Primary().Signature
 }
@@ -301,7 +300,6 @@ func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []Mani
 	return out
 }
 
-// LoadManifestGrouped is LoadManifest + GroupManifestEntries in one call.
 func LoadManifestGrouped(path string, timeGap time.Duration) ([]ManifestEntryGroup, error) {
 	entries, err := LoadManifest(path)
 	if err != nil {

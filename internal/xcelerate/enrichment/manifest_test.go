@@ -173,7 +173,19 @@ func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {
 	assert.Equal(t, "archive S", groups[0].Command(), "Archive outranks Build even when Build starts first")
 }
 
-func TestGroupManifestEntries_UnknownPrimaryFallsThroughToBuild(t *testing.T) {
+func TestGroupManifestEntries_SameRankBreaksByEarliestStart(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "later", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(5 * time.Second), Stop: base.Add(10 * time.Second)},
+		{UUID: "earlier", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(1 * time.Second), Stop: base.Add(4 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "earlier", groups[0].Primary().UUID, "same-rank primary ties break to earliest Start")
+}
+
+func TestGroupManifestEntries_HigherRankWinsOverUnknown(t *testing.T) {
 	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
 		{UUID: "u1", SchemeName: "S", Signature: "Resolve Packages", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
@@ -183,6 +195,43 @@ func TestGroupManifestEntries_UnknownPrimaryFallsThroughToBuild(t *testing.T) {
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
 	assert.Equal(t, "build S", groups[0].Command())
+}
+
+// A wide burst-plus-late aggregate span (min-Start .. max-Stop) is intentional
+// per the ManifestEntryGroup doc: GroupCorrelationSpan reports the whole span,
+// which lets overlap-based correlation match a pending record that only
+// overlaps part of the window. Documenting the trade-off here so nobody
+// "fixes" the aggregation by narrowing the span later.
+func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "old", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+		{UUID: "new", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(40 * time.Second), Stop: base.Add(50 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, enrichment.LocalGroupTimeGap)
+	require.Len(t, groups, 1, "entries within LocalGroupTimeGap must collapse into one group")
+
+	group := groups[0]
+	assert.Equal(t, base, group.Start(), "aggregate Start is the earliest entry")
+	assert.Equal(t, base.Add(50*time.Second), group.Stop(), "aggregate Stop is the latest entry")
+
+	span := enrichment.GroupCorrelationSpan(group)
+	assert.Equal(t, base, span.Start, "correlation span is the aggregate min-Start")
+	assert.Equal(t, base.Add(50*time.Second), span.Stop, "correlation span is the aggregate max-Stop")
+
+	// A pending record that only touches the first-entry burst [base, base+30s]
+	// still overlaps the wide span, so Correlate returns a match.
+	pending := []enrichment.PendingRecord{
+		{
+			InvocationID: "burst-only",
+			StartTime:    base,
+			Duration:     int64(30 * time.Second / time.Millisecond),
+		},
+	}
+	id, matched := enrichment.Correlate(span, pending)
+	assert.True(t, matched, "wide span overlaps the burst-only pending record")
+	assert.Equal(t, "burst-only", id, "the sole pending record wins the overlap")
 }
 
 func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
