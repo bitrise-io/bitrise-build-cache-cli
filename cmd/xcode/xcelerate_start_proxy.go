@@ -305,7 +305,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 			return false
 		}
 
-		_, matched := enrichment.Correlate(groupAsCorrelationSpan(group), records)
+		_, matched := enrichment.Correlate(enrichment.GroupCorrelationSpan(group), records)
 
 		return matched
 	}
@@ -325,23 +325,12 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	}
 }
 
-// groupAsCorrelationSpan mirrors the same helper in the enrichment package so
-// the matchProbe uses the aggregate span (min Start, max Stop) for overlap.
-func groupAsCorrelationSpan(g enrichment.ManifestEntryGroup) enrichment.ManifestEntry {
-	entry := enrichment.ManifestEntry{}
-	if len(g.Entries) > 0 {
-		entry = g.Entries[0]
-	}
-	entry.Start = g.Start()
-	entry.Stop = g.Stop()
-
-	return entry
-}
-
 // watcherTimeGap picks the manifest-grouping window from the CI signal. Bitrise
-// CI wall-clock skew warrants a longer window than a local dev machine.
+// CI wall-clock skew warrants a longer window than a local dev machine. Routing
+// through configcommon.DetectCIProvider keeps CI detection consistent with the
+// rest of the CLI.
 func watcherTimeGap() time.Duration {
-	if os.Getenv("CI") == "true" || os.Getenv("BITRISE_IO") != "" {
+	if configcommon.DetectCIProvider(utils.AllEnvs()) != "" {
 		return enrichment.CIGroupTimeGap
 	}
 

@@ -66,20 +66,17 @@ func (w *Watcher) markHandled(uuid string) {
 	}
 }
 
-// markGroupHandled marks every UUID in the group as seen (and persists them),
-// so a later scan that re-loads the same manifest with the same entries is a
-// no-op.
 func (w *Watcher) markGroupHandled(group ManifestEntryGroup) {
 	for _, uuid := range group.UUIDs() {
 		w.markHandled(uuid)
 	}
 }
 
-// groupKey is a stable key for the retries map: sorted UUID list joined by
-// null bytes. Groups are re-derived on every scan, so this key must survive
-// reordering.
+// groupKey survives reordering across scans: sort a defensive copy of the
+// UUID list so a future UUIDs() that hands back a shared backing array can't
+// mutate the group.
 func groupKey(group ManifestEntryGroup) string {
-	uuids := group.UUIDs()
+	uuids := append([]string(nil), group.UUIDs()...)
 	sort.Strings(uuids)
 
 	return strings.Join(uuids, "\x00")
@@ -239,9 +236,8 @@ func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
 	logger.Debugf("Watcher: unmatched, opening retry bucket scheme=%s attempts_left=%d", group.SchemeName(), w.MaxCorrelationRetries)
 }
 
-// groupFullySeen is true when every UUID in the group is in the seen set. A
-// group with any new UUID must be emitted so late-arriving entries aren't
-// silently dropped from the aggregate.
+// groupFullySeen returns false the moment a new UUID appears, so late-arriving
+// entries force a re-emit of the enlarged aggregate instead of being dropped.
 func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
 	for _, uuid := range group.UUIDs() {
 		if _, ok := w.seen[uuid]; !ok {

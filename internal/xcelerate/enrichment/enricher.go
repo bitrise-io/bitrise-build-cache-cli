@@ -67,7 +67,7 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 		return
 	}
 
-	invocationID, matched := Correlate(groupAsCorrelationSpan(group), pending)
+	invocationID, matched := Correlate(GroupCorrelationSpan(group), pending)
 	if !matched {
 		invocationID = uuid.NewString()
 	}
@@ -116,10 +116,10 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 	}
 }
 
-// groupAsCorrelationSpan collapses a group into a ManifestEntry for Correlate.
-// The correlator only reads Start/Stop, so aggregate span + primary metadata
-// suffice.
-func groupAsCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
+// GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
+// Start/Stop over primary metadata) so Correlate can overlap-match against
+// pending records. See ManifestEntryGroup for the wide-span trade-off.
+func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	p := g.Primary()
 	p.Start = g.Start()
 	p.Stop = g.Stop()
