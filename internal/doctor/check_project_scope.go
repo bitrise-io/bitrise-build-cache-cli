@@ -13,13 +13,15 @@ func (d *Doctor) projectScopeCheck() Check {
 	return Check{
 		Name: "project-scope",
 		Diagnose: func(_ context.Context) Result {
-			mode, cfgErr := d.effectiveProjectMode()
+			effective, sources, cfgErr := d.effectiveMachineConfig()
 			if cfgErr != nil {
 				return Result{
 					State:  StateWarn,
 					Detail: fmt.Sprintf("machine config unreadable: %s", cfgErr),
 				}
 			}
+
+			mode := effective.ProjectMode
 
 			cwd, err := d.osProxy().Getwd()
 			if err != nil {
@@ -37,8 +39,8 @@ func (d *Doctor) projectScopeCheck() Check {
 			var lines []string
 			lines = append(lines, fmt.Sprintf("mode=%s", string(mode)))
 
-			push, pushSource := d.effectiveCachePush()
-			lines = append(lines, fmt.Sprintf("cache_push=%t (%s)", push, pushSource))
+			push := *effective.CachePush
+			lines = append(lines, fmt.Sprintf("cache_push=%t (%s)", push, sources.CachePush))
 
 			if marker == nil {
 				lines = append(lines, fmt.Sprintf("no %s found in %s or parents.", paths.ProjectMarkerFilename, cwd))
@@ -54,47 +56,27 @@ func (d *Doctor) projectScopeCheck() Check {
 	}
 }
 
-const (
-	cachePushSourceDefault       = "default"
-	cachePushSourceMachineConfig = "machine config"
-)
-
-// effectiveCachePush reports the resolved machine-wide push preference and
-// where it came from: cachePushSourceMachineConfig for a persisted value,
-// cachePushSourceDefault for the built-in fallback. Doctor never sees the
-// --cache-push flag itself; it runs standalone, so the flag source is never
-// possible here.
-func (d *Doctor) effectiveCachePush() (bool, string) {
-	p, err := paths.Default()
-	if err != nil {
-		return machineconfig.DefaultCachePush, cachePushSourceDefault
-	}
-
-	cfg, err := machineconfig.Read(d.osProxy(), p, nil)
-	if err != nil {
-		return machineconfig.DefaultCachePush, cachePushSourceDefault
-	}
-	if cfg.CachePush != nil {
-		return *cfg.CachePush, cachePushSourceMachineConfig
-	}
-
-	return machineconfig.DefaultCachePush, cachePushSourceDefault
-}
-
-func (d *Doctor) effectiveProjectMode() (machineconfig.Mode, error) {
-	p, err := paths.Default()
-	if err != nil {
+// effectiveMachineConfig resolves the machine-wide config for doctor. Doctor
+// never sees CLI flags, so the overlay stays empty — Sources ends up labelling
+// each field as either "machine config" (persisted value) or "default"
+// (built-in fallback).
+func (d *Doctor) effectiveMachineConfig() (machineconfig.Config, machineconfig.Sources, error) {
+	current := machineconfig.Config{}
+	if p, err := paths.Default(); err == nil {
 		// A machine without a resolvable home dir can never have stored a
-		// preference; treat that as the same "no override" case, not as an error.
-		return machineconfig.ModeAlways, nil //nolint:nilerr // see comment
+		// preference; resolve everything to defaults instead of erroring.
+		current, err = machineconfig.Read(d.osProxy(), p, nil)
+		if err != nil {
+			return machineconfig.Config{}, machineconfig.Sources{}, fmt.Errorf("read machine config: %w", err)
+		}
 	}
 
-	mode, err := machineconfig.StoredProjectMode(d.osProxy(), p, nil)
+	effective, sources, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
 	if err != nil {
-		return "", fmt.Errorf("read machine config: %w", err)
+		return machineconfig.Config{}, machineconfig.Sources{}, fmt.Errorf("resolve machine config: %w", err)
 	}
 
-	return mode, nil
+	return effective, sources, nil
 }
 
 func yesNo(b bool) string {

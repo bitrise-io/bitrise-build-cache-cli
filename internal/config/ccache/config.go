@@ -162,12 +162,16 @@ func resolveProjectMode(osProxy utils.OsProxy) machineconfig.Mode {
 	if err != nil {
 		return machineconfig.ModeAlways
 	}
-	mode, err := machineconfig.StoredProjectMode(osProxy, p, nil)
+	current, err := machineconfig.Read(osProxy, p, nil)
+	if err != nil {
+		return machineconfig.ModeAlways
+	}
+	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
 	if err != nil {
 		return machineconfig.ModeAlways
 	}
 
-	return mode
+	return effective.ProjectMode
 }
 
 func idleTimeoutFor(envs map[string]string) time.Duration {

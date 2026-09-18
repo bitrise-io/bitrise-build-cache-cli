@@ -21,13 +21,15 @@ func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 	current, err := machineconfig.Read(osProxy, p, logger)
 	if err != nil {
 		logger.Warnf("Could not read the machine-wide build-cache config (%v); starting from 'always'.", err)
-		current = machineconfig.Config{ProjectMode: machineconfig.ModeAlways}
-	}
-	if current.ProjectMode == "" {
-		current.ProjectMode = machineconfig.ModeAlways
+		current = machineconfig.Config{}
 	}
 
-	choice := string(current.ProjectMode)
+	seed, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
+	if err != nil {
+		return machineconfig.ModeAlways, err //nolint:wrapcheck // caller wraps
+	}
+
+	choice := string(seed.ProjectMode)
 	description := "'always' activates cache for every project on this machine.\n" +
 		"'opt-in' only activates when a .bitrise-build-cache.json marker file " +
 		"is found walking up from the build's working directory."

@@ -19,12 +19,17 @@ func storedCachePush(logger log.Logger) bool {
 		return machineconfig.DefaultCachePush
 	}
 
-	got, err := machineconfig.StoredCachePush(utils.DefaultOsProxy{}, p, logger)
+	current, err := machineconfig.Read(utils.DefaultOsProxy{}, p, logger)
 	if err != nil {
 		return machineconfig.DefaultCachePush
 	}
 
-	return got
+	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
+	if err != nil || effective.CachePush == nil {
+		return machineconfig.DefaultCachePush
+	}
+
+	return *effective.CachePush
 }
 
 // persistCachePush stores the wizard's chosen push value so future

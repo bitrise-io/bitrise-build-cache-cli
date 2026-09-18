@@ -18,42 +18,38 @@ const ProjectModeFlagUsage = "Project scoping mode ('always' or 'opt-in'). " +
 	"Empty keeps the machine-wide setting; setting a value updates and persists it."
 
 func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig.Mode, error) {
-	if err := machineconfig.ValidateProjectModeFlag(flag); err != nil {
-		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
-	}
-
 	p, err := paths.Default()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir for machine config: %w", err)
 	}
 
 	osProxy := utils.DefaultOsProxy{}
-	cfg, err := machineconfig.Read(osProxy, p, logger)
+	current, err := machineconfig.Read(osProxy, p, logger)
 	if err != nil {
 		if logger != nil {
 			logger.Warnf("Falling back to 'always' project scoping (%v).", err)
 		}
-		cfg = machineconfig.Config{}
+		current = machineconfig.Config{}
 	}
 
-	effective, err := machineconfig.EffectiveProjectMode(flag, cfg.ProjectMode)
+	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{ProjectMode: flag}, current)
 	if err != nil {
 		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
 	}
 
-	if flag != "" && cfg.ProjectMode != effective {
-		cfg.ProjectMode = effective
-		if err := machineconfig.Write(cfg, osProxy, p); err != nil {
+	if flag != "" && current.ProjectMode != effective.ProjectMode {
+		current.ProjectMode = effective.ProjectMode
+		if err := machineconfig.Write(current, osProxy, p); err != nil {
 			return "", fmt.Errorf("persist machine config: %w", err)
 		}
 		if logger != nil {
-			logger.TInfof("Machine-wide project scoping is now %q.", string(effective))
+			logger.TInfof("Machine-wide project scoping is now %q.", string(effective.ProjectMode))
 		}
 	}
 
-	ensureProjectMarkerAtCwd(effective, osProxy, logger)
+	ensureProjectMarkerAtCwd(effective.ProjectMode, osProxy, logger)
 
-	return effective, nil
+	return effective.ProjectMode, nil
 }
 
 // ensureProjectMarkerAtCwd writes the per-project marker under cwd when opt-in

@@ -60,8 +60,12 @@ func projectModeGates(osProxy utils.OsProxy) bool {
 	if err != nil {
 		return false
 	}
-	mode, err := machineconfig.StoredProjectMode(osProxy, p, nil)
-	if err != nil || mode != machineconfig.ModeOptIn {
+	current, err := machineconfig.Read(osProxy, p, nil)
+	if err != nil {
+		return false
+	}
+	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
+	if err != nil || effective.ProjectMode != machineconfig.ModeOptIn {
 		return false
 	}
 

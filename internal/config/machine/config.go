@@ -3,7 +3,6 @@ package machine
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -28,6 +27,31 @@ type Config struct {
 // config carries a stored preference. Push is on by default; the resolver
 // falls back to it when there is nothing better to consult.
 const DefaultCachePush = true
+
+// FlagOverlay carries the CLI-flag inputs that override the on-disk machine
+// config. Zero value for a field means "no flag set for this run".
+type FlagOverlay struct {
+	// ProjectMode is empty when the flag was not set.
+	ProjectMode string
+	// CachePush is nil when the flag was not set (tri-state: nil / &true / &false).
+	CachePush *bool
+}
+
+// Source labels where a resolved field came from — surfaced by Effective so
+// doctor and similar inspectors can report provenance without re-reading the
+// config file.
+const (
+	SourceFlag          = "flag"
+	SourceMachineConfig = "machine config"
+	SourceDefault       = "default"
+)
+
+// Sources reports, per field, whether the value Effective returned came from
+// the overlay, the stored config, or the built-in default.
+type Sources struct {
+	ProjectMode string
+	CachePush   string
+}
 
 // Read returns the machine-wide config. A missing file resolves to an empty
 // Config and no error — the "not written yet" case is a valid state.
@@ -74,76 +98,52 @@ func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
 	return nil
 }
 
-// EffectiveProjectMode picks the mode a tool should honour given an explicit
-// flag value (empty when unset) and the mode currently on disk. Empty flag +
-// empty current falls back to ModeAlways so a machine without a stored
-// preference keeps the prior behavior. An unknown flag returns an error —
-// callers are expected to pre-validate with ValidateProjectModeFlag, so this is
-// a safety net for a bypassed check.
-func EffectiveProjectMode(flag string, current Mode) (Mode, error) {
+// Effective resolves the machine-wide config for the current run using
+// overlay > stored > default precedence, and returns a fully-populated Config
+// alongside a Sources record naming the origin of each field. An unknown
+// overlay ProjectMode returns an error — the resolver is the single validator.
+func Effective(overlay FlagOverlay, current Config) (Config, Sources, error) {
+	mode, modeSource, err := effectiveProjectMode(overlay.ProjectMode, current.ProjectMode)
+	if err != nil {
+		return Config{}, Sources{}, err
+	}
+
+	push, pushSource := effectiveCachePush(overlay.CachePush, current.CachePush)
+
+	return Config{
+			ProjectMode: mode,
+			CachePush:   &push,
+		}, Sources{
+			ProjectMode: modeSource,
+			CachePush:   pushSource,
+		}, nil
+}
+
+func effectiveProjectMode(flag string, current Mode) (Mode, string, error) {
 	if flag != "" {
 		switch Mode(flag) {
 		case ModeAlways, ModeOptIn:
-			return Mode(flag), nil
+			return Mode(flag), SourceFlag, nil
 		}
 
-		return "", fmt.Errorf("invalid project mode %q", flag)
+		return "", "", fmt.Errorf("invalid project mode %q, expected 'always' or 'opt-in'", flag)
 	}
 	if current == ModeAlways || current == ModeOptIn {
-		return current, nil
+		return current, SourceMachineConfig, nil
 	}
 
-	return ModeAlways, nil
+	return ModeAlways, SourceDefault, nil
 }
 
-// EffectiveCachePush resolves the effective cache-push value. Precedence: flag → stored → DefaultCachePush.
-func EffectiveCachePush(flagChanged bool, flagValue bool, current *bool) bool {
-	if flagChanged {
-		return flagValue
+func effectiveCachePush(flag *bool, current *bool) (bool, string) {
+	if flag != nil {
+		return *flag, SourceFlag
 	}
 	if current != nil {
-		return *current
+		return *current, SourceMachineConfig
 	}
 
-	return DefaultCachePush
-}
-
-// StoredCachePush reads the machine config and returns the effective push
-// value with no CLI override, falling back to DefaultCachePush when nothing
-// is recorded.
-func StoredCachePush(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (bool, error) {
-	cfg, err := Read(osProxy, p, logger)
-	if err != nil {
-		return DefaultCachePush, err
-	}
-
-	return EffectiveCachePush(false, false, cfg.CachePush), nil
-}
-
-// StoredProjectMode reads the machine config and returns the effective mode
-// with no CLI override. An empty stored value resolves to ModeAlways.
-func StoredProjectMode(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (Mode, error) {
-	cfg, err := Read(osProxy, p, logger)
-	if err != nil {
-		return "", err
-	}
-	if cfg.ProjectMode == "" {
-		return ModeAlways, nil
-	}
-
-	return cfg.ProjectMode, nil
-}
-
-func ValidateProjectModeFlag(flag string) error {
-	if flag == "" {
-		return nil
-	}
-	switch Mode(flag) {
-	case ModeAlways, ModeOptIn:
-		return nil
-	}
-
-	return errors.New("invalid --project-mode value, expected 'always' or 'opt-in'")
+	return DefaultCachePush, SourceDefault
 }
 
 func normaliseMode(m Mode, logger log.Logger) Mode {

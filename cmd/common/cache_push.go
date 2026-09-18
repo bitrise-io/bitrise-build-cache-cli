@@ -31,28 +31,37 @@ func ResolveAndPersistCachePush(cmd *cobra.Command, flagValue bool, logger log.L
 	}
 
 	osProxy := utils.DefaultOsProxy{}
-	cfg, err := machineconfig.Read(osProxy, p, logger)
+	current, err := machineconfig.Read(osProxy, p, logger)
 	if err != nil {
 		if logger != nil {
 			logger.Warnf("Falling back to default cache push (%v).", err)
 		}
-		cfg = machineconfig.Config{}
+		current = machineconfig.Config{}
 	}
 
-	effective := machineconfig.EffectiveCachePush(changed, flagValue, cfg.CachePush)
+	overlay := machineconfig.FlagOverlay{}
+	if changed {
+		v := flagValue
+		overlay.CachePush = &v
+	}
+	effective, _, err := machineconfig.Effective(overlay, current)
+	if err != nil {
+		return machineconfig.DefaultCachePush, fmt.Errorf("resolve machine config: %w", err)
+	}
 
+	push := *effective.CachePush
 	if !changed {
-		return effective, nil
+		return push, nil
 	}
 
-	if err := PersistCachePush(cfg, effective, osProxy, p); err != nil {
-		return effective, err
+	if err := PersistCachePush(current, push, osProxy, p); err != nil {
+		return push, err
 	}
 	if logger != nil {
-		logger.TInfof("Machine-wide cache push is now %t.", effective)
+		logger.TInfof("Machine-wide cache push is now %t.", push)
 	}
 
-	return effective, nil
+	return push, nil
 }
 
 // PersistCachePush writes cfg back to disk with CachePush=effective, but only

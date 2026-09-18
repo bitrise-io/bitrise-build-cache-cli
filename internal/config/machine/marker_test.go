@@ -142,25 +142,33 @@ func TestEnsureMarker_WriteFailureIsSwallowed(t *testing.T) {
 	require.NoError(t, EnsureMarker("/some/dir", ModeOptIn, proxy, nil))
 }
 
-func TestStoredProjectMode_MissingFileResolvesToAlways(t *testing.T) {
+func TestEffective_MissingFileResolvesToAlways(t *testing.T) {
 	t.Parallel()
 
 	home := t.TempDir()
-	mode, err := StoredProjectMode(utils.DefaultOsProxy{}, paths.FromHome(home), nil)
+	current, err := Read(utils.DefaultOsProxy{}, paths.FromHome(home), nil)
 	require.NoError(t, err)
-	assert.Equal(t, ModeAlways, mode)
+
+	effective, sources, err := Effective(FlagOverlay{}, current)
+	require.NoError(t, err)
+	assert.Equal(t, ModeAlways, effective.ProjectMode)
+	assert.Equal(t, SourceDefault, sources.ProjectMode)
 }
 
-func TestStoredProjectMode_ReturnsStoredValue(t *testing.T) {
+func TestEffective_ReturnsStoredValue(t *testing.T) {
 	t.Parallel()
 
 	home := t.TempDir()
 	p := paths.FromHome(home)
 	require.NoError(t, Write(Config{ProjectMode: ModeOptIn}, utils.DefaultOsProxy{}, p))
 
-	mode, err := StoredProjectMode(utils.DefaultOsProxy{}, p, nil)
+	current, err := Read(utils.DefaultOsProxy{}, p, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ModeOptIn, mode)
+
+	effective, sources, err := Effective(FlagOverlay{}, current)
+	require.NoError(t, err)
+	assert.Equal(t, ModeOptIn, effective.ProjectMode)
+	assert.Equal(t, SourceMachineConfig, sources.ProjectMode)
 }
 
 func writeMarker(t *testing.T, dir string) {

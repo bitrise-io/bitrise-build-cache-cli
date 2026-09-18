@@ -94,7 +94,7 @@ func resolveProjectMode(osProxy utils.OsProxy, logger log.Logger) machineconfig.
 		return machineconfig.ModeAlways
 	}
 
-	mode, err := machineconfig.StoredProjectMode(osProxy, p, logger)
+	current, err := machineconfig.Read(osProxy, p, logger)
 	if err != nil {
 		if logger != nil {
 			logger.Warnf("Could not read machine config, defaulting to always: %s", err)
@@ -103,7 +103,12 @@ func resolveProjectMode(osProxy utils.OsProxy, logger log.Logger) machineconfig.
 		return machineconfig.ModeAlways
 	}
 
-	return mode
+	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
+	if err != nil {
+		return machineconfig.ModeAlways
+	}
+
+	return effective.ProjectMode
 }
 
 func (params ActivateGradleParams) TemplateInventory(
