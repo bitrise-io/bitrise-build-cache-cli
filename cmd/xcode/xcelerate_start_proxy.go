@@ -218,9 +218,6 @@ type analyticsBundle struct {
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
-
-	// putter overrides the analytics PUT sink for tests; nil falls back to b.client.
-	putter invocationSaver
 }
 
 func newAnalyticsBundle(
@@ -349,7 +346,7 @@ type slimInvocationEmitter struct {
 	bundle *analyticsBundle
 }
 
-func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
+func (e *slimInvocationEmitter) EmitSlim(_ context.Context, meta proxy.SessionMeta, stats proxy.SessionStats) {
 	b := e.bundle
 
 	endTime := meta.EndTime
@@ -359,7 +356,10 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 	duration := endTime.Sub(meta.StartTime).Milliseconds()
 	hitRate := stats.HitRate()
 
-	// Pending has to survive the marker check so the enrichment watcher's manifest scan can correlate the wrapper build back to this InvocationID — otherwise the watcher mints a duplicate orphan.
+	// Queue the pending record so the enrichment watcher can correlate the
+	// wrapper build back to this InvocationID and skip re-PUTting over the
+	// wrapper's rich row. Slim itself no longer PUTs — the wrapper's own
+	// invocation save (with its retry queue) is the sole writer.
 	if b.pending != nil {
 		if err := b.pending.Append(enrichment.PendingRecord{
 			InvocationID: meta.InvocationID,
@@ -370,49 +370,6 @@ func (e *slimInvocationEmitter) EmitSlim(ctx context.Context, meta proxy.Session
 			b.logger.Warnf("Failed to queue pending invocation %s: %s", meta.InvocationID, err)
 		}
 	}
-
-	if enrichment.MarkerExists(meta.InvocationID) {
-		b.logger.Debugf("Slim emit skipped for %s: wrapper already handled", meta.InvocationID)
-
-		return
-	}
-
-	putter := b.resolvePutter()
-	if putter == nil {
-		return
-	}
-
-	go func() {
-		// Duration omitted: manifest span (from the enrichment watcher, wrapper-less builds only) or the wrapper's own PUT is authoritative.
-		inv := analytics.NewInvocation(analytics.InvocationRunStats{
-			InvocationDate: meta.StartTime,
-			InvocationID:   meta.InvocationID,
-			HitRate:        hitRate,
-			CacheBlobStats: stats.BlobStats,
-		}, b.authProvider.Get(ctx), b.metadata)
-
-		if err := putter.PutInvocation(*inv); err != nil {
-			b.logger.Warnf("Failed to emit slim invocation %s: %s", meta.InvocationID, err)
-
-			return
-		}
-
-		b.logger.Debugf("Slim invocation emitted: %s (hit-rate %.02f%%)", meta.InvocationID, hitRate*100)
-	}()
-
-	_ = ctx
-}
-
-func (b *analyticsBundle) resolvePutter() invocationSaver {
-	if b.putter != nil {
-		return b.putter
-	}
-
-	if b.client == nil {
-		return nil
-	}
-
-	return b.client
 }
 
 func getProxyLogFile(osProxy utils.OsProxy, invocationID string) (string, error) {

@@ -67,22 +67,21 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 		return
 	}
 
-	invocationID, matched := Correlate(GroupCorrelationSpan(group), pending)
-	if !matched {
-		invocationID = uuid.NewString()
-	}
-
-	if matched && MarkerExists(invocationID) {
-		logger.Debugf("Enrichment PUT skipped for %s: wrapper already handled", invocationID)
-		// Marker stays — PruneAll reclaims it after HandledMarkerMaxAge. Consume-on-read here broke the wrapper path (slim emit removed the marker before the watcher could see it).
+	if pendingID, matched := Correlate(GroupCorrelationSpan(group), pending); matched {
+		// A pending record is the wrapper's (or slim emit's) authoritative claim on
+		// this InvocationID. Re-PUTting here would clobber that row with a stripped
+		// enrichment payload under BE last-write-wins. Drop the pending and bail.
+		logger.Debugf("Enrichment PUT skipped for %s: pending record already claims this invocation", pendingID)
 		if e.Store != nil {
-			if err := e.Store.Remove(invocationID); err != nil {
-				logger.Warnf("Failed to remove pending after skipping enrichment for %s: %s", invocationID, err)
+			if err := e.Store.Remove(pendingID); err != nil {
+				logger.Warnf("Failed to remove pending after skipping enrichment for %s: %s", pendingID, err)
 			}
 		}
 
 		return
 	}
+
+	invocationID := uuid.NewString()
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
@@ -100,20 +99,16 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		e.recordFailure(invocationID, matched, inv, err)
+		e.recordOrphanFailure(invocationID, inv, err)
 
 		return
 	}
 
-	TickSuccess(e.Health, e.Logger, e.now(), matched)
+	// Orphan path only: matched groups short-circuited above. LastMatched stays
+	// reserved for correlated re-PUTs, which no longer happen.
+	TickSuccess(e.Health, e.Logger, e.now(), false)
 
-	logger.Infof("Enriched invocation PUT %s (matched=%t scheme=%s cmd=%s entries=%d)", invocationID, matched, group.SchemeName(), command, len(group.Entries))
-
-	if matched && e.Store != nil {
-		if err := e.Store.Remove(invocationID); err != nil {
-			logger.Warnf("Failed to remove pending invocation %s after enrichment: %s", invocationID, err)
-		}
-	}
+	logger.Infof("Enriched invocation PUT %s (orphan scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
@@ -127,7 +122,7 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
-func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analytics.Invocation, putErr error) {
+func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invocation, putErr error) {
 	if e.Store == nil {
 		return
 	}
@@ -138,10 +133,6 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 	if err != nil {
 		logger.Warnf("Failed to marshal enriched invocation %s for retry: %s", invocationID, err)
 
-		return
-	}
-
-	if matched && e.updatePendingRetry(invocationID, payload, putErr) {
 		return
 	}
 
@@ -157,40 +148,4 @@ func (e *Enricher) recordFailure(invocationID string, matched bool, inv *analyti
 	if err := e.Store.Append(rec); err != nil {
 		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
 	}
-}
-
-// updatePendingRetry returns true when a record with invocationID existed on
-// disk. false means the caller should fall through to appending a fresh
-// record. On persist failure we return whatever found was in the callback:
-// if the record existed, the untouched on-disk copy is still there for the
-// next Retrier sweep; if it didn't, the caller must Append so no failure is
-// silently dropped.
-func (e *Enricher) updatePendingRetry(invocationID string, payload []byte, putErr error) bool {
-	logger := logOr(e.Logger)
-	now := e.now()
-	found := false
-
-	if err := e.Store.Mutate(func(existing []PendingRecord) []PendingRecord {
-		for i := range existing {
-			if existing[i].InvocationID != invocationID {
-				continue
-			}
-			if existing[i].FirstAttempt.IsZero() {
-				existing[i].FirstAttempt = now
-			}
-			existing[i].LastAttempt = now
-			existing[i].Attempts++
-			existing[i].LastError = putErr.Error()
-			existing[i].EnrichedPayload = payload
-			found = true
-
-			break
-		}
-
-		return existing
-	}); err != nil {
-		logger.Warnf("Failed to persist retry state for %s: %s", invocationID, err)
-	}
-
-	return found
 }
