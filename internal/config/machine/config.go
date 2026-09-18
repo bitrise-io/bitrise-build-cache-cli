@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -58,7 +57,7 @@ func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
 	}
 
 	final := p.MachineConfigFile()
-	tmp := filepath.Join(dir, "."+paths.BuildCacheMachineConfigFilename+".tmp")
+	tmp := p.MachineConfigTempFile()
 	if err := osProxy.WriteFile(tmp, body, 0o644); err != nil {
 		return fmt.Errorf("write machine config temp file: %w", err)
 	}

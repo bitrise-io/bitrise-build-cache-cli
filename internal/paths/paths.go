@@ -94,9 +94,9 @@ const (
 	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
 	ProjectMarkerFilename = ".bitrise-build-cache.json"
 
-	// BuildCacheMachineConfigFilename is the filename of the machine-wide config
+	// buildCacheMachineConfigFilename is the filename of the machine-wide config
 	// file that records the project scoping mode.
-	BuildCacheMachineConfigFilename = "config.json"
+	buildCacheMachineConfigFilename = "config.json"
 
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
@@ -197,7 +197,13 @@ func (p Paths) BitriseCacheDir(tool string) string {
 
 // MachineConfigFile is the absolute path of the machine-wide build-cache config file.
 func (p Paths) MachineConfigFile() string {
-	return filepath.Join(p.BitriseCacheRoot(), BuildCacheMachineConfigFilename)
+	return filepath.Join(p.BitriseCacheRoot(), buildCacheMachineConfigFilename)
+}
+
+// MachineConfigTempFile returns the sibling temp path used by the atomic write
+// of MachineConfigFile.
+func (p Paths) MachineConfigTempFile() string {
+	return filepath.Join(p.BitriseCacheRoot(), "."+buildCacheMachineConfigFilename+".tmp")
 }
 
 // BitriseCacheFile returns a file path under BitriseCacheDir(tool).

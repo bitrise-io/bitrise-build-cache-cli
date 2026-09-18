@@ -115,9 +115,9 @@ func TestProjectScopeCheck_corruptMachineConfigSurfacesWarning(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	dir := paths.FromHome(home).BitriseCacheRoot()
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.BuildCacheMachineConfigFilename), []byte(`{not json`), 0o644))
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.BitriseCacheRoot(), 0o755))
+	require.NoError(t, os.WriteFile(p.MachineConfigFile(), []byte(`{not json`), 0o644))
 
 	build := filepath.Join(home, "some-project")
 	require.NoError(t, os.MkdirAll(build, 0o755))
@@ -155,7 +155,7 @@ func writeMarker(t *testing.T, dir, body string) {
 
 func writeMachineMode(t *testing.T, home, mode string) {
 	t.Helper()
-	dir := paths.FromHome(home).BitriseCacheRoot()
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.BuildCacheMachineConfigFilename), []byte(`{"project_mode":"`+mode+`"}`), 0o644))
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.BitriseCacheRoot(), 0o755))
+	require.NoError(t, os.WriteFile(p.MachineConfigFile(), []byte(`{"project_mode":"`+mode+`"}`), 0o644))
 }
