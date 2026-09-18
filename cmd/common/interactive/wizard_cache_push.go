@@ -3,6 +3,7 @@ package interactive
 import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -44,13 +45,7 @@ func persistCachePush(pushEnabled bool, logger log.Logger) {
 	if err != nil {
 		cfg = machineconfig.Config{}
 	}
-	if cfg.CachePush != nil && *cfg.CachePush == pushEnabled {
-		return
-	}
-
-	stored := pushEnabled
-	cfg.CachePush = &stored
-	if err := machineconfig.Write(cfg, osProxy, p); err != nil {
+	if err := common.PersistCachePush(cfg, pushEnabled, osProxy, p); err != nil {
 		if logger != nil {
 			logger.Warnf("Could not persist cache push choice (%v). Continuing with %t for this run.", err, pushEnabled)
 		}

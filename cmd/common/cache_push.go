@@ -45,21 +45,30 @@ func ResolveAndPersistCachePush(cmd *cobra.Command, flagValue bool, logger log.L
 		return effective, nil
 	}
 
-	// The user set the flag — capture the choice so future activations honour
-	// it without repeating it. Only rewrite on delta so a redundant activate
-	// does not churn the file's mtime.
-	if cfg.CachePush != nil && *cfg.CachePush == effective {
-		return effective, nil
-	}
-
-	stored := effective
-	cfg.CachePush = &stored
-	if err := machineconfig.Write(cfg, osProxy, p); err != nil {
-		return effective, fmt.Errorf("persist machine config: %w", err)
+	if err := PersistCachePush(cfg, effective, osProxy, p); err != nil {
+		return effective, err
 	}
 	if logger != nil {
 		logger.TInfof("Machine-wide cache push is now %t.", effective)
 	}
 
 	return effective, nil
+}
+
+// PersistCachePush writes cfg back to disk with CachePush=effective, but only
+// when the value actually changed — a no-op when the stored value already
+// matches, so a redundant activate does not churn the file's mtime. Both the
+// CLI resolver and the interactive wizard funnel through this single writer.
+func PersistCachePush(cfg machineconfig.Config, effective bool, osProxy utils.OsProxy, p paths.Paths) error {
+	if cfg.CachePush != nil && *cfg.CachePush == effective {
+		return nil
+	}
+
+	stored := effective
+	cfg.CachePush = &stored
+	if err := machineconfig.Write(cfg, osProxy, p); err != nil {
+		return fmt.Errorf("persist machine config: %w", err)
+	}
+
+	return nil
 }
