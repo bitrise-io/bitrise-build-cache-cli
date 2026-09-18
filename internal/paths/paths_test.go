@@ -68,13 +68,11 @@ func TestPaths_xcodeManagedDirs(t *testing.T) {
 	assert.Equal(t, "/h/.bitrise/cache/xcode-dd", p.XcodeManagedDerivedDataRoot())
 }
 
-func TestPaths_xcelerateHandledInvocations(t *testing.T) {
+func TestPaths_xcelerateState(t *testing.T) {
 	p := FromHome("/h")
 
 	assert.Equal(t, "/h/.local/state/xcelerate", p.XcelerateStateDir())
 	assert.Equal(t, "/h/.local/state/xcelerate/logs", p.XcelerateLogDir())
-	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-invocations", p.XcelerateHandledInvocationDir())
-	assert.Equal(t, "/h/.local/state/xcelerate/enrichment/handled-invocations/abc-123", p.XcelerateHandledInvocationFile("abc-123"))
 }
 
 func TestPaths_xcelerateEnrichment(t *testing.T) {

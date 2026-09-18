@@ -47,13 +47,8 @@ const (
 	xcelerateLogsSubdir = "logs"
 
 	// xcelerateEnrichmentSubdir holds every persisted-state artefact the
-	// enrichment watcher, retry queue, and slim/handled-marker bookkeeping share.
+	// enrichment watcher and retry queue share.
 	xcelerateEnrichmentSubdir = "enrichment"
-
-	// xcelerateHandledInvocationsSubdir sits under XcelerateEnrichmentDir and marks
-	// invocation IDs the wrapper already PUT a rich payload for, so slim emit and
-	// enrichment watcher skip them instead of last-write-wins overwriting the rich row.
-	xcelerateHandledInvocationsSubdir = "handled-invocations"
 
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
@@ -226,16 +221,6 @@ func (p Paths) XcelerateStateDir() string {
 // XcelerateLogDir returns ~/.local/state/xcelerate/logs.
 func (p Paths) XcelerateLogDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateLogsSubdir)
-}
-
-// XcelerateHandledInvocationDir returns ~/.local/state/xcelerate/enrichment/handled-invocations.
-func (p Paths) XcelerateHandledInvocationDir() string {
-	return filepath.Join(p.XcelerateEnrichmentDir(), xcelerateHandledInvocationsSubdir)
-}
-
-// XcelerateHandledInvocationFile returns the marker path for a specific invocation ID.
-func (p Paths) XcelerateHandledInvocationFile(invocationID string) string {
-	return filepath.Join(p.XcelerateHandledInvocationDir(), invocationID)
 }
 
 // XcelerateEnrichmentDir returns ~/.local/state/xcelerate/enrichment.
