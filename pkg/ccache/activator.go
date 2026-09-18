@@ -249,16 +249,16 @@ func (a *Activator) readCurrentConfig() ccacheconfig.Config {
 
 // restartHelperOnConfigDelta stops a running helper whose in-memory config no
 // longer matches the freshly-written one, so the next request picks up the new
-// project mode / cache push.
+// cache_push setting.
 func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, next ccacheconfig.Config) {
-	if previous.ProjectMode == next.ProjectMode && previous.PushEnabled == next.PushEnabled {
+	if previous.PushEnabled == next.PushEnabled {
 		return
 	}
 	if !isListeningFn(next.IPCEndpoint) {
 		return
 	}
 
-	a.logger.TInfof("ccache config delta on project_mode or cache_push; restarting the storage helper.")
+	a.logger.TInfof("ccache config delta on cache_push; restarting the storage helper.")
 	if err := stopHelperFn(ctx, a.logger, next.IPCEndpoint); err != nil {
 		a.logger.Warnf("Failed to stop the ccache storage helper for config reload: %s", err)
 	}

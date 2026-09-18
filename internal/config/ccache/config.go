@@ -10,7 +10,6 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -53,17 +52,16 @@ type Params struct {
 }
 
 type Config struct {
-	ConfigVersion      string             `json:"configVersion,omitempty"`
-	WrittenAt          time.Time          `json:"writtenAt,omitzero"`
-	LogFile            string             `json:"logFile,omitempty"`
-	ErrLogFile         string             `json:"errLogFile,omitempty"`
-	IPCEndpoint        string             `json:"ipcEndpoint,omitempty"`
-	IdleTimeout        time.Duration      `json:"idleTimeout,omitempty"`
-	PushEnabled        bool               `json:"pushEnabled"`
-	Enabled            bool               `json:"enabled"`
-	DebugLogging       bool               `json:"debugLogging,omitempty"`
-	BuildCacheEndpoint string             `json:"buildCacheEndpoint,omitempty"`
-	ProjectMode        machineconfig.Mode `json:"projectMode,omitempty"`
+	ConfigVersion      string        `json:"configVersion,omitempty"`
+	WrittenAt          time.Time     `json:"writtenAt,omitzero"`
+	LogFile            string        `json:"logFile,omitempty"`
+	ErrLogFile         string        `json:"errLogFile,omitempty"`
+	IPCEndpoint        string        `json:"ipcEndpoint,omitempty"`
+	IdleTimeout        time.Duration `json:"idleTimeout,omitempty"`
+	PushEnabled        bool          `json:"pushEnabled"`
+	Enabled            bool          `json:"enabled"`
+	DebugLogging       bool          `json:"debugLogging,omitempty"`
+	BuildCacheEndpoint string        `json:"buildCacheEndpoint,omitempty"`
 
 	// AuthConfig is populated at runtime from the multiplatform analytics
 	// config (single canonical source for auth credentials on disk). Not
@@ -150,28 +148,7 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,
-		ProjectMode:        resolveProjectMode(osProxy),
 	}, nil
-}
-
-// resolveProjectMode bakes the machine-wide mode into the persisted ccache
-// config for the storage-helper daemon to read at start. Failures fall back to
-// ModeAlways so the daemon still starts.
-func resolveProjectMode(osProxy utils.OsProxy) machineconfig.Mode {
-	p, err := paths.Default()
-	if err != nil {
-		return machineconfig.ModeAlways
-	}
-	current, err := machineconfig.Read(osProxy, p, nil)
-	if err != nil {
-		return machineconfig.ModeAlways
-	}
-	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-	if err != nil {
-		return machineconfig.ModeAlways
-	}
-
-	return effective.ProjectMode
 }
 
 func idleTimeoutFor(envs map[string]string) time.Duration {

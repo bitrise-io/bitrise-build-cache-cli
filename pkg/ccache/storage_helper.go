@@ -27,6 +27,7 @@ import (
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
@@ -161,6 +162,7 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 	}
 
 	server.SetProjectMarkerFinder(h.newProjectMarkerFinder())
+	server.SetMachineConfigReader(h.newMachineConfigReader())
 
 	if err := server.Run(ctx); err != nil {
 		return fmt.Errorf("run IPC server: %w", err)
@@ -169,15 +171,10 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 	return nil
 }
 
-// newProjectMarkerFinder returns nil when scoping is not opt-in, so the request
-// processor treats every request as in-scope. Under opt-in it walks up from the
-// storage helper's cwd (which reflects the client's build root under detached
-// spawn) and returns whether a marker exists.
+// newProjectMarkerFinder walks up from the storage helper's cwd (which reflects
+// the client's build root under detached spawn) and returns whether a marker
+// exists. The request processor only calls it when opt-in mode is active.
 func (h *StorageHelper) newProjectMarkerFinder() iccache.ProjectMarkerFinder {
-	if h.config.ProjectMode != "opt-in" {
-		return nil
-	}
-
 	return func() bool {
 		cwd, err := h.osProxy.Getwd()
 		if err != nil {
@@ -189,6 +186,27 @@ func (h *StorageHelper) newProjectMarkerFinder() iccache.ProjectMarkerFinder {
 		}
 
 		return found
+	}
+}
+
+// newMachineConfigReader resolves the machine-wide config on each call.
+// Fail-open: any error yields the zero value (mode gating disabled).
+func (h *StorageHelper) newMachineConfigReader() iccache.MachineConfigReader {
+	return func() machineconfig.Config {
+		p, err := paths.Default()
+		if err != nil {
+			return machineconfig.Config{}
+		}
+		current, err := machineconfig.Read(h.osProxy, p, nil)
+		if err != nil {
+			return machineconfig.Config{}
+		}
+		effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
+		if err != nil {
+			return machineconfig.Config{}
+		}
+
+		return effective
 	}
 }
 

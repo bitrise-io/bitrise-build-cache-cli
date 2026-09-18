@@ -34,6 +34,7 @@ type IpcServer struct {
 	activeParentID       string
 	activeInvocationMu   sync.Mutex
 	projectMarkerPresent ProjectMarkerFinder
+	readMachineConfig    MachineConfigReader
 }
 
 func NewServer(
@@ -57,6 +58,10 @@ func NewServer(
 
 func (s *IpcServer) SetProjectMarkerFinder(f ProjectMarkerFinder) {
 	s.projectMarkerPresent = f
+}
+
+func (s *IpcServer) SetMachineConfigReader(r MachineConfigReader) {
+	s.readMachineConfig = r
 }
 
 func (s *IpcServer) Run(ctx context.Context) error {
@@ -119,7 +124,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.projectMarkerPresent)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.projectMarkerPresent, s.readMachineConfig)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)

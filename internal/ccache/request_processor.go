@@ -23,6 +23,10 @@ import (
 // Nil means "always allow" — production wiring passes a real implementation.
 type ProjectMarkerFinder func() bool
 
+// MachineConfigReader returns the effective machine-wide config. Fail-open: a
+// zero value means "no opt-in gating for this request".
+type MachineConfigReader func() machineconfig.Config
+
 type requestProcessor struct {
 	client               Client
 	logger               log.Logger
@@ -34,6 +38,7 @@ type requestProcessor struct {
 	loggerFactory        LoggerFactory
 	getCapabilities      func(context.Context) error
 	projectMarkerPresent ProjectMarkerFinder
+	readMachineConfig    MachineConfigReader
 	optOutLogged         bool
 }
 
@@ -46,6 +51,7 @@ func newRequestProcessor(
 	loggerFactory LoggerFactory,
 	getCapabilities func(context.Context) error,
 	projectMarkerPresent ProjectMarkerFinder,
+	readMachineConfig MachineConfigReader,
 ) *requestProcessor {
 	sem := make(chan struct{}, 1)
 	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
@@ -61,11 +67,15 @@ func newRequestProcessor(
 		loggerFactory:        loggerFactory,
 		getCapabilities:      getCapabilities,
 		projectMarkerPresent: projectMarkerPresent,
+		readMachineConfig:    readMachineConfig,
 	}
 }
 
 func (p *requestProcessor) optedOut() bool {
-	if p.config.ProjectMode != machineconfig.ModeOptIn {
+	if p.readMachineConfig == nil {
+		return false
+	}
+	if p.readMachineConfig().ProjectMode != machineconfig.ModeOptIn {
 		return false
 	}
 	if p.projectMarkerPresent == nil {
