@@ -18,7 +18,7 @@ const ProjectModeFlagUsage = "Project scoping mode ('always' or 'opt-in'). " +
 	"Empty keeps the machine-wide setting; setting a value updates and persists it."
 
 func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig.Mode, error) {
-	if err := machineconfig.ValidateFlag(flag); err != nil {
+	if err := machineconfig.ValidateProjectModeFlag(flag); err != nil {
 		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
 	}
 
@@ -36,7 +36,7 @@ func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig
 		cfg = machineconfig.Config{}
 	}
 
-	effective, err := machineconfig.Effective(flag, cfg.ProjectMode)
+	effective, err := machineconfig.EffectiveProjectMode(flag, cfg.ProjectMode)
 	if err != nil {
 		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
 	}

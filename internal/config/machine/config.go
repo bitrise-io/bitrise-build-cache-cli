@@ -68,12 +68,13 @@ func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
 	return nil
 }
 
-// Effective picks the mode a tool should honour given an explicit flag value
-// (empty when unset) and the mode currently on disk. Empty flag + empty current
-// falls back to ModeAlways so a machine without a stored preference keeps the
-// prior behavior. An unknown flag returns an error — callers are expected to
-// pre-validate with ValidateFlag, so this is a safety net for a bypassed check.
-func Effective(flag string, current Mode) (Mode, error) {
+// EffectiveProjectMode picks the mode a tool should honour given an explicit
+// flag value (empty when unset) and the mode currently on disk. Empty flag +
+// empty current falls back to ModeAlways so a machine without a stored
+// preference keeps the prior behavior. An unknown flag returns an error —
+// callers are expected to pre-validate with ValidateProjectModeFlag, so this is
+// a safety net for a bypassed check.
+func EffectiveProjectMode(flag string, current Mode) (Mode, error) {
 	if flag != "" {
 		switch Mode(flag) {
 		case ModeAlways, ModeOptIn:
@@ -89,7 +90,7 @@ func Effective(flag string, current Mode) (Mode, error) {
 	return ModeAlways, nil
 }
 
-func ValidateFlag(flag string) error {
+func ValidateProjectModeFlag(flag string) error {
 	if flag == "" {
 		return nil
 	}

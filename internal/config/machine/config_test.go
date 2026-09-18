@@ -81,7 +81,7 @@ func TestRead_UnknownModeNormalisesToAlways(t *testing.T) {
 	assert.Equal(t, ModeAlways, cfg.ProjectMode)
 }
 
-func TestEffective(t *testing.T) {
+func TestEffectiveProjectMode(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -99,7 +99,7 @@ func TestEffective(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Effective(tc.flag, tc.current)
+			got, err := EffectiveProjectMode(tc.flag, tc.current)
 			if tc.wantErr {
 				require.Error(t, err)
 
@@ -111,13 +111,13 @@ func TestEffective(t *testing.T) {
 	}
 }
 
-func TestValidateFlag(t *testing.T) {
+func TestValidateProjectModeFlag(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, ValidateFlag(""))
-	require.NoError(t, ValidateFlag(string(ModeAlways)))
-	require.NoError(t, ValidateFlag(string(ModeOptIn)))
-	require.Error(t, ValidateFlag("garbage"))
+	require.NoError(t, ValidateProjectModeFlag(""))
+	require.NoError(t, ValidateProjectModeFlag(string(ModeAlways)))
+	require.NoError(t, ValidateProjectModeFlag(string(ModeOptIn)))
+	require.Error(t, ValidateProjectModeFlag("garbage"))
 }
 
 func TestWrite_CreatesParentDir(t *testing.T) {
