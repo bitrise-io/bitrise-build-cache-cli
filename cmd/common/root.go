@@ -117,10 +117,6 @@ func RunVersionCheck(cmd *cobra.Command) {
 func Execute() {
 	err := RootCmd.Execute()
 	if err != nil {
-		if code, ok := HandleStatusExit(err); ok {
-			os.Exit(code)
-		}
-
 		var ec ExitCoder
 		if errors.As(err, &ec) {
 			os.Exit(ec.ExitCode())

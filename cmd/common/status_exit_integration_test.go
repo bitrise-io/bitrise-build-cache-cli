@@ -75,8 +75,8 @@ func writeRNFixtureForExit(t *testing.T, home string, enabled bool) {
 }
 
 // TestExecute_StatusExitCodes_EndToEnd runs the CLI as a subprocess and
-// asserts that common.Execute() translates statusExitError into the right
-// os.Exit code. Prior tests exercised HandleStatusExit in isolation — this
+// asserts that common.Execute() translates an ExitCoder error into the right
+// os.Exit code. Prior tests exercised the extraction in isolation — this
 // closes the loop on the root-cmd wiring in root.go.
 func TestExecute_StatusExitCodes_EndToEnd(t *testing.T) {
 	t.Run("feature enabled → exit 0", func(t *testing.T) {
