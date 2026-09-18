@@ -140,6 +140,8 @@ type ExitCodeError struct{ Code int }
 func (e ExitCodeError) Error() string { return "" }
 func (e ExitCodeError) ExitCode() int { return e.Code }
 
+var _ ExitCoder = ExitCodeError{}
+
 func init() {
 	RootCmd.PersistentFlags().BoolVarP(&IsDebugLogMode, "debug", "d", false, "Enable debug logging mode")
 	RootCmd.PersistentFlags().BoolVar(&NoUpdateCheck, "no-update-check", false,

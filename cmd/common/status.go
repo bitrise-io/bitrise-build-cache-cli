@@ -16,10 +16,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/status"
 )
 
-// Compile-time check that ExitCodeError satisfies ExitCoder — the exit-code
-// consolidation depends on this.
-var _ ExitCoder = ExitCodeError{}
-
 //nolint:gochecknoglobals
 var (
 	statusJSONOutput bool
