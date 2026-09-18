@@ -35,6 +35,12 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 		if cmd.Name() == "version" {
 			return
 		}
+		// scope-check is called per Gradle configuration-cache miss on opt-in
+		// projects; version log + auth hydrate would each add work (a network
+		// hop for OAuth) to every local Gradle configuration.
+		if cmd.Name() == "scope-check" {
+			return
+		}
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
