@@ -16,7 +16,6 @@ import (
 	"os"
 	"time"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -116,10 +115,10 @@ func optedOut() bool {
 		return false
 	}
 
-	_, marker, err := configcommon.WalkUpFindMarker(cwd, osProxy)
+	found, _, err := machineconfig.FindMarker(cwd, osProxy)
 	if err != nil {
 		return false
 	}
 
-	return marker == nil
+	return !found
 }

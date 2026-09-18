@@ -90,6 +90,20 @@ func EffectiveProjectMode(flag string, current Mode) (Mode, error) {
 	return ModeAlways, nil
 }
 
+// StoredProjectMode reads the machine config and returns the effective mode
+// with no CLI override. An empty stored value resolves to ModeAlways.
+func StoredProjectMode(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (Mode, error) {
+	cfg, err := Read(osProxy, p, logger)
+	if err != nil {
+		return "", err
+	}
+	if cfg.ProjectMode == "" {
+		return ModeAlways, nil
+	}
+
+	return cfg.ProjectMode, nil
+}
+
 func ValidateProjectModeFlag(flag string) error {
 	if flag == "" {
 		return nil

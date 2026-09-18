@@ -24,6 +24,7 @@ import (
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -182,12 +183,12 @@ func (h *StorageHelper) newProjectMarkerFinder() iccache.ProjectMarkerFinder {
 		if err != nil {
 			return false
 		}
-		_, marker, err := configcommon.WalkUpFindMarker(cwd, h.osProxy)
+		found, _, err := machineconfig.FindMarker(cwd, h.osProxy)
 		if err != nil {
 			return false
 		}
 
-		return marker != nil
+		return found
 	}
 }
 

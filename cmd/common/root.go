@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
@@ -68,6 +69,8 @@ func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
 		return true
 	case "token", "username":
 		return true
+	case "scope-check":
+		return true
 	default:
 		return false
 	}
@@ -112,9 +115,28 @@ func Execute() {
 			os.Exit(code)
 		}
 
+		var ec ExitCoder
+		if errors.As(err, &ec) {
+			os.Exit(ec.ExitCode())
+		}
+
 		os.Exit(1)
 	}
 }
+
+// ExitCoder is an error carrying an explicit exit code — a subcommand can
+// return one to signal a specific numeric exit without letting cobra print the
+// error line. Callers combine it with SilenceErrors on the cobra.Command.
+type ExitCoder interface {
+	error
+	ExitCode() int
+}
+
+// ExitCodeError is the canonical ExitCoder implementation.
+type ExitCodeError struct{ Code int }
+
+func (e ExitCodeError) Error() string { return "" }
+func (e ExitCodeError) ExitCode() int { return e.Code }
 
 func init() {
 	RootCmd.PersistentFlags().BoolVarP(&IsDebugLogMode, "debug", "d", false, "Enable debug logging mode")

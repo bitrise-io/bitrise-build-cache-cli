@@ -157,12 +157,13 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
-func Test_GenerateInitGradle_ProjectModeOptInInjectsWalkUp(t *testing.T) {
+func Test_GenerateInitGradle_ProjectModeOptInInjectsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{
 			ProjectMode:           "opt-in",
 			ProjectMarkerFilename: ".bitrise-build-cache.json",
-			CIProvider:            "CIProviderValue",
+			CIProvider:            "",
+			CLIPath:               "bitrise-build-cache",
 			Version:               "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
@@ -178,18 +179,43 @@ func Test_GenerateInitGradle_ProjectModeOptInInjectsWalkUp(t *testing.T) {
 
 	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
 	require.NoError(t, err)
-	assert.Contains(t, got, "var _bitriseMarkerDir: java.io.File? = settings.rootDir")
-	assert.Contains(t, got, `java.io.File(_bitriseMarkerDir, ".bitrise-build-cache.json").exists()`)
-	assert.Contains(t, got, "[bitrise-build-cache] project-mode=opt-in")
+	assert.Contains(t, got, "BitriseProjectScopeSource")
+	assert.Contains(t, got, `"project", "scope-check"`)
 	assert.Contains(t, got, "return@settingsEvaluated")
+	assert.NotContains(t, got, "_bitriseMarkerDir")
 }
 
-func Test_GenerateInitGradle_ProjectModeAlwaysOmitsWalkUp(t *testing.T) {
+func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode:           "opt-in",
+			ProjectMarkerFilename: ".bitrise-build-cache.json",
+			CIProvider:            "bitrise",
+			Version:               "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BitriseProjectScopeSource")
+	assert.NotContains(t, got, `"project", "scope-check"`)
+}
+
+func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{
 			ProjectMode:           "always",
 			ProjectMarkerFilename: ".bitrise-build-cache.json",
-			CIProvider:            "CIProviderValue",
+			CIProvider:            "",
 			Version:               "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
@@ -205,7 +231,7 @@ func Test_GenerateInitGradle_ProjectModeAlwaysOmitsWalkUp(t *testing.T) {
 
 	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
 	require.NoError(t, err)
-	assert.NotContains(t, got, "_bitriseMarkerDir")
+	assert.NotContains(t, got, "BitriseProjectScopeSource")
 	assert.NotContains(t, got, "return@settingsEvaluated")
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -27,7 +26,7 @@ func (d *Doctor) projectScopeCheck() Check {
 				return Result{State: StateOK, Detail: fmt.Sprintf("mode=%s (skipped marker walk: %s)", string(mode), err)}
 			}
 
-			markerPath, marker, err := configcommon.WalkUpFindMarker(cwd, d.osProxy())
+			markerPath, marker, err := machineconfig.WalkUpFindMarker(cwd, d.osProxy())
 			if err != nil {
 				return Result{
 					State:  StateError,
@@ -60,15 +59,12 @@ func (d *Doctor) effectiveProjectMode() (machineconfig.Mode, error) {
 		return machineconfig.ModeAlways, nil //nolint:nilerr // see comment
 	}
 
-	cfg, err := machineconfig.Read(d.osProxy(), p, nil)
+	mode, err := machineconfig.StoredProjectMode(d.osProxy(), p, nil)
 	if err != nil {
 		return "", fmt.Errorf("read machine config: %w", err)
 	}
-	if cfg.ProjectMode == "" {
-		return machineconfig.ModeAlways, nil
-	}
 
-	return cfg.ProjectMode, nil
+	return mode, nil
 }
 
 func yesNo(b bool) string {

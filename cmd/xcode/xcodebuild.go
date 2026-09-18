@@ -29,6 +29,7 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
@@ -64,12 +65,12 @@ func projectModeGates(cfg xcelerate.Config, osProxy utils.OsProxy) bool {
 		return true
 	}
 
-	_, marker, err := configcommon.WalkUpFindMarker(cwd, osProxy)
+	found, _, err := machineconfig.FindMarker(cwd, osProxy)
 	if err != nil {
 		return true
 	}
 
-	return marker == nil
+	return !found
 }
 
 const (
