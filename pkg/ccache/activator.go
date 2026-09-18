@@ -249,19 +249,19 @@ func (a *Activator) readCurrentConfig() ccacheconfig.Config {
 
 // restartHelperOnConfigDelta stops a helper whose in-memory config no longer
 // matches the freshly-written one on disk so the next request picks up the new
-// project mode instead of serving the previous invocation's setting.
+// value (project mode or cache push) instead of serving the previous
+// invocation's setting.
 func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, next ccacheconfig.Config) {
-	if previous.ProjectMode == next.ProjectMode {
+	if previous.ProjectMode == next.ProjectMode && previous.PushEnabled == next.PushEnabled {
 		return
 	}
 	if !isListeningFn(next.IPCEndpoint) {
 		return
 	}
 
-	a.logger.TInfof("ccache project scoping changed (%q → %q); restarting the storage helper.",
-		string(previous.ProjectMode), string(next.ProjectMode))
+	a.logger.TInfof("ccache config delta on project_mode or cache_push; restarting the storage helper.")
 	if err := stopHelperFn(ctx, a.logger, next.IPCEndpoint); err != nil {
-		a.logger.Warnf("Failed to stop the ccache storage helper for project-mode reload: %s", err)
+		a.logger.Warnf("Failed to stop the ccache storage helper for config reload: %s", err)
 	}
 }
 

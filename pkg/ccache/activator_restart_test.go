@@ -42,6 +42,19 @@ func TestRestartHelperOnConfigDelta_StopsHelperOnModeFlip(t *testing.T) {
 	assert.Equal(t, 1, *stopCalls, "a mode flip with a live helper must stop it once")
 }
 
+func TestRestartHelperOnConfigDelta_StopsHelperOnPushFlip(t *testing.T) {
+	stopCalls := fakeRestartSeams(t, true)
+
+	a := NewActivator(ActivatorParams{Logger: log.NewLogger(), Envs: map[string]string{}})
+	a.restartHelperOnConfigDelta(
+		context.Background(),
+		ccacheconfig.Config{ProjectMode: machineconfig.ModeAlways, PushEnabled: true, IPCEndpoint: "/tmp/test.sock"},
+		ccacheconfig.Config{ProjectMode: machineconfig.ModeAlways, PushEnabled: false, IPCEndpoint: "/tmp/test.sock"},
+	)
+
+	assert.Equal(t, 1, *stopCalls, "a push flip with a live helper must stop it once")
+}
+
 func TestRestartHelperOnConfigDelta_NoOpWithoutListener(t *testing.T) {
 	stopCalls := fakeRestartSeams(t, false)
 
