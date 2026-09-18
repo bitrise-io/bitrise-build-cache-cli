@@ -40,7 +40,7 @@ abstract class BitriseProjectScopeSource : org.gradle.api.provider.ValueSource<S
     override fun obtain(): String {
         val err = java.io.ByteArrayOutputStream()
         val result = execOps.exec {
-            commandLine("{{ .Common.CLIPath }}", "project", "scope-check", parameters.startDir.get())
+            commandLine("{{ .Common.CLIPath }}", "project", "scope-check", "--quiet", parameters.startDir.get())
             errorOutput = err
             isIgnoreExitValue = true
         }

@@ -94,8 +94,7 @@ const (
 	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
 	ProjectMarkerFilename = ".bitrise-build-cache.json"
 
-	// buildCacheMachineConfigFilename is the filename of the machine-wide config
-	// file that records the project scoping mode.
+	// buildCacheMachineConfigFilename is the filename of the machine-wide build cache config.
 	buildCacheMachineConfigFilename = "config.json"
 
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching

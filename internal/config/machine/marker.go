@@ -11,9 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// ProjectMarker is the on-disk presence signal for opt-in mode. The current
-// schema is intentionally empty — adding fields later must remain backwards
-// compatible with the plain `{}` bodies EnsureMarker writes today.
+// ProjectMarker is the on-disk presence signal for opt-in mode.
 type ProjectMarker struct{}
 
 // ReadMarker returns nil when the file is absent, an error on malformed JSON,

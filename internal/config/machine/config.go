@@ -96,10 +96,7 @@ func EffectiveProjectMode(flag string, current Mode) (Mode, error) {
 	return ModeAlways, nil
 }
 
-// EffectiveCachePush picks the push value a tool should honour given whether
-// the caller explicitly set --cache-push, the flag's value, and whatever is
-// currently persisted. Precedence: explicit flag → stored preference →
-// DefaultCachePush. Nil stored means "no preference recorded".
+// EffectiveCachePush resolves the effective cache-push value. Precedence: flag → stored → DefaultCachePush.
 func EffectiveCachePush(flagChanged bool, flagValue bool, current *bool) bool {
 	if flagChanged {
 		return flagValue

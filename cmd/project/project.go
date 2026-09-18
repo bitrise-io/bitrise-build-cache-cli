@@ -42,8 +42,8 @@ var scopeCheckCmd = &cobra.Command{
 	Short: "Report whether a directory is in scope for build-cache activation",
 	Long: "Exits 0 when scope is active (mode=always, or mode=opt-in and the .bitrise-build-cache.json marker " +
 		"is found in <dir> or any ancestor). Exits 1 when scope is gated (mode=opt-in, no marker). " +
-		"Exits >=2 on error. Prints nothing to stdout; on gated exit prints a one-line explanation to stderr " +
-		"unless --quiet is set.",
+		"Exits >=2 on error. Prints nothing to stdout; on the active/gated paths prints a one-line " +
+		"explanation to stderr unless --quiet is set.",
 	Args:          cobra.ExactArgs(1),
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -97,7 +97,7 @@ var scopeCheckCmd = &cobra.Command{
 func cobraExit(code int) error { return common.ExitCodeError{Code: code} }
 
 func init() {
-	scopeCheckCmd.Flags().BoolVar(&scopeCheckQuiet, "quiet", false, "Suppress the stderr explanation on gated exit.")
+	scopeCheckCmd.Flags().BoolVar(&scopeCheckQuiet, "quiet", false, "Suppress the stderr explanation on active and gated exits.")
 
 	projectCmd.AddCommand(scopeCheckCmd)
 	common.RootCmd.AddCommand(projectCmd)
