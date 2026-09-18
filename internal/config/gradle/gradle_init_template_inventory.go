@@ -45,6 +45,8 @@ type PluginCommonTemplateInventory struct {
 	Version    string
 
 	CLIPath string
+
+	ProjectMode string
 }
 
 type TemplateInventory struct {

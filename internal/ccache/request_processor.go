@@ -15,18 +15,31 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 )
 
+// ProjectMarkerFinder returns true when the caller must be treated as opted-in
+// (a marker file was found walking up from a build cwd) and false otherwise.
+// Nil means "always allow" — production wiring passes a real implementation.
+type ProjectMarkerFinder func() bool
+
+// MachineConfigReader returns the effective machine-wide config. Fail-open: a
+// zero value means "no opt-in gating for this request".
+type MachineConfigReader func() machineconfig.Config
+
 type requestProcessor struct {
-	client          Client
-	logger          log.Logger
-	reader          io.Reader
-	writer          io.Writer
-	ccSemaphore     chan struct{}
-	config          ccacheconfig.Config
-	metadata        configcommon.CacheConfigMetadata
-	loggerFactory   LoggerFactory
-	getCapabilities func(context.Context) error
+	client               Client
+	logger               log.Logger
+	reader               io.Reader
+	writer               io.Writer
+	ccSemaphore          chan struct{}
+	config               ccacheconfig.Config
+	metadata             configcommon.CacheConfigMetadata
+	loggerFactory        LoggerFactory
+	getCapabilities      func(context.Context) error
+	projectMarkerPresent ProjectMarkerFinder
+	readMachineConfig    MachineConfigReader
+	optOutLogged         bool
 }
 
 func newRequestProcessor(
@@ -37,21 +50,47 @@ func newRequestProcessor(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	getCapabilities func(context.Context) error,
+	projectMarkerPresent ProjectMarkerFinder,
+	readMachineConfig MachineConfigReader,
 ) *requestProcessor {
 	sem := make(chan struct{}, 1)
 	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
 
 	return &requestProcessor{
-		config:          config,
-		metadata:        metadata,
-		client:          client,
-		logger:          logger,
-		reader:          conn,
-		writer:          conn,
-		ccSemaphore:     sem,
-		loggerFactory:   loggerFactory,
-		getCapabilities: getCapabilities,
+		config:               config,
+		metadata:             metadata,
+		client:               client,
+		logger:               logger,
+		reader:               conn,
+		writer:               conn,
+		ccSemaphore:          sem,
+		loggerFactory:        loggerFactory,
+		getCapabilities:      getCapabilities,
+		projectMarkerPresent: projectMarkerPresent,
+		readMachineConfig:    readMachineConfig,
 	}
+}
+
+func (p *requestProcessor) optedOut() bool {
+	if p.readMachineConfig == nil {
+		return false
+	}
+	if p.readMachineConfig().ProjectMode != machineconfig.ModeOptIn {
+		return false
+	}
+	if p.projectMarkerPresent == nil {
+		return false
+	}
+	if p.projectMarkerPresent() {
+		return false
+	}
+
+	if !p.optOutLogged {
+		p.logger.TInfof("[project-mode] opt-in active, no .bitrise-build-cache.json marker; ccache requests return miss/push-disabled without hitting the cache.")
+		p.optOutLogged = true
+	}
+
+	return true
 }
 
 func (p *requestProcessor) notifyClient(result processResult) processResult {
@@ -133,6 +172,13 @@ func (p *requestProcessor) handleGet(ctx context.Context) processResult {
 	statBuilder.withKey(key)
 	p.logger.TDebugf("%s Called", statBuilder.Prefix())
 
+	if p.optedOut() {
+		return p.notifyClient(processResult{
+			Outcome:   PROCESS_REQUEST_MISS,
+			CallStats: statBuilder.build(),
+		})
+	}
+
 	buffer := bytes.NewBuffer(nil)
 	transferStart := time.Now()
 	err = p.client.DownloadStream(ctx, buffer, key)
@@ -203,6 +249,13 @@ func (p *requestProcessor) handlePut(ctx context.Context) processResult {
 			Err:       fmt.Errorf("failed to read value: %w", err),
 			CallStats: statBuilder.build(),
 		}
+	}
+
+	if p.optedOut() {
+		return p.notifyClient(processResult{
+			Outcome:   PROCESS_REQUEST_PUSH_DISABLED,
+			CallStats: statBuilder.build(),
+		})
 	}
 
 	if !p.config.PushEnabled {

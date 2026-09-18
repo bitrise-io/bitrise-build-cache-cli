@@ -157,6 +157,81 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
+func Test_GenerateInitGradle_ProjectModeOptInInjectsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode: "opt-in",
+			CIProvider:  "",
+			CLIPath:     "bitrise-build-cache",
+			Version:     "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.Contains(t, got, "BitriseProjectScopeSource")
+	assert.Contains(t, got, `"project", "scope-check"`)
+	assert.Contains(t, got, "return@settingsEvaluated")
+	assert.NotContains(t, got, "_bitriseMarkerDir")
+}
+
+func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode: "opt-in",
+			CIProvider:  "bitrise",
+			Version:     "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BitriseProjectScopeSource")
+	assert.NotContains(t, got, `"project", "scope-check"`)
+}
+
+func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode: "always",
+			CIProvider:  "",
+			Version:     "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BitriseProjectScopeSource")
+	assert.NotContains(t, got, "return@settingsEvaluated")
+}
+
 const expectedImports = `import io.bitrise.gradle.analytics.AnalyticsPluginExtension
 import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`

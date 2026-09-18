@@ -149,7 +149,7 @@ func TestStatus_FeatureBazel_ExitTwo(t *testing.T) {
 
 	_, stderr, err := runStatusCmd(t, home, "--feature=bazel", "--quiet")
 	require.Error(t, err)
-	code, ok := common.HandleStatusExit(err)
+	code, ok := exitCode(err)
 	require.True(t, ok)
 	assert.Equal(t, 2, code)
 	assert.Contains(t, strings.ToLower(stderr), "unknown feature")
@@ -187,7 +187,7 @@ func TestStatus_FeatureQuiet_Disabled_ExitOne(t *testing.T) {
 
 	stdout, stderr, err := runStatusCmd(t, home, "--feature=react-native", "--quiet")
 	require.Error(t, err)
-	code, ok := common.HandleStatusExit(err)
+	code, ok := exitCode(err)
 	require.True(t, ok)
 	assert.Equal(t, 1, code)
 	assert.Empty(t, stdout)
@@ -211,7 +211,7 @@ func TestStatus_Feature_Unknown_ExitTwo(t *testing.T) {
 
 	_, stderr, err := runStatusCmd(t, home, "--feature=bogus", "--quiet")
 	require.Error(t, err)
-	code, ok := common.HandleStatusExit(err)
+	code, ok := exitCode(err)
 	require.True(t, ok)
 	assert.Equal(t, 2, code)
 	// --quiet still prints the rejection for unknown features so the caller
@@ -224,13 +224,22 @@ func TestStatus_Quiet_WithoutFeature_IsError(t *testing.T) {
 
 	_, stderr, err := runStatusCmd(t, home, "--quiet")
 	require.Error(t, err)
-	code, ok := common.HandleStatusExit(err)
+	code, ok := exitCode(err)
 	require.True(t, ok)
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "--quiet")
 }
 
-func TestHandleStatusExit_PassesThroughOtherErrors(t *testing.T) {
-	_, ok := common.HandleStatusExit(errors.New("unrelated"))
+func TestExitCode_PassesThroughOtherErrors(t *testing.T) {
+	_, ok := exitCode(errors.New("unrelated"))
 	assert.False(t, ok)
+}
+
+func exitCode(err error) (int, bool) {
+	var ec common.ExitCoder
+	if errors.As(err, &ec) {
+		return ec.ExitCode(), true
+	}
+
+	return 0, false
 }

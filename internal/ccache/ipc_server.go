@@ -19,20 +19,22 @@ import (
 )
 
 type IpcServer struct {
-	listener           net.Listener
-	client             Client
-	logger             log.Logger
-	loggerFactory      LoggerFactory
-	idleTimer          *time.Timer
-	sessionState       *sessionState
-	config             ccacheconfig.Config
-	metadata           configcommon.CacheConfigMetadata
-	timerMutex         sync.Mutex
-	capabilitiesOnce   sync.Once
-	capabilitiesErr    error
-	activeInvocationID string
-	activeParentID     string
-	activeInvocationMu sync.Mutex
+	listener             net.Listener
+	client               Client
+	logger               log.Logger
+	loggerFactory        LoggerFactory
+	idleTimer            *time.Timer
+	sessionState         *sessionState
+	config               ccacheconfig.Config
+	metadata             configcommon.CacheConfigMetadata
+	timerMutex           sync.Mutex
+	capabilitiesOnce     sync.Once
+	capabilitiesErr      error
+	activeInvocationID   string
+	activeParentID       string
+	activeInvocationMu   sync.Mutex
+	projectMarkerPresent ProjectMarkerFinder
+	readMachineConfig    MachineConfigReader
 }
 
 func NewServer(
@@ -52,6 +54,14 @@ func NewServer(
 		sessionState:       newSessionState(),
 		activeInvocationID: initialInvocationID,
 	}, nil
+}
+
+func (s *IpcServer) SetProjectMarkerFinder(f ProjectMarkerFinder) {
+	s.projectMarkerPresent = f
+}
+
+func (s *IpcServer) SetMachineConfigReader(r MachineConfigReader) {
+	s.readMachineConfig = r
 }
 
 func (s *IpcServer) Run(ctx context.Context) error {
@@ -114,7 +124,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.projectMarkerPresent, s.readMachineConfig)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)

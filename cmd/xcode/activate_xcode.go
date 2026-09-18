@@ -2,6 +2,7 @@ package xcode
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -49,6 +50,16 @@ This command will:
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
+		if _, err := common.ResolveAndPersistProjectMode(activateXcodeProjectMode, logger); err != nil {
+			return fmt.Errorf("resolve project mode: %w", err)
+		}
+
+		push, err := common.ResolveAndPersistCachePush(cmd, activateXcodeParams.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateXcodeParams.PushEnabled = push
+
 		if err := xcelerate.Activate(
 			cmd.Context(),
 			logger,
@@ -72,6 +83,9 @@ This command will:
 
 //nolint:gochecknoglobals
 var activateXcodeParams = xcelerate.DefaultParams()
+
+//nolint:gochecknoglobals
+var activateXcodeProjectMode string
 
 func init() {
 	common.ActivateCmd.AddCommand(activateXcodeCmd)
@@ -130,6 +144,8 @@ Swift compile caching requires explicit modules, which some projects cannot buil
 		"disable-prefix-mapping",
 		activateXcodeParams.DisablePrefixMapping,
 		`Disable injecting Clang prefix-mapping flags into xcodebuild. Prefix mapping canonicalizes rotating source/DerivedData paths so compilation cache keys stay stable; disable only if it causes issues.`)
+
+	activateXcodeCmd.Flags().StringVar(&activateXcodeProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }
 
 // ActivateXcodeCommandFn is a backward-compatible wrapper around xcelerate.Activate.

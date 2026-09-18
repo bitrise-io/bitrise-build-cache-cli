@@ -103,6 +103,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
+	previous := a.readCurrentConfig()
+
 	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
 		BuildCacheEndpoint:    a.buildCacheEndpoint,
 		PushEnabled:           a.pushEnabled,
@@ -118,6 +120,9 @@ func (a *Activator) Activate(ctx context.Context) error {
 	if err := config.Save(a.logger, a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
+
+	a.restartHelperOnConfigDelta(ctx, previous, config)
+	a.ensureHelperServing(ctx, config.IPCEndpoint)
 
 	a.ensureLogDir()
 
@@ -151,8 +156,6 @@ func (a *Activator) Activate(ctx context.Context) error {
 		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
 	}
 
-	a.ensureHelperServing(ctx, config.IPCEndpoint)
-
 	a.logger.TInfof(ActivateCppSuccessful)
 
 	return nil
@@ -169,6 +172,8 @@ var (
 	startHelperFn     = func(socketPath string, opts ...ccacheipc.StartOption) error {
 		return ccacheipc.NewSocket(socketPath).Start(opts...)
 	}
+	isListeningFn = ccacheipc.IsListening
+	stopHelperFn  = StopStorageHelperAt
 )
 
 // ensureHelperServing starts the storage helper if nothing answers its socket.
@@ -229,6 +234,34 @@ func addEnvVarToEnvman(
 	}
 
 	logger.TInfof("Set %s=%s via envman", key, value)
+}
+
+// readCurrentConfig returns the zero value when nothing is on disk yet, so
+// callers can diff against the freshly-built config unconditionally.
+func (a *Activator) readCurrentConfig() ccacheconfig.Config {
+	cfg, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
+	if err != nil {
+		return ccacheconfig.Config{}
+	}
+
+	return cfg
+}
+
+// restartHelperOnConfigDelta stops a running helper whose in-memory config no
+// longer matches the freshly-written one, so the next request picks up the new
+// cache_push setting.
+func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, next ccacheconfig.Config) {
+	if previous.PushEnabled == next.PushEnabled {
+		return
+	}
+	if !isListeningFn(next.IPCEndpoint) {
+		return
+	}
+
+	a.logger.TInfof("ccache config delta on cache_push; restarting the storage helper.")
+	if err := stopHelperFn(ctx, a.logger, next.IPCEndpoint); err != nil {
+		a.logger.Warnf("Failed to stop the ccache storage helper for config reload: %s", err)
+	}
 }
 
 // ensureLogDir creates the dir the storage helper would otherwise create on its
