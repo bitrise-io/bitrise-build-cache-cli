@@ -160,11 +160,10 @@ func Test_GenerateInitGradle(t *testing.T) {
 func Test_GenerateInitGradle_ProjectModeOptInInjectsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{
-			ProjectMode:           "opt-in",
-			ProjectMarkerFilename: ".bitrise-build-cache.json",
-			CIProvider:            "",
-			CLIPath:               "bitrise-build-cache",
-			Version:               "CommonVersionValue",
+			ProjectMode: "opt-in",
+			CIProvider:  "",
+			CLIPath:     "bitrise-build-cache",
+			Version:     "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
 			Usage:               UsageLevelEnabled,
@@ -188,10 +187,9 @@ func Test_GenerateInitGradle_ProjectModeOptInInjectsScopeCheck(t *testing.T) {
 func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{
-			ProjectMode:           "opt-in",
-			ProjectMarkerFilename: ".bitrise-build-cache.json",
-			CIProvider:            "bitrise",
-			Version:               "CommonVersionValue",
+			ProjectMode: "opt-in",
+			CIProvider:  "bitrise",
+			Version:     "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
 			Usage:               UsageLevelEnabled,
@@ -213,10 +211,9 @@ func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
 func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{
-			ProjectMode:           "always",
-			ProjectMarkerFilename: ".bitrise-build-cache.json",
-			CIProvider:            "",
-			Version:               "CommonVersionValue",
+			ProjectMode: "always",
+			CIProvider:  "",
+			Version:     "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
 			Usage:               UsageLevelEnabled,

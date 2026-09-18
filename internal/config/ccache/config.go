@@ -50,7 +50,6 @@ type Params struct {
 	PushEnabled           bool
 	IPCSocketPathOverride string
 	BaseDirOverride       string
-	ProjectMode           machineconfig.Mode
 }
 
 type Config struct {
@@ -151,8 +150,24 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,
-		ProjectMode:        params.ProjectMode,
+		ProjectMode:        resolveProjectMode(osProxy),
 	}, nil
+}
+
+// resolveProjectMode reads the machine-wide project mode so it can be baked
+// into the persisted ccache config, which is what the storage helper daemon
+// reads at start. Failures resolve to ModeAlways so the daemon still starts.
+func resolveProjectMode(osProxy utils.OsProxy) machineconfig.Mode {
+	p, err := paths.Default()
+	if err != nil {
+		return machineconfig.ModeAlways
+	}
+	mode, err := machineconfig.StoredProjectMode(osProxy, p, nil)
+	if err != nil {
+		return machineconfig.ModeAlways
+	}
+
+	return mode
 }
 
 func idleTimeoutFor(envs map[string]string) time.Duration {

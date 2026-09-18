@@ -46,8 +46,7 @@ type PluginCommonTemplateInventory struct {
 
 	CLIPath string
 
-	ProjectMode           string
-	ProjectMarkerFilename string
+	ProjectMode string
 }
 
 type TemplateInventory struct {

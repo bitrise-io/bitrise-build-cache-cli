@@ -54,11 +54,9 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
-		mode, err := common.ResolveAndPersistProjectMode(activateGradleProjectMode, logger)
-		if err != nil {
+		if _, err := common.ResolveAndPersistProjectMode(activateGradleProjectMode, logger); err != nil {
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
-		activateGradleParams.ProjectMode = mode
 
 		if err := gradleconfig.Activate(
 			cmd.Context(),
@@ -142,7 +140,7 @@ func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error),
+	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 	params gradleconfig.ActivateGradleParams,

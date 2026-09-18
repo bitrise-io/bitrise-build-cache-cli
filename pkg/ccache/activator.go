@@ -11,7 +11,6 @@ import (
 	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
@@ -29,7 +28,6 @@ type ActivatorParams struct {
 	IPCSocketPathOverride string
 	BaseDirOverride       string
 	DebugLogging          bool
-	ProjectMode           machineconfig.Mode
 	Envs                  map[string]string
 
 	// Logger overrides the default logger. If nil, a default logger is created.
@@ -54,7 +52,6 @@ type Activator struct {
 	ipcSocketPathOverride string
 	baseDirOverride       string
 	debugLogging          bool
-	projectMode           machineconfig.Mode
 	envs                  map[string]string
 }
 
@@ -96,7 +93,6 @@ func NewActivator(params ActivatorParams) *Activator {
 		ipcSocketPathOverride: params.IPCSocketPathOverride,
 		baseDirOverride:       params.BaseDirOverride,
 		debugLogging:          params.DebugLogging,
-		projectMode:           params.ProjectMode,
 		envs:                  envs,
 	}
 }
@@ -114,7 +110,6 @@ func (a *Activator) Activate(ctx context.Context) error {
 		PushEnabled:           a.pushEnabled,
 		IPCSocketPathOverride: a.ipcSocketPathOverride,
 		BaseDirOverride:       a.baseDirOverride,
-		ProjectMode:           a.projectMode,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ccache config: %w", err)

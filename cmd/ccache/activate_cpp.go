@@ -34,8 +34,7 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
-		mode, err := common.ResolveAndPersistProjectMode(activateCppProjectMode, logger)
-		if err != nil {
+		if _, err := common.ResolveAndPersistProjectMode(activateCppProjectMode, logger); err != nil {
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
 
@@ -45,7 +44,6 @@ This command will:
 			IPCSocketPathOverride: activateCppParams.IPCSocketPathOverride,
 			BaseDirOverride:       activateCppParams.BaseDirOverride,
 			DebugLogging:          common.DebugFromFlag(),
-			ProjectMode:           mode,
 		})
 
 		if err := activator.Activate(cmd.Context()); err != nil {

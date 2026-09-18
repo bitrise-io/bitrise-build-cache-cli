@@ -55,8 +55,13 @@ func mergeDebugFlag(cfg xcelerate.Config) xcelerate.Config {
 // the wrapper for this invocation: only when opt-in is active AND no marker is
 // found walking up from the current dir. Any resolution error is treated as
 // "no marker" — the wrapper never fails a build because of the check.
-func projectModeGates(cfg xcelerate.Config, osProxy utils.OsProxy) bool {
-	if cfg.ProjectMode != "opt-in" {
+func projectModeGates(osProxy utils.OsProxy) bool {
+	p, err := paths.Default()
+	if err != nil {
+		return false
+	}
+	mode, err := machineconfig.StoredProjectMode(osProxy, p, nil)
+	if err != nil || mode != machineconfig.ModeOptIn {
 		return false
 	}
 
@@ -197,7 +202,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		disabledBy = append(disabledBy, CreateXCFrameworkFlag)
 	}
 
-	if projectModeGates(config, osProxy) {
+	if projectModeGates(osProxy) {
 		config.BuildCacheEnabled = false
 		disabledBy = append(disabledBy, ProjectModeOptInReason)
 	}

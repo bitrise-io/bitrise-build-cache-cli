@@ -15,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
@@ -65,7 +66,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -107,7 +108,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -144,7 +145,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -181,7 +182,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(

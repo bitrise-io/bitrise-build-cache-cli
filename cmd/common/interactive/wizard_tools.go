@@ -122,7 +122,7 @@ func activateReactNativeBasedOnSelection(ctx context.Context, logger log.Logger,
 	return nil
 }
 
-func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
+func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, _ machineconfig.Mode) error {
 	gradleHome, err := pathutil.NewPathModifier().AbsPath("~/.gradle")
 	if err != nil {
 		return fmt.Errorf("expand Gradle home path: %w", err)
@@ -131,7 +131,6 @@ func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[strin
 	params := gradleconfig.DefaultActivateGradleParams()
 	params.Cache.Enabled = true
 	params.Cache.PushEnabled = pushEnabled
-	params.ProjectMode = projectMode
 
 	params.CLIPath = clibin.Resolve(logger)
 
@@ -223,13 +222,12 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 	return nil
 }
 
-func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
+func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, _ machineconfig.Mode) error {
 	activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 		PushEnabled:  pushEnabled,
 		DebugLogging: common.DebugFromFlag(),
 		Envs:         envs,
 		Logger:       logger,
-		ProjectMode:  projectMode,
 	})
 
 	if err := activator.Activate(ctx); err != nil {
@@ -239,11 +237,10 @@ func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[strin
 	return nil
 }
 
-func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, projectMode machineconfig.Mode) error {
+func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool, _ machineconfig.Mode) error {
 	params := xcelerate.DefaultParams()
 	params.DebugLogging = common.DebugEnabled(params.DebugLogging)
 	params.PushEnabled = pushEnabled
-	params.ProjectMode = projectMode
 
 	if err := xcelerate.Activate(
 		ctx,

@@ -16,7 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func Test_activateGradleParams(t *testing.T) {
@@ -77,10 +77,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -115,10 +115,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:   UsageLevelDependency,
@@ -157,10 +157,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -199,10 +199,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
@@ -261,10 +261,10 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -306,12 +306,12 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					AppSlug:               "AppSlugValue",
-					CIProvider:            "bitrise",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -354,13 +354,13 @@ func Test_activateGradleParams(t *testing.T) {
 			},
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
-					AuthToken:             "WorkspaceIDValue:AuthTokenValue",
-					Debug:                 true,
-					AppSlug:               "AppSlugValue",
-					CIProvider:            "bitrise",
-					Version:               consts.GradleCommonPluginDepVersion,
-					CLIPath:               "bitrise-build-cache",
-					ProjectMarkerFilename: paths.ProjectMarkerFilename,
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					Debug:       true,
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -382,7 +382,7 @@ func Test_activateGradleParams(t *testing.T) {
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := prep()
-			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug, nil)
+			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug, nil, utils.DefaultOsProxy{})
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
@@ -435,7 +435,7 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 			Analytics: AnalyticsParams{Enabled: false},
 		}
 
-		inv, err := params.TemplateInventory(logger, envs, false, mockProvider)
+		inv, err := params.TemplateInventory(logger, envs, false, mockProvider, utils.DefaultOsProxy{})
 		require.NoError(t, err)
 
 		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
@@ -458,7 +458,7 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 
 		params := DefaultActivateGradleParams()
 
-		_, err := params.TemplateInventory(logger, envs, false, mockProvider)
+		_, err := params.TemplateInventory(logger, envs, false, mockProvider, utils.DefaultOsProxy{})
 		require.NoError(t, err)
 
 		assert.Empty(t, mockProvider.GetBenchmarkPhaseCalls())

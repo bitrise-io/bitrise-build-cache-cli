@@ -50,11 +50,9 @@ This command will:
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		mode, err := common.ResolveAndPersistProjectMode(activateXcodeProjectMode, logger)
-		if err != nil {
+		if _, err := common.ResolveAndPersistProjectMode(activateXcodeProjectMode, logger); err != nil {
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
-		activateXcodeParams.ProjectMode = mode
 
 		if err := xcelerate.Activate(
 			cmd.Context(),

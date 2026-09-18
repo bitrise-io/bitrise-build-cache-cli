@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 const (
@@ -51,8 +52,6 @@ type ActivateGradleParams struct {
 	TestDistro TestDistroParams
 
 	CLIPath string
-
-	ProjectMode machineconfig.Mode
 }
 
 func DefaultActivateGradleParams() ActivateGradleParams {
@@ -82,11 +81,37 @@ func NormalizeParams(params *ActivateGradleParams) {
 	}
 }
 
+// resolveProjectMode reads the machine-wide project mode from disk. Failures
+// resolve to ModeAlways so the template still renders with something coherent
+// — the machine config is best-effort input, not required.
+func resolveProjectMode(osProxy utils.OsProxy, logger log.Logger) machineconfig.Mode {
+	p, err := paths.Default()
+	if err != nil {
+		if logger != nil {
+			logger.Debugf("Could not resolve home dir for machine config, defaulting to always: %s", err)
+		}
+
+		return machineconfig.ModeAlways
+	}
+
+	mode, err := machineconfig.StoredProjectMode(osProxy, p, logger)
+	if err != nil {
+		if logger != nil {
+			logger.Warnf("Could not read machine config, defaulting to always: %s", err)
+		}
+
+		return machineconfig.ModeAlways
+	}
+
+	return mode
+}
+
 func (params ActivateGradleParams) TemplateInventory(
 	logger log.Logger,
 	envs map[string]string,
 	isDebug bool,
 	benchmarkProvider common.BenchmarkPhaseProvider,
+	osProxy utils.OsProxy,
 ) (TemplateInventory, error) {
 	NormalizeParams(&params)
 
@@ -117,7 +142,9 @@ func (params ActivateGradleParams) TemplateInventory(
 		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, envexport.New(envs, logger))
 	}
 
-	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug)
+	projectMode := resolveProjectMode(osProxy, logger)
+
+	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode)
 
 	cacheInventory, err := params.cacheTemplateInventory(logger, envs)
 	if err != nil {
@@ -142,6 +169,7 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	authOrigin authpkg.Origin,
 	metadata common.CacheConfigMetadata,
 	isDebug bool,
+	projectMode machineconfig.Mode,
 ) PluginCommonTemplateInventory {
 	cliPath := params.CLIPath
 	if cliPath == "" {
@@ -149,14 +177,13 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	}
 
 	return PluginCommonTemplateInventory{
-		AuthToken:             authpkg.GradleToken(authConfig, authOrigin),
-		Debug:                 isDebug,
-		AppSlug:               metadata.BitriseAppID,
-		CIProvider:            metadata.CIProvider,
-		Version:               consts.GradleCommonPluginDepVersion,
-		CLIPath:               cliPath,
-		ProjectMode:           string(params.ProjectMode),
-		ProjectMarkerFilename: paths.ProjectMarkerFilename,
+		AuthToken:   authpkg.GradleToken(authConfig, authOrigin),
+		Debug:       isDebug,
+		AppSlug:     metadata.BitriseAppID,
+		CIProvider:  metadata.CIProvider,
+		Version:     consts.GradleCommonPluginDepVersion,
+		CLIPath:     cliPath,
+		ProjectMode: string(projectMode),
 	}
 }
 

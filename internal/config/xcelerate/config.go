@@ -12,7 +12,6 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -42,7 +41,6 @@ type Params struct {
 	ProxySocketPathOverride     string
 	PushEnabled                 bool
 	XcodebuildTimestampsEnabled bool
-	ProjectMode                 machineconfig.Mode
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -82,11 +80,10 @@ type Config struct {
 	LegacyAuthConfig multiplatformconfig.AnalyticsAuthConfig `json:"authConfig,omitzero"`
 	// AuthOrigin says where AuthConfig came from. Runtime only — it is what
 	// tells a CI JWT (sent as-is) from a PAT (prefixed with the workspace).
-	AuthOrigin           authpkg.Origin     `json:"-"`
-	ExternalAppID        string             `json:"externalAppId,omitempty"`
-	ExternalBuildID      string             `json:"externalBuildId,omitempty"`
-	ExternalWorkflowName string             `json:"externalWorkflowName,omitempty"`
-	ProjectMode          machineconfig.Mode `json:"projectMode,omitempty"`
+	AuthOrigin           authpkg.Origin `json:"-"`
+	ExternalAppID        string         `json:"externalAppId,omitempty"`
+	ExternalBuildID      string         `json:"externalBuildId,omitempty"`
+	ExternalWorkflowName string         `json:"externalWorkflowName,omitempty"`
 }
 
 func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs map[string]string) (Config, error) {
@@ -240,7 +237,6 @@ func NewConfig(ctx context.Context,
 		ExternalAppID:          metadata.ExternalAppID,
 		ExternalBuildID:        metadata.ExternalBuildID,
 		ExternalWorkflowName:   metadata.ExternalWorkflowName,
-		ProjectMode:            params.ProjectMode,
 	}, nil
 }
 

@@ -39,8 +39,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
-		mode, err := common.ResolveAndPersistProjectMode(projectMode, logger)
-		if err != nil {
+		if _, err := common.ResolveAndPersistProjectMode(projectMode, logger); err != nil {
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
 
@@ -53,7 +52,6 @@ Note: This is a convenience activation method, if your activation requires fine-
 			NoSwiftCache:         noSwiftCache,
 			BuildCacheSkipFlags:  buildCacheSkipFlags,
 			DebugLogging:         common.DebugFromFlag(),
-			ProjectMode:          mode,
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
