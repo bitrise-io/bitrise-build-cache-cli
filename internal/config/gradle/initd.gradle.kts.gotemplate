@@ -91,9 +91,7 @@ initscript {
 {{- if or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") }}
 settingsEvaluated {
     {{- if and (not .Common.CIProvider) (eq .Common.ProjectMode "opt-in") }}
-    // Local-dev opt-in gate: shell out to the CLI's `project scope-check` so the
-    // walkup + machine-config read live in one place (see internal/config/machine/marker.go).
-    // Exit 0 = in scope (proceed); 1 = gated (skip); >=2 = error (fail open, proceed).
+    // scope-check exit codes: 0 = in scope, 1 = gated (skip), >=2 = error (fail open).
     val _bitriseScopeExit = try {
         providers.of(BitriseProjectScopeSource::class.java) {
             parameters {

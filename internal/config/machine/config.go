@@ -23,38 +23,31 @@ type Config struct {
 	CachePush   *bool `json:"cache_push,omitempty"`
 }
 
-// DefaultCachePush is the fallback when neither the flag nor the machine
-// config carries a stored preference. Push is on by default; the resolver
-// falls back to it when there is nothing better to consult.
 const DefaultCachePush = true
 
-// FlagOverlay carries the CLI-flag inputs that override the on-disk machine
-// config. Zero value for a field means "no flag set for this run".
+// FlagOverlay carries CLI-flag inputs that override the stored machine config.
+// Zero value per field means "flag not set for this run" (CachePush is a
+// tri-state pointer: nil / &true / &false).
 type FlagOverlay struct {
-	// ProjectMode is empty when the flag was not set.
 	ProjectMode string
-	// CachePush is nil when the flag was not set (tri-state: nil / &true / &false).
-	CachePush *bool
+	CachePush   *bool
 }
 
-// Source labels where a resolved field came from — surfaced by Effective so
-// doctor and similar inspectors can report provenance without re-reading the
-// config file.
 const (
 	SourceFlag          = "flag"
 	SourceMachineConfig = "machine config"
 	SourceDefault       = "default"
 )
 
-// Sources reports, per field, whether the value Effective returned came from
-// the overlay, the stored config, or the built-in default.
+// Sources reports, per field, whether Effective's value came from the overlay,
+// the stored config, or the built-in default.
 type Sources struct {
 	ProjectMode string
 	CachePush   string
 }
 
 // Read returns the machine-wide config. A missing file resolves to an empty
-// Config and no error — the "not written yet" case is a valid state.
+// Config and no error.
 func Read(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (Config, error) {
 	content, exists, err := osProxy.ReadFileIfExists(p.MachineConfigFile())
 	if err != nil {
@@ -98,10 +91,9 @@ func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
 	return nil
 }
 
-// Effective resolves the machine-wide config for the current run using
-// overlay > stored > default precedence, and returns a fully-populated Config
-// alongside a Sources record naming the origin of each field. An unknown
-// overlay ProjectMode returns an error — the resolver is the single validator.
+// Effective resolves the machine-wide config using overlay > stored > default
+// precedence. It returns a fully-populated Config alongside a Sources record
+// naming the origin of each field.
 func Effective(overlay FlagOverlay, current Config) (Config, Sources, error) {
 	mode, modeSource, err := effectiveProjectMode(overlay.ProjectMode, current.ProjectMode)
 	if err != nil {

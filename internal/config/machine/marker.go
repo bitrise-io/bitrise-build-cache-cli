@@ -11,11 +11,10 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// ProjectMarker is the on-disk presence signal for opt-in mode.
 type ProjectMarker struct{}
 
 // ReadMarker returns nil when the file is absent, an error on malformed JSON,
-// and a non-nil marker on any valid body (unknown fields are ignored).
+// and a non-nil marker on any valid body.
 func ReadMarker(path string, osProxy utils.OsProxy) (*ProjectMarker, error) {
 	content, exists, err := osProxy.ReadFileIfExists(path)
 	if err != nil {
@@ -35,8 +34,7 @@ func ReadMarker(path string, osProxy utils.OsProxy) (*ProjectMarker, error) {
 
 // WalkUpFindMarker walks up from startDir until it finds the marker or reaches
 // the filesystem root. The typed return distinguishes "no marker" (marker=nil,
-// err=nil) from "marker is malformed" (err != nil) — doctor uses that to raise
-// a warning without silently treating the dir as un-scoped.
+// err=nil) from "marker is malformed" (err != nil).
 func WalkUpFindMarker(startDir string, osProxy utils.OsProxy) (string, *ProjectMarker, error) {
 	dir := startDir
 	for {
@@ -57,8 +55,7 @@ func WalkUpFindMarker(startDir string, osProxy utils.OsProxy) (string, *ProjectM
 	}
 }
 
-// FindMarker is the boolean-only view of WalkUpFindMarker, for callers that
-// only need to know whether cwd is covered by any ancestor marker.
+// FindMarker is the boolean-only view of WalkUpFindMarker.
 func FindMarker(startDir string, osProxy utils.OsProxy) (bool, string, error) {
 	path, marker, err := WalkUpFindMarker(startDir, osProxy)
 	if err != nil {
@@ -69,8 +66,8 @@ func FindMarker(startDir string, osProxy utils.OsProxy) (bool, string, error) {
 }
 
 // EnsureMarker writes an empty marker at cwd when opt-in mode is active and no
-// ancestor marker already covers this directory. A failed write is logged but
-// not returned as an error — the user can create the file manually.
+// ancestor marker already covers this directory. Write failures are logged and
+// swallowed so activation still succeeds.
 func EnsureMarker(cwd string, mode Mode, osProxy utils.OsProxy, logger log.Logger) error {
 	if mode != ModeOptIn {
 		return nil

@@ -471,9 +471,6 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 	})
 }
 
-// Test_TemplateInventory_ReadsStoredOptInMode covers the render-time-read path:
-// a machine config on disk with project_mode=opt-in must surface as
-// ProjectMode="opt-in" on the inventory returned by TemplateInventory.
 func Test_TemplateInventory_ReadsStoredOptInMode(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

@@ -247,10 +247,9 @@ func (a *Activator) readCurrentConfig() ccacheconfig.Config {
 	return cfg
 }
 
-// restartHelperOnConfigDelta stops a helper whose in-memory config no longer
-// matches the freshly-written one on disk so the next request picks up the new
-// value (project mode or cache push) instead of serving the previous
-// invocation's setting.
+// restartHelperOnConfigDelta stops a running helper whose in-memory config no
+// longer matches the freshly-written one, so the next request picks up the new
+// project mode / cache push.
 func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, next ccacheconfig.Config) {
 	if previous.ProjectMode == next.ProjectMode && previous.PushEnabled == next.PushEnabled {
 		return

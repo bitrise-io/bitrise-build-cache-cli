@@ -13,15 +13,10 @@ import (
 
 const CachePushFlagName = "cache-push"
 
-// ResolveAndPersistCachePush picks the effective --cache-push value and, if
-// the caller set the flag explicitly, persists it to the machine config so
-// later activations without the flag pick the same choice.
-//
-// The flag is per-command (each activate command registers its own), so the
-// caller passes the current flag value and the cobra command that owns the
-// flag definition — cmd.Flags().Changed(name) is the source of truth for
-// "did the user actually type --cache-push?" as opposed to "the flag has its
-// default value".
+// ResolveAndPersistCachePush picks the effective --cache-push value and, when
+// the caller set the flag explicitly, persists it to the machine config.
+// cmd.Flags().Changed distinguishes "user typed --cache-push" from "flag holds
+// its default value" — the flag is per-command, so cmd owns its definition.
 func ResolveAndPersistCachePush(cmd *cobra.Command, flagValue bool, logger log.Logger) (bool, error) {
 	changed := cmd != nil && cmd.Flags().Changed(CachePushFlagName)
 
@@ -64,10 +59,8 @@ func ResolveAndPersistCachePush(cmd *cobra.Command, flagValue bool, logger log.L
 	return push, nil
 }
 
-// PersistCachePush writes cfg back to disk with CachePush=effective, but only
-// when the value actually changed — a no-op when the stored value already
-// matches, so a redundant activate does not churn the file's mtime. Both the
-// CLI resolver and the interactive wizard funnel through this single writer.
+// PersistCachePush writes cfg with CachePush=effective, no-op when the stored
+// value already matches — a redundant activate must not churn the file's mtime.
 func PersistCachePush(cfg machineconfig.Config, effective bool, osProxy utils.OsProxy, p paths.Paths) error {
 	if cfg.CachePush != nil && *cfg.CachePush == effective {
 		return nil

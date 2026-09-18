@@ -35,18 +35,15 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 		if cmd.Name() == "version" {
 			return
 		}
-		// scope-check is called per Gradle configuration-cache miss on opt-in
-		// projects; version log + auth hydrate would each add work (a network
-		// hop for OAuth) to every local Gradle configuration.
+		// scope-check runs per Gradle configuration-cache miss on opt-in
+		// projects; version log + OAuth hydrate would add network work to every
+		// local Gradle configuration.
 		if cmd.Name() == "scope-check" {
 			return
 		}
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
-		// Apply a stored OAuth login: refresh its PAT in the credential store
-		// (no-op when env/CI creds are set). Before the version check so it
-		// still runs for check-skipped commands.
 		switch cmd.Name() {
 		case "login", "logout", "completion", "help", "status":
 			// status reports the auth source, so it must not refresh and mask it.
@@ -126,15 +123,13 @@ func Execute() {
 	}
 }
 
-// ExitCoder is an error carrying an explicit exit code — a subcommand can
-// return one to signal a specific numeric exit without letting cobra print the
-// error line. Callers combine it with SilenceErrors on the cobra.Command.
+// ExitCoder lets a subcommand signal a specific numeric exit without cobra
+// printing the error line. Pair with SilenceErrors on the command.
 type ExitCoder interface {
 	error
 	ExitCode() int
 }
 
-// ExitCodeError is the canonical ExitCoder implementation.
 type ExitCodeError struct{ Code int }
 
 func (e ExitCodeError) Error() string { return "" }

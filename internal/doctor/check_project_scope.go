@@ -56,15 +56,12 @@ func (d *Doctor) projectScopeCheck() Check {
 	}
 }
 
-// effectiveMachineConfig resolves the machine-wide config for doctor. Doctor
-// never sees CLI flags, so the overlay stays empty — Sources ends up labelling
-// each field as either "machine config" (persisted value) or "default"
-// (built-in fallback).
+// effectiveMachineConfig resolves the machine config for doctor with an empty
+// overlay (doctor never sees CLI flags). An unresolvable home dir yields
+// defaults rather than an error — nothing could have been stored.
 func (d *Doctor) effectiveMachineConfig() (machineconfig.Config, machineconfig.Sources, error) {
 	current := machineconfig.Config{}
 	if p, err := paths.Default(); err == nil {
-		// A machine without a resolvable home dir can never have stored a
-		// preference; resolve everything to defaults instead of erroring.
 		current, err = machineconfig.Read(d.osProxy(), p, nil)
 		if err != nil {
 			return machineconfig.Config{}, machineconfig.Sources{}, fmt.Errorf("read machine config: %w", err)

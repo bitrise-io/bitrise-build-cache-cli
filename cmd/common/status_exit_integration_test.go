@@ -17,14 +17,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 )
 
-// helperEnvVar gates the helper-process branch of TestMain. When set, the
-// test binary re-enters itself as a cobra executor and calls common.Execute()
-// — which exits via os.Exit with the status code we want to assert on.
+// When set, the test binary re-enters itself as a cobra executor and calls
+// common.Execute() — which exits via os.Exit with the status code we assert on.
 const helperEnvVar = "BBC_STATUS_EXIT_HELPER"
 
-// TestMain lets this test binary double as the CLI binary when helperEnvVar
-// is set. Args come via a second env var (newline-joined) so we don't have
-// to fight Go's test-flag parsing on os.Args.
+// TestMain lets this binary double as the CLI when helperEnvVar is set. Args
+// come via a second env var (newline-joined) to sidestep Go's test-flag parsing.
 func TestMain(m *testing.M) {
 	if os.Getenv(helperEnvVar) == "1" {
 		argv := strings.Split(os.Getenv(helperEnvVar+"_ARGS"), "\n")
@@ -74,10 +72,6 @@ func writeRNFixtureForExit(t *testing.T, home string, enabled bool) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), payload, 0o600))
 }
 
-// TestExecute_StatusExitCodes_EndToEnd runs the CLI as a subprocess and
-// asserts that common.Execute() translates an ExitCoder error into the right
-// os.Exit code. Prior tests exercised the extraction in isolation — this
-// closes the loop on the root-cmd wiring in root.go.
 func TestExecute_StatusExitCodes_EndToEnd(t *testing.T) {
 	t.Run("feature enabled → exit 0", func(t *testing.T) {
 		home := t.TempDir()

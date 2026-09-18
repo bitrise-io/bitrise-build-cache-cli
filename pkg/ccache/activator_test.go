@@ -63,7 +63,6 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 		WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error { return nil },
 		RenameFunc:    func(_, _ string) error { return nil },
 		RemoveFunc:    func(_ string) error { return nil },
-		// Machine config lookup during NewConfig / EnsureMarker — treat as absent.
 		ReadFileIfExistsFunc: func(_ string) (string, bool, error) { return "", false, nil },
 		// The analytics config is now read-modify-write, so activation opens it
 		// before saving. Absent is the normal first-activation case.

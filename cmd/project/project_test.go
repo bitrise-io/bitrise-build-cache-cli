@@ -17,8 +17,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// runScopeCheck executes `project scope-check <args>` through the shared
-// RootCmd and returns the exit code the CLI would return via Execute().
 func runScopeCheck(t *testing.T, extra ...string) (int, string) {
 	t.Helper()
 

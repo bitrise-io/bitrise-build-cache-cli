@@ -9,10 +9,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// storedCachePush seeds the wizard's push toggle from the machine config so a
-// user who has previously answered doesn't have to re-answer. Any read failure
-// falls back to the shared default — the wizard is not the place to surface
-// machine config errors.
+// storedCachePush seeds the wizard's push toggle from the machine config. Any
+// read failure falls back to DefaultCachePush; the wizard is not the place to
+// surface machine config errors.
 func storedCachePush(logger log.Logger) bool {
 	p, err := paths.Default()
 	if err != nil {
@@ -32,9 +31,8 @@ func storedCachePush(logger log.Logger) bool {
 	return *effective.CachePush
 }
 
-// persistCachePush stores the wizard's chosen push value so future
-// non-interactive activations pick it up. Failures are best-effort: the
-// wizard already used the value for this run.
+// persistCachePush stores the wizard's chosen push value best-effort; the run
+// itself already used the value.
 func persistCachePush(pushEnabled bool, logger log.Logger) {
 	p, err := paths.Default()
 	if err != nil {

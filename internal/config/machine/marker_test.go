@@ -138,7 +138,6 @@ func TestEnsureMarker_WriteFailureIsSwallowed(t *testing.T) {
 		},
 	}
 
-	// Must not return the error so activation doesn't fail.
 	require.NoError(t, EnsureMarker("/some/dir", ModeOptIn, proxy, nil))
 }
 

@@ -235,8 +235,6 @@ func TestExitCode_PassesThroughOtherErrors(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// exitCode extracts the exit code from an ExitCoder-satisfying error. Mirrors
-// the shape of common.Execute()'s errors.As dispatch.
 func exitCode(err error) (int, bool) {
 	var ec common.ExitCoder
 	if errors.As(err, &ec) {

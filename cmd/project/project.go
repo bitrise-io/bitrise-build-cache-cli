@@ -1,6 +1,5 @@
-// Package project holds subcommands that inspect per-project scoping state,
-// consumed by the tool activators (Gradle init script, ccache credhelper,
-// doctor) so they don't each re-implement the same walkup + machine-config read.
+// Package project holds subcommands that inspect per-project scoping state so
+// tool activators do not each re-implement the walkup + machine-config read.
 package project
 
 import (
@@ -14,16 +13,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// Exit codes documented in the scope-check command's Long text — external
-// callers (initd.gradle.kts.gotemplate) branch on these values.
+// Exit codes are contract with initd.gradle.kts.gotemplate; changing them
+// requires a matching template bump.
 const (
 	ExitActive = 0
 	ExitGated  = 1
 	ExitError  = 2
 )
 
-// ResetForTest zeroes the persistent flag state RootCmd otherwise carries
-// between subtests; call it from a t.Cleanup that runs after each subtest.
 func ResetForTest() { scopeCheckQuiet = false }
 
 //nolint:gochecknoglobals

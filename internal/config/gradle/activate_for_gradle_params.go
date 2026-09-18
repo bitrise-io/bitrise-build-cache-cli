@@ -81,9 +81,8 @@ func NormalizeParams(params *ActivateGradleParams) {
 	}
 }
 
-// resolveProjectMode reads the machine-wide project mode from disk. Failures
-// resolve to ModeAlways so the template still renders with something coherent
-// — the machine config is best-effort input, not required.
+// resolveProjectMode reads the machine-wide mode; failures fall back to
+// ModeAlways so template rendering never blocks on a machine-config error.
 func resolveProjectMode(osProxy utils.OsProxy, logger log.Logger) machineconfig.Mode {
 	p, err := paths.Default()
 	if err != nil {

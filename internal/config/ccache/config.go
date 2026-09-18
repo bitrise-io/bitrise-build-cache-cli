@@ -154,9 +154,9 @@ func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Co
 	}, nil
 }
 
-// resolveProjectMode reads the machine-wide project mode so it can be baked
-// into the persisted ccache config, which is what the storage helper daemon
-// reads at start. Failures resolve to ModeAlways so the daemon still starts.
+// resolveProjectMode bakes the machine-wide mode into the persisted ccache
+// config for the storage-helper daemon to read at start. Failures fall back to
+// ModeAlways so the daemon still starts.
 func resolveProjectMode(osProxy utils.OsProxy) machineconfig.Mode {
 	p, err := paths.Default()
 	if err != nil {
