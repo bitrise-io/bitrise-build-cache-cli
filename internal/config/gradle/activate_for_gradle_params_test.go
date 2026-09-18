@@ -15,11 +15,15 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func Test_activateGradleParams(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
@@ -394,6 +398,8 @@ func Test_activateGradleParams(t *testing.T) {
 }
 
 func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	prep := func() log.Logger {
 		mockLogger := &mocks.Logger{}
 		mockLogger.On("Infof", mock.Anything).Return()
@@ -463,4 +469,38 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 
 		assert.Empty(t, mockProvider.GetBenchmarkPhaseCalls())
 	})
+}
+
+// Test_TemplateInventory_ReadsStoredOptInMode covers the render-time-read path:
+// a machine config on disk with project_mode=opt-in must surface as
+// ProjectMode="opt-in" on the inventory returned by TemplateInventory.
+func Test_TemplateInventory_ReadsStoredOptInMode(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+	osProxy := utils.DefaultOsProxy{}
+	p, err := paths.Default()
+	require.NoError(t, err)
+	require.NoError(t, machineconfig.Write(machineconfig.Config{ProjectMode: machineconfig.ModeOptIn}, osProxy, p))
+
+	params := ActivateGradleParams{
+		Cache:      CacheParams{Enabled: false},
+		Analytics:  AnalyticsParams{Enabled: false},
+		TestDistro: TestDistroParams{Enabled: false},
+	}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+	}
+
+	inv, err := params.TemplateInventory(mockLogger, envs, false, nil, osProxy)
+	require.NoError(t, err)
+	assert.Equal(t, "opt-in", inv.Common.ProjectMode)
 }
