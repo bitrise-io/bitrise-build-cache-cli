@@ -55,7 +55,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		workspaceID   = auth.Config.WorkspaceID
 		authToken     = auth.Config.Token
 		username      = storedUsername
-		pushEnabled   = true
+		pushEnabled   = storedCachePush(logger)
 	)
 
 	toolOptions := []huh.Option[string]{
@@ -127,6 +127,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 	if err := tui.RunForm(groups...); err != nil {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
+
+	persistCachePush(pushEnabled, logger)
 
 	persistWizardCredentials(logger, credStore, auth, wizardCredentials{
 		WorkspaceID:    workspaceID,

@@ -120,6 +120,104 @@ func TestValidateProjectModeFlag(t *testing.T) {
 	require.Error(t, ValidateProjectModeFlag("garbage"))
 }
 
+func TestEffectiveCachePush(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+	falseVal := false
+
+	tests := []struct {
+		name        string
+		flagChanged bool
+		flagValue   bool
+		current     *bool
+		want        bool
+	}{
+		{name: "flag changed true wins over stored false", flagChanged: true, flagValue: true, current: &falseVal, want: true},
+		{name: "flag changed false wins over stored true", flagChanged: true, flagValue: false, current: &trueVal, want: false},
+		{name: "no flag uses stored true", flagChanged: false, flagValue: false, current: &trueVal, want: true},
+		{name: "no flag + no stored falls back to default true", flagChanged: false, flagValue: false, current: nil, want: DefaultCachePush},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, EffectiveCachePush(tc.flagChanged, tc.flagValue, tc.current))
+		})
+	}
+}
+
+func TestCachePush_JSONRoundtrip(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+	home := t.TempDir()
+	p := paths.FromHome(home)
+
+	require.NoError(t, Write(Config{CachePush: &trueVal}, utils.DefaultOsProxy{}, p))
+
+	cfg, err := Read(utils.DefaultOsProxy{}, p, nil)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.CachePush)
+	assert.True(t, *cfg.CachePush)
+
+	body, err := os.ReadFile(p.MachineConfigFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"cache_push": true`)
+}
+
+func TestCachePush_JSONRoundtripFalse(t *testing.T) {
+	t.Parallel()
+
+	falseVal := false
+	home := t.TempDir()
+	p := paths.FromHome(home)
+
+	require.NoError(t, Write(Config{CachePush: &falseVal}, utils.DefaultOsProxy{}, p))
+
+	cfg, err := Read(utils.DefaultOsProxy{}, p, nil)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.CachePush)
+	assert.False(t, *cfg.CachePush)
+
+	body, err := os.ReadFile(p.MachineConfigFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"cache_push": false`)
+}
+
+func TestCachePush_OmittedWhenNil(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	p := paths.FromHome(home)
+
+	require.NoError(t, Write(Config{ProjectMode: ModeAlways}, utils.DefaultOsProxy{}, p))
+
+	body, err := os.ReadFile(p.MachineConfigFile())
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "cache_push", "nil CachePush should be omitted from JSON")
+}
+
+func TestStoredCachePush_MissingConfigReturnsDefault(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	got, err := StoredCachePush(utils.DefaultOsProxy{}, paths.FromHome(home), nil)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultCachePush, got)
+}
+
+func TestStoredCachePush_ReadsPersistedValue(t *testing.T) {
+	t.Parallel()
+
+	falseVal := false
+	home := t.TempDir()
+	p := paths.FromHome(home)
+	require.NoError(t, Write(Config{CachePush: &falseVal}, utils.DefaultOsProxy{}, p))
+
+	got, err := StoredCachePush(utils.DefaultOsProxy{}, p, nil)
+	require.NoError(t, err)
+	assert.False(t, got)
+}
+
 func TestWrite_CreatesParentDir(t *testing.T) {
 	t.Parallel()
 

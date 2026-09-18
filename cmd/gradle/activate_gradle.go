@@ -58,6 +58,12 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
 
+		push, err := common.ResolveAndPersistCachePush(cmd, activateGradleParams.Cache.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateGradleParams.Cache.PushEnabled = push
+
 		if err := gradleconfig.Activate(
 			cmd.Context(),
 			logger,

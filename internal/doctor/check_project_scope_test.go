@@ -148,6 +148,40 @@ func TestProjectScopeCheck_optInModeWithMarkerDoesNotGate(t *testing.T) {
 	assert.Contains(t, res.Detail, "would gate this directory: no")
 }
 
+func TestProjectScopeCheck_cachePushDefaultReported(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	build := filepath.Join(home, "any-project")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	t.Chdir(build)
+
+	d := &Doctor{Envs: map[string]string{}}
+
+	res := d.projectScopeCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "cache_push=true (default)")
+}
+
+func TestProjectScopeCheck_cachePushFromMachineConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.BitriseCacheRoot(), 0o755))
+	require.NoError(t, os.WriteFile(p.MachineConfigFile(), []byte(`{"cache_push":false}`), 0o644))
+
+	build := filepath.Join(home, "any-project")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	t.Chdir(build)
+
+	d := &Doctor{Envs: map[string]string{}}
+
+	res := d.projectScopeCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "cache_push=false (machine config)")
+}
+
 func writeMarker(t *testing.T, dir, body string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.ProjectMarkerFilename), []byte(body), 0o600))

@@ -37,6 +37,9 @@ func (d *Doctor) projectScopeCheck() Check {
 			var lines []string
 			lines = append(lines, fmt.Sprintf("mode=%s", string(mode)))
 
+			push, pushSource := d.effectiveCachePush()
+			lines = append(lines, fmt.Sprintf("cache_push=%t (%s)", push, pushSource))
+
 			if marker == nil {
 				lines = append(lines, fmt.Sprintf("no %s found in %s or parents.", paths.ProjectMarkerFilename, cwd))
 			} else {
@@ -49,6 +52,33 @@ func (d *Doctor) projectScopeCheck() Check {
 			return Result{State: StateOK, Detail: strings.Join(lines, "; ")}
 		},
 	}
+}
+
+const (
+	cachePushSourceDefault       = "default"
+	cachePushSourceMachineConfig = "machine config"
+)
+
+// effectiveCachePush reports the resolved machine-wide push preference and
+// where it came from: cachePushSourceMachineConfig for a persisted value,
+// cachePushSourceDefault for the built-in fallback. Doctor never sees the
+// --cache-push flag itself; it runs standalone, so the flag source is never
+// possible here.
+func (d *Doctor) effectiveCachePush() (bool, string) {
+	p, err := paths.Default()
+	if err != nil {
+		return machineconfig.DefaultCachePush, cachePushSourceDefault
+	}
+
+	cfg, err := machineconfig.Read(d.osProxy(), p, nil)
+	if err != nil {
+		return machineconfig.DefaultCachePush, cachePushSourceDefault
+	}
+	if cfg.CachePush != nil {
+		return *cfg.CachePush, cachePushSourceMachineConfig
+	}
+
+	return machineconfig.DefaultCachePush, cachePushSourceDefault
 }
 
 func (d *Doctor) effectiveProjectMode() (machineconfig.Mode, error) {

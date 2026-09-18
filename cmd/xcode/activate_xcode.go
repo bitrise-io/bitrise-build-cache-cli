@@ -54,6 +54,12 @@ This command will:
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
 
+		push, err := common.ResolveAndPersistCachePush(cmd, activateXcodeParams.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateXcodeParams.PushEnabled = push
+
 		if err := xcelerate.Activate(
 			cmd.Context(),
 			logger,

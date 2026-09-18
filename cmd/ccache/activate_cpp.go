@@ -38,6 +38,12 @@ This command will:
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
 
+		push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateCppParams.PushEnabled = push
+
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,
 			PushEnabled:           activateCppParams.PushEnabled,

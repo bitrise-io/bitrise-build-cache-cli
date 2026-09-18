@@ -43,6 +43,12 @@ Note: This is a convenience activation method, if your activation requires fine-
 			return fmt.Errorf("resolve project mode: %w", err)
 		}
 
+		push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		pushEnabled = push
+
 		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
 			GradleEnabled:        gradleEnabled,
 			XcodeEnabled:         xcodeEnabled,

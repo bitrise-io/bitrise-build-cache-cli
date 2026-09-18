@@ -20,8 +20,14 @@ const (
 )
 
 type Config struct {
-	ProjectMode Mode `json:"project_mode,omitempty"`
+	ProjectMode Mode  `json:"project_mode,omitempty"`
+	CachePush   *bool `json:"cache_push,omitempty"`
 }
+
+// DefaultCachePush is the fallback when neither the flag nor the machine
+// config carries a stored preference. Push is on by default; the resolver
+// falls back to it when there is nothing better to consult.
+const DefaultCachePush = true
 
 // Read returns the machine-wide config. A missing file resolves to an empty
 // Config and no error — the "not written yet" case is a valid state.
@@ -88,6 +94,33 @@ func EffectiveProjectMode(flag string, current Mode) (Mode, error) {
 	}
 
 	return ModeAlways, nil
+}
+
+// EffectiveCachePush picks the push value a tool should honour given whether
+// the caller explicitly set --cache-push, the flag's value, and whatever is
+// currently persisted. Precedence: explicit flag → stored preference →
+// DefaultCachePush. Nil stored means "no preference recorded".
+func EffectiveCachePush(flagChanged bool, flagValue bool, current *bool) bool {
+	if flagChanged {
+		return flagValue
+	}
+	if current != nil {
+		return *current
+	}
+
+	return DefaultCachePush
+}
+
+// StoredCachePush reads the machine config and returns the effective push
+// value with no CLI override, falling back to DefaultCachePush when nothing
+// is recorded.
+func StoredCachePush(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (bool, error) {
+	cfg, err := Read(osProxy, p, logger)
+	if err != nil {
+		return DefaultCachePush, err
+	}
+
+	return EffectiveCachePush(false, false, cfg.CachePush), nil
 }
 
 // StoredProjectMode reads the machine config and returns the effective mode
