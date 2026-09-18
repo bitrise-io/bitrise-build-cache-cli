@@ -51,5 +51,23 @@ func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig
 		}
 	}
 
+	ensureProjectMarkerAtCwd(effective, osProxy, logger)
+
 	return effective, nil
+}
+
+// ensureProjectMarkerAtCwd writes the per-project marker under cwd when opt-in
+// mode is active and no ancestor marker already covers the directory. Failures
+// are swallowed by EnsureMarker — a machine without cwd (or a read-only fs)
+// still gets a successful activation.
+func ensureProjectMarkerAtCwd(mode machineconfig.Mode, osProxy utils.OsProxy, logger log.Logger) {
+	cwd, err := osProxy.Getwd()
+	if err != nil {
+		if logger != nil {
+			logger.Debugf("Skipping per-project marker creation: %s", err)
+		}
+
+		return
+	}
+	_ = machineconfig.EnsureMarker(cwd, mode, osProxy, logger)
 }

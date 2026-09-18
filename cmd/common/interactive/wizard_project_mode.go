@@ -53,5 +53,9 @@ func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 		}
 	}
 
+	if cwd, err := osProxy.Getwd(); err == nil {
+		_ = machineconfig.EnsureMarker(cwd, mode, osProxy, logger)
+	}
+
 	return mode, nil
 }
