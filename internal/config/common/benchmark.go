@@ -107,6 +107,13 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 		}
 		params.Set("external_app_id", metadata.ExternalAppID)
 		params.Set("external_workflow_name", metadata.ExternalWorkflowName)
+
+		// External projects have no Bitrise record for the API to read the default branch from, so
+		// without this the branch preference can never apply to them. Bitrise builds send nothing
+		// and the API keeps using the project record.
+		if metadata.GitMetadata.DefaultBranch != "" {
+			params.Set("default_branch", metadata.GitMetadata.DefaultBranch)
+		}
 	}
 
 	requestURL := fmt.Sprintf("%s/build-cache/%s/invocations/%s/command_benchmark_status?%s",
