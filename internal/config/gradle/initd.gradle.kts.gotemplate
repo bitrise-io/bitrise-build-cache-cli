@@ -130,78 +130,61 @@ rootProject {
 {{- end -}}
 {{ if .Common.JobSummaryEnabled }}
 // GitHub Actions job summary, written without the workflow needing a step for
-// it: the listener collects what the Bitrise plugins print and a build service
-// hands the log to the CLI when the build closes.
+// it: a listener collects what the Bitrise plugins print, and the root build
+// hands the log to the CLI to render.
 //
-// Not buildFinished -- the configuration cache rejects it. Not a
-// project-scoped listener either, because configuration is skipped on a
-// configuration-cache hit and the listener would never register. A build
-// service is closed at the end of every build, cache hit or not.
+// No build service and no class: a class declared in an init script is an inner
+// class of the script, which Gradle cannot instantiate as a service. No
+// buildFinished either -- the configuration cache rejects it. So the trigger is
+// the root build's own cache-stats line, which the plugin prints last.
 //
-// The trigger cannot be a log line: a build prints one cache-stats line per
-// included build, so the first one arrives long before the totals are known.
-abstract class BitriseJobSummaryService :
-    org.gradle.api.services.BuildService<org.gradle.api.services.BuildServiceParameters.None>,
-    AutoCloseable {
-    override fun close() {
-        val log = java.io.File(System.getProperty("java.io.tmpdir"), bitriseSummaryLogName())
-        if (!log.exists() || log.length() == 0L) {
-            return
-        }
-        try {
-            // activate exports its own path to GITHUB_ENV, which GitHub applies
-            // from the next step onwards -- and the build is a later step. Read
-            // at build time rather than baked in, so a reused init script never
-            // points at a binary that has moved.
-            val cli = System.getenv("BITRISE_BUILD_CACHE_CLI") ?: "bitrise-build-cache"
-            val process = ProcessBuilder(cli, "github-summary", log.absolutePath)
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().readText().trim()
-            if (process.waitFor() != 0) {
-                System.err.println("[Bitrise Build Cache] job summary failed: ${output}")
-            } else {
-                println("[Bitrise Build Cache] job summary updated (GITHUB_STEP_SUMMARY)")
-            }
-        } catch (e: Exception) {
-            System.err.println("[Bitrise Build Cache] job summary failed: ${e.message}")
-        }
-    }
-}
-
-fun bitriseSummaryLogName(): String {
-    // One file per job attempt, so an included build's lines are never truncated
-    // away by a later build and two jobs on one runner never mix.
+// Every build appends to one file per job attempt, because an included build's
+// stats are part of the transfer, and only the root build renders: gradle.parent
+// is non-null for an included build, the same nesting check the analytics plugin
+// makes. Without that check buildSrc would render too, before the root build had
+// reported anything.
+run {
     val run = System.getenv("GITHUB_RUN_ID") ?: "local"
     val attempt = System.getenv("GITHUB_RUN_ATTEMPT") ?: "1"
+    val summaryLog = java.io.File(
+        System.getProperty("java.io.tmpdir"),
+        "bitrise-job-summary-${run}-${attempt}.log",
+    )
+    val isRootBuild = gradle.parent == null
+    val rendered = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    return "bitrise-job-summary-${run}-${attempt}.log"
-}
-
-run {
-    val bitriseSummaryLog = java.io.File(System.getProperty("java.io.tmpdir"), bitriseSummaryLogName())
-
-    val bitriseSummaryListener = org.gradle.api.logging.StandardOutputListener { output ->
+    val listener = org.gradle.api.logging.StandardOutputListener { output ->
         val text = output.toString()
         if (text.contains("[Bitrise") || text.contains("actionable tasks:")) {
-            bitriseSummaryLog.appendText(text)
+            summaryLog.appendText(text)
+        }
+
+        if (isRootBuild && text.contains("remote build cache stats") &&
+            rendered.compareAndSet(false, true)
+        ) {
+            try {
+                // activate exports its own path to GITHUB_ENV, which applies from
+                // the next step on -- and the build is a later step. Read at
+                // build time so a reused init script never points at a binary
+                // that has moved.
+                val cli = System.getenv("BITRISE_BUILD_CACHE_CLI") ?: "bitrise-build-cache"
+                val process = ProcessBuilder(cli, "github-summary", summaryLog.absolutePath)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = process.inputStream.bufferedReader().readText().trim()
+                if (process.waitFor() == 0) {
+                    println("[Bitrise Build Cache] job summary written to GITHUB_STEP_SUMMARY")
+                } else {
+                    System.err.println("[Bitrise Build Cache] job summary failed: ${out}")
+                }
+            } catch (e: Exception) {
+                System.err.println("[Bitrise Build Cache] job summary failed: ${e.message}")
+            }
         }
     }
 
     (gradle as org.gradle.api.internal.GradleInternal).services
         .get(org.gradle.internal.logging.LoggingOutputInternal::class.java)
-        .addStandardOutputListener(bitriseSummaryListener)
-
-    // Every build feeds the log -- buildSrc's cache stats are part of the total
-    // -- but only the root build renders. gradle.parent is non-null for an
-    // included build, which is the same nesting check the analytics plugin
-    // makes, and without it the hook runs once per build: the first render
-    // would fire before the root build had reported anything.
-    if (gradle.parent == null) {
-        // Instantiated eagerly so close() runs even if nothing else asks for it.
-        gradle.sharedServices
-            .registerIfAbsent("bitriseJobSummary", BitriseJobSummaryService::class.java) {}
-            .get()
-    }
+        .addStandardOutputListener(listener)
 }
 {{ end }}
