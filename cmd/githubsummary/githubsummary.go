@@ -5,6 +5,7 @@ package githubsummary
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -48,15 +49,7 @@ moment the build ends.`,
 			return nil
 		}
 
-		// Appended, not written: other steps may have added to the summary, and
-		// a job may build more than once.
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return fmt.Errorf("open %s: %w", summaryEnvVar, err)
-		}
-		defer f.Close()
-
-		if _, err := f.WriteString(markdown); err != nil {
+		if err := writeBlock(path, markdown); err != nil {
 			return fmt.Errorf("write %s: %w", summaryEnvVar, err)
 		}
 
@@ -66,4 +59,47 @@ moment the build ends.`,
 
 func init() {
 	common.RootCmd.AddCommand(githubSummaryCmd)
+}
+
+const (
+	blockStart = "<!-- bitrise-build-cache-summary:start -->"
+	blockEnd   = "<!-- bitrise-build-cache-summary:end -->"
+)
+
+// writeBlock replaces this CLI's own section of the job summary, leaving
+// anything else in the file alone.
+//
+// It has to be idempotent because an included build is a build of its own: it
+// applies the same init script and closes its own service, so the hook runs
+// once per build. Appending would show the summary as many times as there are
+// builds, with the earliest -- and least complete -- render first. Replacing
+// means the last writer, which has seen the most output, is what remains.
+func writeBlock(path, markdown string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read: %w", err)
+	}
+
+	rest := stripBlock(string(existing))
+	block := blockStart + "\n" + markdown + blockEnd + "\n"
+
+	if err := os.WriteFile(path, []byte(rest+block), 0o644); err != nil { //nolint:gosec,mnd // the runner owns this file
+		return fmt.Errorf("write: %w", err)
+	}
+
+	return nil
+}
+
+func stripBlock(content string) string {
+	start := strings.Index(content, blockStart)
+	if start < 0 {
+		return content
+	}
+
+	end := strings.Index(content, blockEnd)
+	if end < 0 || end < start {
+		return content[:start]
+	}
+
+	return content[:start] + content[end+len(blockEnd):]
 }

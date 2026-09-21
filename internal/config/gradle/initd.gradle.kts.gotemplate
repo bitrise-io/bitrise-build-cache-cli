@@ -161,7 +161,7 @@ abstract class BitriseJobSummaryService :
             if (process.waitFor() != 0) {
                 System.err.println("[Bitrise Build Cache] job summary failed: ${output}")
             } else {
-                println("[Bitrise Build Cache] job summary written to GITHUB_STEP_SUMMARY")
+                println("[Bitrise Build Cache] job summary updated (GITHUB_STEP_SUMMARY)")
             }
         } catch (e: Exception) {
             System.err.println("[Bitrise Build Cache] job summary failed: ${e.message}")
