@@ -39,6 +39,7 @@ func TestGetBenchmarkPhase_BitriseProvider(t *testing.T) {
 		CIProvider:          CIProviderBitrise,
 		BitriseAppID:        "app-slug-1",
 		BitriseWorkflowName: "primary",
+		GitMetadata:         GitMetadata{Branch: "main"},
 	})
 
 	require.NoError(t, err)
@@ -46,6 +47,34 @@ func TestGetBenchmarkPhase_BitriseProvider(t *testing.T) {
 	assert.Contains(t, capturedURL, "/build-cache/ws-123/invocations/gradle/command_benchmark_status")
 	assert.Contains(t, capturedURL, "app_slug=app-slug-1")
 	assert.Contains(t, capturedURL, "workflow_name=primary")
+	assert.Contains(t, capturedURL, "branch=main")
+}
+
+func TestGetBenchmarkPhase_OmitsUnknownBranch(t *testing.T) {
+	t.Parallel()
+
+	var capturedURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(benchmarkResponse{Phase: "established"}) //nolint:errcheck
+	}))
+	defer server.Close()
+
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
+		WorkspaceID: "ws-123",
+	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
+
+	_, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
+		CIProvider:          CIProviderBitrise,
+		BitriseAppID:        "app-slug-1",
+		BitriseWorkflowName: "primary",
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, capturedURL, "branch=")
 }
 
 func TestGetBenchmarkPhase_ExternalProvider(t *testing.T) {
@@ -366,4 +395,62 @@ func TestBenchmarkPhaseEnvVar(t *testing.T) {
 	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE", BenchmarkPhaseEnvVar(BuildToolGradle))
 	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE", BenchmarkPhaseEnvVar(BuildToolXcode))
 	assert.Equal(t, "BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL", BenchmarkPhaseEnvVar(BuildToolBazel))
+}
+
+func TestGetBenchmarkPhase_SendsDefaultBranchForExternalProviders(t *testing.T) {
+	t.Parallel()
+
+	var capturedURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(benchmarkResponse{Phase: "warmup"}) //nolint:errcheck
+	}))
+	defer server.Close()
+
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
+		WorkspaceID: "ws-123",
+	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
+
+	phase, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
+		CIProvider:           CIProviderGitLabCI,
+		ExternalAppID:        "group/project",
+		ExternalWorkflowName: "verify",
+		GitMetadata:          GitMetadata{Branch: "feature/x", DefaultBranch: "main"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "warmup", phase)
+	assert.Contains(t, capturedURL, "branch=feature%2Fx")
+	assert.Contains(t, capturedURL, "default_branch=main")
+}
+
+func TestGetBenchmarkPhase_OmitsDefaultBranchForBitrise(t *testing.T) {
+	t.Parallel()
+
+	var capturedURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(benchmarkResponse{Phase: "established"}) //nolint:errcheck
+	}))
+	defer server.Close()
+
+	client := NewBenchmarkPhaseClient(server.URL, auth.Credential{
+		Token:       "test-token",
+		WorkspaceID: "ws-123",
+	}, log.NewLogger())
+	client.Getenv = func(string) string { return "" }
+
+	_, err := client.GetBenchmarkPhase(BuildToolGradle, CacheConfigMetadata{
+		CIProvider:          CIProviderBitrise,
+		BitriseAppID:        "app-slug-1",
+		BitriseWorkflowName: "primary",
+		GitMetadata:         GitMetadata{Branch: "feature/x", DefaultBranch: "main"},
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, capturedURL, "default_branch")
 }

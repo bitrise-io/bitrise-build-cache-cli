@@ -2,6 +2,7 @@ package common
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"maps"
@@ -102,10 +103,11 @@ type HostMetadata struct {
 }
 
 type GitMetadata struct {
-	RepoURL     string
-	CommitHash  string
-	Branch      string
-	CommitEmail string
+	RepoURL       string
+	CommitHash    string
+	Branch        string
+	CommitEmail   string
+	DefaultBranch string
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
@@ -259,6 +261,9 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 	}
 	gitMetadata.Branch = branch
 
+	// Default branch
+	gitMetadata.DefaultBranch = resolveDefaultBranch(logger, commandFunc, envs)
+
 	// Commit email
 	commitEmail, err := commandFunc("git", "show", "-s", "--format=%ae", gitMetadata.CommitHash)
 	if err != nil {
@@ -268,6 +273,62 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 	gitMetadata.CommitEmail = strings.TrimSpace(commitEmail)
 
 	return gitMetadata
+}
+
+// resolveDefaultBranch returns "" for Bitrise, where the API's own project record is authoritative,
+// and for anything it cannot determine — remote HEAD is unset on the shallow single-branch clones
+// most CI checkouts produce, so an empty result is an expected outcome rather than a failure.
+func resolveDefaultBranch(logger log.Logger, commandFunc CommandFunc, envs map[string]string) string {
+	switch DetectCIProvider(envs) {
+	case CIProviderBitrise:
+		return ""
+	case CIProviderGitLabCI:
+		if branch := envs["CI_DEFAULT_BRANCH"]; branch != "" {
+			return branch
+		}
+	case CIProviderGitHubActions:
+		if branch := defaultBranchFromGitHubEvent(logger, envs); branch != "" {
+			return branch
+		}
+	}
+
+	remoteHead, err := commandFunc("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		logger.Debugf("Error in get default branch from remote HEAD: %v", err)
+
+		return ""
+	}
+
+	return strings.TrimPrefix(strings.TrimSpace(remoteHead), "origin/")
+}
+
+// GitHub Actions publishes no environment variable for the default branch; the webhook payload it
+// writes to disk is the only place a job can read it without an API call.
+func defaultBranchFromGitHubEvent(logger log.Logger, envs map[string]string) string {
+	eventPath := envs["GITHUB_EVENT_PATH"]
+	if eventPath == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(eventPath)
+	if err != nil {
+		logger.Debugf("Error in read GitHub event payload: %v", err)
+
+		return ""
+	}
+
+	var event struct {
+		Repository struct {
+			DefaultBranch string `json:"default_branch"`
+		} `json:"repository"`
+	}
+	if err := json.Unmarshal(data, &event); err != nil {
+		logger.Debugf("Error in parse GitHub event payload: %v", err)
+
+		return ""
+	}
+
+	return event.Repository.DefaultBranch
 }
 
 // nolint: funlen, nestif
