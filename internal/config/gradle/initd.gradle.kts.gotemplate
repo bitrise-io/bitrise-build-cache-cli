@@ -128,3 +128,37 @@ rootProject {
     apply<io.bitrise.gradle.rbe.RBEPlugin>()
 }
 {{- end -}}
+{{ if .Common.JobSummaryCLIPath }}
+// GitHub Actions job summary. The listener collects what the Bitrise plugins
+// print and the last of those lines hands the log to the CLI, which renders the
+// markdown. A buildFinished hook would be the obvious place, but the
+// configuration cache rejects it, and a project-scoped listener never registers
+// on a cache hit because configuration is skipped -- hence the build-level
+// listener and the terminal-line trigger.
+run {
+    val bitriseSummaryLog = java.io.File(System.getProperty("java.io.tmpdir"), "bitrise-job-summary.log")
+    bitriseSummaryLog.writeText("")
+    val bitriseSummaryRendered = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    val bitriseSummaryListener = org.gradle.api.logging.StandardOutputListener { output ->
+        val text = output.toString()
+        if (text.contains("[Bitrise") || text.contains("actionable tasks:")) {
+            bitriseSummaryLog.appendText(text)
+        }
+        if (text.contains("remote build cache stats") && bitriseSummaryRendered.compareAndSet(false, true)) {
+            try {
+                ProcessBuilder("{{ .Common.JobSummaryCLIPath }}", "github-summary", bitriseSummaryLog.absolutePath)
+                    .redirectErrorStream(true)
+                    .start()
+                    .waitFor()
+            } catch (e: Exception) {
+                System.err.println("[Bitrise Build Cache] job summary failed: ${e.message}")
+            }
+        }
+    }
+
+    (gradle as org.gradle.api.internal.GradleInternal).services
+        .get(org.gradle.internal.logging.LoggingOutputInternal::class.java)
+        .addStandardOutputListener(bitriseSummaryListener)
+}
+{{ end }}

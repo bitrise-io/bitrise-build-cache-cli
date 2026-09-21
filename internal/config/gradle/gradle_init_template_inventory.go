@@ -45,6 +45,8 @@ type PluginCommonTemplateInventory struct {
 	Version    string
 
 	CLIPath string
+	// JobSummaryCLIPath is empty unless the build runs on GitHub Actions.
+	JobSummaryCLIPath string
 }
 
 type TemplateInventory struct {
