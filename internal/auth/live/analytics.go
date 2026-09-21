@@ -22,15 +22,11 @@ func readAnalyticsCredential() (auth.Credential, auth.Origin, bool) {
 // Mirrors a credential into the analytics block without touching the rest of the
 // file. A CI JWT goes only here: it is minted per build, so putting it in the
 // credentials block would make a 30-minute token look like a durable login.
-func writeAnalyticsCredential(cred auth.Credential) error {
+func writeAnalyticsCredential(cred auth.Credential, origin auth.Origin) error {
 	err := multiplatformconfig.Update(
 		utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
 		func(cfg *multiplatformconfig.Config) {
-			cfg.AuthConfig = multiplatformconfig.AnalyticsAuthConfig{
-				AuthToken:   cred.Token,
-				WorkspaceID: cred.WorkspaceID,
-				IsJWT:       true,
-			}
+			cfg.AuthConfig = multiplatformconfig.NewAnalyticsAuthConfig(cred, origin)
 		},
 	)
 	if err != nil {
