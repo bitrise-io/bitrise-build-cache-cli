@@ -73,7 +73,7 @@ func thousands(n int) string {
 		return s
 	}
 
-	var out []byte
+	out := make([]byte, 0, len(s)+len(s)/3)
 	for i, c := range []byte(s) {
 		if i > 0 && (len(s)-i)%3 == 0 {
 			out = append(out, ',')

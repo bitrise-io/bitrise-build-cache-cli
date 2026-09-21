@@ -4,7 +4,6 @@ package githubsummary
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -29,7 +28,7 @@ because the API ingests them asynchronously and a summary has to be ready the
 moment the build ends.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var in io.Reader = cmd.InOrStdin()
+		in := cmd.InOrStdin()
 
 		if len(args) == 1 {
 			f, err := os.Open(args[0])

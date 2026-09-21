@@ -15,18 +15,18 @@ type Summary struct {
 	CacheEndpoint string
 	PluginVersion string
 
-	TasksTotal    int
+	TasksTotal     int
 	TasksFromCache int
-	TasksUpToDate int
-	TasksExecuted int
-	TaskHitRate   float64
-	HasTaskStats  bool
+	TasksUpToDate  int
+	TasksExecuted  int
+	TaskHitRate    float64
+	HasTaskStats   bool
 
-	BlobHits     int
-	BlobLookups  int
-	BlobHitRate  float64
-	Downloaded   string
-	Uploaded     string
+	BlobHits      int
+	BlobLookups   int
+	BlobHitRate   float64
+	Downloaded    string
+	Uploaded      string
 	HasCacheStats bool
 }
 
