@@ -103,12 +103,10 @@ type HostMetadata struct {
 }
 
 type GitMetadata struct {
-	RepoURL     string
-	CommitHash  string
-	Branch      string
-	CommitEmail string
-	// DefaultBranch is the repository's default branch, where known. Empty on providers that do
-	// not publish it.
+	RepoURL       string
+	CommitHash    string
+	Branch        string
+	CommitEmail   string
 	DefaultBranch string
 }
 
@@ -277,11 +275,9 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 	return gitMetadata
 }
 
-// resolveDefaultBranch finds the repository's default branch. Bitrise builds are left empty: the
-// API resolves those from the project record, which is authoritative. Providers that publish it do
-// so under their own name, and the remote HEAD is the fallback for the rest — it is unset on the
-// shallow, single-branch clones most CI checkouts produce, so an empty result is expected and
-// simply means "unknown".
+// resolveDefaultBranch returns "" for Bitrise, where the API's own project record is authoritative,
+// and for anything it cannot determine — remote HEAD is unset on the shallow single-branch clones
+// most CI checkouts produce, so an empty result is an expected outcome rather than a failure.
 func resolveDefaultBranch(logger log.Logger, commandFunc CommandFunc, envs map[string]string) string {
 	switch DetectCIProvider(envs) {
 	case CIProviderBitrise:
@@ -306,9 +302,8 @@ func resolveDefaultBranch(logger log.Logger, commandFunc CommandFunc, envs map[s
 	return strings.TrimPrefix(strings.TrimSpace(remoteHead), "origin/")
 }
 
-// defaultBranchFromGitHubEvent reads the default branch out of the webhook payload GitHub Actions
-// writes to disk. Actions publishes no environment variable for it, and the payload is the only
-// place a job can read it without an API call.
+// GitHub Actions publishes no environment variable for the default branch; the webhook payload it
+// writes to disk is the only place a job can read it without an API call.
 func defaultBranchFromGitHubEvent(logger log.Logger, envs map[string]string) string {
 	eventPath := envs["GITHUB_EVENT_PATH"]
 	if eventPath == "" {
