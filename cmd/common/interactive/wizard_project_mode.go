@@ -24,12 +24,7 @@ func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 		current = machineconfig.Config{}
 	}
 
-	seed, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-	if err != nil {
-		return machineconfig.ModeAlways, err //nolint:wrapcheck // caller wraps
-	}
-
-	choice := string(seed.ProjectMode)
+	choice := string(machineconfig.ResolvedProjectMode(current))
 	description := "'always' activates cache for every project on this machine.\n" +
 		"'opt-in' only activates when a .bitrise-build-cache.json marker file " +
 		"is found walking up from the build's working directory."

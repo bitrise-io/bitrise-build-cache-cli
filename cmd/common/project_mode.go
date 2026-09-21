@@ -32,24 +32,31 @@ func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig
 		current = machineconfig.Config{}
 	}
 
-	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{ProjectMode: flag}, current)
-	if err != nil {
+	if flag == "" {
+		mode := machineconfig.ResolvedProjectMode(current)
+		ensureProjectMarkerAtCwd(mode, osProxy, logger)
+
+		return mode, nil
+	}
+
+	if err := machineconfig.ValidateProjectMode(flag); err != nil {
 		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
 	}
 
-	if flag != "" && current.ProjectMode != effective.ProjectMode {
-		current.ProjectMode = effective.ProjectMode
+	mode := machineconfig.Mode(flag)
+	if current.ProjectMode != mode {
+		current.ProjectMode = mode
 		if err := machineconfig.Write(current, osProxy, p); err != nil {
 			return "", fmt.Errorf("persist machine config: %w", err)
 		}
 		if logger != nil {
-			logger.TInfof("Machine-wide project scoping is now %q.", string(effective.ProjectMode))
+			logger.TInfof("Machine-wide project scoping is now %q.", string(mode))
 		}
 	}
 
-	ensureProjectMarkerAtCwd(effective.ProjectMode, osProxy, logger)
+	ensureProjectMarkerAtCwd(mode, osProxy, logger)
 
-	return effective.ProjectMode, nil
+	return mode, nil
 }
 
 func ensureProjectMarkerAtCwd(mode machineconfig.Mode, osProxy utils.OsProxy, logger log.Logger) {

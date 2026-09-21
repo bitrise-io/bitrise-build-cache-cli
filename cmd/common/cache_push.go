@@ -34,20 +34,11 @@ func ResolveAndPersistCachePush(cmd *cobra.Command, flagValue bool, logger log.L
 		current = machineconfig.Config{}
 	}
 
-	overlay := machineconfig.FlagOverlay{}
-	if changed {
-		v := flagValue
-		overlay.CachePush = &v
-	}
-	effective, _, err := machineconfig.Effective(overlay, current)
-	if err != nil {
-		return machineconfig.DefaultCachePush, fmt.Errorf("resolve machine config: %w", err)
+	if !changed {
+		return machineconfig.ResolvedCachePush(current), nil
 	}
 
-	push := *effective.CachePush
-	if !changed {
-		return push, nil
-	}
+	push := flagValue
 
 	if err := PersistCachePush(current, push, osProxy, p); err != nil {
 		return push, err

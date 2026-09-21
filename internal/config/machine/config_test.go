@@ -81,126 +81,59 @@ func TestRead_UnknownModeNormalisesToAlways(t *testing.T) {
 	assert.Equal(t, ModeAlways, cfg.ProjectMode)
 }
 
-func TestEffective_ProjectMode(t *testing.T) {
+func TestResolvedProjectMode(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		flag       string
-		current    Mode
-		wantMode   Mode
-		wantSource string
-		wantErr    bool
+		name string
+		cfg  Config
+		want Mode
 	}{
-		{name: "flag wins over current", flag: "opt-in", current: ModeAlways, wantMode: ModeOptIn, wantSource: SourceFlag},
-		{name: "empty flag uses current", flag: "", current: ModeOptIn, wantMode: ModeOptIn, wantSource: SourceMachineConfig},
-		{name: "empty flag + empty current falls back to always", flag: "", current: "", wantMode: ModeAlways, wantSource: SourceDefault},
-		{name: "invalid flag returns error", flag: "garbage", current: ModeOptIn, wantErr: true},
-		{name: "invalid flag + empty current returns error", flag: "garbage", current: "", wantErr: true},
+		{name: "empty falls back to always", cfg: Config{}, want: ModeAlways},
+		{name: "always stays always", cfg: Config{ProjectMode: ModeAlways}, want: ModeAlways},
+		{name: "opt-in stays opt-in", cfg: Config{ProjectMode: ModeOptIn}, want: ModeOptIn},
+		{name: "unknown falls back to always", cfg: Config{ProjectMode: "garbage"}, want: ModeAlways},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, sources, err := Effective(FlagOverlay{ProjectMode: tc.flag}, Config{ProjectMode: tc.current})
-			if tc.wantErr {
-				require.Error(t, err)
-
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.wantMode, got.ProjectMode)
-			assert.Equal(t, tc.wantSource, sources.ProjectMode)
+			assert.Equal(t, tc.want, ResolvedProjectMode(tc.cfg))
 		})
 	}
 }
 
-func TestEffective_CachePush(t *testing.T) {
+func TestResolvedCachePush(t *testing.T) {
 	t.Parallel()
 
 	trueVal := true
 	falseVal := false
 
 	tests := []struct {
-		name       string
-		flag       *bool
-		current    *bool
-		want       bool
-		wantSource string
+		name string
+		cfg  Config
+		want bool
 	}{
-		{name: "flag true wins over stored false", flag: &trueVal, current: &falseVal, want: true, wantSource: SourceFlag},
-		{name: "flag false wins over stored true", flag: &falseVal, current: &trueVal, want: false, wantSource: SourceFlag},
-		{name: "no flag uses stored true", flag: nil, current: &trueVal, want: true, wantSource: SourceMachineConfig},
-		{name: "no flag + no stored falls back to default true", flag: nil, current: nil, want: DefaultCachePush, wantSource: SourceDefault},
+		{name: "nil falls back to default", cfg: Config{}, want: DefaultCachePush},
+		{name: "stored true", cfg: Config{CachePush: &trueVal}, want: true},
+		{name: "stored false", cfg: Config{CachePush: &falseVal}, want: false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, sources, err := Effective(FlagOverlay{CachePush: tc.flag}, Config{CachePush: tc.current})
-			require.NoError(t, err)
-			require.NotNil(t, got.CachePush)
-			assert.Equal(t, tc.want, *got.CachePush)
-			assert.Equal(t, tc.wantSource, sources.CachePush)
+			assert.Equal(t, tc.want, ResolvedCachePush(tc.cfg))
 		})
 	}
 }
 
-func TestEffective_AllEmptyResolvesToDefaults(t *testing.T) {
+func TestValidateProjectMode(t *testing.T) {
 	t.Parallel()
 
-	got, sources, err := Effective(FlagOverlay{}, Config{})
-	require.NoError(t, err)
+	require.NoError(t, ValidateProjectMode(string(ModeAlways)))
+	require.NoError(t, ValidateProjectMode(string(ModeOptIn)))
 
-	assert.Equal(t, ModeAlways, got.ProjectMode)
-	require.NotNil(t, got.CachePush)
-	assert.Equal(t, DefaultCachePush, *got.CachePush)
-
-	assert.Equal(t, SourceDefault, sources.ProjectMode)
-	assert.Equal(t, SourceDefault, sources.CachePush)
-}
-
-func TestEffective_OverlayWinsOverStored(t *testing.T) {
-	t.Parallel()
-
-	flagPush := false
-	storedPush := true
-
-	got, sources, err := Effective(
-		FlagOverlay{ProjectMode: string(ModeOptIn), CachePush: &flagPush},
-		Config{ProjectMode: ModeAlways, CachePush: &storedPush},
-	)
-	require.NoError(t, err)
-
-	assert.Equal(t, ModeOptIn, got.ProjectMode)
-	require.NotNil(t, got.CachePush)
-	assert.False(t, *got.CachePush)
-
-	assert.Equal(t, SourceFlag, sources.ProjectMode)
-	assert.Equal(t, SourceFlag, sources.CachePush)
-}
-
-func TestEffective_StoredWinsOverDefault(t *testing.T) {
-	t.Parallel()
-
-	storedPush := false
-
-	got, sources, err := Effective(
-		FlagOverlay{},
-		Config{ProjectMode: ModeOptIn, CachePush: &storedPush},
-	)
-	require.NoError(t, err)
-
-	assert.Equal(t, ModeOptIn, got.ProjectMode)
-	require.NotNil(t, got.CachePush)
-	assert.False(t, *got.CachePush)
-
-	assert.Equal(t, SourceMachineConfig, sources.ProjectMode)
-	assert.Equal(t, SourceMachineConfig, sources.CachePush)
-}
-
-func TestEffective_InvalidProjectModeReturnsError(t *testing.T) {
-	t.Parallel()
-
-	_, _, err := Effective(FlagOverlay{ProjectMode: "garbage"}, Config{})
+	err := ValidateProjectMode("garbage")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "garbage")
+
+	require.Error(t, ValidateProjectMode(""))
 }
 
 func TestCachePush_JSONRoundtrip(t *testing.T) {

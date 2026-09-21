@@ -61,14 +61,7 @@ var scopeCheckCmd = &cobra.Command{
 			return cobraExit(ExitError)
 		}
 
-		effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "resolve machine config: %s\n", err)
-
-			return cobraExit(ExitError)
-		}
-
-		if effective.ProjectMode != machineconfig.ModeOptIn {
+		if machineconfig.ResolvedProjectMode(current) != machineconfig.ModeOptIn {
 			return nil
 		}
 

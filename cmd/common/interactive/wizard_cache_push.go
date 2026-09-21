@@ -23,12 +23,7 @@ func storedCachePush(logger log.Logger) bool {
 		return machineconfig.DefaultCachePush
 	}
 
-	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-	if err != nil || effective.CachePush == nil {
-		return machineconfig.DefaultCachePush
-	}
-
-	return *effective.CachePush
+	return machineconfig.ResolvedCachePush(current)
 }
 
 // persistCachePush stores the wizard's chosen push value best-effort; the run

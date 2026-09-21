@@ -9,11 +9,16 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
+const (
+	pushSourceStored  = "machine config"
+	pushSourceDefault = "default"
+)
+
 func (d *Doctor) projectScopeCheck() Check {
 	return Check{
 		Name: "project-scope",
 		Diagnose: func(_ context.Context) Result {
-			effective, sources, cfgErr := d.effectiveMachineConfig()
+			current, cfgErr := d.readMachineConfig()
 			if cfgErr != nil {
 				return Result{
 					State:  StateWarn,
@@ -21,7 +26,7 @@ func (d *Doctor) projectScopeCheck() Check {
 				}
 			}
 
-			mode := effective.ProjectMode
+			mode := machineconfig.ResolvedProjectMode(current)
 
 			cwd, err := d.osProxy().Getwd()
 			if err != nil {
@@ -39,8 +44,12 @@ func (d *Doctor) projectScopeCheck() Check {
 			var lines []string
 			lines = append(lines, fmt.Sprintf("mode=%s", string(mode)))
 
-			push := *effective.CachePush
-			lines = append(lines, fmt.Sprintf("cache_push=%t (%s)", push, sources.CachePush))
+			push := machineconfig.ResolvedCachePush(current)
+			pushSource := pushSourceDefault
+			if current.CachePush != nil {
+				pushSource = pushSourceStored
+			}
+			lines = append(lines, fmt.Sprintf("cache_push=%t (%s)", push, pushSource))
 
 			if marker == nil {
 				lines = append(lines, fmt.Sprintf("no %s found in %s or parents.", paths.ProjectMarkerFilename, cwd))
@@ -56,24 +65,20 @@ func (d *Doctor) projectScopeCheck() Check {
 	}
 }
 
-// effectiveMachineConfig resolves the machine config for doctor with an empty
-// overlay (doctor never sees CLI flags). An unresolvable home dir yields
-// defaults rather than an error — nothing could have been stored.
-func (d *Doctor) effectiveMachineConfig() (machineconfig.Config, machineconfig.Sources, error) {
-	current := machineconfig.Config{}
-	if p, err := paths.Default(); err == nil {
-		current, err = machineconfig.Read(d.osProxy(), p, nil)
-		if err != nil {
-			return machineconfig.Config{}, machineconfig.Sources{}, fmt.Errorf("read machine config: %w", err)
-		}
+// readMachineConfig returns the persisted config. An unresolvable home dir
+// yields an empty config with no error — nothing could have been stored.
+func (d *Doctor) readMachineConfig() (machineconfig.Config, error) {
+	p, pathErr := paths.Default()
+	if pathErr != nil {
+		return machineconfig.Config{}, nil //nolint:nilerr // unresolvable home = no stored config, not an error
 	}
 
-	effective, sources, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
+	cfg, err := machineconfig.Read(d.osProxy(), p, nil)
 	if err != nil {
-		return machineconfig.Config{}, machineconfig.Sources{}, fmt.Errorf("resolve machine config: %w", err)
+		return machineconfig.Config{}, fmt.Errorf("read machine config: %w", err)
 	}
 
-	return effective, sources, nil
+	return cfg, nil
 }
 
 func yesNo(b bool) string {

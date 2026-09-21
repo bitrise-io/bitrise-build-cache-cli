@@ -64,8 +64,7 @@ func projectModeGates(osProxy utils.OsProxy) bool {
 	if err != nil {
 		return false
 	}
-	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-	if err != nil || effective.ProjectMode != machineconfig.ModeOptIn {
+	if machineconfig.ResolvedProjectMode(current) != machineconfig.ModeOptIn {
 		return false
 	}
 

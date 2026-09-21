@@ -201,12 +201,8 @@ func (h *StorageHelper) newMachineConfigReader() iccache.MachineConfigReader {
 		if err != nil {
 			return machineconfig.Config{}
 		}
-		effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-		if err != nil {
-			return machineconfig.Config{}
-		}
 
-		return effective
+		return current
 	}
 }
 

@@ -25,27 +25,6 @@ type Config struct {
 
 const DefaultCachePush = true
 
-// FlagOverlay carries CLI-flag inputs that override the stored machine config.
-// Zero value per field means "flag not set for this run" (CachePush is a
-// tri-state pointer: nil / &true / &false).
-type FlagOverlay struct {
-	ProjectMode string
-	CachePush   *bool
-}
-
-const (
-	SourceFlag          = "flag"
-	SourceMachineConfig = "machine config"
-	SourceDefault       = "default"
-)
-
-// Sources reports, per field, whether Effective's value came from the overlay,
-// the stored config, or the built-in default.
-type Sources struct {
-	ProjectMode string
-	CachePush   string
-}
-
 // Read returns the machine-wide config. A missing file resolves to an empty
 // Config and no error.
 func Read(osProxy utils.OsProxy, p paths.Paths, logger log.Logger) (Config, error) {
@@ -91,51 +70,35 @@ func Write(cfg Config, osProxy utils.OsProxy, p paths.Paths) error {
 	return nil
 }
 
-// Effective resolves the machine-wide config using overlay > stored > default
-// precedence. It returns a fully-populated Config alongside a Sources record
-// naming the origin of each field.
-func Effective(overlay FlagOverlay, current Config) (Config, Sources, error) {
-	mode, modeSource, err := effectiveProjectMode(overlay.ProjectMode, current.ProjectMode)
-	if err != nil {
-		return Config{}, Sources{}, err
+// ResolvedProjectMode returns the persisted mode, defaulting to ModeAlways when
+// the config file is missing or the field is unset.
+func ResolvedProjectMode(cfg Config) Mode {
+	if cfg.ProjectMode == ModeAlways || cfg.ProjectMode == ModeOptIn {
+		return cfg.ProjectMode
 	}
 
-	push, pushSource := effectiveCachePush(overlay.CachePush, current.CachePush)
-
-	return Config{
-			ProjectMode: mode,
-			CachePush:   &push,
-		}, Sources{
-			ProjectMode: modeSource,
-			CachePush:   pushSource,
-		}, nil
+	return ModeAlways
 }
 
-func effectiveProjectMode(flag string, current Mode) (Mode, string, error) {
-	if flag != "" {
-		switch Mode(flag) {
-		case ModeAlways, ModeOptIn:
-			return Mode(flag), SourceFlag, nil
-		}
-
-		return "", "", fmt.Errorf("invalid project mode %q, expected 'always' or 'opt-in'", flag)
-	}
-	if current == ModeAlways || current == ModeOptIn {
-		return current, SourceMachineConfig, nil
+// ResolvedCachePush returns the persisted push flag, defaulting to
+// DefaultCachePush when the config file is missing or the field is unset.
+func ResolvedCachePush(cfg Config) bool {
+	if cfg.CachePush != nil {
+		return *cfg.CachePush
 	}
 
-	return ModeAlways, SourceDefault, nil
+	return DefaultCachePush
 }
 
-func effectiveCachePush(flag *bool, current *bool) (bool, string) {
-	if flag != nil {
-		return *flag, SourceFlag
-	}
-	if current != nil {
-		return *current, SourceMachineConfig
+// ValidateProjectMode returns nil for the two known modes and a descriptive
+// error otherwise. Empty is invalid — callers gate on that before calling.
+func ValidateProjectMode(m string) error {
+	switch Mode(m) {
+	case ModeAlways, ModeOptIn:
+		return nil
 	}
 
-	return DefaultCachePush, SourceDefault
+	return fmt.Errorf("invalid project mode %q, expected 'always' or 'opt-in'", m)
 }
 
 func normaliseMode(m Mode, logger log.Logger) Mode {

@@ -102,12 +102,7 @@ func resolveProjectMode(osProxy utils.OsProxy, logger log.Logger) machineconfig.
 		return machineconfig.ModeAlways
 	}
 
-	effective, _, err := machineconfig.Effective(machineconfig.FlagOverlay{}, current)
-	if err != nil {
-		return machineconfig.ModeAlways
-	}
-
-	return effective.ProjectMode
+	return machineconfig.ResolvedProjectMode(current)
 }
 
 func (params ActivateGradleParams) TemplateInventory(
