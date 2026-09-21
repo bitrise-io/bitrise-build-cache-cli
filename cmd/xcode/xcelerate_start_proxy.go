@@ -322,10 +322,8 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	}
 }
 
-// watcherTimeGap picks the manifest-grouping window from the CI signal. Bitrise
-// CI wall-clock skew warrants a longer window than a local dev machine. Routing
-// through configcommon.DetectCIProvider keeps CI detection consistent with the
-// rest of the CLI.
+// watcherTimeGap widens the manifest-grouping window on CI to absorb
+// wall-clock skew that a local machine doesn't have.
 func watcherTimeGap() time.Duration {
 	if configcommon.DetectCIProvider(utils.AllEnvs()) != "" {
 		return enrichment.CIGroupTimeGap
@@ -356,10 +354,8 @@ func (e *slimInvocationEmitter) EmitSlim(_ context.Context, meta proxy.SessionMe
 	duration := endTime.Sub(meta.StartTime).Milliseconds()
 	hitRate := stats.HitRate()
 
-	// Queue the pending record so the enrichment watcher can correlate the
-	// wrapper build back to this InvocationID and skip re-PUTting over the
-	// wrapper's rich row. Slim itself no longer PUTs — the wrapper's own
-	// invocation save (with its retry queue) is the sole writer.
+	// Pending is queued for the enrichment watcher to correlate against; the
+	// wrapper's own PUT is the sole writer of the rich row.
 	if b.pending != nil {
 		if err := b.pending.Append(enrichment.PendingRecord{
 			InvocationID: meta.InvocationID,

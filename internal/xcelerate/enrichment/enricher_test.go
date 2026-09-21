@@ -18,8 +18,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
-// singleEntryGroup wraps one entry as a group so the pre-grouping test cases
-// keep exercising the same enricher behaviour after the signature switch.
 func singleEntryGroup(e enrichment.ManifestEntry) enrichment.ManifestEntryGroup {
 	return enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{e}}
 }
@@ -341,7 +339,6 @@ func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	// No pending record → orphan mint path → unmatched.
 	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
 		Start:     now,

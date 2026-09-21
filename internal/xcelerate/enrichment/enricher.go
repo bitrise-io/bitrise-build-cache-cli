@@ -18,9 +18,6 @@ type InvocationPutter interface {
 	PutInvocation(inv analytics.Invocation) error
 }
 
-// Enricher re-PUTs enriched analytics.Invocation for a manifest entry,
-// correlating to a pending record when available (matched path) or minting a
-// fresh UUID (orphan path).
 type Enricher struct {
 	Store            *Store
 	Client           InvocationPutter
@@ -68,9 +65,7 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 	}
 
 	if pendingID, matched := Correlate(GroupCorrelationSpan(group), pending); matched {
-		// A pending record is the wrapper's (or slim emit's) authoritative claim on
-		// this InvocationID. Re-PUTting here would clobber that row with a stripped
-		// enrichment payload under BE last-write-wins. Drop the pending and bail.
+		// Re-PUT would clobber the wrapper's rich row under BE last-write-wins.
 		logger.Debugf("Enrichment PUT skipped for %s: pending record already claims this invocation", pendingID)
 		if e.Store != nil {
 			if err := e.Store.Remove(pendingID); err != nil {
@@ -104,8 +99,8 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 		return
 	}
 
-	// Orphan path only: matched groups short-circuited above. LastMatched stays
-	// reserved for correlated re-PUTs, which no longer happen.
+	// matched=false always: matched groups short-circuit above and LastMatched
+	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	logger.Infof("Enriched invocation PUT %s (orphan scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))

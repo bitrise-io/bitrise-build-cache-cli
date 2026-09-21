@@ -293,8 +293,7 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 }
 
 func Test_watcherTimeGap(t *testing.T) {
-	// Clear every CI signal DetectCIProvider observes so sub-tests can opt in
-	// selectively via t.Setenv without inheriting the surrounding shell.
+	// Isolate sub-tests from the surrounding shell's CI env.
 	clearCIEnv := func(t *testing.T) {
 		t.Helper()
 

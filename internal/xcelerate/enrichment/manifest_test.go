@@ -197,10 +197,7 @@ func TestGroupManifestEntries_HigherRankWinsOverUnknown(t *testing.T) {
 	assert.Equal(t, "build S", groups[0].Command())
 }
 
-// A wide burst-plus-late aggregate span (min-Start .. max-Stop) is intentional
-// per the ManifestEntryGroup doc: GroupCorrelationSpan reports the whole span,
-// which lets overlap-based correlation match a pending record that only
-// overlaps part of the window. Documenting the trade-off here so nobody
+// Pins the wide-span trade-off documented on ManifestEntryGroup so nobody
 // "fixes" the aggregation by narrowing the span later.
 func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing.T) {
 	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
@@ -220,8 +217,6 @@ func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing
 	assert.Equal(t, base, span.Start, "correlation span is the aggregate min-Start")
 	assert.Equal(t, base.Add(50*time.Second), span.Stop, "correlation span is the aggregate max-Stop")
 
-	// A pending record that only touches the first-entry burst [base, base+30s]
-	// still overlaps the wide span, so Correlate returns a match.
 	pending := []enrichment.PendingRecord{
 		{
 			InvocationID: "burst-only",
@@ -237,6 +232,5 @@ func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing
 func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	groups, err := enrichment.LoadManifestGrouped("testdata/LogStoreManifest.plist", 60*time.Second)
 	require.NoError(t, err)
-	// Fixture has three schemes (MyScheme, MySchemeTests, Models) — three groups.
 	require.Len(t, groups, 3)
 }

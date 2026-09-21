@@ -29,8 +29,7 @@ type Watcher struct {
 	MatchProbe            func(group ManifestEntryGroup) bool
 	MaxCorrelationRetries int
 
-	// TimeGap controls the manifest-entry grouping window. Zero uses
-	// LocalGroupTimeGap.
+	// TimeGap zero-value falls back to LocalGroupTimeGap.
 	TimeGap time.Duration
 
 	// HandledStore persists the seen-UUID set across restarts. nil disables
@@ -72,9 +71,8 @@ func (w *Watcher) markGroupHandled(group ManifestEntryGroup) {
 	}
 }
 
-// groupKey survives reordering across scans: sort a defensive copy of the
-// UUID list so a future UUIDs() that hands back a shared backing array can't
-// mutate the group.
+// groupKey sorts a defensive copy so a future UUIDs() sharing its backing
+// array can't mutate the group and so the key survives entry reordering.
 func groupKey(group ManifestEntryGroup) string {
 	uuids := append([]string(nil), group.UUIDs()...)
 	sort.Strings(uuids)

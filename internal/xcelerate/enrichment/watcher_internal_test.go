@@ -66,7 +66,6 @@ func TestWatcher_scan_MatchedEntry_FiresImmediately(t *testing.T) {
 
 	w.scan(false)
 
-	// Fixture has three schemes (three groups); every group fires and every UUID lands in seen.
 	assert.Positive(t, calls)
 	assert.Empty(t, w.retries)
 	assert.Len(t, w.seen, len(uuids))
@@ -113,9 +112,6 @@ func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
 	assert.Contains(t, w.seen, uuid)
 }
 
-// groupContainsUUID is a tiny helper for tests that pick one fixture UUID
-// and want to distinguish the group containing it from the other schemes'
-// groups.
 func groupContainsUUID(g ManifestEntryGroup, uuid string) bool {
 	for _, u := range g.UUIDs() {
 		if u == uuid {
@@ -428,8 +424,6 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 	assert.Contains(t, uuids, uuid, "emitted UUID must be appended to HandledStore")
 }
 
-// writeMultiEntryManifest writes a manifest with multiple entries sharing the
-// same scheme so GroupManifestEntries collapses them into a single group.
 func writeMultiEntryManifest(t *testing.T, derivedRoot string, uuids ...string) {
 	t.Helper()
 
@@ -513,7 +507,6 @@ func TestWatcher_scan_AppendingUUIDToExistingGroup_EmitsOnceMore(t *testing.T) {
 	require.Equal(t, 1, handleCalls, "initial scan emits one group")
 	assert.ElementsMatch(t, []string{"u1", "u2"}, lastUUIDs)
 
-	// Rewrite the manifest with a new UUID added to the same group.
 	writeMultiEntryManifest(t, derivedRoot, "u1", "u2", "u3")
 
 	w.scan(false)

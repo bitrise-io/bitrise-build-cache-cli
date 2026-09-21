@@ -12,10 +12,8 @@ import (
 	"howett.net/plist"
 )
 
-// Time-gap threshold splits ManifestEntries of the same scheme into separate
-// runs. CI writes many entries per xcodebuild invocation and Xcode timestamps
-// entries with wall-clock skew, so we allow a wider window on CI.
-// Package-level vars so tests can override.
+// CI writes many entries per xcodebuild invocation and timestamps them with
+// wall-clock skew, so the CI grouping window is wider than the local one.
 //
 //nolint:gochecknoglobals
 var (
@@ -229,8 +227,7 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 	return best
 }
 
-// Command mirrors "<primary command> <scheme>". Empty scheme collapses to just
-// the command. Unknown-command primary returns empty (caller should skip).
+// Command returns empty when the primary is unknown so the caller skips PUT.
 func (g ManifestEntryGroup) Command() string {
 	p := g.Primary()
 	if p.Command() == CommandUnknown {
@@ -248,9 +245,6 @@ func (g ManifestEntryGroup) FullCommand() string {
 	return g.Primary().Signature
 }
 
-// GroupManifestEntries clusters entries by SchemeName and time gap. Entries
-// with the same scheme are sorted by Start and split whenever the gap between
-// consecutive Stop → Start exceeds timeGap.
 func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil
