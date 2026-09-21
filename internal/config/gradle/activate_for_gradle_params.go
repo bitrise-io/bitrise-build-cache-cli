@@ -152,11 +152,8 @@ func (params ActivateGradleParams) commonTemplateInventory(
 		CIProvider: metadata.CIProvider,
 		Version:    consts.GradleCommonPluginDepVersion,
 		CLIPath:    cliPath,
-		// Only set on GitHub Actions, and it is what switches the job-summary
-		// hook on: elsewhere there is no summary to write to. Resolved to this
-		// CLI's own path because the installer's bin dir is not on the build's
-		// PATH.
-		JobSummaryCLIPath: jobSummaryCLIPath(),
+		// Only on GitHub Actions: elsewhere there is no job summary to write.
+		JobSummaryEnabled: os.Getenv("GITHUB_STEP_SUMMARY") != "",
 	}
 }
 
@@ -275,17 +272,4 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		ShardSize:       params.TestDistro.ShardSize,
 		TestSearchDepth: params.TestDistro.TestSearchDepth,
 	}
-}
-
-func jobSummaryCLIPath() string {
-	if os.Getenv("GITHUB_STEP_SUMMARY") == "" {
-		return ""
-	}
-
-	self, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-
-	return self
 }

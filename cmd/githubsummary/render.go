@@ -34,8 +34,8 @@ func Render(s Summary) string {
 	if s.HasCacheStats {
 		b.WriteString("### Cache transfer\n\n")
 		b.WriteString("| | |\n| --- | ---: |\n")
-		b.WriteString(fmt.Sprintf("| Downloaded | %s |\n", s.Downloaded))
-		b.WriteString(fmt.Sprintf("| Uploaded | %s |\n", s.Uploaded))
+		b.WriteString(fmt.Sprintf("| Downloaded | %s |\n", FormatSize(s.DownloadedBytes)))
+		b.WriteString(fmt.Sprintf("| Uploaded | %s |\n", FormatSize(s.UploadedBytes)))
 		b.WriteString(fmt.Sprintf("| Blob hits | %s of %s (%s) |\n",
 			thousands(s.BlobHits), thousands(s.BlobLookups), pct(s.BlobHitRate)))
 		b.WriteString("\n")

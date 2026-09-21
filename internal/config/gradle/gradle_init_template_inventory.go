@@ -45,8 +45,9 @@ type PluginCommonTemplateInventory struct {
 	Version    string
 
 	CLIPath string
-	// JobSummaryCLIPath is empty unless the build runs on GitHub Actions.
-	JobSummaryCLIPath string
+	// JobSummaryEnabled is true only on GitHub Actions, where there is a job
+	// summary to write to.
+	JobSummaryEnabled bool
 }
 
 type TemplateInventory struct {

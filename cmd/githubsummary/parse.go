@@ -22,12 +22,19 @@ type Summary struct {
 	TaskHitRate    float64
 	HasTaskStats   bool
 
-	BlobHits      int
-	BlobLookups   int
-	BlobHitRate   float64
-	Downloaded    string
-	Uploaded      string
-	HasCacheStats bool
+	pluginFromCache int
+	pluginUpToDate  int
+	pluginTotal     int
+	gradleFromCache int
+	gradleExecuted  int
+	gradleTotal     int
+
+	BlobHits        int
+	BlobLookups     int
+	BlobHitRate     float64
+	DownloadedBytes int64
+	UploadedBytes   int64
+	HasCacheStats   bool
 }
 
 // The plugins prefix every line and Actions prefixes a timestamp, so each
@@ -58,27 +65,29 @@ func Parse(r io.Reader) Summary {
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		// Also per build, so summed. Gradle's own totals line below overrides
+		// these when present: it is authoritative for the whole invocation.
 		if m := reTaskStats.FindStringSubmatch(line); m != nil {
-			s.TasksFromCache = atoi(m[2])
-			s.TasksUpToDate = atoi(m[3])
-			s.TasksTotal = atoi(m[5])
-			s.TaskHitRate = atof(m[6])
+			s.pluginFromCache += atoi(m[2])
+			s.pluginUpToDate += atoi(m[3])
+			s.pluginTotal += atoi(m[5])
 			s.HasTaskStats = true
 		}
 
 		if m := reGradleTotals.FindStringSubmatch(line); m != nil {
-			s.TasksTotal = atoi(m[1])
-			s.TasksExecuted = atoi(m[2])
-			s.TasksFromCache = atoi(m[3])
+			s.gradleTotal = atoi(m[1])
+			s.gradleExecuted = atoi(m[2])
+			s.gradleFromCache = atoi(m[3])
 			s.HasTaskStats = true
 		}
 
+		// One line per build -- an included build such as buildSrc reports its
+		// own -- so these add up rather than overwrite.
 		if m := reCacheStats.FindStringSubmatch(line); m != nil {
-			s.BlobHits = atoi(m[1])
-			s.Downloaded = strings.TrimSpace(m[2])
-			s.BlobLookups = atoi(m[3])
-			s.BlobHitRate = atof(m[4])
-			s.Uploaded = strings.TrimSpace(m[5])
+			s.BlobHits += atoi(m[1])
+			s.BlobLookups += atoi(m[3])
+			s.DownloadedBytes += parseSize(m[2])
+			s.UploadedBytes += parseSize(m[5])
 			s.HasCacheStats = true
 		}
 
@@ -96,7 +105,35 @@ func Parse(r io.Reader) Summary {
 		}
 	}
 
+	resolveTaskStats(&s)
+
+	if s.BlobLookups > 0 {
+		s.BlobHitRate = float64(s.BlobHits) / float64(s.BlobLookups) * 100
+	}
+
 	return s
+}
+
+// resolveTaskStats prefers Gradle's own end-of-build totals and falls back to
+// the plugin's per-build lines. The hit rate is computed rather than read off a
+// single line, which would only describe one of several builds.
+func resolveTaskStats(s *Summary) {
+	switch {
+	case s.gradleTotal > 0:
+		s.TasksTotal = s.gradleTotal
+		s.TasksFromCache = s.gradleFromCache
+		s.TasksExecuted = s.gradleExecuted
+		s.TasksUpToDate = s.pluginUpToDate
+	case s.pluginTotal > 0:
+		s.TasksTotal = s.pluginTotal
+		s.TasksFromCache = s.pluginFromCache
+		s.TasksUpToDate = s.pluginUpToDate
+		s.TasksExecuted = s.pluginTotal - s.pluginFromCache - s.pluginUpToDate
+	}
+
+	if s.TasksTotal > 0 {
+		s.TaskHitRate = float64(s.TasksFromCache+s.TasksUpToDate) / float64(s.TasksTotal) * 100
+	}
 }
 
 // Empty reports whether the log carried no Bitrise plugin output at all, which
@@ -115,4 +152,40 @@ func atof(s string) float64 {
 	v, _ := strconv.ParseFloat(s, 64)
 
 	return v
+}
+
+var sizeUnits = map[string]float64{ //nolint:gochecknoglobals
+	"B": 1, "KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30, "TB": 1 << 40,
+}
+
+var reSize = regexp.MustCompile(`^([\d.]+)\s*([KMGT]?B)$`)
+
+// parseSize reads the human-readable sizes the plugin prints ("79.2 MB", "0 B")
+// so several builds' figures can be added together.
+func parseSize(s string) int64 {
+	m := reSize.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0
+	}
+
+	mult, ok := sizeUnits[m[2]]
+	if !ok {
+		return 0
+	}
+
+	return int64(atof(m[1]) * mult)
+}
+
+// FormatSize renders a byte count the way the plugin would.
+func FormatSize(b int64) string {
+	switch {
+	case b >= 1<<30:
+		return strconv.FormatFloat(float64(b)/(1<<30), 'f', 1, 64) + " GB"
+	case b >= 1<<20:
+		return strconv.FormatFloat(float64(b)/(1<<20), 'f', 1, 64) + " MB"
+	case b >= 1<<10:
+		return strconv.FormatFloat(float64(b)/(1<<10), 'f', 1, 64) + " KB"
+	default:
+		return strconv.FormatInt(b, 10) + " B"
+	}
 }
