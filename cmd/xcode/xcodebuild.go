@@ -29,6 +29,7 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
@@ -50,6 +51,36 @@ func mergeDebugFlag(cfg xcelerate.Config) xcelerate.Config {
 	return cfg
 }
 
+// projectModeGates reports whether the machine-wide opt-in mode should silence
+// the wrapper for this invocation: only when opt-in is active AND no marker is
+// found walking up from the current dir. Any resolution error is treated as
+// "no marker" — the wrapper never fails a build because of the check.
+func projectModeGates(osProxy utils.OsProxy) bool {
+	p, err := paths.Default()
+	if err != nil {
+		return false
+	}
+	current, err := machineconfig.Read(osProxy, p, nil)
+	if err != nil {
+		return false
+	}
+	if machineconfig.ResolvedProjectMode(current) != machineconfig.ModeOptIn {
+		return false
+	}
+
+	cwd, err := osProxy.Getwd()
+	if err != nil {
+		return true
+	}
+
+	found, _, err := machineconfig.FindMarker(cwd, osProxy)
+	if err != nil {
+		return true
+	}
+
+	return !found
+}
+
 const (
 	startedProxy = "Started xcelerate_proxy pid = %d"
 
@@ -59,6 +90,7 @@ const (
 	NoXcresultFlag              = "--no-xcresult"
 	CreateXCFrameworkFlag       = "-create-xcframework"
 	ResultBundlePathFlag        = "-resultBundlePath"
+	ProjectModeOptInReason      = "project-mode=opt-in"
 	MsgBuildCacheDisabledByFlag = "Build cache disabled by %s flag"
 	MsgArgsPassedToXcodebuild   = "Arguments passed to xcodebuild: %v"
 	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
@@ -171,6 +203,11 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	if slices.Contains(origArgs, CreateXCFrameworkFlag) {
 		config.BuildCacheEnabled = false
 		disabledBy = append(disabledBy, CreateXCFrameworkFlag)
+	}
+
+	if projectModeGates(osProxy) {
+		config.BuildCacheEnabled = false
+		disabledBy = append(disabledBy, ProjectModeOptInReason)
 	}
 
 	// Query invocations short-circuit before creating the per-invocation log

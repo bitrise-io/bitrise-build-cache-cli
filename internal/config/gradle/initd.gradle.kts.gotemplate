@@ -31,6 +31,27 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
 fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
     of(BitriseAuthTokenSource::class.java) {}.get()
 {{ end -}}
+{{- if and (not .Common.CIProvider) (eq .Common.ProjectMode "opt-in") }}
+abstract class BitriseProjectScopeSource : org.gradle.api.provider.ValueSource<String, BitriseProjectScopeSource.Params> {
+    interface Params : org.gradle.api.provider.ValueSourceParameters {
+        val startDir: org.gradle.api.provider.Property<String>
+    }
+    @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
+    override fun obtain(): String {
+        val err = java.io.ByteArrayOutputStream()
+        val result = execOps.exec {
+            commandLine("{{ .Common.CLIPath }}", "project", "scope-check", "--quiet", parameters.startDir.get())
+            errorOutput = err
+            isIgnoreExitValue = true
+        }
+        val stderr = err.toString().trim()
+        if (stderr.isNotEmpty()) {
+            System.err.println(stderr)
+        }
+        return result.exitValue.toString()
+    }
+}
+{{ end -}}
 
 initscript {
     repositories {
@@ -69,6 +90,22 @@ initscript {
 }
 {{- if or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") }}
 settingsEvaluated {
+    {{- if and (not .Common.CIProvider) (eq .Common.ProjectMode "opt-in") }}
+    // scope-check exit codes: 0 = in scope, 1 = gated (skip), >=2 = error (fail open).
+    val _bitriseScopeExit = try {
+        providers.of(BitriseProjectScopeSource::class.java) {
+            parameters {
+                startDir.set(settings.rootDir.absolutePath)
+            }
+        }.get().toInt()
+    } catch (t: Throwable) {
+        System.err.println("[bitrise-build-cache] project scope-check failed to run (${t.message}); proceeding")
+        0
+    }
+    if (_bitriseScopeExit == 1) {
+        return@settingsEvaluated
+    }
+    {{- end }}
     {{- if eq .Cache.Usage "enabled" }}
     buildCache {
         local {

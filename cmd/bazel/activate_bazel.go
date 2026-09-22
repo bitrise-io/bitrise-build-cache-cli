@@ -41,6 +41,9 @@ The command supports:
 //nolint:gochecknoglobals
 var activateBazelParams = bazelconfig.DefaultActivateBazelParams()
 
+//nolint:gochecknoglobals
+var activateBazelProjectMode string
+
 func init() {
 	common.ActivateCmd.AddCommand(activateBazelCmd)
 
@@ -53,9 +56,11 @@ func init() {
 	flags.BoolVar(&activateBazelParams.RBE.Enabled, "rbe", activateBazelParams.RBE.Enabled, "Enable Remote Build Execution (RBE)")
 	flags.StringVar(&activateBazelParams.RBE.Endpoint, "rbe-endpoint", activateBazelParams.RBE.Endpoint, "RBE endpoint URL")
 	flags.BoolVar(&activateBazelParams.Timestamps, "timestamps", activateBazelParams.Timestamps, "Enable timestamps in build output")
+
+	flags.StringVar(&activateBazelProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }
 
-func activateBazel(_ *cobra.Command, _ []string) error {
+func activateBazel(cmd *cobra.Command, _ []string) error {
 	logger := log.NewLogger()
 	logger.EnableDebugLog(common.IsDebugLogMode)
 	logger.TInfof("Activate Bitrise Build Cache for Bazel")
@@ -68,6 +73,16 @@ func activateBazel(_ *cobra.Command, _ []string) error {
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
+
+	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
+		return fmt.Errorf("persist project mode: %w", err)
+	}
+
+	push, err := common.ResolveAndPersistCachePush(cmd, activateBazelParams.Cache.PushEnabled, logger)
+	if err != nil {
+		return fmt.Errorf("resolve cache push: %w", err)
+	}
+	activateBazelParams.Cache.PushEnabled = push
 
 	// Run main logic
 	if err := ActivateBazelCmdFn(

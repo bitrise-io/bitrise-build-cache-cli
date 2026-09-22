@@ -555,3 +555,18 @@ build --bes_upload_mode=wait_for_upload_complete
 build --build_event_publish_all_actions
 build --bes_header='x-app-id=AppSlugValue'
 `
+
+// The bazelrc must not carry a documentary --repo_env for project mode:
+// Bazel does not propagate --repo_env to credential-helper subprocesses, so a
+// user grepping the credhelper source for the env var finds nothing and files
+// a confused bug. The credhelper reads the machine config directly.
+func Test_Generate_ProjectMode_NotWrittenToBazelrc(t *testing.T) {
+	got, err := TemplateInventory{
+		Common: CommonTemplateInventory{AppSlug: "AppSlugValue"},
+		Cache:  CacheTemplateInventory{Enabled: false},
+		BES:    BESTemplateInventory{Enabled: false},
+	}.GenerateBazelrc(utils.DefaultTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MODE")
+	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MARKER")
+}

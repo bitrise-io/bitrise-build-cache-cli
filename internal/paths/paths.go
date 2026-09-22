@@ -86,6 +86,11 @@ const (
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 
+	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
+	ProjectMarkerFilename = ".bitrise-build-cache.json"
+
+	buildCacheMachineConfigFilename = "config.json"
+
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
@@ -173,9 +178,23 @@ func (p Paths) BitriseRoot() string {
 	return filepath.Join(p.Home, BitriseRootRelative)
 }
 
+// BitriseCacheRoot is the per-user cache root ~/.bitrise/cache.
+func (p Paths) BitriseCacheRoot() string {
+	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir)
+}
+
 // BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.
 func (p Paths) BitriseCacheDir(tool string) string {
-	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir, tool)
+	return filepath.Join(p.BitriseCacheRoot(), tool)
+}
+
+// MachineConfigFile is the absolute path of the machine-wide build-cache config file.
+func (p Paths) MachineConfigFile() string {
+	return filepath.Join(p.BitriseCacheRoot(), buildCacheMachineConfigFilename)
+}
+
+func (p Paths) MachineConfigTempFile() string {
+	return filepath.Join(p.BitriseCacheRoot(), "."+buildCacheMachineConfigFilename+".tmp")
 }
 
 // BitriseCacheFile returns a file path under BitriseCacheDir(tool).

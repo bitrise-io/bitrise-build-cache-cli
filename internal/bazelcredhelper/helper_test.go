@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -159,3 +160,58 @@ func TestRun_NoRepositoryURL_OmitsHeader(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
 	assert.NotContains(t, resp.Headers, "x-repository-url")
 }
+
+func TestRun_ProjectModeOptInWithoutMarkerReturnsEmptyHeaders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeMachineConfig(t, home, `{"project_mode":"opt-in"}`)
+
+	buildDir := home + "/build-a"
+	require.NoError(t, mustMkdir(buildDir))
+	t.Chdir(buildDir)
+
+	out := &bytes.Buffer{}
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, envResolver(t, "test-token"), nil))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Empty(t, resp.Headers, "opt-in without marker must emit empty headers so RPCs skip auth")
+}
+
+func TestRun_ProjectModeOptInWithMarkerStillAuths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeMachineConfig(t, home, `{"project_mode":"opt-in"}`)
+
+	buildDir := home + "/build-b"
+	require.NoError(t, mustMkdir(buildDir))
+	require.NoError(t, mustWrite(buildDir+"/.bitrise-build-cache.json", "{}"))
+	t.Chdir(buildDir)
+
+	out := &bytes.Buffer{}
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, envResolver(t, "test-token"), nil))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Equal(t, []string{"Bearer test-token"}, resp.Headers["authorization"])
+}
+
+func writeMachineConfig(t *testing.T, home, body string) {
+	t.Helper()
+	dir := home + "/.bitrise/cache"
+	require.NoError(t, mustMkdir(dir))
+	require.NoError(t, mustWrite(dir+"/config.json", body))
+}
+
+func mustMkdir(dir string) error {
+	return osMkdirAll(dir, 0o755)
+}
+
+func mustWrite(path, body string) error {
+	return osWriteFile(path, []byte(body), 0o644)
+}
+
+var (
+	osMkdirAll   = os.MkdirAll
+	osWriteFile  = os.WriteFile
+)

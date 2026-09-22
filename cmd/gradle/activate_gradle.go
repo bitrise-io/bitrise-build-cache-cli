@@ -54,6 +54,16 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
+		if err := common.PersistProjectMode(activateGradleProjectMode, logger); err != nil {
+			return fmt.Errorf("persist project mode: %w", err)
+		}
+
+		push, err := common.ResolveAndPersistCachePush(cmd, activateGradleParams.Cache.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateGradleParams.Cache.PushEnabled = push
+
 		if err := gradleconfig.Activate(
 			cmd.Context(),
 			logger,
@@ -104,6 +114,9 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 //nolint:gochecknoglobals
 var activateGradleParams = gradleconfig.DefaultActivateGradleParams()
 
+//nolint:gochecknoglobals
+var activateGradleProjectMode string
+
 func init() {
 	common.ActivateCmd.AddCommand(ActivateGradleCmd)
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.Cache.Enabled, "cache", activateGradleParams.Cache.Enabled, "Activate cache plugin. Will override cache-dep.")
@@ -119,6 +132,8 @@ func init() {
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.ShardSize, "test-distribution-shard-size", activateGradleParams.TestDistro.ShardSize, "Shard size for test distribution plugin.")
 	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.TestSearchDepth, "test-distribution-search-depth", activateGradleParams.TestDistro.TestSearchDepth, "Search depth for test distribution when trying to find test tasks not listed in the invocation.")
+
+	ActivateGradleCmd.Flags().StringVar(&activateGradleProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }
 
 // ErrFmtFailedToUpdateProps is re-exported for backward compatibility with existing tests.
@@ -131,7 +146,7 @@ func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error),
+	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 	params gradleconfig.ActivateGradleParams,

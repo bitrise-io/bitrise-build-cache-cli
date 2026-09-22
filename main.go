@@ -12,6 +12,7 @@ import (
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/get"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/invocations"
+	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/project"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/reactnative"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/update"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"

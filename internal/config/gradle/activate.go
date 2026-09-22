@@ -11,6 +11,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 const (
@@ -30,7 +31,7 @@ func Activate(
 	gradleHomePath string,
 	envProvider map[string]string,
 	debugLogging bool,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (TemplateInventory, error),
+	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (TemplateInventory, error),
 	templateWriter func(TemplateInventory, string) error,
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
@@ -61,7 +62,7 @@ func Activate(
 		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
 	}
 
-	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)
+	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
 	if err != nil {
 		return err
 	}
