@@ -151,6 +151,33 @@ Create GitHub releases for whichever of the five step repos the user actually wa
 - Check the latest existing release tag in each repo to determine the next version
 - The user may explicitly scope the release to a subset of step repos ("only release xcode and rn-features"). Honor that — do not release the others. Merging their auto-update PRs is still fine and expected (keeps the dependency current); skipping is only about the GitHub release / steplib PR.
 
+#### ⚠ Xcode + React Native steps: cut TWO releases each (1.x and 0.x)
+
+Since 2026-09-22 the Xcode and React Native steps have **two live major lines**, and a release must cut **both** or pinned customers silently go stale:
+
+| Repo | current line | deprecated line |
+|---|---|---|
+| `bitrise-step-activate-build-cache-for-xcode` | `1.x` from `main` | `0.x` from branch `0.x` |
+| `bitrise-step-activate-react-native-features` | `1.x` from `main` | `0.x` from branch `0.x` |
+
+Why both: these steps only ever had a `0.x` major, so the intuitive `activate-build-cache-for-xcode@1` pin failed at **step preparation**, which is `is_skippable: false` and kills the whole build (Yuno burned the first 7 builds of a trial on it). `1.0.0` fixes that. But ~20 workspaces / ~19k builds a quarter pin bare `@0`, and these steps are the CLI delivery channel for pinned-version customers — so dropping `0.x` would trade a loud failure for silent staleness.
+
+Process per release, for each of these two repos:
+
+```bash
+# current line, from main
+gh release create <next-1.x> --repo <REPO> --target main --latest --notes "..."
+# deprecated line — cherry-pick the CLI bump onto 0.x first
+git checkout 0.x && git cherry-pick <cli-bump-commit> && git push origin 0.x
+gh release create <next-0.x> --repo <REPO> --target 0.x --notes "..."
+```
+
+The `0.x` branch carries one extra commit (`feat: deprecate the 0.x line in favour of @1`) that prints a runtime deprecation notice. **Keep that commit — never fast-forward `0.x` to `main`.** There is no `BITRISE_STEP_VERSION` exposed to steps, so a runtime-gated notice on a single branch is not possible; the divergent branch is the only way to warn only `@0` users.
+
+Both lines produce their own steplib PR (`activate-build-cache-for-xcode-1.1.0` and `-0.27.0`), so step 9 has twice as many PRs and step 10 twice as many queued deploys — budget for it.
+
+**Ending the deprecation:** once `@0` usage is negligible, stop cutting `0.x`, delete this subsection, and delete the `0.x` branches. Check current usage with `mrt_product.build_steps` filtered to `step_version = "0"`.
+
 ### 9. Merge steplib PRs
 
 After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each released step. They may need a rebase.
