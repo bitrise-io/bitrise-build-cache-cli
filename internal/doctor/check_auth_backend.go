@@ -171,10 +171,6 @@ func backendErrorState(err error) State {
 func backendErrorDetail(err error, cfg auth.Credential, srcLabel string, latency time.Duration) string {
 	prefix := fmt.Sprintf("latency %dms, source=%s, workspace=%s — ", latency.Milliseconds(), srcLabel, cfg.WorkspaceID)
 
-	if errors.Is(err, auth.ErrTokenNonPrintable) {
-		return prefix + "token-malformed: " + auth.ErrTokenNonPrintable.Error()
-	}
-
 	// The kv client converts gRPC Unauthenticated into a plain sentinel error
 	// before returning, so status.FromError can't see it. Check the sentinel first.
 	if errors.Is(err, kv.ErrCacheUnauthenticated) {

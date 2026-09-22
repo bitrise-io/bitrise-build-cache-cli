@@ -595,16 +595,6 @@ func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Contains(t, got, "ws-1")
 }
 
-// A non-printable-token error must surface with the actionable fix (trim the
-// env var), not the generic "token rejected — re-login" message.
-func TestBackendErrorDetail_nonPrintableTokenHasDistinctMessage(t *testing.T) {
-	cfg := authpkg.Credential{WorkspaceID: "ws-1"}
-	got := backendErrorDetail(authpkg.ErrTokenNonPrintable, cfg, authpkg.Origin{Backend: authpkg.BackendEnv}.ShortLabel(), 5*time.Millisecond)
-	assert.Contains(t, got, "token-malformed")
-	assert.Contains(t, got, authpkg.EnvAuthToken)
-	assert.NotContains(t, got, "auth-failed", "the fix is trimming the env var, not re-logging in")
-}
-
 func TestBackendErrorState_nonPrintableTokenIsError(t *testing.T) {
 	assert.Equal(t, StateError, backendErrorState(authpkg.ErrTokenNonPrintable))
 }

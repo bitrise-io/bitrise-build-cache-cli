@@ -82,7 +82,7 @@ func TestClient_getMethodCallMetadata_TrailingNewlineTokenLeavesInvalidHeader(t 
 	}
 	assert.True(t, hasNonPrintable,
 		"a token carrying a control byte at this layer would build a header value gRPC rejects with %q — sanitise before reaching the client",
-		"non-printable ASCII characters")
+		grpcNonPrintableHeaderMsg)
 }
 
 // A stable AuthSource behaves like the old fixed AuthConfig — successive calls

@@ -8,11 +8,16 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
+// grpcNonPrintableHeaderMsg is the exact wording grpc/internal/metadata uses
+// when it rejects a header value containing bytes outside 0x20..0x7E. It never
+// surfaces as a gRPC status — matching the message is the only signal.
+const grpcNonPrintableHeaderMsg = "non-printable ASCII characters"
+
 // authGate short-circuits the client after the backend has decisively rejected
 // the token. A rejected token will not be accepted on a retry; keeping the
 // warning stream open only floods logs while silently disabling the cache. Once
-// broken, every RPC returns ErrCacheUnauthenticated so callers can degrade
-// (downloads → miss, uploads → skip) without further noise.
+// broken, every RPC returns ErrCacheUnauthenticated immediately so the process
+// stops burning its retry budget on a token that will never be accepted.
 type authGate struct {
 	broken atomic.Bool
 	logged sync.Once
@@ -28,14 +33,14 @@ func (g *authGate) tripOnce(err error) bool {
 	}
 
 	g.broken.Store(true)
-	g.logged.Do(func() {
-		if g.logger != nil {
+	if g.logger != nil {
+		g.logged.Do(func() {
 			g.logger.Warnf(
 				"Build Cache auth rejected (%s) — disabling cache for the rest of this process; check BITRISE_BUILD_CACHE_AUTH_TOKEN for trailing whitespace or expired credentials",
 				err,
 			)
-		}
-	})
+		})
+	}
 
 	return true
 }
@@ -54,8 +59,5 @@ func isAuthReject(err error) bool {
 		return true
 	}
 
-	// grpc/internal/metadata rejects non-printable header values with this exact
-	// wording; matching the message is the only way to catch it because it
-	// arrives wrapped, not as a gRPC status.
-	return strings.Contains(err.Error(), "non-printable ASCII characters")
+	return strings.Contains(err.Error(), grpcNonPrintableHeaderMsg)
 }

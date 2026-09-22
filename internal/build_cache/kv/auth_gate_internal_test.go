@@ -48,13 +48,32 @@ func TestAuthGate_TransientErrorDoesNotTrip(t *testing.T) {
 	assert.Zero(t, lg.warns.Load(), "transient network blips must not disable the cache")
 }
 
+// A trip with no logger set must not latch the sync.Once — otherwise the first
+// warning is lost forever when NewClient constructs with a nil logger and
+// SetLogger installs one after the first trip.
+func TestAuthGate_LatchesOnFirstLoggableTrip(t *testing.T) {
+	g := &authGate{}
+
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "bad token")))
+	require.True(t, g.isBroken())
+
+	lg := &countingLogger{Logger: log.NewLogger()}
+	g.logger = lg
+
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "still bad")))
+	assert.Equal(t, int64(1), lg.warns.Load(), "the first trip with a logger attached must produce the single warning")
+
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "yet again")))
+	assert.Equal(t, int64(1), lg.warns.Load(), "subsequent trips must stay silent")
+}
+
 func TestAuthGate_TripsOnNonPrintableHeaderRejection(t *testing.T) {
 	lg := &countingLogger{Logger: log.NewLogger()}
 	g := &authGate{logger: lg}
 
 	// grpc/internal/metadata rejects a non-printable value at the wire boundary
 	// with this exact wording; it never surfaces as a status code.
-	wrapped := fmt.Errorf(`send data: header key "authorization" contains value with non-printable ASCII characters`)
+	wrapped := fmt.Errorf(`send data: header key "authorization" contains value with %s`, grpcNonPrintableHeaderMsg)
 
 	assert.True(t, g.tripOnce(wrapped))
 	assert.True(t, g.isBroken())
