@@ -39,9 +39,10 @@ Note: This is a convenience activation method, if your activation requires fine-
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
-		if _, err := common.ResolveAndPersistProjectMode(projectMode, logger); err != nil {
-			return fmt.Errorf("resolve project mode: %w", err)
+		if err := common.PersistProjectMode(projectMode, logger); err != nil {
+			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.EnsureProjectMarker(logger)
 
 		push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
 		if err != nil {

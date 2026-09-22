@@ -54,9 +54,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
-		if _, err := common.ResolveAndPersistProjectMode(activateGradleProjectMode, logger); err != nil {
-			return fmt.Errorf("resolve project mode: %w", err)
+		if err := common.PersistProjectMode(activateGradleProjectMode, logger); err != nil {
+			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.EnsureProjectMarker(logger)
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateGradleParams.Cache.PushEnabled, logger)
 		if err != nil {

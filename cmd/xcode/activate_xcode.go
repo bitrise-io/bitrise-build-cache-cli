@@ -50,9 +50,10 @@ This command will:
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		if _, err := common.ResolveAndPersistProjectMode(activateXcodeProjectMode, logger); err != nil {
-			return fmt.Errorf("resolve project mode: %w", err)
+		if err := common.PersistProjectMode(activateXcodeProjectMode, logger); err != nil {
+			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.EnsureProjectMarker(logger)
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateXcodeParams.PushEnabled, logger)
 		if err != nil {

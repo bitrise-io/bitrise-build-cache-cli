@@ -74,9 +74,10 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
 
-	if _, err := common.ResolveAndPersistProjectMode(activateBazelProjectMode, logger); err != nil {
-		return fmt.Errorf("resolve project mode: %w", err)
+	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
+		return fmt.Errorf("persist project mode: %w", err)
 	}
+	common.EnsureProjectMarker(logger)
 
 	push, err := common.ResolveAndPersistCachePush(cmd, activateBazelParams.Cache.PushEnabled, logger)
 	if err != nil {

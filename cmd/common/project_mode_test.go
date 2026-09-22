@@ -12,25 +12,55 @@ import (
 
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-func TestResolveAndPersistProjectMode_OptInWritesMarkerAtCwd(t *testing.T) {
+func TestPersistProjectMode_EmptyFlagIsNoop(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+
+	require.NoError(t, PersistProjectMode("", nil))
+
+	_, statErr := os.Stat(paths.FromHome(home).MachineConfigFile())
+	assert.True(t, os.IsNotExist(statErr), "empty flag must not create machine config")
+}
+
+func TestPersistProjectMode_WritesFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	require.NoError(t, PersistProjectMode(string(machineconfig.ModeOptIn), nil))
+
+	cfg, err := machineconfig.Read(utils.DefaultOsProxy{}, paths.FromHome(home), nil)
+	require.NoError(t, err)
+	assert.Equal(t, machineconfig.ModeOptIn, cfg.ProjectMode)
+}
+
+func TestPersistProjectMode_InvalidFlagReturnsError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	err := PersistProjectMode("garbage", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "garbage")
+}
+
+func TestEnsureProjectMarker_OptInDropsMarkerAtCwd(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, PersistProjectMode(string(machineconfig.ModeOptIn), nil))
 
 	build := filepath.Join(home, "some-project")
 	require.NoError(t, os.MkdirAll(build, 0o755))
 	t.Chdir(build)
 
-	mode, err := ResolveAndPersistProjectMode(string(machineconfig.ModeOptIn), nil)
-	require.NoError(t, err)
-	assert.Equal(t, machineconfig.ModeOptIn, mode)
+	EnsureProjectMarker(nil)
 
-	_, err = os.Stat(filepath.Join(build, paths.ProjectMarkerFilename))
-	require.NoError(t, err, "activate must drop the marker at cwd on opt-in")
+	_, err := os.Stat(filepath.Join(build, paths.ProjectMarkerFilename))
+	require.NoError(t, err)
 }
 
-func TestResolveAndPersistProjectMode_AlwaysDoesNotWriteMarker(t *testing.T) {
+func TestEnsureProjectMarker_AlwaysDoesNotDropMarker(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -38,16 +68,16 @@ func TestResolveAndPersistProjectMode_AlwaysDoesNotWriteMarker(t *testing.T) {
 	require.NoError(t, os.MkdirAll(build, 0o755))
 	t.Chdir(build)
 
-	_, err := ResolveAndPersistProjectMode(string(machineconfig.ModeAlways), nil)
-	require.NoError(t, err)
+	EnsureProjectMarker(nil)
 
-	_, err = os.Stat(filepath.Join(build, paths.ProjectMarkerFilename))
-	assert.True(t, os.IsNotExist(err), "always mode must not drop a marker")
+	_, err := os.Stat(filepath.Join(build, paths.ProjectMarkerFilename))
+	assert.True(t, os.IsNotExist(err))
 }
 
-func TestResolveAndPersistProjectMode_OptInAncestorMarkerSkipsWrite(t *testing.T) {
+func TestEnsureProjectMarker_OptInAncestorMarkerSkipsWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	require.NoError(t, PersistProjectMode(string(machineconfig.ModeOptIn), nil))
 
 	parent := filepath.Join(home, "parent")
 	child := filepath.Join(parent, "child")
@@ -55,9 +85,8 @@ func TestResolveAndPersistProjectMode_OptInAncestorMarkerSkipsWrite(t *testing.T
 	require.NoError(t, os.WriteFile(filepath.Join(parent, paths.ProjectMarkerFilename), []byte(`{}`), 0o644))
 	t.Chdir(child)
 
-	_, err := ResolveAndPersistProjectMode(string(machineconfig.ModeOptIn), nil)
-	require.NoError(t, err)
+	EnsureProjectMarker(nil)
 
-	_, err = os.Stat(filepath.Join(child, paths.ProjectMarkerFilename))
+	_, err := os.Stat(filepath.Join(child, paths.ProjectMarkerFilename))
 	assert.True(t, os.IsNotExist(err), "child must not get a marker when ancestor already covers it")
 }

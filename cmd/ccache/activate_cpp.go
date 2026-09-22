@@ -34,9 +34,10 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
-		if _, err := common.ResolveAndPersistProjectMode(activateCppProjectMode, logger); err != nil {
-			return fmt.Errorf("resolve project mode: %w", err)
+		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
+			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.EnsureProjectMarker(logger)
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
 		if err != nil {

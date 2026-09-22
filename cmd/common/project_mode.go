@@ -17,49 +17,63 @@ const ProjectModeFlagUsage = "Project scoping mode ('always' or 'opt-in'). " +
 	".bitrise-build-cache.json marker is found walking up from the build's CWD. " +
 	"Empty keeps the machine-wide setting; setting a value updates and persists it."
 
-func ResolveAndPersistProjectMode(flag string, logger log.Logger) (machineconfig.Mode, error) {
+// PersistProjectMode validates flag and writes it into the machine config when
+// non-empty. Empty flag is a no-op.
+func PersistProjectMode(flag string, logger log.Logger) error {
+	if flag == "" {
+		return nil
+	}
+
+	if err := machineconfig.ValidateProjectMode(flag); err != nil {
+		return fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
+	}
+
 	p, err := paths.Default()
 	if err != nil {
-		return "", fmt.Errorf("resolve home dir for machine config: %w", err)
+		return fmt.Errorf("resolve home dir for machine config: %w", err)
 	}
 
 	osProxy := utils.DefaultOsProxy{}
 	current, err := machineconfig.Read(osProxy, p, logger)
 	if err != nil {
 		if logger != nil {
-			logger.Warnf("Falling back to 'always' project scoping (%v).", err)
+			logger.Warnf("Overwriting unreadable machine config (%v).", err)
 		}
 		current = machineconfig.Config{}
 	}
 
-	if flag == "" {
-		mode := machineconfig.ResolvedProjectMode(current)
-		ensureProjectMarkerAtCwd(mode, osProxy, logger)
-
-		return mode, nil
-	}
-
-	if err := machineconfig.ValidateProjectMode(flag); err != nil {
-		return "", fmt.Errorf("--%s: %w", ProjectModeFlagName, err)
-	}
-
 	mode := machineconfig.Mode(flag)
-	if current.ProjectMode != mode {
-		current.ProjectMode = mode
-		if err := machineconfig.Write(current, osProxy, p); err != nil {
-			return "", fmt.Errorf("persist machine config: %w", err)
-		}
-		if logger != nil {
-			logger.TInfof("Machine-wide project scoping is now %q.", string(mode))
-		}
+	if current.ProjectMode == mode {
+		return nil
 	}
 
-	ensureProjectMarkerAtCwd(mode, osProxy, logger)
+	current.ProjectMode = mode
+	if err := machineconfig.Write(current, osProxy, p); err != nil {
+		return fmt.Errorf("persist machine config: %w", err)
+	}
+	if logger != nil {
+		logger.TInfof("Machine-wide project scoping is now %q.", string(mode))
+	}
 
-	return mode, nil
+	return nil
 }
 
-func ensureProjectMarkerAtCwd(mode machineconfig.Mode, osProxy utils.OsProxy, logger log.Logger) {
+// EnsureProjectMarker drops the marker at cwd when the persisted mode is
+// opt-in. Best-effort — any error is logged and swallowed.
+func EnsureProjectMarker(logger log.Logger) {
+	p, err := paths.Default()
+	if err != nil {
+		return
+	}
+
+	osProxy := utils.DefaultOsProxy{}
+	current, err := machineconfig.Read(osProxy, p, logger)
+	if err != nil {
+		return
+	}
+
+	mode := machineconfig.ResolvedProjectMode(current)
+
 	cwd, err := osProxy.Getwd()
 	if err != nil {
 		if logger != nil {
