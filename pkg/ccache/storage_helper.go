@@ -27,6 +27,7 @@ import (
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/jobsummary"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common"
@@ -262,6 +263,26 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 // Always zeros ccache counters at the end regardless of activity.
 // If the storage helper is reachable, its session byte counts and active invocation
 // IDs override the values from internal state and params.
+// The same figures as the stats lines above, on the GitHub Actions job page.
+// Does nothing anywhere else, and never fails the build.
+func (h *StorageHelper) writeJobSummary(stats ccacheanalytics.CcacheStats, blobStats *blobstats.Snapshot, invocationID string) {
+	summary := jobsummary.Summary{
+		Tool:      "ccache",
+		Section:   "ccache",
+		Unit:      "compilations",
+		Hits:      int64(stats.CacheHit),
+		Total:     int64(stats.CacheHit + stats.CacheMiss),
+		BlobStats: blobStats,
+	}
+	if invocationID != "" {
+		summary.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
+	}
+
+	if _, err := jobsummary.Write(summary.Section, summary.Render()); err != nil {
+		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
+	}
+}
+
 func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) {
 	defer h.zeroCcacheStats(ctx, h.logger)
 
@@ -310,6 +331,8 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 			}
 		}
 	}
+
+	h.writeJobSummary(stats, blobStats, invocationID)
 
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {
