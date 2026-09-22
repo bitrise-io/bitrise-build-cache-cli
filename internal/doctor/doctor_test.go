@@ -595,6 +595,39 @@ func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Contains(t, got, "ws-1")
 }
 
+// A non-printable-token error must surface with the actionable fix (trim the
+// env var), not the generic "token rejected — re-login" message.
+func TestBackendErrorDetail_nonPrintableTokenHasDistinctMessage(t *testing.T) {
+	cfg := authpkg.Credential{WorkspaceID: "ws-1"}
+	got := backendErrorDetail(authpkg.ErrTokenNonPrintable, cfg, authpkg.Origin{Backend: authpkg.BackendEnv}.ShortLabel(), 5*time.Millisecond)
+	assert.Contains(t, got, "token-malformed")
+	assert.Contains(t, got, authpkg.EnvAuthToken)
+	assert.NotContains(t, got, "auth-failed", "the fix is trimming the env var, not re-logging in")
+}
+
+func TestBackendErrorState_nonPrintableTokenIsError(t *testing.T) {
+	assert.Equal(t, StateError, backendErrorState(authpkg.ErrTokenNonPrintable))
+}
+
+// When ResolveNoRefresh itself returns ErrTokenNonPrintable the check must
+// surface the fix rather than falling into the "skipped, no credentials" path.
+// A trailing newline is trimmed silently — the only failure the customer sees
+// is a token with a control byte the trimmer can't remove (embedded, mid-token,
+// or a persisted record that already carries one).
+func TestAuthBackendCheck_nonPrintableTokenAtResolveTime(t *testing.T) {
+	envs := map[string]string{
+		authpkg.EnvAuthToken:   "tok\x01en",
+		authpkg.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{Envs: envs, AuthBackends: []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "token-malformed")
+	assert.Contains(t, res.Detail, authpkg.EnvAuthToken)
+}
+
 func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
 	envs := map[string]string{authpkg.EnvAuthToken: "tok", authpkg.EnvWorkspaceID: "ws-1"}
 

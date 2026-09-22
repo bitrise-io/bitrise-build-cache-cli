@@ -1,0 +1,90 @@
+//go:build unit
+
+package kv
+
+import (
+	"errors"
+	"fmt"
+	"sync/atomic"
+	"testing"
+
+	"github.com/bitrise-io/go-utils/v2/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// countingLogger counts Warnf calls so we can prove the "log once, then stay
+// silent" contract.
+type countingLogger struct {
+	log.Logger
+	warns atomic.Int64
+}
+
+func (c *countingLogger) Warnf(_ string, _ ...any) { c.warns.Add(1) }
+
+func TestAuthGate_LogsOnceThenStaysBroken(t *testing.T) {
+	lg := &countingLogger{Logger: log.NewLogger()}
+	g := &authGate{logger: lg}
+
+	require.False(t, g.isBroken())
+
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "bad token")))
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "still bad")))
+	assert.True(t, g.tripOnce(ErrCacheUnauthenticated))
+
+	assert.True(t, g.isBroken())
+	assert.Equal(t, int64(1), lg.warns.Load(), "auth-broken warning must fire exactly once for the process")
+}
+
+func TestAuthGate_TransientErrorDoesNotTrip(t *testing.T) {
+	lg := &countingLogger{Logger: log.NewLogger()}
+	g := &authGate{logger: lg}
+
+	assert.False(t, g.tripOnce(status.Error(codes.Unavailable, "later")))
+	assert.False(t, g.tripOnce(errors.New("connection reset")))
+	assert.False(t, g.isBroken())
+	assert.Zero(t, lg.warns.Load(), "transient network blips must not disable the cache")
+}
+
+func TestAuthGate_TripsOnNonPrintableHeaderRejection(t *testing.T) {
+	lg := &countingLogger{Logger: log.NewLogger()}
+	g := &authGate{logger: lg}
+
+	// grpc/internal/metadata rejects a non-printable value at the wire boundary
+	// with this exact wording; it never surfaces as a status code.
+	wrapped := fmt.Errorf(`send data: header key "authorization" contains value with non-printable ASCII characters`)
+
+	assert.True(t, g.tripOnce(wrapped))
+	assert.True(t, g.isBroken())
+	assert.Equal(t, int64(1), lg.warns.Load())
+}
+
+// After the gate trips, the whole-Client short-circuit means Downloads /
+// Uploads / capability probes return ErrCacheUnauthenticated without touching
+// the transport, and without logging again. Cover the top of each entry point.
+func TestClient_ShortCircuitsAfterAuthBroken(t *testing.T) {
+	lg := &countingLogger{Logger: log.NewLogger()}
+	c := &Client{logger: lg, authGate: authGate{logger: lg}}
+
+	c.authGate.tripOnce(status.Error(codes.Unauthenticated, "bad"))
+	require.Equal(t, int64(1), lg.warns.Load())
+
+	err := c.GetCapabilities(t.Context())
+	require.ErrorIs(t, err, ErrCacheUnauthenticated)
+
+	_, err = c.initiatePut(t.Context(), PutParams{})
+	require.ErrorIs(t, err, ErrCacheUnauthenticated)
+
+	_, err = c.initiateGet(t.Context(), lg, "any", 0)
+	require.ErrorIs(t, err, ErrCacheUnauthenticated)
+
+	err = c.Delete(t.Context(), "any")
+	require.ErrorIs(t, err, ErrCacheUnauthenticated)
+
+	_, err = c.QueryWriteStatus(t.Context(), "any")
+	require.ErrorIs(t, err, ErrCacheUnauthenticated)
+
+	assert.Equal(t, int64(1), lg.warns.Load(), "short-circuit path must not re-log")
+}

@@ -10,9 +10,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/retry"
 	"github.com/dustin/go-humanize"
 	"google.golang.org/genproto/googleapis/bytestream"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
@@ -37,6 +35,10 @@ type FileDigest struct {
 }
 
 func (c *Client) GetCapabilities(ctx context.Context) error {
+	if c.authGate.isBroken() {
+		return ErrCacheUnauthenticated
+	}
+
 	ch := c.pickChannel()
 	ch.acquire()
 	defer ch.release()
@@ -47,8 +49,7 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 
 	_, err := ch.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.Unauthenticated {
+		if c.authGate.tripOnce(err) {
 			return ErrCacheUnauthenticated
 		}
 
@@ -79,6 +80,10 @@ func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
 }
 
 func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, error) {
+	if c.authGate.isBroken() {
+		return nil, ErrCacheUnauthenticated
+	}
+
 	md := metadata.Join(c.getMethodCallMetadata(ctx, false), metadata.Pairs(
 		"x-flare-blob-validation-sha256", params.Sha256Sum,
 		"x-flare-blob-validation-level", "error",
@@ -97,8 +102,7 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	if err != nil {
 		ch.release()
 
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.Unauthenticated {
+		if c.authGate.tripOnce(err) {
 			return nil, ErrCacheUnauthenticated
 		}
 
@@ -119,6 +123,10 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 }
 
 func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string, offset int64) (*reader, error) {
+	if c.authGate.isBroken() {
+		return nil, ErrCacheUnauthenticated
+	}
+
 	resourceName := fmt.Sprintf("kv/%s", name)
 
 	// Timeout is the responsibility of the caller
@@ -137,8 +145,7 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 	if err != nil {
 		ch.release()
 
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.Unauthenticated {
+		if c.authGate.tripOnce(err) {
 			return nil, ErrCacheUnauthenticated
 		}
 
@@ -157,6 +164,10 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 }
 
 func (c *Client) Delete(ctx context.Context, name string) error {
+	if c.authGate.isBroken() {
+		return ErrCacheUnauthenticated
+	}
+
 	ch := c.pickChannel()
 	ch.acquire()
 	defer ch.release()
@@ -174,6 +185,10 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	}
 	_, err := ch.bitriseKVClient.Delete(callCtx, readReq)
 	if err != nil {
+		if c.authGate.tripOnce(err) {
+			return ErrCacheUnauthenticated
+		}
+
 		return fmt.Errorf("initiate delete: %w", err)
 	}
 
@@ -183,6 +198,10 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 func (c *Client) findMissing(ctx context.Context,
 	req *remoteexecution.FindMissingBlobsRequest,
 ) ([]*FileDigest, error) {
+	if c.authGate.isBroken() {
+		return nil, ErrCacheUnauthenticated
+	}
+
 	var resp *remoteexecution.FindMissingBlobsResponse
 	err := retry.Times(3).Wait(3 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
 		if attempt > 0 {
@@ -206,7 +225,7 @@ func (c *Client) findMissing(ctx context.Context,
 
 			// A rejected token is never accepted on a retry; anything else may be
 			// transient and is worth another attempt.
-			if isUnauthenticated(err) {
+			if c.authGate.tripOnce(err) {
 				return ErrCacheUnauthenticated, true
 			}
 
@@ -352,6 +371,10 @@ func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata
 }
 
 func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus, error) {
+	if c.authGate.isBroken() {
+		return WriteStatus{}, ErrCacheUnauthenticated
+	}
+
 	ch := c.pickChannel()
 	ch.acquire()
 	defer ch.release()
@@ -365,8 +388,7 @@ func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus
 		ResourceName: resourceName,
 	})
 	if err != nil {
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.Unauthenticated {
+		if c.authGate.tripOnce(err) {
 			return WriteStatus{}, ErrCacheUnauthenticated
 		}
 

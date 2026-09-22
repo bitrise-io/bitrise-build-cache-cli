@@ -5,6 +5,7 @@ package live
 
 import (
 	"context"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -139,7 +140,7 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, store.Store, error) {
 	if r.Prefer == PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
-			return cred, origin, backing, nil
+			return validateStored(cred, origin, backing)
 		}
 	}
 
@@ -151,11 +152,15 @@ func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet
 
 	if r.Prefer != PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
-			return cred, origin, backing, nil
+			return validateStored(cred, origin, backing)
 		}
 	}
 
 	if cred, origin, ok := r.legacyFile(); ok {
+		if _, err := auth.SanitizeToken(cred.Token); err != nil {
+			return auth.Credential{}, auth.Origin{}, nil, err //nolint:wrapcheck // sentinel; callers errors.Is on it
+		}
+
 		return cred, origin, nil, nil
 	}
 
@@ -169,6 +174,17 @@ func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet
 	cred, origin, err := fromEnv(envs)
 
 	return cred, origin, nil, err
+}
+
+// validateStored surfaces a persisted token that would be rejected by gRPC as
+// non-printable, rather than letting it slip past and fail every CAS op with a
+// confusing "auth broken" warning.
+func validateStored(cred auth.Credential, origin auth.Origin, backing store.Store) (auth.Credential, auth.Origin, store.Store, error) {
+	if _, err := auth.SanitizeToken(cred.Token); err != nil {
+		return auth.Credential{}, auth.Origin{}, nil, err //nolint:wrapcheck // sentinel; callers errors.Is on it
+	}
+
+	return cred, origin, backing, nil
 }
 
 func (r *Resolver) hasTokenWithoutWorkspace() bool {
@@ -266,7 +282,11 @@ func hasAuthEnvVars(envs map[string]string) bool {
 }
 
 func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
-	token, workspaceID := envs[auth.EnvAuthToken], envs[auth.EnvWorkspaceID]
+	token, err := auth.SanitizeToken(envs[auth.EnvAuthToken])
+	if err != nil {
+		return auth.Credential{}, auth.Origin{}, err //nolint:wrapcheck // sentinel; callers errors.Is on it
+	}
+	workspaceID := strings.TrimSpace(envs[auth.EnvWorkspaceID])
 
 	if token != "" && workspaceID != "" {
 		return auth.Credential{Token: token, WorkspaceID: workspaceID},
@@ -275,7 +295,11 @@ func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
 	}
 
 	// The JWT is always present on Bitrise CI and embeds the workspace.
-	if jwt := envs[auth.EnvJWT]; jwt != "" {
+	jwt, err := auth.SanitizeToken(envs[auth.EnvJWT])
+	if err != nil {
+		return auth.Credential{}, auth.Origin{}, err //nolint:wrapcheck // sentinel; callers errors.Is on it
+	}
+	if jwt != "" {
 		workspaceID, err := auth.ParseJWTWorkspaceID(jwt)
 		if err != nil {
 			return auth.Credential{}, auth.Origin{}, err //nolint:wrapcheck // already contextual
