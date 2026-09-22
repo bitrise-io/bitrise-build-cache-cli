@@ -146,7 +146,9 @@ func NewConfig(ctx context.Context,
 ) (Config, error) {
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
+	// Brokering, for the same reason activation resolves that way: on Build Hub the
+	// VM token is the only credential there is.
+	authConfig, authOrigin, err := resolver.Resolve(ctx, envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
