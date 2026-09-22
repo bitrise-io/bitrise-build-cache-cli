@@ -77,7 +77,6 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
 		return fmt.Errorf("persist project mode: %w", err)
 	}
-	common.EnsureProjectMarker(logger)
 
 	push, err := common.ResolveAndPersistCachePush(cmd, activateBazelParams.Cache.PushEnabled, logger)
 	if err != nil {

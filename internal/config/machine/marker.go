@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/bitrise-io/go-utils/v2/log"
-
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -63,47 +61,4 @@ func FindMarker(startDir string, osProxy utils.OsProxy) (bool, string, error) {
 	}
 
 	return marker != nil, path, nil
-}
-
-// EnsureMarker writes an empty marker at cwd when opt-in mode is active and no
-// ancestor marker already covers this directory. Write failures are logged and
-// swallowed so activation still succeeds.
-func EnsureMarker(cwd string, mode Mode, osProxy utils.OsProxy, logger log.Logger) error {
-	if mode != ModeOptIn {
-		return nil
-	}
-	if cwd == "" {
-		return nil
-	}
-
-	found, path, err := FindMarker(cwd, osProxy)
-	if err != nil {
-		if logger != nil {
-			logger.Warnf("Skipping per-project marker creation: %s", err)
-		}
-
-		return nil
-	}
-	if found {
-		if logger != nil {
-			logger.Debugf("Per-project marker already covers %s (found at %s).", cwd, path)
-		}
-
-		return nil
-	}
-
-	target := filepath.Join(cwd, paths.ProjectMarkerFilename)
-	if err := osProxy.WriteFile(target, []byte("{}\n"), 0o644); err != nil {
-		if logger != nil {
-			logger.Warnf("Could not write per-project marker at %s: %s", target, err)
-		}
-
-		return nil
-	}
-
-	if logger != nil {
-		logger.TInfof("Wrote per-project marker at %s", target)
-	}
-
-	return nil
 }

@@ -42,7 +42,6 @@ Note: This is a convenience activation method, if your activation requires fine-
 		if err := common.PersistProjectMode(projectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
-		common.EnsureProjectMarker(logger)
 
 		push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
 		if err != nil {

@@ -4,6 +4,8 @@ package project
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -26,7 +28,7 @@ func ResetForTest() { scopeCheckQuiet = false }
 //nolint:gochecknoglobals
 var projectCmd = &cobra.Command{
 	Use:          "project",
-	Short:        "Inspect per-project scoping state",
+	Short:        "Inspect and manage per-project scoping state",
 	SilenceUsage: true,
 }
 
@@ -91,11 +93,68 @@ var scopeCheckCmd = &cobra.Command{
 	},
 }
 
+//nolint:gochecknoglobals
+var enableCmd = &cobra.Command{
+	Use:   "enable [dir]",
+	Short: "Opt this project in by writing the .bitrise-build-cache.json marker",
+	Long: "Writes an empty .bitrise-build-cache.json marker at [dir] (or the current directory " +
+		"if [dir] is omitted) so the CLI treats this project as opted-in when project-mode is 'opt-in'. " +
+		"No-op when a marker already exists at the target or any ancestor.",
+	Args:          cobra.MaximumNArgs(1),
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := resolveTargetDir(args)
+		if err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "resolve target dir: %s\n", err)
+
+			return cobraExit(ExitError)
+		}
+
+		osProxy := utils.DefaultOsProxy{}
+		found, ancestor, err := machineconfig.FindMarker(dir, osProxy)
+		if err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "walk up for marker: %s\n", err)
+
+			return cobraExit(ExitError)
+		}
+		if found {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "[bitrise-build-cache] marker already covers %s (found at %s)\n", dir, ancestor)
+
+			return nil
+		}
+
+		target := filepath.Join(dir, paths.ProjectMarkerFilename)
+		if err := osProxy.WriteFile(target, []byte("{}\n"), 0o644); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "write marker: %s\n", err)
+
+			return cobraExit(ExitError)
+		}
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "[bitrise-build-cache] wrote marker at %s\n", target)
+
+		return nil
+	},
+}
+
+func resolveTargetDir(args []string) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get cwd: %w", err)
+	}
+
+	return cwd, nil
+}
+
 func cobraExit(code int) error { return common.ExitCodeError{Code: code} }
 
 func init() {
 	scopeCheckCmd.Flags().BoolVar(&scopeCheckQuiet, "quiet", false, "Suppress the stderr explanation on active and gated exits.")
 
 	projectCmd.AddCommand(scopeCheckCmd)
+	projectCmd.AddCommand(enableCmd)
 	common.RootCmd.AddCommand(projectCmd)
 }

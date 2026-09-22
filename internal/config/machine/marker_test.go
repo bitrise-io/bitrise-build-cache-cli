@@ -88,59 +88,6 @@ func TestReadMarker_ReadErrorSurfaces(t *testing.T) {
 	assert.Nil(t, marker)
 }
 
-func TestEnsureMarker_NoOpWhenAlways(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	require.NoError(t, EnsureMarker(dir, ModeAlways, utils.DefaultOsProxy{}, nil))
-
-	_, err := os.Stat(filepath.Join(dir, paths.ProjectMarkerFilename))
-	assert.True(t, os.IsNotExist(err))
-}
-
-func TestEnsureMarker_WritesWhenOptInAndNoMarker(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	sub := filepath.Join(root, "child")
-	require.NoError(t, os.MkdirAll(sub, 0o755))
-
-	require.NoError(t, EnsureMarker(sub, ModeOptIn, utils.DefaultOsProxy{}, nil))
-
-	info, err := os.Stat(filepath.Join(sub, paths.ProjectMarkerFilename))
-	require.NoError(t, err)
-	assert.False(t, info.IsDir())
-}
-
-func TestEnsureMarker_SkipsWhenAncestorHasMarker(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	writeMarker(t, root)
-	sub := filepath.Join(root, "child")
-	require.NoError(t, os.MkdirAll(sub, 0o755))
-
-	require.NoError(t, EnsureMarker(sub, ModeOptIn, utils.DefaultOsProxy{}, nil))
-
-	_, err := os.Stat(filepath.Join(sub, paths.ProjectMarkerFilename))
-	assert.True(t, os.IsNotExist(err))
-}
-
-func TestEnsureMarker_WriteFailureIsSwallowed(t *testing.T) {
-	t.Parallel()
-
-	proxy := &mocks.OsProxyMock{
-		ReadFileIfExistsFunc: func(string) (string, bool, error) {
-			return "", false, nil
-		},
-		WriteFileFunc: func(string, []byte, os.FileMode) error {
-			return errors.New("disk full")
-		},
-	}
-
-	require.NoError(t, EnsureMarker("/some/dir", ModeOptIn, proxy, nil))
-}
-
 func TestRead_MissingFileResolvesToAlways(t *testing.T) {
 	t.Parallel()
 

@@ -37,7 +37,6 @@ This command will:
 		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
-		common.EnsureProjectMarker(logger)
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
 		if err != nil {

@@ -57,30 +57,3 @@ func PersistProjectMode(flag string, logger log.Logger) error {
 
 	return nil
 }
-
-// EnsureProjectMarker drops the marker at cwd when the persisted mode is
-// opt-in. Best-effort — any error is logged and swallowed.
-func EnsureProjectMarker(logger log.Logger) {
-	p, err := paths.Default()
-	if err != nil {
-		return
-	}
-
-	osProxy := utils.DefaultOsProxy{}
-	current, err := machineconfig.Read(osProxy, p, logger)
-	if err != nil {
-		return
-	}
-
-	mode := machineconfig.ResolvedProjectMode(current)
-
-	cwd, err := osProxy.Getwd()
-	if err != nil {
-		if logger != nil {
-			logger.Debugf("Skipping per-project marker creation: %s", err)
-		}
-
-		return
-	}
-	_ = machineconfig.EnsureMarker(cwd, mode, osProxy, logger)
-}
