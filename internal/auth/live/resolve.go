@@ -5,10 +5,12 @@ package live
 
 import (
 	"context"
+	"sync"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/buildhub"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
@@ -57,6 +59,15 @@ type Resolver struct {
 	// AnalyticsBlock reads the analytics config's authConfig block. Nil means
 	// the real reader.
 	AnalyticsBlock func() (auth.Credential, auth.Origin, bool)
+	// Broker exchanges a Build Hub VM token for a Build Cache token. Nil means the
+	// real client, built from the environment.
+	Broker func(ctx context.Context, envs map[string]string) (auth.Credential, error)
+
+	// buildhubOnce keeps one client per resolver, so the per-RPC path reuses its
+	// cached token instead of exchanging on every call.
+	buildhubOnce   sync.Once
+	buildhubClient *buildhub.Client
+	buildhubFound  bool
 }
 
 // Resolve returns the credential to use, refreshing it first when it lives in a
@@ -68,7 +79,7 @@ func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Cr
 }
 
 func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, error) {
-	cred, origin, backing, err := r.resolveWith(envs, usable)
+	cred, origin, backing, err := r.resolveWith(envs, usable, r.brokered(ctx))
 	if err != nil || !origin.StoreManaged() {
 		return cred, origin, err
 	}
@@ -129,14 +140,21 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 	return cred
 }
 
+// resolve is the offline path: no network, no writes. It passes no broker, so a
+// Build Hub token is never exchanged here — `status` and the doctor must report
+// what is already on the machine.
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
-	return r.resolveWith(envs, auth.TokenSet.Populated)
+	return r.resolveWith(envs, auth.TokenSet.Populated, nil)
 }
 
 // resolveWith applies the precedence order and returns the backing store when the
 // credential came from one, so the caller can refresh in place. usable decides
 // which stored records count.
-func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, store.Store, error) {
+func (r *Resolver) resolveWith(
+	envs map[string]string,
+	usable func(auth.TokenSet) bool,
+	brokerToken func(map[string]string) (auth.Credential, auth.Origin, bool),
+) (auth.Credential, auth.Origin, store.Store, error) {
 	if r.Prefer == PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
 			return cred, origin, backing, nil
@@ -147,6 +165,15 @@ func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet
 		cred, origin, err := fromEnv(envs)
 
 		return cred, origin, nil, err
+	}
+
+	// After the injected credentials and before the stores: a Build Hub runner can
+	// always broker one, so trying it earlier would shadow an explicit token, and
+	// later would shadow it behind a stale login on the machine.
+	if brokerToken != nil {
+		if cred, origin, ok := brokerToken(envs); ok {
+			return cred, origin, nil, nil
+		}
 	}
 
 	if r.Prefer != PreferStored {
@@ -169,6 +196,51 @@ func (r *Resolver) resolveWith(envs map[string]string, usable func(auth.TokenSet
 	cred, origin, err := fromEnv(envs)
 
 	return cred, origin, nil, err
+}
+
+// brokered returns the precedence step that exchanges a Build Hub VM token, or nil
+// when this environment offers none. A failed exchange is not fatal: resolution
+// falls through to the stores, and the build gets whatever credential it had before.
+func (r *Resolver) brokered(ctx context.Context) func(map[string]string) (auth.Credential, auth.Origin, bool) {
+	return func(envs map[string]string) (auth.Credential, auth.Origin, bool) {
+		cred, err := r.brokerCredential(ctx, envs)
+		if err != nil {
+			r.debugf("could not broker a Build Hub token: %s", err)
+
+			return auth.Credential{}, auth.Origin{}, false
+		}
+		if cred.Token == "" {
+			return auth.Credential{}, auth.Origin{}, false
+		}
+
+		return cred, auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}, true
+	}
+}
+
+func (r *Resolver) brokerCredential(ctx context.Context, envs map[string]string) (auth.Credential, error) {
+	if r.Broker != nil {
+		return r.Broker(ctx, envs)
+	}
+
+	r.buildhubOnce.Do(func() {
+		r.buildhubClient, r.buildhubFound = buildhub.FromEnv(envs)
+	})
+	if !r.buildhubFound {
+		return auth.Credential{}, nil
+	}
+
+	token, expiresAt, err := r.buildhubClient.Token(ctx)
+	if err != nil {
+		return auth.Credential{}, err //nolint:wrapcheck // buildhub wraps its own failures
+	}
+
+	// The brokered token embeds the workspace, same as the CI JWT.
+	workspaceID, err := auth.ParseJWTWorkspaceID(token)
+	if err != nil {
+		return auth.Credential{}, err //nolint:wrapcheck // already contextual
+	}
+
+	return auth.Credential{Token: token, WorkspaceID: workspaceID, Expiry: expiresAt}, nil
 }
 
 func (r *Resolver) hasTokenWithoutWorkspace() bool {

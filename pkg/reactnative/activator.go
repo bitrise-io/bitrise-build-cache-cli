@@ -10,7 +10,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
@@ -363,11 +362,7 @@ func saveMultiplatformConfig(ctx context.Context, envs map[string]string, debugL
 		utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
 		func(cfg *multiplatformconfig.Config) {
 			cfg.DebugLogging = debugLogging
-			cfg.AuthConfig = multiplatformconfig.AnalyticsAuthConfig{
-				AuthToken:   cred.Token,
-				WorkspaceID: cred.WorkspaceID,
-				IsJWT:       origin.Backend == authpkg.BackendJWT,
-			}
+			cfg.AuthConfig = multiplatformconfig.NewAnalyticsAuthConfig(cred, origin)
 		},
 	); err != nil {
 		return fmt.Errorf("save multiplatform analytics config: %w", err)

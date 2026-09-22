@@ -18,9 +18,10 @@ L5  CONSUMERS
          │  imports: live, auth · (store/oauth only for login, logout, clear)
          ▼
 L4  internal/auth/live                  the resolver
-         │  imports: auth, store, oauth
+         │  imports: auth, store, oauth, buildhub
          ▼
 L3  internal/auth/oauth                 sign-in · refresh · token exchange
+    internal/auth/buildhub              Build Hub VM token → Build Cache token
          │  imports: auth, store
          ▼
 L2  internal/auth/store                 backend selection · persistence
@@ -142,6 +143,7 @@ The shared vocabulary. Imports nothing internal.
 | `GradleToken(Credential, Origin) string` | JWT is sent as-is; a PAT is `workspaceID:token`. Needs both, hence a free function. |
 | `ParseJWTWorkspaceID(string) (string, error)` | Extracts `org_id` from the Bitrise UMA JWT. Signature unverified — Bitrise mints these per build. |
 | `EnvAuthToken`, `EnvWorkspaceID`, `EnvJWT`, `EnvUsername` | The four environment keys. |
+| `EnvBuildHubVMToken`, `EnvBuildHubVMTokenURL` | The Build Hub pair. Both present is what makes a runner brokerable; a half-set pair is treated as neither. |
 | `ErrTokenNotProvided`, `ErrWorkspaceIDNotProvided` | Distinguish "nothing configured" from a genuine failure. |
 | `ErrWorkspaceNotSelected` | A stored token with no workspace — what `auth login --no-workspace` leaves behind. Distinct from "nothing configured", which would send the user off to make a token they already have. |
 
@@ -240,10 +242,19 @@ The resolver. The only package a consumer needs.
 ```
 env vars (AUTH_TOKEN + WORKSPACE_ID)
   → CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)
+  → brokered Build Hub token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL)
   → OS keychain
   → config file, `credentials` key
   → config file, `authConfig` (analytics) block
 ```
+
+The brokered step sits after the injected credentials and before the stores. A Build
+Hub runner can always broker one, so trying it earlier would shadow a token the user
+configured deliberately, and later would shadow it behind a stale login on the
+machine. It is the only precedence step that makes a network call, so it is passed
+into `resolveWith` rather than called from it: `ResolveNoRefresh` passes nil and
+therefore stays offline, which is what `status` and the doctor depend on. A failed
+exchange is not fatal — resolution falls through to the stores.
 
 `PreferStored` moves the two file/keychain steps ahead of the env vars. That is the
 only variation, and it exists for one caller.

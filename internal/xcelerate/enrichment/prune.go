@@ -9,11 +9,9 @@ import (
 )
 
 // PruneAll runs every enrichment-side startup sweep in one shot: handled
-// invocation markers, handled manifest UUIDs, and orphan pending records.
+// manifest UUIDs and orphan pending records.
 func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	l := logOr(logger)
-
-	PruneStale(p.XcelerateHandledInvocationDir(), HandledMarkerMaxAge)
 
 	handled := &HandledManifestStore{Path: p.HandledManifestsFile()}
 	if err := handled.PruneOlderThan(now, HandledManifestMaxAge); err != nil {

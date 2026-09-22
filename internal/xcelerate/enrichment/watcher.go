@@ -2,6 +2,9 @@ package enrichment
 
 import (
 	"context"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,14 +20,17 @@ type Watcher struct {
 	HomeDir      string
 	Globs        []string
 	PollInterval time.Duration
-	Handle       func(ManifestEntry)
+	Handle       func(ManifestEntryGroup)
 	Logger       log.Logger
 
-	// MatchProbe returns true when a pending record for the entry
+	// MatchProbe returns true when a pending record for the group
 	// exists and Handle would enrich under that record's InvocationID.
-	// nil disables the retry bucket: entries fire immediately on first sight.
-	MatchProbe            func(entry ManifestEntry) bool
+	// nil disables the retry bucket: groups fire immediately on first sight.
+	MatchProbe            func(group ManifestEntryGroup) bool
 	MaxCorrelationRetries int
+
+	// TimeGap zero-value falls back to LocalGroupTimeGap.
+	TimeGap time.Duration
 
 	// HandledStore persists the seen-UUID set across restarts. nil disables
 	// persistence (seen stays in-memory only) — this is the pre-persistence
@@ -57,6 +63,21 @@ func (w *Watcher) markHandled(uuid string) {
 	if err := w.HandledStore.Append(HandledManifest{UUID: uuid, HandledAt: w.now()}); err != nil {
 		logOr(w.Logger).Debugf("Persist handled manifest %s failed: %s", uuid, err)
 	}
+}
+
+func (w *Watcher) markGroupHandled(group ManifestEntryGroup) {
+	for _, uuid := range group.UUIDs() {
+		w.markHandled(uuid)
+	}
+}
+
+// groupKey sorts a defensive copy so a future UUIDs() sharing its backing
+// array can't mutate the group and so the key survives entry reordering.
+func groupKey(group ManifestEntryGroup) string {
+	uuids := append([]string(nil), group.UUIDs()...)
+	sort.Strings(uuids)
+
+	return strings.Join(uuids, "\x00")
 }
 
 func (w *Watcher) Run(ctx context.Context) {
@@ -108,79 +129,119 @@ func (w *Watcher) seedSeenFromStore() bool {
 }
 
 func (w *Watcher) scan(seedOnly bool) {
+	logger := logOr(w.Logger)
+
 	globs := w.Globs
 	if len(globs) == 0 {
 		globs = []string{DefaultDerivedDataGlob}
 	}
 
-	WalkManifests(w.HomeDir, globs, w.Logger, func(_ string, entries []ManifestEntry) {
-		for _, entry := range entries {
-			w.handleEntry(entry, seedOnly)
+	timeGap := w.TimeGap
+	if timeGap == 0 {
+		timeGap = LocalGroupTimeGap
+	}
+
+	for _, glob := range globs {
+		matches, err := filepath.Glob(filepath.Join(w.HomeDir, glob))
+		if err != nil {
+			logger.Debugf("LogWatcher glob failed: %s", err)
+
+			continue
 		}
-	})
+
+		for _, path := range matches {
+			groups, err := LoadManifestGrouped(path, timeGap)
+			if err != nil {
+				logger.Debugf("LogWatcher failed to load %s: %s", path, err)
+
+				continue
+			}
+
+			for _, group := range groups {
+				w.handleGroup(group, seedOnly)
+			}
+		}
+	}
 }
 
-func (w *Watcher) handleEntry(entry ManifestEntry, seedOnly bool) {
+func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
 	logger := logOr(w.Logger)
 
-	// Age gate: HandledStore prunes seen-UUIDs after HandledManifestMaxAge, so an entry older than that on-disk would otherwise be replayed as a fresh orphan on restart.
-	if !entry.Stop.IsZero() && entry.Stop.Before(w.now().Add(-HandledManifestMaxAge)) {
-		logger.Debugf("Watcher: skip stale entry uuid=%s stop=%s", entry.UUID, entry.Stop.Format(time.RFC3339))
+	stop := group.Stop()
+	// Age gate: HandledStore prunes seen-UUIDs after HandledManifestMaxAge, so a group older than that on-disk would otherwise be replayed as a fresh orphan on restart.
+	if !stop.IsZero() && stop.Before(w.now().Add(-HandledManifestMaxAge)) {
+		logger.Debugf("Watcher: skip stale group scheme=%s stop=%s uuids=%v", group.SchemeName(), stop.Format(time.RFC3339), group.UUIDs())
 
 		return
 	}
 
 	if seedOnly {
-		w.seen[entry.UUID] = struct{}{}
-		logger.Debugf("Watcher: seed-only mark uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
+		for _, uuid := range group.UUIDs() {
+			w.seen[uuid] = struct{}{}
+		}
+		logger.Debugf("Watcher: seed-only mark scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
 
 		return
 	}
 
-	if _, ok := w.seen[entry.UUID]; ok {
-		logger.Debugf("Watcher: skip already-seen uuid=%s", entry.UUID)
+	if w.groupFullySeen(group) {
+		logger.Debugf("Watcher: skip already-seen group scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
 
 		return
 	}
+
+	key := groupKey(group)
 
 	if w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
 		if w.Handle != nil {
-			logger.Debugf("Watcher: handle-and-mark (no retry bucket) uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
-			w.Handle(entry)
+			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+			w.Handle(group)
 		}
-		w.markHandled(entry.UUID)
+		w.markGroupHandled(group)
 
 		return
 	}
 
-	if _, pending := w.retries[entry.UUID]; pending {
+	if _, pending := w.retries[key]; pending {
 		switch {
-		case w.MatchProbe(entry):
-			logger.Debugf("Watcher: pending match resolved uuid=%s attempts_left=%d scheme=%s", entry.UUID, w.retries[entry.UUID], entry.SchemeName)
-			w.Handle(entry)
-			w.markHandled(entry.UUID)
-			delete(w.retries, entry.UUID)
-		case w.retries[entry.UUID] > 0:
-			w.retries[entry.UUID]--
-			logger.Debugf("Watcher: pending still unmatched, decrement uuid=%s attempts_left=%d", entry.UUID, w.retries[entry.UUID])
+		case w.MatchProbe(group):
+			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
+			w.Handle(group)
+			w.markGroupHandled(group)
+			delete(w.retries, key)
+		case w.retries[key] > 0:
+			w.retries[key]--
+			logger.Debugf("Watcher: pending still unmatched, decrement scheme=%s attempts_left=%d", group.SchemeName(), w.retries[key])
 		default:
-			logger.Debugf("Watcher: pending retries exhausted, minting orphan uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
-			w.Handle(entry)
-			w.markHandled(entry.UUID)
-			delete(w.retries, entry.UUID)
+			logger.Debugf("Watcher: pending retries exhausted, minting orphan scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+			w.Handle(group)
+			w.markGroupHandled(group)
+			delete(w.retries, key)
 		}
 
 		return
 	}
 
-	if w.MatchProbe(entry) {
-		logger.Debugf("Watcher: first-pass match uuid=%s scheme=%s", entry.UUID, entry.SchemeName)
-		w.Handle(entry)
-		w.markHandled(entry.UUID)
+	if w.MatchProbe(group) {
+		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+		w.Handle(group)
+		w.markGroupHandled(group)
 
 		return
 	}
 
-	w.retries[entry.UUID] = w.MaxCorrelationRetries
-	logger.Debugf("Watcher: unmatched, opening retry bucket uuid=%s attempts_left=%d", entry.UUID, w.MaxCorrelationRetries)
+	w.retries[key] = w.MaxCorrelationRetries
+	logger.Debugf("Watcher: unmatched, opening retry bucket scheme=%s attempts_left=%d", group.SchemeName(), w.MaxCorrelationRetries)
+}
+
+// groupFullySeen returns false the moment a new UUID appears, so late-arriving
+// entries force a re-emit of the enlarged aggregate instead of being dropped.
+func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
+	for _, uuid := range group.UUIDs() {
+		if _, ok := w.seen[uuid]; !ok {
+			return false
+		}
+	}
+
+	return len(group.Entries) > 0
 }

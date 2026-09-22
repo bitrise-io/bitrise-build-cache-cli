@@ -17,7 +17,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 )
@@ -192,7 +191,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsTrueOnOverlap(t *testing.T) 
 		Start: start.Add(5 * time.Second),
 		Stop:  start.Add(30 * time.Second),
 	}
-	assert.True(t, w.MatchProbe(entry))
+	assert.True(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T) {
@@ -214,7 +213,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T)
 		Start: start.Add(1 * time.Hour),
 		Stop:  start.Add(1 * time.Hour).Add(1 * time.Minute),
 	}
-	assert.False(t, w.MatchProbe(entry))
+	assert.False(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testing.T) {
@@ -229,7 +228,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testi
 		Start: time.Now(),
 		Stop:  time.Now().Add(time.Minute),
 	}
-	assert.False(t, w.MatchProbe(entry))
+	assert.False(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_retrier_populatedFields(t *testing.T) {
@@ -293,6 +292,38 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 	assert.True(t, os.IsNotExist(err), "pending file must not exist when b.pending is nil")
 }
 
+func Test_watcherTimeGap(t *testing.T) {
+	// Isolate sub-tests from the surrounding shell's CI env.
+	clearCIEnv := func(t *testing.T) {
+		t.Helper()
+
+		for _, k := range []string{"CIRCLECI", "GITHUB_ACTIONS", "GITLAB_CI", "BITRISE_IO", "BITRISE_BUILD_SLUG"} {
+			t.Setenv(k, "")
+		}
+	}
+
+	t.Run("no CI signals -> local gap", func(t *testing.T) {
+		clearCIEnv(t)
+
+		assert.Equal(t, enrichment.LocalGroupTimeGap, watcherTimeGap())
+	})
+
+	t.Run("Bitrise CI -> CI gap", func(t *testing.T) {
+		clearCIEnv(t)
+		t.Setenv("BITRISE_IO", "true")
+		t.Setenv("BITRISE_BUILD_SLUG", "build-123")
+
+		assert.Equal(t, enrichment.CIGroupTimeGap, watcherTimeGap())
+	})
+
+	t.Run("GitHub Actions -> CI gap", func(t *testing.T) {
+		clearCIEnv(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+
+		assert.Equal(t, enrichment.CIGroupTimeGap, watcherTimeGap())
+	})
+}
+
 func Test_resolveInactivityTimeout(t *testing.T) {
 	t.Run("unset returns zero", func(t *testing.T) {
 		got := resolveInactivityTimeout(map[string]string{}, bundleTestLogger)
@@ -327,96 +358,24 @@ func Test_resolveInactivityTimeout(t *testing.T) {
 	})
 }
 
-func Test_slimInvocationEmitter_EmitSlim_skipsWhenMarkerPresent(t *testing.T) {
+func Test_slimInvocationEmitter_EmitSlim_appendsPendingWithoutPUT(t *testing.T) {
 	home := t.TempDir()
 	b := newBundleForTest(t, home, "")
-	// bundleForTest already t.Setenv("HOME", home); paths.Default() now resolves to it.
-	e := &slimInvocationEmitter{bundle: b}
-
-	invID := "handled-inv"
-	p := paths.FromHome(home)
-	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
-	marker := p.XcelerateHandledInvocationFile(invID)
-	require.NoError(t, os.WriteFile(marker, nil, 0o644))
-
-	e.EmitSlim(context.Background(), proxy.SessionMeta{
-		InvocationID: invID,
-		StartTime:    time.Now(),
-		EndTime:      time.Now().Add(time.Second),
-	}, proxy.SessionStats{Hits: 1})
-
-	// Pending is now appended even when the marker exists so the watcher can correlate the wrapper build.
-	records, err := b.pending.Load()
-	require.NoError(t, err)
-	require.Len(t, records, 1, "pending record must be appended so the watcher can correlate the wrapper build back to this InvocationID")
-	assert.Equal(t, invID, records[0].InvocationID)
-
-	// Marker survives — startup PruneAll reclaims it after HandledMarkerMaxAge.
-	_, err = os.Stat(marker)
-	require.NoError(t, err, "marker must survive slim-emit observation so the watcher can honour it")
-}
-
-func Test_sweepStaleHandledMarkers_removesOldOnly(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	p := paths.FromHome(home)
-	require.NoError(t, os.MkdirAll(p.XcelerateHandledInvocationDir(), 0o755))
-
-	stale := p.XcelerateHandledInvocationFile("stale")
-	fresh := p.XcelerateHandledInvocationFile("fresh")
-	require.NoError(t, os.WriteFile(stale, nil, 0o644))
-	require.NoError(t, os.WriteFile(fresh, nil, 0o644))
-
-	old := time.Now().Add(-48 * time.Hour)
-	require.NoError(t, os.Chtimes(stale, old, old))
-
-	enrichment.PruneAll(paths.FromHome(home), time.Now(), bundleTestLogger)
-
-	_, err := os.Stat(stale)
-	assert.True(t, os.IsNotExist(err))
-	_, err = os.Stat(fresh)
-	assert.NoError(t, err)
-}
-
-func Test_slimInvocationEmitter_EmitSlim_omitsDurationOnPUT(t *testing.T) {
-	home := t.TempDir()
-	b := newBundleForTest(t, home, "")
-
-	captured := make(chan analytics.Invocation, 1)
-	b.putter = &capturingInvocationPutter{sink: captured}
 
 	e := &slimInvocationEmitter{bundle: b}
 
 	start := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
 	stop := start.Add(2500 * time.Millisecond)
 	e.EmitSlim(context.Background(), proxy.SessionMeta{
-		InvocationID: "inv-drop-duration",
+		InvocationID: "inv-slim",
 		StartTime:    start,
 		EndTime:      stop,
 	}, proxy.SessionStats{Hits: 3, Misses: 1})
 
-	select {
-	case inv := <-captured:
-		assert.Equal(t, "inv-drop-duration", inv.InvocationID)
-		assert.Equal(t, int64(0), inv.DurationMs, "slim PUT must omit Duration; manifest span is authoritative for wrapper-less builds")
-		assert.InDelta(t, 0.75, inv.HitRate, 1e-6)
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for slim PUT")
-	}
-
 	records, err := b.pending.Load()
 	require.NoError(t, err)
-	require.Len(t, records, 1, "pending record must still carry Duration for the correlator")
+	require.Len(t, records, 1, "pending record must be appended so the watcher can correlate the wrapper build back to this InvocationID")
+	assert.Equal(t, "inv-slim", records[0].InvocationID)
 	assert.Equal(t, int64(2500), records[0].Duration)
-}
-
-type capturingInvocationPutter struct {
-	sink chan<- analytics.Invocation
-}
-
-func (c *capturingInvocationPutter) PutInvocation(inv analytics.Invocation) error {
-	c.sink <- inv
-
-	return nil
+	assert.InDelta(t, 0.75, records[0].HitRate, 1e-6)
 }

@@ -22,7 +22,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -379,10 +378,6 @@ func Test_Run_QueryAction_PassthroughSkipsSetSessionAndAnalytics(t *testing.T) {
 	assert.Zero(t, invocationAPI.putCalls.Load(), "PutInvocation must not fire for query invocations")
 	assert.Empty(t, relationAPI.PutInvocationRelationCalls(), "PutInvocationRelation must not fire for query invocations")
 	assert.Empty(t, localLogger.AppendCalls(), "local invocation log must not be written for query invocations")
-
-	marker := filepath.Join(home, ".local", "state", "xcelerate", "enrichment", "handled-invocations", invID)
-	_, err := os.Stat(marker)
-	assert.True(t, os.IsNotExist(err), "handled-invocation marker must not be written for query invocations")
 }
 
 func Test_Run_BuildAction_StillEmitsAnalyticsAndSession(t *testing.T) {
@@ -426,10 +421,6 @@ func Test_Run_BuildAction_StillEmitsAnalyticsAndSession(t *testing.T) {
 	assert.Equal(t, int32(1), sessionClient.setCalls.Load(), "SetSession must fire on the build path")
 	assert.Equal(t, int32(1), invocationAPI.putCalls.Load(), "PutInvocation must fire on the build path")
 	assert.Len(t, localLogger.AppendCalls(), 1, "local invocation log must be written on the build path")
-
-	marker := filepath.Join(home, ".local", "state", "xcelerate", "enrichment", "handled-invocations", "build-inv-1")
-	_, err := os.Stat(marker)
-	assert.NoError(t, err, "handled-invocation marker must be written on the build path")
 }
 
 func TestDebugFlag_ORsGlobal_Xcodebuild(t *testing.T) {
@@ -671,63 +662,3 @@ func Test_XcodebuildRunner_Run_UserResultBundlePath_LeftUntouched(t *testing.T) 
 	assert.NoError(t, statErr, "wrapper must not touch the user-supplied bundle")
 }
 
-// markerProbingSaver records marker visibility at the moment PutInvocation ran.
-type markerProbingSaver struct {
-	invocationID    string
-	markerAtPutTime bool
-	returnErr       error
-}
-
-func (s *markerProbingSaver) PutInvocation(_ analytics.Invocation) error {
-	s.markerAtPutTime = enrichment.MarkerExists(s.invocationID)
-
-	return s.returnErr
-}
-
-func newMarkerOrderingRunner(invocationID string, saver invocationSaver) *XcodebuildRunner {
-	return &XcodebuildRunner{
-		Config:       xcelerate.Config{BuildCacheEnabled: true, Silent: true},
-		Metadata:     common.CacheConfigMetadata{},
-		InvocationID: invocationID,
-		Logger:       bundleTestLogger,
-		CacheLogger:  bundleTestLogger,
-		XcodeRunner:  &recordingXcodeRunner{stats: xcodeargs.RunStats{Success: true}},
-		XcodeArgs: &xcodeargsMocks.XcodeArgsMock{
-			HasBuildActionFunc: func() bool { return true },
-			ArgsFunc:           func(_ map[string]string) []string { return []string{"xcodebuild"} },
-			CommandFunc:        func() string { return "xcodebuild -scheme App" },
-			ShortCommandFunc:   func() string { return "xcodebuild build" },
-		},
-		invocationAPI: saver,
-		localLogger: &localInvocationLoggerMock{
-			AppendFunc: func(_ invocations.Record) error { return nil },
-		},
-	}
-}
-
-// A claim taken after the PUT leaves the consumers a window to clobber the row.
-func Test_Run_ClaimsHandledMarkerBeforePutInvocation(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("BITRISE_INVOCATION_ID", "")
-
-	saver := &markerProbingSaver{invocationID: "order-inv-1"}
-
-	_ = newMarkerOrderingRunner("order-inv-1", saver).Run(context.Background())
-
-	assert.True(t, saver.markerAtPutTime,
-		"marker must already be visible while the wrapper's PUT is in flight")
-	assert.True(t, enrichment.MarkerExists("order-inv-1"),
-		"marker must survive a successful PUT")
-}
-
-func Test_Run_ReleasesHandledMarkerWhenPutFails(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("BITRISE_INVOCATION_ID", "")
-
-	saver := &markerProbingSaver{invocationID: "order-inv-2", returnErr: assert.AnError}
-
-	_ = newMarkerOrderingRunner("order-inv-2", saver).Run(context.Background())
-
-	assert.False(t, enrichment.MarkerExists("order-inv-2"),
-		"a failed PUT must release the claim so the slim/enrichment fallbacks can write their row")
-}

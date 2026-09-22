@@ -85,6 +85,12 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 		return "", nil
 	}
 
+	if metadata.GitMetadata.Branch != "" {
+		// Lets the API hold a baseline back for a default-branch build, where a deliberately
+		// uncached run is least disruptive.
+		params.Set("branch", metadata.GitMetadata.Branch)
+	}
+
 	if metadata.CIProvider == CIProviderBitrise {
 		if metadata.BitriseAppID == "" || metadata.BitriseWorkflowName == "" {
 			c.logger.Debugf("no Bitrise metadata found, skipping benchmark phase check")
@@ -101,6 +107,12 @@ func (c *BenchmarkPhaseClient) GetBenchmarkPhase(buildTool string, metadata Cach
 		}
 		params.Set("external_app_id", metadata.ExternalAppID)
 		params.Set("external_workflow_name", metadata.ExternalWorkflowName)
+
+		// External projects have no Bitrise record for the API to read a default branch from, so
+		// without this its branch preference can never apply to them.
+		if metadata.GitMetadata.DefaultBranch != "" {
+			params.Set("default_branch", metadata.GitMetadata.DefaultBranch)
+		}
 	}
 
 	requestURL := fmt.Sprintf("%s/build-cache/%s/invocations/%s/command_benchmark_status?%s",
