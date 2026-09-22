@@ -105,7 +105,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 
 	previous := a.readCurrentConfig()
 
-	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
+	config, err := ccacheconfig.NewConfig(ctx, a.envs, a.osProxy, ccacheconfig.Params{
 		BuildCacheEndpoint:    a.buildCacheEndpoint,
 		PushEnabled:           a.pushEnabled,
 		IPCSocketPathOverride: a.ipcSocketPathOverride,
