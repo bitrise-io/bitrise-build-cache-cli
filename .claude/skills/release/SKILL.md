@@ -20,9 +20,9 @@ When you report status, report it **per channel**, and state what you actually c
 2. **`verify-release`** — green (Step 6).
 3. **`bump-prebooting` PR** (preboot VM image) — **merged** (Step 6b). This is how provision-injected features, e.g. the gradle-mirrors init script, reach the *default* fleet. The bypass-merge can stall and need a manual approval.
 4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
-5. **Step GitHub releases** — cut for the scoped steps (Step 8).
+5. **Step GitHub releases** — cut for the scoped steps (Step 8), **and for the two dual-line repos, BOTH lines cut and each tag asserted to sit on the branch it names** (Step 8). A `0.x` tag accidentally cut from `main` passes every other check in this list.
 6. **Steplib PRs** — merged (Step 9).
-7. **Steplib spec published** — the new version is actually in the published spec (Step 10). A merged steplib PR does NOT mean the step shipped.
+7. **Steplib spec published** — the new version is actually in the published spec (Step 10). A merged steplib PR does NOT mean the step shipped. ⚠ This check reads `latest_version_number` only, so it **cannot** detect a `0.x` tag cut from `main` — it reports such a release as healthy. Channel 5's branch assertion is the only thing that catches it.
 
 Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–7). Confirming one says nothing about the other.
 
@@ -148,7 +148,7 @@ Create GitHub releases for whichever of the five step repos the user actually wa
 - Follow the format of existing releases for release notes — only include "## What's Changed" with bullet points (changelog is added automatically)
 - **Version numbering: the step version bump should match the CLI version bump.** Patch CLI bump → patch step bump. Minor CLI bump → minor step bump.
 - For step repos that don't release for every CLI version (currently the RN features step), the changelog should note the headline change for this release **and** mention any intervening CLI versions that are being picked up at the same time — readers should be able to tell what they're getting.
-- Check the latest existing release tag in each repo to determine the next version
+- Check the latest existing release tag in each repo to determine the next version. ⚠ **For the two dual-line repos below this is a trap:** `gh release list` sorts by date and marks the newest tag `Latest`, so a `0.x` tag shows up *above* `1.x` and reading the top line hands you a `0.x` number for a release you are about to target at `main`. Determine the next version **per line**, not from the top of the list.
 - The user may explicitly scope the release to a subset of step repos ("only release xcode and rn-features"). Honor that — do not release the others. Merging their auto-update PRs is still fine and expected (keeps the dependency current); skipping is only about the GitHub release / steplib PR.
 
 #### ⚠ Xcode + React Native steps: cut TWO releases each (1.x and 0.x)
@@ -162,19 +162,53 @@ Since 2026-09-22 the Xcode and React Native steps have **two live major lines**,
 
 Why both: these steps only ever had a `0.x` major, so the intuitive `activate-build-cache-for-xcode@1` pin failed at **step preparation**, which is `is_skippable: false` and kills the whole build (Yuno burned the first 7 builds of a trial on it). `1.0.0` fixes that. But ~20 workspaces / ~19k builds a quarter pin bare `@0`, and these steps are the CLI delivery channel for pinned-version customers — so dropping `0.x` would trade a loud failure for silent staleness.
 
-Process per release, for each of these two repos:
+Process per release, for each of these two repos.
+
+**First, find how far behind each line is — never assume it is one commit.** The auto-update PR (step 7) only ever targets `main`, so `0.x` receives *nothing* automatically and drifts by one commit per CLI release. `1.x` drifts too whenever a release skips it:
 
 ```bash
+# every main commit the 0.x branch has not got — cherry-pick ALL of them, oldest first
+git fetch origin && git log --oneline origin/0.x..origin/main
+# what CLI version each line actually pins (xcode: step.sh, RN: step/cli.go)
+git show origin/main:step.sh | grep -oE 'v3\.[0-9]+\.[0-9]+' | head -1
+git show origin/0.x:step.sh  | grep -oE 'v3\.[0-9]+\.[0-9]+' | head -1
+```
+
+If the two pins differ by more than the release you are cutting, the previous release skipped a line — say so in the release notes and pick the version bump from the *content* being shipped, not from the CLI's bump.
+
+```bash
+# deprecated line — cherry-pick every missing CLI bump onto 0.x, oldest first
+git checkout 0.x && git cherry-pick -x <oldest-missing> [<next> ...] && git push origin 0.x
 # current line, from main
 gh release create <next-1.x> --repo <REPO> --target main --latest --notes "..."
-# deprecated line — cherry-pick the CLI bump onto 0.x first
-git checkout 0.x && git cherry-pick <cli-bump-commit> && git push origin 0.x
+# deprecated line — --target 0.x is NOT optional (see assertion below)
 gh release create <next-0.x> --repo <REPO> --target 0.x --notes "..."
 ```
 
-The `0.x` branch carries one extra commit (`feat: deprecate the 0.x line in favour of @1`) that prints a runtime deprecation notice. **Keep that commit — never fast-forward `0.x` to `main`.** There is no `BITRISE_STEP_VERSION` exposed to steps, so a runtime-gated notice on a single branch is not possible; the divergent branch is the only way to warn only `@0` users.
+**Then assert each tag landed on the branch you meant.** `gh release create` silently defaults to the default branch when `--target` is omitted — it does not warn, and the resulting tag looks completely healthy everywhere downstream, including the step-10 spec check. This is how `activate-build-cache-for-xcode-0.27.0` and `activate-build-cache-for-react-native-0.21.0` were both cut from `main`, shipping `@0` users main's code with no deprecation notice while `1.x` silently sat a full CLI minor behind for two releases:
 
-Both lines produce their own steplib PR (`activate-build-cache-for-xcode-1.1.0` and `-0.27.0`), so step 9 has twice as many PRs and step 10 twice as many queued deploys — budget for it.
+```bash
+git fetch origin '+refs/tags/*:refs/tags/*' '+refs/heads/*:refs/remotes/origin/*'
+for t in <next-1.x> <next-0.x>; do
+  sha=$(git rev-list -n1 $t)
+  echo "$t -> ${sha:0:8} on-main=$(git merge-base --is-ancestor $sha origin/main && echo yes || echo no)" \
+       "on-0.x=$(git merge-base --is-ancestor $sha origin/0.x && echo yes || echo no)"
+done
+# REQUIRED: 1.x → on-main=yes on-0.x=no  |  0.x → on-main=no on-0.x=yes
+```
+
+A `0.x` tag with `on-main=yes` is wrong even though nothing downstream will complain. Delete the tag and release, and re-cut with `--target 0.x`.
+
+The `0.x` branch carries the deprecation commits and **must keep them — never fast-forward `0.x` to `main`.** They are the only thing that distinguishes the branch, and a cherry-pick that drops them silently un-deprecates the line. Two channels, both `0.x`-only:
+
+- **runtime** — `feat: deprecate the 0.x line in favour of @1` prints a notice from `step.sh` (xcode) / `main.go` (RN). Reaches anyone still building, including exact-pinned old versions, but only in the build log.
+- **UI** — the `⚠️ DEPRECATED` prefix on `step.yml`'s `summary` and the notice at the top of its `description`. `summary`/`description` are **version-level** in the spec, unlike `info.removal_date`/`deprecate_notes` (which is step-level and would flag `1.x` too — that is why the official deprecation mechanism cannot be used here). Renders on the step page, in the workflow editor's step picker, and in the auto-generated README. Reaches bare `@0` pins, which resolve to the newest `0.x`; it does **not** reach exact-pinned old versions, hence both channels.
+
+Because they are version-level, the UI notices only ship when a **new 0.x version is released from the `0.x` branch** — a `0.x` tag cut from `main` delivers neither.
+
+Do not hand-edit `README.md`: `generate_readme` (in each repo's `bitrise.yml`) rebuilds it from `step.yml`.
+
+Both lines produce their own steplib PR (e.g. `activate-build-cache-for-xcode-1.1.0` and `-0.28.0`), so step 9 has twice as many PRs and step 10 twice as many queued deploys — budget for it.
 
 **Ending the deprecation:** once `@0` usage is negligible, stop cutting `0.x`, delete this subsection, and delete the `0.x` branches. Check current usage with `mrt_product.build_steps` filtered to `step_version = "0"`.
 
