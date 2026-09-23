@@ -22,7 +22,7 @@ When you report status, report it **per channel**, and state what you actually c
 4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
 5. **Step GitHub releases** — cut for the scoped steps (Step 8), **and for the two dual-line repos, BOTH lines cut and each tag asserted to sit on the branch it names** (Step 8). A `0.x` tag accidentally cut from `main` passes every other check in this list.
 6. **Steplib PRs** — merged (Step 9).
-7. **Steplib spec published** — the new version is actually in the published spec (Step 10). A merged steplib PR does NOT mean the step shipped. ⚠ This check reads `latest_version_number` only, so it **cannot** detect a `0.x` tag cut from `main` — it reports such a release as healthy. Channel 5's branch assertion is the only thing that catches it.
+7. **Steplib spec published** — every version this release cut is actually in the published **full** spec, both lines for the dual-line steps (Step 10). A merged steplib PR does NOT mean the step shipped. ⚠ Two things this check will not tell you: the *slim* spec cannot see a `0.x` version at all (it holds only the newest), and no spec check can detect a `0.x` tag cut from `main` — that one is caught only by channel 5's branch assertion.
 
 Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–7). Confirming one says nothing about the other.
 
@@ -115,6 +115,24 @@ Create a GitHub release in `bitrise-build-cache-cli`.
 - If this is a gradle-plugin-only update (no CLI code changes), the CLI version should be a **patch** bump because only a dependency was updated
 - Check the latest existing release tag to determine the next version
 
+### 6a. `verify-release` fails on the first run — expect it, and re-run
+
+`verify-release` starts the moment `release` finishes, but GitHub's `latest` pointer has not yet caught up with the promotion out of prerelease. `installer.sh` therefore resolves the **previous** version and the run fails with:
+
+```
+FAIL [GH happy path]: expected version '3.12.2', got '3.12.1'
+```
+
+This is a race, not a broken release — v3.12.1 and v3.12.2 both hit it and both passed unchanged on a re-run minutes later. **Do not re-cut the tag.** Confirm the release actually has its 8 assets, then re-trigger `verify-release` alone with `BITRISE_GIT_TAG` set to the tag (the script requires it):
+
+```bash
+# re-run verify-release for <tag>, then bump-prebooting — see the warning below
+```
+
+⚠ **This takes `bump-prebooting` down with it.** `bump-prebooting` is chained *after* `verify-release` in the `release-and-verify` pipeline, so a failed verify means the preboot bump never runs at all — silently, with no PR and no alert. Re-running `verify-release` standalone does **not** re-trigger it either. After the verify passes, trigger `bump-prebooting` manually with the same `BITRISE_GIT_TAG`, then confirm its PR merged per step 6b. Both releases on 2026-09-23 needed this.
+
+A retry loop around the `latest` resolution in `scripts/verify_release.sh` would remove both problems.
+
 ### 6b. Verify the preboot bump (`bump-prebooting`)
 
 The `release-and-verify` pipeline chains a `bump-prebooting` workflow after `verify-release`. It opens an auto-merging PR in `bitrise-io/build-prebooting-deployments` bumping `BITRISE_BUILD_CACHE_CLI_VERSION` + the per-arch sha256 in the two startup-script extensions, and tries to bypass-merge it as `bitrise-infrabot`. This is the channel that delivers provision-injected features (e.g. the gradle-mirrors init script) to the **default fleet** — a release that skips it ships to nobody on the default path.
@@ -167,8 +185,11 @@ Process per release, for each of these two repos.
 **First, find how far behind each line is — never assume it is one commit.** The auto-update PR (step 7) only ever targets `main`, so `0.x` receives *nothing* automatically and drifts by one commit per CLI release. `1.x` drifts too whenever a release skips it:
 
 ```bash
-# every main commit the 0.x branch has not got — cherry-pick ALL of them, oldest first
-git fetch origin && git log --oneline origin/0.x..origin/main
+# every main commit the 0.x branch has not got — cherry-pick ALL of them, oldest first.
+# THREE dots + --cherry-pick: a plain `origin/0.x..origin/main` keeps listing commits you
+# already cherry-picked (the copies have different SHAs), so it over-reports every release
+# after the first and you cannot tell real gaps from noise.
+git fetch origin && git log --cherry-pick --right-only --oneline origin/0.x...origin/main
 # what CLI version each line actually pins (xcode: step.sh, RN: step/cli.go)
 git show origin/main:step.sh | grep -oE 'v3\.[0-9]+\.[0-9]+' | head -1
 git show origin/0.x:step.sh  | grep -oE 'v3\.[0-9]+\.[0-9]+' | head -1
@@ -256,18 +277,27 @@ for b in sorted(json.load(sys.stdin)['data'], key=lambda b: b['build_number']):
     print(b['build_number'], b['status_text'], b.get('triggered_workflow'), 'wait='+wait, b.get('abort_reason') or '')"
 ```
 
-Then verify the published artifact — this is the only check that proves delivery:
+Then verify the published artifact — this is the only check that proves delivery.
+
+⚠ **Use the FULL spec, not `slim-spec.json.gz`.** The slim spec carries only the newest version of each step (its `versions` map has exactly one key), so `latest_version_number` on a dual-line step is always the `1.x` number and the `0.x` release is **invisible** to it. Checking the slim spec reports a release as healthy while the entire `0.x` line is missing.
 
 ```bash
-curl -sS https://bitrise-steplib-collection.s3.amazonaws.com/slim-spec.json.gz -o /tmp/spec.gz
+curl -sS https://bitrise-steplib-collection.s3.amazonaws.com/spec.json.gz -o /tmp/spec.gz
 python3 -c "
 import gzip,json
-d=json.load(gzip.open('/tmp/spec.gz'))['steps']
-for n in ('activate-build-cache-for-gradle','activate-build-cache-for-xcode','activate-build-cache-for-react-native','activate-gradle-mirrors'):
-    print(n, d[n]['latest_version_number'])"
+s=json.load(gzip.open('/tmp/spec.gz'))['steps']
+# every version this release cut, both lines for the dual-line steps
+want={'activate-build-cache-for-gradle':['<x.y.z>'],
+      'activate-build-cache-for-xcode':['<1.y.z>','<0.y.z>'],
+      'activate-build-cache-for-react-native':['<1.y.z>','<0.y.z>'],
+      'activate-gradle-mirrors':['<0.y.z>']}
+miss=[f'{n}:{v}' for n,vs in want.items() for v in vs if v not in s[n]['versions']]
+print('MISSING:', ' '.join(miss) if miss else 'nothing — all published')"
 ```
 
-If a version is missing, re-trigger `deploy` on `master` at that steplib squash-merge commit (master HEAD if it merged last). It is idempotent — it regenerates from master — and on an empty queue it **starts immediately** and takes ~20 min, so this recovery is quick. Then re-check the spec.
+**Each deploy regenerates the spec as of its OWN merge commit, not master HEAD.** So the published spec reflects whichever deploy finished *last*, and because master is linear a later commit already contains every earlier merge — meaning exactly one deploy has to succeed: the one on the newest commit. That is also the one at the back of the queue and the first to be reaped, which is why the tail loss is not cosmetic.
+
+If a version is missing, re-trigger `deploy` on `master` at **master HEAD** — it regenerates from that commit and therefore publishes every merge up to it in one go, whatever was reaped in between. On an empty queue it **starts immediately** and takes ~20 min. Then re-check the spec.
 
 Step 9 says to merge each steplib PR as soon as it is mergeable, which is right for throughput but is what creates this queue. Keep doing that, then always come back and verify the spec — or stagger the last merge if a deploy backlog is already visible.
 
