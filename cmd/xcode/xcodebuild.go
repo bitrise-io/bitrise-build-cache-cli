@@ -754,19 +754,23 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 // The same figures as the stats lines above, on the GitHub Actions job page.
 // Does nothing anywhere else, and never fails the build.
 func (c *XcodebuildRunner) writeJobSummary(runStats xcodeargs.RunStats, outcome proxyOutcome) {
-	summary := jobsummary.Summary{
-		Tool:      "Xcode",
-		Section:   "xcode",
-		Unit:      "tasks",
-		Hits:      runStats.CacheStats.Hits,
-		Total:     runStats.CacheStats.TotalTasks,
-		BlobStats: outcome.BlobStats,
-	}
-	if c.InvocationID != "" {
-		summary.InvocationURL = "https://app.bitrise.io/build-cache/invocations/xcode/" + c.InvocationID
+	invocation := jobsummary.Invocation{
+		Success:        runStats.Success,
+		Command:        c.XcodeArgs.ShortCommand(),
+		BenchmarkPhase: c.Metadata.BenchmarkPhase,
+		Duration:       time.Duration(runStats.DurationMS) * time.Millisecond,
 	}
 
-	if _, err := jobsummary.Write(summary.Section, summary.Render()); err != nil {
+	if outcome.BlobStats != nil {
+		down, up := outcome.BlobStats.Download.BytesTotal, outcome.BlobStats.Upload.BytesTotal
+		invocation.DownloadedBytes, invocation.UploadedBytes = &down, &up
+	}
+
+	if c.InvocationID != "" {
+		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/xcode/" + c.InvocationID
+	}
+
+	if _, err := jobsummary.Write(jobsummary.Row(invocation), invocation.InvocationURL); err != nil {
 		c.Logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
 	}
 }

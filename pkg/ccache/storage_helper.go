@@ -265,20 +265,22 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 // IDs override the values from internal state and params.
 // The same figures as the stats lines above, on the GitHub Actions job page.
 // Does nothing anywhere else, and never fails the build.
-func (h *StorageHelper) writeJobSummary(stats ccacheanalytics.CcacheStats, blobStats *blobstats.Snapshot, invocationID string) {
-	summary := jobsummary.Summary{
-		Tool:      "ccache",
-		Section:   "ccache",
-		Unit:      "compilations",
-		Hits:      int64(stats.CacheHit),
-		Total:     int64(stats.CacheHit + stats.CacheMiss),
-		BlobStats: blobStats,
-	}
-	if invocationID != "" {
-		summary.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
+//
+// No duration: a ccache session spans the whole build rather than one command, so
+// the wall time of a compile is not a figure this helper holds.
+func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string) {
+	invocation := jobsummary.Invocation{
+		Success:         true,
+		Command:         "ccache",
+		DownloadedBytes: &downloaded,
+		UploadedBytes:   &uploaded,
 	}
 
-	if _, err := jobsummary.Write(summary.Section, summary.Render()); err != nil {
+	if invocationID != "" {
+		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
+	}
+
+	if _, err := jobsummary.Write(jobsummary.Row(invocation), invocation.InvocationURL); err != nil {
 		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
 	}
 }
@@ -332,7 +334,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 		}
 	}
 
-	h.writeJobSummary(stats, blobStats, invocationID)
+	h.writeJobSummary(dl, ul, invocationID)
 
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {

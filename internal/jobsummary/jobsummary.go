@@ -3,114 +3,111 @@
 //
 // GITHUB_STEP_SUMMARY is a file the runner creates for the step, and the CLI
 // inherits it like any other environment variable, so this needs nothing added
-// to the user's workflow. Each tool owns a marked section it rewrites in place,
-// which keeps one section per tool when a job builds more than once, and leaves
-// the Gradle plugins' own section and anything another step wrote alone.
+// to the user's workflow.
+//
+// One table for the job, one row per invocation, appended as each finishes. A
+// job that builds and then tests runs the cache very differently in each, and a
+// single set of totals describes neither. The Gradle plugins write rows into the
+// same table, so a mixed job reads as one list.
 package jobsummary
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/dustin/go-humanize"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
-const summaryEnvVar = "GITHUB_STEP_SUMMARY"
+const (
+	summaryEnvVar = "GITHUB_STEP_SUMMARY"
 
-// Summary is one tool's contribution to the job page.
-type Summary struct {
-	// Tool names the section, e.g. "Xcode" or "ccache".
-	Tool string
-	// Section keys the markers, so a rerun replaces rather than appends.
-	Section string
-	// Unit names what Hits and Total count: "tasks" for Xcode, "compilations"
-	// for ccache. The two tools count different things and say so.
-	Unit          string
-	Hits          int64
-	Total         int64
-	BlobStats     *blobstats.Snapshot
-	InvocationURL string
+	startMarker = "<!-- bitrise-build-cache:table:start -->"
+	endMarker   = "<!-- bitrise-build-cache:table:end -->"
+
+	header = "## ⚡ Bitrise Build Cache\n\n" +
+		"| Status | Command | Cache status | Downloaded | Uploaded | Duration | |\n" +
+		"|:---:|---|---|---:|---:|---|---|\n"
+
+	phaseBaseline = "baseline"
+	phaseWarmup   = "warmup"
+
+	bytesInMB = 1000 * 1000
+)
+
+// Invocation is one row: what ran, how the cache served it, and how long it took.
+// Nil byte counts mean nothing reported, which is not the same as nothing moving.
+type Invocation struct {
+	Success         bool
+	Command         string
+	BenchmarkPhase  string
+	DownloadedBytes *int64
+	UploadedBytes   *int64
+	Duration        time.Duration
+	InvocationURL   string
 }
 
-// Render returns the markdown, or "" when there is nothing worth showing.
-func (s Summary) Render() string {
-	hasWork := s.Total > 0
-	hasTransfer := s.BlobStats != nil && !s.BlobStats.IsEmpty()
-	if !hasWork && !hasTransfer {
-		return ""
+func Row(i Invocation) string {
+	status := "✅"
+	if !i.Success {
+		status = "❌"
 	}
 
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "## 🤖 Bitrise Build Cache — %s\n\n", s.Tool)
-
-	if hasWork {
-		fmt.Fprintf(&b, "### %.1f%% of %s work avoided\n\n", float64(s.Hits)/float64(s.Total)*100, s.Tool)
-		fmt.Fprintf(&b, "| | %s |\n| --- | ---: |\n", s.Unit)
-		fmt.Fprintf(&b, "| From cache | %s |\n", humanize.Comma(s.Hits))
-		fmt.Fprintf(&b, "| Executed | %s |\n", humanize.Comma(max(s.Total-s.Hits, 0)))
-		fmt.Fprintf(&b, "| **Total** | **%s** |\n\n", humanize.Comma(s.Total))
+	command := i.Command
+	if command == "" {
+		command = "build"
 	}
 
-	if hasTransfer {
-		b.WriteString(transferTable(s.BlobStats))
+	link := ""
+	if i.InvocationURL != "" {
+		link = fmt.Sprintf("[View →](%s)", i.InvocationURL)
 	}
 
-	if s.InvocationURL != "" {
-		fmt.Fprintf(&b, "[View the full invocation](%s)\n\n", s.InvocationURL)
-	}
-
-	return b.String()
+	return fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s |\n",
+		status, command, CacheStatus(i),
+		megabytes(i.DownloadedBytes), megabytes(i.UploadedBytes),
+		duration(i.Duration), link)
 }
 
-func transferTable(snapshot *blobstats.Snapshot) string {
-	var b strings.Builder
-
-	b.WriteString("### Cache transfer\n\n")
-	b.WriteString("| | download | upload |\n| --- | ---: | ---: |\n")
-	fmt.Fprintf(&b, "| Blobs | %s | %s |\n",
-		humanize.Comma(snapshot.Download.OpCount), humanize.Comma(snapshot.Upload.OpCount))
-	fmt.Fprintf(&b, "| Bytes | %s | %s |\n",
-		formatBytes(snapshot.Download.BytesTotal), formatBytes(snapshot.Upload.BytesTotal))
-	fmt.Fprintf(&b, "| Latency p50 | %s | %s |\n",
-		latency(snapshot.Download, 0.50), latency(snapshot.Upload, 0.50))
-	fmt.Fprintf(&b, "| Latency p90 | %s | %s |\n\n",
-		latency(snapshot.Download, 0.90), latency(snapshot.Upload, 0.90))
-	b.WriteString("<sub>Latency percentiles are histogram bucket bounds, so they are approximate.</sub>\n\n")
-
-	return b.String()
-}
-
-// Same bucket bounds the profile log line reports, so the page and the log agree.
-func latency(d blobstats.DirectionSnapshot, quantile float64) string {
-	if d.OpCount == 0 {
-		return "—"
+// CacheStatus applies the same ladder as the invocation list in the web UI, so a
+// row here and a row there describe the same build the same way. See
+// invocationCacheStatus.ts in bitrise-website.
+func CacheStatus(i Invocation) string {
+	if i.BenchmarkPhase == phaseBaseline {
+		return "Baseline"
 	}
 
-	bound, overflow := d.LatencyMs.PercentileBucket(quantile)
-	if overflow {
-		return fmt.Sprintf(">%d ms", bound)
+	if i.DownloadedBytes == nil || i.UploadedBytes == nil {
+		return "No activity"
 	}
 
-	return fmt.Sprintf("%d ms", bound)
-}
-
-func formatBytes(n int64) string {
-	if n < 0 {
-		return "0 B"
+	down, up := *i.DownloadedBytes, *i.UploadedBytes
+	if down == 0 && up == 0 {
+		return "No activity"
 	}
 
-	return humanize.Bytes(uint64(n))
+	if i.BenchmarkPhase == phaseWarmup {
+		return "Warming up"
+	}
+
+	// Downloading as much as it uploaded still counts as reuse: the cache served
+	// everything it was asked for, it just stored the same amount back.
+	if down >= up {
+		return "Healthy"
+	}
+
+	return "Low reuse"
 }
 
-// Write replaces this tool's section of the job summary. Reports whether
-// anything was written; a summary is a nicety, so no caller should fail on it.
-func Write(section, markdown string) (bool, error) {
+// Write appends this invocation's row to the job's table, replacing the row when
+// the same invocation reports twice. Reports whether anything was written; a
+// summary is a nicety, so no caller should fail on it.
+func Write(row, invocationURL string) (bool, error) {
 	path := os.Getenv(summaryEnvVar)
-	if path == "" || markdown == "" {
+	if path == "" || row == "" {
 		return false, nil
 	}
 
@@ -119,30 +116,57 @@ func Write(section, markdown string) (bool, error) {
 		return false, fmt.Errorf("read %s: %w", summaryEnvVar, err)
 	}
 
-	content := withoutSection(string(existing), section) +
-		startMarker(section) + "\n" + markdown + endMarker(section) + "\n"
-
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec,mnd // the runner reads this file
+	if err := os.WriteFile(path, []byte(withRow(string(existing), row, invocationURL)), 0o644); err != nil { //nolint:gosec,mnd // the runner reads this file
 		return false, fmt.Errorf("write %s: %w", summaryEnvVar, err)
 	}
 
 	return true, nil
 }
 
-func startMarker(section string) string { return "<!-- bitrise-build-cache:" + section + ":start -->" }
-
-func endMarker(section string) string { return "<!-- bitrise-build-cache:" + section + ":end -->" }
-
-func withoutSection(content, section string) string {
-	start := strings.Index(content, startMarker(section))
-	if start < 0 {
-		return content
+func withRow(content, row, invocationURL string) string {
+	start := strings.Index(content, startMarker)
+	end := strings.Index(content, endMarker)
+	if start < 0 || end < start {
+		return content + startMarker + "\n" + header + row + endMarker + "\n"
 	}
 
-	end := strings.Index(content, endMarker(section))
-	if end < start {
-		return content[:start]
+	lines := strings.Split(content[start+len(startMarker):end], "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if invocationURL != "" && strings.Contains(line, invocationURL) {
+			continue
+		}
+		kept = append(kept, line)
 	}
 
-	return content[:start] + content[end+len(endMarker(section)):]
+	rows := strings.Trim(strings.Join(kept, "\n"), "\n")
+
+	return content[:start] + startMarker + "\n" + rows + "\n" + row + content[end:]
+}
+
+// One decimal at most, and none on a whole number: "8.6 MB", "118 MB".
+func megabytes(bytes *int64) string {
+	if bytes == nil {
+		return "0 MB"
+	}
+
+	mb := float64(*bytes) / bytesInMB
+	rounded := float64(int64(mb*10+0.5)) / 10
+
+	p := message.NewPrinter(language.English)
+	if rounded == float64(int64(rounded)) {
+		return p.Sprintf("%.0f MB", rounded)
+	}
+
+	return p.Sprintf("%.1f MB", rounded)
+}
+
+func duration(d time.Duration) string {
+	if d <= 0 {
+		return ""
+	}
+
+	seconds := d.Seconds()
+
+	return fmt.Sprintf("%dm %04.1fs", int(seconds/60), math.Mod(seconds, 60))
 }
