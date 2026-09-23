@@ -26,7 +26,7 @@ import (
 const (
 	summaryEnvVar = "GITHUB_STEP_SUMMARY"
 
-	heading = "## ⚡️ Bitrise Build Cache"
+	heading = "### ⚡️ Bitrise Build Cache"
 
 	annotationTitle = "Bitrise Build Cache"
 
@@ -67,7 +67,7 @@ func Block(i Invocation) string {
 
 	link := ""
 	if i.InvocationURL != "" {
-		link = fmt.Sprintf("[View →](%s)", i.InvocationURL)
+		link = fmt.Sprintf("[View invocation](%s)", i.InvocationURL)
 	}
 
 	return fmt.Sprintf("**%s**\n\n%s| %s | %s | %s | %s | %s | %s |\n",
