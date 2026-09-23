@@ -5,10 +5,11 @@
 // inherits it like any other environment variable, so this needs nothing added
 // to the user's workflow.
 //
-// One table for the job, one row per invocation, appended as each finishes. A
-// job that builds and then tests runs the cache very differently in each, and a
-// single set of totals describes neither. The Gradle plugins write rows into the
-// same table, so a mixed job reads as one list.
+// A block per invocation: its command, then a one-row table. Separate tables
+// rather than one shared one, because the runner gives every step its own summary
+// file and concatenates them for the job page -- rows can only accumulate within a
+// step, so a single table would fragment across them anyway. The Gradle plugins
+// write the same shape, so a mixed job reads as one list.
 package jobsummary
 
 import (
@@ -25,12 +26,10 @@ import (
 const (
 	summaryEnvVar = "GITHUB_STEP_SUMMARY"
 
-	startMarker = "<!-- bitrise-build-cache:table:start -->"
-	endMarker   = "<!-- bitrise-build-cache:table:end -->"
+	heading = "## ⚡️ Bitrise Build Cache"
 
-	header = "## ⚡ Bitrise Build Cache\n\n" +
-		"| Status | Command | Cache status | Downloaded | Uploaded | Duration | |\n" +
-		"|:---:|---|---|---:|---:|---|---|\n"
+	tableHead = "| Status | Cache status | ↓ Downloaded | ↑ Uploaded | Duration | |\n" +
+		"|:---:|---|---:|---:|---|---|\n"
 
 	phaseBaseline = "baseline"
 	phaseWarmup   = "warmup"
@@ -50,7 +49,8 @@ type Invocation struct {
 	InvocationURL   string
 }
 
-func Row(i Invocation) string {
+// Block is the command, then a table of one: what the cache did for this invocation.
+func Block(i Invocation) string {
 	status := "✅"
 	if !i.Success {
 		status = "❌"
@@ -66,8 +66,8 @@ func Row(i Invocation) string {
 		link = fmt.Sprintf("[View →](%s)", i.InvocationURL)
 	}
 
-	return fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s |\n",
-		status, command, CacheStatus(i),
+	return fmt.Sprintf("**%s**\n\n%s| %s | %s | %s | %s | %s | %s |\n",
+		command, tableHead, status, CacheStatus(i),
 		megabytes(i.DownloadedBytes), megabytes(i.UploadedBytes),
 		duration(i.Duration), link)
 }
@@ -102,12 +102,12 @@ func CacheStatus(i Invocation) string {
 	return "Low reuse"
 }
 
-// Write appends this invocation's row to the job's table, replacing the row when
-// the same invocation reports twice. Reports whether anything was written; a
-// summary is a nicety, so no caller should fail on it.
-func Write(row, invocationURL string) (bool, error) {
+// Write adds this invocation's block to the job summary, replacing it when the
+// same invocation reports twice. Reports whether anything was written; a summary
+// is a nicety, so no caller should fail on it.
+func Write(block, section string) (bool, error) {
 	path := os.Getenv(summaryEnvVar)
-	if path == "" || row == "" {
+	if path == "" || block == "" {
 		return false, nil
 	}
 
@@ -116,32 +116,36 @@ func Write(row, invocationURL string) (bool, error) {
 		return false, fmt.Errorf("read %s: %w", summaryEnvVar, err)
 	}
 
-	if err := os.WriteFile(path, []byte(withRow(string(existing), row, invocationURL)), 0o644); err != nil { //nolint:gosec,mnd // the runner reads this file
+	if err := os.WriteFile(path, []byte(withBlock(string(existing), block, section)), 0o644); err != nil { //nolint:gosec,mnd // the runner reads this file
 		return false, fmt.Errorf("write %s: %w", summaryEnvVar, err)
 	}
 
 	return true, nil
 }
 
-func withRow(content, row, invocationURL string) string {
-	start := strings.Index(content, startMarker)
-	end := strings.Index(content, endMarker)
-	if start < 0 || end < start {
-		return content + startMarker + "\n" + header + row + endMarker + "\n"
+func startMarker(section string) string { return "<!-- bitrise-build-cache:" + section + ":start -->" }
+
+func endMarker(section string) string { return "<!-- bitrise-build-cache:" + section + ":end -->" }
+
+func withBlock(content, block, section string) string {
+	marked := startMarker(section) + "\n" + block + endMarker(section) + "\n\n"
+
+	// One heading for the file, however many invocations write into it.
+	if !strings.Contains(content, heading) {
+		content += heading + "\n\n"
 	}
 
-	lines := strings.Split(content[start+len(startMarker):end], "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if invocationURL != "" && strings.Contains(line, invocationURL) {
-			continue
-		}
-		kept = append(kept, line)
+	start := strings.Index(content, startMarker(section))
+	if start < 0 {
+		return content + marked
 	}
 
-	rows := strings.Trim(strings.Join(kept, "\n"), "\n")
+	after := ""
+	if end := strings.Index(content, endMarker(section)); end > start {
+		after = strings.TrimLeft(content[end+len(endMarker(section)):], "\n")
+	}
 
-	return content[:start] + startMarker + "\n" + rows + "\n" + row + content[end:]
+	return content[:start] + marked + after
 }
 
 // One decimal at most, and none on a whole number: "8.6 MB", "118 MB".

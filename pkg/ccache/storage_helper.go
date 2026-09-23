@@ -280,7 +280,7 @@ func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID
 		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
 	}
 
-	if _, err := jobsummary.Write(jobsummary.Row(invocation), invocation.InvocationURL); err != nil {
+	if _, err := jobsummary.Write(jobsummary.Block(invocation), "ccache-"+invocationID); err != nil {
 		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
 	}
 }

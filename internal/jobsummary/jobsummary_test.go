@@ -1,6 +1,7 @@
 package jobsummary_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +39,7 @@ func summaryFile(t *testing.T) string {
 	return path
 }
 
-func TestJobRunningSeveralToolsGetsARowEach(t *testing.T) {
+func TestJobRunningSeveralToolsGetsABlockEach(t *testing.T) {
 	path := summaryFile(t)
 
 	rows := []jobsummary.Invocation{
@@ -53,8 +54,8 @@ func TestJobRunningSeveralToolsGetsARowEach(t *testing.T) {
 			i.UploadedBytes = bytesOf(118_000_000)
 		}),
 	}
-	for _, r := range rows {
-		written, err := jobsummary.Write(jobsummary.Row(r), r.InvocationURL)
+	for i, r := range rows {
+		written, err := jobsummary.Write(jobsummary.Block(r), fmt.Sprintf("inv-%d", i))
 		require.NoError(t, err)
 		assert.True(t, written)
 	}
@@ -62,19 +63,22 @@ func TestJobRunningSeveralToolsGetsARowEach(t *testing.T) {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, strings.Count(string(content), "## ⚡ Bitrise Build Cache"))
-	assert.Contains(t, string(content), "| ✅ | build -scheme WordPress | Healthy | 3,438.2 MB | 0 MB | 2m 31.3s |")
+	// One heading, then a block per invocation: its command, then its own table.
+	assert.Equal(t, 1, strings.Count(string(content), "## ⚡️ Bitrise Build Cache"))
+	assert.Contains(t, string(content), "**build -scheme WordPress**")
+	assert.Contains(t, string(content), "| ✅ | Healthy | 3,438.2 MB | 0 MB | 2m 31.3s |")
 	// No duration for ccache: the session spans the build, not one command.
-	assert.Contains(t, string(content), "| ✅ | ccache | Low reuse | 8.6 MB | 118 MB |  |")
+	assert.Contains(t, string(content), "**ccache**")
+	assert.Contains(t, string(content), "| ✅ | Low reuse | 8.6 MB | 118 MB |  |")
 }
 
-func TestAnInvocationReportingTwiceReplacesItsRow(t *testing.T) {
+func TestAnInvocationReportingTwiceReplacesItsBlock(t *testing.T) {
 	path := summaryFile(t)
 	url := "https://app.bitrise.io/build-cache/invocations/xcode/a"
 
 	for _, mb := range []int64{1_000_000, 2_000_000} {
 		i := invocation(url, func(i *jobsummary.Invocation) { i.DownloadedBytes = bytesOf(mb) })
-		_, err := jobsummary.Write(jobsummary.Row(i), url)
+		_, err := jobsummary.Write(jobsummary.Block(i), "xcode-a")
 		require.NoError(t, err)
 	}
 
@@ -91,7 +95,7 @@ func TestAnotherStepsContentIsLeftAlone(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("## Test results\n\nAll green.\n"), 0o600))
 
 	i := invocation("https://app.bitrise.io/build-cache/invocations/xcode/a")
-	_, err := jobsummary.Write(jobsummary.Row(i), i.InvocationURL)
+	_, err := jobsummary.Write(jobsummary.Block(i), "xcode-a")
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(path)
@@ -102,7 +106,7 @@ func TestAnotherStepsContentIsLeftAlone(t *testing.T) {
 func TestNothingIsWrittenOffGitHubActions(t *testing.T) {
 	t.Setenv("GITHUB_STEP_SUMMARY", "")
 
-	written, err := jobsummary.Write(jobsummary.Row(invocation("url")), "url")
+	written, err := jobsummary.Write(jobsummary.Block(invocation("url")), "xcode-a")
 	require.NoError(t, err)
 	assert.False(t, written)
 }
@@ -132,11 +136,11 @@ func TestCacheStatusFollowsTheWebUIsOrder(t *testing.T) {
 }
 
 func TestAFailedBuildStillReportsWhatTheCacheDid(t *testing.T) {
-	row := jobsummary.Row(invocation("url", func(i *jobsummary.Invocation) {
+	block := jobsummary.Block(invocation("url", func(i *jobsummary.Invocation) {
 		i.Success = false
 		i.DownloadedBytes = bytesOf(10_000_000)
 	}))
 
-	assert.True(t, strings.HasPrefix(row, "| ❌"), row)
-	assert.Contains(t, row, "Healthy")
+	assert.Contains(t, block, "| ❌ |")
+	assert.Contains(t, block, "Healthy")
 }
