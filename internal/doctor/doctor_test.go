@@ -596,6 +596,26 @@ func TestBackendErrorDetail_kvSentinelUnauthenticated(t *testing.T) {
 	assert.Contains(t, got, "ws-1")
 }
 
+func TestBackendErrorState_nonPrintableTokenIsError(t *testing.T) {
+	assert.Equal(t, StateError, backendErrorState(authpkg.ErrTokenNonPrintable))
+}
+
+// A resolver error of ErrTokenNonPrintable must surface as a fixable
+// StateError, not fall through into the "no credentials" skipped path.
+func TestAuthBackendCheck_nonPrintableTokenAtResolveTime(t *testing.T) {
+	envs := map[string]string{
+		authpkg.EnvAuthToken:   "tok\x01en",
+		authpkg.EnvWorkspaceID: "ws-1",
+	}
+
+	r := &Doctor{Envs: envs, AuthBackends: []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}}
+
+	res := r.authBackendCheck().Diagnose(context.Background())
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "token-malformed")
+	assert.Contains(t, res.Detail, authpkg.EnvAuthToken)
+}
+
 func TestAuthBackendCheck_authFailureIsFixable(t *testing.T) {
 	envs := map[string]string{authpkg.EnvAuthToken: "tok", authpkg.EnvWorkspaceID: "ws-1"}
 

@@ -32,6 +32,12 @@ func (d *Doctor) authBackendCheck() Check {
 		Diagnose: func(ctx context.Context) Result {
 			cfg, origin, err := d.resolver().ResolveNoRefresh(d.Envs)
 			srcLabel := origin.ShortLabel()
+			if errors.Is(err, auth.ErrTokenNonPrintable) {
+				return Result{
+					State:  StateError,
+					Detail: "token-malformed: " + auth.ErrTokenNonPrintable.Error(),
+				}
+			}
 			if err != nil {
 				return Result{State: StateOK, Detail: "skipped (source=none, no credentials resolvable: " + err.Error() + ")"}
 			}
@@ -143,7 +149,7 @@ func probeKey() (string, error) {
 }
 
 func backendErrorState(err error) State {
-	if errors.Is(err, kv.ErrCacheUnauthenticated) {
+	if errors.Is(err, kv.ErrCacheUnauthenticated) || errors.Is(err, auth.ErrTokenNonPrintable) {
 		return StateError
 	}
 

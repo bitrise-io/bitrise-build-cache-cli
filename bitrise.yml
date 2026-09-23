@@ -600,6 +600,118 @@ workflows:
             # this invocation has neither of. No task IO: a warm cache executes
             # no tasks, and only executed tasks record inputs.
 
+  feature-e2e-github-actions-xcode:
+    description: |
+      Runs this PR's CLI on GitHub Actions, on a macOS Build Hub machine pool, by
+      dispatching the wordpress-ios-e2e workflow with this commit as cli_ref.
+    envs:
+    - GHA_REPO: bitrise-io/wordpress-ios-e2e
+    - GHA_WORKFLOW_FILE: bitrise-build-cache-e2e.yml
+    - GHA_REF: trunk
+    - E2E_CI_PROVIDER: github-actions
+    # WordPress is a large workspace and the job builds the CLI first.
+    - BUILD_TIMEOUT: 4500
+    steps:
+    - bundle::e2e-repo-checkout: {}
+    - script:
+        title: Dispatch GitHub Actions run for this commit
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+
+            require_github_env
+
+            # Without a ref the job installs the released CLI, reporting on a
+            # binary this PR never touched.
+            cli_ref="${BITRISE_GIT_COMMIT:-}"
+            if [[ -z "$cli_ref" ]]; then
+              fatal "No BITRISE_GIT_COMMIT to build the CLI from"
+            fi
+
+            correlation_id="cli-xcode-${BITRISE_BUILD_SLUG:-local}-${BITRISE_BUILD_NUMBER:-0}"
+            trigger_github_workflow "$GHA_REPO" "$GHA_WORKFLOW_FILE" "$GHA_REF" \
+              "$correlation_id" "$cli_ref"
+
+            run_id=$(find_github_run "$GHA_REPO" "$GHA_WORKFLOW_FILE" "$correlation_id")
+
+            echo "Run URL: https://github.com/$GHA_REPO/actions/runs/$run_id"
+            envman add --key GHA_RUN_ID --value "$run_id"
+    - script:
+        title: Wait for run
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+
+            wait_for_github_run "$GHA_REPO" "$GHA_RUN_ID" "$BUILD_TIMEOUT"
+    - script:
+        title: Extract Invocation ID
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+            source ./_e2e/scripts/extract_invocation_id.sh
+
+            invocation_id=$(extract_invocation_id_from_github_logs \
+              extract_invocation_id_xcode "$GHA_REPO" "$GHA_RUN_ID" "gha-logs.txt")
+
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert the build went through the cache
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # The fixture only builds; what it printed is asserted here, from the
+            # run's log, the same way the Gradle leg does it.
+            grep -q "bitrise-xcelerate/bin/xcodebuild" gha-logs.txt || {
+                echo "The build did not go through the CLI's xcodebuild wrapper ❌"
+                exit 1
+            }
+
+            stats=$(grep -m1 "Proxy blob stats" gha-logs.txt)
+            echo "$stats"
+            lookups=$(echo "$stats" | sed -E 's|.*/ total: ([0-9]+).*|\1|')
+            hits=$(echo "$stats" | sed -E 's/.*hits: ([0-9]+).*/\1/')
+            uploads=$(echo "$stats" | sed -E 's/.*Uploaded blobs: ([0-9]+).*/\1/')
+
+            # Cold and warm both have to pass: a first run for these inputs uploads
+            # and hits nothing, a fully cached one hits everything and uploads
+            # nothing. What holds either way is that the cache was consulted and
+            # something moved.
+            if [ "${lookups:-0}" -eq 0 ]; then
+                echo "The build never consulted the remote cache ❌"
+                exit 1
+            fi
+            if [ "$(( hits + uploads ))" -eq 0 ]; then
+                echo "The build consulted the cache $lookups times and moved nothing ❌"
+                exit 1
+            fi
+
+            echo "Xcode build read $hits of $lookups blobs and stored $uploads ✅"
+    - script:
+        title: Assert invocation from API
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/assert_invocations.sh
+
+            # A warm Xcode build hits everything, so the transfer counters are the
+            # cache-worked signal rather than the task list.
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "xcode"
+
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -2561,6 +2673,7 @@ pipelines:
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
       feature-e2e-github-actions: {}
+      feature-e2e-github-actions-xcode: {}
 
       # Cross-DC configuration-cache reuse: 5 parallel saves blanket the
       # DC pool, then 3 parallel restores per platform exercise the read

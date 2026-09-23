@@ -3,7 +3,10 @@
 // See docs/auth.md.
 package auth
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Credential is what a caller needs to make one authenticated call. Every field is
 // always meaningful; the refresh machinery stays in TokenSet, below the boundary.
@@ -39,11 +42,12 @@ func (t TokenSet) IsOAuthManaged() bool {
 
 // The only conversion between the two types; there is deliberately no reverse, so a
 // write path cannot drop a refresh token, a JWT or a display name it wasn't
-// thinking about.
+// thinking about. Trims surrounding whitespace so a stray trailing newline in a
+// persisted or injected record can't produce a header gRPC will reject client-side.
 func (t TokenSet) Credential() Credential {
 	return Credential{
-		Token:       t.AuthToken,
-		WorkspaceID: t.WorkspaceID,
+		Token:       strings.TrimSpace(t.AuthToken),
+		WorkspaceID: strings.TrimSpace(t.WorkspaceID),
 		Expiry:      t.PATExpiry,
 	}
 }

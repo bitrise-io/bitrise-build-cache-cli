@@ -1,6 +1,7 @@
 package ccache
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -126,8 +127,10 @@ func DefaultParams() Params {
 	}
 }
 
-func NewConfig(envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
-	authConfig, authOrigin, err := live.Default(nil).ResolveNoRefresh(envs)
+func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
+	// Brokering: on Build Hub the runner's VM token is the only credential there is,
+	// and this runs before the ResolvePinned call that would materialise one.
+	authConfig, authOrigin, err := live.Default(nil).Resolve(ctx, envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

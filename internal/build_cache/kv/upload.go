@@ -140,8 +140,9 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 		})
 		if err != nil {
 			c.logger.Warnf("Failed to upload stream %s: attempt %d: initiate put: %s", key, attempt+1, err)
+			abort := errors.Is(err, ErrCacheUnauthenticated)
 
-			return fmt.Errorf("create kv put client (with key %s): %w", key, err), false
+			return fmt.Errorf("create kv put client (with key %s): %w", key, err), abort
 		}
 		defer kvWriter.Close()
 
@@ -166,7 +167,7 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 
 			return nil, false
 		}
-		if isUnauthenticated(err) {
+		if err != nil && c.authGate.tripOnce(err) {
 			return ErrCacheUnauthenticated, true
 		}
 		if err != nil {
@@ -179,7 +180,7 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 			// A rejected token is not going to be accepted on a retry, and the
 			// stream often only surfaces Unauthenticated on close — so without this
 			// every upload burns the full retry budget before giving up.
-			if isUnauthenticated(err) {
+			if c.authGate.tripOnce(err) {
 				c.logger.TWarnf("Failed to upload stream %s: %s", key, err)
 
 				return ErrCacheUnauthenticated, true

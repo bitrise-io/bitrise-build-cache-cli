@@ -20,6 +20,15 @@ func TestTokenSetCredential_carriesTheExpiry(t *testing.T) {
 	assert.Empty(t, ts.Username == "", "the display name stays on the record; it is not a credential")
 }
 
+func TestTokenSet_Credential_TrimsWhitespace(t *testing.T) {
+	ts := TokenSet{AuthToken: "tok\n", WorkspaceID: "  ws  "}
+
+	got := ts.Credential()
+
+	assert.Equal(t, "tok", got.Token, "trailing whitespace on the token would produce a header gRPC rejects client-side")
+	assert.Equal(t, "ws", got.WorkspaceID)
+}
+
 func TestTokenSetOrigin_provenanceFollowsTheRefreshToken(t *testing.T) {
 	manual := TokenSet{AuthToken: "pat", WorkspaceID: "ws"}
 	login := TokenSet{AuthToken: "pat", WorkspaceID: "ws", RefreshToken: "rt"}
