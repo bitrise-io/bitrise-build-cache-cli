@@ -1,15 +1,10 @@
-// Package jobsummary renders a tool's end-of-build cache stats onto the GitHub
-// Actions job page, from the counters the CLI already holds.
+// Package jobsummary puts a tool's cache stats on the GitHub Actions job page.
 //
-// GITHUB_STEP_SUMMARY is a file the runner creates for the step, and the CLI
-// inherits it like any other environment variable, so this needs nothing added
-// to the user's workflow.
-//
-// A block per invocation: its command, then a one-row table. Separate tables
-// rather than one shared one, because the runner gives every step its own summary
-// file and concatenates them for the job page -- rows can only accumulate within a
-// step, so a single table would fragment across them anyway. The Gradle plugins
-// write the same shape, so a mixed job reads as one list.
+// GITHUB_STEP_SUMMARY is a file the runner creates for the step and the CLI
+// inherits, so this needs nothing added to the user's workflow. A block per
+// invocation rather than one shared table: the runner gives every step its own
+// file, so a table could never span them. The Gradle plugins write the same
+// shape.
 package jobsummary
 
 import (
@@ -39,7 +34,6 @@ const (
 	bytesInMB = 1000 * 1000
 )
 
-// Invocation is one row: what ran, how the cache served it, and how long it took.
 // Nil byte counts mean nothing reported, which is not the same as nothing moving.
 type Invocation struct {
 	Success         bool
@@ -51,7 +45,6 @@ type Invocation struct {
 	InvocationURL   string
 }
 
-// Block is the command, then a table of one: what the cache did for this invocation.
 func Block(i Invocation) string {
 	status := "✅"
 	if !i.Success {
@@ -74,9 +67,8 @@ func Block(i Invocation) string {
 		duration(i.Duration), link)
 }
 
-// CacheStatus applies the same ladder as the invocation list in the web UI, so a
-// row here and a row there describe the same build the same way. See
-// invocationCacheStatus.ts in bitrise-website.
+// CacheStatus is the ladder invocationCacheStatus.ts applies in bitrise-website,
+// so a row here and a row there read the same.
 func CacheStatus(i Invocation) string {
 	if i.BenchmarkPhase == phaseBaseline {
 		return "Baseline"
@@ -104,10 +96,8 @@ func CacheStatus(i Invocation) string {
 	return statusLowReuse
 }
 
-// Annotation is a one-line workflow command, which GitHub shows on the job run
-// page as well as the pipeline summary -- the summary file only reaches the
-// latter. Warning for low reuse, because that is the status worth acting on;
-// everything else is a notice.
+// Annotation reaches the job run page, which the summary file does not. Low reuse
+// warns because it is the status worth acting on; everything else is a notice.
 func Annotation(i Invocation) string {
 	status := CacheStatus(i)
 
@@ -131,8 +121,7 @@ func Annotation(i Invocation) string {
 		megabytes(i.DownloadedBytes), megabytes(i.UploadedBytes), view)
 }
 
-// A scheme or task path carries colons, which separate a workflow command's own
-// properties.
+// A scheme or task path carries colons, which end a command's property list.
 func escapeProperty(value string) string {
 	return strings.NewReplacer(
 		"%", "%25",
@@ -153,9 +142,8 @@ func WriteAnnotation(i Invocation) {
 	fmt.Fprintln(os.Stdout, Annotation(i))
 }
 
-// Write adds this invocation's block to the job summary, replacing it when the
-// same invocation reports twice. Reports whether anything was written; a summary
-// is a nicety, so no caller should fail on it.
+// Write adds this invocation's block, replacing it when the same invocation
+// reports twice. A summary is a nicety, so no caller should fail on it.
 func Write(block, section string) (bool, error) {
 	path := os.Getenv(summaryEnvVar)
 	if path == "" || block == "" {
@@ -181,7 +169,6 @@ func endMarker(section string) string { return "<!-- bitrise-build-cache:" + sec
 func withBlock(content, block, section string) string {
 	marked := startMarker(section) + "\n" + block + endMarker(section) + "\n\n"
 
-	// One heading for the file, however many invocations write into it.
 	if !strings.Contains(content, heading) {
 		content += heading + "\n\n"
 	}

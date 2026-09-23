@@ -63,7 +63,6 @@ func TestJobRunningSeveralToolsGetsABlockEach(t *testing.T) {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 
-	// One heading, then a block per invocation: its command, then its own table.
 	assert.Equal(t, 1, strings.Count(string(content), "### ⚡️ Bitrise Build Cache"))
 	assert.Contains(t, string(content), "**build -scheme WordPress**")
 	assert.Contains(t, string(content), "| ✅ | Healthy | 3,438.2 MB | 0 MB | 2m 31.3s |")

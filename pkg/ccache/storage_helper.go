@@ -263,11 +263,8 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 // Always zeros ccache counters at the end regardless of activity.
 // If the storage helper is reachable, its session byte counts and active invocation
 // IDs override the values from internal state and params.
-// The same figures as the stats lines above, on the GitHub Actions job page.
-// Does nothing anywhere else, and never fails the build.
-//
-// No duration: a ccache session spans the whole build rather than one command, so
-// the wall time of a compile is not a figure this helper holds.
+// The same figures as the stats lines above, on the GitHub Actions job page. No
+// duration: a ccache session spans the build rather than one command.
 func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string) {
 	invocation := jobsummary.Invocation{
 		Success:         true,

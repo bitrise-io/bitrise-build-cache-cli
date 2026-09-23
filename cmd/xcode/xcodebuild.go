@@ -752,7 +752,6 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 }
 
 // The same figures as the stats lines above, on the GitHub Actions job page.
-// Does nothing anywhere else, and never fails the build.
 func (c *XcodebuildRunner) writeJobSummary(runStats xcodeargs.RunStats, outcome proxyOutcome) {
 	invocation := jobsummary.Invocation{
 		Success:        runStats.Success,
