@@ -256,28 +256,30 @@ func (c *Client) findMissing(ctx context.Context,
 	return convertToFileDigests(resp.GetMissingBlobDigests()), nil
 }
 
-func (c *Client) findMissingChunked(ctx context.Context,
-	req *remoteexecution.FindMissingBlobsRequest,
-	digests []*FileDigest,
-	blobDigests []*remoteexecution.Digest,
-	gRPCLimitBytes int,
-) ([]*FileDigest, error) {
+const maxDigestsPerFindMissingRequest = 1000
+
+func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
+	if len(digests) == 0 {
+		return nil, nil
+	}
+
+	blobDigests := convertToBlobDigests(digests)
+
+	if len(digests) <= maxDigestsPerFindMissingRequest {
+		req := &remoteexecution.FindMissingBlobsRequest{BlobDigests: blobDigests}
+		c.logger.Debugf("Size of FindMissingBlobs request for %d blobs is %s", len(digests), humanize.Bytes(uint64(len(req.String()))))
+
+		return c.findMissing(ctx, req)
+	}
+
 	var missingBlobs []*FileDigest
-	// Chunk up request blobs to fit into gRPC limits
-	// Calculate the unit size of a blob (in practice can differ to the theoretical sha256(32 bytes) + size(8 bytes) = 40 bytes)
-	digestUnitSize := float64(len(req.String())) / float64(len(digests))
-	maxDigests := int(float64(gRPCLimitBytes) / digestUnitSize)
-	for startIndex := 0; startIndex < len(digests); startIndex += maxDigests {
-		endIndex := startIndex + maxDigests
-		if endIndex > len(digests) {
-			endIndex = len(digests)
-		}
-		req.BlobDigests = blobDigests[startIndex:endIndex]
+	for startIndex := 0; startIndex < len(digests); startIndex += maxDigestsPerFindMissingRequest {
+		endIndex := min(startIndex+maxDigestsPerFindMissingRequest, len(digests))
+		req := &remoteexecution.FindMissingBlobsRequest{BlobDigests: blobDigests[startIndex:endIndex]}
 		c.logger.Debugf("Calling FindMissingBlobs for chunk: digests[%d:%d]", startIndex, endIndex)
 
-		var resp []*FileDigest
-		var err error
-		if resp, err = c.findMissing(ctx, req); err != nil {
+		resp, err := c.findMissing(ctx, req)
+		if err != nil {
 			return nil, fmt.Errorf("find missing blobs: %w", err)
 		}
 
@@ -285,20 +287,6 @@ func (c *Client) findMissingChunked(ctx context.Context,
 	}
 
 	return missingBlobs, nil
-}
-
-func (c *Client) FindMissing(ctx context.Context, digests []*FileDigest) ([]*FileDigest, error) {
-	blobDigests := convertToBlobDigests(digests)
-	req := &remoteexecution.FindMissingBlobsRequest{
-		BlobDigests: blobDigests,
-	}
-	c.logger.Debugf("Size of FindMissingBlobs request for %d blobs is %s", len(digests), humanize.Bytes(uint64(len(req.String()))))
-	gRPCLimitBytes := 4 * 1024 * 1024 // gRPC limit is 4 MiB
-	if len(req.String()) > gRPCLimitBytes {
-		return c.findMissingChunked(ctx, req, digests, blobDigests, gRPCLimitBytes)
-	}
-
-	return c.findMissing(ctx, req)
 }
 
 func convertToBlobDigests(digests []*FileDigest) []*remoteexecution.Digest {

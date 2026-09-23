@@ -39,6 +39,12 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 	c.logger.TInfof("(i) Downloading %d files, largest is %s",
 		len(dd.Files), humanize.Bytes(uint64(largestFileSize)))
 
+	if stats, missing, ok := c.precheckMissingBlobs(ctx, dd, largestFileSize); missing {
+		return stats, fmt.Errorf("cache incomplete: %w", ErrCacheNotFound)
+	} else if !ok {
+		c.logger.Warnf("FindMissingBlobs pre-check failed; falling back to per-file download")
+	}
+
 	var filesDownloaded atomic.Int32
 	var filesMissing atomic.Int32
 	var filesFailedToDownload atomic.Int32
@@ -144,4 +150,50 @@ func (c *Client) DownloadFileGroupFromBuildCache(ctx context.Context, dd filegro
 	}
 
 	return stats, nil
+}
+
+// precheckMissingBlobs returns (stats, anyMissing, ok); ok=false means fall back to per-file downloads.
+func (c *Client) precheckMissingBlobs(ctx context.Context, dd filegroup.Info, largestFileSize int64) (DownloadFilesStats, bool, bool) {
+	seen := make(map[string]bool, len(dd.Files))
+	digests := make([]*FileDigest, 0, len(dd.Files))
+	for _, f := range dd.Files {
+		if seen[f.Hash] {
+			continue
+		}
+		seen[f.Hash] = true
+		digests = append(digests, &FileDigest{Sha256Sum: f.Hash, SizeInBytes: f.Size})
+	}
+
+	if len(digests) == 0 {
+		return DownloadFilesStats{}, false, true
+	}
+
+	missingDigests, err := c.FindMissing(ctx, digests)
+	if err != nil {
+		return DownloadFilesStats{}, false, false
+	}
+
+	if len(missingDigests) == 0 {
+		return DownloadFilesStats{}, false, true
+	}
+
+	missingHashes := make(map[string]bool, len(missingDigests))
+	for _, d := range missingDigests {
+		missingHashes[d.Sha256Sum] = true
+	}
+
+	missingFileCount := 0
+	for _, f := range dd.Files {
+		if missingHashes[f.Hash] {
+			missingFileCount++
+		}
+	}
+
+	c.logger.TInfof("(i) Pre-check: %d of %d blobs missing (%d files affected); skipping download", len(missingDigests), len(digests), missingFileCount)
+
+	return DownloadFilesStats{
+		FilesToBeDownloaded: len(dd.Files),
+		FilesMissing:        missingFileCount,
+		LargestFileSize:     largestFileSize,
+	}, true, true
 }
