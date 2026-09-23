@@ -153,8 +153,8 @@ func TestAnnotationLevelFollowsTheStatus(t *testing.T) {
 		InvocationURL:   "https://app.bitrise.io/build-cache/invocations/gradle/a",
 	})
 	assert.Equal(t,
-		"::notice title=Bitrise Build Cache::Healthy — compileDebugKotlin: 3,438.2 MB downloaded, 0 MB uploaded. "+
-			"View: https://app.bitrise.io/build-cache/invocations/gradle/a",
+		"::notice title=Bitrise Build Cache::Healthy — compileDebugKotlin: 3,438.2 MB downloaded, 0 MB uploaded."+
+			"%0Ahttps://app.bitrise.io/build-cache/invocations/gradle/a",
 		healthy)
 
 	// Low reuse is the one worth acting on, so it is the one that warns.
@@ -164,5 +164,5 @@ func TestAnnotationLevelFollowsTheStatus(t *testing.T) {
 		UploadedBytes:   bytesOf(118_000_000),
 	})
 	assert.Contains(t, lowReuse, "::warning title=Bitrise Build Cache::Low reuse — ")
-	assert.NotContains(t, lowReuse, "View:")
+	assert.NotContains(t, lowReuse, "%0A")
 }

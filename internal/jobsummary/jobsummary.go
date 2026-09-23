@@ -123,9 +123,12 @@ func Annotation(i Invocation) string {
 		command = "build"
 	}
 
+	// %0A is a newline in a workflow command, which puts the URL on its own line the
+	// way GitHub's own annotations do. Nothing follows it: trailing punctuation would
+	// be taken as part of the address.
 	view := ""
 	if i.InvocationURL != "" {
-		view = " View: " + i.InvocationURL
+		view = "%0A" + i.InvocationURL
 	}
 
 	return fmt.Sprintf("::%s title=%s::%s — %s: %s downloaded, %s uploaded.%s",
