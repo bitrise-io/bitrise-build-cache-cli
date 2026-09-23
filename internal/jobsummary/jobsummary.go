@@ -28,6 +28,10 @@ const (
 
 	heading = "## ⚡️ Bitrise Build Cache"
 
+	annotationTitle = "Bitrise Build Cache"
+
+	statusLowReuse = "Low reuse"
+
 	tableHead = "| Status | Cache status | ↓ Downloaded | ↑ Uploaded | Duration | |\n" +
 		"|:---:|---|---:|---:|---|---|\n"
 
@@ -99,7 +103,44 @@ func CacheStatus(i Invocation) string {
 		return "Healthy"
 	}
 
-	return "Low reuse"
+	return statusLowReuse
+}
+
+// Annotation is a one-line workflow command, which GitHub shows on the job run
+// page as well as the pipeline summary -- the summary file only reaches the
+// latter. Warning for low reuse, because that is the status worth acting on;
+// everything else is a notice.
+func Annotation(i Invocation) string {
+	status := CacheStatus(i)
+
+	level := "notice"
+	if status == statusLowReuse {
+		level = "warning"
+	}
+
+	command := i.Command
+	if command == "" {
+		command = "build"
+	}
+
+	view := ""
+	if i.InvocationURL != "" {
+		view = " View: " + i.InvocationURL
+	}
+
+	return fmt.Sprintf("::%s title=%s::%s — %s: %s downloaded, %s uploaded.%s",
+		level, annotationTitle, status, command,
+		megabytes(i.DownloadedBytes), megabytes(i.UploadedBytes), view)
+}
+
+// WriteAnnotation prints the workflow command straight to stdout, unprefixed:
+// GitHub only reads a command that starts its line. Silent off GitHub Actions.
+func WriteAnnotation(i Invocation) {
+	if os.Getenv(summaryEnvVar) == "" {
+		return
+	}
+
+	fmt.Fprintln(os.Stdout, Annotation(i))
 }
 
 // Write adds this invocation's block to the job summary, replacing it when the

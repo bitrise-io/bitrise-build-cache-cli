@@ -770,6 +770,8 @@ func (c *XcodebuildRunner) writeJobSummary(runStats xcodeargs.RunStats, outcome 
 		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/xcode/" + c.InvocationID
 	}
 
+	jobsummary.WriteAnnotation(invocation)
+
 	if _, err := jobsummary.Write(jobsummary.Block(invocation), "xcode-"+c.InvocationID); err != nil {
 		c.Logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
 	}

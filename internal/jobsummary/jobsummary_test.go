@@ -144,3 +144,25 @@ func TestAFailedBuildStillReportsWhatTheCacheDid(t *testing.T) {
 	assert.Contains(t, block, "| ❌ |")
 	assert.Contains(t, block, "Healthy")
 }
+
+func TestAnnotationLevelFollowsTheStatus(t *testing.T) {
+	healthy := jobsummary.Annotation(jobsummary.Invocation{
+		Command:         "compileDebugKotlin",
+		DownloadedBytes: bytesOf(3_438_200_000),
+		UploadedBytes:   bytesOf(0),
+		InvocationURL:   "https://app.bitrise.io/build-cache/invocations/gradle/a",
+	})
+	assert.Equal(t,
+		"::notice title=Bitrise Build Cache::Healthy — compileDebugKotlin: 3,438.2 MB downloaded, 0 MB uploaded. "+
+			"View: https://app.bitrise.io/build-cache/invocations/gradle/a",
+		healthy)
+
+	// Low reuse is the one worth acting on, so it is the one that warns.
+	lowReuse := jobsummary.Annotation(jobsummary.Invocation{
+		Command:         "compileDebugKotlin",
+		DownloadedBytes: bytesOf(8_600_000),
+		UploadedBytes:   bytesOf(118_000_000),
+	})
+	assert.Contains(t, lowReuse, "::warning title=Bitrise Build Cache::Low reuse — ")
+	assert.NotContains(t, lowReuse, "View:")
+}
