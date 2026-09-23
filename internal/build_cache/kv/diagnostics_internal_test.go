@@ -78,13 +78,6 @@ func TestSamplePool_StopsWhenClosed(t *testing.T) {
 	}
 }
 
-type countingLogger struct {
-	log.Logger
-	warns int
-}
-
-func (l *countingLogger) Warnf(string, ...any) { l.warns++ }
-
 // A saturated pool fails thousands of operations; the log must not carry one
 // line each.
 func TestLogContention_RateLimited(t *testing.T) {
@@ -95,7 +88,7 @@ func TestLogContention_RateLimited(t *testing.T) {
 		c.logContention()
 	}
 
-	assert.Equal(t, 1, lg.warns)
+	assert.Equal(t, int64(1), lg.warns.Load())
 }
 
 func TestAcquireOn_LogsOnlyOnFailure(t *testing.T) {
@@ -104,10 +97,10 @@ func TestAcquireOn_LogsOnlyOnFailure(t *testing.T) {
 	c := &Client{channels: []*channel{ch}, logger: lg}
 
 	require.NoError(t, c.acquireOn(context.Background(), ch))
-	assert.Equal(t, 0, lg.warns)
+	assert.Equal(t, int64(0), lg.warns.Load())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	require.Error(t, c.acquireOn(ctx, ch))
-	assert.Equal(t, 1, lg.warns)
+	assert.Equal(t, int64(1), lg.warns.Load())
 }

@@ -432,6 +432,85 @@ func TestResolve_PrefersTheOAuthManagedRecordAcrossBackends(t *testing.T) {
 	assert.True(t, refreshed, "the OAuth-managed record is the one that must be refreshed")
 }
 
+func TestResolve_TrimsTrailingNewlineInEnvToken(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	envs := map[string]string{
+		auth.EnvAuthToken:   "abcdef\n",
+		auth.EnvWorkspaceID: "ws-1",
+	}
+
+	cred, _, err := r.ResolveNoRefresh(envs)
+
+	require.NoError(t, err)
+	assert.Equal(t, "abcdef", cred.Token)
+}
+
+func TestResolve_TrimsWorkspaceIDInEnv(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	envs := map[string]string{
+		auth.EnvAuthToken:   "abcdef",
+		auth.EnvWorkspaceID: " ws-1\n",
+	}
+
+	cred, _, err := r.ResolveNoRefresh(envs)
+
+	require.NoError(t, err)
+	assert.Equal(t, "ws-1", cred.WorkspaceID)
+}
+
+func TestResolve_RejectsNonPrintableEnvToken(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	envs := map[string]string{
+		auth.EnvAuthToken:   "tok\x01en",
+		auth.EnvWorkspaceID: "ws-1",
+	}
+
+	_, _, err := r.ResolveNoRefresh(envs)
+
+	require.ErrorIs(t, err, auth.ErrTokenNonPrintable)
+}
+
+func TestResolve_TrimsTrailingNewlineInJWT(t *testing.T) {
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	envs := map[string]string{auth.EnvJWT: umaJWT(t, "ws-jwt") + "\n"}
+
+	cred, origin, err := r.ResolveNoRefresh(envs)
+
+	require.NoError(t, err)
+	assert.Equal(t, auth.BackendJWT, origin.Backend)
+	assert.Equal(t, "ws-jwt", cred.WorkspaceID)
+	assert.False(t, len(cred.Token) > 0 && cred.Token[len(cred.Token)-1] == '\n',
+		"JWT must not carry a trailing newline; the header would be rejected client-side")
+}
+
+func TestResolve_RejectsNonPrintableStoredToken(t *testing.T) {
+	corrupt := auth.TokenSet{AuthToken: "tok\x01en", WorkspaceID: "ws-1"}
+	r := &Resolver{
+		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: corrupt, present: true}},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	_, _, err := r.ResolveNoRefresh(map[string]string{})
+
+	require.ErrorIs(t, err, auth.ErrTokenNonPrintable)
+}
+
 // The legacy block records whether its token is a CI JWT, and GradleToken needs
 // that: a JWT is sent as-is, a PAT is prefixed with the workspace.
 func TestResolve_LegacyJWTKeepsItsOrigin(t *testing.T) {

@@ -53,6 +53,35 @@ func TestClient_getMethodCallMetadata_RefreshesPerCall(t *testing.T) {
 	assert.Equal(t, []string{"ws-2"}, md2.Get("x-org-id"))
 }
 
+// Regression guard: TokenSet.Credential() trims upstream so a newline never
+// reaches this layer. If a future path re-introduces one, the header value
+// will carry a non-printable byte and gRPC will reject it client-side.
+func TestClient_getMethodCallMetadata_TrailingNewlineTokenLeavesInvalidHeader(t *testing.T) {
+	src := staticAuthSource{cfg: authpkg.Credential{Token: "tok\n", WorkspaceID: "ws"}}
+
+	c := &Client{
+		clientName: "test-tool",
+		authSource: src,
+		logger:     log.NewLogger(),
+	}
+
+	md := c.getMethodCallMetadata(t.Context(), false)
+	authHeader := md.Get("authorization")
+	require.Len(t, authHeader, 1)
+
+	hasNonPrintable := false
+	for i := 0; i < len(authHeader[0]); i++ {
+		if b := authHeader[0][i]; b < 0x20 || b > 0x7E {
+			hasNonPrintable = true
+
+			break
+		}
+	}
+	assert.True(t, hasNonPrintable,
+		"a token carrying a control byte at this layer would build a header value gRPC rejects with %q — sanitise before reaching the client",
+		grpcNonPrintableHeaderMsg)
+}
+
 // A stable AuthSource behaves like the old fixed AuthConfig — successive calls
 // return identical auth headers. Guards against accidental non-determinism.
 func TestClient_getMethodCallMetadata_StableWhenSourceStable(t *testing.T) {

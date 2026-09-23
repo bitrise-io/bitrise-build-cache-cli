@@ -111,6 +111,7 @@ type Client struct {
 	downloadRetryWait   time.Duration
 	uploadRetry         uint
 	uploadRetryWait     time.Duration
+	authGate            authGate
 	stopSampling        chan struct{}
 	stopSamplingOnce    sync.Once
 	lastContentionLog   atomic.Int64
@@ -181,6 +182,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		downloadRetryWait:   p.DownloadRetryWait,
 		uploadRetry:         p.UploadRetry,
 		uploadRetryWait:     p.UploadRetryWait,
+		authGate:            authGate{logger: p.Logger},
 	}
 
 	if p.DebugLogging && p.Logger != nil {
@@ -245,6 +247,7 @@ func buildChannels(p NewClientParams) ([]*channel, error) {
 
 func (c *Client) SetLogger(logger log.Logger) {
 	c.logger = logger
+	c.authGate.logger = logger
 }
 
 // Close releases every gRPC connection in the pool. Safe to call when the
