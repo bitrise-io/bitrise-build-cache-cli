@@ -98,18 +98,12 @@ type Origin struct {
 }
 ```
 
-The config file holds credentials under two JSON keys. `credentials` is an
-`auth.TokenSet` written by `auth login` and `auth set`, and carries the refresh
-token. `authConfig` is an `AnalyticsAuthConfig` — a plain token+workspace snapshot,
-written on every activation and read by the React Native post-run hook, the ccache
-invocation registry, and consumers outside this repo. Both are `Backend == File`;
-they differ in `Provenance` (`OAuthLogin`/`Manual` vs `Static`). Backend alone
-cannot express that, and provenance alone cannot tell you which file to write.
-
-`authConfig` is *not* deprecated despite being the older of the two — nothing is
-migrating off it, and three `pkg/` consumers read it as their only source. What
-`Static` means is narrower and permanent: no refresh machinery, so never
-refreshable.
+The config file holds credentials under `credentials`, an `auth.TokenSet` written
+by `auth login` and `auth set` carrying the refresh token. A separate `authConfig`
+key (`AnalyticsAuthConfig`) is written on every activation as a plain token+workspace
+snapshot for external consumers (React Native post-run hook, ccache invocation
+registry, and readers outside this repo). The CLI writes it but never reads it back
+for its own resolution.
 
 `Resolve` prefers an OAuth-managed record over a manual one wherever it lives: a
 manual `auth set` token in an earlier backend would otherwise hide a login in a
@@ -245,7 +239,6 @@ env vars (AUTH_TOKEN + WORKSPACE_ID)
   → brokered Build Hub token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL)
   → OS keychain
   → config file, `credentials` key
-  → config file, `authConfig` (analytics) block
 ```
 
 The brokered step sits after the injected credentials and before the stores. A Build
@@ -460,9 +453,9 @@ credential off a config struct counts as reading the config file — `lint_arch.
 cannot see that, so it is on review to catch.
 
 **A consumer with an injected `OsProxy` needs an injected resolver too.** Resolution
-reaches the real keychain and the real analytics config regardless of what file
-plumbing the caller was handed, so a test that only fakes `OsProxy` is not hermetic.
-`RunnerParams.Resolver` is the pattern.
+reaches the real keychain regardless of what file plumbing the caller was handed,
+so a test that only fakes `OsProxy` is not hermetic. `RunnerParams.Resolver` is
+the pattern.
 
 **A new backend** implements `store.Store` and is added to `SelectAuto` and the
 `loadFrom` chain. It stores `auth.TokenSet` — no new credential type.

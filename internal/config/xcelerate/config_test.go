@@ -18,7 +18,6 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
@@ -181,73 +180,24 @@ func TestConfig_Save(t *testing.T) {
 	})
 }
 
-// TestConfig_AuthBackwardsCompat covers the upgrade path from CLI versions
-// that persisted authConfig in the xcelerate config file. New CLI must:
-//   - Save: not write authConfig into the xcelerate config (it lives in the
-//     multiplatform config now).
-//   - ReadConfig: still pick up authConfig from a legacy xcelerate config file
-//     when no multiplatform config exists yet.
-func TestConfig_AuthBackwardsCompat(t *testing.T) {
-	t.Run("Save strips authConfig from disk", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("HOME", home)
+func TestConfig_SaveStripsAuthConfigFromDisk(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 
-		osProxy := utils.DefaultOsProxy{}
+	osProxy := utils.DefaultOsProxy{}
 
-		cfg := xcelerate.Config{
-			ProxyVersion:           "1.0.0",
-			OriginalXcodebuildPath: "/usr/bin/xcodebuild",
-			AuthConfig:             authpkg.Credential{Token: "secret", WorkspaceID: "ws"},
-		}
+	cfg := xcelerate.Config{
+		ProxyVersion:           "1.0.0",
+		OriginalXcodebuildPath: "/usr/bin/xcodebuild",
+		AuthConfig:             authpkg.Credential{Token: "secret", WorkspaceID: "ws"},
+	}
 
-		require.NoError(t, cfg.Save(mockLogger, osProxy, utils.DefaultEncoderFactory{}))
+	require.NoError(t, cfg.Save(mockLogger, osProxy, utils.DefaultEncoderFactory{}))
 
-		raw, err := os.ReadFile(xcelerate.PathFor(osProxy, "config.json"))
-		require.NoError(t, err)
-		assert.NotContains(t, string(raw), "authConfig", "auth must not be persisted in xcelerate config")
-		assert.NotContains(t, string(raw), "secret")
-	})
-
-	t.Run("ReadConfig falls back to legacy authConfig when multiplatform missing", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("HOME", home)
-
-		osProxy := utils.DefaultOsProxy{}
-
-		dir := xcelerate.DirPath(osProxy)
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-		legacy := `{"proxyVersion":"1.0.0","authConfig":{"AuthToken":"legacy-token","WorkspaceID":"legacy-ws"}}`
-		require.NoError(t, os.WriteFile(xcelerate.PathFor(osProxy, "config.json"), []byte(legacy), 0o600))
-
-		cfg, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, map[string]string{})
-		require.NoError(t, err)
-		assert.Equal(t, "legacy-token", cfg.AuthConfig.Token)
-		assert.Equal(t, "legacy-ws", cfg.AuthConfig.WorkspaceID)
-	})
-
-	t.Run("ReadConfig prefers multiplatform config when present", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("HOME", home)
-
-		osProxy := utils.DefaultOsProxy{}
-
-		// Legacy xcelerate config carries old auth.
-		dir := xcelerate.DirPath(osProxy)
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-		legacy := `{"proxyVersion":"1.0.0","authConfig":{"AuthToken":"legacy-token","WorkspaceID":"legacy-ws"}}`
-		require.NoError(t, os.WriteFile(xcelerate.PathFor(osProxy, "config.json"), []byte(legacy), 0o600))
-
-		// New multiplatform config carries current auth.
-		mp := multiplatformconfig.Config{
-			AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: "current-token", WorkspaceID: "current-ws"},
-		}
-		require.NoError(t, mp.Save(osProxy, utils.DefaultEncoderFactory{}))
-
-		cfg, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, map[string]string{})
-		require.NoError(t, err)
-		assert.Equal(t, "current-token", cfg.AuthConfig.Token)
-		assert.Equal(t, "current-ws", cfg.AuthConfig.WorkspaceID)
-	})
+	raw, err := os.ReadFile(xcelerate.PathFor(osProxy, "config.json"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "authConfig", "auth must not be persisted in xcelerate config")
+	assert.NotContains(t, string(raw), "secret")
 }
 
 func TestConfig_NewConfig(t *testing.T) {

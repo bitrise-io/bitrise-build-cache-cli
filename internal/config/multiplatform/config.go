@@ -68,29 +68,6 @@ func jwtProvenance(origin auth.Origin) string {
 	return ProvenanceInjected
 }
 
-func (l AnalyticsAuthConfig) Populated() bool {
-	return l.AuthToken != "" && l.WorkspaceID != ""
-}
-
-func (l AnalyticsAuthConfig) Credential() auth.Credential {
-	return auth.Credential{Token: l.AuthToken, WorkspaceID: l.WorkspaceID}
-}
-
-// Origin reports where the legacy block's credential came from. IsJWT is
-// load-bearing: a JWT is sent as-is, a PAT is prefixed with the workspace.
-func (l AnalyticsAuthConfig) Origin() auth.Origin {
-	if l.IsJWT {
-		provenance := auth.ProvenanceInjected
-		if l.Provenance == ProvenanceBrokered {
-			provenance = auth.ProvenanceBrokered
-		}
-
-		return auth.Origin{Backend: auth.BackendJWT, Provenance: provenance}
-	}
-
-	return auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}
-}
-
 // Credentials is the CI-safe file backend for auth set/login; AuthConfig stays for backward compatibility with older analytics readers.
 type Config struct {
 	AuthConfig   AnalyticsAuthConfig `json:"authConfig"`

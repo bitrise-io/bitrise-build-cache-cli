@@ -56,10 +56,7 @@ func TestResolveUsername_FallsBackToTheOSUser(t *testing.T) {
 // Resolve must not pay for the store read: Bound.Get is the proxy's per-RPC path.
 func TestResolve_DoesNotLookUpTheDisplayName(t *testing.T) {
 	stored := &fakeStore{backend: auth.BackendKeychain, ts: auth.TokenSet{AuthToken: "t", WorkspaceID: "w", Username: "jane"}, present: true}
-	r := &Resolver{
-		Backends:       []store.Store{stored},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
-	}
+	r := &Resolver{Backends: []store.Store{stored}}
 
 	_, _, err := r.ResolveNoRefresh(envVars())
 

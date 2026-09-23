@@ -537,15 +537,11 @@ func clearAuthEnv(t *testing.T) {
 	}
 }
 
-// hermeticResolver keeps the readiness gate off the machine's real keychain and
-// analytics config, so a developer who happens to be logged in does not flip the
-// bypass tests.
+// hermeticResolver keeps the readiness gate off the machine's real keychain, so a
+// developer who happens to be logged in does not flip the bypass tests.
 func hermeticResolver() *live.Resolver {
 	r := live.Default(nil)
 	r.Backends = []store.Store{}
-	r.AnalyticsBlock = func() (auth.Credential, auth.Origin, bool) {
-		return auth.Credential{}, auth.Origin{}, false
-	}
 
 	return r
 }

@@ -93,31 +93,26 @@ func TestResolve_Precedence(t *testing.T) {
 	jwt := umaJWT(t, "jwt-ws")
 
 	cases := []struct {
-		name                             string
-		env, useJWT, keychain, file, leg bool
-		wantToken, wantWS                string
-		wantBackend                      auth.Backend
-		wantProvenance                   auth.Provenance
+		name                        string
+		env, useJWT, keychain, file bool
+		wantToken, wantWS           string
+		wantBackend                 auth.Backend
+		wantProvenance              auth.Provenance
 	}{
 		{name: "nothing", wantBackend: auth.BackendNone},
 		{name: "env only", env: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
 		{name: "jwt only", useJWT: true, wantToken: jwt, wantWS: "jwt-ws", wantBackend: auth.BackendJWT, wantProvenance: auth.ProvenanceInjected},
 		{name: "keychain only", keychain: true, wantToken: "kc-tok", wantWS: "kc-ws", wantBackend: auth.BackendKeychain, wantProvenance: auth.ProvenanceManual},
 		{name: "file only", file: true, wantToken: "file-tok", wantWS: "file-ws", wantBackend: auth.BackendFile, wantProvenance: auth.ProvenanceManual},
-		{name: "legacy only", leg: true, wantToken: "legacy-tok", wantWS: "legacy-ws", wantBackend: auth.BackendFile, wantProvenance: auth.ProvenanceStatic},
 
 		{name: "env beats jwt", env: true, useJWT: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
 		{name: "env beats keychain", env: true, keychain: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
 		{name: "env beats file", env: true, file: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
-		{name: "env beats legacy", env: true, leg: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
 		{name: "jwt beats keychain", useJWT: true, keychain: true, wantToken: jwt, wantWS: "jwt-ws", wantBackend: auth.BackendJWT, wantProvenance: auth.ProvenanceInjected},
 		{name: "jwt beats file", useJWT: true, file: true, wantToken: jwt, wantWS: "jwt-ws", wantBackend: auth.BackendJWT, wantProvenance: auth.ProvenanceInjected},
-		{name: "jwt beats legacy", useJWT: true, leg: true, wantToken: jwt, wantWS: "jwt-ws", wantBackend: auth.BackendJWT, wantProvenance: auth.ProvenanceInjected},
 		{name: "keychain beats file", keychain: true, file: true, wantToken: "kc-tok", wantWS: "kc-ws", wantBackend: auth.BackendKeychain, wantProvenance: auth.ProvenanceManual},
-		{name: "keychain beats legacy", keychain: true, leg: true, wantToken: "kc-tok", wantWS: "kc-ws", wantBackend: auth.BackendKeychain, wantProvenance: auth.ProvenanceManual},
-		{name: "file beats legacy", file: true, leg: true, wantToken: "file-tok", wantWS: "file-ws", wantBackend: auth.BackendFile, wantProvenance: auth.ProvenanceManual},
 
-		{name: "all present", env: true, useJWT: true, keychain: true, file: true, leg: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
+		{name: "all present", env: true, useJWT: true, keychain: true, file: true, wantToken: envToken, wantWS: envWS, wantBackend: auth.BackendEnv, wantProvenance: auth.ProvenanceInjected},
 	}
 
 	for _, tc := range cases {
@@ -134,10 +129,6 @@ func TestResolve_Precedence(t *testing.T) {
 				Backends: []store.Store{
 					&fakeStore{backend: auth.BackendKeychain, ts: keychainTS(), present: tc.keychain},
 					&fakeStore{backend: auth.BackendFile, ts: fileTS(), present: tc.file},
-				},
-				AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) {
-					return auth.Credential{Token: "legacy-tok", WorkspaceID: "legacy-ws"},
-						auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}, tc.leg
 				},
 			}
 
@@ -162,9 +153,8 @@ func TestResolve_Precedence(t *testing.T) {
 // must not shadow the login on the machine in front of the user.
 func TestResolve_PreferStored_storeBeatsEnv(t *testing.T) {
 	r := &Resolver{
-		Prefer:         PreferStored,
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: keychainTS(), present: true}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Prefer:   PreferStored,
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: keychainTS(), present: true}},
 	}
 
 	cred, origin, err := r.ResolveNoRefresh(envVars())
@@ -176,9 +166,8 @@ func TestResolve_PreferStored_storeBeatsEnv(t *testing.T) {
 
 func TestResolve_PreferStored_fallsBackToEnvWhenNothingStored(t *testing.T) {
 	r := &Resolver{
-		Prefer:         PreferStored,
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Prefer:   PreferStored,
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
 	}
 
 	cred, origin, err := r.ResolveNoRefresh(envVars())
@@ -198,8 +187,7 @@ func TestResolve_RefreshesEveryStoreBackend(t *testing.T) {
 
 			refreshed := false
 			r := &Resolver{
-				Backends:       []store.Store{&fakeStore{backend: backend, ts: stale, present: true}},
-				AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+				Backends: []store.Store{&fakeStore{backend: backend, ts: stale, present: true}},
 				Refresh: func(_ context.Context, _ auth.TokenSet, _ store.Store) (auth.TokenSet, error) {
 					refreshed = true
 
@@ -220,8 +208,7 @@ func TestResolve_RefreshesEveryStoreBackend(t *testing.T) {
 
 func TestResolve_InjectedCredentialsAreNeverRefreshed(t *testing.T) {
 	r := &Resolver{
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
 		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
 			t.Fatal("env credentials carry no refresh token; refresh must not be attempted")
 
@@ -240,8 +227,7 @@ func TestResolve_InjectedCredentialsAreNeverRefreshed(t *testing.T) {
 func TestResolve_ServesTheStoredCredentialWhenRefreshFails(t *testing.T) {
 	stored := auth.TokenSet{AuthToken: "stored", WorkspaceID: "ws", RefreshToken: "rt"}
 	r := &Resolver{
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: stored, present: true}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: stored, present: true}},
 		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
 			return auth.TokenSet{}, errors.New("network down")
 		},
@@ -257,8 +243,7 @@ func TestResolve_ServesTheStoredCredentialWhenRefreshFails(t *testing.T) {
 func TestResolveNoRefresh_neverRefreshes(t *testing.T) {
 	stored := auth.TokenSet{AuthToken: "stored", WorkspaceID: "ws", RefreshToken: "rt", PATExpiry: time.Now().Add(-time.Hour)}
 	r := &Resolver{
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: stored, present: true}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: stored, present: true}},
 		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
 			t.Fatal("ResolveNoRefresh must not refresh")
 
@@ -275,8 +260,7 @@ func TestResolveNoRefresh_neverRefreshes(t *testing.T) {
 
 func TestResolve_MalformedJWTIsReportedNotSwallowed(t *testing.T) {
 	r := &Resolver{
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
 	}
 
 	_, _, err := r.ResolveNoRefresh(map[string]string{auth.EnvJWT: "not-a-jwt"})
@@ -286,8 +270,7 @@ func TestResolve_MalformedJWTIsReportedNotSwallowed(t *testing.T) {
 
 func TestResolve_MissingWorkspaceIDIsDistinctFromMissingToken(t *testing.T) {
 	r := &Resolver{
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
 	}
 
 	_, _, err := r.ResolveNoRefresh(map[string]string{auth.EnvAuthToken: envToken})
@@ -305,7 +288,6 @@ func TestResolve_UnreadableBackendFallsThrough(t *testing.T) {
 			&fakeStore{backend: auth.BackendKeychain, loadErr: errors.New("keychain is locked")},
 			&fakeStore{backend: auth.BackendFile, ts: fileTS(), present: true},
 		},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
 	cred, origin, err := r.ResolveNoRefresh(map[string]string{})
@@ -322,7 +304,6 @@ func TestResolve_PartialRecordIsSkipped(t *testing.T) {
 			&fakeStore{backend: auth.BackendKeychain, ts: auth.TokenSet{AuthToken: "tok-no-ws"}, present: true},
 			&fakeStore{backend: auth.BackendFile, ts: fileTS(), present: true},
 		},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 	}
 
 	cred, _, err := r.ResolveNoRefresh(map[string]string{})
@@ -333,8 +314,7 @@ func TestResolve_PartialRecordIsSkipped(t *testing.T) {
 
 func TestBoundGet_returnsAZeroCredentialRatherThanPanicking(t *testing.T) {
 	r := &Resolver{
-		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
 	}
 
 	assert.Equal(t, auth.Credential{}, r.Bind(map[string]string{}).Get(t.Context()))
@@ -347,7 +327,6 @@ func TestResolve_ManualStoredCredentialIsNotRefreshed(t *testing.T) {
 	r := &Resolver{
 		OnRefreshFailure: FailFast,
 		Backends:         []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: manual, present: true}},
-		AnalyticsBlock:   func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
 			t.Fatal("a credential with no refresh token must not enter the refresh flow")
 
@@ -369,7 +348,6 @@ func TestResolve_FailFastReportsARefreshFailure(t *testing.T) {
 	r := &Resolver{
 		OnRefreshFailure: FailFast,
 		Backends:         []store.Store{&fakeStore{backend: auth.BackendKeychain, ts: login, present: true}},
-		AnalyticsBlock:   func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
 			return auth.TokenSet{}, errors.New("refresh token revoked")
 		},
@@ -378,29 +356,6 @@ func TestResolve_FailFastReportsARefreshFailure(t *testing.T) {
 	_, _, err := r.Resolve(t.Context(), map[string]string{})
 
 	require.Error(t, err)
-}
-
-// The legacy authConfig block predates refresh tokens; treating it as refreshable
-// sends the Bazel helper into a flow that can only fail.
-func TestResolve_LegacyBlockIsNotStoreManaged(t *testing.T) {
-	r := &Resolver{
-		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) {
-			return auth.Credential{Token: "l", WorkspaceID: "w"},
-				auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}, true
-		},
-		Refresh: func(context.Context, auth.TokenSet, store.Store) (auth.TokenSet, error) {
-			t.Fatal("the legacy block is not store-managed")
-
-			return auth.TokenSet{}, nil
-		},
-	}
-
-	_, origin, err := r.Resolve(t.Context(), map[string]string{})
-
-	require.NoError(t, err)
-	assert.False(t, origin.StoreManaged())
-	assert.Equal(t, auth.ProvenanceStatic, origin.Provenance)
 }
 
 // A manual token in an earlier backend must not hide a login in a later one, or
@@ -415,7 +370,6 @@ func TestResolve_PrefersTheOAuthManagedRecordAcrossBackends(t *testing.T) {
 			&fakeStore{backend: auth.BackendKeychain, ts: manual, present: true},
 			&fakeStore{backend: auth.BackendFile, ts: login, present: true},
 		},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
 		Refresh: func(_ context.Context, ts auth.TokenSet, _ store.Store) (auth.TokenSet, error) {
 			refreshed = true
 			assert.Equal(t, "login", ts.AuthToken)
@@ -430,21 +384,4 @@ func TestResolve_PrefersTheOAuthManagedRecordAcrossBackends(t *testing.T) {
 	assert.Equal(t, "login", cred.Token)
 	assert.Equal(t, auth.BackendFile, origin.Backend)
 	assert.True(t, refreshed, "the OAuth-managed record is the one that must be refreshed")
-}
-
-// The legacy block records whether its token is a CI JWT, and GradleToken needs
-// that: a JWT is sent as-is, a PAT is prefixed with the workspace.
-func TestResolve_LegacyJWTKeepsItsOrigin(t *testing.T) {
-	r := &Resolver{
-		Backends: []store.Store{&fakeStore{backend: auth.BackendKeychain}},
-		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) {
-			return auth.Credential{Token: "jwt-tok", WorkspaceID: "ws"},
-				auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceInjected}, true
-		},
-	}
-
-	cred, origin, err := r.ResolveNoRefresh(map[string]string{})
-
-	require.NoError(t, err)
-	assert.Equal(t, "jwt-tok", auth.GradleToken(cred, origin), "a JWT must not be workspace-prefixed")
 }

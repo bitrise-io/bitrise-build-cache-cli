@@ -45,7 +45,7 @@ const (
 )
 
 // Resolver answers "which credential should this process use". Nil fields take
-// production defaults; Refresh, Backends and AnalyticsBlock are the test seams.
+// production defaults; Refresh and Backends are the test seams.
 type Resolver struct {
 	Logger log.Logger
 	Prefer Prefer
@@ -56,9 +56,6 @@ type Resolver struct {
 	Refresh func(ctx context.Context, ts auth.TokenSet, backing store.Store) (auth.TokenSet, error)
 	// Backends overrides the stores consulted, in order. Nil means keychain, file.
 	Backends []store.Store
-	// AnalyticsBlock reads the analytics config's authConfig block. Nil means
-	// the real reader.
-	AnalyticsBlock func() (auth.Credential, auth.Origin, bool)
 	// Broker exchanges a Build Hub VM token for a Build Cache token. Nil means the
 	// real client, built from the environment.
 	Broker func(ctx context.Context, envs map[string]string) (auth.Credential, error)
@@ -182,10 +179,6 @@ func (r *Resolver) resolveWith(
 		}
 	}
 
-	if cred, origin, ok := r.legacyFile(); ok {
-		return cred, origin, nil, nil
-	}
-
 	// A login that stopped before the workspace step is not "no credentials" —
 	// saying so would send the user off to create a token they already have.
 	if r.hasTokenWithoutWorkspace() {
@@ -290,14 +283,6 @@ func (r *Resolver) backends() []store.Store {
 	}
 
 	return []store.Store{store.NewKeychain(), store.NewFile()}
-}
-
-func (r *Resolver) legacyFile() (auth.Credential, auth.Origin, bool) {
-	if r.AnalyticsBlock != nil {
-		return r.AnalyticsBlock()
-	}
-
-	return readAnalyticsCredential()
 }
 
 func (r *Resolver) refresh(ctx context.Context, backing store.Store) (auth.TokenSet, error) {

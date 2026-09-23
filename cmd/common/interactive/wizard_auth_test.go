@@ -32,9 +32,6 @@ func newResolver(kc store.Store, envs map[string]string, prompt string) wizardAu
 	res := live.Default(silentLogger())
 	res.Prefer = live.PreferStored
 	res.Backends = []store.Store{kc}
-	res.AnalyticsBlock = func() (authpkg.Credential, authpkg.Origin, bool) {
-		return authpkg.Credential{}, authpkg.Origin{}, false
-	}
 
 	return wizardAuthResolver{
 		Logger:   silentLogger(),
