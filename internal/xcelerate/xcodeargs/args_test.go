@@ -400,6 +400,44 @@ func Test_HasBuildAction(t *testing.T) {
 	}
 }
 
+func Test_AcceptsDerivedDataPath(t *testing.T) {
+	type testCase struct {
+		name string
+		args []string
+		want bool
+	}
+
+	tcs := []testCase{
+		{"scheme in space form", []string{"-workspace", "Foo.xcworkspace", "-scheme", "Foo"}, true},
+		{"scheme in = form", []string{"-scheme=Foo"}, true},
+		{"testProductsPath", []string{"-testProductsPath", "/tmp/p"}, true},
+		{"xctestrun", []string{"-xctestrun", "/tmp/a.xctestrun"}, true},
+		{"the React Native showBuildSettings probe", []string{
+			"-workspace", "app.xcworkspace", "-scheme", "app",
+			"-sdk", "iphonesimulator", "-configuration", "Release",
+			"-showBuildSettings", "-json",
+		}, true},
+		{"no enabling flag", []string{"-showBuildSettings", "-workspace", "Foo.xcworkspace"}, false},
+		{"build action alone is not enough", []string{"build"}, false},
+		{"empty argv", []string{}, false},
+		{"target is not a substitute for scheme", []string{"-target", "Foo"}, false},
+		// -create-xcframework rejects -derivedDataPath, but it rejects every enabling
+		// flag too, so no argv can reach the injection path.
+		{"create-xcframework takes no enabling flag", []string{
+			"-create-xcframework", "-framework", "A.framework", "-output", "o.xcframework",
+		}, false},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "xcodebuild"}
+			SUT := xcodeargs.NewDefault(cmd, tc.args, mockLogger)
+
+			assert.Equal(t, tc.want, SUT.AcceptsDerivedDataPath())
+		})
+	}
+}
+
 func Test_BuildCacheArgs(t *testing.T) {
 	t.Run("default keeps the Swift leg on", func(t *testing.T) {
 		args := xcodeargs.BuildCacheArgs(false)

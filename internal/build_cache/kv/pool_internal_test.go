@@ -3,10 +3,12 @@
 package kv
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,8 +35,7 @@ func TestBuildPool_DefaultSizing(t *testing.T) {
 		}
 	})
 
-	wantChannels := max(2, runtime.NumCPU()/6)
-	assert.Len(t, channels, wantChannels)
+	assert.Len(t, channels, numChannels())
 	for _, e := range channels {
 		require.NotNil(t, e.conn)
 		require.NotNil(t, e.sem)
@@ -110,7 +111,7 @@ func TestBuildPool_InjectedStubIsUnthrottled(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			e := c.pickChannel()
-			e.acquire()
+			_ = e.acquire(context.Background())
 			e.release()
 		}()
 	}
@@ -134,4 +135,43 @@ func TestBuildPool_InjectedCapabilitiesStubOnly(t *testing.T) {
 
 type capStubClient struct {
 	remoteexecution.CapabilitiesClient
+}
+
+// A saturated channel must not hand back a slot once the caller's deadline has
+// passed: doing so opens a stream the caller has no time left to feed, which the
+// server reports as "receive first message: DeadlineExceeded".
+func TestChannelAcquire_GivesUpWhenContextIsDone(t *testing.T) {
+	ch := &channel{sem: make(chan struct{}, 1)}
+	require.NoError(t, ch.acquire(context.Background()))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := ch.acquire(ctx)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), time.Second, "must give up at the deadline, not block on")
+}
+
+// A freed slot is still handed to a waiter whose deadline has not passed.
+func TestChannelAcquire_SucceedsWhenASlotFrees(t *testing.T) {
+	ch := &channel{sem: make(chan struct{}, 1)}
+	require.NoError(t, ch.acquire(context.Background()))
+
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		ch.release()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	assert.NoError(t, ch.acquire(ctx))
+}
+
+// The floor is the part that matters: NumCPU/6 yields two channels on anything
+// under 12 cores, and two is what starved a customer build on a 7-core VM.
+func TestNumChannels_FloorIsFour(t *testing.T) {
+	assert.GreaterOrEqual(t, numChannels(), 4)
+	assert.Equal(t, runtime.NumCPU(), perChannelLimit())
 }

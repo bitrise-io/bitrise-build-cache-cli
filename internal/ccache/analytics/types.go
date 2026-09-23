@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
 // CcacheStats holds statistics parsed from `ccache -v -v -s`.
@@ -169,8 +170,9 @@ type CcacheConfigEntry struct {
 type CcacheInvocation struct {
 	multiplatform.Invocation
 
-	ParentInvocationID string      `json:"parentInvocationId"`
-	BuildToolStats     CcacheStats `json:"buildToolStats"`
-	DownloadedBytes    int64       `json:"downloadedBytes"`
-	UploadedBytes      int64       `json:"uploadedBytes"`
+	ParentInvocationID string              `json:"parentInvocationId"`
+	BuildToolStats     CcacheStats         `json:"buildToolStats"`
+	DownloadedBytes    int64               `json:"downloadedBytes"`
+	UploadedBytes      int64               `json:"uploadedBytes"`
+	CacheBlobStats     *blobstats.Snapshot `json:"cacheBlobStats,omitempty"`
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
@@ -38,6 +39,8 @@ type proxyOutcome struct {
 	FirstError string
 	// Unreachable: the stats call failed, so the counts above say nothing.
 	Unreachable bool
+	// BlobStats is nil when no blob moved, or when the proxy could not be reached.
+	BlobStats *blobstats.Snapshot
 }
 
 // xcodeDoctor runs the Xcode-relevant subset of the doctor checks around a build.

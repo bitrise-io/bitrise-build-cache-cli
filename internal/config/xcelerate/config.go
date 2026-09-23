@@ -66,6 +66,8 @@ type Config struct {
 	DebugLogging           bool      `json:"debugLogging,omitempty"`
 	Silent                 bool      `json:"silent,omitempty"`
 	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
+	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
+	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
 	// (single canonical source for auth credentials on disk). The JSON tag is
 	// preserved for read-side backwards compatibility with older xcelerate
@@ -144,7 +146,9 @@ func NewConfig(ctx context.Context,
 ) (Config, error) {
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
+	// Brokering, for the same reason activation resolves that way: on Build Hub the
+	// VM token is the only credential there is.
+	authConfig, authOrigin, err := resolver.Resolve(ctx, envs)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

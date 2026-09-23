@@ -259,7 +259,7 @@ func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
 	}
 
 	invDate := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
-	inv := NewCcacheInvocation("child-1", "parent-1", invDate, stats, 100, 200, auth, meta)
+	inv := NewCcacheInvocation("child-1", "parent-1", invDate, stats, 100, 200, nil, auth, meta)
 
 	require.NotNil(t, inv)
 	// Top-level metadata propagated from common metadata.
@@ -346,7 +346,7 @@ func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
 			CacheHitRate:   0.7,
 		}
 
-		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, nil, auth, meta)
 
 		assert.InDelta(t, 0.7, inv.HitRate, 1e-6)
 		assert.True(t, inv.Success)
@@ -362,7 +362,7 @@ func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
 			ModifiedInputFile: 3,
 		}
 
-		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, nil, auth, meta)
 
 		assert.InDelta(t, 0.5, inv.HitRate, 1e-6)
 		assert.False(t, inv.Success)
@@ -378,7 +378,7 @@ func TestNewCcacheInvocation_DerivesHitRateSuccessError(t *testing.T) {
 			CompileFailed:  2,
 		}
 
-		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, auth, meta)
+		inv := NewCcacheInvocation("c", "p", time.Now(), stats, 0, 0, nil, auth, meta)
 
 		assert.True(t, inv.Success)
 		assert.Empty(t, inv.Error)

@@ -25,6 +25,11 @@ import (
 const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
 	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
+
+	ProxyLifecycleNotice = "ℹ️ The cache proxy starts automatically with your first `xcodebuild` and keeps serving later builds."
+	ProxyRestartNotice   = "ℹ️ It does not survive a reboot or logout. Terminal builds restart it on their own; " +
+		"for builds started from Xcode.app, run `bitrise-build-cache xcelerate start-proxy` first — " +
+		"see docs/xcode-scheme-self-check.md for a scheme pre-action that does it for you."
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
 	cliBasename                    = "bitrise-build-cache-cli"
@@ -66,7 +71,10 @@ func Activate(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
-	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envs)
+	// Resolve, not ResolveNoRefresh: a Build Hub runner carries no auth env vars at
+	// all, and brokering its VM token is the only way to a credential there.
+	// ResolveNoRefresh never brokers, so it failed the whole activation.
+	authConfig, _, err := live.Default(logger).Resolve(ctx, envs)
 	if err != nil {
 		return fmt.Errorf("resolve auth config: %w", err)
 	}
@@ -121,6 +129,8 @@ func Activate(
 
 	logger.TInfof(ActivateXcodeSuccessful)
 	logger.TInfof(AddXcelerateToPath)
+	logger.TInfof(ProxyLifecycleNotice)
+	logger.TInfof(ProxyRestartNotice)
 
 	return nil
 }
@@ -371,7 +381,7 @@ func addXcelerateCommandToPathWithScriptWrapper(
 
 	exporter := envexport.New(envs, logger)
 	exporter.Export("PATH", path)
-	exporter.ExportToShellRC("Bitrise Xcelerate", fmt.Sprintf("export PATH=%s:$PATH", binPath))
+	exporter.ExportToShellRC(XcelerateShellRCBlockName, fmt.Sprintf("export PATH=%s:$PATH", binPath))
 
 	return nil
 }

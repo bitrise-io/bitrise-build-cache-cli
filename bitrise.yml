@@ -17,6 +17,11 @@ app:
   - WORKSPACE_SLUG: 322a005426441b60
   - MONOLITH_API_PAT: $BITRISE_BUILD_CACHE_AUTH_TOKEN
   - TRIGGERED_BUILD_SLUG: $BITRISE_BUILD_SLUG
+    # Pinned because a backend "baseline" answer disables the cache outright,
+    # failing every cache assertion here for an unrelated reason.
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: established
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+  - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: established
 
 include:
 - path: bitrise_rn_config/bitrise.yml
@@ -41,8 +46,8 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
 
-            asdf install golang 1.25.9
-            asdf global golang 1.25.9
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - script:
         title: Install Goreleaser
         inputs:
@@ -293,9 +298,8 @@ workflows:
     description: |
       Linux twin of rde-mac-local-dx-smoke. Same script, but the
       xcodebuild-wrapper scenario is skipped (macOS-only) and the
-      daemon-lifecycle scenario asserts against systemctl --user
-      instead of launchctl. See scripts/rde_smoke_test.sh for the
-      OS-branching logic.
+      no-supervision assertion checks systemctl --user instead of
+      launchctl. See scripts/rde_smoke_test.sh for the OS-branching logic.
 
       Wired into the features-e2e PR pipeline; also triggerable on demand.
     envs:
@@ -329,8 +333,8 @@ workflows:
             #!/usr/bin/env bash
             set -ex
 
-            asdf install golang 1.25.9
-            asdf global golang 1.25.9
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - go-list@1: {}
     - script@1:
         title: golangci-lint
@@ -340,6 +344,13 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
+    - script@1:
+        title: integration tests
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
+            make test-integration
     - bundle::generate_gradle_verification_reference: { }
     - bundle::check_gradle_verification_reference: { }
     - deploy-to-bitrise-io@2:
@@ -505,6 +516,90 @@ workflows:
           title: Send slack if failed
           run_if: ".IsBuildFailed"
 
+  feature-e2e-github-actions:
+    description: |
+      Runs this PR's CLI on GitHub Actions, on a Build Hub machine pool, by
+      dispatching the duckduckgo-android-e2e workflow with this commit as
+      cli_ref.
+    envs:
+    - GHA_REPO: bitrise-io/duckduckgo-android-e2e
+    - GHA_WORKFLOW_FILE: bitrise-build-cache-e2e.yml
+    - GHA_REF: develop
+    # Build Hub reports github-actions, not bitrise: it sets BITRISE_IO but not
+    # BITRISE_BUILD_SLUG, so the invocation has no project or build slug.
+    - E2E_CI_PROVIDER: github-actions
+    # Covers the pool's cold start plus building the CLI in the job.
+    - BUILD_TIMEOUT: 3300
+    steps:
+    - bundle::e2e-repo-checkout: {}
+    - script:
+        title: Dispatch GitHub Actions run for this commit
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+
+            require_github_env
+
+            # Without a ref the job installs the released CLI, reporting on a
+            # binary this PR never touched.
+            cli_ref="${BITRISE_GIT_COMMIT:-}"
+            if [[ -z "$cli_ref" ]]; then
+              fatal "No BITRISE_GIT_COMMIT to build the CLI from"
+            fi
+
+            correlation_id="cli-${BITRISE_BUILD_SLUG:-local}-${BITRISE_BUILD_NUMBER:-0}"
+            trigger_github_workflow "$GHA_REPO" "$GHA_WORKFLOW_FILE" "$GHA_REF" \
+              "$correlation_id" "$cli_ref"
+
+            run_id=$(find_github_run "$GHA_REPO" "$GHA_WORKFLOW_FILE" "$correlation_id")
+
+            echo "Run URL: https://github.com/$GHA_REPO/actions/runs/$run_id"
+            envman add --key GHA_RUN_ID --value "$run_id"
+    - script:
+        title: Wait for run
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+
+            wait_for_github_run "$GHA_REPO" "$GHA_RUN_ID" "$BUILD_TIMEOUT"
+    - script:
+        title: Extract Invocation ID
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/github_actions.sh
+            source ./_e2e/scripts/extract_invocation_id.sh
+
+            invocation_id=$(extract_invocation_id_from_github_logs \
+              extract_invocation_id_gradle "$GHA_REPO" "$GHA_RUN_ID" "gha-logs.txt")
+
+            echo "Found Invocation ID: $invocation_id"
+            envman add --key INVOCATION_ID --value "$invocation_id"
+    - script:
+        title: Assert invocation from API
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -o pipefail
+
+            source ./_e2e/scripts/assert_invocations.sh
+            source ./_e2e/scripts/assert_taskio.sh
+
+            assert_bitrise_invocation_in_list "$INVOCATION_ID" "gradle"
+            assert_bitrise_invocation_detail "$INVOCATION_ID" "gradle"
+            assert_invocation_tasks_gradle "$INVOCATION_ID"
+            # No build performance: it is keyed by app and build slug, which
+            # this invocation has neither of. No task IO: a warm cache executes
+            # no tasks, and only executed tasks record inputs.
+
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
@@ -549,11 +644,20 @@ workflows:
               fi
               cat "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
     - script:
-        title: Build and capture logs
+        title: Build with no credential in the environment
         inputs:
         - content: |-
             set -exo pipefail
-            (./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            # Strip both credential env vars: the build can then only authenticate on what
+            # activate pinned to disk, the shape of a GitHub Actions job that scopes the secret.
+            (env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN \
+              ./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Assert auth came from the pinned credential
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/check_gradle_auth_from_pinned_credential.sh "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -615,6 +719,32 @@ workflows:
           inputs:
             - verbose: 'true'
       - script:
+          title: Clear the PAT so auth falls through to the CI JWT
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                # ACI-5338: with no token in the init script, this is the only workflow that
+                # proves a build authenticates on the per-build JWT alone. The CLI prefers the
+                # env credentials only when BOTH the token and the workspace ID are set, so
+                # clearing the token makes `auth token` fall through to the JWT. The workspace
+                # ID stays for the invocation API assertions.
+                if [[ -z "${BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN:-}" ]]; then
+                  echo "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN is not set; this workflow needs the CI JWT."
+                  exit 1
+                fi
+
+                # Pin the API PAT before blanking its source, since MONOLITH_API_PAT is defined
+                # as $BITRISE_BUILD_CACHE_AUTH_TOKEN and the assertions below still need it.
+                envman add --key MONOLITH_API_PAT --value "$MONOLITH_API_PAT"
+                envman add --key BITRISE_BUILD_CACHE_AUTH_TOKEN --value ""
+
+                # A stored credential outranks the JWT in the CLI's precedence chain, and
+                # earlier steps in this build have already pinned one.
+                ../bitrise-build-cache-cli auth clear || true
+                ../bitrise-build-cache-cli auth status --debug || true
+      - script:
           title: Enable build cache
           inputs:
             - content: |-
@@ -631,6 +761,12 @@ workflows:
             - content: |-
                 set -exo pipefail
                 (./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+      - script:
+          title: Assert JWT auth with no baked token
+          inputs:
+            - content: |-
+                set -exo pipefail
+                ../scripts/check_gradle_jwt_auth.sh "$BITRISE_DEPLOY_DIR/logs.txt"
       - script:
           title: Check for cache invocations
           inputs:
@@ -688,6 +824,31 @@ workflows:
         inputs:
           - verbose: 'true'
     - script:
+        title: Clear the PAT so auth falls through to the CI JWT
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # ACI-5338: the plugins resolve their own token, so nothing lands in the init
+            # script. The CLI prefers the env credentials only when BOTH the token and the
+            # workspace ID are set, so clearing the token makes `auth token` fall through to
+            # the per-build JWT. The workspace ID stays for the invocation API assertions.
+            if [[ -z "${BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN:-}" ]]; then
+              echo "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN is not set; this workflow needs the CI JWT."
+              exit 1
+            fi
+
+            # Pin the API PAT before blanking its source, since MONOLITH_API_PAT is defined as
+            # $BITRISE_BUILD_CACHE_AUTH_TOKEN and the assertions below still need it.
+            envman add --key MONOLITH_API_PAT --value "$MONOLITH_API_PAT"
+            envman add --key BITRISE_BUILD_CACHE_AUTH_TOKEN --value ""
+
+            # A stored credential outranks the JWT in the CLI's precedence chain, and earlier
+            # steps in this build have already pinned one.
+            ../bitrise-build-cache-cli auth clear || true
+            ../bitrise-build-cache-cli auth status --debug || true
+    - script:
         title: Enable build cache
         inputs:
         - content: |-
@@ -731,6 +892,12 @@ workflows:
         - content: |-
             set -exo pipefail
             (./gradlew debug --configuration-cache --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+    - script:
+        title: Assert JWT auth with no baked token
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/check_gradle_jwt_auth.sh "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Check for cache invocations
         inputs:
@@ -1019,16 +1186,22 @@ workflows:
 
                 echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
 
+                cli_path=$(readlink -f ../bitrise-build-cache-cli)
+
                 sudo docker run --rm \
                   -w "/workspace" \
                   -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
                   -e "BITRISE_BUILD_SLUG=$BITRISE_BUILD_SLUG" \
                   -e "BITRISE_STEP_EXECUTION_ID=$BITRISE_STEP_EXECUTION_ID" \
                   -e "BITRISE_TRIGGERED_WORKFLOW_TITLE=$BITRISE_TRIGGERED_WORKFLOW_TITLE" \
-                  -e "GIT_REPOSITORY_UR=$GIT_REPOSITORY_URL" \
+                  -e "GIT_REPOSITORY_URL=$GIT_REPOSITORY_URL" \
                   -e "BITRISE_GIT_COMMIT=$BITRISE_GIT_COMMIT" \
+                  -e "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN=$BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN" \
+                  -e "BITRISE_BUILD_CACHE_AUTH_TOKEN=$BITRISE_BUILD_CACHE_AUTH_TOKEN" \
+                  -e "BITRISE_BUILD_CACHE_WORKSPACE_ID=$BITRISE_BUILD_CACHE_WORKSPACE_ID" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
+                  --mount "type=bind,source=$cli_path,target=$cli_path,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   ubuntu:22.04 \
                   bash -c "set -o pipefail; sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|http://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list && apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
@@ -1217,7 +1390,7 @@ workflows:
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
@@ -1265,13 +1438,9 @@ workflows:
               head -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
               tail -n 20 $BITRISE_DEPLOY_DIR/xcodebuild.log
 
-              source ../_e2e/scripts/error.sh
-              source ../_e2e/scripts/extract_invocation_id.sh
+              source ../_e2e/scripts/extract_invocation_id_from_api.sh
 
-              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
-              if [[ -z "$invocation_id" ]]; then
-                fatal "Invocation ID not found in logs"
-              fi
+              invocation_id=$(extract_invocation_id_xcode_from_api "$BITRISE_BUILD_SLUG")
 
               echo "Found Invocation ID: $invocation_id"
               envman add --key INVOCATION_ID --value "$invocation_id"
@@ -1373,6 +1542,33 @@ workflows:
             # wrapper in debug mode, so the report lands in wrapper.log.
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Running health checks'
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/wrapper.log" 'Health check result:'
+    - script:
+        title: Assert a query action is told about the managed DerivedData
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # React Native's installApp locates the built .app from -showBuildSettings,
+            # so a query action has to be handed the same DerivedData as the build.
+            # This scheme is package-backed and reports no build settings at all, so
+            # assert on the argv the wrapper ran; rn-seek-ios-e2e asserts the path that
+            # comes back out.
+            # No -json: it flips the wrapper to silent logging, which keeps the argv
+            # line out of stderr and in the xcelerate log only.
+            xcodebuild -showBuildSettings \
+              -workspace ComposableArchitecture.xcworkspace \
+              -scheme ComposableArchitecture > /dev/null 2> query.log
+
+            cp query.log "$BITRISE_DEPLOY_DIR/"
+            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/query.log" \
+              "derivedDataPath ${BITRISE_XCODE_DERIVED_DATA_PATH:?activate must export the DerivedData root}"
+    - script:
+        title: 'ACI-4782: assert the cacheBlobStats payload is present and self-consistent'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            ../scripts/assert_cache_blob_stats.sh "$BITRISE_DEPLOY_DIR/wrapper.log"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-cas-key-stable:
@@ -1389,7 +1585,7 @@ workflows:
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     - CHECKOUT_B_DIR: $HOME/checkoutB
     steps:
     - bundle::feature-e2e-setup: {}
@@ -1465,6 +1661,19 @@ workflows:
             echo "Checkout B invocation ID: $invocation_id_b"
 
             assert_xcode_invocation_hit_rate_at_least "$invocation_id_b" 80
+    - script:
+        title: 'ACI-4782: collect the xcelerate log'
+        is_always_run: true
+        inputs:
+        - content: cp ~/.local/state/xcelerate/logs/* "$BITRISE_DEPLOY_DIR" 2>/dev/null || true
+    - script:
+        title: 'ACI-4782: assert the cacheBlobStats payload is present and self-consistent'
+        inputs:
+        - content: |-
+            set -exo pipefail
+
+            # Checkout B is the warm build, so its payload carries the reuse this workflow is about.
+            ../scripts/assert_cache_blob_stats.sh "$BITRISE_DEPLOY_DIR/wrapper-B.log"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-wrapper-watcher-race:
@@ -1482,7 +1691,7 @@ workflows:
         machine_type_id: g2.mac.large
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     # Force slim emit to fire well after the watcher's manifest sighting; exercises
     # the correlation retry bucket that this workflow is designed to prove.
     - TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT: 30s
@@ -1521,13 +1730,9 @@ workflows:
               cp xcodebuild.log $BITRISE_DEPLOY_DIR
               cp wrapper.log $BITRISE_DEPLOY_DIR
 
-              source ../_e2e/scripts/error.sh
-              source ../_e2e/scripts/extract_invocation_id.sh
+              source ../_e2e/scripts/extract_invocation_id_from_api.sh
 
-              invocation_id=$(extract_invocation_id_xcode "$BITRISE_DEPLOY_DIR/wrapper.log")
-              if [[ -z "$invocation_id" ]]; then
-                fatal "Invocation ID not found in logs"
-              fi
+              invocation_id=$(extract_invocation_id_xcode_from_api "$BITRISE_BUILD_SLUG")
 
               echo "Found Invocation ID: $invocation_id"
               envman add --key INVOCATION_ID --value "$invocation_id"
@@ -1562,219 +1767,60 @@ workflows:
             assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
-  e2e-daemon-install-macos:
+  e2e-proxy-cache-macos:
     description: |
-      Validate `daemon install` / `up` / `down` / `restart` / `uninstall`
-      register the helper services as LaunchAgents and control them via
-      launchctl. Also verifies `daemon info` prints the proxy socket path
-      and that an unwrapped xcodebuild against that socket produces cache
-      metrics.
+      Guard the xcelerate proxy's cache-operation latency under a real compile.
+
+      Builds a real project with every compile key busted, so the cache runs
+      cold and every operation is an upload — the path that failed in v3.6.3,
+      when a supervised proxy timed out on a large share of them in production.
+      Any
+      DeadlineExceeded fails the workflow.
+
+      Two things are load-bearing and easy to undo by accident:
+
+      - The 4-core machine. The regression this guards is machine-size
+        dependent: it reproduced on 4-core and vanished on 6-core, as did every
+        microbenchmark against the proxy socket. A bigger machine silently
+        disarms this workflow.
+      - The cold cache. The unique define busts every compile key, so every
+        operation is an upload. A warm build barely touches the failing path.
     meta:
       bitrise.io:
         stack: osx-xcode-edge
-        machine_type_id: g2.mac.large
+        # 4 cores on purpose — see the description.
+        machine_type_id: g2.mac.medium
     envs:
     - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
-    - COMMIT: 27db3dfc9f55c206e09ca2a51b93bd600a56429e
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
+    # A brand-new workflow name resolves to the baseline phase, which disables
+    # the cache outright and would leave nothing to measure.
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+    - PROXY_E2E_FAKE_BACKEND: "1"
     steps:
     - bundle::feature-e2e-setup: {}
+    # activate publishes its xcodebuild shim through envman, which only takes
+    # effect in the next step, so the build cannot share this one.
     - script:
-        title: daemon install + register asserts
+        title: activate
         inputs:
         - content: |-
-            set -exo pipefail
-
-            # Best-effort cleanup if assertions abort mid-flight, so we never
-            # leak LaunchAgents on shared mac VMs.
-            cleanup_on_error() {
-              if [[ $? -ne 0 ]]; then
-                echo "[cleanup] aborting; force-uninstalling daemon"
-                ../bitrise-build-cache-cli daemon uninstall || true
-              fi
-            }
-            trap cleanup_on_error EXIT
-
-            uid="$(id -u)"
-            envman add --key DAEMON_UID --value "$uid"
-
-            # ----- activate xcode so the proxy has a socket path to bind on -----
-            ../bitrise-build-cache-cli activate xcode --cache
-
-            # ----- install + LaunchAgent presence asserts -----
-            ../bitrise-build-cache-cli daemon install
-            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
-              plist="$HOME/Library/LaunchAgents/${label}.plist"
-              [[ -f "$plist" ]] || { echo "FAIL: plist missing: $plist"; exit 1; }
-              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
-                || { echo "FAIL: launchctl did not register ${label}"; exit 1; }
-              echo "OK: ${label} registered"
-            done
-
-            # ----- idempotency on install -----
-            ../bitrise-build-cache-cli daemon install
-            echo "OK: install is idempotent"
-
-            # ----- daemon info smoke test + socket capture (human + JSON, must agree) -----
-            info_out="$(../bitrise-build-cache-cli daemon info)"
-            echo "$info_out"
-            proxy_socket="$(echo "$info_out" | awk -F': *' '/^xcelerate-proxy:/ {print $2; exit}')"
-            [[ -n "$proxy_socket" ]] || { echo "FAIL: daemon info did not print xcelerate-proxy socket"; exit 1; }
-            [[ "$proxy_socket" != "<not configured"* ]] || { echo "FAIL: socket reported as not configured"; exit 1; }
-            echo "$info_out" | grep -q '^xcelerate-proxy status:' || { echo "FAIL: daemon info missing 'xcelerate-proxy status:' line"; exit 1; }
-            echo "$info_out" | grep -q '^ccache-helper status:'   || { echo "FAIL: daemon info missing 'ccache-helper status:' line"; exit 1; }
-
-            info_json="$(../bitrise-build-cache-cli daemon info --json)"
-            echo "$info_json"
-            proxy_socket_json="$(echo "$info_json" | jq -er '.xcelerateProxy')"
-            [[ "$proxy_socket" == "$proxy_socket_json" ]] || { echo "FAIL: daemon info JSON ($proxy_socket_json) disagrees with text ($proxy_socket)"; exit 1; }
-            echo "$info_json" | jq -er '.ccacheHelper'         >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelper field"; exit 1; }
-            echo "$info_json" | jq -er '.xcelerateProxyStatus' >/dev/null || { echo "FAIL: daemon info --json missing xcelerateProxyStatus field"; exit 1; }
-            echo "$info_json" | jq -er '.ccacheHelperStatus'   >/dev/null || { echo "FAIL: daemon info --json missing ccacheHelperStatus field"; exit 1; }
-
-            envman add --key PROXY_SOCKET --value "$proxy_socket"
-
-            # ----- wait for the supervised proxy to bind the socket (up to 30s) -----
-            for i in $(seq 1 30); do
-              if [[ -S "$proxy_socket" ]]; then
-                echo "OK: proxy socket live at $proxy_socket after ${i}s"
-                break
-              fi
-              sleep 1
-            done
-            [[ -S "$proxy_socket" ]] || { echo "FAIL: proxy socket never appeared at $proxy_socket"; exit 1; }
+            set -eo pipefail
+            ../scripts/proxy_cache_activate.sh "$BITRISE_DEPLOY_DIR/proxy-build"
     - script:
-        title: build app via unwrapped xcodebuild against daemon socket
+        title: build through the proxy with every compile key busted
         inputs:
         - content: |-
-            set -exo pipefail
-
-            # Resolve the system xcodebuild (NOT the activate-installed wrapper)
-            # so we exercise the daemon-managed long-running proxy directly via
-            # COMPILATION_CACHE_REMOTE_SERVICE_PATH.
-            xcb="/usr/bin/xcodebuild"
-            [[ -x "$xcb" ]] || xcb="$(/usr/bin/xcrun --find xcodebuild)"
-
-            echo "Using xcodebuild: $xcb"
-            echo "Proxy socket: $PROXY_SOCKET"
-
-            "$xcb" build \
-              -workspace ComposableArchitecture.xcworkspace \
-              -scheme ComposableArchitecture \
-              -destination "generic/platform=iOS" \
-              -skipMacroValidation \
-              COMPILATION_CACHE_ENABLE_COMPILER=YES \
-              COMPILATION_CACHE_REMOTE_SERVICE_PATH="$PROXY_SOCKET" \
-              2> wrapper.log | tee xcodebuild.log | xcpretty
-
-            cp xcodebuild.log wrapper.log "$BITRISE_DEPLOY_DIR/"
+            set -eo pipefail
+            ../scripts/proxy_cache_build.sh "$BITRISE_DEPLOY_DIR/proxy-build"
     - script:
-        title: assert cache metrics emitted
+        title: assert no cache operation timed out
         inputs:
         - content: |-
-            set -exo pipefail
-            # Benchmark "baseline" phase disables cache → no CompilationCacheMetrics
-            # is emitted by xcodebuild. Skip the assert in that case so the e2e
-            # workflow tracks the daemon-install flow, not BE phase rotation.
-            if [[ "$BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE" == "baseline" ]]; then
-              echo "OK: baseline benchmark phase — skipping CompilationCacheMetrics assert"
-              exit 0
-            fi
-            ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
-    - script:
-        title: daemon down / up / restart asserts
-        inputs:
-        - content: |-
-            set -exo pipefail
-            uid="$DAEMON_UID"
-
-            # ----- down: services stop, plist files stay -----
-            ../bitrise-build-cache-cli daemon down
-            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
-              plist="$HOME/Library/LaunchAgents/${label}.plist"
-              [[ -f "$plist" ]] || { echo "FAIL: plist removed by down: $plist"; exit 1; }
-              ! /bin/launchctl print "gui/${uid}/${label}" >/dev/null 2>&1 \
-                || { echo "FAIL: ${label} still registered after down"; exit 1; }
-              echo "OK: ${label} stopped (plist retained)"
-            done
-
-            # ----- proxy socket must be gone after down -----
-            if [[ -S "$PROXY_SOCKET" ]]; then
-              echo "FAIL: proxy socket still listening after daemon down: $PROXY_SOCKET"
-              exit 1
-            fi
-            echo "OK: proxy socket gone after down"
-
-            # ----- xcodebuild against the gone socket must NOT emit cache metrics -----
-            xcb="/usr/bin/xcodebuild"
-            [[ -x "$xcb" ]] || xcb="$(/usr/bin/xcrun --find xcodebuild)"
-            "$xcb" build \
-              -workspace ComposableArchitecture.xcworkspace \
-              -scheme ComposableArchitecture \
-              -destination "generic/platform=iOS" \
-              -skipMacroValidation \
-              COMPILATION_CACHE_ENABLE_COMPILER=YES \
-              COMPILATION_CACHE_REMOTE_SERVICE_PATH="$PROXY_SOCKET" \
-              2> xcodebuild-postdown.err.log | tee xcodebuild-postdown.log | xcpretty || true
-            cp xcodebuild-postdown.log xcodebuild-postdown.err.log "$BITRISE_DEPLOY_DIR/"
-            if grep -q 'CompilationCacheMetrics' xcodebuild-postdown.log; then
-              echo "FAIL: cache metrics found in post-down xcodebuild — proxy should be unreachable"
-              exit 1
-            fi
-            echo "OK: no cache metrics after down"
-
-            # ----- idempotency on down (already stopped) -----
-            ../bitrise-build-cache-cli daemon down
-            echo "OK: down is idempotent"
-
-            # ----- up: bring services back from existing plist files -----
-            ../bitrise-build-cache-cli daemon up
-            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
-              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
-                || { echo "FAIL: ${label} not running after up"; exit 1; }
-              echo "OK: ${label} started by up"
-            done
-
-            # ----- restart: stop + start in one shot -----
-            ../bitrise-build-cache-cli daemon restart
-            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
-              /bin/launchctl print "gui/${uid}/${label}" >/dev/null \
-                || { echo "FAIL: ${label} not running after restart"; exit 1; }
-              echo "OK: ${label} running after restart"
-            done
-
-            # ----- up without prior install errors with ErrNotInstalled -----
-            ../bitrise-build-cache-cli daemon uninstall >/dev/null
-            if ../bitrise-build-cache-cli daemon up 2>up_err.log; then
-              echo "FAIL: up should error when daemon is not installed"
-              cat up_err.log
-              exit 1
-            fi
-            grep -q "not installed" up_err.log \
-              || { echo "FAIL: expected 'not installed' hint in error output"; cat up_err.log; exit 1; }
-            echo "OK: up errors with hint when daemon is not installed"
-
-            # Reinstall so the uninstall step below has something to remove.
-            ../bitrise-build-cache-cli daemon install
-    - script:
-        title: daemon uninstall + cleanup asserts
-        inputs:
-        - content: |-
-            set -exo pipefail
-
-            # ----- uninstall + asserts -----
-            ../bitrise-build-cache-cli daemon uninstall
-            for label in io.bitrise.build-cache.xcelerate-proxy io.bitrise.build-cache.ccache-helper; do
-              plist="$HOME/Library/LaunchAgents/${label}.plist"
-              [[ ! -f "$plist" ]] || { echo "FAIL: plist still present: $plist"; exit 1; }
-              ! /bin/launchctl print "gui/${DAEMON_UID}/${label}" >/dev/null 2>&1 \
-                || { echo "FAIL: ${label} still registered"; exit 1; }
-              echo "OK: ${label} unregistered + plist removed"
-            done
-
-            # ----- idempotency on uninstall -----
-            ../bitrise-build-cache-cli daemon uninstall
-            echo "OK: uninstall is idempotent"
-    - deploy-to-bitrise-io: {}
+            set -eo pipefail
+            ../scripts/assert_proxy_cache.sh "$BITRISE_DEPLOY_DIR/proxy-build"
+    - deploy-to-bitrise-io@2:
+        is_always_run: true
 
   e2e-mavencentral-mirror-duckduck:
     envs:
@@ -1956,8 +2002,8 @@ workflows:
             - content: |-
                 #!/usr/bin/env bash
 
-                asdf install golang 1.25.9
-                asdf global golang 1.25.9
+                asdf install golang 1.26.8
+                asdf global golang 1.26.8
       - bundle::update-step:
           envs:
             - STEP_NAME: bitrise-step-activate-gradle-remote-cache
@@ -2019,9 +2065,11 @@ workflows:
 
   e2e-scenarios-macos:
     description: |
-      Portable e2e scenarios + macOS daemon lifecycle (install / up / down /
-      restart, socket unlink, launchctl kickstart). See scripts/local_e2e_scenarios.sh
-      and scripts/local_e2e_scenarios_macos.sh.
+      Portable e2e scenarios + the macOS-only ones: that activation and the
+      wizard register no supervised service, that `activate c++` leaves a
+      storage helper serving, that a launch agent left by an older CLI is
+      retired, and the xcodebuild wrapper's health check. See
+      scripts/local_e2e_scenarios.sh and scripts/local_e2e_scenarios_macos.sh.
     meta:
       bitrise.io:
         machine_type_id: g2.mac.medium
@@ -2040,7 +2088,7 @@ workflows:
             go build -o "$HOME/.bitrise/bin/bitrise-build-cache" .
             CLI="$HOME/.bitrise/bin/bitrise-build-cache" bash ./scripts/local_e2e_scenarios.sh
     - script@1:
-        title: run macOS-only daemon-lifecycle e2e scenarios
+        title: run macOS-only e2e scenarios
         inputs:
         - content: |-
             #!/bin/bash
@@ -2104,8 +2152,8 @@ step_bundles:
             #!/usr/bin/env bash
             set -ex
 
-            asdf install golang 1.25.9
-            asdf global golang 1.25.9
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - script:
         title: Syntax-check installer.sh (POSIX sh)
         inputs:
@@ -2317,7 +2365,10 @@ step_bundles:
                   exit 0
                 fi
 
-  feature-e2e-setup:
+  e2e-repo-checkout:
+    description: |
+      Clone the shared assertion scripts from build-cache-e2e-testing into
+      ./_e2e, for workflows that need them without a test app checkout.
     steps:
       - activate-ssh-key:
           run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
@@ -2352,6 +2403,10 @@ step_bundles:
                 git clone git@github.com:bitrise-io/build-cache-e2e-testing.git ./_e2e
 
                 ls -la ./_e2e
+
+  feature-e2e-setup:
+    steps:
+      - bundle::e2e-repo-checkout: {}
       - script:
           title: Delete _tmp dirs
           inputs:
@@ -2395,6 +2450,15 @@ step_bundles:
     - activate-ssh-key:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone: {}
+    - script:
+        title: asdf use latest go
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -ex
+
+            asdf install golang 1.26.8
+            asdf global golang 1.26.8
     - script:
         title: Build CLI + record absolute path
         inputs:
@@ -2496,6 +2560,7 @@ pipelines:
       feature-e2e-gradle-duckduck: {}
       feature-e2e-gradle-7: {}
       feature-e2e-gradle-bitwarden: {}
+      feature-e2e-github-actions: {}
 
       # Cross-DC configuration-cache reuse: 5 parallel saves blanket the
       # DC pool, then 3 parallel restores per platform exercise the read
@@ -2518,7 +2583,7 @@ pipelines:
       e2e-xcode-comp-cache: {}
       e2e-xcode-cas-key-stable: {}
       e2e-xcode-wrapper-watcher-race: {}
-      e2e-daemon-install-macos: {}
+      e2e-proxy-cache-macos: {}
       e2e-scenarios-linux: {}
       e2e-scenarios-macos: {}
       ccache-storage-helper-test: {}

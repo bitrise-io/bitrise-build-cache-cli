@@ -175,10 +175,8 @@ func TestNewActivator_CppRequiresGradle(t *testing.T) {
 
 			if tc.wantCpp {
 				assert.NotNil(t, a.cpp, "cpp activator should be wired")
-				assert.NotNil(t, a.helper, "ccache storage helper starter should be wired")
 			} else {
 				assert.Nil(t, a.cpp, "cpp activator should not be wired")
-				assert.Nil(t, a.helper, "ccache storage helper starter should not be wired")
 			}
 		})
 	}

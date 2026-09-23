@@ -1,6 +1,6 @@
 // Package paths centralises the on-disk locations the CLI reads and writes.
 // One package so the layout under ~/.local/state/bitrise-build-cache stays
-// consistent across versioncheck, refresh, daemon supervisor logs, and the
+// consistent across versioncheck, refresh, and the
 // future Xcelerate / ccache state dirs.
 package paths
 
@@ -27,6 +27,10 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
+	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
+	// tree, holding files such as the persisted xcode-{build,test}.json invocation specs.
+	BitriseBuildCacheDirRelative = ".bitrise-build-cache"
+
 	// ProxySocketName is the xcelerate proxy unix-socket filename (lives under the OS temp dir).
 	ProxySocketName = "xcelerate-proxy.sock"
 
@@ -43,13 +47,8 @@ const (
 	xcelerateLogsSubdir = "logs"
 
 	// xcelerateEnrichmentSubdir holds every persisted-state artefact the
-	// enrichment watcher, retry queue, and slim/handled-marker bookkeeping share.
+	// enrichment watcher and retry queue share.
 	xcelerateEnrichmentSubdir = "enrichment"
-
-	// xcelerateHandledInvocationsSubdir sits under XcelerateEnrichmentDir and marks
-	// invocation IDs the wrapper already PUT a rich payload for, so slim emit and
-	// enrichment watcher skip them instead of last-write-wins overwriting the rich row.
-	xcelerateHandledInvocationsSubdir = "handled-invocations"
 
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
@@ -57,9 +56,6 @@ const (
 
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
-
-	// daemonLogsSubdir is the daemon supervisor stdout/stderr log dir.
-	daemonLogsSubdir = "logs"
 
 	// invocationsSubdir holds the per-day NDJSON invocation log files.
 	invocationsSubdir = "invocations"
@@ -71,9 +67,6 @@ const (
 	authRefreshLockFilename = "auth-refresh.lock"
 
 	bazelCredHelperWarnFilename = "bazel-credhelper-warned" //nolint:gosec // marker filename, not a credential
-
-	// bitriseBinSubdir holds the stable CLI binary copy used by the daemon supervisor.
-	bitriseBinSubdir = "bin"
 
 	// bitriseCacheSubdir is the per-tool cache/marker root used by activate, refresh, and child-stats.
 	bitriseCacheSubdir = "cache"
@@ -93,12 +86,17 @@ const (
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 
+	// ProjectMarkerFilename is the per-project opt-in file consulted by every tool activator.
+	ProjectMarkerFilename = ".bitrise-build-cache.json"
+
+	buildCacheMachineConfigFilename = "config.json"
+
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
 
-// CLIBinaryName is the on-disk name of the CLI executable (daemon plist entry, PATH lookup).
+// CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
 
 // Paths resolves on-disk locations rooted at a single home directory.
@@ -149,11 +147,6 @@ func (p Paths) SystemdUserDir() string {
 	return filepath.Join(p.Home, SystemdUserDirRelative)
 }
 
-// DaemonLogDir is the absolute path of the daemon supervisor stdout/stderr log dir.
-func (p Paths) DaemonLogDir() string {
-	return filepath.Join(p.StateDir(), daemonLogsSubdir)
-}
-
 func (p Paths) InvocationsDir() string {
 	return filepath.Join(p.StateDir(), invocationsSubdir)
 }
@@ -180,34 +173,28 @@ func (p Paths) UnitPath(unitName string) string {
 	return filepath.Join(p.SystemdUserDir(), unitName+".service")
 }
 
-// DaemonStdoutPath returns the supervisor stdout log file path for a service.
-func (p Paths) DaemonStdoutPath(service string) string {
-	return filepath.Join(p.DaemonLogDir(), service+".out.log")
-}
-
-// DaemonStderrPath returns the supervisor stderr log file path for a service.
-func (p Paths) DaemonStderrPath(service string) string {
-	return filepath.Join(p.DaemonLogDir(), service+".err.log")
-}
-
 // BitriseRoot is the absolute path of the per-user ~/.bitrise dir.
 func (p Paths) BitriseRoot() string {
 	return filepath.Join(p.Home, BitriseRootRelative)
 }
 
-// BitriseBinDir is the absolute path of ~/.bitrise/bin (stable CLI copy).
-func (p Paths) BitriseBinDir() string {
-	return filepath.Join(p.BitriseRoot(), bitriseBinSubdir)
-}
-
-// BitriseBinFile returns a file path under BitriseBinDir.
-func (p Paths) BitriseBinFile(name string) string {
-	return filepath.Join(p.BitriseBinDir(), name)
+// BitriseCacheRoot is the per-user cache root ~/.bitrise/cache.
+func (p Paths) BitriseCacheRoot() string {
+	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir)
 }
 
 // BitriseCacheDir is the per-tool cache/marker dir under ~/.bitrise/cache.
 func (p Paths) BitriseCacheDir(tool string) string {
-	return filepath.Join(p.BitriseRoot(), bitriseCacheSubdir, tool)
+	return filepath.Join(p.BitriseCacheRoot(), tool)
+}
+
+// MachineConfigFile is the absolute path of the machine-wide build-cache config file.
+func (p Paths) MachineConfigFile() string {
+	return filepath.Join(p.BitriseCacheRoot(), buildCacheMachineConfigFilename)
+}
+
+func (p Paths) MachineConfigTempFile() string {
+	return filepath.Join(p.BitriseCacheRoot(), "."+buildCacheMachineConfigFilename+".tmp")
 }
 
 // BitriseCacheFile returns a file path under BitriseCacheDir(tool).
@@ -255,16 +242,6 @@ func (p Paths) XcelerateLogDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateLogsSubdir)
 }
 
-// XcelerateHandledInvocationDir returns ~/.local/state/xcelerate/enrichment/handled-invocations.
-func (p Paths) XcelerateHandledInvocationDir() string {
-	return filepath.Join(p.XcelerateEnrichmentDir(), xcelerateHandledInvocationsSubdir)
-}
-
-// XcelerateHandledInvocationFile returns the marker path for a specific invocation ID.
-func (p Paths) XcelerateHandledInvocationFile(invocationID string) string {
-	return filepath.Join(p.XcelerateHandledInvocationDir(), invocationID)
-}
-
 // XcelerateEnrichmentDir returns ~/.local/state/xcelerate/enrichment.
 func (p Paths) XcelerateEnrichmentDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateEnrichmentSubdir)
@@ -301,6 +278,11 @@ func (p Paths) XcodeManagedDerivedDataRoot() string {
 // workspace-sha, layered under BitriseCacheDir("xcode-ptd").
 func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 	return filepath.Join(p.BitriseCacheDir(xcodeManagedProjectTempDirTool), workspaceSHA)
+}
+
+// RepoLocalConfigPath returns <repoRoot>/.bitrise-build-cache/<filename>. Repo-rooted, not $HOME-rooted.
+func RepoLocalConfigPath(repoRoot, filename string) string {
+	return filepath.Join(repoRoot, BitriseBuildCacheDirRelative, filename)
 }
 
 // DirMaker is the subset of utils.OsProxy that EnsureDir needs.

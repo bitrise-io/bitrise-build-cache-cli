@@ -22,8 +22,9 @@ When you report status, report it **per channel**, and state what you actually c
 4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
 5. **Step GitHub releases** — cut for the scoped steps (Step 8).
 6. **Steplib PRs** — merged (Step 9).
+7. **Steplib spec published** — the new version is actually in the published spec (Step 10). A merged steplib PR does NOT mean the step shipped.
 
-Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–6). Confirming one says nothing about the other.
+Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–7). Confirming one says nothing about the other.
 
 ## ⚠ Critical path — read before doing anything
 
@@ -150,6 +151,33 @@ Create GitHub releases for whichever of the five step repos the user actually wa
 - Check the latest existing release tag in each repo to determine the next version
 - The user may explicitly scope the release to a subset of step repos ("only release xcode and rn-features"). Honor that — do not release the others. Merging their auto-update PRs is still fine and expected (keeps the dependency current); skipping is only about the GitHub release / steplib PR.
 
+#### ⚠ Xcode + React Native steps: cut TWO releases each (1.x and 0.x)
+
+Since 2026-09-22 the Xcode and React Native steps have **two live major lines**, and a release must cut **both** or pinned customers silently go stale:
+
+| Repo | current line | deprecated line |
+|---|---|---|
+| `bitrise-step-activate-build-cache-for-xcode` | `1.x` from `main` | `0.x` from branch `0.x` |
+| `bitrise-step-activate-react-native-features` | `1.x` from `main` | `0.x` from branch `0.x` |
+
+Why both: these steps only ever had a `0.x` major, so the intuitive `activate-build-cache-for-xcode@1` pin failed at **step preparation**, which is `is_skippable: false` and kills the whole build (Yuno burned the first 7 builds of a trial on it). `1.0.0` fixes that. But ~20 workspaces / ~19k builds a quarter pin bare `@0`, and these steps are the CLI delivery channel for pinned-version customers — so dropping `0.x` would trade a loud failure for silent staleness.
+
+Process per release, for each of these two repos:
+
+```bash
+# current line, from main
+gh release create <next-1.x> --repo <REPO> --target main --latest --notes "..."
+# deprecated line — cherry-pick the CLI bump onto 0.x first
+git checkout 0.x && git cherry-pick <cli-bump-commit> && git push origin 0.x
+gh release create <next-0.x> --repo <REPO> --target 0.x --notes "..."
+```
+
+The `0.x` branch carries one extra commit (`feat: deprecate the 0.x line in favour of @1`) that prints a runtime deprecation notice. **Keep that commit — never fast-forward `0.x` to `main`.** There is no `BITRISE_STEP_VERSION` exposed to steps, so a runtime-gated notice on a single branch is not possible; the divergent branch is the only way to warn only `@0` users.
+
+Both lines produce their own steplib PR (`activate-build-cache-for-xcode-1.1.0` and `-0.27.0`), so step 9 has twice as many PRs and step 10 twice as many queued deploys — budget for it.
+
+**Ending the deprecation:** once `@0` usage is negligible, stop cutting `0.x`, delete this subsection, and delete the `0.x` branches. Check current usage with `mrt_product.build_steps` filtered to `step_version = "0"`.
+
 ### 9. Merge steplib PRs
 
 After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each released step. They may need a rebase.
@@ -172,6 +200,42 @@ gh pr merge --squash --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
 ```
 
 Always wait for CI to pass — never bypass branch protection. The steplib repo requires squash merges (merge commits are blocked).
+
+### 10. Verify the steplib spec was published (⏳ SLOW — budget ~1h for a full batch)
+
+⚠ **Tell the user up front that this step is a long wait.** Merging a steplib PR triggers a `deploy` build on **`tooling-steplib-controller [STEPLIB]`** (app `4320df4cdbe4bf24`, owned by Bitrise #Steps) which regenerates the spec every build resolves `@<major>` against. Those deploys are **serialized — one at a time, ~7–22 min each** (`pr_audit` builds are unaffected and start instantly). Merging four steplib PRs within a couple of minutes therefore queues four deploys back to back, and the last one waits out all the others.
+
+**The tail of a burst can be silently dropped.** A queued build that has not started within 60 minutes is killed by the idle reaper (`Idle Build: Build hasn't been started or updated since more than 60 minutes ago`), nothing retries it, and the spec keeps whatever the last *successful* deploy published — while PR merged / tag cut / steplib PR merged all still read green. The **last-merged step is the one at risk**, because its deploy sits at the back of the queue.
+
+v3.6.2 hit this exactly: seven deploys were queued from ~13:02, `activate-build-cache-for-react-native-0.14.2` merged at 13:18:51, and its deploy (#6094) was reaped at 14:20:45 — **71 seconds** before the deploy ahead of it finished at 14:21:56. The spec stayed at 0.14.1 and a customer on `@0` was still resolving CLI 3.6.1 seventeen hours later.
+
+Check the deploy queue (watch `queue_wait` against the 60-minute limit, and any `abort_reason`):
+
+```bash
+curl -sS -H "Authorization: $BITRISE_PAT" \
+  "https://api.bitrise.io/v0.1/apps/4320df4cdbe4bf24/builds?limit=12" | python3 -c "
+import sys,json,datetime
+def p(t): return datetime.datetime.fromisoformat(t.replace('Z','+00:00')) if t else None
+for b in sorted(json.load(sys.stdin)['data'], key=lambda b: b['build_number']):
+    tr,sa=p(b.get('triggered_at')),p(b.get('started_on_worker_at'))
+    wait=f'{(sa-tr).total_seconds()/60:.1f}m' if (sa and tr) else 'NOT STARTED'
+    print(b['build_number'], b['status_text'], b.get('triggered_workflow'), 'wait='+wait, b.get('abort_reason') or '')"
+```
+
+Then verify the published artifact — this is the only check that proves delivery:
+
+```bash
+curl -sS https://bitrise-steplib-collection.s3.amazonaws.com/slim-spec.json.gz -o /tmp/spec.gz
+python3 -c "
+import gzip,json
+d=json.load(gzip.open('/tmp/spec.gz'))['steps']
+for n in ('activate-build-cache-for-gradle','activate-build-cache-for-xcode','activate-build-cache-for-react-native','activate-gradle-mirrors'):
+    print(n, d[n]['latest_version_number'])"
+```
+
+If a version is missing, re-trigger `deploy` on `master` at that steplib squash-merge commit (master HEAD if it merged last). It is idempotent — it regenerates from master — and on an empty queue it **starts immediately** and takes ~20 min, so this recovery is quick. Then re-check the spec.
+
+Step 9 says to merge each steplib PR as soon as it is mergeable, which is right for throughput but is what creates this queue. Keep doing that, then always come back and verify the spec — or stagger the last merge if a deploy backlog is already visible.
 
 ## Flaky E2E tests — cache hit rate
 

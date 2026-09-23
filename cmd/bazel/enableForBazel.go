@@ -3,7 +3,6 @@ package bazel
 import (
 	"fmt"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-io/go-utils/v2/pathutil"
@@ -14,6 +13,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -79,7 +79,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 		return fmt.Errorf("get user home directory, error: %w", err)
 	}
 
-	bazelrcPath, err := pathutil.NewPathModifier().AbsPath(filepath.Join(userHomeDir, ".bazelrc"))
+	bazelrcPath, err := pathutil.NewPathModifier().AbsPath(paths.FromHome(userHomeDir).BazelrcFile())
 	if err != nil {
 		return fmt.Errorf("get absolute path of ~/.bazelrc, error: %w", err)
 	}

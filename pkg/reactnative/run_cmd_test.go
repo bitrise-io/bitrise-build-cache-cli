@@ -476,7 +476,7 @@ func TestRunner_Run_CcacheEnv(t *testing.T) {
 		require.True(t, ok, "the compiler has no other way to learn the socket")
 		assert.Contains(t, remote, "crsh:/tmp/ccache-ipc.sock")
 
-		for _, key := range []string{"CCACHE_REMOTE_ONLY", "CCACHE_NOHASHDIR", "CMAKE_CXX_COMPILER_LAUNCHER", "CMAKE_C_COMPILER_LAUNCHER"} {
+		for _, key := range []string{"CCACHE_REMOTE_ONLY", "CCACHE_NOHASHDIR", "CCACHE_COMPILERCHECK", "CMAKE_CXX_COMPILER_LAUNCHER", "CMAKE_C_COMPILER_LAUNCHER"} {
 			_, ok := findEnv(got, key)
 			assert.True(t, ok, key)
 		}

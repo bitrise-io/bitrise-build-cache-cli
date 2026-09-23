@@ -48,6 +48,11 @@ internal/     → Core business logic, config, protocols
 - `internal/xcelerate/` — Xcode compilation caching (proxy server, derived data, arg parsing, analytics)
 - `internal/build_cache/kv/` — key-value storage client for the build cache GRPC protocol
 - `internal/hash/` — blake3 hashing utilities
+- `internal/blobstats/` — per-blob cache transfer distributions (latency/size/throughput histograms + exact throughput percentiles), sent on the analytics invocation as `cacheBlobStats`. Size and throughput boundaries mirror the Gradle plugins' `io.bitrise.gradle.common.CacheBlobStats` (calibrated in gradle-plugins#100) and must move together; **latency deliberately differs** — the CLI uses `4..1024` ms because macOS overflows Gradle's `2..512` scale 1.4-1.7% against Gradle's 0.08%. Boundaries travel in the payload, so a rescale needs no `SchemaVersion` bump; bump that only when a field's meaning changes. `DirectionSnapshot.ProfileLine()` renders the operator-facing Info line (`Proxy download profile:` / `Ccache download profile:`) — latency and size read as bucket bounds via `HistogramSnapshot.PercentileBucket`, since only throughput retains samples. Written by the xcelerate proxy and the ccache IPC server, read by the xcodebuild wrapper (over `GetSessionStats`) and the ccache storage helper (over the `RequestGetBlobStats` IPC call).
+
+  It is also the **single source of truth for the session counters**: the proxy's `hits`/`misses`/`uploads`/byte totals/`errors` and ccache's `CacheEffectiveness` are derived from a snapshot, not tracked in parallel atomics. Add a counter by recording it here, never beside it. `ProtocolCollector` records CAS and KV separately and reports the totals as their exact union (merged from retained samples, so the total percentiles stay exact); `kvHits`/`kvMisses`/`kvUploadBytes` come from its KV side. The two exceptions, both documented at their declaration: ccache's `errors`, which also counts non-transfer protocol failures, and the proxy's `firstError`, which is not a counter.
+
+  Hit-rate precedence is unchanged and deliberate — Xcode's own log-parsed number, then KV, then blobs. A KV lookup is one compilation-cache-key decision while a CAS get fetches a blob that decision already pointed at, so blob-level hit rate overstates. The wrapper-less slim-emit path has no Xcode number, so KV is the only sound signal there.
 - `internal/stringmerge/` — merges content into config files using `# [start]/[end] generated-by-bitrise-build-cache` marker blocks
 - `internal/paths/` — single source of truth for every on-disk location the CLI reads or writes. Filenames, dir layouts, socket/pid names live as constants in `paths.go`; per-`Paths` methods compose them against a home dir.
 
@@ -156,7 +161,9 @@ The file I/O is in `internal/config/common/benchmark.go` (`WriteBenchmarkPhaseFi
 
 ## Go Version
 
-Keep the `go` directive in `go.mod` at **1.24**. Do not bump it to 1.25 or later. This is a hard requirement imposed by the step libraries that depend on this CLI — they need Go 1.24 compatibility. When running `go mod tidy` or updating dependencies, pin any transitive packages that would require Go 1.25+ (typically `golang.org/x/{net,sys,text,tools}` and `google.golang.org/genproto`) to versions that are compatible with Go 1.24.
+The `go` directive in `go.mod` follows the Renovate bumps — currently **1.26.0**.
+
+The former "pin at 1.24" rule is gone: #403 took it to 1.25.0, #408 to 1.25.8 and #447 to 1.26.0, and CI installs a matching toolchain. It was documented as a hard requirement from the step libraries that depend on this CLI, but that constraint was never re-verified as the pin drifted. Before assuming a Go version is safe for those consumers, check them rather than this file.
 
 ## Bitrise Workflow Scripts
 

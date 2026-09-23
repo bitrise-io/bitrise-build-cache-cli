@@ -3,6 +3,8 @@ package common
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCacheConfigMetadata(t *testing.T) {
@@ -411,4 +414,73 @@ func TestRedactBitriseEnvs_secretKeyListStillHonoured(t *testing.T) {
 	assert.Contains(t, envs["MY_SECRET"], "<sha256@")
 	assert.Contains(t, envs["OTHER"], "<sha256@")
 	assert.Equal(t, "kept", envs["NOT_SECRET"])
+}
+
+func TestResolveDefaultBranch(t *testing.T) {
+	t.Parallel()
+	logger := log.NewLogger()
+
+	gitHubEventPath := filepath.Join(t.TempDir(), "event.json")
+	require.NoError(t, os.WriteFile(gitHubEventPath, []byte(`{"repository":{"default_branch":"trunk"}}`), 0o600))
+
+	remoteHead := func(_ string, _ ...string) (string, error) { return "origin/main\n", nil }
+	noRemoteHead := func(_ string, _ ...string) (string, error) { return "", errors.New("no upstream") }
+
+	tests := []struct {
+		name        string
+		commandFunc CommandFunc
+		envs        map[string]string
+		want        string
+	}{
+		{
+			name:        "Bitrise leaves it to the API's project record",
+			commandFunc: remoteHead,
+			envs:        map[string]string{"BITRISE_IO": "true", "BITRISE_BUILD_SLUG": "build-1"},
+			want:        "",
+		},
+		{
+			name:        "GitLab publishes it directly",
+			commandFunc: noRemoteHead,
+			envs:        map[string]string{"GITLAB_CI": "true", "CI_DEFAULT_BRANCH": "develop"},
+			want:        "develop",
+		},
+		{
+			name:        "GitHub Actions reads the event payload",
+			commandFunc: noRemoteHead,
+			envs:        map[string]string{"GITHUB_ACTIONS": "true", "GITHUB_EVENT_PATH": gitHubEventPath},
+			want:        "trunk",
+		},
+		{
+			name:        "GitHub Actions falls back to remote HEAD without a payload",
+			commandFunc: remoteHead,
+			envs:        map[string]string{"GITHUB_ACTIONS": "true"},
+			want:        "main",
+		},
+		{
+			name:        "CircleCI publishes nothing, so remote HEAD answers",
+			commandFunc: remoteHead,
+			envs:        map[string]string{"CIRCLECI": "true"},
+			want:        "main",
+		},
+		{
+			name:        "unknown when nothing can resolve it",
+			commandFunc: noRemoteHead,
+			envs:        map[string]string{"CIRCLECI": "true"},
+			want:        "",
+		},
+		{
+			name:        "unreadable GitHub payload falls back rather than failing",
+			commandFunc: noRemoteHead,
+			envs:        map[string]string{"GITHUB_ACTIONS": "true", "GITHUB_EVENT_PATH": "/nonexistent/event.json"},
+			want:        "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, resolveDefaultBranch(logger, tt.commandFunc, tt.envs))
+		})
+	}
 }

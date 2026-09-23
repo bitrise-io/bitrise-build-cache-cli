@@ -21,7 +21,7 @@ func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, is
 	// authConfig key that the analytics and React Native readers expect, and never
 	// into the credentials block, which is for credentials that outlive one build.
 	if origin.Backend == auth.BackendJWT {
-		if legacyErr := writeAnalyticsCredential(cred); legacyErr != nil {
+		if legacyErr := writeAnalyticsCredential(cred, origin); legacyErr != nil {
 			r.debugf("could not mirror the CI JWT to the analytics config: %s", legacyErr)
 		}
 

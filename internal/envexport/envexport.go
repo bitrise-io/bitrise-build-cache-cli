@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/stringmerge"
 )
@@ -81,6 +82,20 @@ func (e *EnvExporter) exportViaGitHubEnv(key, value string) {
 	e.logger.Infof("Appended %s to %s", key, filePath)
 }
 
+// ExportCLIPath publishes this binary's path as BITRISE_BUILD_CACHE_CLI. The Gradle plugins run
+// the CLI to resolve their auth token but look only there, on $PATH and in ~/.bitrise/bin, while
+// the step installs into /tmp/bin. A stale path is safe: they skip what they cannot execute.
+func (e *EnvExporter) ExportCLIPath() {
+	exe, err := os.Executable()
+	if err != nil {
+		e.logger.Debugf("Could not resolve the CLI's own path, build tools will fall back to $PATH: %v", err)
+
+		return
+	}
+
+	e.Export(consts.EnvCLIPath, exe)
+}
+
 // ExportToShellRC writes an export statement to ~/.bashrc and ~/.zshrc using a marker block.
 // The blockName identifies the block in the file (e.g. "Bitrise Build Cache").
 // The content is the raw shell content to write (e.g. "export KEY=VALUE").
@@ -119,6 +134,59 @@ func writeShellRCBlock(filePath, blockName, content string) error {
 		fmt.Sprintf("# [end] %s", blockName),
 		content,
 	)
+
+	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil { //nolint:mnd,gosec
+		return fmt.Errorf("failed to write %s: %w", filePath, err)
+	}
+
+	return nil
+}
+
+// RemoveFromShellRC strips the marker block written by ExportToShellRC from both
+// ~/.bashrc and ~/.zshrc. Missing files, missing blocks, and empty result content
+// are all no-ops (never deletes the file).
+func (e *EnvExporter) RemoveFromShellRC(blockName string) {
+	homeDir := e.envs["HOME"]
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			e.logger.Debugf("Failed to get home directory: %v", err)
+
+			return
+		}
+	}
+
+	for _, rcFile := range []string{".bashrc", ".zshrc"} {
+		rcPath := filepath.Join(homeDir, rcFile)
+		if err := removeShellRCBlock(rcPath, blockName); err != nil {
+			e.logger.Debugf("Failed to update %s: %v", rcFile, err)
+
+			continue
+		}
+		e.logger.Infof("Stripped %q block from %s", blockName, rcPath)
+	}
+}
+
+func removeShellRCBlock(filePath, blockName string) error {
+	currentContent, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to read %s: %w", filePath, err)
+	}
+
+	newContent := stringmerge.RemoveBlock(
+		string(currentContent),
+		fmt.Sprintf("# [start] %s", blockName),
+		fmt.Sprintf("# [end] %s", blockName),
+	)
+
+	if newContent == string(currentContent) {
+		return nil
+	}
 
 	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil { //nolint:mnd,gosec
 		return fmt.Errorf("failed to write %s: %w", filePath, err)

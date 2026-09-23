@@ -13,7 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
+
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // Budget leaves headroom under Bazel's --credential_helper_timeout (10s default).
@@ -40,12 +45,21 @@ type Credential struct {
 
 type Resolver func(ctx context.Context) (Credential, error)
 
-func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver) error {
+// resolveRepoURL may be nil, in which case no repository header is emitted.
+func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, resolveRepoURL RepoURLResolver) error {
 	// Decoded and discarded, so a malformed payload is an error not a silent pass.
 	var req GetCredentialsRequest
 	dec := json.NewDecoder(in)
 	if err := dec.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("decode credential-helper request: %w", err)
+	}
+
+	if optedOut() {
+		if err := json.NewEncoder(out).Encode(GetCredentialsResponse{Headers: map[string][]string{}}); err != nil {
+			return fmt.Errorf("encode empty credential-helper response: %w", err)
+		}
+
+		return nil
 	}
 
 	cred, err := resolve(ctx)
@@ -66,9 +80,45 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver) err
 		resp.Expires = cred.Expiry.UTC().Format(time.RFC3339)
 	}
 
+	if resolveRepoURL != nil {
+		if repoURL := resolveRepoURL(ctx); repoURL != "" {
+			resp.Headers[repositoryURLHeader] = []string{repoURL}
+		}
+	}
+
 	if err := json.NewEncoder(out).Encode(resp); err != nil {
 		return fmt.Errorf("encode credential-helper response: %w", err)
 	}
 
 	return nil
+}
+
+// optedOut reports whether the machine-wide project mode is "opt-in" and the
+// current working directory has no marker up the tree. Any resolution failure
+// treats the request as opted-in — a missing config file, unreadable marker, or
+// unresolvable home dir must not silently kill the auth path.
+func optedOut() bool {
+	osProxy := utils.DefaultOsProxy{}
+
+	p, err := paths.Default()
+	if err != nil {
+		return false
+	}
+
+	cfg, err := machineconfig.Read(osProxy, p, nil)
+	if err != nil || cfg.ProjectMode != machineconfig.ModeOptIn {
+		return false
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+
+	found, _, err := machineconfig.FindMarker(cwd, osProxy)
+	if err != nil {
+		return false
+	}
+
+	return !found
 }

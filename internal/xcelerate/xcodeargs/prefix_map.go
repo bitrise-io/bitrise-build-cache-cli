@@ -30,7 +30,7 @@ const (
 	ProjectTempDirKey           = "PROJECT_TEMP_DIR"
 	DerivedDataPathFlag         = "-derivedDataPath"
 
-	// Used instead of -derivedDataPath on query actions, which reject that without -scheme.
+	// Points a query action at the build's checkout dir when -derivedDataPath is not accepted.
 	ClonedSourcePackagesDirPathFlag = "-clonedSourcePackagesDirPath"
 )
 
@@ -140,6 +140,13 @@ func (p Default) DerivedDataPath() string {
 // OriginalArgs, in both the space and `=` forms. Missing → empty.
 func (p Default) ClonedSourcePackagesDirPath() string {
 	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "clonedSourcePackagesDirPath"))
+}
+
+// ResultBundlePath returns the last -resultBundlePath value from OriginalArgs,
+// in both the space and `=` forms. Missing → empty. When empty, the wrapper is
+// free to inject its own value on the self-enrich path.
+func (p Default) ResultBundlePath() string {
+	return absOrEmpty(findLastFlagValue(p.OriginalArgs, "resultBundlePath"))
 }
 
 // ProjectTempDir returns the last PROJECT_TEMP_DIR=... build-setting value

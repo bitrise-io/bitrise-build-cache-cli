@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestRun_EmitsBearerAuthorizationHeader(t *testing.T) {
 	in := strings.NewReader(`{"uri":"https://bitrise-accelerate.services.bitrise.io"}`)
 	out := &bytes.Buffer{}
 
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token")))
+	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -43,7 +44,7 @@ func TestRun_EmptyStdin_StillEmitsHeader(t *testing.T) {
 	in := strings.NewReader("")
 	out := &bytes.Buffer{}
 
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token")))
+	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -54,7 +55,7 @@ func TestRun_MalformedRequest_ReturnsError(t *testing.T) {
 	in := strings.NewReader("not-json")
 	out := &bytes.Buffer{}
 
-	err := Run(t.Context(), in, out, envResolver(t, "test-token"))
+	err := Run(t.Context(), in, out, envResolver(t, "test-token"), nil)
 	require.Error(t, err)
 	assert.Empty(t, out.Bytes(), "no partial output when the request is malformed")
 }
@@ -64,7 +65,7 @@ func TestRun_UsesRawToken_NotGradleFormat(t *testing.T) {
 	// (workspace ID travels via x-org-id). The helper must match that.
 	in := strings.NewReader(`{"uri":"x"}`)
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "raw-token")))
+	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "raw-token"), nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -83,7 +84,7 @@ func TestRun_NoCredentials_PointsAtDoctor(t *testing.T) {
 
 	out := &bytes.Buffer{}
 	err := Run(t.Context(), strings.NewReader(`{"uri":"https://x.services.bitrise.io/"}`), out,
-		NewResolver(map[string]string{}, io.Discard))
+		NewResolver(map[string]string{}, io.Discard), nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "doctor --fix --interactive")
@@ -99,7 +100,7 @@ func TestRun_EmitsExpires_FromCredentialExpiry(t *testing.T) {
 	}
 
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve))
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -117,7 +118,7 @@ func TestRun_OmitsExpires_WhenExpiryUnknown(t *testing.T) {
 	}
 
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve))
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil))
 
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &raw))
@@ -130,8 +131,87 @@ func TestRun_ResolverError_NoPartialOutput(t *testing.T) {
 	}
 
 	out := &bytes.Buffer{}
-	err := Run(t.Context(), strings.NewReader(`{}`), out, resolve)
+	err := Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil)
 
 	require.Error(t, err)
 	assert.Empty(t, out.Bytes())
 }
+
+func TestRun_EmitsRepositoryURLHeader(t *testing.T) {
+	in := strings.NewReader(`{"uri":"https://bitrise-accelerate.services.bitrise.io"}`)
+	out := &bytes.Buffer{}
+
+	repoURL := func(context.Context) string { return "https://github.com/org/repo.git" }
+	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), repoURL))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Equal(t, []string{"https://github.com/org/repo.git"}, resp.Headers["x-repository-url"])
+}
+
+func TestRun_NoRepositoryURL_OmitsHeader(t *testing.T) {
+	in := strings.NewReader(`{"uri":"https://bitrise-accelerate.services.bitrise.io"}`)
+	out := &bytes.Buffer{}
+
+	repoURL := func(context.Context) string { return "" }
+	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), repoURL))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.NotContains(t, resp.Headers, "x-repository-url")
+}
+
+func TestRun_ProjectModeOptInWithoutMarkerReturnsEmptyHeaders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeMachineConfig(t, home, `{"project_mode":"opt-in"}`)
+
+	buildDir := home + "/build-a"
+	require.NoError(t, mustMkdir(buildDir))
+	t.Chdir(buildDir)
+
+	out := &bytes.Buffer{}
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, envResolver(t, "test-token"), nil))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Empty(t, resp.Headers, "opt-in without marker must emit empty headers so RPCs skip auth")
+}
+
+func TestRun_ProjectModeOptInWithMarkerStillAuths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeMachineConfig(t, home, `{"project_mode":"opt-in"}`)
+
+	buildDir := home + "/build-b"
+	require.NoError(t, mustMkdir(buildDir))
+	require.NoError(t, mustWrite(buildDir+"/.bitrise-build-cache.json", "{}"))
+	t.Chdir(buildDir)
+
+	out := &bytes.Buffer{}
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, envResolver(t, "test-token"), nil))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Equal(t, []string{"Bearer test-token"}, resp.Headers["authorization"])
+}
+
+func writeMachineConfig(t *testing.T, home, body string) {
+	t.Helper()
+	dir := home + "/.bitrise/cache"
+	require.NoError(t, mustMkdir(dir))
+	require.NoError(t, mustWrite(dir+"/config.json", body))
+}
+
+func mustMkdir(dir string) error {
+	return osMkdirAll(dir, 0o755)
+}
+
+func mustWrite(path, body string) error {
+	return osWriteFile(path, []byte(body), 0o644)
+}
+
+var (
+	osMkdirAll   = os.MkdirAll
+	osWriteFile  = os.WriteFile
+)

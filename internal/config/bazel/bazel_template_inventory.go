@@ -1,11 +1,14 @@
 package bazelconfig
 
+import "strings"
+
 type HostMetadataInventory struct {
 	OS             string
 	Locale         string
 	DefaultCharset string
 	CPUCores       int
 	MemSize        int64
+	Username       string
 }
 
 type CommonTemplateInventory struct {
@@ -18,12 +21,13 @@ type CommonTemplateInventory struct {
 	WorkflowName string
 	BuildID      string
 	Timestamps   bool
-	// CLIPath is the absolute path of the bitrise-build-cache binary. On local
-	// dev (empty CIProvider) it drives `build --credential_helper=<CLIPath>`
-	// so the auth token is resolved per-build via the hidden `get` subcommand
-	// (Bazel invokes `<CLIPath> get` per the EngFlow credential-helper spec)
-	// instead of being written literally into `~/.bazelrc`. Empty on CI —
-	// the CI branch keeps the literal `Bearer <token>` header for perf.
+	// CLIPath is the absolute path of the bitrise-build-cache binary, or the bare
+	// binary name when that resolves on $PATH. When set — on CI as well as local
+	// dev — it drives `build --credential_helper=<CLIPath>`, so the auth token is
+	// resolved per-build via the hidden `get` subcommand (Bazel invokes
+	// `<CLIPath> get` per the EngFlow credential-helper spec) instead of being
+	// written literally into `~/.bazelrc`. Empty when the CLI is not reachable,
+	// which falls back to the literal `Bearer <token>` header.
 	CLIPath      string
 	HostMetadata HostMetadataInventory
 }
@@ -50,4 +54,25 @@ type TemplateInventory struct {
 	Cache  CacheTemplateInventory
 	BES    BESTemplateInventory
 	RBE    RBETemplateInventory
+}
+
+func (i CommonTemplateInventory) BuildUserHeaderValue() string {
+	buildUser := i.CIProvider
+	if buildUser == "" {
+		buildUser = i.HostMetadata.Username
+	}
+
+	return bazelRCEscape(buildUser)
+}
+
+func (i CommonTemplateInventory) WorkflowNameHeaderValue() string {
+	return bazelRCEscape(i.WorkflowName)
+}
+
+// bazelRCEscape escapes a value for use inside a single-quoted Bazel rc value.
+// Backslash first, so the backslashes it introduces are not escaped again.
+func bazelRCEscape(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+
+	return strings.ReplaceAll(value, `'`, `\'`)
 }

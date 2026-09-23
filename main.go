@@ -7,12 +7,12 @@ import (
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common/interactive" // registers activate --interactive
-	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/daemon"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/doctor"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/file"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/get"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/invocations"
+	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/project"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/reactnative"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/update"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"

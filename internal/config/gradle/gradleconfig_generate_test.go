@@ -157,6 +157,81 @@ func Test_GenerateInitGradle(t *testing.T) {
 	}
 }
 
+func Test_GenerateInitGradle_ProjectModeOptInInjectsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode: "opt-in",
+			CIProvider:  "",
+			CLIPath:     "bitrise-build-cache",
+			Version:     "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.Contains(t, got, "BitriseProjectScopeSource")
+	assert.Contains(t, got, `"project", "scope-check"`)
+	assert.Contains(t, got, "return@settingsEvaluated")
+	assert.NotContains(t, got, "_bitriseMarkerDir")
+}
+
+func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode: "opt-in",
+			CIProvider:  "bitrise",
+			Version:     "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BitriseProjectScopeSource")
+	assert.NotContains(t, got, `"project", "scope-check"`)
+}
+
+func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode: "always",
+			CIProvider:  "",
+			Version:     "CommonVersionValue",
+		},
+		Cache: CacheTemplateInventory{
+			Usage:               UsageLevelEnabled,
+			Version:             "CacheVersionValue",
+			EndpointURLWithPort: "CacheEndpointURLValue",
+			IsPushEnabled:       true,
+			ValidationLevel:     "ValidationLevelValue",
+		},
+		Analytics:  AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BitriseProjectScopeSource")
+	assert.NotContains(t, got, "return@settingsEvaluated")
+}
+
 const expectedImports = `import io.bitrise.gradle.analytics.AnalyticsPluginExtension
 import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory`
@@ -230,7 +305,6 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = "AuthTokenValue"
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -238,28 +312,23 @@ settingsEvaluated {
             collectMetadata = false
         }
     }
-    rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
-    }
-    rootProject {
-        extensions.create("analytics", AnalyticsPluginExtension::class.java)
-        extensions.configure(AnalyticsPluginExtension::class.java) {
-            endpoint.set("AnalyticsEndpointURLValue:123")
-            httpEndpoint.set("AnalyticsHttpEndpointValue")
-            grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-            authToken.set("AuthTokenValue")
-            dumpEventsToFiles.set(true)
-            debug.set(true)
-            enabled.set(true)
+    apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    extensions.create("analytics", AnalyticsPluginExtension::class.java)
+    extensions.configure(AnalyticsPluginExtension::class.java) {
+        endpoint.set("AnalyticsEndpointURLValue:123")
+        httpEndpoint.set("AnalyticsHttpEndpointValue")
+        grpcEndpoint.set("AnalyticsGRPCEndpointValue")
+        dumpEventsToFiles.set(true)
+        debug.set(true)
+        enabled.set(true)
 
-            providerName.set("CIProviderValue")
+        providerName.set("CIProviderValue")
 
-            bitrise {
-                appSlug.set("AppSlugValue")
-            }
+        bitrise {
+            appSlug.set("AppSlugValue")
         }
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
 }
 rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {
@@ -293,7 +362,6 @@ settingsEvaluated {
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
         remote(BitriseBuildCache::class.java) {
             endpoint = "CacheEndpointURLValue"
-            authToken = providers.bitriseAuthToken()
             isPush = true
             debug = true
             blobValidationLevel = "ValidationLevelValue"
@@ -301,28 +369,23 @@ settingsEvaluated {
             collectMetadata = false
         }
     }
-    rootProject {
-        apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
-    }
-    rootProject {
-        extensions.create("analytics", AnalyticsPluginExtension::class.java)
-        extensions.configure(AnalyticsPluginExtension::class.java) {
-            endpoint.set("AnalyticsEndpointURLValue:123")
-            httpEndpoint.set("AnalyticsHttpEndpointValue")
-            grpcEndpoint.set("AnalyticsGRPCEndpointValue")
-            authToken.set(providers.bitriseAuthToken())
-            dumpEventsToFiles.set(true)
-            debug.set(true)
-            enabled.set(true)
+    apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    extensions.create("analytics", AnalyticsPluginExtension::class.java)
+    extensions.configure(AnalyticsPluginExtension::class.java) {
+        endpoint.set("AnalyticsEndpointURLValue:123")
+        httpEndpoint.set("AnalyticsHttpEndpointValue")
+        grpcEndpoint.set("AnalyticsGRPCEndpointValue")
+        dumpEventsToFiles.set(true)
+        debug.set(true)
+        enabled.set(true)
 
-            providerName.set("")
+        providerName.set("")
 
-            bitrise {
-                appSlug.set("AppSlugValue")
-            }
+        bitrise {
+            appSlug.set("AppSlugValue")
         }
-        apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
     }
+    apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()
 }
 rootProject {
     extensions.create("rbe", io.bitrise.gradle.rbe.RBEPluginExtension::class.java).with {

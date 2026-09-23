@@ -1,6 +1,7 @@
 package gradleconfig
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 
@@ -10,29 +11,38 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 const (
 	ErrFmtFailedToUpdateProps = "failed to update gradle.properties: %w"
 )
 
+// Seam: tests point activation at a temporary credential store instead of the real one.
+//
+//nolint:gochecknoglobals
+var newResolver = live.Default
+
 // Activate creates the Gradle init script and updates gradle.properties
 // to enable Bitrise Build Cache.
 func Activate(
+	ctx context.Context,
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
 	debugLogging bool,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider) (TemplateInventory, error),
+	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (TemplateInventory, error),
 	templateWriter func(TemplateInventory, string) error,
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
 ) error {
 	NormalizeParams(&params)
 
-	resolver := live.Default(nil)
+	resolver := newResolver(logger)
 
-	authConfig, _, err := resolver.ResolveNoRefresh(envProvider)
+	// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, by which time the env
+	// vars activation resolved from may be gone.
+	authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.DetectCIProvider(envProvider) != "")
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
@@ -47,10 +57,12 @@ func Activate(
 			return string(output), err
 		}, logger)
 	if metadata.CIProvider != "" {
-		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, envexport.New(envProvider, logger))
+		exporter := envexport.New(envProvider, logger)
+		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
+		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
 	}
 
-	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient)
+	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
 	if err != nil {
 		return err
 	}

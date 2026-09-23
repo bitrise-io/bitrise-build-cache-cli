@@ -18,7 +18,7 @@ func registerLoggerMethod(l *utilsMocks.Logger, method string) {
 }
 
 func init() {
-	for _, method := range []string{"TDebugf", "TInfof", "TErrorf", "Warnf", "Infof", "Debugf"} {
+	for _, method := range []string{"TDebugf", "TInfof", "TErrorf", "TWarnf", "Warnf", "Infof", "Debugf"} {
 		registerLoggerMethod(mockLogger, method)
 	}
 }

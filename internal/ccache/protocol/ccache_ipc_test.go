@@ -161,3 +161,32 @@ func Test_WriteErr(t *testing.T) {
 		assert.Equal(t, errMsg, got)
 	})
 }
+
+func Test_WriteReadSessionStats(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, protocol.WriteSessionStats(&buf, 111, 222, "child", "parent"))
+
+	resp, err := protocol.ReadByte(&buf)
+	require.NoError(t, err)
+	require.Equal(t, byte(protocol.ResponseOK), resp)
+
+	dl, ul, invocationID, parentID, err := protocol.ReadSessionStats(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, int64(111), dl)
+	assert.Equal(t, int64(222), ul)
+	assert.Equal(t, "child", invocationID)
+	assert.Equal(t, "parent", parentID)
+}
+
+func Test_WriteReadBlobStats(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, protocol.WriteBlobStats(&buf, []byte(`{"schemaVersion":1}`)))
+
+	resp, err := protocol.ReadByte(&buf)
+	require.NoError(t, err)
+	require.Equal(t, byte(protocol.ResponseOK), resp)
+
+	payload, err := protocol.ReadBlobStats(&buf)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"schemaVersion":1}`, string(payload))
+}

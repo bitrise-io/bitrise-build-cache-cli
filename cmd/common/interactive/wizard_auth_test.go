@@ -5,6 +5,7 @@ package interactive
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -168,6 +169,88 @@ func TestResolveWizardAuth_UnrefreshableLoginSignsInAgain(t *testing.T) {
 	assert.True(t, auth.SignedInNow)
 	assert.Equal(t, "pat-new", auth.Config.Token)
 	assert.Equal(t, "ws-2", auth.Config.WorkspaceID)
+}
+
+// A wrapped ErrLoginRequired still means "sign in again" — the flow wraps it
+// with the underlying HTTP failure, and errors.Is has to see through that.
+func TestResolveWizardAuth_WrappedLoginRequiredStillSignsIn(t *testing.T) {
+	kc := &stubKeychain{creds: authpkg.TokenSet{
+		AuthToken:    "stale-pat",
+		WorkspaceID:  "ws-1",
+		RefreshToken: "revoked",
+	}}
+
+	loginCalls := 0
+	r := newResolver(kc, map[string]string{}, "\n")
+	r.EnsureFresh = func(context.Context) (authpkg.TokenSet, error) {
+		return authpkg.TokenSet{}, fmt.Errorf("outer: %w", oauth.ErrLoginRequired)
+	}
+	r.Login = func(context.Context) (authpkg.TokenSet, error) {
+		loginCalls++
+
+		return authpkg.TokenSet{AuthToken: "pat-new", WorkspaceID: "ws-2", RefreshToken: "r"}, nil
+	}
+
+	auth := r.Resolve(context.Background())
+
+	assert.Equal(t, 1, loginCalls)
+	assert.True(t, auth.SignedInNow)
+}
+
+// A transient refresh error (network unreachable, cancelled ctx) is what turned
+// this into a two-run wizard: forcing a browser sign-in there when the stored
+// token is still live is exactly what ACI-5351 fixes.
+func TestResolveWizardAuth_TransientRefreshErrorServesStoredAndDoesNotSignIn(t *testing.T) {
+	kc := &stubKeychain{creds: authpkg.TokenSet{
+		AuthToken:    "stored-pat",
+		WorkspaceID:  "ws-1",
+		RefreshToken: "refresh-1",
+	}}
+
+	r := newResolver(kc, map[string]string{}, "")
+	r.EnsureFresh = func(context.Context) (authpkg.TokenSet, error) {
+		return authpkg.TokenSet{}, errors.New("network unreachable")
+	}
+	r.Login = func(context.Context) (authpkg.TokenSet, error) {
+		t.Fatal("a transient refresh error must not trigger a new browser sign-in")
+
+		return authpkg.TokenSet{}, nil
+	}
+
+	auth := r.Resolve(context.Background())
+
+	assert.False(t, auth.SignedInNow)
+	assert.False(t, auth.NeedsManualPrompt())
+	assert.Equal(t, "stored-pat", auth.Config.Token)
+	assert.Equal(t, "ws-1", auth.Config.WorkspaceID)
+	assert.Equal(t, authpkg.BackendKeychain, auth.Origin.Backend)
+}
+
+// A cancelled context on refresh is a transient network error dressed differently,
+// so the stored credential still has to survive it.
+func TestResolveWizardAuth_CtxCanceledDuringRefreshServesStored(t *testing.T) {
+	kc := &stubKeychain{creds: authpkg.TokenSet{
+		AuthToken:    "stored-pat",
+		WorkspaceID:  "ws-1",
+		RefreshToken: "refresh-1",
+	}}
+
+	r := newResolver(kc, map[string]string{}, "")
+	r.EnsureFresh = func(context.Context) (authpkg.TokenSet, error) {
+		return authpkg.TokenSet{}, context.Canceled
+	}
+	r.Login = func(context.Context) (authpkg.TokenSet, error) {
+		t.Fatal("a cancelled refresh must not trigger a new browser sign-in")
+
+		return authpkg.TokenSet{}, nil
+	}
+
+	auth := r.Resolve(context.Background())
+
+	assert.False(t, auth.SignedInNow)
+	assert.False(t, auth.NeedsManualPrompt())
+	assert.Equal(t, "stored-pat", auth.Config.Token)
+	assert.Equal(t, authpkg.BackendKeychain, auth.Origin.Backend)
 }
 
 func TestResolveWizardAuth_ManualKeychainCredentialUsedAsIs(t *testing.T) {

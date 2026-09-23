@@ -1,7 +1,7 @@
 // Package exec is the shared command-runner abstraction for the CLI.
 // Wraps os/exec with deterministic stdout/stderr/exit-code handling and an
 // opt-in LC_ALL=C / LANG=C pin for callers that match on supervisor error
-// strings (the daemon backends do).
+// strings (the legacy-supervision teardown does).
 package exec
 
 import (

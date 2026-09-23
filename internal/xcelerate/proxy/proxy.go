@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/slicebuf"
@@ -84,6 +86,12 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	}
 
 	grpcServer := grpc.NewServer(
+		// Unbounded by default: gRPC spawns a goroutine per stream, and the
+		// compilation plugin opens hundreds at once. A CPU-starved proxy holds
+		// each one far longer, so threads and fds grow with service time. See
+		// docs/daemon-latency.md.
+		grpc.MaxConcurrentStreams(maxConcurrentStreams),
+		grpc.NumStreamWorkers(streamWorkers()),
 		grpc.UnaryInterceptor(func(
 			ctx context.Context,
 			req any,
@@ -112,6 +120,15 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	proxy.grpcServer = grpcServer
 
 	return proxy
+}
+
+// Sized off the machine, not the client: the plugin will open as many streams
+// as it has compiles, and the proxy's job is to keep its own thread count flat
+// while it drains them.
+const maxConcurrentStreams = 64
+
+func streamWorkers() uint32 {
+	return uint32(max(4, min(runtime.NumCPU()*2, 32))) //nolint:gosec // bounded to 32
 }
 
 // Serve delegates to the underlying gRPC server.
@@ -295,6 +312,7 @@ func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.G
 		KvUploadedBytes: collectedStats.kvUploadBytes,
 		Errors:          collectedStats.errors,
 		FirstError:      collectedStats.firstError,
+		CacheBlobStats:  blobstats.ToProto(collectedStats.blobStats),
 	}, nil
 }
 
@@ -312,7 +330,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.incrementMisses()
+			p.sessionState.recordMiss(opGet)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -320,7 +338,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			}
 		}
 
-		p.sessionState.recordError("Get", err)
+		p.sessionState.recordError(opGet, err)
 		p.logger.TErrorf("Get error: %s", err)
 
 		return &llvmcas.CASGetResponse{
@@ -334,7 +352,9 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	buffer := bytes.NewBuffer(nil)
+	transferStart := time.Now()
 	err := p.kvClient.DownloadStream(ctx, buffer, key)
+	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to download data: %w", key, err)), nil
 	}
@@ -354,8 +374,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	hit = true
-	p.sessionState.addDownloadBytes(size)
-	p.sessionState.incrementHits()
+	p.sessionState.recordDownload(opGet, size, transferElapsed)
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -380,7 +399,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 	errorHandler := func(err error) *llvmcas.CASPutResponse {
 		p.sessionState.markKeyUnsaved(key)
 
-		p.sessionState.recordError("Put", err)
+		p.sessionState.recordError(opPut, err)
 		p.logger.TErrorf("Put error: %s", err)
 
 		return &llvmcas.CASPutResponse{
@@ -433,6 +452,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	if p.sessionState.saveKeyOnce(key) {
 		p.logger.TDebugf("Put: CAS ID already saved in this session: %s", key)
+		p.sessionState.recordSkippedAlreadySaved(opPut)
 
 		return &llvmcas.CASPutResponse{
 			Contents: &llvmcas.CASPutResponse_CasId{
@@ -453,13 +473,14 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	size := int64(buffer.Len())
 
+	transferStart := time.Now()
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
+	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
 
-	p.sessionState.addUploadBytes(size)
-	p.sessionState.incrementUploads()
+	p.sessionState.recordUpload(opPut, size, transferElapsed)
 
 	return &llvmcas.CASPutResponse{
 		Contents: &llvmcas.CASPutResponse_CasId{
@@ -482,7 +503,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.incrementMisses()
+			p.sessionState.recordMiss(opLoad)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -490,7 +511,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 			}
 		}
 
-		p.sessionState.recordError("Load", err)
+		p.sessionState.recordError(opLoad, err)
 		p.logger.TErrorf("Load error: %s", err)
 
 		return &llvmcas.CASLoadResponse{
@@ -504,7 +525,9 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	buffer := bytes.NewBuffer(nil)
+	transferStart := time.Now()
 	err := p.kvClient.DownloadStream(ctx, buffer, key)
+	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to download data: %w", key, err)), nil
 	}
@@ -518,8 +541,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	hit = true
-	p.sessionState.addDownloadBytes(size)
-	p.sessionState.incrementHits()
+	p.sessionState.recordDownload(opLoad, size, transferElapsed)
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -541,7 +563,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 	errorHandler := func(err error) *llvmcas.CASSaveResponse {
 		p.sessionState.markKeyUnsaved(key)
 
-		p.sessionState.recordError("Save", err)
+		p.sessionState.recordError(opSave, err)
 		p.logger.TErrorf("Save error: %s", err)
 
 		return &llvmcas.CASSaveResponse{
@@ -597,6 +619,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 
 	if p.sessionState.saveKeyOnce(key) {
 		p.logger.TDebugf("Save: CAS ID already saved in this session: %s", key)
+		p.sessionState.recordSkippedAlreadySaved(opSave)
 
 		return &llvmcas.CASSaveResponse{
 			Contents: &llvmcas.CASSaveResponse_CasId{
@@ -625,13 +648,14 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		reader = slicebuf.NewBufferWithData(request.GetData().GetBlob().GetData())
 	}
 
+	transferStart := time.Now()
 	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
+	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to upload data: %w", key, err)), nil
 	}
 
-	p.sessionState.addUploadBytes(size)
-	p.sessionState.incrementUploads()
+	p.sessionState.recordUpload(opSave, size, transferElapsed)
 
 	return &llvmcas.CASSaveResponse{
 		Contents: &llvmcas.CASSaveResponse_CasId{
@@ -654,8 +678,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.incrementMisses()
-			p.sessionState.incrementKVMisses()
+			p.sessionState.recordMiss(opGetValue)
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -663,7 +686,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 			}
 		}
 
-		p.sessionState.recordError("GetValue", err)
+		p.sessionState.recordError(opGetValue, err)
 		p.logger.TErrorf("GetValue error: %s", err)
 
 		return &llvmkv.GetValueResponse{
@@ -677,7 +700,9 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	buffer := bytes.NewBuffer(nil)
+	transferStart := time.Now()
 	err := p.kvClient.DownloadStream(ctx, buffer, key)
+	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to download value: %w", key, err)), nil
 	}
@@ -690,9 +715,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	hit = true
-	p.sessionState.addDownloadBytes(size)
-	p.sessionState.incrementHits()
-	p.sessionState.incrementKVHits()
+	p.sessionState.recordDownload(opGetValue, size, transferElapsed)
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -715,7 +738,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 	}()
 
 	errorHandler := func(err error) *llvmkv.PutValueResponse {
-		p.sessionState.recordError("PutValue", err)
+		p.sessionState.recordError(opPutValue, err)
 		p.logger.TErrorf("PutValue error: %s", err)
 
 		return &llvmkv.PutValueResponse{
@@ -738,14 +761,14 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 
 	size := int64(buffer.Len())
 
+	transferStart := time.Now()
 	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
+	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to upload value: %w", key, err)), nil
 	}
 
-	p.sessionState.addUploadBytes(size)
-	p.sessionState.addKVUploadBytes(size)
-	p.sessionState.incrementUploads()
+	p.sessionState.recordUpload(opPutValue, size, transferElapsed)
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil

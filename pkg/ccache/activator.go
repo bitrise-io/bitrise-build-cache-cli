@@ -3,14 +3,17 @@ package ccache
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	ccacheipc "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -100,6 +103,8 @@ func (a *Activator) Activate(ctx context.Context) error {
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 
+	previous := a.readCurrentConfig()
+
 	config, err := ccacheconfig.NewConfig(a.envs, a.osProxy, ccacheconfig.Params{
 		BuildCacheEndpoint:    a.buildCacheEndpoint,
 		PushEnabled:           a.pushEnabled,
@@ -115,6 +120,9 @@ func (a *Activator) Activate(ctx context.Context) error {
 	if err := config.Save(a.logger, a.osProxy, a.encoderFactory); err != nil {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
+
+	a.restartHelperOnConfigDelta(ctx, previous, config)
+	a.ensureHelperServing(ctx, config.IPCEndpoint)
 
 	a.ensureLogDir()
 
@@ -153,6 +161,58 @@ func (a *Activator) Activate(ctx context.Context) error {
 	return nil
 }
 
+const helperReadyInterval = 100 * time.Millisecond
+
+// Test seams. spawn.Detached re-execs this binary, which under `go test` is the
+// test binary itself, so a test must never reach the real starter.
+//
+//nolint:gochecknoglobals
+var (
+	helperReadyBudget = 5 * time.Second
+	startHelperFn     = func(socketPath string, opts ...ccacheipc.StartOption) error {
+		return ccacheipc.NewSocket(socketPath).Start(opts...)
+	}
+	isListeningFn = ccacheipc.IsListening
+	stopHelperFn  = StopStorageHelperAt
+)
+
+// ensureHelperServing starts the storage helper if nothing answers its socket.
+// ccache silently misses every lookup when the socket is dead, so this is
+// best-effort but must not fail activation.
+func (a *Activator) ensureHelperServing(ctx context.Context, socketPath string) {
+	if p, err := paths.Default(); err == nil {
+		if spawn.RemoveLegacySupervision(ctx, p, spawn.CcacheHelper()) {
+			a.logger.Warnf("Removed a leftover service registration for the ccache storage helper.")
+		}
+	}
+
+	if spawn.Probe(ctx, socketPath, ccacheipc.SendHealthCheck) == spawn.Running {
+		return
+	}
+
+	opts := []ccacheipc.StartOption{}
+	if a.debugLogging {
+		opts = append(opts, ccacheipc.WithDebug())
+	}
+	if invID := a.envs["BITRISE_INVOCATION_ID"]; invID != "" {
+		opts = append(opts, ccacheipc.WithInvocationID(invID))
+	}
+
+	if err := startHelperFn(socketPath, opts...); err != nil {
+		a.logger.Warnf("Could not start the ccache storage helper: %s", err)
+
+		return
+	}
+
+	if !spawn.AwaitSocket(ctx, socketPath, ccacheipc.SendHealthCheck, helperReadyBudget, helperReadyInterval) {
+		a.logger.Warnf("The ccache storage helper did not become ready on %s", socketPath)
+
+		return
+	}
+
+	a.logger.Debugf("Started the ccache storage helper on %s", socketPath)
+}
+
 // ActivateCppSuccessful is the success message printed after activation.
 const ActivateCppSuccessful = "✅ Bitrise Build Cache for C++ activated"
 
@@ -174,6 +234,34 @@ func addEnvVarToEnvman(
 	}
 
 	logger.TInfof("Set %s=%s via envman", key, value)
+}
+
+// readCurrentConfig returns the zero value when nothing is on disk yet, so
+// callers can diff against the freshly-built config unconditionally.
+func (a *Activator) readCurrentConfig() ccacheconfig.Config {
+	cfg, err := ccacheconfig.ReadConfig(a.osProxy, utils.DefaultDecoderFactory{}, a.envs)
+	if err != nil {
+		return ccacheconfig.Config{}
+	}
+
+	return cfg
+}
+
+// restartHelperOnConfigDelta stops a running helper whose in-memory config no
+// longer matches the freshly-written one, so the next request picks up the new
+// cache_push setting.
+func (a *Activator) restartHelperOnConfigDelta(ctx context.Context, previous, next ccacheconfig.Config) {
+	if previous.PushEnabled == next.PushEnabled {
+		return
+	}
+	if !isListeningFn(next.IPCEndpoint) {
+		return
+	}
+
+	a.logger.TInfof("ccache config delta on cache_push; restarting the storage helper.")
+	if err := stopHelperFn(ctx, a.logger, next.IPCEndpoint); err != nil {
+		a.logger.Warnf("Failed to stop the ccache storage helper for config reload: %s", err)
+	}
 }
 
 // ensureLogDir creates the dir the storage helper would otherwise create on its

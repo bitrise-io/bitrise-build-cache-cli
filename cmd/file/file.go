@@ -28,7 +28,7 @@ var saveFileCmd = &cobra.Command{
 
 		helper := pkgfile.NewHelper(pkgfile.HelperParams{
 			Logger:       logger,
-			DebugLogging: common.IsDebugLogMode,
+			DebugLogging: common.DebugFromFlag(),
 		})
 		if err := helper.Save(cmd.Context(), cacheKey, filePath); err != nil {
 			return fmt.Errorf("save file to Bitrise Build Cache: %w", err)
@@ -58,7 +58,7 @@ var restoreFileCmd = &cobra.Command{
 
 		helper := pkgfile.NewHelper(pkgfile.HelperParams{
 			Logger:       logger,
-			DebugLogging: common.IsDebugLogMode,
+			DebugLogging: common.DebugFromFlag(),
 		})
 		if err := helper.Restore(cmd.Context(), cacheKey, filePath); err != nil {
 			return fmt.Errorf("restore file from Bitrise Build Cache: %w", err)

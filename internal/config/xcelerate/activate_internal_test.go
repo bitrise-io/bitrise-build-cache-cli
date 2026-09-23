@@ -10,11 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func TestWriteExecutableAtomically_OverwritesExistingTarget(t *testing.T) {

@@ -2,6 +2,7 @@ package ccache
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,20 +19,22 @@ import (
 )
 
 type IpcServer struct {
-	listener           net.Listener
-	client             Client
-	logger             log.Logger
-	loggerFactory      LoggerFactory
-	idleTimer          *time.Timer
-	sessionState       *sessionState
-	config             ccacheconfig.Config
-	metadata           configcommon.CacheConfigMetadata
-	timerMutex         sync.Mutex
-	capabilitiesOnce   sync.Once
-	capabilitiesErr    error
-	activeInvocationID string
-	activeParentID     string
-	activeInvocationMu sync.Mutex
+	listener             net.Listener
+	client               Client
+	logger               log.Logger
+	loggerFactory        LoggerFactory
+	idleTimer            *time.Timer
+	sessionState         *sessionState
+	config               ccacheconfig.Config
+	metadata             configcommon.CacheConfigMetadata
+	timerMutex           sync.Mutex
+	capabilitiesOnce     sync.Once
+	capabilitiesErr      error
+	activeInvocationID   string
+	activeParentID       string
+	activeInvocationMu   sync.Mutex
+	projectMarkerPresent ProjectMarkerFinder
+	readMachineConfig    MachineConfigReader
 }
 
 func NewServer(
@@ -53,6 +56,14 @@ func NewServer(
 	}, nil
 }
 
+func (s *IpcServer) SetProjectMarkerFinder(f ProjectMarkerFinder) {
+	s.projectMarkerPresent = f
+}
+
+func (s *IpcServer) SetMachineConfigReader(r MachineConfigReader) {
+	s.readMachineConfig = r
+}
+
 func (s *IpcServer) Run(ctx context.Context) error {
 	cancellableCtx, cancelFn := context.WithCancel(ctx)
 	defer cancelFn()
@@ -66,7 +77,8 @@ func (s *IpcServer) Run(ctx context.Context) error {
 	s.logger.TInfof("Server listening on %s", s.config.IPCEndpoint) // CI: asserted by cache-ccache-test workflow
 	s.resetIdleTimer(cancelFn)
 	go s.acceptLoop(cancellableCtx, cancelFn)
-	<-cancellableCtx.Done()                 // wait for context cancellation
+	<-cancellableCtx.Done()
+	s.sessionState.effectiveness().Log(s.logger)
 	s.logger.TInfof("Server shutting down") // CI: asserted by cache-ccache-test workflow
 	s.listener.Close()
 
@@ -112,7 +124,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.projectMarkerPresent, s.readMachineConfig)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)
@@ -130,6 +142,10 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 
 		if result.CallStats.method == CALL_METHOD_GET_SESSION_STATS && result.Outcome == PROCESS_REQUEST_OK {
 			s.handleGetSessionStatsResult(conn, conID)
+		}
+
+		if result.CallStats.method == CALL_METHOD_GET_BLOB_STATS && result.Outcome == PROCESS_REQUEST_OK {
+			s.handleGetBlobStatsResult(conn, conID)
 		}
 
 		if result.CallStats.method == CALL_METHOD_STOP && result.Outcome == PROCESS_REQUEST_OK {
@@ -153,14 +169,18 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 }
 
 func (s *IpcServer) handleSetInvocationIDResult(result processResult) {
+	var outgoing CacheEffectiveness
+
 	s.activeInvocationMu.Lock()
 	isDuplicate := result.InvocationChildID == s.activeInvocationID
 	if !isDuplicate {
-		s.sessionState.resetAndGet()
+		outgoing = s.sessionState.takeEffectiveness()
 		s.activeInvocationID = result.InvocationChildID
 		s.activeParentID = result.InvocationParentID
 	}
 	s.activeInvocationMu.Unlock()
+
+	outgoing.Log(s.logger)
 }
 
 func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn context.CancelFunc) {
@@ -173,8 +193,7 @@ func (s *IpcServer) handleStopResult(conn net.Conn, conID string, cancelFn conte
 
 func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	s.activeInvocationMu.Lock()
-	dl := s.sessionState.downloadBytes.Load()
-	ul := s.sessionState.uploadBytes.Load()
+	dl, ul := s.sessionState.sessionBytes()
 	invocationID := s.activeInvocationID
 	parentID := s.activeParentID
 	s.activeInvocationMu.Unlock()
@@ -184,9 +203,27 @@ func (s *IpcServer) handleGetSessionStatsResult(conn net.Conn, conID string) {
 	}
 }
 
+func (s *IpcServer) handleGetBlobStatsResult(conn net.Conn, conID string) {
+	payload, err := json.Marshal(s.sessionState.blobStatsSnapshot())
+	if err != nil {
+		s.logger.TWarnf("[%s] Failed to marshal blob stats: %v", conID, err)
+
+		return
+	}
+
+	if err := protocol.WriteBlobStats(conn, payload); err != nil {
+		s.logger.TErrorf("[%s] Failed to write blob stats response: %v", conID, err)
+	}
+}
+
+// SessionEffectiveness returns the current invocation's summary without resetting it.
+func (s *IpcServer) SessionEffectiveness() CacheEffectiveness {
+	return s.sessionState.effectiveness()
+}
+
 // SessionBytes returns the accumulated bytes downloaded and uploaded since the last SetInvocationID reset.
 func (s *IpcServer) SessionBytes() (int64, int64) {
-	return s.sessionState.downloadBytes.Load(), s.sessionState.uploadBytes.Load()
+	return s.sessionState.sessionBytes()
 }
 
 func (s *IpcServer) resetIdleTimer(cancelFn context.CancelFunc) {

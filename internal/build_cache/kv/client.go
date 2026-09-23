@@ -33,12 +33,16 @@ const (
 	defaultDownloadRetryWait time.Duration = 1 * time.Second
 	defaultUploadRetryWait   time.Duration = 1 * time.Second
 
-	keepaliveTime    = 30 * time.Second
-	keepaliveTimeout = 10 * time.Second
+	// keepaliveTime must exceed the gRPC server's EnforcementPolicy.MinTime
+	// (default 5min) or the server sends GOAWAY ENHANCE_YOUR_CALM.
+	keepaliveTime    = 6 * time.Minute
+	keepaliveTimeout = 20 * time.Second
 )
 
-// Channel-pool sizing mirrors the Gradle plugin's ClientBalancer.
-func numChannels() int     { return max(2, runtime.NumCPU()/6) }
+// Sizing mirrors the Gradle plugin's ClientBalancer, except for the floor:
+// NumCPU/6 gives two channels under 12 cores, and two starved a customer build
+// into 1308 acquire timeouts. Four measured ~4x fewer errors.
+func numChannels() int     { return max(4, runtime.NumCPU()/6) }
 func perChannelLimit() int { return runtime.NumCPU() }
 
 // AuthSource returns the credentials to use for a single RPC. Implementations
@@ -66,12 +70,23 @@ type channel struct {
 	casClient          remoteexecution.ContentAddressableStorageClient
 }
 
-func (ch *channel) acquire() {
+// acquire blocks for a slot, or gives up when ctx is done. Waiting past the
+// caller's deadline would hand back a slot with no time left to use it: the
+// stream opens, the server accepts it, and the first message never arrives.
+func (ch *channel) acquire(ctx context.Context) error {
 	if ch.sem == nil {
-		return
+		return nil
 	}
 
-	ch.sem <- struct{}{}
+	started := time.Now()
+
+	select {
+	case ch.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("acquire kv channel (%d/%d slots busy on this channel, waited %s): %w",
+			len(ch.sem), cap(ch.sem), time.Since(started).Round(time.Millisecond), ctx.Err())
+	}
 }
 
 func (ch *channel) release() {
@@ -97,6 +112,9 @@ type Client struct {
 	uploadRetry         uint
 	uploadRetryWait     time.Duration
 	authGate            authGate
+	stopSampling        chan struct{}
+	stopSamplingOnce    sync.Once
+	lastContentionLog   atomic.Int64
 }
 
 // pickChannel round-robins across channels. Callers must acquire the channel's
@@ -125,6 +143,7 @@ type NewClientParams struct {
 	DownloadRetryWait   time.Duration
 	UploadRetry         uint
 	UploadRetryWait     time.Duration
+	DebugLogging        bool
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -151,7 +170,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{
+	client := &Client{
 		channels:            channels,
 		clientName:          p.ClientName,
 		authSource:          authSource,
@@ -164,7 +183,14 @@ func NewClient(p NewClientParams) (*Client, error) {
 		uploadRetry:         p.UploadRetry,
 		uploadRetryWait:     p.UploadRetryWait,
 		authGate:            authGate{logger: p.Logger},
-	}, nil
+	}
+
+	if p.DebugLogging && p.Logger != nil {
+		client.stopSampling = make(chan struct{})
+		go client.samplePool(client.stopSampling)
+	}
+
+	return client, nil
 }
 
 // buildChannels dials one gRPC connection per channel, each with its own
@@ -227,6 +253,12 @@ func (c *Client) SetLogger(logger log.Logger) {
 // Close releases every gRPC connection in the pool. Safe to call when the
 // client was built with injected stubs — channels without a conn are skipped.
 func (c *Client) Close() error {
+	c.stopSamplingOnce.Do(func() {
+		if c.stopSampling != nil {
+			close(c.stopSampling)
+		}
+	})
+
 	var firstErr error
 	for _, ch := range c.channels {
 		if ch.conn == nil {

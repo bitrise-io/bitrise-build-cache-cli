@@ -40,6 +40,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			OpenFileFunc: func(name string, flag int, perm os.FileMode) (*os.File, error) {
 //				panic("mock out the OpenFile method")
 //			},
+//			ReadDirFunc: func(name string) ([]os.DirEntry, error) {
+//				panic("mock out the ReadDir method")
+//			},
 //			ReadFileIfExistsFunc: func(name string) (string, bool, error) {
 //				panic("mock out the ReadFileIfExists method")
 //			},
@@ -88,6 +91,9 @@ type OsProxyMock struct {
 
 	// OpenFileFunc mocks the OpenFile method.
 	OpenFileFunc func(name string, flag int, perm os.FileMode) (*os.File, error)
+
+	// ReadDirFunc mocks the ReadDir method.
+	ReadDirFunc func(name string) ([]os.DirEntry, error)
 
 	// ReadFileIfExistsFunc mocks the ReadFileIfExists method.
 	ReadFileIfExistsFunc func(name string) (string, bool, error)
@@ -147,6 +153,11 @@ type OsProxyMock struct {
 			// Perm is the perm argument value.
 			Perm os.FileMode
 		}
+		// ReadDir holds details about calls to the ReadDir method.
+		ReadDir []struct {
+			// Name is the name argument value.
+			Name string
+		}
 		// ReadFileIfExists holds details about calls to the ReadFileIfExists method.
 		ReadFileIfExists []struct {
 			// Name is the name argument value.
@@ -192,6 +203,7 @@ type OsProxyMock struct {
 	lockHostname         sync.RWMutex
 	lockMkdirAll         sync.RWMutex
 	lockOpenFile         sync.RWMutex
+	lockReadDir          sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
 	lockRemove           sync.RWMutex
 	lockRename           sync.RWMutex
@@ -419,6 +431,38 @@ func (mock *OsProxyMock) OpenFileCalls() []struct {
 	mock.lockOpenFile.RLock()
 	calls = mock.calls.OpenFile
 	mock.lockOpenFile.RUnlock()
+	return calls
+}
+
+// ReadDir calls ReadDirFunc.
+func (mock *OsProxyMock) ReadDir(name string) ([]os.DirEntry, error) {
+	if mock.ReadDirFunc == nil {
+		panic("OsProxyMock.ReadDirFunc: method is nil but OsProxy.ReadDir was just called")
+	}
+	callInfo := struct {
+		Name string
+	}{
+		Name: name,
+	}
+	mock.lockReadDir.Lock()
+	mock.calls.ReadDir = append(mock.calls.ReadDir, callInfo)
+	mock.lockReadDir.Unlock()
+	return mock.ReadDirFunc(name)
+}
+
+// ReadDirCalls gets all the calls that were made to ReadDir.
+// Check the length with:
+//
+//	len(mockedOsProxy.ReadDirCalls())
+func (mock *OsProxyMock) ReadDirCalls() []struct {
+	Name string
+} {
+	var calls []struct {
+		Name string
+	}
+	mock.lockReadDir.RLock()
+	calls = mock.calls.ReadDir
+	mock.lockReadDir.RUnlock()
 	return calls
 }
 

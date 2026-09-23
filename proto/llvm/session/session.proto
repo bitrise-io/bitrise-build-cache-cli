@@ -35,4 +35,59 @@ message GetSessionStatsResponse {
   int64 kv_uploaded_bytes = 8;
   int64 errors = 9;
   string first_error = 10;
+  optional CacheBlobStats cache_blob_stats = 11;
+}
+
+// `counts` is one longer than `boundaries`: the last entry is the overflow bucket. Boundaries
+// travel with the payload so the scale can be retuned in a CLI release without a backend
+// deploy, and so older invocations keep rendering on their own axis.
+message Histogram {
+  repeated int64 boundaries = 1;
+  repeated int64 counts = 2;
+  int64 count = 3;
+  int64 sum = 4;
+  int64 min = 5;
+  int64 max = 6;
+}
+
+// Percentiles are exact, computed from retained per-op samples. The histogram is what makes them
+// mergeable across invocations, since percentiles themselves cannot be summed.
+message ThroughputStats {
+  Histogram histogram = 1;
+  int64 p10_bytes_per_sec = 2;
+  int64 p50_bytes_per_sec = 3;
+  int64 p90_bytes_per_sec = 4;
+  int64 min_blob_bytes = 5;
+  int64 excluded_small_ops = 6;
+}
+
+// op_count + error_count + miss_count reconciles against latency_ms.count;
+// skipped_already_saved_count stays out of that sum because it is not a transfer.
+message BlobStats {
+  int64 op_count = 1;
+  int64 error_count = 2;
+  // Counted rather than timed: a miss is a cheap round trip and would pull the latency
+  // distribution down. Downloads only.
+  int64 miss_count = 3;
+  // Uploads only: the blob was already stored in this session, so nothing went over the wire.
+  int64 skipped_already_saved_count = 4;
+  int64 bytes_total = 5;
+  Histogram latency_ms = 6;
+  Histogram size_bytes = 7;
+  ThroughputStats throughput = 8;
+}
+
+// cas and kv break the totals down by wire protocol. The totals stay the fields both build
+// tools always send; Gradle has one protocol and omits the breakdown.
+message ProtocolBlobStats {
+  BlobStats upload = 1;
+  BlobStats download = 2;
+}
+
+message CacheBlobStats {
+  int32 schema_version = 1;
+  BlobStats upload = 2;
+  BlobStats download = 3;
+  optional ProtocolBlobStats cas = 4;
+  optional ProtocolBlobStats kv = 5;
 }

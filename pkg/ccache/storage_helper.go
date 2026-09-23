@@ -18,13 +18,16 @@ import (
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	iccache "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
@@ -83,6 +86,7 @@ type StorageHelper struct {
 	parentID     string
 	downloaded   int64
 	uploaded     int64
+	blobStats    *blobstats.Snapshot
 }
 
 // NewStorageHelper reads the ccache configuration from the default config path
@@ -157,6 +161,9 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 		return fmt.Errorf("create IPC server: %w", err)
 	}
 
+	server.SetProjectMarkerFinder(h.newProjectMarkerFinder())
+	server.SetMachineConfigReader(h.newMachineConfigReader())
+
 	if err := server.Run(ctx); err != nil {
 		return fmt.Errorf("run IPC server: %w", err)
 	}
@@ -164,20 +171,63 @@ func (h *StorageHelper) Start(ctx context.Context) error {
 	return nil
 }
 
+// newProjectMarkerFinder walks up from the storage helper's cwd (which reflects
+// the client's build root under detached spawn) and returns whether a marker
+// exists. The request processor only calls it when opt-in mode is active.
+func (h *StorageHelper) newProjectMarkerFinder() iccache.ProjectMarkerFinder {
+	return func() bool {
+		cwd, err := h.osProxy.Getwd()
+		if err != nil {
+			return false
+		}
+		found, _, err := machineconfig.FindMarker(cwd, h.osProxy)
+		if err != nil {
+			return false
+		}
+
+		return found
+	}
+}
+
+// newMachineConfigReader resolves the machine-wide config on each call.
+// Fail-open: any error yields the zero value (mode gating disabled).
+func (h *StorageHelper) newMachineConfigReader() iccache.MachineConfigReader {
+	return func() machineconfig.Config {
+		p, err := paths.Default()
+		if err != nil {
+			return machineconfig.Config{}
+		}
+		current, err := machineconfig.Read(h.osProxy, p, nil)
+		if err != nil {
+			return machineconfig.Config{}
+		}
+
+		return current
+	}
+}
+
 // Stop gracefully shuts down a running storage helper. Returns nil without
 // error if the helper is not running. Only stops the process — does not
 // collect or send analytics. Use CollectAndSendStats separately.
 func (h *StorageHelper) Stop(ctx context.Context) error {
-	socketPath := h.socketPath()
+	return StopStorageHelperAt(ctx, h.logger, h.socketPath())
+}
 
+// StopStorageHelperAt sends the STOP request to a helper listening on socketPath
+// without requiring a ccache config file on disk. Returns nil if nothing is
+// listening. Used by the deactivate flow, which must work even when the config
+// was already partially cleaned up.
+func StopStorageHelperAt(ctx context.Context, logger log.Logger, socketPath string) error {
 	if !iccache.IsListening(socketPath) { //nolint:contextcheck // IsListening uses its own short-lived context
-		h.logger.TInfof("Storage helper is not running, nothing to stop")
+		if logger != nil {
+			logger.TInfof("Storage helper is not running on %s", socketPath)
+		}
 
 		return nil
 	}
 
 	if err := iccache.SendStop(ctx, socketPath); err != nil {
-		return fmt.Errorf("send stop to storage helper: %w", err)
+		return fmt.Errorf("send stop to storage helper on %s: %w", socketPath, err)
 	}
 
 	return nil
@@ -239,7 +289,27 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	dl, ul := h.downloaded, h.uploaded
 	invocationID := h.invocationID
 	parentID := h.parentID
+	blobStats := h.blobStats
 	h.sessionMu.RUnlock()
+
+	iccache.CacheEffectiveness{
+		Hits:          int64(stats.CacheHit),
+		Total:         int64(stats.CacheHit + stats.CacheMiss),
+		Errors:        int64(stats.RemoteStorageError + stats.RemoteStorageTimeout),
+		DownloadBytes: dl,
+		UploadBytes:   ul,
+	}.Log(h.logger)
+
+	if blobStats != nil {
+		for _, d := range []struct {
+			name string
+			snap blobstats.DirectionSnapshot
+		}{{"download", blobStats.Download}, {"upload", blobStats.Upload}} {
+			if line := d.snap.ProfileLine(); line != "" {
+				h.logger.TInfof("Ccache %s profile: %s", d.name, line)
+			}
+		}
+	}
 
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {
@@ -268,7 +338,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	metadata := configcommon.NewMetadata(h.params.Envs, hostUsername(h.params.Envs), newCommandFunc(ctx), h.logger)
 
-	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, h.config.AuthConfig, metadata)
+	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, blobStats, h.config.AuthConfig, metadata)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
 	}
@@ -397,6 +467,18 @@ func (h *StorageHelper) logFilePath(invocationID string) (string, error) {
 	return filepath.Join(dir, fmt.Sprintf(h.config.LogFile, invocationID)), nil
 }
 
+// Best-effort: an older helper does not answer, and the rest is still worth sending.
+func (h *StorageHelper) loadBlobStats(ctx context.Context, socketPath string) *blobstats.Snapshot {
+	snapshot, err := iccache.SendGetBlobStats(ctx, socketPath)
+	if err != nil {
+		h.logger.TDebugf("No blob stats available from storage helper: %v", err)
+
+		return nil
+	}
+
+	return snapshot
+}
+
 func (h *StorageHelper) loadSessionInfo(ctx context.Context, invocationIDOverride, parentIDOverride string) (iccache.SessionStats, error) {
 	socketPath := h.socketPath()
 
@@ -433,6 +515,7 @@ func (h *StorageHelper) loadSessionInfo(ctx context.Context, invocationIDOverrid
 
 	h.uploaded = stats.UploadedBytes
 	h.downloaded = stats.DownloadedBytes
+	h.blobStats = h.loadBlobStats(ctx, socketPath)
 	h.sessionMu.Unlock()
 
 	return stats, nil

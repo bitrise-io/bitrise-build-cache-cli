@@ -1,0 +1,668 @@
+//go:build unit
+
+package invoke_test
+
+import (
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	utilsmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
+)
+
+func writeConfig(t *testing.T, repoRoot string, cmd invoke.Command, spec invoke.InvocationSpec) {
+	t.Helper()
+	dir := filepath.Join(repoRoot, ".bitrise-build-cache")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	data, err := json.MarshalIndent(spec, "", "  ")
+	require.NoError(t, err)
+
+	name := "xcode-build.json"
+	if cmd == invoke.CommandTest {
+		name = "xcode-test.json"
+	}
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), data, 0o644))
+}
+
+func readConfig(t *testing.T, repoRoot string, cmd invoke.Command) invoke.InvocationSpec {
+	t.Helper()
+	name := "xcode-build.json"
+	if cmd == invoke.CommandTest {
+		name = "xcode-test.json"
+	}
+
+	data, err := os.ReadFile(filepath.Join(repoRoot, ".bitrise-build-cache", name))
+	require.NoError(t, err)
+
+	var spec invoke.InvocationSpec
+	require.NoError(t, json.Unmarshal(data, &spec))
+
+	return spec
+}
+
+// seedFinderHome writes a manifest under a fake home so a *deriveddata.Finder
+// pointed at that home returns the requested LatestBuild.
+func seedFinderHome(t *testing.T, result deriveddata.LatestBuild) string {
+	t.Helper()
+
+	home := t.TempDir()
+	ddRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-abc")
+	require.NoError(t, os.MkdirAll(filepath.Join(ddRoot, "Logs", "Build"), 0o755))
+
+	sig := "Build App project"
+	if result.Configuration != "" {
+		sig = "Build App project with scheme " + result.Scheme + " and configuration " + result.Configuration
+	}
+
+	body := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logs</key>
+	<dict>
+		<key>BUILD</key>
+		<dict>
+			<key>fileName</key><string>BUILD.xcactivitylog</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>schemeIdentifier-schemeName</key><string>` + result.Scheme + `</string>
+			<key>signature</key><string>` + sig + `</string>
+			<key>timeStartedRecording</key><real>762345678.0</real>
+			<key>timeStoppedRecording</key><real>762345988.0</real>
+			<key>title</key><string>` + sig + `</string>
+		</dict>
+	</dict>
+</dict>
+</plist>`
+	require.NoError(t, os.WriteFile(filepath.Join(ddRoot, "Logs", "Build", "LogStoreManifest.plist"), []byte(body), 0o644))
+
+	container := result.Workspace
+	if container == "" {
+		container = result.Project
+	}
+	if container != "" {
+		info := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>WorkspacePath</key><string>/x/` + container + `</string></dict></plist>`
+		require.NoError(t, os.WriteFile(filepath.Join(ddRoot, "info.plist"), []byte(info), 0o644))
+	}
+
+	return home
+}
+
+func TestResolve_FullConfig_ReturnsCompleteSpec(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:     "App.xcworkspace",
+		Scheme:        "App",
+		Configuration: "Debug",
+		Destination:   "generic/platform=iOS",
+	})
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.True(t, got.IsComplete())
+	assert.Equal(t, "App.xcworkspace", got.Workspace)
+	assert.Equal(t, "App", got.Scheme)
+	assert.Equal(t, "Debug", got.Configuration)
+	assert.Equal(t, "generic/platform=iOS", got.Destination)
+}
+
+func TestResolve_PartialConfig_DiscoveryFillsAvailableFields(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Configuration: "Release",
+		ExtraArgs:     []string{"-quiet"},
+	})
+
+	home := seedFinderHome(t, deriveddata.LatestBuild{
+		Workspace:     "App.xcworkspace",
+		Scheme:        "App",
+		Configuration: "Debug",
+	})
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: home},
+	}
+
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.False(t, got.IsComplete(), "destination is still missing")
+	assert.Equal(t, "App.xcworkspace", got.Workspace)
+	assert.Equal(t, "App", got.Scheme)
+	assert.Equal(t, "Release", got.Configuration, "config's Configuration must not be overwritten by discovery")
+	assert.Empty(t, got.Destination)
+	assert.Equal(t, []string{"-quiet"}, got.ExtraArgs, "ExtraArgs from existing config must be preserved")
+
+	// Emulate the cmd layer: complete the spec and persist.
+	got.Destination = "generic/platform=iOS"
+	require.NoError(t, r.Persist(meta.ConfigPath, got))
+
+	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
+	assert.Equal(t, got, persisted)
+}
+
+func TestResolve_NoConfig_FinderFull_DestinationStillMissing(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	home := seedFinderHome(t, deriveddata.LatestBuild{
+		Workspace:     "App.xcworkspace",
+		Scheme:        "App",
+		Configuration: "Debug",
+	})
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: home},
+	}
+
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.False(t, got.IsComplete())
+	assert.Equal(t, "App.xcworkspace", got.Workspace)
+	assert.Equal(t, "App", got.Scheme)
+	assert.Equal(t, "Debug", got.Configuration)
+	assert.Empty(t, got.Destination)
+}
+
+func TestResolve_NoRecentBuild_ReturnsEmptySpec(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.False(t, got.IsComplete())
+	assert.NotEmpty(t, meta.ConfigPath, "configPath must be resolved even for an empty spec")
+}
+
+func TestResolve_TolerateUnknownJSONFields(t *testing.T) {
+	repoRoot := t.TempDir()
+	dir := filepath.Join(repoRoot, ".bitrise-build-cache")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "xcode-build.json"), []byte(`{
+	"workspace": "App.xcworkspace",
+	"scheme": "App",
+	"destination": "generic/platform=iOS",
+	"sdk": "iphonesimulator"
+}`), 0o644))
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, "App.xcworkspace", got.Workspace)
+}
+
+func TestPersist_DropsUnknownJSONFields(t *testing.T) {
+	repoRoot := t.TempDir()
+	dir := filepath.Join(repoRoot, ".bitrise-build-cache")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	cfg := filepath.Join(dir, "xcode-build.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{
+	"workspace": "App.xcworkspace",
+	"scheme": "App",
+	"destination": "generic/platform=iOS",
+	"sdk": "iphonesimulator"
+}`), 0o644))
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	require.NoError(t, r.Persist(meta.ConfigPath, got))
+
+	raw, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+
+	var asMap map[string]any
+	require.NoError(t, json.Unmarshal(raw, &asMap))
+
+	_, sdkPresent := asMap["sdk"]
+	assert.False(t, sdkPresent, "unknown field 'sdk' must be dropped on persist")
+	assert.Equal(t, "App.xcworkspace", asMap["workspace"])
+	assert.Equal(t, "App", asMap["scheme"])
+	assert.Equal(t, "generic/platform=iOS", asMap["destination"])
+}
+
+func TestPersist_WorkspaceWinsOverProject(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	r := &invoke.Resolver{}
+
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	require.NoError(t, r.Persist(cfg, invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Project:     "App.xcodeproj",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+	}))
+
+	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
+	assert.Equal(t, "App.xcworkspace", persisted.Workspace)
+	assert.Empty(t, persisted.Project, "workspace wins when both are set")
+}
+
+func TestPersist_EmptyConfigPath_NoOp(t *testing.T) {
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Persist("", invoke.InvocationSpec{Workspace: "App.xcworkspace"}))
+}
+
+func TestPersist_PreservesExtraArgs(t *testing.T) {
+	repoRoot := t.TempDir()
+	r := &invoke.Resolver{}
+
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	spec := invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+		ExtraArgs:   []string{"-quiet", "OTHER_LDFLAGS=-lfoo"},
+	}
+	require.NoError(t, r.Persist(cfg, spec))
+
+	persisted := readConfig(t, repoRoot, invoke.CommandBuild)
+	assert.Equal(t, spec.ExtraArgs, persisted.ExtraArgs)
+}
+
+func TestResolve_ConfigPathIsCommandSpecific(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	_, buildMeta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Contains(t, buildMeta.ConfigPath, "xcode-build.json")
+
+	_, testMeta, err := r.Resolve(invoke.CommandTest, repoRoot)
+	require.NoError(t, err)
+	assert.Contains(t, testMeta.ConfigPath, "xcode-test.json")
+}
+
+func TestResolve_EmptyRepoRoot_ReturnsEmptyConfigPath(t *testing.T) {
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	_, meta, err := r.Resolve(invoke.CommandBuild, "")
+	require.NoError(t, err)
+	assert.Empty(t, meta.ConfigPath, "no configPath means Persist / Reset are no-ops")
+	assert.Empty(t, meta.ProjectDir, "no projectDir when repoRoot is empty and no ancestor scan hit")
+}
+
+// Guards the "callers passing filepath.Dir(configPath)" regression: the
+// ProjectDir returned by Resolve must be the parent of .bitrise-build-cache/,
+// not the .bitrise-build-cache/ dir itself.
+func TestResolve_ProjectDirIsParentOfConfigDir(t *testing.T) {
+	t.Run("repoRoot with no project ancestor: projectDir == repoRoot", func(t *testing.T) {
+		repoRoot := t.TempDir()
+
+		r := &invoke.Resolver{
+			Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+			Cwd:    repoRoot,
+		}
+
+		_, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+		require.NoError(t, err)
+		assert.Equal(t, repoRoot, meta.ProjectDir)
+		assert.Equal(t, filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json"), meta.ConfigPath)
+		assert.Equal(t, meta.ProjectDir, filepath.Dir(filepath.Dir(meta.ConfigPath)),
+			"ProjectDir must be the parent of .bitrise-build-cache/, not the config dir itself")
+	})
+
+	t.Run("monorepo project ancestor: projectDir == project subdir", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		iosDir := filepath.Join(repoRoot, "apps", "ios")
+		require.NoError(t, os.MkdirAll(filepath.Join(iosDir, "App.xcworkspace"), 0o755))
+		cwd := filepath.Join(iosDir, "some", "deep", "dir")
+		require.NoError(t, os.MkdirAll(cwd, 0o755))
+
+		r := &invoke.Resolver{
+			Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+			Cwd:    cwd,
+		}
+
+		_, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+		require.NoError(t, err)
+		assert.Equal(t, iosDir, meta.ProjectDir)
+		assert.Equal(t, meta.ProjectDir, filepath.Dir(filepath.Dir(meta.ConfigPath)))
+	})
+}
+
+func TestResolve_ProjectHintFromJSONBypassesCwdScan(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace: "Foo.xcworkspace",
+	})
+
+	finder := &deriveddata.Finder{HomeDir: t.TempDir()}
+	r := &invoke.Resolver{
+		Finder: finder,
+		Cwd:    t.TempDir(), // ensure Cwd would not resolve to repoRoot
+	}
+
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(repoRoot, "Foo.xcworkspace"), finder.ProjectPathHint)
+}
+
+func TestResolve_ProjectHintFromCwdScan(t *testing.T) {
+	repoRoot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, "App.xcworkspace"), 0o755))
+
+	finder := &deriveddata.Finder{HomeDir: t.TempDir()}
+	r := &invoke.Resolver{
+		Finder: finder,
+		Cwd:    repoRoot,
+	}
+
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(repoRoot, "App.xcworkspace"), finder.ProjectPathHint)
+}
+
+func TestResolve_NoProjectHintFallsBackToGlobal(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	finder := &deriveddata.Finder{HomeDir: t.TempDir()}
+	r := &invoke.Resolver{
+		Finder: finder,
+		Cwd:    repoRoot,
+	}
+
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Empty(t, finder.ProjectPathHint)
+}
+
+func TestResolve_CwdFallback_GetwdErrorSurfaces(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	getwdErr := errors.New("boom: getwd failed")
+	proxy := &utilsmocks.OsProxyMock{
+		GetwdFunc: func() (string, error) {
+			return "", getwdErr
+		},
+		ReadFileIfExistsFunc: func(string) (string, bool, error) {
+			return "", false, nil
+		},
+	}
+
+	r := &invoke.Resolver{
+		Finder:  &deriveddata.Finder{HomeDir: t.TempDir()},
+		OsProxy: proxy,
+	}
+
+	_, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, getwdErr, "Getwd failure must surface — broken environment, not a missing hint")
+}
+
+func TestInvocationSpec_JSONRoundTrip(t *testing.T) {
+	original := invoke.InvocationSpec{
+		Workspace:     "App.xcworkspace",
+		Scheme:        "App",
+		Configuration: "Debug",
+		Destination:   "generic/platform=iOS",
+		ExtraArgs:     []string{"-quiet", "OTHER_LDFLAGS=-lfoo"},
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded invoke.InvocationSpec
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, original, decoded)
+}
+
+func TestResolve_MonorepoWritesUnderProjectDir(t *testing.T) {
+	repoRoot := t.TempDir()
+	iosDir := filepath.Join(repoRoot, "apps", "ios")
+	androidDir := filepath.Join(repoRoot, "apps", "android")
+	require.NoError(t, os.MkdirAll(filepath.Join(iosDir, "App.xcworkspace"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(androidDir, "AndroidApp.xcodeproj"), 0o755))
+	cwd := filepath.Join(iosDir, "some", "deep", "dir")
+	require.NoError(t, os.MkdirAll(cwd, 0o755))
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+		Cwd:    cwd,
+	}
+
+	got, meta, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	// Complete the spec the way the cmd layer would after a prompt.
+	got.Workspace = "App.xcworkspace"
+	got.Scheme = "App"
+	got.Destination = "generic/platform=iOS"
+	require.NoError(t, r.Persist(meta.ConfigPath, got))
+
+	assert.Equal(t, iosDir, meta.ProjectDir, "monorepo: meta.ProjectDir points at the resolved project ancestor")
+
+	_, err = os.Stat(filepath.Join(iosDir, ".bitrise-build-cache", "xcode-build.json"))
+	assert.NoError(t, err, "config must live under the resolved project dir")
+
+	_, err = os.Stat(filepath.Join(androidDir, ".bitrise-build-cache", "xcode-build.json"))
+	assert.True(t, os.IsNotExist(err), "sibling project must not be touched")
+
+	_, err = os.Stat(filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json"))
+	assert.True(t, os.IsNotExist(err), "repo root must not receive a stray write when a project ancestor exists")
+}
+
+func TestReset_DeletesExistingConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "Stale.xcworkspace",
+		Scheme:      "Stale",
+		Destination: "stale-destination",
+	})
+
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Reset(cfg))
+
+	_, err := os.Stat(cfg)
+	assert.True(t, os.IsNotExist(err), "Reset must delete the existing config file")
+}
+
+func TestReset_IgnoresMissingFile(t *testing.T) {
+	repoRoot := t.TempDir()
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Reset(cfg), "Reset on a missing file must be silent")
+}
+
+func TestReset_EmptyConfigPath_NoOp(t *testing.T) {
+	r := &invoke.Resolver{}
+	require.NoError(t, r.Reset(""))
+}
+
+func TestReset_SurfacesPermissionError(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "App.xcworkspace",
+		Scheme:      "App",
+		Destination: "generic/platform=iOS",
+	})
+
+	proxy := &utilsmocks.OsProxyMock{
+		RemoveFunc: func(string) error {
+			return fs.ErrPermission
+		},
+	}
+
+	r := &invoke.Resolver{OsProxy: proxy}
+	err := r.Reset(filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, fs.ErrPermission, "Reset Remove failure must surface")
+}
+
+func TestResolve_AfterReset_LoadsBlankSpec(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeConfig(t, repoRoot, invoke.CommandBuild, invoke.InvocationSpec{
+		Workspace:   "Stale.xcworkspace",
+		Scheme:      "Stale",
+		Destination: "stale-destination",
+	})
+
+	r := &invoke.Resolver{
+		Finder: &deriveddata.Finder{HomeDir: t.TempDir()},
+	}
+
+	// Emulate the cmd-layer flow: caller Reset()s before Resolve to force a fresh cycle.
+	cfg := filepath.Join(repoRoot, ".bitrise-build-cache", "xcode-build.json")
+	require.NoError(t, r.Reset(cfg))
+
+	got, _, err := r.Resolve(invoke.CommandBuild, repoRoot)
+	require.NoError(t, err)
+	assert.Empty(t, got.Workspace, "stale config must not leak into the resolved spec")
+	assert.Empty(t, got.Scheme)
+	assert.Empty(t, got.Destination)
+}
+
+func TestInvocationSpec_IsComplete(t *testing.T) {
+	tests := []struct {
+		name string
+		spec invoke.InvocationSpec
+		want bool
+	}{
+		{
+			name: "workspace + scheme + destination",
+			spec: invoke.InvocationSpec{Workspace: "App.xcworkspace", Scheme: "App", Destination: "generic/platform=iOS"},
+			want: true,
+		},
+		{
+			name: "project + scheme + destination",
+			spec: invoke.InvocationSpec{Project: "App.xcodeproj", Scheme: "App", Destination: "generic/platform=iOS"},
+			want: true,
+		},
+		{
+			name: "configuration is optional",
+			spec: invoke.InvocationSpec{Workspace: "App.xcworkspace", Scheme: "App", Destination: "generic/platform=iOS", Configuration: ""},
+			want: true,
+		},
+		{
+			name: "missing container",
+			spec: invoke.InvocationSpec{Scheme: "App", Destination: "generic/platform=iOS"},
+			want: false,
+		},
+		{
+			name: "missing scheme",
+			spec: invoke.InvocationSpec{Workspace: "App.xcworkspace", Destination: "generic/platform=iOS"},
+			want: false,
+		},
+		{
+			name: "missing destination",
+			spec: invoke.InvocationSpec{Workspace: "App.xcworkspace", Scheme: "App"},
+			want: false,
+		},
+		{
+			name: "empty spec",
+			spec: invoke.InvocationSpec{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.spec.IsComplete())
+		})
+	}
+}
+
+func TestBuildArgv(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     invoke.InvocationSpec
+		command  invoke.Command
+		codesign bool
+		want     []string
+	}{
+		{
+			name: "build with workspace and no codesign injects skip flags",
+			spec: invoke.InvocationSpec{
+				Workspace:   "App.xcworkspace",
+				Scheme:      "App",
+				Destination: "generic/platform=iOS",
+			},
+			command: invoke.CommandBuild,
+			want: []string{
+				"build",
+				"-workspace", "App.xcworkspace",
+				"-scheme", "App",
+				"-destination", "generic/platform=iOS",
+				"CODE_SIGNING_ALLOWED=NO",
+				"CODE_SIGN_IDENTITY=",
+				"CODE_SIGNING_REQUIRED=NO",
+			},
+		},
+		{
+			name: "test with project + configuration + extra args",
+			spec: invoke.InvocationSpec{
+				Project:       "App.xcodeproj",
+				Scheme:        "AppTests",
+				Configuration: "Debug",
+				Destination:   "platform=iOS Simulator,name=iPhone 15",
+				ExtraArgs:     []string{"-quiet"},
+			},
+			command: invoke.CommandTest,
+			want: []string{
+				"test",
+				"-project", "App.xcodeproj",
+				"-scheme", "AppTests",
+				"-configuration", "Debug",
+				"-destination", "platform=iOS Simulator,name=iPhone 15",
+				"CODE_SIGNING_ALLOWED=NO",
+				"CODE_SIGN_IDENTITY=",
+				"CODE_SIGNING_REQUIRED=NO",
+				"-quiet",
+			},
+		},
+		{
+			name: "codesign=true skips signing env injections",
+			spec: invoke.InvocationSpec{
+				Workspace:   "App.xcworkspace",
+				Scheme:      "App",
+				Destination: "generic/platform=iOS",
+			},
+			command:  invoke.CommandBuild,
+			codesign: true,
+			want: []string{
+				"build",
+				"-workspace", "App.xcworkspace",
+				"-scheme", "App",
+				"-destination", "generic/platform=iOS",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := invoke.BuildArgv(tt.spec, tt.command, tt.codesign)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

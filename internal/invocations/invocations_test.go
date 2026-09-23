@@ -171,7 +171,6 @@ func TestReader_Recent_emptyDir(t *testing.T) {
 	assert.Empty(t, recs)
 }
 
-
 func TestSweep_deletesOldFiles(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))

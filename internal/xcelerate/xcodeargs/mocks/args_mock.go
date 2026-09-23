@@ -18,6 +18,9 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //
 //		// make and configure a mocked xcodeargs.XcodeArgs
 //		mockedXcodeArgs := &XcodeArgsMock{
+//			AcceptsDerivedDataPathFunc: func() bool {
+//				panic("mock out the AcceptsDerivedDataPath method")
+//			},
 //			ArgsFunc: func(additional map[string]string) []string {
 //				panic("mock out the Args method")
 //			},
@@ -42,6 +45,9 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //			ResolvesPackagesFunc: func() bool {
 //				panic("mock out the ResolvesPackages method")
 //			},
+//			ResultBundlePathFunc: func() string {
+//				panic("mock out the ResultBundlePath method")
+//			},
 //			ShortCommandFunc: func() string {
 //				panic("mock out the ShortCommand method")
 //			},
@@ -55,6 +61,9 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //
 //	}
 type XcodeArgsMock struct {
+	// AcceptsDerivedDataPathFunc mocks the AcceptsDerivedDataPath method.
+	AcceptsDerivedDataPathFunc func() bool
+
 	// ArgsFunc mocks the Args method.
 	ArgsFunc func(additional map[string]string) []string
 
@@ -79,6 +88,9 @@ type XcodeArgsMock struct {
 	// ResolvesPackagesFunc mocks the ResolvesPackages method.
 	ResolvesPackagesFunc func() bool
 
+	// ResultBundlePathFunc mocks the ResultBundlePath method.
+	ResultBundlePathFunc func() string
+
 	// ShortCommandFunc mocks the ShortCommand method.
 	ShortCommandFunc func() string
 
@@ -87,6 +99,9 @@ type XcodeArgsMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// AcceptsDerivedDataPath holds details about calls to the AcceptsDerivedDataPath method.
+		AcceptsDerivedDataPath []struct {
+		}
 		// Args holds details about calls to the Args method.
 		Args []struct {
 			// Additional is the additional argument value.
@@ -113,6 +128,9 @@ type XcodeArgsMock struct {
 		// ResolvesPackages holds details about calls to the ResolvesPackages method.
 		ResolvesPackages []struct {
 		}
+		// ResultBundlePath holds details about calls to the ResultBundlePath method.
+		ResultBundlePath []struct {
+		}
 		// ShortCommand holds details about calls to the ShortCommand method.
 		ShortCommand []struct {
 		}
@@ -120,6 +138,7 @@ type XcodeArgsMock struct {
 		UserOtherCFlags []struct {
 		}
 	}
+	lockAcceptsDerivedDataPath      sync.RWMutex
 	lockArgs                        sync.RWMutex
 	lockClonedSourcePackagesDirPath sync.RWMutex
 	lockCommand                     sync.RWMutex
@@ -128,8 +147,39 @@ type XcodeArgsMock struct {
 	lockProjectDir                  sync.RWMutex
 	lockProjectTempDir              sync.RWMutex
 	lockResolvesPackages            sync.RWMutex
+	lockResultBundlePath            sync.RWMutex
 	lockShortCommand                sync.RWMutex
 	lockUserOtherCFlags             sync.RWMutex
+}
+
+// AcceptsDerivedDataPath calls AcceptsDerivedDataPathFunc.
+func (mock *XcodeArgsMock) AcceptsDerivedDataPath() bool {
+	callInfo := struct {
+	}{}
+	mock.lockAcceptsDerivedDataPath.Lock()
+	mock.calls.AcceptsDerivedDataPath = append(mock.calls.AcceptsDerivedDataPath, callInfo)
+	mock.lockAcceptsDerivedDataPath.Unlock()
+	if mock.AcceptsDerivedDataPathFunc == nil {
+		var (
+			bOut bool
+		)
+		return bOut
+	}
+	return mock.AcceptsDerivedDataPathFunc()
+}
+
+// AcceptsDerivedDataPathCalls gets all the calls that were made to AcceptsDerivedDataPath.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.AcceptsDerivedDataPathCalls())
+func (mock *XcodeArgsMock) AcceptsDerivedDataPathCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockAcceptsDerivedDataPath.RLock()
+	calls = mock.calls.AcceptsDerivedDataPath
+	mock.lockAcceptsDerivedDataPath.RUnlock()
+	return calls
 }
 
 // Args calls ArgsFunc.
@@ -374,6 +424,36 @@ func (mock *XcodeArgsMock) ResolvesPackagesCalls() []struct {
 	mock.lockResolvesPackages.RLock()
 	calls = mock.calls.ResolvesPackages
 	mock.lockResolvesPackages.RUnlock()
+	return calls
+}
+
+// ResultBundlePath calls ResultBundlePathFunc.
+func (mock *XcodeArgsMock) ResultBundlePath() string {
+	callInfo := struct {
+	}{}
+	mock.lockResultBundlePath.Lock()
+	mock.calls.ResultBundlePath = append(mock.calls.ResultBundlePath, callInfo)
+	mock.lockResultBundlePath.Unlock()
+	if mock.ResultBundlePathFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.ResultBundlePathFunc()
+}
+
+// ResultBundlePathCalls gets all the calls that were made to ResultBundlePath.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.ResultBundlePathCalls())
+func (mock *XcodeArgsMock) ResultBundlePathCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockResultBundlePath.RLock()
+	calls = mock.calls.ResultBundlePath
+	mock.lockResultBundlePath.RUnlock()
 	return calls
 }
 

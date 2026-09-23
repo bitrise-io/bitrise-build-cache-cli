@@ -94,7 +94,7 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, benchmarkClient)
+	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, benchmarkClient, utils.DefaultOsProxy{})
 	if err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}

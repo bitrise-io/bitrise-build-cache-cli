@@ -29,7 +29,7 @@ disables the mirrors per workflow / per workspace without removing the file.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		activator := mirrorspkg.NewActivator(mirrorspkg.ActivatorParams{
 			SelectedFlags: selectedMirrorFlags(cmd),
-			DebugLogging:  common.IsDebugLogMode,
+			DebugLogging:  common.DebugFromFlag(),
 		})
 
 		return activator.Activate(cmd.Context())

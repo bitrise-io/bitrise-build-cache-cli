@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Enforces the auth package layering documented in docs/auth.md.
+# Enforces the auth package layering documented in docs/auth.md, plus the
+# debug-mode rule at the bottom of this file.
 #
 # Invariants 1 and 4 — the two *import* rules — are enforced by depguard in
 # .golangci.yaml, which also surfaces them in editors. This script covers the two
@@ -106,10 +107,32 @@ done
 	"$hits" \
 	"see 'Adding to this' in docs/auth.md"
 
+# ---------------------------------------------------------------------------
+# Debug-mode rule: a struct field named DebugLogging must never be assigned the
+# global CLI flag directly.
+#
+# A supervised process (launchd/systemd) is started without the flag, so the
+# global is false there and a config that says debug is on gets ignored. That
+# shipped once: the xcelerate proxy's logger honoured its config while its kv
+# client read the global, so debug lines appeared but the diagnostics never
+# started. common.DebugEnabled(source) ORs the two and is the only way to ask.
+#
+# Reading the global on its own is still fine where there is no config to
+# consult (login, the wizard, version banners) — this rule only catches the
+# assignment that drops a config-derived value on the floor.
+debug_hits=$(grep -rn 'DebugLogging: *\(common\.\)\?IsDebugLogMode' \
+	--include='*.go' cmd/ pkg/ internal/ 2>/dev/null |
+	grep -v '_test\.go:' || true)
+
+[ -n "$debug_hits" ] && report \
+	"DebugLogging must be set from DebugEnabled(<config value>), not the global flag" \
+	"$debug_hits" \
+	"use DebugEnabled(cfg.DebugLogging), or DebugFromFlag() when there is no config; see cmd/common/debug.go"
+
 if [ "$fail" -ne 0 ]; then
 	echo
 	echo "See docs/auth.md for the layering these rules protect."
 	exit 1
 fi
 
-echo "lint-arch: auth layering OK"
+echo "lint-arch: OK"

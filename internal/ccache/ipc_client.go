@@ -2,16 +2,47 @@ package ccache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 )
 
+// dialHelper sets a deadline because DialContext honours ctx but the protocol
+// reads do not, so a helper that never answers would block forever.
+func dialHelper(ctx context.Context, socketPath string) (net.Conn, error) {
+	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+	}
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(defaultRequestTimeout)
+	}
+
+	if err := conn.SetDeadline(deadline); err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("set deadline: %w", err)
+	}
+
+	if err := protocol.ReadGreeting(conn); err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("read greeting: %w", err)
+	}
+
+	return conn, nil
+}
+
 const (
-	defaultDialTimeout = 2 * time.Second
-	isListeningTimeout = 100 * time.Millisecond
+	defaultDialTimeout    = 2 * time.Second
+	defaultRequestTimeout = 30 * time.Second
+	isListeningTimeout    = 100 * time.Millisecond
 )
 
 // SessionStats holds the stats returned by a GetSessionStats IPC call.
@@ -41,15 +72,11 @@ func IsListening(socketPath string) bool {
 // the server to flush final stats and shut down. Blocks until the server ACKs, meaning
 // the onShutdown callback has completed before this returns.
 func SendStop(ctx context.Context, socketPath string) error {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestStop); err != nil {
 		return fmt.Errorf("send stop request: %w", err)
@@ -76,15 +103,11 @@ func SendStop(ctx context.Context, socketPath string) error {
 // accumulated downloaded and uploaded byte counts for the active session, along with
 // the active invocation ID and parent invocation ID.
 func SendGetSessionStats(ctx context.Context, socketPath string) (SessionStats, error) {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return SessionStats{}, fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return SessionStats{}, err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return SessionStats{}, fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestGetSessionStats); err != nil {
 		return SessionStats{}, fmt.Errorf("send get-session-stats request: %w", err)
@@ -120,15 +143,11 @@ func SendGetSessionStats(ctx context.Context, socketPath string) (SessionStats, 
 // SendHealthCheck connects to the ccache storage helper and sends a health-check request.
 // Returns nil if the server is up and responding, or an error if unreachable or unhealthy.
 func SendHealthCheck(ctx context.Context, socketPath string) error {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteByte(conn, protocol.RequestHealthCheck); err != nil {
 		return fmt.Errorf("send health-check request: %w", err)
@@ -156,15 +175,11 @@ func SendHealthCheck(ctx context.Context, socketPath string) error {
 // logging and session tracking, and registers the parent→child relationship.
 // Returns an error if the connection or protocol exchange fails.
 func SendInvocationID(ctx context.Context, socketPath, parentID, childID string) error {
-	conn, err := (&net.Dialer{Timeout: defaultDialTimeout}).DialContext(ctx, "unix", socketPath)
+	conn, err := dialHelper(ctx, socketPath)
 	if err != nil {
-		return fmt.Errorf("connect to ccache socket %s: %w", socketPath, err)
+		return err
 	}
 	defer conn.Close()
-
-	if err := protocol.ReadGreeting(conn); err != nil {
-		return fmt.Errorf("read greeting: %w", err)
-	}
 
 	if err := protocol.WriteSetInvocationID(conn, parentID, childID); err != nil {
 		return fmt.Errorf("send invocation ID: %w", err)
@@ -184,5 +199,48 @@ func SendInvocationID(ctx context.Context, socketPath, parentID, childID string)
 		return fmt.Errorf("server error: %s", msg)
 	default:
 		return fmt.Errorf("unexpected response: 0x%02x", resp)
+	}
+}
+
+// Returns nil without an error when no blob moved; errors when the helper predates 0xB4.
+func SendGetBlobStats(ctx context.Context, socketPath string) (*blobstats.Snapshot, error) {
+	conn, err := dialHelper(ctx, socketPath)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	if err := protocol.WriteByte(conn, protocol.RequestGetBlobStats); err != nil {
+		return nil, fmt.Errorf("send get-blob-stats request: %w", err)
+	}
+
+	resp, err := protocol.ReadByte(conn)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	switch resp {
+	case protocol.ResponseOK:
+		payload, err := protocol.ReadBlobStats(conn)
+		if err != nil {
+			return nil, fmt.Errorf("read blob stats: %w", err)
+		}
+
+		var snapshot blobstats.Snapshot
+		if err := json.Unmarshal(payload, &snapshot); err != nil {
+			return nil, fmt.Errorf("unmarshal blob stats: %w", err)
+		}
+
+		if snapshot.IsEmpty() {
+			return nil, nil //nolint:nilnil // no blob moved is not an error
+		}
+
+		return &snapshot, nil
+	case protocol.ResponseErr:
+		msg, _ := protocol.ReadMsg(conn)
+
+		return nil, fmt.Errorf("server error: %s", msg)
+	default:
+		return nil, fmt.Errorf("unexpected response: 0x%02x", resp)
 	}
 }

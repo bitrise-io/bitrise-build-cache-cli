@@ -43,23 +43,6 @@ func init() {
 	RootCmd.AddCommand(statusCmd)
 }
 
-// statusExitError lets us signal a non-zero exit code without letting cobra
-// print the error (we want silent-exit semantics for `--quiet`).
-type statusExitError struct{ code int }
-
-func (e *statusExitError) Error() string { return fmt.Sprintf("status exit code %d", e.code) }
-
-// HandleStatusExit converts a statusExitError returned by Execute into an
-// os.Exit code. Other errors fall through to the caller.
-func HandleStatusExit(err error) (int, bool) {
-	var se *statusExitError
-	if errors.As(err, &se) {
-		return se.code, true
-	}
-
-	return 0, false
-}
-
 func runStatus(out, errOut io.Writer, checker *status.Checker) error {
 	if statusFeature != "" {
 		return runStatusFeature(out, errOut, checker)
@@ -68,7 +51,7 @@ func runStatus(out, errOut io.Writer, checker *status.Checker) error {
 	if statusQuiet {
 		fmt.Fprintln(errOut, "error: --quiet requires --feature")
 
-		return &statusExitError{code: 2}
+		return ExitCodeError{Code: 2}
 	}
 
 	s := checker.Status()
@@ -98,7 +81,7 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 		if errors.Is(err, status.ErrUnknownFeature) {
 			fmt.Fprintf(errOut, "error: unknown feature %q (expected: gradle, xcode, cpp, react-native)\n", statusFeature)
 
-			return &statusExitError{code: 2}
+			return ExitCodeError{Code: 2}
 		}
 
 		return fmt.Errorf("query status: %w", err)
@@ -109,7 +92,7 @@ func runStatusFeature(out, errOut io.Writer, checker *status.Checker) error {
 			return nil
 		}
 
-		return &statusExitError{code: 1}
+		return ExitCodeError{Code: 1}
 	}
 
 	if statusJSONOutput {

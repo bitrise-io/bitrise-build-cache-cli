@@ -12,7 +12,6 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/authprompt"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -56,8 +55,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		workspaceID   = auth.Config.WorkspaceID
 		authToken     = auth.Config.Token
 		username      = storedUsername
-		pushEnabled   bool
-		startDaemon   = true
+		pushEnabled   = storedCachePush(logger)
 	)
 
 	toolOptions := []huh.Option[string]{
@@ -73,8 +71,8 @@ func (*huhWizard) Run(ctx context.Context) error {
 	}
 
 	// Tool selection is its own form: huh's accessible mode (TERM=dumb) ignores
-	// group hide funcs, so the daemon question below can only be conditional if
-	// the group doesn't exist yet when the tools are unknown.
+	// group hide funcs, so a later group can only depend on the selection if it
+	// does not exist yet while the tools are unknown.
 	if err := tui.RunForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Which build tools should I set up?").
@@ -90,6 +88,10 @@ func (*huhWizard) Run(ctx context.Context) error {
 			}).
 			Value(&selectedTools),
 	)); err != nil {
+		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
+	}
+
+	if _, err := projectModePrompt(logger); err != nil {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
 
@@ -114,30 +116,18 @@ func (*huhWizard) Run(ctx context.Context) error {
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Enable cache push?").
-				Description("Default off — recommended for local dev (so a flaky local build can't poison the shared cache).").
+				Description("Default on — the build reads from and writes to the shared cache.").
 				Affirmative("Yes, push too").
 				Negative("No, pull only").
 				Value(&pushEnabled),
 		),
 	)
 
-	needsDaemon := len(daemonServicesForTools(selectedTools)) > 0
-	if needsDaemon {
-		groups = append(groups,
-			huh.NewGroup(
-				huh.NewConfirm().
-					Title("Keep the cache proxies running in the background?").
-					Description("Registers them with the OS supervisor (LaunchAgents on macOS, systemd --user on Linux) and starts them, so you don't have to run them per terminal session.").
-					Affirmative("Yes, install + start").
-					Negative("No, I'll start them myself").
-					Value(&startDaemon),
-			),
-		)
-	}
-
 	if err := tui.RunForm(groups...); err != nil {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
+
+	persistCachePush(pushEnabled, logger)
 
 	persistWizardCredentials(logger, credStore, auth, wizardCredentials{
 		WorkspaceID:    workspaceID,
@@ -153,9 +143,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		return err
 	}
 
-	if needsDaemon && startDaemon {
-		startDaemonForTools(ctx, logger, selectedTools)
-	}
+	warnRestartStale(ctx, logger, selectedTools)
 
 	return nil
 }
@@ -168,27 +156,23 @@ type wizardCredentials struct {
 	StoredUsername string
 }
 
-// persistWizardCredentials saves the wizard's credentials to the keychain, with
-// a message describing what moved where. A failure is non-fatal: activation can
-// still proceed with the values resolved for this run.
-func persistWizardCredentials(logger log.Logger, target store.Store, auth wizardAuth, creds wizardCredentials) {
-	persistWizardCredentialsTo(logger, target, storeClearFile, auth, creds)
-}
+type saveWithFallbackFn func(target store.Store, creds authpkg.TokenSet, allowFallback bool) (store.SaveResult, error)
 
-func storeClearFile() error {
-	return store.NewFile().Clear() //nolint:wrapcheck // already context-rich
+func persistWizardCredentials(logger log.Logger, target store.Store, auth wizardAuth, creds wizardCredentials) {
+	persistWizardCredentialsTo(logger, target, store.SaveExclusiveWithFallback, auth, creds)
 }
 
 func persistWizardCredentialsTo(
 	logger log.Logger,
 	target store.Store,
-	clearFile func() error,
+	saveFn saveWithFallbackFn,
 	auth wizardAuth,
 	creds wizardCredentials,
 ) {
-	save := func() error {
-		return persistCredentials(target, auth.Stored, creds.WorkspaceID, creds.AuthToken, creds.Username)
-	}
+	merged := auth.Stored
+	merged.AuthToken = creds.AuthToken
+	merged.WorkspaceID = creds.WorkspaceID
+	merged.Username = creds.Username
 
 	logUsername := func() {
 		if creds.Username != "" {
@@ -197,7 +181,7 @@ func persistWizardCredentialsTo(
 	}
 
 	if auth.SignedInNow {
-		// loginAndStore already persisted this credential, in auth.Kind — which is
+		// loginAndStore already persisted this credential, in auth.Origin — which is
 		// the config file on a host with no usable keychain. Only a changed display
 		// name is left to write, and it goes to that same backend.
 		if creds.Username == creds.StoredUsername {
@@ -214,52 +198,53 @@ func persistWizardCredentialsTo(
 
 	switch auth.Origin.Backend {
 	case authpkg.BackendKeychain:
-		if !auth.SignedInNow {
-			logger.TInfof("Using credentials from the OS keychain.")
-		}
+		logger.TInfof("Using credentials from the OS keychain.")
 		if creds.Username == creds.StoredUsername {
 			return
 		}
-		if err := save(); err != nil {
+		if err := target.Save(merged); err != nil {
 			logger.Warnf("Could not update the OS keychain with the new display name (%v).", err)
 		} else {
 			logger.Infof("Updated display name for local invocations.")
 		}
 	case authpkg.BackendEnv:
-		if err := save(); err != nil {
-			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with env values for this run only.", err)
-		} else {
-			logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the OS keychain.")
-			logUsername()
-			logger.Infof("You can now remove them from your shell rc files.")
+		result, err := saveFn(target, merged, true)
+		if err != nil {
+			logger.Warnf("Could not save credentials to the %s (%v). Continuing with env values for this run only.", result.Origin.Label(), err)
+
+			return
 		}
+		result.WarnFallback(logger)
+		logger.TInfof("Imported BITRISE_BUILD_CACHE_AUTH_TOKEN + WORKSPACE_ID from env into the %s.", result.Origin.Label())
+		logUsername()
+		logger.Infof("You can now remove them from your shell rc files.")
 	case authpkg.BackendJWT:
 		// Per-build, don't persist.
 		logger.TInfof("Using credentials resolved by the CLI.")
 	case authpkg.BackendFile:
-		if err := save(); err != nil {
-			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with disk values for this run only.", err)
+		result, err := saveFn(target, merged, true)
+		if err != nil {
+			logger.Warnf("Could not save credentials to the %s (%v). Continuing with disk values for this run only.", result.Origin.Label(), err)
 
 			return
 		}
-
-		// Move, not copy: leaving the file copy in place keeps a plaintext token
-		// on disk even though the keychain now holds it.
-		if err := clearFile(); err != nil {
-			logger.Warnf("Copied credentials into the OS keychain, but could not remove the config-file copy (%v).", err)
-			logger.Warnf("The token is still on disk at %s — remove it with `auth clear --storage=file`.", multiplatformconfig.FilePath(utils.DefaultOsProxy{}))
-
-			return
+		switch result.Origin.Backend {
+		case authpkg.BackendFile:
+			logger.Warnf("Keychain unavailable (%v). Credentials stay in the config file.", result.KeychainErr)
+		case authpkg.BackendNone, authpkg.BackendEnv, authpkg.BackendJWT, authpkg.BackendKeychain:
+			logger.TInfof("Moved credentials from the config file into the OS keychain.")
 		}
-
-		logger.TInfof("Moved credentials from the config file into the OS keychain.")
 		logUsername()
 	case authpkg.BackendNone:
-		if err := save(); err != nil {
-			logger.Warnf("Could not save credentials to the OS keychain (%v). Continuing with values for this run only.", err)
-		} else {
-			logger.TInfof("Credentials saved to the OS keychain. Future runs will pick them up automatically.")
+		result, err := saveFn(target, merged, true)
+		if err != nil {
+			logger.Warnf("Could not save credentials to the %s (%v). Continuing with values for this run only.", result.Origin.Label(), err)
+
+			return
 		}
+		result.WarnFallback(logger)
+		logger.TInfof("Credentials saved to the %s. Future runs will pick them up automatically.", result.Origin.Label())
+		logUsername()
 	}
 }
 

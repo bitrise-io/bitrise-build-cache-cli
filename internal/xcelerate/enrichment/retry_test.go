@@ -229,6 +229,57 @@ func TestRetrier_StartupSweep_DropsRecordPastMaxAge(t *testing.T) {
 	t.Fatal("startup sweep did not drop the past-MaxAge record within 2s")
 }
 
+func TestRetrier_Sweep_DrainsStrandedOrphans(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "stranded-old",
+		StartTime:    now.Add(-25 * time.Hour),
+	}))
+
+	mock := &InvocationPutterMock{PutInvocationFunc: func(_ analytics.Invocation) error {
+		t.Fatal("PutInvocation must not fire for Attempts==0 records")
+
+		return nil
+	}}
+
+	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
+	r.Sweep()
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	assert.Empty(t, loaded, "sweep must drain Attempts==0 records older than MaxAge")
+}
+
+func TestRetrier_Sweep_KeepsFreshOrphan(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	now := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.Append(enrichment.PendingRecord{
+		InvocationID: "stranded-fresh",
+		StartTime:    now.Add(-time.Hour),
+	}))
+
+	mock := &InvocationPutterMock{PutInvocationFunc: func(_ analytics.Invocation) error {
+		t.Fatal("PutInvocation must not fire for Attempts==0 records")
+
+		return nil
+	}}
+
+	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
+	r.Sweep()
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "stranded-fresh", loaded[0].InvocationID, "Attempts==0 records within MaxAge must survive")
+}
+
 func TestRetrier_ConcurrentAppendAndSweep(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}

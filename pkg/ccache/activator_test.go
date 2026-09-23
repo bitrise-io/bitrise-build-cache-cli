@@ -63,6 +63,7 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 		WriteFileFunc: func(_ string, _ []byte, _ os.FileMode) error { return nil },
 		RenameFunc:    func(_, _ string) error { return nil },
 		RemoveFunc:    func(_ string) error { return nil },
+		ReadFileIfExistsFunc: func(_ string) (string, bool, error) { return "", false, nil },
 		// The analytics config is now read-modify-write, so activation opens it
 		// before saving. Absent is the normal first-activation case.
 		OpenFileFunc: func(_ string, _ int, _ os.FileMode) (*os.File, error) {
@@ -127,6 +128,7 @@ func TestActivator_Activate(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "/work/dir", envVars["CCACHE_BASEDIR"])
+		assert.Equal(t, "content", envVars["CCACHE_COMPILERCHECK"])
 		assert.Equal(t, "true", envVars["CCACHE_NOHASHDIR"])
 		assert.Equal(t, "true", envVars["CCACHE_REMOTE_ONLY"])
 		assert.Equal(t, "ccache", envVars["CMAKE_CXX_COMPILER_LAUNCHER"])

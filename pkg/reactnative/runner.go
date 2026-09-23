@@ -245,7 +245,7 @@ func (r *Runner) isReactNativeReady() bool {
 
 type ccacheSocket interface {
 	IsListening() bool
-	Start() error
+	Start(opts ...ccacheipc.StartOption) error
 	AwaitReady() bool
 	HealthCheck(ctx context.Context) error
 	SetInvocationID(ctx context.Context, parentID, childID string) error

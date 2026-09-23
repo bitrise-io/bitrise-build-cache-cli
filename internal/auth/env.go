@@ -13,6 +13,12 @@ const (
 	EnvWorkspaceID = "BITRISE_BUILD_CACHE_WORKSPACE_ID" //nolint:gosec // env-var key, not a credential
 	EnvJWT         = "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN"
 	EnvUsername    = "BITRISE_BUILD_CACHE_USERNAME"
+
+	// EnvBuildHubVMToken and EnvBuildHubVMTokenURL are set on a Bitrise Build Hub
+	// runner. The pair is exchangeable for a short-lived, workspace-scoped Build
+	// Cache token, so their presence is what tells the CLI it can broker one.
+	EnvBuildHubVMToken    = "BITRISEIO_BUILD_HUB_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
+	EnvBuildHubVMTokenURL = "BITRISEIO_BUILD_HUB_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
 )
 
 var (

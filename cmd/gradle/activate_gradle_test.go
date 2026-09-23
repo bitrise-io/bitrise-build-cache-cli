@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -14,8 +15,31 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
+
+// authEnvsWithScratchStore keeps the credential activation pins out of the real keychain,
+// whose writes block indefinitely on a CI agent: a detected CI provider selects the file
+// store, and HOME points it at a temp dir.
+func authEnvsWithScratchStore(t *testing.T) map[string]string {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Guards the CI detection above: a miss silently sends the write to the keychain.
+	t.Cleanup(func() {
+		assert.FileExists(t, filepath.Join(home, ".bitrise/analytics/multiplatform/config.json"))
+	})
+
+	return map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+		"BITRISE_IO":                       "true",
+		"BITRISE_BUILD_SLUG":               "build-slug",
+	}
+}
 
 func Test_activateGradleCmdFn(t *testing.T) {
 	t.Run("When no error activateGradleCmdFn creates template inventory and writes gradle config file", func(t *testing.T) {
@@ -38,10 +62,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			authEnvsWithScratchStore(t),
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -79,10 +104,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			authEnvsWithScratchStore(t),
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -115,10 +141,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			authEnvsWithScratchStore(t),
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -151,10 +178,11 @@ func Test_activateGradleCmdFn(t *testing.T) {
 
 		// when
 		err := gradle.ActivateGradleCmdFn(
+			t.Context(),
 			mockLogger,
 			"~/.gradle",
-			map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "AuthTokenValue", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue"},
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider) (gradleconfig.TemplateInventory, error) {
+			authEnvsWithScratchStore(t),
+			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
