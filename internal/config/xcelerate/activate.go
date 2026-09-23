@@ -71,7 +71,10 @@ func Activate(
 	overrideActivateXcodeParamsFromExistingConfig(
 		logger, osProxy, &activateXcodeParams, decoderFactory, envs)
 
-	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envs)
+	// Resolve, not ResolveNoRefresh: a Build Hub runner carries no auth env vars at
+	// all, and brokering its VM token is the only way to a credential there.
+	// ResolveNoRefresh never brokers, so it failed the whole activation.
+	authConfig, _, err := live.Default(logger).Resolve(ctx, envs)
 	if err != nil {
 		return fmt.Errorf("resolve auth config: %w", err)
 	}
