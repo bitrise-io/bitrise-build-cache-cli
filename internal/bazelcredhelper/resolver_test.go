@@ -18,6 +18,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // Keeps a developer machine's real credentials out of the test.
@@ -65,6 +67,25 @@ func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "env-token", got.Token)
 	assert.True(t, got.Expiry.IsZero(), "an unknown lifetime must omit the cache hint")
+}
+
+// A static PAT persisted only into the analytics block has no refresh token.
+func TestResolver_AnalyticsStaticPAT_ServesStaleAndWarns(t *testing.T) {
+	isolate(t)
+	seedAnalyticsAuthConfig(t, "bitpat_static", "ws-static")
+
+	warn := &bytes.Buffer{}
+	ensureFresh := func(context.Context) (authpkg.TokenSet, error) {
+		t.Fatal("the analytics authConfig source is not store-managed; EnsureFresh must not be called")
+
+		return authpkg.TokenSet{}, nil
+	}
+
+	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn)(t.Context())
+
+	require.NoError(t, err, "a token we cannot refresh is still better than failing the RPC")
+	assert.Equal(t, "bitpat_static", got.Token)
+	assert.Empty(t, warn.String(), "nothing was attempted, so there is nothing to warn about")
 }
 
 func TestResolver_StoreManaged_RefreshesAndSetsExpires(t *testing.T) {
@@ -169,6 +190,14 @@ func seedKeychain(t *testing.T, token, workspaceID string) {
 		AuthToken: token, WorkspaceID: workspaceID,
 		PATExpiry: time.Now().Add(-time.Minute), RefreshToken: "r",
 	}))
+}
+
+func seedAnalyticsAuthConfig(t *testing.T, token, workspaceID string) {
+	t.Helper()
+	cfg := multiplatformconfig.Config{
+		AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: token, WorkspaceID: workspaceID},
+	}
+	require.NoError(t, cfg.Save(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}))
 }
 
 func oauthSaveTo(t *testing.T, s store.Store, c authpkg.TokenSet) error {

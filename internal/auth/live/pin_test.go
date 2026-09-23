@@ -17,7 +17,10 @@ import (
 )
 
 func pinResolver(target *fakeStore) *Resolver {
-	return &Resolver{Backends: []store.Store{target}}
+	return &Resolver{
+		Backends:       []store.Store{target},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
 }
 
 // The pin is read-modify-write: a refresh token or display name already on disk
@@ -85,7 +88,10 @@ func TestResolvePinned_FallbackMergesAgainstTheFileNotTheDeadKeychain(t *testing
 	require.NoError(t, store.NewFile().Save(fileLogin))
 
 	deadKeychain := &fakeStore{backend: auth.BackendKeychain, loadErr: errors.New("no keyring"), saveErr: errors.New("no keyring")}
-	r := &Resolver{Backends: []store.Store{deadKeychain}}
+	r := &Resolver{
+		Backends:       []store.Store{deadKeychain},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
 
 	_, _, err := r.ResolvePinned(t.Context(), envVars(), false)
 	require.NoError(t, err)
@@ -114,7 +120,10 @@ func TestResolvePinned_HealthyKeychainLeavesTheFileUntouched(t *testing.T) {
 
 	// Backends[0] is the pin target; the env credential outranks the file, so the
 	// pin actually runs.
-	r := &Resolver{Backends: []store.Store{store.NewKeychain(), store.NewFile()}}
+	r := &Resolver{
+		Backends:       []store.Store{store.NewKeychain(), store.NewFile()},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
 
 	_, origin, err := r.ResolvePinned(t.Context(), envVars(), false)
 	require.NoError(t, err)
