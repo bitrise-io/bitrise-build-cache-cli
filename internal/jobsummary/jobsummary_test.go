@@ -153,8 +153,8 @@ func TestAnnotationLevelFollowsTheStatus(t *testing.T) {
 		InvocationURL:   "https://app.bitrise.io/build-cache/invocations/gradle/a",
 	})
 	assert.Equal(t,
-		"::notice title=Bitrise Build Cache::Healthy — compileDebugKotlin: 3,438.2 MB downloaded, 0 MB uploaded."+
-			"%0Ahttps://app.bitrise.io/build-cache/invocations/gradle/a",
+		"::notice title=compileDebugKotlin::Cache status: Healthy | 3,438.2 MB downloaded, 0 MB uploaded | "+
+			"View on Bitrise: https://app.bitrise.io/build-cache/invocations/gradle/a",
 		healthy)
 
 	// Low reuse is the one worth acting on, so it is the one that warns.
@@ -163,6 +163,17 @@ func TestAnnotationLevelFollowsTheStatus(t *testing.T) {
 		DownloadedBytes: bytesOf(8_600_000),
 		UploadedBytes:   bytesOf(118_000_000),
 	})
-	assert.Contains(t, lowReuse, "::warning title=Bitrise Build Cache::Low reuse — ")
-	assert.NotContains(t, lowReuse, "%0A")
+	assert.Contains(t, lowReuse, "::warning title=compileDebugKotlin::Cache status: Low reuse | ")
+	assert.NotContains(t, lowReuse, "View on Bitrise")
+}
+
+// A scheme name's colons would otherwise end the command's property list.
+func TestASchemeNameIsEscapedInTheTitle(t *testing.T) {
+	annotation := jobsummary.Annotation(jobsummary.Invocation{Command: "build [WordPress / Debug]"})
+
+	assert.Contains(t, annotation, "title=build [WordPress / Debug]::")
+
+	withColons := jobsummary.Annotation(jobsummary.Invocation{Command: ":app:compileKotlin"})
+
+	assert.Contains(t, withColons, "title=%3Aapp%3AcompileKotlin::")
 }

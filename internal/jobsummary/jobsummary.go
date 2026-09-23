@@ -28,8 +28,6 @@ const (
 
 	heading = "### ⚡️ Bitrise Build Cache"
 
-	annotationTitle = "Bitrise Build Cache"
-
 	statusLowReuse = "Low reuse"
 
 	tableHead = "| Status | Cache status | ↓ Downloaded | ↑ Uploaded | Duration | |\n" +
@@ -123,17 +121,26 @@ func Annotation(i Invocation) string {
 		command = "build"
 	}
 
-	// %0A is a newline in a workflow command, which puts the URL on its own line the
-	// way GitHub's own annotations do. Nothing follows it: trailing punctuation would
-	// be taken as part of the address.
 	view := ""
 	if i.InvocationURL != "" {
-		view = "%0A" + i.InvocationURL
+		view = " | View on Bitrise: " + i.InvocationURL
 	}
 
-	return fmt.Sprintf("::%s title=%s::%s — %s: %s downloaded, %s uploaded.%s",
-		level, annotationTitle, status, command,
+	return fmt.Sprintf("::%s title=%s::Cache status: %s | %s downloaded, %s uploaded%s",
+		level, escapeProperty(command), status,
 		megabytes(i.DownloadedBytes), megabytes(i.UploadedBytes), view)
+}
+
+// A scheme or task path carries colons, which separate a workflow command's own
+// properties.
+func escapeProperty(value string) string {
+	return strings.NewReplacer(
+		"%", "%25",
+		"\r", "%0D",
+		"\n", "%0A",
+		":", "%3A",
+		",", "%2C",
+	).Replace(value)
 }
 
 // WriteAnnotation prints the workflow command straight to stdout, unprefixed:
