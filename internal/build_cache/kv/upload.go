@@ -140,9 +140,6 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 		})
 		if err != nil {
 			c.logger.Warnf("Failed to upload stream %s: attempt %d: initiate put: %s", key, attempt+1, err)
-			// A rejected token will not be accepted on a retry; burning the retry
-			// budget only delays the failure and re-floods logs the gate exists
-			// to silence. Mirrors the download side.
 			abort := errors.Is(err, ErrCacheUnauthenticated)
 
 			return fmt.Errorf("create kv put client (with key %s): %w", key, err), abort

@@ -25,16 +25,12 @@ var (
 	ErrTokenNotProvided       = errors.New(EnvAuthToken + " or " + EnvJWT + " environment variable not set")
 	ErrWorkspaceIDNotProvided = errors.New(EnvWorkspaceID + " environment variable not set")
 	ErrWorkspaceNotSelected   = errors.New("signed in, but no workspace is selected yet — run `bitrise-build-cache auth workspace --list` to see them, then `auth workspace --set <slug>`")
-	// ErrTokenNonPrintable is a distinct sentinel because the fix is specific: trim
-	// whitespace / control chars from the source of the token. gRPC would otherwise
-	// reject the "authorization" header client-side and every CAS op would fail.
-	ErrTokenNonPrintable = errors.New("auth token contains non-printable characters — trim whitespace and control chars from " + EnvAuthToken)
+	ErrTokenNonPrintable      = errors.New("auth token contains non-printable characters — trim whitespace and control chars from " + EnvAuthToken)
 )
 
 // SanitizeToken trims surrounding whitespace and rejects tokens that still
 // contain bytes outside the printable ASCII range (0x20..0x7E). An empty result
-// is not an error here — the caller decides which "empty" sentinel is right for
-// the source it read from.
+// is not an error; the caller decides which sentinel fits its source.
 func SanitizeToken(token string) (string, error) {
 	trimmed := strings.TrimSpace(token)
 	for i := range len(trimmed) {

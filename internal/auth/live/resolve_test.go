@@ -432,9 +432,6 @@ func TestResolve_PrefersTheOAuthManagedRecordAcrossBackends(t *testing.T) {
 	assert.True(t, refreshed, "the OAuth-managed record is the one that must be refreshed")
 }
 
-// A trailing newline on BITRISE_BUILD_CACHE_AUTH_TOKEN would produce an
-// "authorization" header gRPC rejects client-side, silently disabling the
-// cache. Sanitise before the credential leaves the resolver.
 func TestResolve_TrimsTrailingNewlineInEnvToken(t *testing.T) {
 	r := &Resolver{
 		Backends:       []store.Store{&fakeStore{backend: auth.BackendKeychain}},
@@ -502,9 +499,6 @@ func TestResolve_TrimsTrailingNewlineInJWT(t *testing.T) {
 		"JWT must not carry a trailing newline; the header would be rejected client-side")
 }
 
-// A stored record that somehow accumulated a non-printable byte (a corrupted
-// config file, a malformed manual `auth set`) must surface as an auth error
-// rather than being handed off to build the gRPC header.
 func TestResolve_RejectsNonPrintableStoredToken(t *testing.T) {
 	corrupt := auth.TokenSet{AuthToken: "tok\x01en", WorkspaceID: "ws-1"}
 	r := &Resolver{

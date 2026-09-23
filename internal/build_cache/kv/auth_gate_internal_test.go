@@ -15,8 +15,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// countingLogger counts Warnf calls so we can prove the "log once, then stay
-// silent" contract.
 type countingLogger struct {
 	log.Logger
 	warns atomic.Int64
@@ -71,8 +69,8 @@ func TestAuthGate_TripsOnNonPrintableHeaderRejection(t *testing.T) {
 	lg := &countingLogger{Logger: log.NewLogger()}
 	g := &authGate{logger: lg}
 
-	// grpc/internal/metadata rejects a non-printable value at the wire boundary
-	// with this exact wording; it never surfaces as a status code.
+	// grpc/internal/metadata rejects a non-printable value with this exact
+	// wording; it never surfaces as a status code.
 	wrapped := fmt.Errorf(`send data: header key "authorization" contains value with %s`, grpcNonPrintableHeaderMsg)
 
 	assert.True(t, g.tripOnce(wrapped))
@@ -80,9 +78,8 @@ func TestAuthGate_TripsOnNonPrintableHeaderRejection(t *testing.T) {
 	assert.Equal(t, int64(1), lg.warns.Load())
 }
 
-// After the gate trips, the whole-Client short-circuit means Downloads /
-// Uploads / capability probes return ErrCacheUnauthenticated without touching
-// the transport, and without logging again. Cover the top of each entry point.
+// Covers every RPC entry point: once the gate is broken they must all return
+// ErrCacheUnauthenticated without hitting the transport and without re-logging.
 func TestClient_ShortCircuitsAfterAuthBroken(t *testing.T) {
 	lg := &countingLogger{Logger: log.NewLogger()}
 	c := &Client{logger: lg, authGate: authGate{logger: lg}}

@@ -53,12 +53,9 @@ func TestClient_getMethodCallMetadata_RefreshesPerCall(t *testing.T) {
 	assert.Equal(t, []string{"ws-2"}, md2.Get("x-org-id"))
 }
 
-// A token that still carries a trailing newline reaches getMethodCallMetadata
-// and produces an "authorization" header value with a non-printable byte —
-// which grpc/metadata rejects client-side before the RPC leaves the process.
-// TokenSet.Credential() trims upstream so this never happens; the assertion
-// documents the byte-level failure so a future path that re-introduces
-// newlines downstream can't silently regress.
+// Regression guard: TokenSet.Credential() trims upstream so a newline never
+// reaches this layer. If a future path re-introduces one, the header value
+// will carry a non-printable byte and gRPC will reject it client-side.
 func TestClient_getMethodCallMetadata_TrailingNewlineTokenLeavesInvalidHeader(t *testing.T) {
 	src := staticAuthSource{cfg: authpkg.Credential{Token: "tok\n", WorkspaceID: "ws"}}
 

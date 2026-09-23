@@ -42,10 +42,8 @@ func (t TokenSet) IsOAuthManaged() bool {
 
 // The only conversion between the two types; there is deliberately no reverse, so a
 // write path cannot drop a refresh token, a JWT or a display name it wasn't
-// thinking about.
-//
-// Trims surrounding whitespace so a stray trailing newline in a persisted or
-// injected record can't produce a header that gRPC will reject client-side.
+// thinking about. Trims surrounding whitespace so a stray trailing newline in a
+// persisted or injected record can't produce a header gRPC will reject client-side.
 func (t TokenSet) Credential() Credential {
 	return Credential{
 		Token:       strings.TrimSpace(t.AuthToken),

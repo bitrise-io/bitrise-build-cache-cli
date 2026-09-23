@@ -204,8 +204,7 @@ func (r *Resolver) resolveWith(
 }
 
 // validateStored surfaces a persisted token that would be rejected by gRPC as
-// non-printable, rather than letting it slip past and fail every CAS op with a
-// confusing "auth broken" warning.
+// non-printable, so the caller sees the fix instead of an opaque "auth broken".
 func validateStored(cred auth.Credential, origin auth.Origin, backing store.Store) (auth.Credential, auth.Origin, store.Store, error) {
 	if _, err := auth.SanitizeToken(cred.Token); err != nil {
 		return auth.Credential{}, auth.Origin{}, nil, err //nolint:wrapcheck // sentinel; callers errors.Is on it

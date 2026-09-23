@@ -600,11 +600,8 @@ func TestBackendErrorState_nonPrintableTokenIsError(t *testing.T) {
 	assert.Equal(t, StateError, backendErrorState(authpkg.ErrTokenNonPrintable))
 }
 
-// When ResolveNoRefresh itself returns ErrTokenNonPrintable the check must
-// surface the fix rather than falling into the "skipped, no credentials" path.
-// A trailing newline is trimmed silently — the only failure the customer sees
-// is a token with a control byte the trimmer can't remove (embedded, mid-token,
-// or a persisted record that already carries one).
+// A resolver error of ErrTokenNonPrintable must surface as a fixable
+// StateError, not fall through into the "no credentials" skipped path.
 func TestAuthBackendCheck_nonPrintableTokenAtResolveTime(t *testing.T) {
 	envs := map[string]string{
 		authpkg.EnvAuthToken:   "tok\x01en",

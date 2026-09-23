@@ -121,7 +121,6 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true
 			}
-			// Retrying a rejected token only adds latency; short-circuit via the gate.
 			if c.authGate.tripOnce(copyErr) {
 				return ErrCacheUnauthenticated, true
 			}
