@@ -24,7 +24,6 @@ type Cached struct {
 	refreshing chan struct{}
 }
 
-// Cached wraps b so a per-request caller pays one resolve per ttl, not per request.
 func (b *Bound) Cached(ttl time.Duration) *Cached {
 	return &Cached{bound: b, ttl: ttl, now: time.Now}
 }

@@ -552,8 +552,7 @@ func hermeticResolver() *live.Resolver {
 	return r
 }
 
-// offlineResolver keeps the real keychain and a Build Hub broker out of a test; the
-// analytics config under the test's HOME still resolves.
+// Keeps the real keychain and a Build Hub broker out of a test.
 func offlineResolver() *live.Resolver {
 	r := live.Default(nil)
 	r.Backends = []store.Store{}

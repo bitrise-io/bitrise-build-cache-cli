@@ -71,7 +71,6 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 // Process-wide, so every resolver in one command shares a single cached exchange.
 var shared sync.Map //nolint:gochecknoglobals
 
-// Shared is FromEnv, reusing the process-wide client for the same pair.
 func Shared(envs map[string]string) (*Client, bool) {
 	key := envs[auth.EnvBuildHubVMTokenURL] + "\x00" + envs[auth.EnvBuildHubVMToken]
 	if c, ok := shared.Load(key); ok {

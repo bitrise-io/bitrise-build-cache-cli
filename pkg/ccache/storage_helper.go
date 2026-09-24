@@ -381,8 +381,7 @@ func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID
 	}
 }
 
-// refreshAuth re-resolves because the config's credential is an offline read that
-// cannot re-broker a Build Hub JWT; it reports whether there is one to send.
+// The config's credential is an offline read that cannot re-broker a Build Hub JWT.
 func (h *StorageHelper) refreshAuth(ctx context.Context) bool {
 	resolve := h.resolveCredential
 	if resolve == nil {
