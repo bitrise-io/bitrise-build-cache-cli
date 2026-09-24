@@ -44,6 +44,22 @@ func TestCached_Get(t *testing.T) {
 		assert.Equal(t, 2, calls)
 	})
 
+	t.Run("starts the ttl when the resolve completes", func(t *testing.T) {
+		now := time.Now()
+		calls := 0
+		c := cachedWithBroker(func(context.Context, map[string]string) (auth.Credential, error) {
+			calls++
+			now = now.Add(40 * time.Second)
+
+			return auth.Credential{Token: "jwt", WorkspaceID: "ws", Expiry: now.Add(time.Hour)}, nil
+		}, &now)
+
+		c.Get(context.Background())
+		now = now.Add(30 * time.Second)
+		c.Get(context.Background())
+		assert.Equal(t, 1, calls)
+	})
+
 	t.Run("re-resolves inside the ttl when the credential is about to expire", func(t *testing.T) {
 		now := time.Now()
 		calls := 0

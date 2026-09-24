@@ -76,7 +76,7 @@ func (c *Cached) Get(ctx context.Context) auth.Credential {
 		return c.cred
 	}
 
-	c.cred, c.resolvedAt = cred, now
+	c.cred, c.resolvedAt = cred, c.now()
 
 	return cred
 }

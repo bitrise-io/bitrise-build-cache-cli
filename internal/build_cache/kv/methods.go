@@ -52,7 +52,7 @@ func (c *Client) GetCapabilities(ctx context.Context) error {
 
 	_, err := ch.capabilitiesClient.GetCapabilities(callCtx, &remoteexecution.GetCapabilitiesRequest{})
 	if err != nil {
-		if c.authGate.tripOnce(err, sentAuth(callCtx)) {
+		if c.tripAuth(ctx, err, sentAuth(callCtx)) {
 			return ErrCacheUnauthenticated
 		}
 
@@ -70,10 +70,11 @@ func (c *Client) GetCapabilitiesWithRetry(ctx context.Context) error {
 		}
 
 		if err := c.GetCapabilities(ctx); err != nil {
-			c.logger.Errorf("Error in GetCapabilities attempt %d: %s", attempt, err)
+			// The gate already warned once per rejected credential.
 			if errors.Is(err, ErrCacheUnauthenticated) {
 				return ErrCacheUnauthenticated, true
 			}
+			c.logger.Errorf("Error in GetCapabilities attempt %d: %s", attempt, err)
 
 			return err, false
 		}
@@ -107,7 +108,7 @@ func (c *Client) initiatePut(ctx context.Context, params PutParams) (*writer, er
 	if err != nil {
 		ch.release()
 
-		if c.authGate.tripOnce(err, sentAuth(ctx)) {
+		if c.tripAuth(ctx, err, sentAuth(ctx)) {
 			return nil, ErrCacheUnauthenticated
 		}
 
@@ -153,7 +154,7 @@ func (c *Client) initiateGet(ctx context.Context, logger log.Logger, name string
 	if err != nil {
 		ch.release()
 
-		if c.authGate.tripOnce(err, sentAuth(ctx)) {
+		if c.tripAuth(ctx, err, sentAuth(ctx)) {
 			return nil, ErrCacheUnauthenticated
 		}
 
@@ -197,7 +198,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	}
 	_, err := ch.bitriseKVClient.Delete(callCtx, readReq)
 	if err != nil {
-		if c.authGate.tripOnce(err, sentAuth(callCtx)) {
+		if c.tripAuth(ctx, err, sentAuth(callCtx)) {
 			return ErrCacheUnauthenticated
 		}
 
@@ -242,7 +243,7 @@ func (c *Client) findMissing(ctx context.Context,
 
 			// A rejected token is never accepted on a retry; anything else may be
 			// transient and is worth another attempt.
-			if c.authGate.tripOnce(err, sentAuth(callCtx)) {
+			if c.tripAuth(ctx, err, sentAuth(callCtx)) {
 				return ErrCacheUnauthenticated, true
 			}
 
@@ -319,14 +320,21 @@ func convertToFileDigests(digests []*remoteexecution.Digest) []*FileDigest {
 
 func bearer(token string) string { return "bearer " + token }
 
-// authBroken checks the gate against the header the next RPC would send.
-func (c *Client) authBroken(ctx context.Context) bool {
-	var current func() string
-	if c.authSource != nil {
-		current = func() string { return bearer(c.authSource.Get(ctx).Token) }
+// currentAuth yields the header the next RPC would send, nil without an AuthSource.
+func (c *Client) currentAuth(ctx context.Context) func() string {
+	if c.authSource == nil {
+		return nil
 	}
 
-	return c.authGate.isBroken(current)
+	return func() string { return bearer(c.authSource.Get(ctx).Token) }
+}
+
+func (c *Client) authBroken(ctx context.Context) bool {
+	return c.authGate.isBroken(c.currentAuth(ctx))
+}
+
+func (c *Client) tripAuth(ctx context.Context, err error, sent string) bool {
+	return c.authGate.tripOnce(err, sent, c.currentAuth(ctx))
 }
 
 func sentAuth(ctx context.Context) string {
@@ -417,7 +425,7 @@ func (c *Client) QueryWriteStatus(ctx context.Context, name string) (WriteStatus
 		ResourceName: resourceName,
 	})
 	if err != nil {
-		if c.authGate.tripOnce(err, sentAuth(callCtx)) {
+		if c.tripAuth(ctx, err, sentAuth(callCtx)) {
 			return WriteStatus{}, ErrCacheUnauthenticated
 		}
 

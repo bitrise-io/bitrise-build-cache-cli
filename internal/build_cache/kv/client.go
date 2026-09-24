@@ -247,7 +247,7 @@ func buildChannels(p NewClientParams) ([]*channel, error) {
 
 func (c *Client) SetLogger(logger log.Logger) {
 	c.logger = logger
-	c.authGate.logger = logger
+	c.authGate.setLogger(logger)
 }
 
 // Close releases every gRPC connection in the pool. Safe to call when the

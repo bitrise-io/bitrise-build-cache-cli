@@ -22,16 +22,30 @@ type authGate struct {
 	mu     sync.Mutex
 	// rejected is the authorization header of the RPC that tripped the gate.
 	rejected  string
-	loggedFor *string
+	warned    bool
+	warnedFor string
 	logger    log.Logger
 }
 
-// tripOnce returns true when the gate is broken — either this call tripped it
-// or a previous one did. sentAuth is the authorization header the failed RPC
-// carried. Warns once per rejected header, on the first trip with a logger.
-func (g *authGate) tripOnce(err error, sentAuth string) bool {
+// tripOnce reports whether the failed RPC, which carried sentAuth, should abort
+// as ErrCacheUnauthenticated. current yields the header the next RPC would send;
+// nil means the credential never changes. Warns once per rejected header.
+func (g *authGate) tripOnce(err error, sentAuth string, current func() string) bool {
 	if !isAuthReject(err) {
-		return g.broken.Load()
+		if !g.broken.Load() {
+			return false
+		}
+
+		g.mu.Lock()
+		defer g.mu.Unlock()
+
+		return g.broken.Load() && g.rejected == sentAuth
+	}
+
+	// A late rejection of an already-replaced credential must not re-latch the gate;
+	// the caller's retry sends the new one.
+	if current != nil && current() != sentAuth {
+		return false
 	}
 
 	g.mu.Lock()
@@ -39,8 +53,8 @@ func (g *authGate) tripOnce(err error, sentAuth string) bool {
 
 	g.rejected = sentAuth
 	g.broken.Store(true)
-	if g.logger != nil && (g.loggedFor == nil || *g.loggedFor != sentAuth) {
-		g.loggedFor = &sentAuth
+	if g.logger != nil && (!g.warned || g.warnedFor != sentAuth) {
+		g.warned, g.warnedFor = true, sentAuth
 		g.logger.Warnf(
 			"Build Cache auth rejected (%s) — disabling cache until the credential changes; check BITRISE_BUILD_CACHE_AUTH_TOKEN for trailing whitespace or expired credentials",
 			err,
@@ -48,6 +62,13 @@ func (g *authGate) tripOnce(err error, sentAuth string) bool {
 	}
 
 	return true
+}
+
+func (g *authGate) setLogger(logger log.Logger) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.logger = logger
 }
 
 // isBroken reports whether current, the header the next RPC would send, is the

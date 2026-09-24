@@ -335,6 +335,16 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	h.logger.TInfof("Ccache invocation ID: %s", invocationID)
 	h.logger.TInfof("Parent invocation ID: %s", parentID)
 
+	h.report(ctx, invocationID, parentID, stats, dl, ul, blobStats)
+}
+
+// The ledger is local, so it is written even when the invocation cannot be sent.
+func (h *StorageHelper) report(ctx context.Context, invocationID, parentID string, stats ccacheanalytics.CcacheStats, dl, ul int64, blobStats *blobstats.Snapshot) {
+	h.sendInvocation(ctx, invocationID, parentID, stats, dl, ul, blobStats)
+	h.writeChildStatsLedger(invocationID, parentID, stats)
+}
+
+func (h *StorageHelper) sendInvocation(ctx context.Context, invocationID, parentID string, stats ccacheanalytics.CcacheStats, dl, ul int64, blobStats *blobstats.Snapshot) {
 	if !h.refreshAuth(ctx) {
 		return
 	}
@@ -354,8 +364,6 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
 	}
-
-	h.writeChildStatsLedger(invocationID, parentID, stats)
 }
 
 // The same figures as the stats lines above, on the GitHub Actions job page. No
