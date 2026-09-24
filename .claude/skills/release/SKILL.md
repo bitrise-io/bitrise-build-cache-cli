@@ -19,9 +19,9 @@ When you report status, report it **per channel**, and state what you actually c
 1. **CLI GitHub release** — promoted out of prerelease, all expected assets present (Step 6).
 2. **`verify-release`** — green (Step 6).
 3. **`bump-prebooting` PR** (preboot VM image) — **merged** (Step 6b). This is how provision-injected features, e.g. the gradle-mirrors init script, reach the *default* fleet. The bypass-merge can stall and need a manual approval.
-4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
-5. **Step GitHub releases** — cut for the scoped steps (Step 8).
-6. **Steplib PRs** — merged (Step 9).
+4. **Step auto-update PRs in all SIX consumer repos** — **merged** (Step 7).
+5. **Step GitHub releases** — cut for the scoped steps (Step 8). **Expected count = scoped_steps + 1 for each dual-publish repo** (xcode and RN produce BOTH `0.x` and `1.x` tags).
+6. **Steplib PRs** — merged (Step 9). **Expected count matches Step 8** — 2 steplib PRs per dual-publish repo (one per tag).
 
 Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–6). Confirming one says nothing about the other.
 
@@ -68,6 +68,7 @@ A release can be triggered by:
 | Gradle features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-features` |
 | React Native features step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-react-native-features` |
 | Gradle mirrors step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-gradle-mirrors` |
+| Bazel step (unified CI) | `48fa8fbee698622c` | `bitrise-steplib/bitrise-step-activate-build-cache-for-bazel` |
 | Steplib | — | `bitrise-io/bitrise-steplib` |
 
 ## Steps
@@ -123,13 +124,14 @@ The `release-and-verify` pipeline chains a `bump-prebooting` workflow after `ver
 
 ### 7. Wait for step auto-update PRs
 
-The CLI release triggers auto-update PRs in **five** consumer repos. Monitor CI, then approve and merge each. All five are bumped by `bundle::update-step` in the `release` workflow (push-based, after the binaries publish), use unified CI app `48fa8fbee698622c`, and the PR title "feat: Release new CLI":
+The CLI release triggers auto-update PRs in **six** consumer repos. Monitor CI, then approve and merge each. All six are bumped by `bundle::update-step` in the `release` workflow (push-based, after the binaries publish), use unified CI app `48fa8fbee698622c`, and the PR title "feat: Release new CLI":
 
 1. **Gradle step:** `bitrise-steplib/bitrise-step-activate-gradle-remote-cache` — released for every CLI version.
-2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` — released for every CLI version.
-3. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` — released, but releases are **not 1:1 with CLI releases** (each step release usually catches up across several intervening CLI patch versions; release when CLI changes matter for RN, e.g. an Xcode or Gradle-side improvement that RN builds benefit from).
+2. **Xcode step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-xcode` — released for every CLI version. **Dual-publish v0.x + v1.x** — see Step 8.
+3. **React Native features step:** `bitrise-steplib/bitrise-step-activate-react-native-features` — **dual-publish v0.x + v1.x** (see Step 8). Release cadence is not 1:1 with CLI: each step release usually catches up across several intervening CLI patch versions — release when CLI changes matter for RN (Xcode / Gradle-side improvements). **When you DO release, cut BOTH `0.x` and `1.x` tags** — the cadence question is orthogonal to the dual-publish requirement.
 4. **Gradle features step:** `bitrise-steplib/bitrise-step-activate-gradle-features` — truly experimental, no GitHub release flow yet (only a single early steplib PR exists). Merge the auto-update PR but do not cut a GitHub release until that changes.
 5. **Gradle mirrors step:** `bitrise-steplib/bitrise-step-activate-gradle-mirrors` — used by customers who **pin a specific CLI version** (the default fleet gets the mirror init script via provisioning/preboot instead, so this step is the delivery channel only for pinned-version builds). It's a Go-module consumer (bumped via `go get`/`go mod tidy`/`go mod vendor`, same as the gradle features step). Now push-bumped by the `release` workflow like the others — historically it lagged badly (stuck at v2.6.1 / release 0.2.1 while the CLI was at v2.8.x) because it relied only on Renovate polling; the `bundle::update-step` push removes that lag. It uses 0.x step versioning, so cut a `0.x` GitHub release when you ship it.
+6. **Bazel step:** `bitrise-steplib/bitrise-step-activate-build-cache-for-bazel` — released for every CLI version whose changes matter for Bazel builds (bazelrc template changes, credential helper wiring, bazel-side auth). The step pins the CLI via `BITRISE_BUILD_CACHE_CLI_VERSION` in `step.sh` (not a Go-module dep); bump script is `scripts/update_activate_build_cache_for_bazel.sh`.
 
 ```bash
 # For each step repo:
@@ -141,7 +143,9 @@ Always wait for CI to pass. Use `--squash` (merge commits are not allowed on the
 
 ### 8. Create step GitHub releases
 
-Create GitHub releases for whichever of the five step repos the user actually wants to release (default: **Gradle step** + **Xcode step**; **React Native features step** when the CLI change is RN-relevant; **Gradle mirrors step** when its CLI bump matters for pinned-version users or it has fallen behind). The **Gradle features step** does not have a GitHub release flow yet — skip it. The **Gradle mirrors step** has its own 0.x release flow — cut a 0.x release after its bump PR merges.
+Create GitHub releases for whichever of the six step repos the user actually wants to release (default: **Gradle step** + **Xcode step**; **React Native features step** when the CLI change is RN-relevant; **Gradle mirrors step** when its CLI bump matters for pinned-version users or it has fallen behind; **Bazel step** when the CLI change is Bazel-relevant). The **Gradle features step** does not have a GitHub release flow yet — skip it. The **Gradle mirrors step** has its own 0.x release flow — cut a 0.x release after its bump PR merges.
+
+⚠ **Dual-publish (xcode + react-native only):** both `bitrise-step-activate-build-cache-for-xcode` and `bitrise-step-activate-react-native-features` publish TWO parallel release trains per CLI bump — the legacy `0.x` line AND the current `1.x` line. Cut BOTH tags (e.g. `0.28.2` AND `1.1.2`) and land BOTH steplib PRs that follow. Confirm via `gh release list --repo <REPO> --limit 8` — if the recent history shows both `0.N.N` and `1.N.N`, dual-publish is active. Missing the `1.x` tag leaves half the fleet stale after a "release complete" claim.
 
 - These **can** be marked as "latest"
 - Follow the format of existing releases for release notes — only include "## What's Changed" with bullet points (changelog is added automatically)
@@ -152,17 +156,18 @@ Create GitHub releases for whichever of the five step repos the user actually wa
 
 ### 9. Merge steplib PRs
 
-After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each released step. They may need a rebase.
+After the step releases, PRs appear in `bitrise-io/bitrise-steplib` for each released tag. They may need a rebase. **Expect 2 PRs per dual-publish repo** (xcode and RN each open one PR for the `0.x` tag AND one for the `1.x` tag). If you see only 1 for either, one of the two tags didn't get cut in Step 8 — go back and cut it.
 
 ⚠ **steplib PR titles use the step's steplib ID, NOT its GitHub repo name — and TWO steps' names differ.** The steplib PR title is `<steplib-id>-<version>`. For most steps the id matches the repo, but two do NOT: the Gradle step's repo is `bitrise-step-activate-gradle-remote-cache` while its steplib id is **`activate-build-cache-for-gradle`**, and the React Native step's repo is `bitrise-step-activate-react-native-features` while its steplib id is **`activate-build-cache-for-react-native`**. So their steplib PRs are titled `activate-build-cache-for-gradle-<version>` and `activate-build-cache-for-react-native-<version>` — NOT `activate-gradle-remote-cache-…` / `activate-react-native-features-…`. If you search/poll for the wrong name the PR looks "missing" when it is in fact open (this cost ~40 min on the v3.2.2 release). To get a step's true steplib id, read the `Step id found:` line in its `release` build log (the `step-id-finder` step). The five repo → steplib-id mappings:
 
-| GitHub repo | steplib PR id |
+| GitHub repo | steplib PR title(s) |
 |---|---|
-| `bitrise-step-activate-gradle-remote-cache` | **`activate-build-cache-for-gradle`** |
-| `bitrise-step-activate-build-cache-for-xcode` | `activate-build-cache-for-xcode` |
-| `bitrise-step-activate-gradle-mirrors` | `activate-gradle-mirrors` |
-| `bitrise-step-activate-react-native-features` | **`activate-build-cache-for-react-native`** |
-| `bitrise-step-activate-gradle-features` | `activate-gradle-features` |
+| `bitrise-step-activate-gradle-remote-cache` | **`activate-build-cache-for-gradle-<version>`** |
+| `bitrise-step-activate-build-cache-for-xcode` | `activate-build-cache-for-xcode-<version>` — **expect 2: one `0.N.N`, one `1.N.N`** |
+| `bitrise-step-activate-gradle-mirrors` | `activate-gradle-mirrors-<version>` |
+| `bitrise-step-activate-react-native-features` | **`activate-build-cache-for-react-native-<version>`** — **expect 2: one `0.N.N`, one `1.N.N`** |
+| `bitrise-step-activate-gradle-features` | `activate-gradle-features-<version>` |
+| `bitrise-step-activate-build-cache-for-bazel` | `activate-build-cache-for-bazel-<version>` |
 
 **Merge each steplib PR as soon as it is individually MERGEABLE — do not batch-wait for all of them.** They appear and become mergeable at different times; gating on "all N present" stalls the whole release behind the slowest one (and behind any name-matching mistake above).
 
