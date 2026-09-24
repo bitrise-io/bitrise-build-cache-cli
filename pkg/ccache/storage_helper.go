@@ -321,7 +321,7 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 	// After the activity check, like the analytics below it: a job that compiled no
 	// C++ has nothing to say on the job page either.
-	h.writeJobSummary(dl, ul, invocationID)
+	h.writeJobSummary(dl, ul, invocationID, stats)
 
 	if invocationID == "" {
 		h.logger.TWarnf("No invocation ID available for ccache stats, skipping analytics")
@@ -353,9 +353,11 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 
 // The same figures as the stats lines above, on the GitHub Actions job page. No
 // duration: a ccache session spans the build rather than one command.
-func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string) {
+func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string, stats ccacheanalytics.CcacheStats) {
 	invocation := jobsummary.Invocation{
-		Success:         true,
+		// ccache's own health, not the compile's exit code: a failed build whose
+		// ccache behaved is a ✅ here, which is what this row is about.
+		Success:         stats.Success(),
 		Command:         "ccache",
 		DownloadedBytes: &downloaded,
 		UploadedBytes:   &uploaded,
