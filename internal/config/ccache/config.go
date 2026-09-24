@@ -147,15 +147,15 @@ func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProx
 		IPCEndpoint:        ipcEndpoint,
 		LogFile:            defaultLogFile,
 		ErrLogFile:         defaultErrLogFile,
-		IdleTimeout:        idleTimeoutFor(envs),
+		IdleTimeout:        idleTimeoutFor(envs, osProxy),
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,
 	}, nil
 }
 
-func idleTimeoutFor(envs map[string]string) time.Duration {
-	if common.IsCI(envs) {
+func idleTimeoutFor(envs map[string]string, osProxy utils.OsProxy) time.Duration {
+	if common.IsCI(envs, osProxy) {
 		return ciIdleTimeout
 	}
 

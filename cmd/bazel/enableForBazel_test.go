@@ -44,10 +44,13 @@ func makeFakeJWT(orgID string) string {
 	return header + "." + body + "." + sig
 }
 
+func nonRDEHostname() (string, error) { return "laptop.local", nil }
+
 func Test_enableForBazelCmdFn(t *testing.T) {
 	// when
 	t.Run("No envs specified", func(t *testing.T) {
 		mockOsProxy := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},
@@ -61,6 +64,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 
 	t.Run("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN specified", func(t *testing.T) {
 		mockOsProxy := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},
@@ -85,6 +89,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 
 	t.Run("BITRISE_BUILD_CACHE_WORKSPACE_ID and BITRISE_BUILD_CACHE_AUTH_TOKEN specified", func(t *testing.T) {
 		mockOsProxy := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},
@@ -110,6 +115,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 
 	t.Run("~/.bazelrc file does not exist", func(t *testing.T) {
 		mockOsProxy := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},
@@ -142,6 +148,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 # multi line`
 
 		mockOsProxy := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},
@@ -189,6 +196,7 @@ build --remote_upload_local_results
 # other content`
 
 		mockOsProxy := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},
@@ -256,6 +264,7 @@ build --remote_upload_local_results
 
 	t.Run("existing bitrise block with timestamps gets updated without timestamps", func(t *testing.T) {
 		proxyMock := &utilsMocks.OsProxyMock{
+			HostnameFunc: nonRDEHostname,
 			UserHomeDirFunc: func() (string, error) {
 				return "/mock/home", nil
 			},

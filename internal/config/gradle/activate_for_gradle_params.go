@@ -134,6 +134,7 @@ func (params ActivateGradleParams) TemplateInventory(
 
 			return string(output), err
 		},
+		osProxy,
 		logger)
 	logger.Infof("(i) Cache Config: %+v", metadata)
 

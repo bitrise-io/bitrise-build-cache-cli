@@ -241,7 +241,7 @@ func newAnalyticsBundle(
 	b := &analyticsBundle{
 		client:       client,
 		authProvider: authProvider,
-		metadata:     configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, logger),
+		metadata:     configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, utils.DefaultOsProxy{}, logger),
 		logger:       logger,
 	}
 
@@ -323,7 +323,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 // watcherTimeGap widens the manifest-grouping window on CI to absorb
 // wall-clock skew that a local machine doesn't have.
 func watcherTimeGap() time.Duration {
-	if configcommon.IsCI(utils.AllEnvs()) {
+	if configcommon.IsCI(utils.AllEnvs(), utils.DefaultOsProxy{}) {
 		return enrichment.CIGroupTimeGap
 	}
 

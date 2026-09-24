@@ -70,6 +70,7 @@ func EnableForBazelCmdFn(ctx context.Context, logger log.Logger, osProxy utils.O
 
 			return string(output), err
 		},
+		osProxy,
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 

@@ -271,7 +271,7 @@ func loginAndStore(ctx context.Context, logger log.Logger, envs map[string]strin
 	// this, `auth login` silently drops the name `auth username` set.
 	creds.Username = store.StoredUsername()
 
-	target, err := store.Select(configcommon.IsCI(envs), req.Storage)
+	target, err := store.Select(configcommon.IsCI(envs, utils.DefaultOsProxy{}), req.Storage)
 	if err != nil {
 		return loginOutcome{}, err //nolint:wrapcheck
 	}
@@ -343,7 +343,7 @@ func PickWorkspacePrompt(ctx context.Context, logger log.Logger) func() (string,
 			return "", err
 		}
 
-		origin, err := store.SetWorkspaceID(configcommon.IsCI(envs), workspace)
+		origin, err := store.SetWorkspaceID(configcommon.IsCI(envs, utils.DefaultOsProxy{}), workspace)
 		if err != nil {
 			return "", err //nolint:wrapcheck // already user-facing
 		}

@@ -13,6 +13,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func TestNewCacheConfigMetadata(t *testing.T) {
@@ -309,6 +312,7 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 
 			got := NewMetadata(tt.envs, "",
 				tt.commandFunc,
+				utils.DefaultOsProxy{},
 				log.NewLogger())
 
 			if tt.want.RedactedEnvs != nil {
@@ -352,6 +356,101 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewMetadata() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestDetectCIProvider(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		hostname   string
+		hostnameOK bool
+		envs       map[string]string
+		want       string
+	}{
+		{
+			name:       "RDE-linux-no-bitrise-envs",
+			hostname:   "vm-standalone-linux-x",
+			hostnameOK: true,
+			envs:       map[string]string{},
+			want:       "",
+		},
+		{
+			name:       "RDE-macos-full-CI-envs-leaked",
+			hostname:   "vm-standalone-macos-x",
+			hostnameOK: true,
+			envs: map[string]string{
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "x",
+			},
+			want: "",
+		},
+		{
+			name:       "Real-Bitrise-CI",
+			hostname:   "something-else",
+			hostnameOK: true,
+			envs: map[string]string{
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "x",
+			},
+			want: CIProviderBitrise,
+		},
+		{
+			name:       "Real-Bitrise-CI-with-den-vm-name",
+			hostname:   "vm-linux-c4-m16-f813b440",
+			hostnameOK: true,
+			envs: map[string]string{
+				"BITRISE_DEN_VM_NAME": "vm-linux-c4-m16-f813b440",
+				"BITRISE_IO":          "true",
+				"BITRISE_BUILD_SLUG":  "x",
+			},
+			want: CIProviderBitrise,
+		},
+		{
+			name:       "Real-Bitrise-CI-hostname-lookup-error",
+			hostname:   "",
+			hostnameOK: false,
+			envs: map[string]string{
+				"BITRISE_IO":         "true",
+				"BITRISE_BUILD_SLUG": "x",
+			},
+			want: CIProviderBitrise,
+		},
+		{
+			name:       "Circle-in-RDE",
+			hostname:   "vm-standalone-linux-x",
+			hostnameOK: true,
+			envs: map[string]string{
+				"CIRCLECI": "true",
+			},
+			want: "",
+		},
+		{
+			name:       "Local-nothing-set",
+			hostname:   "laptop.local",
+			hostnameOK: true,
+			envs:       map[string]string{},
+			want:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			osProxy := &mocks.OsProxyMock{
+				HostnameFunc: func() (string, error) {
+					if !tt.hostnameOK {
+						return "", errors.New("hostname unavailable")
+					}
+
+					return tt.hostname, nil
+				},
+			}
+
+			assert.Equal(t, tt.want, DetectCIProvider(tt.envs, osProxy))
 		})
 	}
 }
@@ -480,7 +579,7 @@ func TestResolveDefaultBranch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tt.want, resolveDefaultBranch(logger, tt.commandFunc, tt.envs))
+			assert.Equal(t, tt.want, resolveDefaultBranch(logger, tt.commandFunc, tt.envs, utils.DefaultOsProxy{}))
 		})
 	}
 }
@@ -492,9 +591,11 @@ func TestIsCI(t *testing.T) {
 		"BITRISEIO_BUILD_HUB_VM_TOKEN_URL": "https://example.com",
 	}
 
-	assert.False(t, IsCI(map[string]string{}))
-	assert.True(t, IsCI(map[string]string{"GITHUB_ACTIONS": "true"}))
-	assert.True(t, IsCI(buildHub), "a Build Hub runner under an unrecognised CI is still CI")
-	assert.Empty(t, DetectCIProvider(buildHub), "the provider name stays empty: nothing identifies which CI it is")
-	assert.False(t, IsCI(map[string]string{"BITRISEIO_BUILD_HUB_VM_TOKEN": "vm-token"}), "half the pair is not Build Hub")
+	osProxy := utils.DefaultOsProxy{}
+
+	assert.False(t, IsCI(map[string]string{}, osProxy))
+	assert.True(t, IsCI(map[string]string{"GITHUB_ACTIONS": "true"}, osProxy))
+	assert.True(t, IsCI(buildHub, osProxy), "a Build Hub runner under an unrecognised CI is still CI")
+	assert.Empty(t, DetectCIProvider(buildHub, osProxy), "the provider name stays empty: nothing identifies which CI it is")
+	assert.False(t, IsCI(map[string]string{"BITRISEIO_BUILD_HUB_VM_TOKEN": "vm-token"}, osProxy), "half the pair is not Build Hub")
 }

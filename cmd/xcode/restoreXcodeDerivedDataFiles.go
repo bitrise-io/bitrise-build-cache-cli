@@ -129,7 +129,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int,
 ) (*xa.CacheOperation, error) {
-	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, utils.DefaultOsProxy{}, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
 	kvClient, err := common.CreateKVClient(ctx,
