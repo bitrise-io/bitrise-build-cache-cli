@@ -656,9 +656,6 @@ func withDefaults(params StorageHelperParams) StorageHelperParams {
 	return params
 }
 
-// Bounds how stale a long-lived helper's credential gets without a resolve per request.
-const kvAuthTTL = time.Minute
-
 func createKVClient(
 	ctx context.Context,
 	config ccacheconfig.Config,
@@ -687,7 +684,7 @@ func createKVClient(
 		DialTimeout:         5 * time.Second,
 		ClientName:          "ccache",
 		AuthConfig:          config.AuthConfig,
-		AuthSource:          bound.Cached(kvAuthTTL),
+		AuthSource:          bound.Cached(live.HotPathTTL),
 		Logger:              logger,
 		CacheConfigMetadata: configcommon.NewMetadata(envs, hostUsername(envs), commandFunc, logger),
 		CacheOperationID:    uuid.NewString(),

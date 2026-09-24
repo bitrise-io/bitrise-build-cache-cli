@@ -8,6 +8,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
+// HotPathTTL bounds how stale a long-lived process's credential gets without a resolve per request.
+const HotPathTTL = time.Minute
+
 // cachedExpirySkew keeps a cached credential from being served in its last minute.
 const cachedExpirySkew = time.Minute
 

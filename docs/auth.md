@@ -404,23 +404,29 @@ question, not a resolution.
 
 ```
 cmd/xcode.startProxy
-└─ bound := (&live.Resolver{Logger: l}).Bind(envs)                   L4
+└─ bound := live.Default(l).Bind(envs)                               L4
+   └─ kv AuthSource: bound.Cached(live.HotPathTTL)
 
   ── per RPC ──
   kv.Client.Do(ctx, …)
-  └─ authSource.Get(ctx)          satisfied by *live.Bound
-     └─ live.Resolver.Resolve(ctx, envs)
+  └─ authSource.Get(ctx)          satisfied by *live.Cached
+     └─ live.Resolver.Resolve(ctx, envs)   at most once per minute
      ⇒ auth.Credential{… Expiry: real PATExpiry}
 ```
 
-The xcelerate proxy and the Bazel credential helper use this shape. `ctx` arrives
-per call; neither holds one in a struct.
+The xcelerate proxy and the ccache IPC storage helper use this shape. `Cached`
+resolves at most once per minute, sooner when the credential is within a minute of
+expiry, with one caller refreshing while the rest keep the current credential, and
+it serves the last good credential when a re-resolve fails. Without it a keychain
+login costs two keychain reads per RPC. The proxy's analytics uploads call
+`bound.Resolve` directly, since they need the origin to format the token. The
+ccache stats upload, the xcodebuild wrapper's invocation upload and the React
+Native post-run hook re-resolve after the build, because the build can outlive the
+credential.
 
-The ccache IPC storage helper sits on a hotter path, so it uses `Bound.Cached(ttl)`:
-one resolve per minute, sooner when the credential is within a minute of expiry,
-and the last good credential when a re-resolve fails. Its stats upload, the
-xcodebuild wrapper's invocation upload and the React Native post-run hook re-resolve
-after the build, because the build can outlive the credential.
+The Bazel credential helper is one short-lived process per Bazel request, so an
+in-process cache would serve a single lookup; Bazel caches the answer instead, until
+the `expires` the helper returns.
 
 The Bazel helper wraps it with failure policy only:
 
