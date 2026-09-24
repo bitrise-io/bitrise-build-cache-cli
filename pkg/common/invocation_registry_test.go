@@ -160,3 +160,21 @@ func TestInvocationRegistry_RegisterRelation(t *testing.T) {
 		assert.False(t, stub.capturedRelation.InvocationDate.IsZero())
 	})
 }
+
+func TestInvocationRegistry_ResolveFailure(t *testing.T) {
+	stub := &stubInvocationsAPI{}
+	reg := newTestRegistry(map[string]string{})
+	reg.api = stub
+	reg.resolve = func(context.Context) (auth.Credential, auth.Origin, error) {
+		return auth.Credential{}, auth.Origin{}, assert.AnError
+	}
+
+	err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{InvocationID: "inv"})
+	require.ErrorIs(t, err, assert.AnError)
+
+	err = reg.RegisterRelation(context.Background(), RegisterRelationParams{ParentID: "p", ChildID: "c"})
+	require.ErrorIs(t, err, assert.AnError)
+
+	assert.Empty(t, stub.capturedInvocation.InvocationID)
+	assert.Empty(t, stub.capturedRelation.ParentInvocationID)
+}

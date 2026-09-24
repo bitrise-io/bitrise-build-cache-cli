@@ -8,6 +8,8 @@ import (
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/mock"
 	keyring "github.com/zalando/go-keyring"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 var mockLogger = &utilsMocks.Logger{}
@@ -50,6 +52,12 @@ func TestMain(m *testing.M) {
 	}
 	if err := os.Setenv("HOME", home); err != nil {
 		panic(err)
+	}
+	// The wrapper re-resolves after the build; keep it off the runner's own credentials and broker.
+	for _, k := range []string{auth.EnvAuthToken, auth.EnvWorkspaceID, auth.EnvJWT, auth.EnvBuildHubVMToken, auth.EnvBuildHubVMTokenURL} {
+		if err := os.Unsetenv(k); err != nil {
+			panic(err)
+		}
 	}
 
 	code := m.Run()

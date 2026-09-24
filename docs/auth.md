@@ -444,8 +444,10 @@ cmd/common.currentAuthStatus
    └─ cred.Expired()                                                 L0
 ```
 
-The doctor's `auth-backend` probe resolves through this path with default precedence, which is what stops it disagreeing with a build about
-which credential is current. The doctor's `auth` check is the one deliberate exception —
+The doctor's `auth-backend` probe resolves through this path with default precedence,
+so it agrees with a build about which credential is current — except that it never
+brokers, so on a Build Hub runner it reports the credential a failed exchange would
+fall back to. The doctor's `auth` check is the one deliberate exception —
 it is `PreferStored`, because it reports what is on the machine rather than what a
 build would send.
 

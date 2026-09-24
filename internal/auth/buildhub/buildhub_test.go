@@ -143,6 +143,37 @@ func TestToken_ReportsHTTPFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "403")
 }
 
+func TestToken_FailedRefreshKeepsAnUnexpiredToken(t *testing.T) {
+	var calls int32
+	fail := false
+	var mu sync.Mutex
+	expiresAt := time.Now().Add(time.Minute)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if fail {
+			w.WriteHeader(http.StatusBadGateway)
+
+			return
+		}
+		_, _ = w.Write([]byte(`{"accessToken":"brokered-jwt","expiresAt":"` + expiresAt.Format(time.RFC3339) + `"}`))
+	}))
+	defer srv.Close()
+	c := clientFor(t, srv.URL)
+
+	_, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	mu.Lock()
+	fail = true
+	mu.Unlock()
+
+	token, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", token)
+	assert.Equal(t, int32(2), calls)
+}
+
 func TestShared_ReusesOneClientPerPair(t *testing.T) {
 	var calls int32
 	srv := brokerServer(t, time.Now().Add(30*time.Minute), &calls)

@@ -113,7 +113,17 @@ func (c *Client) Token(ctx context.Context) (string, time.Time, error) {
 		return token, expiresAt, nil
 	}
 
-	return c.exchange(ctx)
+	token, expiresAt, err := c.exchange(ctx)
+	if err != nil {
+		// A failed early refresh must not cost the caller a token that still works.
+		if token, expiresAt, ok := c.unexpired(); ok {
+			return token, expiresAt, nil
+		}
+
+		return "", time.Time{}, err
+	}
+
+	return token, expiresAt, nil
 }
 
 func (c *Client) exchange(ctx context.Context) (string, time.Time, error) {

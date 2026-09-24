@@ -3,6 +3,7 @@
 package reactnative
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"testing"
@@ -164,4 +165,18 @@ func TestPostRunDeps_appendLocalInvocationLog_usernameFromEnvChain(t *testing.T)
 	calls := logger.AppendCalls()
 	require.Len(t, calls, 1)
 	assert.Equal(t, "env-set-user", calls[0].Rec.Username)
+}
+
+func TestPostRunDeps_run_resolveFailureSkipsAnalytics(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	clearAuthEnv(t)
+
+	deps, localLogger := depsForLocalLogTest(t)
+	deps.resolver = hermeticResolver()
+
+	outcome := deps.run(context.Background(), "inv-id", []string{"yarn", "build"}, time.Second, nil)
+
+	assert.Equal(t, buildOutcome{}, outcome)
+	assert.Empty(t, localLogger.AppendCalls())
+	deps.logger.(*utilsMocks.Logger).AssertCalled(t, "TWarnf", "Failed to resolve credentials for post-run hook: %v", mock.Anything)
 }

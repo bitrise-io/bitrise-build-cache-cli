@@ -75,4 +75,33 @@ func TestCached_Get(t *testing.T) {
 		now = now.Add(2 * time.Minute)
 		assert.Equal(t, first, c.Get(context.Background()))
 	})
+
+	t.Run("serves the current credential while another caller re-resolves", func(t *testing.T) {
+		now := time.Now()
+		first := true
+		started, release := make(chan struct{}), make(chan struct{})
+		c := cachedWithBroker(func(context.Context, map[string]string) (auth.Credential, error) {
+			if first {
+				first = false
+
+				return auth.Credential{Token: "old", WorkspaceID: "ws", Expiry: now.Add(time.Hour)}, nil
+			}
+			close(started)
+			<-release
+
+			return auth.Credential{Token: "new", WorkspaceID: "ws", Expiry: now.Add(time.Hour)}, nil
+		}, &now)
+
+		c.Get(context.Background())
+		now = now.Add(2 * time.Minute)
+
+		leader := make(chan auth.Credential)
+		go func() { leader <- c.Get(context.Background()) }()
+		<-started
+
+		assert.Equal(t, "old", c.Get(context.Background()).Token)
+		close(release)
+		assert.Equal(t, "new", (<-leader).Token)
+		assert.Equal(t, "new", c.Get(context.Background()).Token)
+	})
 }

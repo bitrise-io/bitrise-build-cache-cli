@@ -18,6 +18,9 @@ import (
 )
 
 func newTestRunner(params RunnerParams) *Runner {
+	if params.Resolver == nil {
+		params.Resolver = offlineResolver()
+	}
 	r := NewRunner(params)
 	r.socket = nil
 	r.postRun = nil
@@ -541,10 +544,21 @@ func clearAuthEnv(t *testing.T) {
 // analytics config, so a developer who happens to be logged in does not flip the
 // bypass tests.
 func hermeticResolver() *live.Resolver {
-	r := live.Default(nil)
-	r.Backends = []store.Store{}
+	r := offlineResolver()
 	r.AnalyticsBlock = func() (auth.Credential, auth.Origin, bool) {
 		return auth.Credential{}, auth.Origin{}, false
+	}
+
+	return r
+}
+
+// offlineResolver keeps the real keychain and a Build Hub broker out of a test; the
+// analytics config under the test's HOME still resolves.
+func offlineResolver() *live.Resolver {
+	r := live.Default(nil)
+	r.Backends = []store.Store{}
+	r.Broker = func(context.Context, map[string]string) (auth.Credential, error) {
+		return auth.Credential{}, nil
 	}
 
 	return r

@@ -98,6 +98,6 @@ func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Conte
 func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params RegisterRelationParams) error
 ```
 
-`NewInvocationRegistry` reads the multiplatform analytics config from disk (auth + debug-logging flag). Pass `Envs` to override the metadata source.
+`NewInvocationRegistry` reads the debug-logging flag from the multiplatform analytics config on disk; the credential is resolved on each registration, so a missing one surfaces as that call's error rather than the constructor's. Pass `Envs` to override the metadata and credential source.
 
 This is the path used by every CLI-internal caller. The two cobra commands are thin wrappers around it; external callers can either invoke the CLI or import `pkg/common` directly.
