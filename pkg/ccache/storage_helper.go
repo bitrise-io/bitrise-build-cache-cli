@@ -312,14 +312,16 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 		}
 	}
 
-	h.writeJobSummary(dl, ul, invocationID)
-
 	hasActivity := stats.HasActivity() || dl > 0 || ul > 0
 	if !hasActivity {
 		h.logger.TInfof("No ccache activity detected, skipping analytics")
 
 		return
 	}
+
+	// After the activity check, like the analytics below it: a job that compiled no
+	// C++ has nothing to say on the job page either.
+	h.writeJobSummary(dl, ul, invocationID)
 
 	if invocationID == "" {
 		h.logger.TWarnf("No invocation ID available for ccache stats, skipping analytics")
