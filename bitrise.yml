@@ -1495,6 +1495,91 @@ workflows:
             fi
     - deploy-to-bitrise-io@2: {}
 
+  gradle-configuration-e2e-large-fixture:
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+    envs:
+    - APP_DIR: /opt/test-app/large-fixture
+    - LARGE_FIXTURE_FILE_COUNT: "2500"
+    steps:
+    - activate-ssh-key:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone: {}
+    - script:
+        title: Build CLI + record absolute path
+        inputs:
+        - content: |-
+            set -exo pipefail
+            go build -o bitrise-build-cache-cli
+            envman add --key CLI_BIN --value "$BITRISE_SOURCE_DIR/bitrise-build-cache-cli"
+    - script:
+        title: Enable build cache
+        inputs:
+        - content: |-
+            set -exo pipefail
+            sudo mkdir -p "$APP_DIR" && sudo chown -R "$(whoami)" "$APP_DIR"
+            "$CLI_BIN" activate gradle -d --cache --cache-push
+    - change-workdir:
+        inputs:
+        - path: $APP_DIR
+    - script:
+        title: Generate synthetic config-cache dir (>1000 files)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            DIR=./.gradle/configuration-cache/synthetic
+            mkdir -p "$DIR"
+            for i in $(seq 1 $LARGE_FIXTURE_FILE_COUNT); do
+              printf 'synthetic-%s-%s' "$BITRISE_BUILD_NUMBER" "$i" > "$DIR/f-$i"
+            done
+            echo "seeded $(ls "$DIR" | wc -l) files"
+    - script:
+        title: Save synthetic config cache (exercises upload-path chunking)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            KEY="large-fixture-build-$BITRISE_BUILD_NUMBER"
+            envman add --key LARGE_FIXTURE_KEY --value "$KEY"
+            "$CLI_BIN" save-gradle-configuration-cache -d \
+              --config-cache-dir ./.gradle/configuration-cache \
+              --key "$KEY" 2>&1 | tee "$BITRISE_DEPLOY_DIR/save.log"
+    - script:
+        title: Wipe fixture before restore
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf ./.gradle/configuration-cache
+    - script:
+        title: Restore synthetic config cache (exercises download-path pre-check)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            "$CLI_BIN" restore-gradle-configuration-cache -d \
+              --key "$LARGE_FIXTURE_KEY" 2>&1 | tee "$BITRISE_DEPLOY_DIR/restore.log"
+    - script:
+        title: Assert chunked FindMissingBlobs fired on both paths
+        inputs:
+        - content: |-
+            set -exo pipefail
+            fail=0
+            for log in save restore; do
+              chunks=$(grep -c "Calling FindMissingBlobs for chunk" "$BITRISE_DEPLOY_DIR/$log.log" || true)
+              echo "$log.log: $chunks chunk line(s)"
+              if [ "$chunks" -lt 2 ]; then
+                echo "FAIL: expected ≥2 chunk lines in $log.log"
+                fail=1
+              fi
+            done
+            restored=$(ls ./.gradle/configuration-cache/synthetic 2>/dev/null | wc -l)
+            echo "restored $restored files"
+            if [ "$restored" -ne "$LARGE_FIXTURE_FILE_COUNT" ]; then
+              echo "FAIL: expected $LARGE_FIXTURE_FILE_COUNT files, got $restored"
+              fail=1
+            fi
+            exit $fail
+    - deploy-to-bitrise-io@2: {}
+
   e2e-xcode-comp-cache:
     meta:
       bitrise.io:
