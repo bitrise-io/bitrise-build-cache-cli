@@ -263,27 +263,6 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 // Always zeros ccache counters at the end regardless of activity.
 // If the storage helper is reachable, its session byte counts and active invocation
 // IDs override the values from internal state and params.
-// The same figures as the stats lines above, on the GitHub Actions job page. No
-// duration: a ccache session spans the build rather than one command.
-func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string) {
-	invocation := jobsummary.Invocation{
-		Success:         true,
-		Command:         "ccache",
-		DownloadedBytes: &downloaded,
-		UploadedBytes:   &uploaded,
-	}
-
-	if invocationID != "" {
-		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
-	}
-
-	jobsummary.WriteAnnotation(invocation)
-
-	if _, err := jobsummary.Write(jobsummary.Block(invocation), "ccache-"+invocationID); err != nil {
-		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
-	}
-}
-
 func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) {
 	defer h.zeroCcacheStats(ctx, h.logger)
 
@@ -368,6 +347,27 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	}
 
 	h.writeChildStatsLedger(invocationID, parentID, stats)
+}
+
+// The same figures as the stats lines above, on the GitHub Actions job page. No
+// duration: a ccache session spans the build rather than one command.
+func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string) {
+	invocation := jobsummary.Invocation{
+		Success:         true,
+		Command:         "ccache",
+		DownloadedBytes: &downloaded,
+		UploadedBytes:   &uploaded,
+	}
+
+	if invocationID != "" {
+		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
+	}
+
+	jobsummary.WriteAnnotation(invocation)
+
+	if _, err := jobsummary.Write(jobsummary.Block(invocation), "ccache-"+invocationID); err != nil {
+		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
+	}
 }
 
 // writeChildStatsLedger records this ccache invocation's hit rate in the
