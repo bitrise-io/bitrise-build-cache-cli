@@ -51,6 +51,12 @@ const (
 
 type CommandFunc func(string, ...string) (string, error)
 
+// IsCI is DetectCIProvider != "" widened to Build Hub runners under an
+// unrecognised CI, which still need CI behaviour such as the file credential store.
+func IsCI(envs map[string]string) bool {
+	return DetectCIProvider(envs) != "" || auth.OnBuildHub(envs)
+}
+
 // DetectCIProvider inspects environment variables to identify which CI provider
 // (if any) the current build is running on. Returns "" when no CI is detected.
 func DetectCIProvider(envs map[string]string) string {

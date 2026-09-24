@@ -155,7 +155,7 @@ func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProx
 }
 
 func idleTimeoutFor(envs map[string]string) time.Duration {
-	if common.DetectCIProvider(envs) != "" {
+	if common.IsCI(envs) {
 		return ciIdleTimeout
 	}
 

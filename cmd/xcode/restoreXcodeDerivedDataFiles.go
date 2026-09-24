@@ -53,7 +53,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		startT := time.Now()
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, _, err := live.Default(nil).ResolveNoRefresh(allEnvs)
+		authConfig, _, err := live.Default(nil).Resolve(cmd.Context(), allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}

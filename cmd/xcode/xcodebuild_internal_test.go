@@ -4,6 +4,7 @@ package xcode
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	cmdcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -662,3 +664,38 @@ func Test_XcodebuildRunner_Run_UserResultBundlePath_LeftUntouched(t *testing.T) 
 	assert.NoError(t, statErr, "wrapper must not touch the user-supplied bundle")
 }
 
+
+func Test_XcodebuildRunner_refreshCredential(t *testing.T) {
+	stale := authpkg.Credential{Token: "stale", WorkspaceID: "ws"}
+
+	t.Run("replaces the config credential", func(t *testing.T) {
+		fresh := authpkg.Credential{Token: "fresh", WorkspaceID: "ws"}
+		origin := authpkg.Origin{Backend: authpkg.BackendJWT, Provenance: authpkg.ProvenanceBrokered}
+		r := &XcodebuildRunner{
+			Config: xcelerate.Config{AuthConfig: stale},
+			Logger: bundleTestLogger,
+			resolveCredential: func(context.Context) (authpkg.Credential, authpkg.Origin, error) {
+				return fresh, origin, nil
+			},
+		}
+
+		r.refreshCredential(context.Background())
+
+		assert.Equal(t, fresh, r.Config.AuthConfig)
+		assert.Equal(t, origin, r.Config.AuthOrigin)
+	})
+
+	t.Run("keeps the config credential on failure", func(t *testing.T) {
+		r := &XcodebuildRunner{
+			Config: xcelerate.Config{AuthConfig: stale},
+			Logger: bundleTestLogger,
+			resolveCredential: func(context.Context) (authpkg.Credential, authpkg.Origin, error) {
+				return authpkg.Credential{}, authpkg.Origin{}, errors.New("offline")
+			},
+		}
+
+		r.refreshCredential(context.Background())
+
+		assert.Equal(t, stale, r.Config.AuthConfig)
+	})
+}

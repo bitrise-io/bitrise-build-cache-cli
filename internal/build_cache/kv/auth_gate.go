@@ -13,38 +13,87 @@ import (
 // surfaces as a gRPC status, so matching the message is the only signal.
 const grpcNonPrintableHeaderMsg = "non-printable ASCII characters"
 
-// authGate latches on the first token rejection and short-circuits every
-// subsequent RPC with ErrCacheUnauthenticated. A rejected token is not going to
-// be accepted on a retry, so keeping the stream open only floods logs.
+// authGate latches on a token rejection and short-circuits RPCs with
+// ErrCacheUnauthenticated while the credential still sends the rejected header.
+// A rejected token is not going to be accepted on a retry, so keeping the stream
+// open only floods logs; a refreshed one should be tried.
 type authGate struct {
 	broken atomic.Bool
-	logged sync.Once
-	logger log.Logger
+	mu     sync.Mutex
+	// rejected is the authorization header of the RPC that tripped the gate.
+	rejected  string
+	warned    bool
+	warnedFor string
+	logger    log.Logger
 }
 
-// tripOnce returns true when the gate is broken — either this call tripped it
-// or a previous one did. Emits a single actionable log line on the first trip
-// that happens to have a logger attached (see the latch-on-first-loggable-trip
-// test).
-func (g *authGate) tripOnce(err error) bool {
+// tripOnce reports whether the failed RPC, which carried sentAuth, should abort
+// as ErrCacheUnauthenticated. current yields the header the next RPC would send;
+// nil means the credential never changes. Warns once per rejected header.
+func (g *authGate) tripOnce(err error, sentAuth string, current func() string) bool {
 	if !isAuthReject(err) {
-		return g.broken.Load()
+		if !g.broken.Load() {
+			return false
+		}
+
+		g.mu.Lock()
+		defer g.mu.Unlock()
+
+		return g.broken.Load() && g.rejected == sentAuth
 	}
 
+	// A late rejection of an already-replaced credential must not re-latch the gate;
+	// the caller's retry sends the new one.
+	if current != nil && current() != sentAuth {
+		return false
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.rejected = sentAuth
 	g.broken.Store(true)
-	if g.logger != nil {
-		g.logged.Do(func() {
-			g.logger.Warnf(
-				"Build Cache auth rejected (%s) — disabling cache for the rest of this process; check BITRISE_BUILD_CACHE_AUTH_TOKEN for trailing whitespace or expired credentials",
-				err,
-			)
-		})
+	if g.logger != nil && (!g.warned || g.warnedFor != sentAuth) {
+		g.warned, g.warnedFor = true, sentAuth
+		g.logger.Warnf(
+			"Build Cache auth rejected (%s) — disabling cache until the credential changes; check BITRISE_BUILD_CACHE_AUTH_TOKEN for trailing whitespace or expired credentials",
+			err,
+		)
 	}
 
 	return true
 }
 
-func (g *authGate) isBroken() bool { return g.broken.Load() }
+func (g *authGate) setLogger(logger log.Logger) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.logger = logger
+}
+
+// isBroken reports whether current, the header the next RPC would send, is the
+// rejected one. A nil current keeps the gate latched.
+func (g *authGate) isBroken(current func() string) bool {
+	if !g.broken.Load() {
+		return false
+	}
+	if current == nil {
+		return true
+	}
+
+	next := current()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if next != g.rejected {
+		g.broken.Store(false)
+
+		return false
+	}
+
+	return true
+}
 
 // isAuthReject covers both a backend Unauthenticated (gRPC status or our
 // sentinel) and the client-side gRPC metadata check for non-printable header

@@ -1,6 +1,7 @@
 package gradleconfig
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -106,6 +107,7 @@ func resolveProjectMode(osProxy utils.OsProxy, logger log.Logger) machineconfig.
 }
 
 func (params ActivateGradleParams) TemplateInventory(
+	ctx context.Context,
 	logger log.Logger,
 	envs map[string]string,
 	isDebug bool,
@@ -120,7 +122,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, err := resolver.ResolveNoRefresh(envs)
+	authConfig, authOrigin, err := resolver.Resolve(ctx, envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}

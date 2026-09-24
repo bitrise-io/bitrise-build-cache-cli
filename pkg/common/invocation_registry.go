@@ -58,8 +58,8 @@ type invocationsAPI interface {
 
 // InvocationRegistry manages invocation registration with the analytics backend.
 type InvocationRegistry struct {
-	cred     authpkg.Credential
-	origin   authpkg.Origin
+	// Per call: a long-lived owner would otherwise send a brokered JWT that expired mid-build.
+	resolve  func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error)
 	username string
 	params   InvocationRegistryParams
 	logger   log.Logger
@@ -70,29 +70,26 @@ type InvocationRegistry struct {
 }
 
 // NewInvocationRegistry returns an InvocationRegistry ready to register invocations
-// and relations. Auth credentials and the debug-logging flag are read from the
-// multiplatform analytics config file on disk (single canonical source).
+// and relations. The debug-logging flag is read from the multiplatform analytics
+// config file; the credential is resolved on each registration.
 func NewInvocationRegistry(params InvocationRegistryParams) (*InvocationRegistry, error) {
 	if params.Envs == nil {
 		params.Envs = utils.AllEnvs()
 	}
 
 	resolver := live.Default(nil)
+	envs := params.Envs
 
-	cred, origin, err := resolver.ResolveNoRefresh(params.Envs)
-	if err != nil {
-		return nil, fmt.Errorf("resolve auth config: %w", err)
-	}
-
-	username, _ := resolver.ResolveUsername(params.Envs)
+	username, _ := resolver.ResolveUsername(envs)
 
 	// Settings still come from the analytics config; only the credential is
 	// resolved. A missing file just means debug logging is off.
 	config, _ := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 
 	return &InvocationRegistry{
-		cred:     cred,
-		origin:   origin,
+		resolve: func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error) {
+			return resolver.Resolve(ctx, envs)
+		},
 		username: username,
 		params:   params,
 		logger:   log.NewLogger(log.WithDebugLog(config.DebugLogging)),
@@ -106,7 +103,12 @@ func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Conte
 		buildTool = "multiplatform"
 	}
 
-	api, err := inv.resolveAPI(inv.logger)
+	cred, origin, err := inv.resolve(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve auth config: %w", err)
+	}
+
+	api, err := inv.resolveAPI(cred, origin)
 	if err != nil {
 		return fmt.Errorf("create analytics client: %w", err)
 	}
@@ -118,7 +120,7 @@ func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Conte
 		InvocationID:   params.InvocationID,
 		InvocationDate: time.Now(),
 		BuildTool:      buildTool,
-	}, inv.cred, metadata)
+	}, cred, metadata)
 
 	if err := api.PutInvocation(*invocation); err != nil {
 		return fmt.Errorf("register invocation: %w", err)
@@ -135,7 +137,12 @@ func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params Regi
 		buildTool = "ccache"
 	}
 
-	api, err := inv.resolveAPI(inv.logger)
+	cred, origin, err := inv.resolve(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve auth config: %w", err)
+	}
+
+	api, err := inv.resolveAPI(cred, origin)
 	if err != nil {
 		return fmt.Errorf("create analytics client: %w", err)
 	}
@@ -158,12 +165,12 @@ func (inv *InvocationRegistry) RegisterRelation(ctx context.Context, params Regi
 // Private — InvocationRegistry methods
 // ---------------------------------------------------------------------------
 
-func (inv *InvocationRegistry) resolveAPI(logger log.Logger) (invocationsAPI, error) {
+func (inv *InvocationRegistry) resolveAPI(cred authpkg.Credential, origin authpkg.Origin) (invocationsAPI, error) {
 	if inv.api != nil {
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(inv.cred, inv.origin), logger)
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), inv.logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}

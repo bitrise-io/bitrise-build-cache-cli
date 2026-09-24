@@ -484,3 +484,17 @@ func TestResolveDefaultBranch(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCI(t *testing.T) {
+	buildHub := map[string]string{
+		"BITRISE_IO":                       "true",
+		"BITRISEIO_BUILD_HUB_VM_TOKEN":     "vm-token",
+		"BITRISEIO_BUILD_HUB_VM_TOKEN_URL": "https://example.com",
+	}
+
+	assert.False(t, IsCI(map[string]string{}))
+	assert.True(t, IsCI(map[string]string{"GITHUB_ACTIONS": "true"}))
+	assert.True(t, IsCI(buildHub), "a Build Hub runner under an unrecognised CI is still CI")
+	assert.Empty(t, DetectCIProvider(buildHub), "the provider name stays empty: nothing identifies which CI it is")
+	assert.False(t, IsCI(map[string]string{"BITRISEIO_BUILD_HUB_VM_TOKEN": "vm-token"}), "half the pair is not Build Hub")
+}

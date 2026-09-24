@@ -81,6 +81,9 @@ type StorageHelper struct {
 	logger   log.Logger
 	registry *pkgcommon.InvocationRegistry
 
+	// resolveCredential re-resolves before stats are sent. If nil, the live resolver is used.
+	resolveCredential func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error)
+
 	// Session state
 	sessionMu    sync.RWMutex
 	invocationID string
@@ -332,6 +335,20 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	h.logger.TInfof("Ccache invocation ID: %s", invocationID)
 	h.logger.TInfof("Parent invocation ID: %s", parentID)
 
+	h.report(ctx, invocationID, parentID, stats, dl, ul, blobStats)
+}
+
+// The ledger is local, so it is written even when the invocation cannot be sent.
+func (h *StorageHelper) report(ctx context.Context, invocationID, parentID string, stats ccacheanalytics.CcacheStats, dl, ul int64, blobStats *blobstats.Snapshot) {
+	h.sendInvocation(ctx, invocationID, parentID, stats, dl, ul, blobStats)
+	h.writeChildStatsLedger(invocationID, parentID, stats)
+}
+
+func (h *StorageHelper) sendInvocation(ctx context.Context, invocationID, parentID string, stats ccacheanalytics.CcacheStats, dl, ul int64, blobStats *blobstats.Snapshot) {
+	if !h.refreshAuth(ctx) {
+		return
+	}
+
 	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
 	if err != nil {
 		h.logger.TWarnf("Failed to create analytics client for ccache stats: %v", err)
@@ -347,8 +364,6 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	if err := client.PutCcacheInvocation(*inv); err != nil {
 		h.logger.TWarnf("Failed to send ccache invocation: %v", err)
 	}
-
-	h.writeChildStatsLedger(invocationID, parentID, stats)
 }
 
 // The same figures as the stats lines above, on the GitHub Actions job page. No
@@ -372,6 +387,30 @@ func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID
 	if _, err := jobsummary.Write(jobsummary.Block(invocation), "ccache-"+invocationID); err != nil {
 		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
 	}
+}
+
+// The config's credential is an offline read that cannot re-broker a Build Hub JWT.
+func (h *StorageHelper) refreshAuth(ctx context.Context) bool {
+	resolve := h.resolveCredential
+	if resolve == nil {
+		resolve = func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error) {
+			return live.Default(nil).Resolve(ctx, h.params.Envs)
+		}
+	}
+
+	cred, origin, err := resolve(ctx)
+	if err == nil {
+		h.config.AuthConfig, h.config.AuthOrigin = cred, origin
+
+		return true
+	}
+	if h.config.AuthConfig.Token != "" {
+		return true
+	}
+
+	h.logger.TWarnf("Failed to resolve credentials for ccache stats: %v", err)
+
+	return false
 }
 
 // writeChildStatsLedger records this ccache invocation's hit rate in the
@@ -638,6 +677,12 @@ func createKVClient(
 		return nil, fmt.Errorf("parse endpoint URL %q: %w", endpointURL, err)
 	}
 
+	// Fail fast here rather than at GetCapabilities with an opaque Unauthenticated.
+	bound := live.Default(nil).Bind(envs)
+	if _, _, err := bound.Resolve(ctx); err != nil {
+		return nil, fmt.Errorf("resolve auth config: %w", err)
+	}
+
 	logger := log.NewLogger(log.WithDebugLog(config.DebugLogging))
 	commandFunc := newCommandFunc(ctx)
 
@@ -647,6 +692,7 @@ func createKVClient(
 		DialTimeout:         5 * time.Second,
 		ClientName:          "ccache",
 		AuthConfig:          config.AuthConfig,
+		AuthSource:          bound.Cached(live.HotPathTTL),
 		Logger:              logger,
 		CacheConfigMetadata: configcommon.NewMetadata(envs, hostUsername(envs), commandFunc, logger),
 		CacheOperationID:    uuid.NewString(),

@@ -167,7 +167,7 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 
 			return nil, false
 		}
-		if err != nil && c.authGate.tripOnce(err) {
+		if err != nil && c.tripAuth(ctx, err, kvWriter.auth) {
 			return ErrCacheUnauthenticated, true
 		}
 		if err != nil {
@@ -180,7 +180,7 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 			// A rejected token is not going to be accepted on a retry, and the
 			// stream often only surfaces Unauthenticated on close — so without this
 			// every upload burns the full retry budget before giving up.
-			if c.authGate.tripOnce(err) {
+			if c.tripAuth(ctx, err, kvWriter.auth) {
 				c.logger.TWarnf("Failed to upload stream %s: %s", key, err)
 
 				return ErrCacheUnauthenticated, true

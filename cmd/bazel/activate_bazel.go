@@ -1,6 +1,7 @@
 package bazel
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -86,6 +87,7 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 
 	// Run main logic
 	if err := ActivateBazelCmdFn(
+		cmd.Context(),
 		logger,
 		bazelrcPath,
 		utils.AllEnvs(),
@@ -127,15 +129,16 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 }
 
 func ActivateBazelCmdFn(
+	ctx context.Context,
 	logger log.Logger,
 	bazelrcPath string,
 	envs map[string]string,
 	commandFunc configcommon.CommandFunc,
-	templateInventoryProvider func(log.Logger, map[string]string, configcommon.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
+	templateInventoryProvider func(context.Context, log.Logger, map[string]string, configcommon.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
 	templateWriter func(bazelconfig.TemplateInventory, string) error,
 ) error {
 	// Generate template inventory
-	inventory, err := templateInventoryProvider(logger, envs, commandFunc, common.IsDebugLogMode)
+	inventory, err := templateInventoryProvider(ctx, logger, envs, commandFunc, common.IsDebugLogMode)
 	if err != nil {
 		return err
 	}

@@ -142,7 +142,7 @@ func setWorkspace(ctx context.Context, logger log.Logger, envs map[string]string
 
 	warnUnknownWorkspace(ctx, logger, envs, slug)
 
-	origin, err := store.SetWorkspaceID(configcommon.DetectCIProvider(envs) != "", slug)
+	origin, err := store.SetWorkspaceID(configcommon.IsCI(envs), slug)
 	if err != nil {
 		return err //nolint:wrapcheck // already user-facing
 	}

@@ -91,7 +91,7 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 		case toolGradle:
 			err = runInteractiveGradle(ctx, logger, envs, pushEnabled)
 		case toolBazel:
-			err = runInteractiveBazel(logger, envs, pushEnabled)
+			err = runInteractiveBazel(ctx, logger, envs, pushEnabled)
 		case toolXcode:
 			err = runInteractiveXcode(ctx, logger, envs, pushEnabled)
 		case toolCcache:
@@ -170,7 +170,7 @@ func runInteractiveGradle(ctx context.Context, logger log.Logger, envs map[strin
 	return nil
 }
 
-func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func runInteractiveBazel(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
 	homeDir, err := pathutil.NewPathModifier().AbsPath("~")
 	if err != nil {
 		return fmt.Errorf("expand home path: %w", err)
@@ -194,7 +194,7 @@ func runInteractiveBazel(logger log.Logger, envs map[string]string, pushEnabled 
 		return string(out), fmt.Errorf("run cmd: %w", err2)
 	}
 
-	inventory, err := params.TemplateInventory(logger, envs, commandFunc, common.IsDebugLogMode)
+	inventory, err := params.TemplateInventory(ctx, logger, envs, commandFunc, common.IsDebugLogMode)
 	if err != nil {
 		return fmt.Errorf("build Bazel template inventory: %w", err)
 	}

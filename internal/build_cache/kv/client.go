@@ -247,7 +247,7 @@ func buildChannels(p NewClientParams) ([]*channel, error) {
 
 func (c *Client) SetLogger(logger log.Logger) {
 	c.logger = logger
-	c.authGate.logger = logger
+	c.authGate.setLogger(logger)
 }
 
 // Close releases every gRPC connection in the pool. Safe to call when the
@@ -274,6 +274,7 @@ func (c *Client) Close() error {
 }
 
 type writer struct {
+	auth         string
 	stream       bytestream.ByteStream_WriteClient
 	resourceName string
 	offset       int64
@@ -331,6 +332,7 @@ func (w *writer) Close() error {
 }
 
 type reader struct {
+	auth     string
 	logger   log.Logger
 	stream   bytestream.ByteStream_ReadClient
 	metadata sync.Map

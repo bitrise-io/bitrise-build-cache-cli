@@ -1,6 +1,7 @@
 package bazel
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 
@@ -30,7 +31,7 @@ If it already exists a "# [start/end] generated-by-bitrise-build-cache" block wi
 If the "# [start/end] generated-by-bitrise-build-cache" block is already present in the file then only the block's content will be modified.
 `,
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger()
 		logger.EnableDebugLog(common.IsDebugLogMode)
@@ -38,7 +39,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		//
 
 		allEnvs := utils.AllEnvs()
-		if err := EnableForBazelCmdFn(logger, utils.DefaultOsProxy{}, allEnvs); err != nil {
+		if err := EnableForBazelCmdFn(cmd.Context(), logger, utils.DefaultOsProxy{}, allEnvs); err != nil {
 			return fmt.Errorf("enable Bazel Build Cache: %w", err)
 		}
 
@@ -59,7 +60,7 @@ func init() {
 	common.EnableForCmd.AddCommand(enableForBazelCmd)
 }
 
-func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider map[string]string) error {
+func EnableForBazelCmdFn(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, envProvider map[string]string) error {
 	logger.Infof("(i) Checking parameters")
 
 	// CacheConfigMetadata
@@ -93,7 +94,7 @@ func EnableForBazelCmdFn(logger log.Logger, osProxy utils.OsProxy, envProvider m
 
 	params.CLIPath = clibin.Resolve(logger)
 
-	inventory, err := params.TemplateInventory(logger, envProvider, func(cmd string, params ...string) (string, error) {
+	inventory, err := params.TemplateInventory(ctx, logger, envProvider, func(cmd string, params ...string) (string, error) {
 		output, err2 := exec.Command(cmd, params...).CombinedOutput() //nolint:noctx
 		if err2 == nil {
 			return string(output), nil

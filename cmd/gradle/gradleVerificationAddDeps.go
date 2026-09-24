@@ -1,6 +1,7 @@
 package gradle
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -22,7 +23,7 @@ This command will:
 - Create a ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts file with the necessary configs. This file will be overwritten.
 `,
 	SilenceUsage: true,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		//
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
@@ -37,7 +38,7 @@ This command will:
 		}
 
 		gradleHome := p.GradleHome(allEnvs[paths.GradleUserHomeEnvKey])
-		if err := addGradlePluginsFn(logger, gradleHome, allEnvs); err != nil {
+		if err := addGradlePluginsFn(cmd.Context(), logger, gradleHome, allEnvs); err != nil {
 			return fmt.Errorf("enable Gradle Build Cache: %w", err)
 		}
 
@@ -51,7 +52,7 @@ func init() {
 	gradleVerification.AddCommand(addGradleVerificationReferenceDeps)
 }
 
-func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider map[string]string) error {
+func addGradlePluginsFn(ctx context.Context, logger log.Logger, gradleHomePath string, envProvider map[string]string) error {
 	activateGradleParams.Cache.Enabled = false
 	activateGradleParams.Cache.JustDependency = true
 	activateGradleParams.Analytics.Enabled = false
@@ -59,7 +60,7 @@ func addGradlePluginsFn(logger log.Logger, gradleHomePath string, envProvider ma
 	activateGradleParams.TestDistro.Enabled = false
 	activateGradleParams.TestDistro.JustDependency = true
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, nil, utils.DefaultOsProxy{})
+	templateInventory, err := activateGradleParams.TemplateInventory(ctx, logger, envProvider, common.IsDebugLogMode, nil, utils.DefaultOsProxy{})
 	if err != nil {
 		return fmt.Errorf(FmtErrorGradleVerification, err)
 	}

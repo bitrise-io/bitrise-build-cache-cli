@@ -142,3 +142,68 @@ func TestToken_ReportsHTTPFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 }
+
+func TestToken_FailedRefreshKeepsAnUnexpiredToken(t *testing.T) {
+	var calls int32
+	fail := false
+	var mu sync.Mutex
+	expiresAt := time.Now().Add(time.Minute)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if fail {
+			w.WriteHeader(http.StatusBadGateway)
+
+			return
+		}
+		_, _ = w.Write([]byte(`{"accessToken":"brokered-jwt","expiresAt":"` + expiresAt.Format(time.RFC3339) + `"}`))
+	}))
+	defer srv.Close()
+	c := clientFor(t, srv.URL)
+
+	_, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	mu.Lock()
+	fail = true
+	mu.Unlock()
+
+	token, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", token)
+	assert.Equal(t, int32(2), calls)
+}
+
+func TestShared_ReusesOneClientPerPair(t *testing.T) {
+	var calls int32
+	srv := brokerServer(t, time.Now().Add(30*time.Minute), &calls)
+	defer srv.Close()
+	envs := map[string]string{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: srv.URL}
+
+	first, ok := Shared(envs)
+	require.True(t, ok)
+	second, ok := Shared(envs)
+	require.True(t, ok)
+	assert.Same(t, first, second)
+
+	_, _, err := first.Token(context.Background())
+	require.NoError(t, err)
+	_, _, err = second.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), calls)
+
+	_, ok = Shared(map[string]string{auth.EnvBuildHubVMToken: "vm-token"})
+	assert.False(t, ok)
+}
+
+func TestOnBuildHub_MatchesFromEnv(t *testing.T) {
+	for _, envs := range []map[string]string{
+		{},
+		{auth.EnvBuildHubVMToken: "vm-token"},
+		{auth.EnvBuildHubVMTokenURL: "https://example.com"},
+		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: "https://example.com"},
+	} {
+		_, ok := FromEnv(envs)
+		assert.Equal(t, ok, auth.OnBuildHub(envs))
+	}
+}

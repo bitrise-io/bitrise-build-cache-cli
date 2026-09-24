@@ -27,6 +27,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
@@ -412,6 +413,8 @@ type XcodebuildRunner struct {
 	// xcresultParser parses the xcresult bundle for wrapper self-enrich. If nil,
 	// a production xcresult.DefaultParser is created on demand.
 	xcresultParser xcresult.Parser
+	// resolveCredential re-resolves after the build. If nil, the live resolver is used.
+	resolveCredential func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error)
 }
 
 // Run executes the xcodebuild wrapper: runs xcodebuild, collects stats,
@@ -468,6 +471,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	hitRate, proxyOutcome := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
 	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
+	c.refreshCredential(ctx)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   runStats.StartTime,
@@ -566,6 +570,25 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 	w.Logger = c.Logger
 
 	return w
+}
+
+// The build can outlive a brokered JWT resolved when the config was read.
+func (c *XcodebuildRunner) refreshCredential(ctx context.Context) {
+	resolve := c.resolveCredential
+	if resolve == nil {
+		resolve = func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error) {
+			return live.Default(nil).Resolve(ctx, utils.AllEnvs())
+		}
+	}
+
+	cred, origin, err := resolve(ctx)
+	if err != nil {
+		c.Logger.Debugf("Keeping the credential resolved before the build: %v", err)
+
+		return
+	}
+
+	c.Config.AuthConfig, c.Config.AuthOrigin = cred, origin
 }
 
 func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv analytics.Invocation, hits, total int64) {
@@ -891,7 +914,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 
 	if mergedOtherCFlags != "" {
 		toPass = replaceOrAppendBuildSetting(toPass, xcodeargs.OtherCFlagsKey, mergedOtherCFlags)
-		if userOtherCFlagsToSplice != "" && c.Metadata.CIProvider == "" {
+		if userOtherCFlagsToSplice != "" && !configcommon.IsCI(utils.AllEnvs()) {
 			c.Logger.TWarnf("Merged user OTHER_CFLAGS with Bitrise prefix-map rules; pass --no-prefix-map to opt out.")
 		}
 	}

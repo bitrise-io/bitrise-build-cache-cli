@@ -2,6 +2,7 @@
 package bazel_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -52,7 +53,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			},
 		}
 		envVars := map[string]string{}
-		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, mockOsProxy, envVars)
 
 		// then
 		require.EqualError(t, err, "template inventory error: resolve auth config: BITRISE_BUILD_CACHE_AUTH_TOKEN or BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN environment variable not set")
@@ -73,7 +74,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 		envVars := map[string]string{
 			"BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN": makeFakeJWT("test-org"),
 		}
-		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, mockOsProxy, envVars)
 
 		// then
 		require.NoError(t, err)
@@ -98,7 +99,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		}
-		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, mockOsProxy, envVars)
 
 		// then
 		require.NoError(t, err)
@@ -123,7 +124,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		}
-		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, mockOsProxy, envVars)
 
 		// then
 		require.NoError(t, err)
@@ -156,7 +157,7 @@ func Test_enableForBazelCmdFn(t *testing.T) {
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		}
-		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, mockOsProxy, envVars)
 
 		// then
 		require.NoError(t, err)
@@ -203,7 +204,7 @@ build --remote_upload_local_results
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		}
-		err := bazel.EnableForBazelCmdFn(mockLogger, mockOsProxy, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, mockOsProxy, envVars)
 
 		// then
 		require.NoError(t, err)
@@ -239,7 +240,7 @@ build --remote_upload_local_results
 		params.Cache.PushEnabled = false
 
 		// First invoke with push disabled
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 		require.NoError(t, err)
@@ -280,7 +281,7 @@ build --show_timestamps
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 		}
-		err := bazel.EnableForBazelCmdFn(mockLogger, proxyMock, envVars)
+		err := bazel.EnableForBazelCmdFn(context.Background(), mockLogger, proxyMock, envVars)
 
 		// then
 		require.NoError(t, err)

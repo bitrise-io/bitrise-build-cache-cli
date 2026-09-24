@@ -69,7 +69,7 @@ var authSetCmd = &cobra.Command{
 			return errors.New("--workspace-id is required and must not be empty")
 		}
 
-		target, err := store.Select(configcommon.DetectCIProvider(utils.AllEnvs()) != "", setStorage)
+		target, err := store.Select(configcommon.IsCI(utils.AllEnvs()), setStorage)
 		if err != nil {
 			return err //nolint:wrapcheck // already user-facing
 		}
@@ -89,7 +89,7 @@ var authSetCmd = &cobra.Command{
 		logger.TInfof("✅ Credentials saved to the %s", result.Origin.Label())
 		if result.Origin.Backend == authpkg.BackendFile {
 			logger.Infof("(%s)", displayHomePath(utils.DefaultOsProxy{}, multiplatformconfig.FilePath(utils.DefaultOsProxy{})))
-			if configcommon.DetectCIProvider(utils.AllEnvs()) != "" && setStorage == "" {
+			if configcommon.IsCI(utils.AllEnvs()) && setStorage == "" {
 				logger.Infof("(CI detected — keychain skipped because fastlane setup_ci swaps the default keychain and would drop the entry.)")
 			}
 		}
@@ -727,7 +727,7 @@ var authUsernameCmd = &cobra.Command{
 func setLocalUsername(envs map[string]string, name string) error {
 	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-	origin, err := store.SetUsername(configcommon.DetectCIProvider(envs) != "", name)
+	origin, err := store.SetUsername(configcommon.IsCI(envs), name)
 	if err != nil {
 		return err //nolint:wrapcheck // already user-facing (store wraps with the target backend)
 	}
