@@ -103,7 +103,7 @@ func RunVersionCheck(cmd *cobra.Command) {
 		Home:           home,
 		NoUpdateCheck:  NoUpdateCheck,
 		Logger:         logger,
-		IsCI:           configcommon.DetectCIProvider(utils.AllEnvs()) != "",
+		IsCI:           configcommon.IsCI(utils.AllEnvs()),
 	})
 
 	if res.Drift.Kind == versioncheck.Bump {

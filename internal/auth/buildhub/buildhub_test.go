@@ -195,3 +195,15 @@ func TestShared_ReusesOneClientPerPair(t *testing.T) {
 	_, ok = Shared(map[string]string{auth.EnvBuildHubVMToken: "vm-token"})
 	assert.False(t, ok)
 }
+
+func TestOnBuildHub_MatchesFromEnv(t *testing.T) {
+	for _, envs := range []map[string]string{
+		{},
+		{auth.EnvBuildHubVMToken: "vm-token"},
+		{auth.EnvBuildHubVMTokenURL: "https://example.com"},
+		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: "https://example.com"},
+	} {
+		_, ok := FromEnv(envs)
+		assert.Equal(t, ok, auth.OnBuildHub(envs))
+	}
+}

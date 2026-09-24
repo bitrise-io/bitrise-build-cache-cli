@@ -52,10 +52,10 @@ type Client struct {
 // Both or neither: a half-set pair means the runner is not offering to broker, and
 // guessing at the other half would produce a confusing failure later.
 func FromEnv(envs map[string]string) (*Client, bool) {
-	tokenURL, vmToken := envs[auth.EnvBuildHubVMTokenURL], envs[auth.EnvBuildHubVMToken]
-	if tokenURL == "" || vmToken == "" {
+	if !auth.OnBuildHub(envs) {
 		return nil, false
 	}
+	tokenURL, vmToken := envs[auth.EnvBuildHubVMTokenURL], envs[auth.EnvBuildHubVMToken]
 
 	return &Client{
 		tokenURL:    tokenURL,

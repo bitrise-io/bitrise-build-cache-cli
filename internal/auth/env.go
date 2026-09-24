@@ -21,6 +21,11 @@ const (
 	EnvBuildHubVMTokenURL = "BITRISEIO_BUILD_HUB_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
 )
 
+// OnBuildHub reports whether both halves of the Build Hub pair are set.
+func OnBuildHub(envs map[string]string) bool {
+	return envs[EnvBuildHubVMToken] != "" && envs[EnvBuildHubVMTokenURL] != ""
+}
+
 var (
 	ErrTokenNotProvided       = errors.New(EnvAuthToken + " or " + EnvJWT + " environment variable not set")
 	ErrWorkspaceIDNotProvided = errors.New(EnvWorkspaceID + " environment variable not set")

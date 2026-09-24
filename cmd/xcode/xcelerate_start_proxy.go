@@ -323,7 +323,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 // watcherTimeGap widens the manifest-grouping window on CI to absorb
 // wall-clock skew that a local machine doesn't have.
 func watcherTimeGap() time.Duration {
-	if configcommon.DetectCIProvider(utils.AllEnvs()) != "" {
+	if configcommon.IsCI(utils.AllEnvs()) {
 		return enrichment.CIGroupTimeGap
 	}
 

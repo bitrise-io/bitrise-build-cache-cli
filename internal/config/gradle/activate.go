@@ -42,7 +42,7 @@ func Activate(
 
 	// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, by which time the env
 	// vars activation resolved from may be gone.
-	authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.DetectCIProvider(envProvider) != "")
+	authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.IsCI(envProvider))
 	if err != nil {
 		return fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
@@ -56,9 +56,11 @@ func Activate(
 
 			return string(output), err
 		}, logger)
-	if metadata.CIProvider != "" {
+	if configcommon.IsCI(envProvider) {
 		exporter := envexport.New(envProvider, logger)
-		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
+		if metadata.CIProvider != "" {
+			ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
+		}
 		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
 	}
 
