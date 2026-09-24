@@ -234,6 +234,7 @@ The resolver. The only package a consumer needs.
 | `(*Resolver).ResolvePinned(ctx, envs, isCI) (Credential, Origin, error)` | Resolve, and materialise an ephemeral env- or JWT-sourced credential to disk so processes started by `activate` can find it without the env vars. Read-modify-write, and **not** exclusive — see `store.SaveWithFallback`. Returns the origin the credential *resolved* from, not where the copy landed. |
 | `(*Resolver).Bind(envs) *Bound` | Pins the environment for a long-lived process. |
 | `(*Bound).Get(ctx) auth.Credential` | Per-RPC credential. Structurally satisfies `kv.AuthSource` without `live` importing `kv`. |
+| `(*Bound).Cached(ttl) *Cached` | `Get` for a hot path: re-resolves at most once per ttl, or earlier near expiry, and serves the last good credential on failure. |
 | `(*Resolver).ResolveUsername(envs) (string, UsernameSource)` | Names the person behind a local invocation, for analytics attribution: env → stored record → OS user. Deliberately **not** part of `Resolve` — `auth username` writes the name independently of the token, so finding it costs a store read that the per-RPC callers must not pay for a value they never use. |
 | `Describe(Credential, Origin) string` | The one-line human description. Pure formatting, no I/O — `Origin` already carries everything it needs. |
 
@@ -415,12 +416,11 @@ cmd/xcode.startProxy
 The xcelerate proxy and the Bazel credential helper use this shape. `ctx` arrives
 per call; neither holds one in a struct.
 
-The ccache IPC storage helper's KV client still resolves once at startup and holds
-the result for the life of the process, so a PAT or brokered JWT that expires
-mid-build goes stale there. The fix is `Bind` plus a per-request `Get`, and it is
-deliberately left out because it touches the IPC hot path. Its stats upload, the
+The ccache IPC storage helper sits on a hotter path, so it uses `Bound.Cached(ttl)`:
+one resolve per minute, sooner when the credential is within a minute of expiry,
+and the last good credential when a re-resolve fails. Its stats upload, the
 xcodebuild wrapper's invocation upload and the React Native post-run hook re-resolve
-after the build instead, because the build can outlive the credential.
+after the build, because the build can outlive the credential.
 
 The Bazel helper wraps it with failure policy only:
 
