@@ -332,6 +332,11 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	h.logger.TInfof("Ccache invocation ID: %s", invocationID)
 	h.logger.TInfof("Parent invocation ID: %s", parentID)
 
+	// The config's credential is an offline read that cannot re-broker a Build Hub JWT.
+	if cred, origin, err := live.Default(nil).Resolve(ctx, h.params.Envs); err == nil {
+		h.config.AuthConfig, h.config.AuthOrigin = cred, origin
+	}
+
 	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
 	if err != nil {
 		h.logger.TWarnf("Failed to create analytics client for ccache stats: %v", err)

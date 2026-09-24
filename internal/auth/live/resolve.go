@@ -6,7 +6,6 @@ package live
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -63,12 +62,6 @@ type Resolver struct {
 	// Broker exchanges a Build Hub VM token for a Build Cache token. Nil means the
 	// real client, built from the environment.
 	Broker func(ctx context.Context, envs map[string]string) (auth.Credential, error)
-
-	// buildhubOnce keeps one client per resolver, so the per-RPC path reuses its
-	// cached token instead of exchanging on every call.
-	buildhubOnce   sync.Once
-	buildhubClient *buildhub.Client
-	buildhubFound  bool
 }
 
 // Resolve returns the credential to use, refreshing it first when it lives in a
@@ -237,14 +230,12 @@ func (r *Resolver) brokerCredential(ctx context.Context, envs map[string]string)
 		return r.Broker(ctx, envs)
 	}
 
-	r.buildhubOnce.Do(func() {
-		r.buildhubClient, r.buildhubFound = buildhub.FromEnv(envs)
-	})
-	if !r.buildhubFound {
+	client, ok := buildhub.Shared(envs)
+	if !ok {
 		return auth.Credential{}, nil
 	}
 
-	token, expiresAt, err := r.buildhubClient.Token(ctx)
+	token, expiresAt, err := client.Token(ctx)
 	if err != nil {
 		return auth.Credential{}, err //nolint:wrapcheck // buildhub wraps its own failures
 	}

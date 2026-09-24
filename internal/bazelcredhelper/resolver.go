@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -46,6 +47,9 @@ func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer
 			warnStale(warn, err)
 
 			return Credential{Token: cred.Token, Expiry: time.Now().Add(staleCacheHint)}, nil
+		// Without the hint Bazel keeps a brokered JWT for its 30m default, past its expiry.
+		case origin.Provenance == authpkg.ProvenanceBrokered && !cred.Expiry.IsZero():
+			return Credential{Token: cred.Token, Expiry: cred.Expiry.Add(-expiresLead)}, nil
 		// Env vars, the CI JWT and the analytics block carry no refresh token, so
 		// there is no expiry to hint at.
 		case !origin.StoreManaged():

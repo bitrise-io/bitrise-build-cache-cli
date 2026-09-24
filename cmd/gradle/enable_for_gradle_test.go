@@ -1,6 +1,7 @@
 package gradle_test
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -20,7 +21,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 
 	t.Run("No envs specified", func(t *testing.T) {
 		envVars := map[string]string{}
-		err := gradle.EnableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
+		err := gradle.EnableForGradleCmdFn(context.Background(), mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
 		require.EqualError(t, err, fmt.Errorf(gradle.FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, auth.ErrTokenNotProvided)).Error())
@@ -33,7 +34,7 @@ func Test_enableForGradleCmdFn(t *testing.T) {
 		}
 
 		// when
-		err := gradle.EnableForGradleCmdFn(mockLogger, tmpGradleHomeDir, envVars)
+		err := gradle.EnableForGradleCmdFn(context.Background(), mockLogger, tmpGradleHomeDir, envVars)
 
 		// then
 		require.NoError(t, err)

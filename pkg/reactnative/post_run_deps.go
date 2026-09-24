@@ -53,10 +53,9 @@ type localInvocationLogger interface {
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
 type postRunDeps struct {
-	logger     log.Logger
-	authConfig authpkg.Credential
-	username   string
-	client     *ccacheanalytics.Client
+	logger   log.Logger
+	resolver *live.Resolver
+	username string
 
 	// localLogger appends the wrapper's parent record to the shared local
 	// invocation log. If nil, resolveLocalLogger builds paths.Default +
@@ -64,28 +63,14 @@ type postRunDeps struct {
 	localLogger localInvocationLogger
 }
 
+// The credential is resolved in run: a brokered JWT resolved before the build can expire during it.
 func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
-	cred, origin, err := resolver.ResolveNoRefresh(utils.AllEnvs())
-	if err != nil {
-		logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
-
-		return nil
-	}
-
 	username, _ := resolver.ResolveUsername(utils.AllEnvs())
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), logger)
-	if err != nil {
-		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
-
-		return nil
-	}
-
 	return &postRunDeps{
-		logger:     logger,
-		authConfig: cred,
-		username:   username,
-		client:     client,
+		logger:   logger,
+		resolver: resolver,
+		username: username,
 	}
 }
 
@@ -94,6 +79,20 @@ func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
 // runs first so its ledger entry can contribute to the aggregated hit rate.
 func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) buildOutcome {
 	var outcome buildOutcome
+
+	cred, origin, err := d.resolver.Resolve(ctx, utils.AllEnvs())
+	if err != nil {
+		d.logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
+
+		return outcome
+	}
+
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), d.logger)
+	if err != nil {
+		d.logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
+
+		return outcome
+	}
 
 	metadata := d.getMetadata()
 
@@ -188,17 +187,17 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 		BuildTool:      "react-native",
 		Wrapper:        "bitrise-build-cache-cli react-native",
 		HitRate:        summary.MeanHitRate,
-	}, d.authConfig, metadata)
+	}, cred, metadata)
 
 	outcome.ChildInvocations = summary.ChildCount + summary.NoActivityCount + summary.SkippedCount
 
-	if err := d.sendInvocation(*inv); err != nil {
+	if err := client.PutInvocation(*inv); err != nil {
 		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
 		outcome.InvocationSaveFailed = true
 	} else {
 		// BE confirmed the invocation was stored — surface the details URL
 		// so users can jump to it from the build log.
-		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(d.authConfig.WorkspaceID, wrapperInvocationID))
+		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(cred.WorkspaceID, wrapperInvocationID))
 	}
 
 	if err := agg.Cleanup(); err != nil {
@@ -222,14 +221,6 @@ func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 
 		return string(out), err
 	}, d.logger)
-}
-
-func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
-	if err := d.client.PutInvocation(inv); err != nil {
-		return fmt.Errorf("send invocation: %w", err)
-	}
-
-	return nil
 }
 
 // appendLocalInvocationLog writes the wrapper's parent record to the shared

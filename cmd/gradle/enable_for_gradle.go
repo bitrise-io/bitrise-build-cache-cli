@@ -1,6 +1,7 @@
 package gradle
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -59,7 +60,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		gradleHome := p.GradleHome(allEnvs[paths.GradleUserHomeEnvKey])
 
 		//
-		if err := EnableForGradleCmdFn(logger, gradleHome, allEnvs); err != nil {
+		if err := EnableForGradleCmdFn(cmd.Context(), logger, gradleHome, allEnvs); err != nil {
 			return fmt.Errorf("enable Gradle Build Cache: %w", err)
 		}
 
@@ -77,7 +78,7 @@ func init() {
 	enableForGradleCmd.Flags().StringVar(&paramRemoteCacheEndpoint, "remote-cache-endpoint", "", "Remote cache endpoint URL")
 }
 
-func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider map[string]string) error {
+func EnableForGradleCmdFn(ctx context.Context, logger log.Logger, gradleHomePath string, envProvider map[string]string) error {
 	activateGradleParams.Cache.Enabled = true
 	activateGradleParams.Cache.PushEnabled = paramIsPushEnabled
 	activateGradleParams.Cache.ValidationLevel = paramValidationLevel
@@ -87,14 +88,14 @@ func EnableForGradleCmdFn(logger log.Logger, gradleHomePath string, envProvider 
 
 	activateGradleParams.CLIPath = clibin.Resolve(logger)
 
-	authConfig, _, err := live.Default(nil).ResolveNoRefresh(envProvider)
+	authConfig, _, err := live.Default(nil).Resolve(ctx, envProvider)
 	if err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, fmt.Errorf(gradleconfig.ErrFmtReadAuthConfig, err))
 	}
 
 	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
 
-	templateInventory, err := activateGradleParams.TemplateInventory(logger, envProvider, common.IsDebugLogMode, benchmarkClient, utils.DefaultOsProxy{})
+	templateInventory, err := activateGradleParams.TemplateInventory(ctx, logger, envProvider, common.IsDebugLogMode, benchmarkClient, utils.DefaultOsProxy{})
 	if err != nil {
 		return fmt.Errorf(FmtErrorEnableForGradle, err)
 	}

@@ -68,6 +68,26 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 	}, true
 }
 
+// Process-wide, so every resolver in one command shares a single cached exchange.
+var shared sync.Map //nolint:gochecknoglobals
+
+// Shared is FromEnv, reusing the process-wide client for the same pair.
+func Shared(envs map[string]string) (*Client, bool) {
+	key := envs[auth.EnvBuildHubVMTokenURL] + "\x00" + envs[auth.EnvBuildHubVMToken]
+	if c, ok := shared.Load(key); ok {
+		return c.(*Client), true //nolint:forcetypeassert // only *Client is stored
+	}
+
+	c, ok := FromEnv(envs)
+	if !ok {
+		return nil, false
+	}
+
+	actual, _ := shared.LoadOrStore(key, c)
+
+	return actual.(*Client), true //nolint:forcetypeassert // only *Client is stored
+}
+
 // Token returns a Build Cache token, exchanging the VM token for a fresh one when
 // the cached copy is missing or close to expiry.
 func (c *Client) Token(ctx context.Context) (string, time.Time, error) {

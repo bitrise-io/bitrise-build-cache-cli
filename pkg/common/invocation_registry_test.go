@@ -35,8 +35,10 @@ func (s *stubInvocationsAPI) PutInvocationRelation(rel multiplatform.InvocationR
 
 func newTestRegistry(envs map[string]string) *InvocationRegistry {
 	return &InvocationRegistry{
-		cred:   auth.Credential{Token: "test-token", WorkspaceID: "test-workspace"},
-		origin: auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic},
+		resolve: func(context.Context) (auth.Credential, auth.Origin, error) {
+			return auth.Credential{Token: "test-token", WorkspaceID: "test-workspace"},
+				auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}, nil
+		},
 		params: InvocationRegistryParams{
 			Envs: envs,
 		},

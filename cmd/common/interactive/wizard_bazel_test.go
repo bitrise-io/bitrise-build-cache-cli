@@ -3,6 +3,7 @@
 package interactive
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -24,6 +25,7 @@ func TestInteractiveBazel_UsesTheCredentialHelper(t *testing.T) {
 	params.CLIPath = exe
 
 	inv, err := params.TemplateInventory(
+		context.Background(),
 		silentLogger(),
 		map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "tok", "BITRISE_BUILD_CACHE_WORKSPACE_ID": "ws"},
 		func(string, ...string) (string, error) { return "", nil },

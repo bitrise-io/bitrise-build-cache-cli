@@ -142,3 +142,25 @@ func TestToken_ReportsHTTPFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 }
+
+func TestShared_ReusesOneClientPerPair(t *testing.T) {
+	var calls int32
+	srv := brokerServer(t, time.Now().Add(30*time.Minute), &calls)
+	defer srv.Close()
+	envs := map[string]string{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: srv.URL}
+
+	first, ok := Shared(envs)
+	require.True(t, ok)
+	second, ok := Shared(envs)
+	require.True(t, ok)
+	assert.Same(t, first, second)
+
+	_, _, err := first.Token(context.Background())
+	require.NoError(t, err)
+	_, _, err = second.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), calls)
+
+	_, ok = Shared(map[string]string{auth.EnvBuildHubVMToken: "vm-token"})
+	assert.False(t, ok)
+}

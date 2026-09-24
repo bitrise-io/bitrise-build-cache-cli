@@ -1,6 +1,7 @@
 package bazel_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -25,13 +26,14 @@ func Test_activateBazelCmdFn(t *testing.T) {
 
 		// when
 		err := bazel.ActivateBazelCmdFn(
+			context.Background(),
 			mockLogger,
 			"~/.bazelrc",
 			map[string]string{},
 			func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
-			func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -56,13 +58,14 @@ func Test_activateBazelCmdFn(t *testing.T) {
 
 		// when
 		err := bazel.ActivateBazelCmdFn(
+			context.Background(),
 			mockLogger,
 			"~/.bazelrc",
 			map[string]string{},
 			func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
-			func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return bazelconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -82,13 +85,14 @@ func Test_activateBazelCmdFn(t *testing.T) {
 
 		// when
 		err := bazel.ActivateBazelCmdFn(
+			context.Background(),
 			mockLogger,
 			"~/.bazelrc",
 			map[string]string{},
 			func(_ string, _ ...string) (string, error) {
 				return "", nil
 			},
-			func(log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, common.CommandFunc, bool) (bazelconfig.TemplateInventory, error) {
 				return bazelconfig.TemplateInventory{}, nil
 			},
 			func(

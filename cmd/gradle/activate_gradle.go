@@ -146,7 +146,7 @@ func ActivateGradleCmdFn(
 	logger log.Logger,
 	gradleHomePath string,
 	envProvider map[string]string,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error),
+	templateInventoryProvider func(context.Context, log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error),
 	templateWriter func(gradleconfig.TemplateInventory, string) error,
 	updater gradleconfig.GradlePropertiesUpdater,
 	params gradleconfig.ActivateGradleParams,

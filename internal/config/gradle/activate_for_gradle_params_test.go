@@ -2,6 +2,7 @@
 package gradleconfig
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -386,7 +387,7 @@ func Test_activateGradleParams(t *testing.T) {
 	for _, tt := range tests { //nolint:varnamelen
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := prep()
-			got, err := tt.params.TemplateInventory(mockLogger, tt.envVars, tt.debug, nil, utils.DefaultOsProxy{})
+			got, err := tt.params.TemplateInventory(context.Background(), mockLogger, tt.envVars, tt.debug, nil, utils.DefaultOsProxy{})
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 			} else {
@@ -441,7 +442,7 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 			Analytics: AnalyticsParams{Enabled: false},
 		}
 
-		inv, err := params.TemplateInventory(logger, envs, false, mockProvider, utils.DefaultOsProxy{})
+		inv, err := params.TemplateInventory(context.Background(), logger, envs, false, mockProvider, utils.DefaultOsProxy{})
 		require.NoError(t, err)
 
 		assert.Len(t, mockProvider.GetBenchmarkPhaseCalls(), 1)
@@ -464,7 +465,7 @@ func Test_TemplateInventory_BenchmarkPhase(t *testing.T) {
 
 		params := DefaultActivateGradleParams()
 
-		_, err := params.TemplateInventory(logger, envs, false, mockProvider, utils.DefaultOsProxy{})
+		_, err := params.TemplateInventory(context.Background(), logger, envs, false, mockProvider, utils.DefaultOsProxy{})
 		require.NoError(t, err)
 
 		assert.Empty(t, mockProvider.GetBenchmarkPhaseCalls())
@@ -497,7 +498,7 @@ func Test_TemplateInventory_ReadsStoredOptInMode(t *testing.T) {
 		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
 	}
 
-	inv, err := params.TemplateInventory(mockLogger, envs, false, nil, osProxy)
+	inv, err := params.TemplateInventory(context.Background(), mockLogger, envs, false, nil, osProxy)
 	require.NoError(t, err)
 	assert.Equal(t, "opt-in", inv.Common.ProjectMode)
 }

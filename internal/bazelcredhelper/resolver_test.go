@@ -50,6 +50,21 @@ func testResolver(ensureFresh func(context.Context) (authpkg.TokenSet, error)) *
 	return r
 }
 
+func TestResolver_Brokered_HintsExpiry(t *testing.T) {
+	isolate(t)
+	expiry := time.Now().Add(30 * time.Minute)
+	r := live.Default(nil)
+	r.Broker = func(context.Context, map[string]string) (authpkg.Credential, error) {
+		return authpkg.Credential{Token: "brokered-jwt", WorkspaceID: "ws-1", Expiry: expiry}, nil
+	}
+
+	cred, err := newResolver(r, map[string]string{}, nil)(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", cred.Token)
+	assert.Equal(t, expiry.Add(-expiresLead), cred.Expiry)
+}
+
 func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 	isolate(t)
 	envs := map[string]string{

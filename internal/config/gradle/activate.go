@@ -31,7 +31,7 @@ func Activate(
 	gradleHomePath string,
 	envProvider map[string]string,
 	debugLogging bool,
-	templateInventoryProvider func(log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (TemplateInventory, error),
+	templateInventoryProvider func(context.Context, log.Logger, map[string]string, bool, configcommon.BenchmarkPhaseProvider, utils.OsProxy) (TemplateInventory, error),
 	templateWriter func(TemplateInventory, string) error,
 	updater GradlePropertiesUpdater,
 	params ActivateGradleParams,
@@ -62,7 +62,7 @@ func Activate(
 		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
 	}
 
-	templateInventory, err := templateInventoryProvider(logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
+	templateInventory, err := templateInventoryProvider(ctx, logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
 	if err != nil {
 		return err
 	}
