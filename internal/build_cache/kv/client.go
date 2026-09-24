@@ -274,6 +274,7 @@ func (c *Client) Close() error {
 }
 
 type writer struct {
+	auth         string
 	stream       bytestream.ByteStream_WriteClient
 	resourceName string
 	offset       int64
@@ -331,6 +332,7 @@ func (w *writer) Close() error {
 }
 
 type reader struct {
+	auth     string
 	logger   log.Logger
 	stream   bytestream.ByteStream_ReadClient
 	metadata sync.Map

@@ -3,6 +3,7 @@
 package kv
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -13,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 type countingLogger struct {
@@ -26,23 +29,23 @@ func TestAuthGate_LogsOnceThenStaysBroken(t *testing.T) {
 	lg := &countingLogger{Logger: log.NewLogger()}
 	g := &authGate{logger: lg}
 
-	require.False(t, g.isBroken())
+	require.False(t, g.isBroken(nil))
 
-	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "bad token")))
-	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "still bad")))
-	assert.True(t, g.tripOnce(ErrCacheUnauthenticated))
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "bad token"), "bearer bad"))
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "still bad"), "bearer bad"))
+	assert.True(t, g.tripOnce(ErrCacheUnauthenticated, "bearer bad"))
 
-	assert.True(t, g.isBroken())
-	assert.Equal(t, int64(1), lg.warns.Load(), "auth-broken warning must fire exactly once for the process")
+	assert.True(t, g.isBroken(nil))
+	assert.Equal(t, int64(1), lg.warns.Load(), "auth-broken warning must fire exactly once per rejected credential")
 }
 
 func TestAuthGate_TransientErrorDoesNotTrip(t *testing.T) {
 	lg := &countingLogger{Logger: log.NewLogger()}
 	g := &authGate{logger: lg}
 
-	assert.False(t, g.tripOnce(status.Error(codes.Unavailable, "later")))
-	assert.False(t, g.tripOnce(errors.New("connection reset")))
-	assert.False(t, g.isBroken())
+	assert.False(t, g.tripOnce(status.Error(codes.Unavailable, "later"), "bearer bad"))
+	assert.False(t, g.tripOnce(errors.New("connection reset"), "bearer bad"))
+	assert.False(t, g.isBroken(nil))
 	assert.Zero(t, lg.warns.Load(), "transient network blips must not disable the cache")
 }
 
@@ -52,16 +55,16 @@ func TestAuthGate_TransientErrorDoesNotTrip(t *testing.T) {
 func TestAuthGate_LatchesOnFirstLoggableTrip(t *testing.T) {
 	g := &authGate{}
 
-	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "bad token")))
-	require.True(t, g.isBroken())
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "bad token"), "bearer bad"))
+	require.True(t, g.isBroken(nil))
 
 	lg := &countingLogger{Logger: log.NewLogger()}
 	g.logger = lg
 
-	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "still bad")))
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "still bad"), "bearer bad"))
 	assert.Equal(t, int64(1), lg.warns.Load(), "the first trip with a logger attached must produce the single warning")
 
-	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "yet again")))
+	assert.True(t, g.tripOnce(status.Error(codes.Unauthenticated, "yet again"), "bearer bad"))
 	assert.Equal(t, int64(1), lg.warns.Load(), "subsequent trips must stay silent")
 }
 
@@ -73,8 +76,8 @@ func TestAuthGate_TripsOnNonPrintableHeaderRejection(t *testing.T) {
 	// wording; it never surfaces as a status code.
 	wrapped := fmt.Errorf(`send data: header key "authorization" contains value with %s`, grpcNonPrintableHeaderMsg)
 
-	assert.True(t, g.tripOnce(wrapped))
-	assert.True(t, g.isBroken())
+	assert.True(t, g.tripOnce(wrapped, "bearer bad"))
+	assert.True(t, g.isBroken(nil))
 	assert.Equal(t, int64(1), lg.warns.Load())
 }
 
@@ -84,7 +87,7 @@ func TestClient_ShortCircuitsAfterAuthBroken(t *testing.T) {
 	lg := &countingLogger{Logger: log.NewLogger()}
 	c := &Client{logger: lg, authGate: authGate{logger: lg}}
 
-	c.authGate.tripOnce(status.Error(codes.Unauthenticated, "bad"))
+	c.authGate.tripOnce(status.Error(codes.Unauthenticated, "bad"), "bearer bad")
 	require.Equal(t, int64(1), lg.warns.Load())
 
 	err := c.GetCapabilities(t.Context())
@@ -103,4 +106,27 @@ func TestClient_ShortCircuitsAfterAuthBroken(t *testing.T) {
 	require.ErrorIs(t, err, ErrCacheUnauthenticated)
 
 	assert.Equal(t, int64(1), lg.warns.Load(), "short-circuit path must not re-log")
+}
+
+type fixedAuth struct{ token atomic.Pointer[string] }
+
+func (f *fixedAuth) Get(context.Context) auth.Credential { return auth.Credential{Token: *f.token.Load()} }
+
+func TestClient_AuthGateReopensWhenTheCredentialChanges(t *testing.T) {
+	lg := &countingLogger{Logger: log.NewLogger()}
+	src := &fixedAuth{}
+	stale := "stale"
+	src.token.Store(&stale)
+	c := &Client{logger: lg, authGate: authGate{logger: lg}, authSource: src}
+
+	c.authGate.tripOnce(status.Error(codes.Unauthenticated, "expired"), bearer(stale))
+	assert.True(t, c.authBroken(t.Context()), "the rejected credential must stay short-circuited")
+
+	fresh := "fresh"
+	src.token.Store(&fresh)
+	assert.False(t, c.authBroken(t.Context()), "a refreshed credential must get another try")
+
+	c.authGate.tripOnce(status.Error(codes.Unauthenticated, "also bad"), bearer(fresh))
+	assert.True(t, c.authBroken(t.Context()))
+	assert.Equal(t, int64(2), lg.warns.Load(), "each rejected credential warns once")
 }
