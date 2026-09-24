@@ -33,6 +33,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/jobsummary"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -484,6 +485,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	c.attachXcresultSummary(ctx, inv)
 
+	c.writeJobSummary(runStats, proxyOutcome)
+
 	c.appendLocalInvocationLog(*inv, runStats)
 	c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 
@@ -746,6 +749,31 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 	}
 
 	return hitRate, outcome
+}
+
+// The same figures as the stats lines above, on the GitHub Actions job page.
+func (c *XcodebuildRunner) writeJobSummary(runStats xcodeargs.RunStats, outcome proxyOutcome) {
+	invocation := jobsummary.Invocation{
+		Success:        runStats.Success,
+		Command:        c.XcodeArgs.ShortCommand(),
+		BenchmarkPhase: c.Metadata.BenchmarkPhase,
+		Duration:       time.Duration(runStats.DurationMS) * time.Millisecond,
+	}
+
+	if outcome.BlobStats != nil {
+		down, up := outcome.BlobStats.Download.BytesTotal, outcome.BlobStats.Upload.BytesTotal
+		invocation.DownloadedBytes, invocation.UploadedBytes = &down, &up
+	}
+
+	if c.InvocationID != "" {
+		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/xcode/" + c.InvocationID
+	}
+
+	jobsummary.WriteAnnotation(invocation)
+
+	if _, err := jobsummary.Write(jobsummary.Block(invocation), "xcode-"+c.InvocationID); err != nil {
+		c.Logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
+	}
 }
 
 // Latency and size are bucket bounds; only throughput retains samples for an exact percentile.

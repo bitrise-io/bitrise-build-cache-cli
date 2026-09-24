@@ -27,6 +27,7 @@ import (
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/jobsummary"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	pkgcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common"
@@ -318,6 +319,10 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 		return
 	}
 
+	// After the activity check, like the analytics below it: a job that compiled no
+	// C++ has nothing to say on the job page either.
+	h.writeJobSummary(dl, ul, invocationID, stats)
+
 	if invocationID == "" {
 		h.logger.TWarnf("No invocation ID available for ccache stats, skipping analytics")
 
@@ -344,6 +349,29 @@ func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOve
 	}
 
 	h.writeChildStatsLedger(invocationID, parentID, stats)
+}
+
+// The same figures as the stats lines above, on the GitHub Actions job page. No
+// duration: a ccache session spans the build rather than one command.
+func (h *StorageHelper) writeJobSummary(downloaded, uploaded int64, invocationID string, stats ccacheanalytics.CcacheStats) {
+	invocation := jobsummary.Invocation{
+		// ccache's own health, not the compile's exit code: a failed build whose
+		// ccache behaved is a ✅ here, which is what this row is about.
+		Success:         stats.Success(),
+		Command:         "ccache",
+		DownloadedBytes: &downloaded,
+		UploadedBytes:   &uploaded,
+	}
+
+	if invocationID != "" {
+		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/ccache/" + invocationID
+	}
+
+	jobsummary.WriteAnnotation(invocation)
+
+	if _, err := jobsummary.Write(jobsummary.Block(invocation), "ccache-"+invocationID); err != nil {
+		h.logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
+	}
 }
 
 // writeChildStatsLedger records this ccache invocation's hit rate in the
