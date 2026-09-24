@@ -914,7 +914,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 
 	if mergedOtherCFlags != "" {
 		toPass = replaceOrAppendBuildSetting(toPass, xcodeargs.OtherCFlagsKey, mergedOtherCFlags)
-		if userOtherCFlagsToSplice != "" && c.Metadata.CIProvider == "" {
+		if userOtherCFlagsToSplice != "" && !configcommon.IsCI(utils.AllEnvs()) {
 			c.Logger.TWarnf("Merged user OTHER_CFLAGS with Bitrise prefix-map rules; pass --no-prefix-map to opt out.")
 		}
 	}
