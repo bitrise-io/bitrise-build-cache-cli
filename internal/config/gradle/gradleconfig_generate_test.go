@@ -98,6 +98,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					LogLevel:        "TestDistroLogLevelValue",
 					ShardSize:       50,
 					TestSearchDepth: 3,
+					PoolName:        "TestDistroPoolNameValue",
 				},
 			},
 			want:    expectedAllPluginsCI,
@@ -138,6 +139,7 @@ func Test_GenerateInitGradle(t *testing.T) {
 					LogLevel:        "TestDistroLogLevelValue",
 					ShardSize:       50,
 					TestSearchDepth: 3,
+					PoolName:        "TestDistroPoolNameValue",
 				},
 			},
 			want:    expectedAllPluginsLocal,
@@ -338,6 +340,7 @@ rootProject {
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
         testSearchDepth.set(3)
+        poolName.set("TestDistroPoolNameValue")
         bitrise {
             appSlug.set("AppSlugValue")
         }
@@ -395,6 +398,7 @@ rootProject {
         logLevel.set("TestDistroLogLevelValue")
         shardSize.set(50)
         testSearchDepth.set(3)
+        poolName.set("TestDistroPoolNameValue")
         bitrise {
             appSlug.set("AppSlugValue")
         }
