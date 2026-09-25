@@ -8,8 +8,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// Last in the precedence order: the analytics block carries no refresh token and
-// no expiry, so anything else on the machine is a better answer.
+// Cross-process read for the CI JWT that pin.go persists into the analytics
+// block: TemplateInventory's ResolveNoRefresh has no broker, so a Build Hub
+// runner that only holds a brokered JWT needs this read to find it back.
 func readAnalyticsCredential() (auth.Credential, auth.Origin, bool) {
 	cfg, err := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	if err != nil || !cfg.AuthConfig.Populated() {

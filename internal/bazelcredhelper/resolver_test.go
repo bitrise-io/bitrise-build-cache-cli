@@ -84,14 +84,14 @@ func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 	assert.True(t, got.Expiry.IsZero(), "an unknown lifetime must omit the cache hint")
 }
 
-// A static PAT has no refresh token, so nothing can renew it.
-func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
+// A static PAT persisted only into the analytics block has no refresh token.
+func TestResolver_AnalyticsStaticPAT_ServesStaleAndWarns(t *testing.T) {
 	isolate(t)
-	seedLegacyAuthConfig(t, "bitpat_legacy", "ws-legacy")
+	seedAnalyticsAuthConfig(t, "bitpat_static", "ws-static")
 
 	warn := &bytes.Buffer{}
 	ensureFresh := func(context.Context) (authpkg.TokenSet, error) {
-		t.Fatal("the legacy authConfig source is not store-managed; EnsureFresh must not be called")
+		t.Fatal("the analytics authConfig source is not store-managed; EnsureFresh must not be called")
 
 		return authpkg.TokenSet{}, nil
 	}
@@ -99,7 +99,7 @@ func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
 	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn)(t.Context())
 
 	require.NoError(t, err, "a token we cannot refresh is still better than failing the RPC")
-	assert.Equal(t, "bitpat_legacy", got.Token)
+	assert.Equal(t, "bitpat_static", got.Token)
 	assert.Empty(t, warn.String(), "nothing was attempted, so there is nothing to warn about")
 }
 
@@ -207,7 +207,7 @@ func seedKeychain(t *testing.T, token, workspaceID string) {
 	}))
 }
 
-func seedLegacyAuthConfig(t *testing.T, token, workspaceID string) {
+func seedAnalyticsAuthConfig(t *testing.T, token, workspaceID string) {
 	t.Helper()
 	cfg := multiplatformconfig.Config{
 		AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: token, WorkspaceID: workspaceID},

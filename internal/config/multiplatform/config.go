@@ -76,7 +76,7 @@ func (l AnalyticsAuthConfig) Credential() auth.Credential {
 	return auth.Credential{Token: l.AuthToken, WorkspaceID: l.WorkspaceID}
 }
 
-// Origin reports where the legacy block's credential came from. IsJWT is
+// Origin reads back the origin encoded by NewAnalyticsAuthConfig. IsJWT is
 // load-bearing: a JWT is sent as-is, a PAT is prefixed with the workspace.
 func (l AnalyticsAuthConfig) Origin() auth.Origin {
 	if l.IsJWT {

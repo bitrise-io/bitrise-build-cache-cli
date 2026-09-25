@@ -107,9 +107,11 @@ they differ in `Provenance` (`OAuthLogin`/`Manual` vs `Static`). Backend alone
 cannot express that, and provenance alone cannot tell you which file to write.
 
 `authConfig` is *not* deprecated despite being the older of the two — nothing is
-migrating off it, and three `pkg/` consumers read it as their only source. What
-`Static` means is narrower and permanent: no refresh machinery, so never
-refreshable.
+migrating off it, and three `pkg/` consumers read it as their only source. The CLI
+itself also reads it back as the last precedence step, because `pin.go` writes the
+brokered CI JWT only there (see below), and a later offline `ResolveNoRefresh`
+needs a channel to find that JWT. What `Static` means is narrower and permanent:
+no refresh machinery, so never refreshable.
 
 `Resolve` prefers an OAuth-managed record over a manual one wherever it lives: a
 manual `auth set` token in an earlier backend would otherwise hide a login in a

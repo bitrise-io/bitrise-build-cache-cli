@@ -49,15 +49,15 @@ func (d *Doctor) storedFirstResolver() *live.Resolver {
 	return r
 }
 
-// resolver honours the doctor's injected backends and legacy reader so a
-// diagnostic run in a test stays off the real machine. Default precedence, so
+// resolver honours the doctor's injected backends and analytics-block reader so
+// a diagnostic run in a test stays off the real machine. Default precedence, so
 // the backend probe exercises the credential builds would actually send.
 func (d *Doctor) resolver() *live.Resolver {
 	r := live.Default(nil)
 	if d.AuthBackends != nil {
 		r.Backends = d.AuthBackends
 		// Injected backends mean "stay off this machine", which has to cover the
-		// legacy analytics config too.
+		// analytics config too.
 		r.AnalyticsBlock = func() (auth.Credential, auth.Origin, bool) {
 			return auth.Credential{}, auth.Origin{}, false
 		}

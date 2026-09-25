@@ -56,8 +56,9 @@ type Resolver struct {
 	Refresh func(ctx context.Context, ts auth.TokenSet, backing store.Store) (auth.TokenSet, error)
 	// Backends overrides the stores consulted, in order. Nil means keychain, file.
 	Backends []store.Store
-	// AnalyticsBlock reads the analytics config's authConfig block. Nil means
-	// the real reader.
+	// AnalyticsBlock reads the analytics config's authConfig block, where pin.go
+	// persists the CI JWT for the next offline resolve to pick up. Nil means the
+	// real reader.
 	AnalyticsBlock func() (auth.Credential, auth.Origin, bool)
 	// Broker exchanges a Build Hub VM token for a Build Cache token. Nil means the
 	// real client, built from the environment.
@@ -176,7 +177,7 @@ func (r *Resolver) resolveWith(
 		}
 	}
 
-	if cred, origin, ok := r.legacyFile(); ok {
+	if cred, origin, ok := r.analyticsFile(); ok {
 		if _, err := auth.SanitizeToken(cred.Token); err != nil {
 			return auth.Credential{}, auth.Origin{}, nil, err //nolint:wrapcheck // sentinel; callers errors.Is on it
 		}
@@ -290,20 +291,23 @@ func (r *Resolver) fromStores(usable func(auth.TokenSet) bool) (auth.Credential,
 	return firstTS.Credential(), firstTS.Origin(firstStore.Backend()), firstStore, true
 }
 
+// analyticsFile is the cross-process read for a CI JWT that pin.go wrote into
+// the analytics config, so an offline ResolveNoRefresh in a later step still
+// sees the brokered credential.
+func (r *Resolver) analyticsFile() (auth.Credential, auth.Origin, bool) {
+	if r.AnalyticsBlock != nil {
+		return r.AnalyticsBlock()
+	}
+
+	return readAnalyticsCredential()
+}
+
 func (r *Resolver) backends() []store.Store {
 	if r.Backends != nil {
 		return r.Backends
 	}
 
 	return []store.Store{store.NewKeychain(), store.NewFile()}
-}
-
-func (r *Resolver) legacyFile() (auth.Credential, auth.Origin, bool) {
-	if r.AnalyticsBlock != nil {
-		return r.AnalyticsBlock()
-	}
-
-	return readAnalyticsCredential()
 }
 
 func (r *Resolver) refresh(ctx context.Context, backing store.Store) (auth.TokenSet, error) {
