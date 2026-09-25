@@ -210,6 +210,28 @@ func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
 	assert.NotContains(t, got, `"project", "scope-check"`)
 }
 
+func Test_GenerateInitGradle_TestDistroDependencyOmitsPoolName(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			CIProvider: "bitrise",
+			Version:    "CommonVersionValue",
+		},
+		Cache:     CacheTemplateInventory{Usage: UsageLevelNone},
+		Analytics: AnalyticsTemplateInventory{Usage: UsageLevelNone},
+		TestDistro: TestDistroTemplateInventory{
+			Usage:   UsageLevelDependency,
+			Version: "TestDistroVersionValue",
+			// PoolName intentionally set to prove the guard: even a non-empty
+			// value must not leak into a non-enabled render.
+			PoolName: "TestDistroPoolNameValue",
+		},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "poolName.set(")
+}
+
 func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{

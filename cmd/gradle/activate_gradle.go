@@ -132,7 +132,7 @@ func init() {
 	ActivateGradleCmd.Flags().BoolVar(&activateGradleParams.TestDistro.JustDependency, "test-distribution-dep", activateGradleParams.TestDistro.JustDependency, "Add test distribution plugin as a dependency only.")
 	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.ShardSize, "test-distribution-shard-size", activateGradleParams.TestDistro.ShardSize, "Shard size for test distribution plugin.")
 	ActivateGradleCmd.Flags().IntVar(&activateGradleParams.TestDistro.TestSearchDepth, "test-distribution-search-depth", activateGradleParams.TestDistro.TestSearchDepth, "Search depth for test distribution when trying to find test tasks not listed in the invocation.")
-	ActivateGradleCmd.Flags().StringVar(&activateGradleParams.TestDistro.PoolName, "test-distribution-pool", activateGradleParams.TestDistro.PoolName, "Pool name to route test distribution work to. Required when --test-distribution is set.")
+	ActivateGradleCmd.Flags().StringVar(&activateGradleParams.TestDistro.PoolName, "test-distribution-pool", activateGradleParams.TestDistro.PoolName, "Pool name to route test distribution work to. Required (non-blank) when `--test-distribution` is set.")
 
 	ActivateGradleCmd.Flags().StringVar(&activateGradleProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }
