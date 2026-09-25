@@ -157,6 +157,7 @@ rootProject {
         logLevel.set("{{ .TestDistro.LogLevel }}")
         shardSize.set({{ .TestDistro.ShardSize }})
         testSearchDepth.set({{ .TestDistro.TestSearchDepth }})
+        poolName.set("{{ .TestDistro.PoolName }}")
         bitrise {
             appSlug.set("{{ .Common.AppSlug }}")
         }

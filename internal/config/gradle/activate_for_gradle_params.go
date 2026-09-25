@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -20,7 +21,7 @@ import (
 
 const (
 	errFmtInvalidCacheLevel        = "invalid cache validation level, valid options: none, warning, error"
-	errFmtTestDistroAppSlug        = "test distribution plugin was enabled but no BITRISE_APP_SLUG was specified"
+	errFmtTestDistroPoolName       = "test distribution plugin was enabled but pool name must be non-blank (use --test-distribution-pool)"
 	ErrFmtReadAuthConfig           = "resolve auth config: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
@@ -45,6 +46,7 @@ type TestDistroParams struct {
 	JustDependency  bool
 	ShardSize       int
 	TestSearchDepth int
+	PoolName        string
 }
 
 type ActivateGradleParams struct {
@@ -155,7 +157,10 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	analyticsInventory := params.analyticsTemplateInventory(logger)
 
-	testDistroInventory := params.testDistroTemplateInventory(logger, isDebug)
+	testDistroInventory, err := params.testDistroTemplateInventory(logger, isDebug)
+	if err != nil {
+		return TemplateInventory{}, fmt.Errorf(errFmtTestDistroConfigCreation, err)
+	}
 
 	return TemplateInventory{
 		Common:                 commonInventory,
@@ -269,13 +274,13 @@ func (params ActivateGradleParams) analyticsTemplateInventory(
 func (params ActivateGradleParams) testDistroTemplateInventory(
 	logger log.Logger,
 	isDebug bool,
-) TestDistroTemplateInventory {
+) (TestDistroTemplateInventory, error) {
 	if !params.TestDistro.JustDependency && !params.TestDistro.Enabled {
 		logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelNone)
 
 		return TestDistroTemplateInventory{
 			Usage: UsageLevelNone,
-		}
+		}, nil
 	}
 
 	if params.TestDistro.JustDependency && !params.TestDistro.Enabled {
@@ -284,7 +289,11 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		return TestDistroTemplateInventory{
 			Usage:   UsageLevelDependency,
 			Version: consts.GradleTestDistributionPluginDepVersion,
-		}
+		}, nil
+	}
+
+	if strings.TrimSpace(params.TestDistro.PoolName) == "" {
+		return TestDistroTemplateInventory{}, errors.New(errFmtTestDistroPoolName)
 	}
 
 	logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelEnabled)
@@ -303,5 +312,6 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		LogLevel:        logLevel,
 		ShardSize:       params.TestDistro.ShardSize,
 		TestSearchDepth: params.TestDistro.TestSearchDepth,
-	}
+		PoolName:        params.TestDistro.PoolName,
+	}, nil
 }
