@@ -150,7 +150,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, utils.DefaultOsProxy{}, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeUpload, &commonMetadata)
 	op.CacheKey = cacheKey

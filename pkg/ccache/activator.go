@@ -128,7 +128,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 
 	// Materialise an env- or JWT-sourced credential: the detached storage helper
 	// starts in a shell that never saw those variables.
-	if _, _, err := live.Default(a.logger).ResolvePinned(ctx, a.envs, configcommon.IsCI(a.envs)); err != nil {
+	if _, _, err := live.Default(a.logger).ResolvePinned(ctx, a.envs, configcommon.IsCI(a.envs, a.osProxy)); err != nil {
 		return fmt.Errorf("persist auth credentials: %w", err)
 	}
 

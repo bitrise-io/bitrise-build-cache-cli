@@ -114,7 +114,7 @@ func (inv *InvocationRegistry) RegisterMultiplatformInvocation(ctx context.Conte
 	}
 
 	commandFunc := newCommandFunc(ctx)
-	metadata := configcommon.NewMetadata(inv.params.Envs, inv.username, commandFunc, inv.logger)
+	metadata := configcommon.NewMetadata(inv.params.Envs, inv.username, commandFunc, utils.DefaultOsProxy{}, inv.logger)
 
 	invocation := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
 		InvocationID:   params.InvocationID,

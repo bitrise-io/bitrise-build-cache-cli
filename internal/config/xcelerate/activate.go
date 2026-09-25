@@ -103,7 +103,7 @@ func Activate(
 
 	// Materialise an env- or JWT-sourced credential: the proxy and the analytics
 	// readers start in shells that never saw those variables.
-	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.IsCI(envs)); err != nil {
+	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.IsCI(envs, osProxy)); err != nil {
 		return fmt.Errorf("persist auth credentials: %w", err)
 	}
 

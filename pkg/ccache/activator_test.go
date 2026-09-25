@@ -56,6 +56,7 @@ func newOsProxyMock(t *testing.T) *mocks.OsProxyMock {
 		UserHomeDirFunc: func() (string, error) { return tmpDir, nil },
 		MkdirAllFunc:    func(_ string, _ os.FileMode) error { return nil },
 		GetwdFunc:       func() (string, error) { return "/work/dir", nil },
+		HostnameFunc:    func() (string, error) { return "test-host", nil },
 		TempDirFunc:     func() string { return tmpDir },
 		CreateFunc: func(_ string) (*os.File, error) {
 			return os.CreateTemp(tmpDir, "ccache-config-*.json")

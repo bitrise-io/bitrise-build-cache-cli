@@ -231,6 +231,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return t.TempDir()
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
@@ -293,6 +294,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return t.TempDir()
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
@@ -340,6 +342,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return t.TempDir()
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
@@ -393,6 +396,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return "my-temp-dir"
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
@@ -442,6 +446,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return "my-temp-dir"
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
@@ -493,6 +498,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return "my-temp-dir"
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		cmdMock := &utilsMocks.CommandMock{
@@ -554,6 +560,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return t.TempDir()
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
@@ -592,6 +599,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return t.TempDir()
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		mockProvider := &commonmocks.BenchmarkPhaseProviderMock{
@@ -629,6 +637,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			TempDirFunc: func() string {
 				return t.TempDir()
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 		}
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{

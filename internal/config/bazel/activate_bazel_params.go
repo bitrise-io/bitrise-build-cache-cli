@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 type CacheParams struct {
@@ -104,6 +105,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	username, _ := resolver.ResolveUsername(envs)
 	cacheConfig := common.NewMetadata(envs, username,
 		commandFunc,
+		utils.DefaultOsProxy{},
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 

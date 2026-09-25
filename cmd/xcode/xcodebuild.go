@@ -279,7 +279,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		o, err := utils.DefaultCommandFunc()(ctx, cmd, args...).CombinedOutput()
 
 		return string(o), err
-	}, logger)
+	}, osProxy, logger)
 
 	xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
 
@@ -914,7 +914,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 
 	if mergedOtherCFlags != "" {
 		toPass = replaceOrAppendBuildSetting(toPass, xcodeargs.OtherCFlagsKey, mergedOtherCFlags)
-		if userOtherCFlagsToSplice != "" && !configcommon.IsCI(utils.AllEnvs()) {
+		if userOtherCFlagsToSplice != "" && !configcommon.IsCI(utils.AllEnvs(), utils.DefaultOsProxy{}) {
 			c.Logger.TWarnf("Merged user OTHER_CFLAGS with Bitrise prefix-map rules; pass --no-prefix-map to opt out.")
 		}
 	}

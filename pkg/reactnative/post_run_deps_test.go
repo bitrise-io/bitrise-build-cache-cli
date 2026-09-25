@@ -158,7 +158,7 @@ func TestPostRunDeps_appendLocalInvocationLog_usernameFromEnvChain(t *testing.T)
 
 	envs := utils.AllEnvs()
 	username, _ := live.Default(nil).ResolveUsername(envs)
-	metadata := common.NewMetadata(envs, username, func(string, ...string) (string, error) { return "", nil }, log.NewLogger())
+	metadata := common.NewMetadata(envs, username, func(string, ...string) (string, error) { return "", nil }, utils.DefaultOsProxy{}, log.NewLogger())
 
 	deps.appendLocalInvocationLog("inv-un", "yarn build", metadata, childstats.Summary{}, time.Second, nil)
 

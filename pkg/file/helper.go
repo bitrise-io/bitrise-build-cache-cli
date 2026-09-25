@@ -177,7 +177,7 @@ func (h *Helper) newKVClient(ctx context.Context) (*kv.Client, error) {
 		ClientName:          ClientName,
 		AuthConfig:          authConfig,
 		Logger:              h.logger,
-		CacheConfigMetadata: configcommon.NewMetadata(h.envs, hostUsername, h.commandFunc, h.logger),
+		CacheConfigMetadata: configcommon.NewMetadata(h.envs, hostUsername, h.commandFunc, utils.DefaultOsProxy{}, h.logger),
 		CacheOperationID:    uuid.NewString(),
 	})
 	if err != nil {

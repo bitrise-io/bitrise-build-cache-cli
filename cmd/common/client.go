@@ -11,6 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
 )
@@ -62,7 +63,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		AuthConfig:          params.AuthConfig,
 		AuthSource:          params.AuthSource,
 		Logger:              params.Logger,
-		CacheConfigMetadata: common.NewMetadata(params.Envs, kvUsername(params.Envs), params.CommandFunc, params.Logger),
+		CacheConfigMetadata: common.NewMetadata(params.Envs, kvUsername(params.Envs), params.CommandFunc, utils.DefaultOsProxy{}, params.Logger),
 		CacheOperationID:    params.CacheOperationID,
 		BitriseKVClient:     params.BitriseKVClient,
 		CapabilitiesClient:  params.CapabilitiesClient,

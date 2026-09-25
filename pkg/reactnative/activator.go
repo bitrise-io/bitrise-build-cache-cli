@@ -190,7 +190,7 @@ func (a *Activator) activateCppIfApplicable(ctx context.Context) error {
 // An explicit user-supplied value always wins.
 func (a *Activator) exportEASWorkingDirIfCI() {
 	envs := utils.AllEnvs()
-	if !configcommon.IsCI(envs) {
+	if !configcommon.IsCI(envs, utils.DefaultOsProxy{}) {
 		return
 	}
 
@@ -350,7 +350,7 @@ func (x *xcodeActivator) activate(ctx context.Context) error {
 func saveMultiplatformConfig(ctx context.Context, envs map[string]string, debugLogging bool) error {
 	// ResolvePinned materialises an env- or JWT-sourced credential so the post-run
 	// hook and the storage helper can find it without those env vars.
-	cred, origin, err := live.Default(nil).ResolvePinned(ctx, envs, configcommon.IsCI(envs))
+	cred, origin, err := live.Default(nil).ResolvePinned(ctx, envs, configcommon.IsCI(envs, utils.DefaultOsProxy{}))
 	if err != nil {
 		return fmt.Errorf("resolve auth config for multiplatform analytics: %w", err)
 	}

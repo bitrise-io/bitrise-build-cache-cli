@@ -148,6 +148,7 @@ func NewConfig(ctx context.Context,
 
 			return string(output), err
 		},
+		osProxy,
 		logger)
 
 	// Check benchmark phase and override params if needed (only on CI).

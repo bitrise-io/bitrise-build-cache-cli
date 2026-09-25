@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func Test_idleTimeoutFor(t *testing.T) {
@@ -32,9 +34,11 @@ func Test_idleTimeoutFor(t *testing.T) {
 		},
 	}
 
+	osProxy := &mocks.OsProxyMock{HostnameFunc: func() (string, error) { return "laptop.local", nil }}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, idleTimeoutFor(tt.envs))
+			assert.Equal(t, tt.want, idleTimeoutFor(tt.envs, osProxy))
 		})
 	}
 }

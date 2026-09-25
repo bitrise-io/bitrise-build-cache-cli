@@ -358,7 +358,7 @@ func (h *StorageHelper) sendInvocation(ctx context.Context, invocationID, parent
 
 	h.registerInvocationRelation(ctx)
 
-	metadata := configcommon.NewMetadata(h.params.Envs, hostUsername(h.params.Envs), newCommandFunc(ctx), h.logger)
+	metadata := configcommon.NewMetadata(h.params.Envs, hostUsername(h.params.Envs), newCommandFunc(ctx), utils.DefaultOsProxy{}, h.logger)
 
 	inv := ccacheanalytics.NewCcacheInvocation(invocationID, parentID, time.Now(), stats, dl, ul, blobStats, h.config.AuthConfig, metadata)
 	if err := client.PutCcacheInvocation(*inv); err != nil {
@@ -694,7 +694,7 @@ func createKVClient(
 		AuthConfig:          config.AuthConfig,
 		AuthSource:          bound.Cached(live.HotPathTTL),
 		Logger:              logger,
-		CacheConfigMetadata: configcommon.NewMetadata(envs, hostUsername(envs), commandFunc, logger),
+		CacheConfigMetadata: configcommon.NewMetadata(envs, hostUsername(envs), commandFunc, utils.DefaultOsProxy{}, logger),
 		CacheOperationID:    uuid.NewString(),
 		InvocationID:        invocationID,
 	})

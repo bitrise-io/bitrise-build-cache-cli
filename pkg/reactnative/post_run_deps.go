@@ -220,7 +220,7 @@ func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 		out, err := osexec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
 
 		return string(out), err
-	}, d.logger)
+	}, utils.DefaultOsProxy{}, d.logger)
 }
 
 // appendLocalInvocationLog writes the wrapper's parent record to the shared

@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 type CacheConfigMetadata struct {
@@ -51,15 +52,31 @@ const (
 
 type CommandFunc func(string, ...string) (string, error)
 
+// isRemoteDevEnv reports whether the CLI is running inside a Bitrise Remote Dev Environment session.
+// RDE VMs get their hostname set to `vm-standalone-{linux,macos}-<uuid>` on bootstrap; regular CI VMs use a different prefix.
+func isRemoteDevEnv(osProxy utils.OsProxy) bool {
+	name, err := osProxy.Hostname()
+	if err != nil {
+		return false
+	}
+
+	return strings.HasPrefix(name, "vm-standalone-")
+}
+
 // IsCI is DetectCIProvider != "" widened to Build Hub runners under an
 // unrecognised CI, which still need CI behaviour such as the file credential store.
-func IsCI(envs map[string]string) bool {
-	return DetectCIProvider(envs) != "" || auth.OnBuildHub(envs)
+func IsCI(envs map[string]string, osProxy utils.OsProxy) bool {
+	return DetectCIProvider(envs, osProxy) != "" || auth.OnBuildHub(envs)
 }
 
 // DetectCIProvider inspects environment variables to identify which CI provider
 // (if any) the current build is running on. Returns "" when no CI is detected.
-func DetectCIProvider(envs map[string]string) string {
+func DetectCIProvider(envs map[string]string, osProxy utils.OsProxy) string {
+	// RDE sessions leak BITRISE_IO/CI via /etc/profile; treat them as local regardless of other markers.
+	if isRemoteDevEnv(osProxy) {
+		return ""
+	}
+
 	// Check other CI providers first, so that Build Hub builds
 	// (which also set BITRISE_IO) detect the original CI provider.
 	if envs["CIRCLECI"] != "" {
@@ -117,13 +134,13 @@ type GitMetadata struct {
 }
 
 // NewMetadata creates a new CacheConfigMetadata instance based on the environment variables.
-func NewMetadata(envs map[string]string, username string, commandFunc CommandFunc, logger log.Logger) CacheConfigMetadata {
+func NewMetadata(envs map[string]string, username string, commandFunc CommandFunc, osProxy utils.OsProxy, logger log.Logger) CacheConfigMetadata {
 	hostMetadata := generateHostMetadata(envs, username, commandFunc, logger)
-	git := generateGitMetadata(logger, commandFunc, envs)
+	git := generateGitMetadata(logger, commandFunc, envs, osProxy)
 
 	cliVersion := GetCLIVersion(logger)
 
-	provider := DetectCIProvider(envs)
+	provider := DetectCIProvider(envs, osProxy)
 
 	redactedEnvs := maps.Clone(envs)
 	redactBitriseEnvs(redactedEnvs)
@@ -222,7 +239,7 @@ func hasTokenPrefix(value string) bool {
 	return false
 }
 
-func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[string]string) GitMetadata {
+func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[string]string, osProxy utils.OsProxy) GitMetadata {
 	gitMetadata := GitMetadata{}
 
 	// Repo URL
@@ -268,7 +285,7 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 	gitMetadata.Branch = branch
 
 	// Default branch
-	gitMetadata.DefaultBranch = resolveDefaultBranch(logger, commandFunc, envs)
+	gitMetadata.DefaultBranch = resolveDefaultBranch(logger, commandFunc, envs, osProxy)
 
 	// Commit email
 	commitEmail, err := commandFunc("git", "show", "-s", "--format=%ae", gitMetadata.CommitHash)
@@ -284,8 +301,8 @@ func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[st
 // resolveDefaultBranch returns "" for Bitrise, where the API's own project record is authoritative,
 // and for anything it cannot determine — remote HEAD is unset on the shallow single-branch clones
 // most CI checkouts produce, so an empty result is an expected outcome rather than a failure.
-func resolveDefaultBranch(logger log.Logger, commandFunc CommandFunc, envs map[string]string) string {
-	switch DetectCIProvider(envs) {
+func resolveDefaultBranch(logger log.Logger, commandFunc CommandFunc, envs map[string]string, osProxy utils.OsProxy) string {
+	switch DetectCIProvider(envs, osProxy) {
 	case CIProviderBitrise:
 		return ""
 	case CIProviderGitLabCI:
