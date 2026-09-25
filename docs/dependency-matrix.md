@@ -93,6 +93,15 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | CLI version | Release date | Analytics plugin | Cache plugin | Test Distribution plugin | Common plugin |
 |----|----|----|----|----|----|
+| [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 2026-09-25 | 3.4.0 | 2.2.0 | 2.2.12 | 1.2.0 |
+| [v3.13.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.0) | 2026-09-24 | 3.4.0 | 2.2.0 | 2.2.12 | 1.2.0 |
+| [v3.12.4](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.4) | 2026-09-24 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
+| [v3.12.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.3) | 2026-09-23 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
+| [v3.12.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.2) | 2026-09-23 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
+| [v3.12.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.1) | 2026-09-23 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
+| [v3.12.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.0) | 2026-09-22 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
+| [v3.11.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.11.0) | 2026-09-21 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
+| [v3.10.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.10.0) | 2026-09-17 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
 | [v3.9.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.3) | 2026-09-17 | 3.3.2 | 2.2.0 | 2.2.12 | 1.1.1 |
 | [v3.9.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.2) | 2026-09-16 | 3.3.0 | 2.2.0 | 2.2.11 | 1.1.1 |
 | [v3.9.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.1) | 2026-09-11 | 3.3.0 | 2.2.0 | 2.2.11 | 1.1.1 |
@@ -343,6 +352,14 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | Step version | CLI version | Analytics plugin | Cache plugin | Test Distribution plugin |
 |----|----|----|----|----|
+| 3.11.1 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 3.4.0 | 2.2.0 | 2.2.12 |
+| 3.10.4 | [v3.12.4](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.4) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 3.10.3 | [v3.12.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.3) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 3.10.2 | [v3.12.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.2) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 3.10.1 | [v3.12.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.1) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 3.10.0 | [v3.12.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 3.9.0 | [v3.11.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.11.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 3.8.0 | [v3.10.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.10.0) | 3.3.2 | 2.2.0 | 2.2.12 |
 | 3.7.2 | [v3.9.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.3) | 3.3.2 | 2.2.0 | 2.2.12 |
 | 3.7.1 | [v3.9.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.1) | 3.3.0 | 2.2.0 | 2.2.11 |
 | 3.7.0 | [v3.9.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.0) | 3.3.0 | 2.2.0 | 2.2.11 |
@@ -517,6 +534,22 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | Step version | CLI version | Analytics plugin | Cache plugin | Test Distribution plugin |
 |----|----|----|----|----|
+| 1.2.1 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 3.4.0 | 2.2.0 | 2.2.12 |
+| 1.1.3 | [v3.12.4](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.4) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 1.1.2 | [v3.12.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.3) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 1.1.1 | [v3.12.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.2) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 1.1.0 | [v3.12.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.1) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 1.0.0 | [v3.11.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.11.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.23.1 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 3.4.0 | 2.2.0 | 2.2.12 |
+| 0.22.3 | [v3.12.4](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.4) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.22.2 | [v3.12.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.3) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.22.1 | [v3.12.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.2) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.22.0 | [v3.12.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.1) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.21.0 | [v3.12.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.20.0 | [v3.11.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.11.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.19.0 | [v3.11.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.11.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.18.0 | [v3.10.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.10.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.17.3 | [v3.9.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.3) | 3.3.2 | 2.2.0 | 2.2.12 |
 | 0.17.2 | [v3.9.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.2) | 3.3.0 | 2.2.0 | 2.2.11 |
 | 0.17.1 | [v3.9.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.1) | 3.3.0 | 2.2.0 | 2.2.11 |
 | 0.17.0 | [v3.9.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.0) | 3.3.0 | 2.2.0 | 2.2.11 |
@@ -584,6 +617,14 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | Step version | CLI version | Analytics plugin | Cache plugin | Test Distribution plugin |
 |----|----|----|----|----|
+| 0.12.1 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 3.4.0 | 2.2.0 | 2.2.12 |
+| 0.11.4 | [v3.12.4](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.4) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.11.3 | [v3.12.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.3) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.11.2 | [v3.12.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.2) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.11.1 | [v3.12.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.1) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.11.0 | [v3.12.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.12.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.10.0 | [v3.10.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.10.0) | 3.3.2 | 2.2.0 | 2.2.12 |
+| 0.9.3 | [v3.9.3](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.3) | 3.3.2 | 2.2.0 | 2.2.12 |
 | 0.9.2 | [v3.9.2](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.2) | 3.3.0 | 2.2.0 | 2.2.11 |
 | 0.9.1 | [v3.9.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.1) | 3.3.0 | 2.2.0 | 2.2.11 |
 | 0.9.0 | [v3.9.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.9.0) | 3.3.0 | 2.2.0 | 2.2.11 |
