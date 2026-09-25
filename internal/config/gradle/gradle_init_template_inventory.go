@@ -35,6 +35,7 @@ type TestDistroTemplateInventory struct {
 	LogLevel        string
 	ShardSize       int
 	TestSearchDepth int
+	PoolName        string
 }
 
 type PluginCommonTemplateInventory struct {
