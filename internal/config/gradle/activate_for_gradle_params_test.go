@@ -356,6 +356,25 @@ func Test_activateGradleParams(t *testing.T) {
 			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroPoolName)).Error(),
 		},
 		{
+			name: "test distro enabled with blank pool name errors",
+			params: ActivateGradleParams{
+				Cache:     CacheParams{Enabled: false},
+				Analytics: AnalyticsParams{Enabled: false},
+				TestDistro: TestDistroParams{
+					Enabled:  true,
+					PoolName: "   ",
+				},
+			},
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
+				"BITRISE_APP_SLUG":                 "AppSlugValue",
+			},
+			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroPoolName)).Error(),
+		},
+		{
 			name:  "activate plugins with debug mode",
 			debug: true,
 			params: ActivateGradleParams{

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -20,8 +21,7 @@ import (
 
 const (
 	errFmtInvalidCacheLevel        = "invalid cache validation level, valid options: none, warning, error"
-	errFmtTestDistroAppSlug        = "test distribution plugin was enabled but no BITRISE_APP_SLUG was specified"
-	errFmtTestDistroPoolName       = "test distribution plugin was enabled but no pool name was specified (use --test-distribution-pool)"
+	errFmtTestDistroPoolName       = "test distribution plugin was enabled but pool name must be non-blank (use --test-distribution-pool)"
 	ErrFmtReadAuthConfig           = "resolve auth config: %w"
 	errFmtCacheConfigCreation      = "couldn't create cache configuration: %w"
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
@@ -291,7 +291,7 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		}, nil
 	}
 
-	if params.TestDistro.PoolName == "" {
+	if strings.TrimSpace(params.TestDistro.PoolName) == "" {
 		return TestDistroTemplateInventory{}, errors.New(errFmtTestDistroPoolName)
 	}
 
