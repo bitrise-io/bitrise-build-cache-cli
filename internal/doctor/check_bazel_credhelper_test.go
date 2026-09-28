@@ -16,14 +16,39 @@ import (
 func TestBazelCredHelperCheck(t *testing.T) {
 	tests := []struct {
 		name       string
-		writeRc    bool
+		rcContents string
 		cliOnPATH  bool
 		wantState  State
 		wantDetail string
 	}{
-		{name: "no pin, silent OK", writeRc: false, cliOnPATH: true, wantState: StateOK, wantDetail: "no repo-level"},
-		{name: "pin + CLI present → warn", writeRc: true, cliOnPATH: true, wantState: StateWarn, wantDetail: "credential-helper pin"},
-		{name: "pin + CLI missing → error", writeRc: true, cliOnPATH: false, wantState: StateError, wantDetail: "is not on PATH"},
+		{
+			name:       "no pin, silent OK",
+			rcContents: "",
+			cliOnPATH:  true,
+			wantState:  StateOK,
+			wantDetail: "no repo-level",
+		},
+		{
+			name:       "pin + CLI present → warn",
+			rcContents: "build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n",
+			cliOnPATH:  true,
+			wantState:  StateWarn,
+			wantDetail: "credential-helper pin",
+		},
+		{
+			name:       "pin + CLI missing → error",
+			rcContents: "build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n",
+			cliOnPATH:  false,
+			wantState:  StateError,
+			wantDetail: "is not on PATH",
+		},
+		{
+			name:       "unrelated helper for non-Bitrise scope is OK",
+			rcContents: "build --credential_helper=other.example.com=/some/bin\n",
+			cliOnPATH:  false,
+			wantState:  StateOK,
+			wantDetail: "no repo-level",
+		},
 	}
 
 	for _, tt := range tests {
@@ -31,9 +56,9 @@ func TestBazelCredHelperCheck(t *testing.T) {
 			dir := t.TempDir()
 			t.Chdir(dir)
 
-			if tt.writeRc {
+			if tt.rcContents != "" {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, ".bazelrc"),
-					[]byte("build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n"), 0o600))
+					[]byte(tt.rcContents), 0o600))
 			}
 
 			d := &Doctor{

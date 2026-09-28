@@ -133,6 +133,28 @@ func TestScanForPinnedHelper(t *testing.T) {
 			want: 1,
 		},
 		{
+			name: "config-conditional syntax matches",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, filepath.Join(dir, ".bazelrc"),
+					"build:remote --credential_helper=*.services.bitrise.io=bitrise-build-cache\n")
+
+				return dir
+			},
+			want: 1,
+		},
+		{
+			name: "tab-separated space form matches",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, filepath.Join(dir, ".bazelrc"),
+					"build\t--credential_helper\t*.services.bitrise.io=bitrise-build-cache\n")
+
+				return dir
+			},
+			want: 1,
+		},
+		{
 			name:  "empty start dir returns nothing",
 			setup: func(_ *testing.T) string { return "" },
 			want:  0,
