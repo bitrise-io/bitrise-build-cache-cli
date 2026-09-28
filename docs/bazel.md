@@ -25,78 +25,53 @@ ERROR: Could not find file with name 'bitrise-build-cache' on PATH '...'
 ERROR: Error initializing RemoteModule
 ```
 
-Two ways to make a committed line safe:
+The fix is to install the CLI on every machine that runs Bazel against this
+repo, into a directory that is on `$PATH` **and is not treated as transient**.
 
-### Option 1: Install the CLI on every machine
-
-Simplest. On GitHub Actions add a step before `bazel`:
+### Install on GitHub Actions
 
 ```yaml
-- name: Install bitrise-build-cache
+- name: Install Bitrise Build Cache CLI
   run: |
+    mkdir -p "$HOME/.local/bin"
     curl -sfL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh \
-      | sh -s -- -b /usr/local/bin
+      | sh -s -- -b "$HOME/.local/bin"
+    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+- name: Activate Bitrise Build Cache for Bazel
+  run: bitrise-build-cache activate bazel --cache --cache-push
+
+- name: Bazel build
+  run: bazel build //...
 ```
 
-Same idea for other CI providers — install the CLI into a dir already on
-`$PATH`. On developer laptops, `brew install bitrise-io/bitrise-build-cache/bitrise-build-cache`
-or the same installer script.
+Why `~/.local/bin` and not `/tmp/bin`? The devcenter's older Bazel install
+snippet uses `/tmp/bin`, which breaks the setup in two ways:
+
+- `/tmp` is not on `$PATH` on a hosted GitHub Actions runner. `bazel` still
+  looks the helper up by name and comes back with "not found".
+- Even after you export the full path, `bitrise-build-cache activate bazel`
+  detects that the running binary is under a transient prefix (`/tmp/`,
+  `/var/folders/`, `/private/var/folders/`, `/private/tmp/`) and refuses to
+  write a credential-helper reference that would break the next time the OS
+  garbage-collected the directory. The generated `~/.bazelrc` silently falls
+  back to a static Bearer header, which doesn't cooperate with a committed
+  `--credential_helper` line.
+
+`~/.local/bin` avoids both traps: it survives the runner's lifetime, it's a
+one-line `$GITHUB_PATH` push away from being on `$PATH`, and it works on
+hosted runners, self-hosted runners, and sudoless containers alike. If you
+prefer another location, any persistent, on-PATH directory works —
+`/usr/local/bin` on hosted runners (needs passwordless sudo), `$HOME/bin`,
+`$RUNNER_TOOL_CACHE/...`, etc.
+
+### Install on developer laptops
+
+Same idea: install into a persistent, on-PATH directory. Either
+`brew install bitrise-io/bitrise-build-cache/bitrise-build-cache` or the
+`installer.sh` one-liner pointed at `~/.local/bin` will do.
 
 `bitrise-build-cache activate bazel` and `bitrise-build-cache doctor` will
-warn you when they detect a repo-level `.bazelrc` committing this pin — the
-message points here.
-
-### Option 2: Commit a self-installing shim (portable)
-
-The CLI ships two helpers so a repo can commit the line without every consumer
-having to install the CLI first. Run them once from the workspace root:
-
-```sh
-bitrise-build-cache bazel install-credhelper-shim
-bitrise-build-cache bazel print-credhelper-line >> .bazelrc
-```
-
-- `install-credhelper-shim` writes `tools/bitrise-build-cache-credhelper.sh` —
-  a small POSIX script that locates `bitrise-build-cache` on `$PATH`, and if
-  it's missing, downloads and installs it into a workspace-local
-  `.bitrise-cache/bin/` (idempotent — cached after the first call).
-- `print-credhelper-line` emits:
-  ```
-  build --credential_helper=*.services.bitrise.io=%workspace%/tools/bitrise-build-cache-credhelper.sh
-  ```
-  which Bazel resolves against the workspace root at build time.
-
-Commit both the shim and the `.bazelrc` line. Add `.bitrise-cache/` to
-`.gitignore` — the shim populates it lazily.
-
-The shim pins the CLI version that produced it. Regenerate with
-`install-credhelper-shim --cli-version <tag>` to change the pin, or omit the
-flag to track the running CLI's version.
-
-Both subcommands accept `--dir <path>` if you prefer a location other than
-`tools/`.
-
-**Recommended companion setting.** Bazel keeps credential-helper responses in
-its per-invocation cache; the duration is configurable via
-`--experimental_credential_helper_cache_duration`. A generous value (e.g. `30m`)
-avoids paying the shim's fork+exec cost on every remote call:
-
-```
-build --experimental_credential_helper_cache_duration=30m
-```
-
-**Residual tradeoffs even with the shim.** The shim mitigates the
-"CLI not installed" failure mode, but a repo that commits it takes on two
-things worth naming:
-
-- *Cold-cache install fan-out.* Bazel launches credential-helper processes in
-  parallel (`--loading_phase_threads`). The shim serialises the installer with
-  a `flock`/spinlock gate and atomically moves the binary into place, so racers
-  fall through to exec the winner's binary — but the winning process still
-  pays a one-time download + unpack cost on the first build. The
-  `--experimental_credential_helper_cache_duration` setting above bounds how
-  often the shim is invoked at all.
-- *A moving installer.* The shim's tag pin controls the CLI it downloads, and
-  the `install/installer.sh` URL is pinned to the same tag as the CLI, so a
-  committed shim is reproducible. Re-run `install-credhelper-shim` when you
-  bump the pin.
+warn you when they detect the committed pin AND `bitrise-build-cache` is
+missing from `$PATH` — the message points here. When the CLI IS on `$PATH`
+the pin is silent-OK.
