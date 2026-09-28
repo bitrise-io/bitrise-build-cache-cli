@@ -164,7 +164,7 @@ func TestScanForPinnedHelper(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := tt.setup(t)
-			got, err := ScanForPinnedHelper(start, utils.DefaultOsProxy{})
+			got, err := ScanForPinnedHelper(start, utils.DefaultOsProxy{}, allTracked)
 			require.NoError(t, err)
 			assert.Len(t, got, tt.want)
 			if tt.assert != nil && len(got) > 0 {
@@ -177,4 +177,40 @@ func TestScanForPinnedHelper(t *testing.T) {
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+}
+
+// allTracked pretends every candidate is git-tracked so the scan tests can
+// focus on the parse/collect logic without setting up a real git repo per case.
+func allTracked(string) bool { return true }
+
+// TestScanForPinnedHelper_skipsUntrackedFile guards Zsolt's ask: activate
+// writes a per-user ~/.bazelrc that git would ignore, and the scan must not
+// warn about our own output.
+func TestScanForPinnedHelper_skipsUntrackedFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".bazelrc"),
+		"build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n")
+
+	untracked := func(string) bool { return false }
+
+	got, err := ScanForPinnedHelper(dir, utils.DefaultOsProxy{}, untracked)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// TestScanForPinnedHelper_defaultTrackerFallsBackWhenGitMissing exercises the
+// fallback in DefaultGitTrackedFn: with git absent from PATH the scan errs on
+// the side of surfacing the pin so a real commit still emits the warning.
+func TestScanForPinnedHelper_defaultTrackerFallsBackWhenGitMissing(t *testing.T) {
+	original := lookGit
+	t.Cleanup(func() { lookGit = original })
+	lookGit = func() (string, bool) { return "", false }
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".bazelrc"),
+		"build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n")
+
+	got, err := ScanForPinnedHelper(dir, utils.DefaultOsProxy{}, DefaultGitTrackedFn())
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
 }

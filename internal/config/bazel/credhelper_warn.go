@@ -16,7 +16,7 @@ const installerOneLiner = "curl -sfL https://raw.githubusercontent.com/bitrise-i
 // --credential_helper. Non-fatal: scan errors are logged and swallowed so an
 // unreadable file cannot break activation.
 func WarnIfHelperPinnedInRepo(logger log.Logger, startDir string, osProxy utils.OsProxy) {
-	matches, err := ScanForPinnedHelper(startDir, osProxy)
+	matches, err := ScanForPinnedHelper(startDir, osProxy, nil)
 	if err != nil {
 		logger.Debugf("bazel credhelper scan skipped: %s", err)
 

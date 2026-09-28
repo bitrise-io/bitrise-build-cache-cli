@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -56,9 +57,14 @@ func TestBazelCredHelperCheck(t *testing.T) {
 			dir := t.TempDir()
 			t.Chdir(dir)
 
+			// Init as a git repo so ScanForPinnedHelper's default git-tracked
+			// filter sees the .bazelrc as tracked.
+			runGit(t, dir, "init", "-q")
+
 			if tt.rcContents != "" {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, ".bazelrc"),
 					[]byte(tt.rcContents), 0o600))
+				runGit(t, dir, "add", ".bazelrc")
 			}
 
 			d := &Doctor{
@@ -77,4 +83,12 @@ func TestBazelCredHelperCheck(t *testing.T) {
 			assert.Contains(t, res.Detail, tt.wantDetail)
 		})
 	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
 }

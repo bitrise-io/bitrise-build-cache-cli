@@ -2,7 +2,9 @@ package bazelconfig
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -18,6 +20,10 @@ type PinnedHelperMatch struct {
 	Line       string
 }
 
+// GitTrackedFn reports whether the given absolute path is tracked by git.
+// A nil GitTrackedFn tells ScanForPinnedHelper to fall back to DefaultGitTrackedFn.
+type GitTrackedFn func(path string) bool
+
 // workspaceMarkers are the file names Bazel treats as workspace roots.
 //
 //nolint:gochecknoglobals
@@ -27,9 +33,17 @@ var workspaceMarkers = []string{"WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel"}
 // files Bazel would load ($PWD/.bazelrc, $PWD/tools/bazel.rc, workspace-root
 // .bazelrc) and returns every uncommented line that pins the CLI as
 // --credential_helper for a Bitrise scope.
-func ScanForPinnedHelper(startDir string, osProxy utils.OsProxy) ([]PinnedHelperMatch, error) {
+//
+// Only files git considers tracked are scanned — activation itself writes a
+// per-user ~/.bazelrc that git would ignore, and we do not want to warn about
+// our own output. When git isn't available (missing binary, path outside a
+// repo), the file is treated as tracked so a real committed pin still surfaces.
+func ScanForPinnedHelper(startDir string, osProxy utils.OsProxy, isTracked GitTrackedFn) ([]PinnedHelperMatch, error) {
 	if startDir == "" {
 		return nil, nil
+	}
+	if isTracked == nil {
+		isTracked = DefaultGitTrackedFn()
 	}
 
 	candidates := collectRcCandidates(startDir, osProxy)
@@ -42,6 +56,10 @@ func ScanForPinnedHelper(startDir string, osProxy utils.OsProxy) ([]PinnedHelper
 		}
 		seen[path] = true
 
+		if !isTracked(path) {
+			continue
+		}
+
 		matches, err := scanFile(path, osProxy)
 		if err != nil {
 			return nil, err
@@ -50,6 +68,42 @@ func ScanForPinnedHelper(startDir string, osProxy utils.OsProxy) ([]PinnedHelper
 	}
 
 	return out, nil
+}
+
+// DefaultGitTrackedFn returns a GitTrackedFn backed by `git ls-files
+// --error-unmatch`. Any error (git missing, path outside a repo, path
+// untracked) is treated as "not tracked" — except when git itself is missing,
+// in which case the path is treated as tracked so a real committed pin on a
+// git-less machine (rare, but possible in build sandboxes) still surfaces.
+func DefaultGitTrackedFn() GitTrackedFn {
+	gitPath, gitAvailable := lookGit()
+
+	return func(path string) bool {
+		if !gitAvailable {
+			return true
+		}
+
+		dir := filepath.Dir(path)
+		base := filepath.Base(path)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, gitPath, "ls-files", "--error-unmatch", "--", base)
+		cmd.Dir = dir
+
+		return cmd.Run() == nil
+	}
+}
+
+//nolint:gochecknoglobals // resolved once at process start; injected in tests
+var lookGit = func() (string, bool) {
+	p, err := exec.LookPath("git")
+	if err != nil {
+		return "", false
+	}
+
+	return p, true
 }
 
 func collectRcCandidates(startDir string, osProxy utils.OsProxy) []string {

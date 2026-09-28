@@ -17,7 +17,7 @@ func (d *Doctor) bazelCredHelperCheck() Check {
 				return Result{State: StateOK, Detail: fmt.Sprintf("skipped: %s", err)}
 			}
 
-			matches, err := bazelconfig.ScanForPinnedHelper(cwd, d.osProxy())
+			matches, err := bazelconfig.ScanForPinnedHelper(cwd, d.osProxy(), nil)
 			if err != nil {
 				return Result{State: StateWarn, Detail: fmt.Sprintf("scan failed: %s", err)}
 			}
