@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
@@ -19,6 +20,11 @@ var (
 	installShimDir     string
 	installShimVersion string
 )
+
+// cliVersionPattern restricts what may be templated into the shim script body.
+//
+//nolint:gochecknoglobals
+var cliVersionPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 //nolint:gochecknoglobals
 var installCredHelperShimCmd = &cobra.Command{
@@ -43,6 +49,9 @@ succeed on the first ` + "`" + `bazel build` + "`" + `.`,
 		version := installShimVersion
 		if version == "" {
 			version = configcommon.GetCLIVersion(logger)
+		}
+		if version != "" && !cliVersionPattern.MatchString(version) {
+			return fmt.Errorf("invalid --cli-version %q: expected [A-Za-z0-9._-]+", version)
 		}
 
 		absDir, err := filepath.Abs(dir)

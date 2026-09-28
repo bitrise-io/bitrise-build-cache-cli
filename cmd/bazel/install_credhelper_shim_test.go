@@ -37,6 +37,22 @@ func TestInstallCredHelperShim_writesExecutableShim(t *testing.T) {
 	assert.Contains(t, string(body), "command -v bitrise-build-cache")
 }
 
+func TestInstallCredHelperShim_rejectsMaliciousVersion(t *testing.T) {
+	dir := t.TempDir()
+	installShimDir = dir
+	// Command injection attempt: a shell-quote breakout followed by a payload.
+	installShimVersion = `v1.0"; rm -rf /"`
+	t.Cleanup(func() { installShimDir = ""; installShimVersion = "" })
+
+	err := installCredHelperShimCmd.RunE(installCredHelperShimCmd, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --cli-version")
+
+	shim := filepath.Join(dir, paths.BazelCredHelperShimName)
+	_, statErr := os.Stat(shim)
+	assert.True(t, os.IsNotExist(statErr), "shim must not be written when validation fails")
+}
+
 func TestInstallCredHelperShim_idempotent(t *testing.T) {
 	dir := t.TempDir()
 	installShimDir = dir
