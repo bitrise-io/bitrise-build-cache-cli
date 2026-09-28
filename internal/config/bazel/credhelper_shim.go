@@ -8,7 +8,9 @@ import (
 //go:embed credhelper_shim.sh
 var credHelperShimTemplate string
 
-const credHelperVersionPlaceholder = "__BITRISE_BUILD_CACHE_VERSION__" //nolint:gosec // sentinel string, not a credential
+// credHelperVersionPlaceholder is the sentinel that RenderCredHelperShim
+// replaces with the pinned CLI version when producing the shim body.
+const credHelperVersionPlaceholder = "__BITRISE_BUILD_CACHE_VERSION__"
 
 // RenderCredHelperShim returns the shim script body with the version pin
 // substituted. Pass "" or "latest" to leave the shim tracking the latest tag.

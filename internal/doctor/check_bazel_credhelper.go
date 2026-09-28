@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -26,7 +25,8 @@ func (d *Doctor) bazelCredHelperCheck() Check {
 				return Result{State: StateOK, Detail: "no repo-level credential-helper pin"}
 			}
 
-			cliOnPATH := d.cliOnPATH()
+			_, lookErr := d.LookPath(paths.CLIBinaryName)
+			cliOnPATH := lookErr == nil
 
 			state := StateWarn
 			prefix := "repo-level Bazel credential-helper pin detected"
@@ -41,14 +41,4 @@ func (d *Doctor) bazelCredHelperCheck() Check {
 			}
 		},
 	}
-}
-
-func (d *Doctor) cliOnPATH() bool {
-	if d.LookPath == nil {
-		return clibin.OnPATH()
-	}
-
-	_, err := d.LookPath(paths.CLIBinaryName)
-
-	return err == nil
 }

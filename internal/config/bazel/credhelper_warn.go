@@ -41,6 +41,8 @@ func PinnedHelperWarning(matches []PinnedHelperMatch) string {
 	b.WriteString("Every machine running `bazel build` on this repo must have `bitrise-build-cache` on PATH.\n")
 	b.WriteString("On CI runners (GitHub Actions in particular) install it e.g.\n")
 	b.WriteString("  " + installerOneLiner + "\n")
+	b.WriteString("Or commit a self-installing shim so runners without the CLI still succeed:\n")
+	b.WriteString("  bitrise-build-cache bazel install-credhelper-shim\n")
 	b.WriteString("Alternatively move the line into ~/.bazelrc (per-user, uncommitted) — " +
 		"that is what `bitrise-build-cache activate bazel` already does.")
 

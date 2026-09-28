@@ -112,21 +112,17 @@ func scanFile(path string, osProxy utils.OsProxy) ([]PinnedHelperMatch, error) {
 
 // isPinnedHelperLine reports whether a bazelrc line commits the Bitrise CLI as
 // credential_helper. Matches either the Bitrise scope or a bare
-// bitrise-build-cache binary reference. Ignores comments.
+// bitrise-build-cache binary reference. Handles both `--credential_helper=X`
+// and space-separated `--credential_helper X`. Ignores comments.
 func isPinnedHelperLine(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 		return false
 	}
 
-	idx := strings.Index(trimmed, "--credential_helper=")
-	if idx == -1 {
+	value, ok := extractCredHelperValue(trimmed)
+	if !ok {
 		return false
-	}
-
-	value := trimmed[idx+len("--credential_helper="):]
-	if end := strings.IndexAny(value, " \t"); end != -1 {
-		value = value[:end]
 	}
 
 	if strings.Contains(value, "*.services.bitrise.io") {
@@ -139,4 +135,39 @@ func isPinnedHelperLine(line string) bool {
 	}
 
 	return filepath.Base(binary) == paths.CLIBinaryName
+}
+
+// extractCredHelperValue pulls the value (SCOPE=BIN or BIN) out of a
+// --credential_helper flag, whether it is written with `=` or a space
+// separator.
+func extractCredHelperValue(line string) (string, bool) {
+	const flag = "--credential_helper"
+
+	idx := strings.Index(line, flag)
+	if idx == -1 {
+		return "", false
+	}
+
+	rest := line[idx+len(flag):]
+	if rest == "" {
+		return "", false
+	}
+
+	switch rest[0] {
+	case '=':
+		rest = rest[1:]
+	case ' ', '\t':
+		rest = strings.TrimLeft(rest, " \t")
+	default:
+		return "", false
+	}
+
+	if end := strings.IndexAny(rest, " \t"); end != -1 {
+		rest = rest[:end]
+	}
+	if rest == "" {
+		return "", false
+	}
+
+	return rest, true
 }

@@ -10,10 +10,33 @@ set -eu
 BITRISE_BUILD_CACHE_VERSION="__BITRISE_BUILD_CACHE_VERSION__"
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-# The shim lives at <workspace>/tools/... by convention; the workspace root is
-# the parent of its containing dir. Callers overriding --dir must keep the
-# shim one level deep, or set BITRISE_BUILD_CACHE_WORKSPACE_ROOT.
-workspace_root="${BITRISE_BUILD_CACHE_WORKSPACE_ROOT:-$(cd "${script_dir}/.." && pwd)}"
+# Walk up from the shim looking for a Bazel workspace marker so a nested
+# --dir (e.g. tools/bazel/) still resolves the right root.
+find_workspace_root() {
+  dir="$1"
+  while [ "${dir}" != "/" ] && [ -n "${dir}" ]; do
+    for marker in WORKSPACE WORKSPACE.bazel MODULE.bazel; do
+      if [ -e "${dir}/${marker}" ]; then
+        printf '%s' "${dir}"
+
+        return 0
+      fi
+    done
+    dir="$(dirname "${dir}")"
+  done
+
+  return 1
+}
+
+if [ -n "${BITRISE_BUILD_CACHE_WORKSPACE_ROOT:-}" ]; then
+  workspace_root="${BITRISE_BUILD_CACHE_WORKSPACE_ROOT}"
+elif workspace_root="$(find_workspace_root "${script_dir}")"; then
+  :
+else
+  # No marker found (e.g. running outside a Bazel workspace during a smoke
+  # test). Fall back to the shim's parent dir, matching the pre-walk behaviour.
+  workspace_root="$(cd "${script_dir}/.." && pwd)"
+fi
 cache_bin="${workspace_root}/.bitrise-cache/bin"
 cached_cli="${cache_bin}/bitrise-build-cache"
 
