@@ -31,7 +31,7 @@ const (
 	GradleCommonPluginDepVersion = "1.2.0"
 
 	// Gradle Test Distribution Plugin version
-	GradleTestDistributionPluginDepVersion = "2.2.12"
+	GradleTestDistributionPluginDepVersion = "3.0.0"
 	GradleTestDistributionEndpoint         = "grpcs://bitrise-accelerate.services.bitrise.io"
 	GradleTestDistributionKvEndpoint       = "grpcs://bitrise-accelerate.services.bitrise.io"
 	GradleTestDistributionPort             = 443
