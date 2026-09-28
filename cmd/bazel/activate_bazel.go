@@ -74,6 +74,10 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
 
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		bazelconfig.WarnIfHelperPinnedInRepo(logger, cwd, utils.DefaultOsProxy{})
+	}
+
 	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
 		return fmt.Errorf("persist project mode: %w", err)
 	}
