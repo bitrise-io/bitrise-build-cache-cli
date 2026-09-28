@@ -375,6 +375,51 @@ func Test_activateGradleParams(t *testing.T) {
 			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroPoolName)).Error(),
 		},
 		{
+			name: "test distro pool name is trimmed before rendering",
+			params: ActivateGradleParams{
+				Cache:     CacheParams{Enabled: false},
+				Analytics: AnalyticsParams{Enabled: false},
+				TestDistro: TestDistroParams{
+					Enabled:   true,
+					ShardSize: 25,
+					PoolName:  "  pool-a  ",
+				},
+			},
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
+				"BITRISE_APP_SLUG":                 "AppSlugValue",
+			},
+			want: TemplateInventory{
+				Common: PluginCommonTemplateInventory{
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
+				},
+				Cache: CacheTemplateInventory{
+					Usage: UsageLevelNone,
+				},
+				Analytics: AnalyticsTemplateInventory{
+					Usage: UsageLevelNone,
+				},
+				TestDistro: TestDistroTemplateInventory{
+					Usage:      UsageLevelEnabled,
+					Version:    consts.GradleTestDistributionPluginDepVersion,
+					Endpoint:   consts.GradleTestDistributionEndpoint,
+					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
+					Port:       consts.GradleTestDistributionPort,
+					LogLevel:   "warning",
+					ShardSize:  25,
+					PoolName:   "pool-a",
+				},
+			},
+		},
+		{
 			name:  "activate plugins with debug mode",
 			debug: true,
 			params: ActivateGradleParams{

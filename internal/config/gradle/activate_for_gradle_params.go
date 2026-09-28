@@ -312,6 +312,6 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		LogLevel:        logLevel,
 		ShardSize:       params.TestDistro.ShardSize,
 		TestSearchDepth: params.TestDistro.TestSearchDepth,
-		PoolName:        params.TestDistro.PoolName,
+		PoolName:        strings.TrimSpace(params.TestDistro.PoolName),
 	}, nil
 }
