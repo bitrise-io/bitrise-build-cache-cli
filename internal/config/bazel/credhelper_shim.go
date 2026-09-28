@@ -10,6 +10,8 @@ var credHelperShimTemplate string
 
 // credHelperVersionPlaceholder is the sentinel that RenderCredHelperShim
 // replaces with the pinned CLI version when producing the shim body.
+//
+//nolint:gosec // sentinel placeholder for template substitution
 const credHelperVersionPlaceholder = "__BITRISE_BUILD_CACHE_VERSION__"
 
 // RenderCredHelperShim returns the shim script body with the version pin
