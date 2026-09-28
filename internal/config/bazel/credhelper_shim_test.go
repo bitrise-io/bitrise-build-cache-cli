@@ -19,6 +19,16 @@ func TestRenderCredHelperShim_substitutesVersion(t *testing.T) {
 	assert.NotContains(t, body, credHelperVersionPlaceholder)
 }
 
+// The installer URL must resolve to the same tag as the CLI pin, so a shim
+// committed at v1 does not silently pick up a breaking installer from main.
+func TestRenderCredHelperShim_installerURLDerivedFromPin(t *testing.T) {
+	pinned := RenderCredHelperShim("v1.2.3")
+	assert.Contains(t, pinned, "installer_ref=\"${BITRISE_BUILD_CACHE_VERSION}\"")
+	assert.Contains(t, pinned, `installer_ref="main"`) // fallback branch present
+	assert.Contains(t, pinned, "raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/${installer_ref}/install/installer.sh")
+	assert.NotContains(t, pinned, "bitrise-build-cache-cli/main/install/installer.sh")
+}
+
 func TestCredHelperLineSnippet_expectedFormat(t *testing.T) {
 	got := CredHelperLineSnippet("tools/bitrise-build-cache-credhelper.sh")
 	assert.Equal(t, "build --credential_helper=*.services.bitrise.io=%workspace%/tools/bitrise-build-cache-credhelper.sh\n", got)

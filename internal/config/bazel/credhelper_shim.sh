@@ -27,7 +27,11 @@ fi
 
 mkdir -p "${cache_bin}"
 
-installer_url="https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh"
+installer_ref="${BITRISE_BUILD_CACHE_VERSION}"
+if [ -z "${installer_ref}" ] || [ "${installer_ref}" = "latest" ]; then
+  installer_ref="main"
+fi
+installer_url="https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/${installer_ref}/install/installer.sh"
 
 fetch() {
   if command -v curl >/dev/null 2>&1; then
