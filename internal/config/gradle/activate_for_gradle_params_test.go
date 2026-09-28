@@ -300,6 +300,7 @@ func Test_activateGradleParams(t *testing.T) {
 					Enabled:        true,
 					JustDependency: true, // gets overridden by enable
 					ShardSize:      25,
+					PoolName:       "pool-a",
 				},
 			},
 			envVars: map[string]string{
@@ -332,6 +333,89 @@ func Test_activateGradleParams(t *testing.T) {
 					Port:       consts.GradleTestDistributionPort,
 					LogLevel:   "warning",
 					ShardSize:  25,
+					PoolName:   "pool-a",
+				},
+			},
+		},
+		{
+			name: "test distro enabled without pool name errors",
+			params: ActivateGradleParams{
+				Cache:     CacheParams{Enabled: false},
+				Analytics: AnalyticsParams{Enabled: false},
+				TestDistro: TestDistroParams{
+					Enabled: true,
+				},
+			},
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
+				"BITRISE_APP_SLUG":                 "AppSlugValue",
+			},
+			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroPoolName)).Error(),
+		},
+		{
+			name: "test distro enabled with blank pool name errors",
+			params: ActivateGradleParams{
+				Cache:     CacheParams{Enabled: false},
+				Analytics: AnalyticsParams{Enabled: false},
+				TestDistro: TestDistroParams{
+					Enabled:  true,
+					PoolName: "   ",
+				},
+			},
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
+				"BITRISE_APP_SLUG":                 "AppSlugValue",
+			},
+			wantErr: fmt.Errorf(errFmtTestDistroConfigCreation, errors.New(errFmtTestDistroPoolName)).Error(),
+		},
+		{
+			name: "test distro pool name is trimmed before rendering",
+			params: ActivateGradleParams{
+				Cache:     CacheParams{Enabled: false},
+				Analytics: AnalyticsParams{Enabled: false},
+				TestDistro: TestDistroParams{
+					Enabled:   true,
+					ShardSize: 25,
+					PoolName:  "  pool-a  ",
+				},
+			},
+			envVars: map[string]string{
+				"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+				"BITRISE_IO":                       "true",
+				"BITRISE_BUILD_SLUG":               "BuildSlugValue",
+				"BITRISE_APP_SLUG":                 "AppSlugValue",
+			},
+			want: TemplateInventory{
+				Common: PluginCommonTemplateInventory{
+					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
+					AppSlug:     "AppSlugValue",
+					CIProvider:  "bitrise",
+					Version:     consts.GradleCommonPluginDepVersion,
+					CLIPath:     "bitrise-build-cache",
+					ProjectMode: "always",
+				},
+				Cache: CacheTemplateInventory{
+					Usage: UsageLevelNone,
+				},
+				Analytics: AnalyticsTemplateInventory{
+					Usage: UsageLevelNone,
+				},
+				TestDistro: TestDistroTemplateInventory{
+					Usage:      UsageLevelEnabled,
+					Version:    consts.GradleTestDistributionPluginDepVersion,
+					Endpoint:   consts.GradleTestDistributionEndpoint,
+					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
+					Port:       consts.GradleTestDistributionPort,
+					LogLevel:   "warning",
+					ShardSize:  25,
+					PoolName:   "pool-a",
 				},
 			},
 		},
@@ -348,6 +432,7 @@ func Test_activateGradleParams(t *testing.T) {
 				TestDistro: TestDistroParams{
 					Enabled:        true,
 					JustDependency: true, // gets overridden by enable
+					PoolName:       "pool-b",
 				},
 			},
 			envVars: map[string]string{
@@ -380,6 +465,7 @@ func Test_activateGradleParams(t *testing.T) {
 					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 					Port:       consts.GradleTestDistributionPort,
 					LogLevel:   "debug",
+					PoolName:   "pool-b",
 				},
 			},
 		},
