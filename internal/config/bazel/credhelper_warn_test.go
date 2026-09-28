@@ -22,7 +22,7 @@ func TestWarnIfHelperPinnedInRepo_silentWhenNoMatch(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 
-	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{})
+	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{}, false)
 
 	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything, mock.Anything)
 	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything)
@@ -36,13 +36,29 @@ func TestWarnIfHelperPinnedInRepo_warnsOnMatch(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 
-	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{})
+	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{}, false)
 
 	mockLogger.AssertCalled(t, "Warnf", "%s", mock.MatchedBy(func(s string) bool {
 		return assert.Contains(t, s, rc) &&
 			assert.Contains(t, s, "services.bitrise.io") &&
 			assert.Contains(t, s, "installer.sh")
 	}))
+}
+
+// TestWarnIfHelperPinnedInRepo_silentWhenCLIOnPATH covers Zsolt's ask: a pin is
+// fine when the CLI IS on PATH — the failure mode we warn about only bites
+// consumers who don't have it.
+func TestWarnIfHelperPinnedInRepo_silentWhenCLIOnPATH(t *testing.T) {
+	dir := gitRepoWithTrackedBazelrc(t,
+		"build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n")
+
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+
+	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{}, true)
+
+	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything, mock.Anything)
+	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything)
 }
 
 // gitRepoWithTrackedBazelrc creates a temp git repo with a committed .bazelrc,

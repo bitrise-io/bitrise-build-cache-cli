@@ -17,6 +17,16 @@ func (d *Doctor) bazelCredHelperCheck() Check {
 				return Result{State: StateOK, Detail: fmt.Sprintf("skipped: %s", err)}
 			}
 
+			_, lookErr := d.LookPath(paths.CLIBinaryName)
+			cliOnPATH := lookErr == nil
+
+			// A committed pin only breaks builds where the CLI is missing from
+			// PATH; when it's there the pin resolves fine and there is nothing
+			// to flag.
+			if cliOnPATH {
+				return Result{State: StateOK, Detail: "no actionable pin (CLI on PATH)"}
+			}
+
 			matches, err := bazelconfig.ScanForPinnedHelper(cwd, d.osProxy(), nil)
 			if err != nil {
 				return Result{State: StateWarn, Detail: fmt.Sprintf("scan failed: %s", err)}
@@ -25,18 +35,10 @@ func (d *Doctor) bazelCredHelperCheck() Check {
 				return Result{State: StateOK, Detail: "no repo-level credential-helper pin"}
 			}
 
-			_, lookErr := d.LookPath(paths.CLIBinaryName)
-			cliOnPATH := lookErr == nil
-
-			state := StateWarn
-			prefix := "repo-level Bazel credential-helper pin detected"
-			if !cliOnPATH {
-				state = StateError
-				prefix = "repo-level Bazel credential-helper pin detected AND `" + paths.CLIBinaryName + "` is not on PATH — every `bazel build` here will fail"
-			}
+			prefix := "repo-level Bazel credential-helper pin detected AND `" + paths.CLIBinaryName + "` is not on PATH — every `bazel build` here will fail"
 
 			return Result{
-				State:  state,
+				State:  StateError,
 				Detail: prefix + ".\n" + bazelconfig.PinnedHelperWarning(matches),
 			}
 		},

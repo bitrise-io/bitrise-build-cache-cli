@@ -27,14 +27,14 @@ func TestBazelCredHelperCheck(t *testing.T) {
 			rcContents: "",
 			cliOnPATH:  true,
 			wantState:  StateOK,
-			wantDetail: "no repo-level",
+			wantDetail: "CLI on PATH",
 		},
 		{
-			name:       "pin + CLI present → warn",
+			name:       "pin + CLI present → silent OK",
 			rcContents: "build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n",
 			cliOnPATH:  true,
-			wantState:  StateWarn,
-			wantDetail: "credential-helper pin",
+			wantState:  StateOK,
+			wantDetail: "CLI on PATH",
 		},
 		{
 			name:       "pin + CLI missing → error",
