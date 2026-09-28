@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,6 +92,82 @@ func TestCredHelperShim_ReusesCachedCLI(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "output: %s", string(out))
 	assert.Contains(t, string(out), "CACHED_HIT get")
+}
+
+// Concurrent shim invocations on a cold cache must serialise on the install
+// lock — only one fetch happens, and every process ends up exec-ing an intact
+// binary.
+func TestCredHelperShim_ConcurrentInstallSerialises(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell shim only supported on POSIX platforms")
+	}
+
+	workspace := t.TempDir()
+	toolsDir := filepath.Join(workspace, "tools")
+	require.NoError(t, os.MkdirAll(toolsDir, 0o755))
+	shim := filepath.Join(toolsDir, "bitrise-build-cache-credhelper.sh")
+	require.NoError(t, os.WriteFile(shim, []byte(RenderCredHelperShim("v1.2.3")), 0o755)) //nolint:gosec
+
+	// Fake installer that logs each invocation and writes a stub CLI slowly, so
+	// racers overlap. We serve it via a fake `curl` that just prints the script.
+	callLog := filepath.Join(workspace, "installer-calls.log")
+	fakeInstaller := "#!/bin/sh\n" +
+		"echo installer-call >>" + callLog + "\n" +
+		"# parse -b <dir>\n" +
+		"while [ $# -gt 0 ]; do\n" +
+		"  case \"$1\" in\n" +
+		"    -b) shift; out_dir=\"$1\"; shift ;;\n" +
+		"    *) shift ;;\n" +
+		"  esac\n" +
+		"done\n" +
+		"mkdir -p \"$out_dir\"\n" +
+		"sleep 0.3\n" +
+		"cat >\"$out_dir/bitrise-build-cache\" <<'STUB'\n" +
+		"#!/bin/sh\n" +
+		"echo INSTALLED_HIT $*\n" +
+		"STUB\n" +
+		"chmod +x \"$out_dir/bitrise-build-cache\"\n"
+
+	fakeBin := filepath.Join(workspace, "fake-bin")
+	require.NoError(t, os.MkdirAll(fakeBin, 0o755))
+	// Fake curl echoes the installer body regardless of URL.
+	curlScript := "#!/bin/sh\ncat <<'INSTALLER'\n" + fakeInstaller + "INSTALLER\n"
+	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "curl"), []byte(curlScript), 0o755)) //nolint:gosec
+
+	const workers = 8
+	outs := make([][]byte, workers)
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			cmd := exec.Command("/bin/sh", shim, "get") //nolint:noctx // fixed argv, deterministic runtime
+			cmd.Env = []string{
+				"PATH=" + fakeBin + ":/usr/bin:/bin",
+				"BITRISE_BUILD_CACHE_WORKSPACE_ROOT=" + workspace,
+			}
+			outs[i], errs[i] = cmd.CombinedOutput()
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < workers; i++ {
+		require.NoError(t, errs[i], "worker %d output: %s", i, string(outs[i]))
+		assert.Contains(t, string(outs[i]), "INSTALLED_HIT get", "worker %d", i)
+	}
+
+	// The installer must have run exactly once (double-check-after-lock).
+	logBytes, err := os.ReadFile(callLog)
+	require.NoError(t, err)
+	// Count non-empty lines.
+	calls := 0
+	for _, b := range logBytes {
+		if b == '\n' {
+			calls++
+		}
+	}
+	assert.Equal(t, 1, calls, "installer should have run exactly once, got %d\nlog:\n%s", calls, string(logBytes))
 }
 
 // With no CLI on PATH and no network, the shim must fail loudly and never

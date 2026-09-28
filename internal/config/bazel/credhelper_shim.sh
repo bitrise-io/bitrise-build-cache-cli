@@ -45,25 +45,87 @@ fetch() {
   fi
 }
 
-installer_body="$(fetch "${installer_url}")" || {
-  echo "bitrise-build-cache-credhelper: failed to download installer from ${installer_url}" >&2
-  echo "Install bitrise-build-cache manually: https://github.com/bitrise-io/bitrise-build-cache-cli" >&2
-  exit 1
+# Bazel spawns credential helpers in parallel (loading_phase_threads). Serialise
+# the install so concurrent shims cannot stomp each other's writes on cold
+# cache. Losers of the race fall through to `exec` the winner's binary.
+install_cli() {
+  install_tmp="${cache_bin}/.install.$$.tmp"
+  rm -rf "${install_tmp}"
+  mkdir -p "${install_tmp}"
+
+  installer_body="$(fetch "${installer_url}")" || {
+    echo "bitrise-build-cache-credhelper: failed to download installer from ${installer_url}" >&2
+    echo "Install bitrise-build-cache manually: https://github.com/bitrise-io/bitrise-build-cache-cli" >&2
+    rm -rf "${install_tmp}"
+
+    return 1
+  }
+
+  install_args="-b ${install_tmp}"
+  if [ -n "${BITRISE_BUILD_CACHE_VERSION}" ] && [ "${BITRISE_BUILD_CACHE_VERSION}" != "latest" ]; then
+    install_args="${install_args} ${BITRISE_BUILD_CACHE_VERSION}"
+  fi
+
+  # shellcheck disable=SC2086
+  if ! printf '%s' "${installer_body}" | sh -s -- ${install_args} >&2; then
+    echo "bitrise-build-cache-credhelper: installer.sh failed" >&2
+    rm -rf "${install_tmp}"
+
+    return 1
+  fi
+
+  if [ ! -x "${install_tmp}/bitrise-build-cache" ]; then
+    echo "bitrise-build-cache-credhelper: installer ran but ${install_tmp}/bitrise-build-cache is missing" >&2
+    rm -rf "${install_tmp}"
+
+    return 1
+  fi
+
+  mv -f "${install_tmp}/bitrise-build-cache" "${cached_cli}"
+  rm -rf "${install_tmp}"
 }
 
-install_args="-b ${cache_bin}"
-if [ -n "${BITRISE_BUILD_CACHE_VERSION}" ] && [ "${BITRISE_BUILD_CACHE_VERSION}" != "latest" ]; then
-  install_args="${install_args} ${BITRISE_BUILD_CACHE_VERSION}"
-fi
+lockfile="${cache_bin}/.install.lock"
+: > "${lockfile}" 2>/dev/null || true
 
-# shellcheck disable=SC2086
-if ! printf '%s' "${installer_body}" | sh -s -- ${install_args} >&2; then
-  echo "bitrise-build-cache-credhelper: installer.sh failed" >&2
-  exit 1
+if command -v flock >/dev/null 2>&1; then
+  (
+    flock -x 9 || exit 1
+    if [ -x "${cached_cli}" ]; then
+      exit 0
+    fi
+    install_cli
+  ) 9>"${lockfile}" || exit 1
+else
+  # Portable fallback: mkdir spinlock. Cap the wait so a stale lockdir cannot
+  # hang the build forever; the loser rechecks the cached binary anyway.
+  spinlock_dir="${cache_bin}/.install.spinlock"
+  i=0
+  while ! mkdir "${spinlock_dir}" 2>/dev/null; do
+    if [ -x "${cached_cli}" ]; then
+      break
+    fi
+    i=$((i + 1))
+    if [ "${i}" -gt 300 ]; then
+      # ~30s: assume a dead process, break the lock and try ourselves.
+      rmdir "${spinlock_dir}" 2>/dev/null || true
+
+      continue
+    fi
+    sleep 0.1
+  done
+  if [ ! -x "${cached_cli}" ]; then
+    trap 'rmdir "${spinlock_dir}" 2>/dev/null || true' EXIT
+    install_cli || {
+      rmdir "${spinlock_dir}" 2>/dev/null || true
+      exit 1
+    }
+  fi
+  rmdir "${spinlock_dir}" 2>/dev/null || true
 fi
 
 if [ ! -x "${cached_cli}" ]; then
-  echo "bitrise-build-cache-credhelper: installer ran but ${cached_cli} is missing" >&2
+  echo "bitrise-build-cache-credhelper: install completed but ${cached_cli} is missing" >&2
   exit 1
 fi
 
