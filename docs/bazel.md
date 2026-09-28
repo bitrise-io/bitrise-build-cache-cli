@@ -75,3 +75,28 @@ flag to track the running CLI's version.
 
 Both subcommands accept `--dir <path>` if you prefer a location other than
 `tools/`.
+
+**Recommended companion setting.** Bazel keeps credential-helper responses in
+its per-invocation cache; the duration is configurable via
+`--experimental_credential_helper_cache_duration`. A generous value (e.g. `30m`)
+avoids paying the shim's fork+exec cost on every remote call:
+
+```
+build --experimental_credential_helper_cache_duration=30m
+```
+
+**Residual tradeoffs even with the shim.** The shim mitigates the
+"CLI not installed" failure mode, but a repo that commits it takes on two
+things worth naming:
+
+- *Cold-cache install fan-out.* Bazel launches credential-helper processes in
+  parallel (`--loading_phase_threads`). The shim serialises the installer with
+  a `flock`/spinlock gate and atomically moves the binary into place, so racers
+  fall through to exec the winner's binary — but the winning process still
+  pays a one-time download + unpack cost on the first build. The
+  `--experimental_credential_helper_cache_duration` setting above bounds how
+  often the shim is invoked at all.
+- *A moving installer.* The shim's tag pin controls the CLI it downloads, and
+  the `install/installer.sh` URL is pinned to the same tag as the CLI, so a
+  committed shim is reproducible. Re-run `install-credhelper-shim` when you
+  bump the pin.
