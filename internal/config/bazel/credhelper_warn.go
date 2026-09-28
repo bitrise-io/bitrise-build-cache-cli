@@ -1,6 +1,7 @@
 package bazelconfig
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -26,12 +27,12 @@ const installerSnippet = `mkdir -p "$HOME/.local/bin"
 // cliOnPATH short-circuits the warning: the failure mode a pin causes only
 // bites machines where `bitrise-build-cache` is missing from $PATH, so we do
 // not need to warn a caller that already has it.
-func WarnIfHelperPinnedInRepo(logger log.Logger, startDir string, osProxy utils.OsProxy, cliOnPATH bool) {
+func WarnIfHelperPinnedInRepo(ctx context.Context, logger log.Logger, startDir string, osProxy utils.OsProxy, cliOnPATH bool) {
 	if cliOnPATH {
 		return
 	}
 
-	matches, err := ScanForPinnedHelper(startDir, osProxy, nil)
+	matches, err := ScanForPinnedHelper(ctx, startDir, osProxy, nil)
 	if err != nil {
 		logger.Debugf("bazel credhelper scan skipped: %s", err)
 

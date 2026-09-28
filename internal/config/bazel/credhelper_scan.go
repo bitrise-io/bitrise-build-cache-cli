@@ -38,12 +38,12 @@ var workspaceMarkers = []string{"WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel"}
 // per-user ~/.bazelrc that git would ignore, and we do not want to warn about
 // our own output. When git isn't available (missing binary, path outside a
 // repo), the file is treated as tracked so a real committed pin still surfaces.
-func ScanForPinnedHelper(startDir string, osProxy utils.OsProxy, isTracked GitTrackedFn) ([]PinnedHelperMatch, error) {
+func ScanForPinnedHelper(ctx context.Context, startDir string, osProxy utils.OsProxy, isTracked GitTrackedFn) ([]PinnedHelperMatch, error) {
 	if startDir == "" {
 		return nil, nil
 	}
 	if isTracked == nil {
-		isTracked = DefaultGitTrackedFn()
+		isTracked = DefaultGitTrackedFn(ctx)
 	}
 
 	candidates := collectRcCandidates(startDir, osProxy)
@@ -75,7 +75,7 @@ func ScanForPinnedHelper(startDir string, osProxy utils.OsProxy, isTracked GitTr
 // untracked) is treated as "not tracked" — except when git itself is missing,
 // in which case the path is treated as tracked so a real committed pin on a
 // git-less machine (rare, but possible in build sandboxes) still surfaces.
-func DefaultGitTrackedFn() GitTrackedFn {
+func DefaultGitTrackedFn(ctx context.Context) GitTrackedFn {
 	gitPath, gitAvailable := lookGit()
 
 	return func(path string) bool {
@@ -85,9 +85,6 @@ func DefaultGitTrackedFn() GitTrackedFn {
 
 		dir := filepath.Dir(path)
 		base := filepath.Base(path)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
 		cmd := exec.CommandContext(ctx, gitPath, "ls-files", "--error-unmatch", "--", base)
 		cmd.Dir = dir

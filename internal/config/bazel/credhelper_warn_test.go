@@ -3,6 +3,7 @@
 package bazelconfig
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,7 +23,7 @@ func TestWarnIfHelperPinnedInRepo_silentWhenNoMatch(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 
-	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{}, false)
+	WarnIfHelperPinnedInRepo(context.Background(), mockLogger, dir, utils.DefaultOsProxy{}, false)
 
 	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything, mock.Anything)
 	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything)
@@ -36,7 +37,7 @@ func TestWarnIfHelperPinnedInRepo_warnsOnMatch(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 
-	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{}, false)
+	WarnIfHelperPinnedInRepo(context.Background(), mockLogger, dir, utils.DefaultOsProxy{}, false)
 
 	mockLogger.AssertCalled(t, "Warnf", "%s", mock.MatchedBy(func(s string) bool {
 		return assert.Contains(t, s, rc) &&
@@ -55,7 +56,7 @@ func TestWarnIfHelperPinnedInRepo_silentWhenCLIOnPATH(t *testing.T) {
 	mockLogger := &mocks.Logger{}
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 
-	WarnIfHelperPinnedInRepo(mockLogger, dir, utils.DefaultOsProxy{}, true)
+	WarnIfHelperPinnedInRepo(context.Background(), mockLogger, dir, utils.DefaultOsProxy{}, true)
 
 	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything, mock.Anything)
 	mockLogger.AssertNotCalled(t, "Warnf", mock.Anything)

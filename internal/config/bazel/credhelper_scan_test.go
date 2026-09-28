@@ -3,6 +3,7 @@
 package bazelconfig
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -164,7 +165,7 @@ func TestScanForPinnedHelper(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := tt.setup(t)
-			got, err := ScanForPinnedHelper(start, utils.DefaultOsProxy{}, allTracked)
+			got, err := ScanForPinnedHelper(context.Background(), start, utils.DefaultOsProxy{}, allTracked)
 			require.NoError(t, err)
 			assert.Len(t, got, tt.want)
 			if tt.assert != nil && len(got) > 0 {
@@ -193,7 +194,7 @@ func TestScanForPinnedHelper_skipsUntrackedFile(t *testing.T) {
 
 	untracked := func(string) bool { return false }
 
-	got, err := ScanForPinnedHelper(dir, utils.DefaultOsProxy{}, untracked)
+	got, err := ScanForPinnedHelper(context.Background(), dir, utils.DefaultOsProxy{}, untracked)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
@@ -210,7 +211,7 @@ func TestScanForPinnedHelper_defaultTrackerFallsBackWhenGitMissing(t *testing.T)
 	writeFile(t, filepath.Join(dir, ".bazelrc"),
 		"build --credential_helper=*.services.bitrise.io=bitrise-build-cache\n")
 
-	got, err := ScanForPinnedHelper(dir, utils.DefaultOsProxy{}, DefaultGitTrackedFn())
+	got, err := ScanForPinnedHelper(context.Background(), dir, utils.DefaultOsProxy{}, DefaultGitTrackedFn(context.Background()))
 	require.NoError(t, err)
 	assert.Len(t, got, 1)
 }

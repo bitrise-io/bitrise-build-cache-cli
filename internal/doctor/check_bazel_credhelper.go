@@ -11,7 +11,7 @@ import (
 func (d *Doctor) bazelCredHelperCheck() Check {
 	return Check{
 		Name: "bazel-credhelper",
-		Diagnose: func(_ context.Context) Result {
+		Diagnose: func(ctx context.Context) Result {
 			cwd, err := d.osProxy().Getwd()
 			if err != nil {
 				return Result{State: StateOK, Detail: fmt.Sprintf("skipped: %s", err)}
@@ -27,7 +27,7 @@ func (d *Doctor) bazelCredHelperCheck() Check {
 				return Result{State: StateOK, Detail: "no actionable pin (CLI on PATH)"}
 			}
 
-			matches, err := bazelconfig.ScanForPinnedHelper(cwd, d.osProxy(), nil)
+			matches, err := bazelconfig.ScanForPinnedHelper(ctx, cwd, d.osProxy(), nil)
 			if err != nil {
 				return Result{State: StateWarn, Detail: fmt.Sprintf("scan failed: %s", err)}
 			}
