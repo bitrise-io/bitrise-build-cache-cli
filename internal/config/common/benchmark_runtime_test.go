@@ -139,3 +139,19 @@ func TestResolveBenchmarkPhase_RecordKeepsTheLegacyPhaseKey(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &legacy))
 	assert.Equal(t, common.BenchmarkPhaseWarmup, legacy.Phase)
 }
+
+// The activation path writes through this wrapper, and it was briefly gutted to
+// a no-op without a single test noticing — only the linter did. A build-scoped
+// record written at activation is what lets the build's own invocations skip
+// the query, so its absence is silent and costs a request every time.
+func TestRecordBenchmarkPhase_WritesARecordTheResolverThenReuses(t *testing.T) {
+	phaseHome(t)
+	meta := buildMeta("build-1")
+
+	common.RecordBenchmarkPhase(common.BuildToolGradle, meta, common.BenchmarkPhaseWarmup, log.NewLogger())
+
+	// No provider: if the record were not written, this could only return "".
+	got := common.ResolveBenchmarkPhase(common.BuildToolGradle, meta, nil, log.NewLogger())
+
+	assert.Equal(t, common.BenchmarkPhaseWarmup, got)
+}
