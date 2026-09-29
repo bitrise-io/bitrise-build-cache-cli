@@ -70,16 +70,30 @@ fi
 git clone --depth 1 --branch "$REF" "$REPO_URL" "$WORKDIR"
 echo "    at $(git -C "$WORKDIR" rev-parse --short HEAD)"
 
-# Each module carries its own VERSION_NAME, so they are published one at a time.
+# -PVERSION_NAME is a project property, so it applies to EVERY module in the
+# invocation, not just the one being published. Each plugin depends on :common
+# as a project dependency, which Gradle turns into a module coordinate at that
+# same version — so `:analytics:publishToMavenLocal -PVERSION_NAME=3.4.1` emits a
+# POM requiring common:3.4.1. Publishing common once at its own pinned version
+# therefore leaves every dependent pointing at a coordinate that does not exist,
+# in mavenLocal or anywhere else, and the build fails resolving the init script's
+# classpath.
+#
+# So common goes out alongside each dependent, at that dependent's version, and
+# once more at the version the init script names directly.
 publish() {
   local project="$1" version="$2"
   # -PreproduciblePublication matches how the plugins' own CI publishes locally.
-  (cd "$WORKDIR" && ./gradlew ":${project}:publishToMavenLocal" \
+  (cd "$WORKDIR" && ./gradlew ":common:publishToMavenLocal" ":${project}:publishToMavenLocal" \
     --stacktrace --console=plain \
     "-PVERSION_NAME=${version}" -PreproduciblePublication=true)
 }
 
-publish common "$COMMON_VERSION"
+# The init script's own `classpath("io.bitrise.gradle:common:<COMMON_VERSION>")`.
+(cd "$WORKDIR" && ./gradlew ":common:publishToMavenLocal" \
+  --stacktrace --console=plain \
+  "-PVERSION_NAME=${COMMON_VERSION}" -PreproduciblePublication=true)
+
 publish cache "$CACHE_VERSION"
 publish analytics "$ANALYTICS_VERSION"
 publish test-distribution "$TESTDISTRO_VERSION"
