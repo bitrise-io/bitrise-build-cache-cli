@@ -22,10 +22,12 @@ app:
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: established
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: established
-    # Set to a gradle-plugins branch to build it and publish it to mavenLocal under
-    # the versions consts.go pins, so the generated init script resolves it instead
-    # of the released artifact. Empty means use the released plugins.
-  - GRADLE_PLUGINS_REF: ""
+    # A gradle-plugins branch to build and publish to mavenLocal under the versions
+    # consts.go pins, so the generated init script resolves it instead of the
+    # released artifact. Set to empty to test against the released plugins.
+    # Pointing at the matching branch while the PoC is in flight — the plugin side
+    # has to detect the CI provider itself now that warmup cannot name it.
+  - GRADLE_PLUGINS_REF: ACI-5515-lite-mode
 
 include:
 - path: bitrise_rn_config/bitrise.yml
