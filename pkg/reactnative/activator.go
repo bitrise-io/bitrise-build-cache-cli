@@ -40,6 +40,9 @@ type ActivatorParams struct {
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
+	// Lite writes the static wiring only, deferring credentials and build
+	// metadata to build time. See cmd/common.Lite.
+	Lite bool
 }
 
 // Activator orchestrates Bitrise Build Cache activation for React Native.
@@ -48,6 +51,7 @@ type Activator struct {
 	xcode        *xcodeActivator
 	cpp          *ccachepkg.Activator
 	debugLogging bool
+	lite         bool
 	logger       log.Logger
 }
 
@@ -60,6 +64,7 @@ func NewActivator(params ActivatorParams) *Activator {
 
 	a := &Activator{
 		debugLogging: params.DebugLogging,
+		lite:         params.Lite,
 		logger:       logger,
 	}
 
@@ -68,6 +73,7 @@ func NewActivator(params ActivatorParams) *Activator {
 			logger:       logger,
 			debugLogging: params.DebugLogging,
 			pushEnabled:  params.PushEnabled,
+			lite:         params.Lite,
 		}
 	}
 
@@ -79,6 +85,7 @@ func NewActivator(params ActivatorParams) *Activator {
 			disablePrefixMapping: params.DisablePrefixMapping,
 			noSwiftCache:         params.NoSwiftCache,
 			buildCacheSkipFlags:  params.BuildCacheSkipFlags,
+			lite:                 params.Lite,
 		}
 	}
 
@@ -91,6 +98,7 @@ func NewActivator(params ActivatorParams) *Activator {
 			PushEnabled:  params.PushEnabled,
 			DebugLogging: params.DebugLogging,
 			Logger:       logger,
+			Lite:         params.Lite,
 		})
 	} else if params.CppEnabled && !params.GradleEnabled {
 		logger.Infof("(i) Skipping C++ (ccache) activation: Gradle is disabled — ccache only wraps the Android/Gradle native build path.")
@@ -208,8 +216,11 @@ func (a *Activator) exportEASWorkingDirIfCI() {
 func (a *Activator) Finalize(ctx context.Context) error {
 	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
 
-	if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
-		return err
+	// Nothing to pin at warmup, and the post-run hook re-resolves per build.
+	if !a.lite {
+		if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
+			return err
+		}
 	}
 
 	return a.saveReactNativeMarker()
@@ -274,6 +285,7 @@ type gradleActivator struct {
 	logger       log.Logger
 	debugLogging bool
 	pushEnabled  bool
+	lite         bool
 }
 
 func (g *gradleActivator) activate(ctx context.Context) error {
@@ -289,6 +301,7 @@ func (g *gradleActivator) activate(ctx context.Context) error {
 	gradleParams := gradleconfig.DefaultActivateGradleParams()
 	gradleParams.Cache.Enabled = true
 	gradleParams.Cache.PushEnabled = g.pushEnabled
+	gradleParams.Lite = g.lite
 
 	if err := gradleconfig.Activate(
 		ctx,
@@ -321,10 +334,12 @@ type xcodeActivator struct {
 	disablePrefixMapping bool
 	noSwiftCache         bool
 	buildCacheSkipFlags  bool
+	lite                 bool
 }
 
 func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams := xcelerate.DefaultParams()
+	xcodeParams.Lite = x.lite
 	xcodeParams.DebugLogging = x.debugLogging
 	xcodeParams.PushEnabled = x.pushEnabled
 	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping

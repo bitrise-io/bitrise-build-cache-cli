@@ -39,15 +39,19 @@ Note: This is a convenience activation method, if your activation requires fine-
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
-		if err := common.PersistProjectMode(projectMode, logger); err != nil {
-			return fmt.Errorf("persist project mode: %w", err)
-		}
+		// Both persist machine-scoped policy, which a warmup run has no business
+		// deciding on behalf of whatever build lands on this VM.
+		if !common.Lite {
+			if err := common.PersistProjectMode(projectMode, logger); err != nil {
+				return fmt.Errorf("persist project mode: %w", err)
+			}
 
-		push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
-		if err != nil {
-			return fmt.Errorf("resolve cache push: %w", err)
+			push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
+			if err != nil {
+				return fmt.Errorf("resolve cache push: %w", err)
+			}
+			pushEnabled = push
 		}
-		pushEnabled = push
 
 		a := rnpkg.NewActivator(rnpkg.ActivatorParams{
 			GradleEnabled:        gradleEnabled,
@@ -58,6 +62,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 			NoSwiftCache:         noSwiftCache,
 			BuildCacheSkipFlags:  buildCacheSkipFlags,
 			DebugLogging:         common.DebugFromFlag(),
+			Lite:                 common.Lite,
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {

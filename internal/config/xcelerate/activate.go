@@ -74,12 +74,15 @@ func Activate(
 	// Resolve, not ResolveNoRefresh: a Build Hub runner carries no auth env vars at
 	// all, and brokering its VM token is the only way to a credential there.
 	// ResolveNoRefresh never brokers, so it failed the whole activation.
-	authConfig, _, err := live.Default(logger).Resolve(ctx, envs)
-	if err != nil {
-		return fmt.Errorf("resolve auth config: %w", err)
-	}
+	var benchmarkProvider configcommon.BenchmarkPhaseProvider
+	if !activateXcodeParams.Lite {
+		authConfig, _, err := live.Default(logger).Resolve(ctx, envs)
+		if err != nil {
+			return fmt.Errorf("resolve auth config: %w", err)
+		}
 
-	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+		benchmarkProvider = configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+	}
 
 	config, err := NewConfig(
 		ctx,
@@ -89,7 +92,7 @@ func Activate(
 		osProxy,
 		commandFunc,
 		envexport.New(envs, logger),
-		benchmarkClient,
+		benchmarkProvider,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create xcelerate config: %w", err)
@@ -102,9 +105,12 @@ func Activate(
 	ensureLogDir(logger, osProxy)
 
 	// Materialise an env- or JWT-sourced credential: the proxy and the analytics
-	// readers start in shells that never saw those variables.
-	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.IsCI(envs, osProxy)); err != nil {
-		return fmt.Errorf("persist auth credentials: %w", err)
+	// readers start in shells that never saw those variables. Lite has none to
+	// pin, and the wrapper re-resolves per build regardless.
+	if !activateXcodeParams.Lite {
+		if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.IsCI(envs, osProxy)); err != nil {
+			return fmt.Errorf("persist auth credentials: %w", err)
+		}
 	}
 
 	// Read-modify-write: Config.Save is a full overwrite, and a fresh Config here
@@ -180,6 +186,12 @@ func overrideActivateXcodeParamsFromExistingConfig(
 	envs map[string]string,
 ) {
 	if existingConfig, err := ReadConfig(osProxy, decoderFactory, envs); err == nil {
+		// A warmup config resolved its toolchain paths before the stack was
+		// selected, so carrying them forward would pin the wrong Xcode.
+		if existingConfig.Lite {
+			return
+		}
+
 		if strings.Contains(existingConfig.OriginalXcodebuildPath, PathFor(osProxy, BinDir)) {
 			logger.Warnf("Removing xcelerate wrapper as original xcodebuild path...")
 			existingConfig.OriginalXcodebuildPath = ""

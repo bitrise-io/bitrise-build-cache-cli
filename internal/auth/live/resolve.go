@@ -387,3 +387,26 @@ func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
 func Default(logger log.Logger) *Resolver {
 	return &Resolver{Logger: logger}
 }
+
+// ResolveAllowingNone is Resolve where, when allowNone is set, "nothing is
+// configured" is an answer rather than a failure: ok is false and err is nil.
+// That is lite activation, which runs before any credential exists.
+//
+// Everything else stays an error, with the original message: a credential that
+// is present but malformed, and — when allowNone is false — a missing one, whose
+// error names exactly which half is missing.
+func (r *Resolver) ResolveAllowingNone(
+	ctx context.Context,
+	envs map[string]string,
+	allowNone bool,
+) (auth.Credential, auth.Origin, bool, error) {
+	cred, origin, err := r.Resolve(ctx, envs)
+	switch {
+	case err == nil:
+		return cred, origin, true, nil
+	case allowNone && auth.IsNotConfigured(err):
+		return auth.Credential{}, auth.Origin{}, false, nil
+	default:
+		return auth.Credential{}, auth.Origin{}, false, err
+	}
+}

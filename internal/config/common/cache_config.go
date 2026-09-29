@@ -100,6 +100,12 @@ func DetectCIProvider(envs map[string]string, osProxy utils.OsProxy) string {
 	return ""
 }
 
+// DetectExternalIDs returns the app, build and workflow identifiers a non-Bitrise
+// CI provider exposes.
+func DetectExternalIDs(provider string, envs map[string]string) (string, string, string) {
+	return detectExternalIDs(provider, envs)
+}
+
 func detectExternalIDs(provider string, envs map[string]string) (string, string, string) {
 	switch provider {
 	case CIProviderCircleCI:

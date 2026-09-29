@@ -135,8 +135,10 @@ settingsEvaluated {
         dumpEventsToFiles.set({{ .Common.Debug }})
         debug.set({{ .Common.Debug }})
         enabled.set(true)
+        {{- if .Common.CIProvider }}
 
         providerName.set("{{ .Common.CIProvider }}")
+        {{- end }}
 
         bitrise {
             {{- if .Common.AppSlug }}

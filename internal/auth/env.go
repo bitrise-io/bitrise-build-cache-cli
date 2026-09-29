@@ -100,3 +100,12 @@ func ParseJWTWorkspaceID(token string) (string, error) {
 
 	return "", errors.New("'default' permission not found in JWT")
 }
+
+// IsNotConfigured reports whether err means "no credential is set up here", as
+// opposed to "a credential is set up but is broken". Lite activation treats the
+// former as an answer and still writes its static wiring.
+func IsNotConfigured(err error) bool {
+	return errors.Is(err, ErrTokenNotProvided) ||
+		errors.Is(err, ErrWorkspaceIDNotProvided) ||
+		errors.Is(err, ErrWorkspaceNotSelected)
+}

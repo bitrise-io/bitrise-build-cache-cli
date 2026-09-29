@@ -38,33 +38,39 @@ func Activate(
 ) error {
 	NormalizeParams(&params)
 
-	resolver := newResolver(logger)
+	// Lite runs before a build exists: no credential to pin, no workspace to ask
+	// for a benchmark phase, and no envman to export through.
+	var benchmarkProvider configcommon.BenchmarkPhaseProvider
+	if !params.Lite {
+		resolver := newResolver(logger)
 
-	// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, by which time the env
-	// vars activation resolved from may be gone.
-	authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.IsCI(envProvider, utils.DefaultOsProxy{}))
-	if err != nil {
-		return fmt.Errorf(ErrFmtReadAuthConfig, err)
-	}
-
-	benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
-
-	username, _ := resolver.ResolveUsername(envProvider)
-	metadata := configcommon.NewMetadata(envProvider, username,
-		func(name string, v ...string) (string, error) {
-			output, err := exec.Command(name, v...).Output() //nolint:noctx
-
-			return string(output), err
-		}, utils.DefaultOsProxy{}, logger)
-	if configcommon.IsCI(envProvider, utils.DefaultOsProxy{}) {
-		exporter := envexport.New(envProvider, logger)
-		if metadata.CIProvider != "" {
-			ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
+		// Pinned: the plugins run `bitrise-build-cache auth token` mid-build, by which time the env
+		// vars activation resolved from may be gone.
+		authConfig, _, err := resolver.ResolvePinned(ctx, envProvider, configcommon.IsCI(envProvider, utils.DefaultOsProxy{}))
+		if err != nil {
+			return fmt.Errorf(ErrFmtReadAuthConfig, err)
 		}
-		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+
+		benchmarkClient := configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, authConfig, logger)
+		benchmarkProvider = benchmarkClient
+
+		username, _ := resolver.ResolveUsername(envProvider)
+		metadata := configcommon.NewMetadata(envProvider, username,
+			func(name string, v ...string) (string, error) {
+				output, err := exec.Command(name, v...).Output() //nolint:noctx
+
+				return string(output), err
+			}, utils.DefaultOsProxy{}, logger)
+		if configcommon.IsCI(envProvider, utils.DefaultOsProxy{}) {
+			exporter := envexport.New(envProvider, logger)
+			if metadata.CIProvider != "" {
+				ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
+			}
+			exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+		}
 	}
 
-	templateInventory, err := templateInventoryProvider(ctx, logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
+	templateInventory, err := templateInventoryProvider(ctx, logger, envProvider, debugLogging, benchmarkProvider, utils.DefaultOsProxy{})
 	if err != nil {
 		return err
 	}

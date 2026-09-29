@@ -25,6 +25,10 @@ type Sidecar struct {
 	BESEnabled        bool   `json:"besEnabled,omitempty"`
 	RBEEnabled        bool   `json:"rbeEnabled,omitempty"`
 	TimestampsEnabled bool   `json:"timestampsEnabled,omitempty"`
+	// Lite records a warmup activation, which ran before any credential existed.
+	// The credential helper reads it to tell "this machine was never configured"
+	// from "this machine was configured and the credential has since gone".
+	Lite bool `json:"lite,omitempty"`
 }
 
 const (

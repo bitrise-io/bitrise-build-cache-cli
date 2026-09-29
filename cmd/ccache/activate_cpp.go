@@ -34,15 +34,19 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
-		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
-			return fmt.Errorf("persist project mode: %w", err)
-		}
+		// Both persist machine-scoped policy, which a warmup run has no business
+		// deciding on behalf of whatever build lands on this VM.
+		if !common.Lite {
+			if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
+				return fmt.Errorf("persist project mode: %w", err)
+			}
 
-		push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
-		if err != nil {
-			return fmt.Errorf("resolve cache push: %w", err)
+			push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
+			if err != nil {
+				return fmt.Errorf("resolve cache push: %w", err)
+			}
+			activateCppParams.PushEnabled = push
 		}
-		activateCppParams.PushEnabled = push
 
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,
@@ -50,6 +54,7 @@ This command will:
 			IPCSocketPathOverride: activateCppParams.IPCSocketPathOverride,
 			BaseDirOverride:       activateCppParams.BaseDirOverride,
 			DebugLogging:          common.DebugFromFlag(),
+			Lite:                  common.Lite,
 		})
 
 		if err := activator.Activate(cmd.Context()); err != nil {

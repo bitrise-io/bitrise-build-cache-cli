@@ -50,15 +50,21 @@ This command will:
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
-		if err := common.PersistProjectMode(activateXcodeProjectMode, logger); err != nil {
-			return fmt.Errorf("persist project mode: %w", err)
-		}
+		activateXcodeParams.Lite = common.Lite
 
-		push, err := common.ResolveAndPersistCachePush(cmd, activateXcodeParams.PushEnabled, logger)
-		if err != nil {
-			return fmt.Errorf("resolve cache push: %w", err)
+		// Both persist machine-scoped policy, which a warmup run has no business
+		// deciding on behalf of whatever build lands on this VM.
+		if !common.Lite {
+			if err := common.PersistProjectMode(activateXcodeProjectMode, logger); err != nil {
+				return fmt.Errorf("persist project mode: %w", err)
+			}
+
+			push, err := common.ResolveAndPersistCachePush(cmd, activateXcodeParams.PushEnabled, logger)
+			if err != nil {
+				return fmt.Errorf("resolve cache push: %w", err)
+			}
+			activateXcodeParams.PushEnabled = push
 		}
-		activateXcodeParams.PushEnabled = push
 
 		if err := xcelerate.Activate(
 			cmd.Context(),

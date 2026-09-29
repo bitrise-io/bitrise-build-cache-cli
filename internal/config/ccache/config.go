@@ -50,6 +50,10 @@ type Params struct {
 	PushEnabled           bool
 	IPCSocketPathOverride string
 	BaseDirOverride       string
+
+	// Lite writes the static wiring only: no credential resolution or pinning, no
+	// storage helper start, no envman export. The helper re-resolves auth per RPC.
+	Lite bool
 }
 
 type Config struct {
@@ -130,7 +134,7 @@ func DefaultParams() Params {
 func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProxy, params Params) (Config, error) {
 	// Brokering: on Build Hub the runner's VM token is the only credential there is,
 	// and this runs before the ResolvePinned call that would materialise one.
-	authConfig, authOrigin, err := live.Default(nil).Resolve(ctx, envs)
+	authConfig, authOrigin, _, err := live.Default(nil).ResolveAllowingNone(ctx, envs, params.Lite)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}

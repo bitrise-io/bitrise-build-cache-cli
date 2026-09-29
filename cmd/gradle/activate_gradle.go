@@ -53,16 +53,21 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
+		activateGradleParams.Lite = common.Lite
 
-		if err := common.PersistProjectMode(activateGradleProjectMode, logger); err != nil {
-			return fmt.Errorf("persist project mode: %w", err)
-		}
+		// Both persist machine-scoped policy, which a warmup run has no business
+		// deciding on behalf of whatever build lands on this VM.
+		if !common.Lite {
+			if err := common.PersistProjectMode(activateGradleProjectMode, logger); err != nil {
+				return fmt.Errorf("persist project mode: %w", err)
+			}
 
-		push, err := common.ResolveAndPersistCachePush(cmd, activateGradleParams.Cache.PushEnabled, logger)
-		if err != nil {
-			return fmt.Errorf("resolve cache push: %w", err)
+			push, err := common.ResolveAndPersistCachePush(cmd, activateGradleParams.Cache.PushEnabled, logger)
+			if err != nil {
+				return fmt.Errorf("resolve cache push: %w", err)
+			}
+			activateGradleParams.Cache.PushEnabled = push
 		}
-		activateGradleParams.Cache.PushEnabled = push
 
 		if err := gradleconfig.Activate(
 			cmd.Context(),

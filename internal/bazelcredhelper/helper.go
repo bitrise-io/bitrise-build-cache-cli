@@ -39,14 +39,28 @@ type GetCredentialsResponse struct {
 }
 
 type Credential struct {
-	Token  string
-	Expiry time.Time
+	Token       string
+	WorkspaceID string
+	Expiry      time.Time
 }
 
 type Resolver func(ctx context.Context) (Credential, error)
 
-// resolveRepoURL may be nil, in which case no repository header is emitted.
-func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, resolveRepoURL RepoURLResolver) error {
+// ErrNoCredential means none is configured here, as opposed to one being broken.
+// Bazel gets empty headers and exit 0: the build then runs uncached rather than
+// dying on a helper that failed.
+var ErrNoCredential = errors.New("no Bitrise Build Cache credential is configured")
+
+// resolveRepoURL and resolveMetadata may be nil, in which case those headers are
+// not emitted.
+func Run(
+	ctx context.Context,
+	in io.Reader,
+	out io.Writer,
+	resolve Resolver,
+	resolveRepoURL RepoURLResolver,
+	resolveMetadata MetadataResolver,
+) error {
 	// Decoded and discarded, so a malformed payload is an error not a silent pass.
 	var req GetCredentialsRequest
 	dec := json.NewDecoder(in)
@@ -63,7 +77,17 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, res
 	}
 
 	cred, err := resolve(ctx)
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrNoCredential) && liteActivation():
+		// Warmup wired this machine before any credential existed, so a workspace
+		// without Build Cache lands here on every build. Bazel sends no auth, the
+		// backend declines, and the build proceeds without the cache.
+		if encErr := json.NewEncoder(out).Encode(GetCredentialsResponse{Headers: map[string][]string{}}); encErr != nil {
+			return fmt.Errorf("encode empty credential-helper response: %w", encErr)
+		}
+
+		return nil
+	case err != nil:
 		// Bazel shows only the helper's stderr, once per failing RPC, and the
 		// wrapped error names env vars alone even though the keychain and the
 		// config file were checked too — so say where to go from here.
@@ -84,6 +108,17 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, res
 		if repoURL := resolveRepoURL(ctx); repoURL != "" {
 			resp.Headers[repositoryURLHeader] = []string{repoURL}
 		}
+	}
+
+	if resolveMetadata != nil {
+		for key, value := range resolveMetadata() {
+			resp.Headers[key] = []string{value}
+		}
+	}
+
+	// From the credential, not the environment, so it always matches the token.
+	if cred.WorkspaceID != "" {
+		resp.Headers[orgIDHeader] = []string{cred.WorkspaceID}
 	}
 
 	if err := json.NewEncoder(out).Encode(resp); err != nil {

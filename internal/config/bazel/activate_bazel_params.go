@@ -39,6 +39,10 @@ type ActivateBazelParams struct {
 	// absolute path normally; empty means fall back to the bare binary name,
 	// which Bazel looks up in $PATH.
 	CLIPath string
+
+	// Lite writes the static wiring only: the credential helper line and the
+	// endpoints. Auth and per-invocation metadata come back from `get` per build.
+	Lite bool
 }
 
 func DefaultActivateBazelParams() ActivateBazelParams {
@@ -96,7 +100,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, _, err := resolver.Resolve(ctx, envs)
+	authConfig, _, _, err := resolver.ResolveAllowingNone(ctx, envs, params.Lite)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("resolve auth config: %w", err)

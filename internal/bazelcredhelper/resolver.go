@@ -40,28 +40,33 @@ func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer
 	return func(ctx context.Context) (Credential, error) {
 		cred, origin, err := resolver.Resolve(ctx, envs)
 		switch {
+		// Nothing configured is a different answer from something broken: after
+		// lite activation this is the ordinary state of a workspace that has no
+		// Build Cache, and it must not fail the build.
+		case err != nil && !origin.Resolved() && authpkg.IsNotConfigured(err):
+			return Credential{}, ErrNoCredential
 		case err != nil && !origin.Resolved():
 			return Credential{}, fmt.Errorf("resolve stored credentials: %w", err)
 		case err != nil:
 			// A stale token is a soft cache miss for Bazel; a non-zero exit fails the RPC outright.
 			warnStale(warn, err)
 
-			return Credential{Token: cred.Token, Expiry: time.Now().Add(staleCacheHint)}, nil
+			return Credential{Token: cred.Token, WorkspaceID: cred.WorkspaceID, Expiry: time.Now().Add(staleCacheHint)}, nil
 		// Without the hint Bazel keeps a brokered JWT for its 30m default, past its expiry.
 		case origin.Provenance == authpkg.ProvenanceBrokered && !cred.Expiry.IsZero():
-			return Credential{Token: cred.Token, Expiry: cred.Expiry.Add(-expiresLead)}, nil
+			return Credential{Token: cred.Token, WorkspaceID: cred.WorkspaceID, Expiry: cred.Expiry.Add(-expiresLead)}, nil
 		// Env vars, the CI JWT and the analytics block carry no refresh token, so
 		// there is no expiry to hint at.
 		case !origin.StoreManaged():
-			return Credential{Token: cred.Token}, nil
+			return Credential{Token: cred.Token, WorkspaceID: cred.WorkspaceID}, nil
 		// A manual `auth set` PAT is store-managed but has no expiry to subtract
 		// from; a zero time here would serialise as year 1 and make Bazel re-spawn
 		// the helper on every RPC.
 		case cred.Expiry.IsZero():
-			return Credential{Token: cred.Token}, nil
+			return Credential{Token: cred.Token, WorkspaceID: cred.WorkspaceID}, nil
 		}
 
-		return Credential{Token: cred.Token, Expiry: cred.Expiry.Add(-expiresLead)}, nil
+		return Credential{Token: cred.Token, WorkspaceID: cred.WorkspaceID, Expiry: cred.Expiry.Add(-expiresLead)}, nil
 	}
 }
 

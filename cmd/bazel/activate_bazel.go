@@ -74,16 +74,21 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
+	activateBazelParams.Lite = common.Lite
 
-	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
-		return fmt.Errorf("persist project mode: %w", err)
-	}
+	// Both persist machine-scoped policy, which a warmup run has no business
+	// deciding on behalf of whatever build lands on this VM.
+	if !common.Lite {
+		if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
+			return fmt.Errorf("persist project mode: %w", err)
+		}
 
-	push, err := common.ResolveAndPersistCachePush(cmd, activateBazelParams.Cache.PushEnabled, logger)
-	if err != nil {
-		return fmt.Errorf("resolve cache push: %w", err)
+		push, err := common.ResolveAndPersistCachePush(cmd, activateBazelParams.Cache.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateBazelParams.Cache.PushEnabled = push
 	}
-	activateBazelParams.Cache.PushEnabled = push
 
 	// Run main logic
 	if err := ActivateBazelCmdFn(
@@ -118,6 +123,7 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 			BESEnabled:        activateBazelParams.BES.Enabled,
 			RBEEnabled:        activateBazelParams.RBE.Enabled,
 			TimestampsEnabled: activateBazelParams.Timestamps,
+			Lite:              activateBazelParams.Lite,
 		}); mErr != nil {
 			logger.Debugf("bazel sidecar write failed (non-fatal): %s", mErr)
 		}

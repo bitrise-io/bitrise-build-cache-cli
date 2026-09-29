@@ -68,10 +68,12 @@ func Test_BuildUserHeaderValue(t *testing.T) {
 // A display name with a space used to leave a bare `Doe` token at the end of the
 // rc line, which Bazel read as a target pattern — failing every command with
 // `no such target '//:Doe'`.
+// No CLIPath: the helper branch returns builduser per invocation, so the bazelrc
+// quoting this guards only applies to the helper-less fallback.
 func Test_Generate_BuildUserWithSpaceIsQuoted(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: CommonTemplateInventory{
-			CLIPath:      "/usr/local/bin/bitrise-build-cache",
+			AuthToken:    "AuthTokenValue",
 			HostMetadata: HostMetadataInventory{Username: "Jane Doe"},
 		},
 		Cache: CacheTemplateInventory{

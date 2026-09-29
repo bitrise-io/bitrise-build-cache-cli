@@ -17,18 +17,26 @@ that takes the literal-header branch: a token on disk still authenticates,
 a helper that can't be spawned fails every build.
 */ -}}
 {{- $useHelper := .Common.CLIPath -}}
+{{- /*
+Without a helper AND without a token there is nothing to authenticate with, so
+emit no auth line at all: `Bearer ` with an empty token is rejected by every
+endpoint and is indistinguishable from a broken deployment.
+*/ -}}
+{{- $staticAuth := and (not $useHelper) .Common.AuthToken -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
 build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}
 {{ end }}
 {{- if .Cache.Enabled -}}
 build --remote_cache={{ .Cache.EndpointURLWithPort }}
 build --remote_timeout=600s
-{{- if not $useHelper }}
+{{- if $staticAuth }}
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --remote_header=x-flare-buildtool=bazel
-{{- /* CIProvider on CI, resolved display name locally. Quoted and escaped: the value can include special characters like space, single quote and backslash. */}}
+{{- /* Helper-less only; the helper returns builduser per invocation. Quoted and escaped: the value can include space, single quote and backslash. */}}
+{{- if not $useHelper }}
 build --remote_header='x-flare-builduser={{ .Common.BuildUserHeaderValue }}'
+{{- end }}
 {{- if .Cache.IsPushEnabled }}
 build --remote_upload_local_results
 {{- else }}
@@ -38,7 +46,7 @@ build --noremote_upload_local_results
 
 {{- if .BES.Enabled }}
 build --bes_backend={{ .BES.EndpointURLWithPort }}
-{{- if not $useHelper }}
+{{- if $staticAuth }}
 build --bes_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
@@ -61,7 +69,13 @@ build --verbose_failures
 build --show_timestamps
 {{- end }}
 
-{{- /* Bitrise common metadata */}}
+{{- /*
+Bitrise common metadata. Only on the helper-less branch: the helper returns these
+per invocation, and emitting both would put two values in the same metadata key —
+the same collision the authorization header hit.
+*/}}
+
+{{- if not $useHelper }}
 
 {{- if .Common.WorkspaceID }}
 {{- if .Cache.Enabled }}
@@ -90,12 +104,8 @@ build --bes_header='x-ci-provider={{ .Common.CIProvider }}'
 {{- end }}
 {{- end }}
 
-{{- /*
-Repo-scoped, unlike everything else here, so the helper resolves it per build
-from the workspace root. Only the helper-less fallback keeps the stored one:
-emitting both would put two values in the same metadata key.
-*/ -}}
-{{- if and .Common.RepoURL (not $useHelper) }}
+{{- /* Repo-scoped, resolved per build by the helper on the other branch. */ -}}
+{{- if .Common.RepoURL }}
 {{- if .Cache.Enabled }}
 build --remote_header='x-repository-url={{ .Common.RepoURL }}'
 {{- end }}
@@ -122,7 +132,9 @@ build --bes_header='x-build-id={{ .Common.BuildID }}'
 {{- end }}
 {{- end }}
 
-{{- /* BES host metadata */}}
+{{- end }}
+
+{{- /* BES host metadata: machine-scoped, so it stays baked on both branches. */}}
 
 {{- if .BES.Enabled }}
 {{- if .Common.HostMetadata.OS }}

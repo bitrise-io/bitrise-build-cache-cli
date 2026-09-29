@@ -29,6 +29,9 @@ type ActivatorParams struct {
 	BaseDirOverride       string
 	DebugLogging          bool
 	Envs                  map[string]string
+	// Lite writes the static wiring only: no credential pinning, no storage
+	// helper start, no envman export. See cmd/common.Lite.
+	Lite bool
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -53,6 +56,7 @@ type Activator struct {
 	baseDirOverride       string
 	debugLogging          bool
 	envs                  map[string]string
+	lite                  bool
 }
 
 // NewActivator creates an Activator with production defaults.
@@ -94,6 +98,7 @@ func NewActivator(params ActivatorParams) *Activator {
 		baseDirOverride:       params.BaseDirOverride,
 		debugLogging:          params.DebugLogging,
 		envs:                  envs,
+		lite:                  params.Lite,
 	}
 }
 
@@ -110,6 +115,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		PushEnabled:           a.pushEnabled,
 		IPCSocketPathOverride: a.ipcSocketPathOverride,
 		BaseDirOverride:       a.baseDirOverride,
+		Lite:                  a.lite,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ccache config: %w", err)
@@ -121,15 +127,23 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
 
-	a.restartHelperOnConfigDelta(ctx, previous, config)
-	a.ensureHelperServing(ctx, config.IPCEndpoint)
+	// A warmup helper would bind a $TMPDIR-scoped socket, take the non-CI idle
+	// timeout and freeze metadata resolved before any build existed. The build's
+	// first ccache call starts one with the right environment instead.
+	if !a.lite {
+		a.restartHelperOnConfigDelta(ctx, previous, config)
+		a.ensureHelperServing(ctx, config.IPCEndpoint)
+	}
 
 	a.ensureLogDir()
 
 	// Materialise an env- or JWT-sourced credential: the detached storage helper
-	// starts in a shell that never saw those variables.
-	if _, _, err := live.Default(a.logger).ResolvePinned(ctx, a.envs, configcommon.IsCI(a.envs, a.osProxy)); err != nil {
-		return fmt.Errorf("persist auth credentials: %w", err)
+	// starts in a shell that never saw those variables. Lite has none to pin, and
+	// the helper re-resolves per RPC regardless.
+	if !a.lite {
+		if _, _, err := live.Default(a.logger).ResolvePinned(ctx, a.envs, configcommon.IsCI(a.envs, a.osProxy)); err != nil {
+			return fmt.Errorf("persist auth credentials: %w", err)
+		}
 	}
 
 	// Read-modify-write: Config.Save is a full overwrite, and a fresh Config here
@@ -142,18 +156,22 @@ func (a *Activator) Activate(ctx context.Context) error {
 	}
 	a.logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(a.osProxy))
 
-	baseDir := a.baseDirOverride
-	if baseDir == "" {
-		wd, err := a.osProxy.Getwd()
-		if err != nil {
-			a.logger.Warnf("Failed to get working directory for CCACHE_BASEDIR: %s", err)
-		} else {
-			baseDir = wd
+	// CCACHE_BASEDIR is the build's source root, and envman belongs to the build.
+	// At warmup neither exists yet, so the caller delivers BuildEnv at build time.
+	if !a.lite {
+		baseDir := a.baseDirOverride
+		if baseDir == "" {
+			wd, err := a.osProxy.Getwd()
+			if err != nil {
+				a.logger.Warnf("Failed to get working directory for CCACHE_BASEDIR: %s", err)
+			} else {
+				baseDir = wd
+			}
 		}
-	}
 
-	for key, value := range config.BuildEnv(baseDir) {
-		addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
+		for key, value := range config.BuildEnv(baseDir) {
+			addEnvVarToEnvman(ctx, a.commandFunc, key, value, a.logger)
+		}
 	}
 
 	a.logger.TInfof(ActivateCppSuccessful)

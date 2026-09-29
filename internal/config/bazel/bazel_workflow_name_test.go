@@ -50,10 +50,12 @@ func Test_WorkflowNameHeaderValue(t *testing.T) {
 	}
 }
 
+// No CLIPath: the helper branch emits no metadata headers at all, so the
+// bazelrc escaping this guards only applies to the helper-less fallback.
 func Test_Generate_WorkflowNameIsEscaped(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: CommonTemplateInventory{
-			CLIPath:      "/usr/local/bin/bitrise-build-cache",
+			AuthToken:    "AuthTokenValue",
 			WorkflowName: "Pat's workflow",
 		},
 		Cache: CacheTemplateInventory{

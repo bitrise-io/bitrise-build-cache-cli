@@ -55,6 +55,11 @@ type ActivateGradleParams struct {
 	TestDistro TestDistroParams
 
 	CLIPath string
+
+	// Lite writes the static wiring only: no credential resolution or pinning, no
+	// benchmark query, no envman export. Everything workspace-, build- or
+	// credential-specific is left to the plugins to resolve mid-build.
+	Lite bool
 }
 
 func DefaultActivateGradleParams() ActivateGradleParams {
@@ -124,7 +129,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, authOrigin, err := resolver.Resolve(ctx, envs)
+	authConfig, authOrigin, _, err := resolver.ResolveAllowingNone(ctx, envs, params.Lite)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
@@ -141,7 +146,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	logger.Infof("(i) Cache Config: %+v", metadata)
 
 	// Check benchmark phase and override params if needed (only on CI)
-	if metadata.CIProvider != "" && benchmarkProvider != nil {
+	if !params.Lite && metadata.CIProvider != "" && benchmarkProvider != nil {
 		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
 		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, envexport.New(envs, logger))
 	}

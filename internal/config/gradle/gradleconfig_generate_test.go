@@ -404,8 +404,6 @@ settingsEvaluated {
         debug.set(true)
         enabled.set(true)
 
-        providerName.set("")
-
         bitrise {
             appSlug.set("AppSlugValue")
         }

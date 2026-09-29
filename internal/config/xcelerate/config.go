@@ -40,6 +40,10 @@ type Params struct {
 	ProxySocketPathOverride     string
 	PushEnabled                 bool
 	XcodebuildTimestampsEnabled bool
+
+	// Lite writes the static wiring only: no credential resolution or pinning, no
+	// benchmark query. The wrapper and the proxy resolve both per build anyway.
+	Lite bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -67,6 +71,10 @@ type Config struct {
 	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
+	// Lite records that this config came from a warmup run, so a later real
+	// activation re-detects the toolchain paths instead of carrying forward ones
+	// resolved before the stack was selected.
+	Lite bool `json:"lite,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
 	// (single canonical source for auth credentials on disk).
 	AuthConfig authpkg.Credential `json:"-"`
@@ -136,7 +144,7 @@ func NewConfig(ctx context.Context,
 
 	// Brokering, for the same reason activation resolves that way: on Build Hub the
 	// VM token is the only credential there is.
-	authConfig, authOrigin, err := resolver.Resolve(ctx, envs)
+	authConfig, authOrigin, _, err := resolver.ResolveAllowingNone(ctx, envs, params.Lite)
 	if err != nil {
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
@@ -154,7 +162,7 @@ func NewConfig(ctx context.Context,
 	// Check benchmark phase and override params if needed (only on CI).
 	// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
 	// and written to ~/.local/state/xcelerate/benchmark/benchmark-phase.json
-	if metadata.CIProvider != "" && benchmarkProvider != nil {
+	if !params.Lite && metadata.CIProvider != "" && benchmarkProvider != nil {
 		logger.Debugf("Checking benchmark phase...CI Provider: %s", metadata.CIProvider)
 		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, exporter)
 	}
@@ -223,6 +231,7 @@ func NewConfig(ctx context.Context,
 		DebugLogging:           params.DebugLogging,
 		Silent:                 params.Silent,
 		XcodebuildTimestamps:   params.XcodebuildTimestampsEnabled,
+		Lite:                   params.Lite,
 		AuthConfig:             authConfig,
 		AuthOrigin:             authOrigin,
 		ExternalAppID:          metadata.ExternalAppID,
