@@ -771,20 +771,39 @@ workflows:
               fi
               cat "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
     - script:
-        title: Build with no credential in the environment
+        title: Build with the credential only in the build's own environment
         inputs:
         - content: |-
             set -exo pipefail
-            # Strip both credential env vars: the build can then only authenticate on what
-            # activate pinned to disk, the shape of a GitHub Actions job that scopes the secret.
-            (env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN \
-              ./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+            # No stripping, unlike the non-lite guard in feature-e2e-gradle-7. Warmup
+            # pinned nothing, so the build's own environment is the only place a
+            # credential exists — resolving it from there is the property under test.
+            (./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
-        title: Assert auth came from the pinned credential
+        title: Assert the plugins resolved auth at build time, not from the init script
         inputs:
         - content: |-
             set -exo pipefail
-            ../scripts/check_gradle_auth_from_pinned_credential.sh "$BITRISE_DEPLOY_DIR/logs.txt"
+            # The negative: warmup baked no token. The positive: the plugins
+            # authenticated anyway. Together that is runtime resolution — either
+            # alone would pass on a build that simply never tried to cache.
+            #
+            # Not check_gradle_jwt_auth.sh: it requires the token env to be empty
+            # and looks in ~/.gradle, neither of which holds here.
+            ../scripts/assert_no_build_metadata.sh "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
+
+            log="$BITRISE_DEPLOY_DIR/logs.txt"
+            if grep -qE '^\[Bitrise [^]]*\].*No auth token:' "$log"; then
+              echo "A plugin could not resolve a token at build time ❌"
+              grep -m 5 -E '^\[Bitrise [^]]*\].*No auth token:' "$log" || true
+              exit 1
+            fi
+            if grep -qE '^\[Bitrise [^]]*\].*Unauthenticated' "$log"; then
+              echo "A plugin resolved a token but the backend rejected it ❌"
+              grep -m 5 -E '^\[Bitrise [^]]*\].*Unauthenticated' "$log" || true
+              exit 1
+            fi
+            echo "Plugins resolved auth at build time from a warmup-only activation ✅"
     - script:
         title: Check for cache invocations
         inputs:
@@ -873,22 +892,37 @@ workflows:
                 ../bitrise-build-cache-cli auth clear || true
                 ../bitrise-build-cache-cli auth status --debug || true
       - script:
-          title: Preboot VM warmup emulation (activate --lite)
+          title: Enable build cache (full activation — non-lite regression guard)
           inputs:
             - content: |-
                 set -exo pipefail
-                PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh gradle -d --cache --cache-push
+                # Deliberately NOT the warmup emulation. Deferral is a lite-only
+                # behaviour, so something has to keep watching the path every
+                # existing user of this CLI takes. This workflow is that guard,
+                # and it owns the pinning assertions lite cannot satisfy.
+                ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
       - script:
           title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
           inputs:
             - content: |-
                 cat ~/.gradle/init.d/bitrise-build-cache.init.gradle.kts
       - script:
-          title: Build and capture logs
+          title: Build with no credential in the environment
           inputs:
             - content: |-
                 set -exo pipefail
-                (./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+                # Strip both credential env vars: the build can then only authenticate on
+                # what activate pinned to disk, the shape of a GitHub Actions job that
+                # scopes the secret to the activate step. Lite pins nothing by design, so
+                # this can only be asserted on a fully activated machine.
+                (env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN \
+                  ./gradlew assembleDebug --info --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+      - script:
+          title: Assert auth came from the pinned credential
+          inputs:
+            - content: |-
+                set -exo pipefail
+                ../scripts/check_gradle_auth_from_pinned_credential.sh "$BITRISE_DEPLOY_DIR/logs.txt"
       - script:
           title: Assert JWT auth with no baked token
           inputs:

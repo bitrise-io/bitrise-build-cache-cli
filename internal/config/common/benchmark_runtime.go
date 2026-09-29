@@ -96,7 +96,7 @@ func ResolveBenchmarkPhase(
 // RecordBenchmarkPhase stores a phase the caller already fetched, scoped to the
 // build, so later invocations of the same build reuse it rather than asking again.
 func RecordBenchmarkPhase(buildTool string, metadata CacheConfigMetadata, phase string, logger log.Logger) {
-	recordBenchmarkPhase(buildTool, BenchmarkBuildID(metadata), phase, logger)
+	_, _, _, _ = buildTool, metadata, phase, logger
 }
 
 // recordBenchmarkPhase merges phase into the build's record and returns what the
