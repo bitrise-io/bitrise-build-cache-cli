@@ -22,6 +22,10 @@ app:
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: established
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
   - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_BAZEL: established
+    # Set to a gradle-plugins branch to build it and publish it to mavenLocal under
+    # the versions consts.go pins, so the generated init script resolves it instead
+    # of the released artifact. Empty means use the released plugins.
+  - GRADLE_PLUGINS_REF: ""
 
 include:
 - path: bitrise_rn_config/bitrise.yml
@@ -720,6 +724,7 @@ workflows:
     - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
     - bundle::feature-e2e-setup: {}
+    - bundle::publish-gradle-plugins-branch: {}
     - script@1:
         title: Change apt sources to enzu mirror
         inputs:
@@ -822,6 +827,7 @@ workflows:
       - BRANCH: main
     steps:
       - bundle::feature-e2e-setup: { }
+      - bundle::publish-gradle-plugins-branch: { }
       - script@1:
           title: Change apt sources to enzu mirror
           inputs:
@@ -927,6 +933,7 @@ workflows:
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
     steps:
     - bundle::feature-e2e-setup: {}
+    - bundle::publish-gradle-plugins-branch: {}
     - script@1:
         title: Change apt sources to enzu mirror
         inputs:
@@ -1546,6 +1553,7 @@ workflows:
             set -exo pipefail
             go build -o bitrise-build-cache-cli
             envman add --key CLI_BIN --value "$BITRISE_SOURCE_DIR/bitrise-build-cache-cli"
+    - bundle::publish-gradle-plugins-branch: {}
     - script:
         title: Preboot VM warmup emulation (activate --lite)
         inputs:
@@ -2067,6 +2075,7 @@ workflows:
     - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
     - bundle::feature-e2e-setup: {}
+    - bundle::publish-gradle-plugins-branch: {}
     - script@1:
         title: Change apt sources to enzu mirror
         inputs:
@@ -2641,6 +2650,16 @@ step_bundles:
 
                 ls -la ./_e2e
 
+  publish-gradle-plugins-branch:
+    steps:
+      - script:
+          title: Build and publish the gradle-plugins branch to mavenLocal
+          run_if: '{{getenv "GRADLE_PLUGINS_REF" | ne ""}}'
+          inputs:
+            - content: |-
+                set -exo pipefail
+                "$BITRISE_SOURCE_DIR/scripts/publish_gradle_plugins_branch.sh"
+
   feature-e2e-setup:
     steps:
       - bundle::e2e-repo-checkout: {}
@@ -2672,12 +2691,17 @@ step_bundles:
 
   config-cache-e2e-activate:
     # Shared prep for the cross-DC configuration-cache e2e workflows: build the
-    # CLI, clone bitwarden into a stable isolated dir, activate the build cache,
+    # CLI, clone bitwarden into a stable isolated dir, warm the build cache up,
     # pre-warm the Android SDK. Cross-build/cross-DC config-cache reuse needs
-    # GRADLE_ENCRYPTION_KEY (app secret), BITRISE_BUILD_CACHE_WORKSPACE_ID (so
-    # the init script's authToken is the stable PAT, not a per-build JWT) and
-    # the transforms cache (saved by the save workflows). See:
+    # GRADLE_ENCRYPTION_KEY (app secret) and the transforms cache (saved by the
+    # save workflows). See:
     # https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/gradle-configuration-cache.html
+    #
+    # BITRISE_BUILD_CACHE_WORKSPACE_ID used to be load-bearing here: without it
+    # the init script baked a per-build JWT, whose bytes changed every build and
+    # invalidated the config-cache entry. Warmup activation bakes no token at
+    # all, so the init script is now byte-stable by construction — this is the
+    # workflow that proves it.
     envs:
     - APP_DIR: /opt/test-app/bitwarden-android
     - COMMIT: 2c71ab7d27d7f976766adee7bfd1828d5eda0850
@@ -2722,6 +2746,7 @@ step_bundles:
     - change-workdir:
         inputs:
         - path: $APP_DIR
+    - bundle::publish-gradle-plugins-branch: {}
     - script:
         title: Preboot VM warmup emulation (activate --lite)
         inputs:
