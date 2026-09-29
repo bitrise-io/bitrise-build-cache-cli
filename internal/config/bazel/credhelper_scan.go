@@ -176,10 +176,6 @@ func isPinnedHelperLine(line string) bool {
 		return false
 	}
 
-	if strings.Contains(value, "*.services.bitrise.io") {
-		return true
-	}
-
 	binary := value
 	if eq := strings.Index(binary, "="); eq != -1 {
 		binary = binary[eq+1:]
