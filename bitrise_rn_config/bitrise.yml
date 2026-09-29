@@ -156,7 +156,7 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            PREBOOT_CLI=../bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" xcode
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh xcode
         title: Preboot VM warmup emulation (activate --lite)
     - bundle::rn-cli-seek-ios: {}
     - share-pipeline-variable@1:
@@ -534,7 +534,7 @@ workflows:
         title: Preboot VM warmup emulation (activate --lite) (ccache)
         inputs:
         # -d so the storage helper logs the analytics payload, including cacheBlobStats.
-        - content: PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" c++ -d
+        - content: PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh c++ -d
     - script@1:
         title: Change apt sources to enzu mirror
         inputs:
@@ -827,7 +827,7 @@ step_bundles:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" react-native
+            PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh react-native
         title: Preboot VM warmup emulation (activate --lite)
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
   rn-cli-restore-gradle:
@@ -942,7 +942,7 @@ step_bundles:
     - script:
         title: Preboot VM warmup emulation (activate --lite) — react-native (Gradle + C++)
         inputs:
-        - content: PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" react-native --debug --gradle=true --xcode=false --cpp=true
+        - content: PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh react-native --debug --gradle=true --xcode=false --cpp=true
     - script:
         title: Build
         inputs:
@@ -1001,7 +1001,7 @@ step_bundles:
     - script:
         title: Preboot VM warmup emulation (activate --lite) — react-native (Xcode)
         inputs:
-        - content: PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" react-native --gradle=false --xcode=true --cpp=false
+        - content: PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh react-native --gradle=false --xcode=true --cpp=false
     - script:
         title: Build
         inputs:

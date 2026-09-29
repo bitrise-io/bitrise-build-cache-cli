@@ -19,8 +19,11 @@ if [[ -z "$REF" ]]; then
 fi
 
 REPO_URL="${GRADLE_PLUGINS_URL:-https://github.com/bitrise-io/gradle-plugins.git}"
-CONSTS="${BITRISE_SOURCE_DIR:-.}/internal/consts/consts.go"
-WORKDIR="${GRADLE_PLUGINS_DIR:-${BITRISE_SOURCE_DIR:-.}/_gradle_plugins}"
+# CLI_REPO_DIR, not BITRISE_SOURCE_DIR: change-workdir rewrites the latter, so by
+# the time this runs it can point at the cloned test app instead of the CLI repo.
+CLI_REPO="${CLI_REPO_DIR:-${BITRISE_SOURCE_DIR:-.}}"
+CONSTS="${CLI_REPO}/internal/consts/consts.go"
+WORKDIR="${GRADLE_PLUGINS_DIR:-${CLI_REPO}/_gradle_plugins}"
 
 # The versions come out of consts.go rather than being repeated here: publishing
 # under a version the CLI does not ask for would silently resolve the released

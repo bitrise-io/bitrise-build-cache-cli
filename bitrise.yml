@@ -1096,6 +1096,20 @@ workflows:
             set -exo pipefail
             PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh bazel -d --cache --cache-push --bes --timestamps
     - script:
+        title: Assert the credential helper supplies the per-invocation metadata
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # These used to be baked into the bazelrc at activation, which pinned
+            # every build on the VM to whichever one activated. They now have to
+            # come back from `get`, resolved against this build's environment.
+            resp=$(echo '{"uri":"grpcs://bitrise-accelerate.services.bitrise.io"}' | bitrise-build-cache get)
+            for header in x-org-id x-app-id x-workflow-name x-flare-build-id x-build-id x-ci-provider authorization; do
+              echo "$resp" | grep -q "\"$header\"" || { echo "FAIL: helper did not return $header"; exit 1; }
+            done
+            echo "$resp" | grep -q "$BITRISE_APP_SLUG" || { echo "FAIL: x-app-id is not this build's app"; exit 1; }
+            echo "OK: helper resolved auth and metadata at build time"
+    - script:
         title: Build and capture logs
         inputs:
         - content: |-
@@ -1114,8 +1128,6 @@ workflows:
               '--bes_header=x-os=Linux' \
               '--bes_header=x-cpu-cores=[0-9]+' \
               '--bes_header=x-mem-size=[0-9]+' \
-              '--bes_header=x-ci-provider=bitrise' \
-              "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
               '--bes_header=x-locale=\w+' \
               '--bes_header=x-default-charset=\w+'
 
@@ -1202,17 +1214,25 @@ workflows:
             done
             echo "OK: no per-invocation headers baked into the bazelrc"
     - script:
-        title: Assert the credential helper returns per-invocation metadata
+        title: Assert the credential helper degrades to the local-dev shape
         inputs:
         - content: |-
             set -exo pipefail
+            # This workflow unsets BITRISE_IO on purpose, so the helper sees no CI.
+            # It must still authenticate, and must not invent a build to attribute
+            # the run to.
             resp=$(echo '{"uri":"grpcs://bitrise-accelerate.services.bitrise.io"}' | bitrise-build-cache get)
             echo "$resp"
-            for header in x-org-id x-app-id x-workflow-name x-flare-build-id x-ci-provider; do
+            for header in authorization x-org-id; do
               echo "$resp" | grep -q "\"$header\"" || { echo "FAIL: helper did not return $header"; exit 1; }
             done
-            echo "$resp" | grep -q '"authorization"' || { echo "FAIL: helper returned no authorization header"; exit 1; }
-            echo "OK: the helper resolved auth and metadata at build time"
+            for header in x-app-id x-workflow-name x-flare-build-id x-ci-provider; do
+              if echo "$resp" | grep -q "\"$header\""; then
+                echo "FAIL: helper returned $header with no CI detected"
+                exit 1
+              fi
+            done
+            echo "OK: authenticated without attributing the run to a build"
     - script:
         title: Assert local credential_helper path
         inputs:
@@ -1376,8 +1396,6 @@ workflows:
                   '--bes_header=x-os=Linux' \
                   '--bes_header=x-cpu-cores=[0-9]+' \
                   '--bes_header=x-mem-size=[0-9]+' \
-                  '--bes_header=x-ci-provider=bitrise' \
-                  "--bes_header=x-app-id=$BITRISE_APP_SLUG" \
                   '--bes_header=x-locale=\w+' \
                   '--bes_header=x-default-charset=\w+'
 
@@ -1555,6 +1573,9 @@ workflows:
             set -exo pipefail
             go build -o bitrise-build-cache-cli
             envman add --key CLI_BIN --value "$BITRISE_SOURCE_DIR/bitrise-build-cache-cli"
+            # change-workdir rewrites BITRISE_SOURCE_DIR, so capture the repo root
+            # while it still points here.
+            envman add --key CLI_REPO_DIR --value "$BITRISE_SOURCE_DIR"
     - bundle::publish-gradle-plugins-branch: {}
     - script:
         title: Preboot VM warmup emulation (activate --lite)
@@ -1562,7 +1583,7 @@ workflows:
         - content: |-
             set -exo pipefail
             sudo mkdir -p "$APP_DIR" && sudo chown -R "$(whoami)" "$APP_DIR"
-            PREBOOT_CLI="$CLI_BIN" "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" gradle -d --cache --cache-push
+            PREBOOT_CLI="$CLI_BIN" "$CLI_REPO_DIR/scripts/preboot_emulate.sh" gradle -d --cache --cache-push
     - change-workdir:
         inputs:
         - path: $APP_DIR
@@ -2660,7 +2681,7 @@ step_bundles:
           inputs:
             - content: |-
                 set -exo pipefail
-                "$BITRISE_SOURCE_DIR/scripts/publish_gradle_plugins_branch.sh"
+                "$CLI_REPO_DIR/scripts/publish_gradle_plugins_branch.sh"
 
   feature-e2e-setup:
     steps:
@@ -2686,6 +2707,9 @@ step_bundles:
             - content: |-
                 set -exo pipefail
                 go build -o bitrise-build-cache-cli
+                # change-workdir rewrites BITRISE_SOURCE_DIR, so capture the repo
+                # root while it still points here.
+                envman add --key CLI_REPO_DIR --value "$BITRISE_SOURCE_DIR"
       - change-workdir:
           title: Switch working dir to _tmp
           inputs:
@@ -2729,6 +2753,9 @@ step_bundles:
             set -exo pipefail
             go build -o bitrise-build-cache-cli
             envman add --key CLI_BIN --value "$BITRISE_SOURCE_DIR/bitrise-build-cache-cli"
+            # change-workdir rewrites BITRISE_SOURCE_DIR, so capture the repo root
+            # while it still points here.
+            envman add --key CLI_REPO_DIR --value "$BITRISE_SOURCE_DIR"
     - script:
         title: Capture BITRISE_DEN_VM_DATACENTER
         inputs:
@@ -2754,7 +2781,7 @@ step_bundles:
         inputs:
         - content: |-
             set -exo pipefail
-            PREBOOT_CLI="$CLI_BIN" "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" gradle -d --cache --cache-push
+            PREBOOT_CLI="$CLI_BIN" "$CLI_REPO_DIR/scripts/preboot_emulate.sh" gradle -d --cache --cache-push
     - script:
         title: Print init scripts
         inputs:
