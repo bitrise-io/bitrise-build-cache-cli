@@ -2,6 +2,7 @@ package bazelconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -12,6 +13,10 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
+
+var errLiteNeedsCredentialHelper = errors.New(
+	"lite activation needs the CLI on $PATH or at a stable path so Bazel can call it as a credential helper; " +
+		"install it (e.g. /usr/local/bin) before running activate --lite")
 
 type CacheParams struct {
 	Enabled     bool
@@ -106,6 +111,16 @@ func (params ActivateBazelParams) commonTemplateInventory(
 			fmt.Errorf("resolve auth config: %w", err)
 	}
 
+	helperPath := credentialHelperPath(params.CLIPath)
+
+	// Without a helper the bazelrc can only carry a literal token, and lite has
+	// none to carry. Writing it anyway produces a config that can never
+	// authenticate and bakes this machine's warmup metadata into every build, so
+	// say so here rather than let it surface as a build-time auth failure.
+	if params.Lite && helperPath == "" && (params.Cache.Enabled || params.BES.Enabled) {
+		return CommonTemplateInventory{}, errLiteNeedsCredentialHelper
+	}
+
 	username, _ := resolver.ResolveUsername(envs)
 	cacheConfig := common.NewMetadata(envs, username,
 		commandFunc,
@@ -123,7 +138,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		WorkflowName: cacheConfig.BitriseWorkflowName,
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
-		CLIPath:      credentialHelperPath(params.CLIPath),
+		CLIPath:      helperPath,
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,

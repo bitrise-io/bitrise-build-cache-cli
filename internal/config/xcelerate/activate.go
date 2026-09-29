@@ -160,7 +160,8 @@ func ensureLogDir(logger log.Logger, osProxy utils.OsProxy) {
 // exportDerivedDataPath publishes where the wrapper relocates DerivedData to, so cache steps can
 // target the SPM checkouts under it.
 func exportDerivedDataPath(logger log.Logger, config Config, envs map[string]string) {
-	if !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
+	// No envman at warmup, and the path is only read by cache steps inside a build.
+	if config.Lite || !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
 		return
 	}
 
@@ -388,11 +389,17 @@ func addXcelerateCommandToPathWithScriptWrapper(
 	}
 	logger.Infof("Wrote xcrun wrapper script: %s", scriptPath)
 
-	path := strings.ReplaceAll(envs["PATH"], binPath+":", "")
-	path = strings.Join([]string{binPath, path}, ":")
-
 	exporter := envexport.New(envs, logger)
-	exporter.Export("PATH", path)
+
+	// envman belongs to a build, and warmup runs before one exists. Putting the
+	// wrapper dir on the build's PATH is the VM's job there — /etc/paths.d or the
+	// agent's own environment — not something activation can do from here.
+	if !config.Lite {
+		path := strings.ReplaceAll(envs["PATH"], binPath+":", "")
+		path = strings.Join([]string{binPath, path}, ":")
+		exporter.Export("PATH", path)
+	}
+
 	exporter.ExportToShellRC(XcelerateShellRCBlockName, fmt.Sprintf("export PATH=%s:$PATH", binPath))
 
 	return nil

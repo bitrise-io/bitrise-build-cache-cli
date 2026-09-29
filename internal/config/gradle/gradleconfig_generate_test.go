@@ -286,11 +286,11 @@ const expectedNoPluginActivated = "initscript {\n" + expectedRepositories + "\n}
 const expectedDepOnlyPlugins = "initscript {\n" + expectedRepositories + "\n" + expectedDependencies + "\n}"
 
 //nolint:gosec // expected snippet of generated kotlin script for test assertion, not credentials
-const expectedAuthTokenResolver = `// Local-dev only: resolve the auth token at build time via the bitrise-build-cache
-// CLI so credentials never live in plain text on disk. CI runs (CIProvider set)
-// bake the token literal instead — the same token is already in env vars on the
-// CI VM, and embedding it keeps the init.kts byte-stable across configuration-cache
-// save/restore VMs.
+const expectedAuthTokenResolver = `// No CI provider was detected when this file was written, which means either
+// local dev or a warmup run on a VM with no build assigned yet. Either way the
+// auth token is resolved at build time through the bitrise-build-cache CLI, so
+// no credential lives in plain text on disk and the init.kts stays byte-stable
+// across configuration-cache save/restore VMs.
 abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
     @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
     override fun obtain(): String {
