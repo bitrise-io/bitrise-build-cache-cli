@@ -156,8 +156,8 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            ../bitrise-build-cache-cli activate xcode
-        title: Activate XCode Build Cache
+            PREBOOT_CLI=../bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" xcode
+        title: Preboot VM warmup emulation (activate --lite)
     - bundle::rn-cli-seek-ios: {}
     - share-pipeline-variable@1:
         inputs:
@@ -531,10 +531,10 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Activate ccache remote storage
+        title: Preboot VM warmup emulation (activate --lite) (ccache)
         inputs:
         # -d so the storage helper logs the analytics payload, including cacheBlobStats.
-        - content: ./bitrise-build-cache-cli -d activate c++
+        - content: PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" c++ -d
     - script@1:
         title: Change apt sources to enzu mirror
         inputs:
@@ -827,8 +827,8 @@ step_bundles:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            ./bitrise-build-cache-cli activate react-native
-        title: Activate Build Cache
+            PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" react-native
+        title: Preboot VM warmup emulation (activate --lite)
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
   rn-cli-restore-gradle:
     steps:
@@ -940,9 +940,9 @@ step_bundles:
               | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-darwin/ccache"
             ccache --version
     - script:
-        title: Activate react-native (Gradle + C++)
+        title: Preboot VM warmup emulation (activate --lite) — react-native (Gradle + C++)
         inputs:
-        - content: ./bitrise-build-cache-cli --debug activate react-native --gradle=true --xcode=false --cpp=true
+        - content: PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" react-native --debug --gradle=true --xcode=false --cpp=true
     - script:
         title: Build
         inputs:
@@ -999,9 +999,9 @@ step_bundles:
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
     - script:
-        title: Activate react-native (Xcode)
+        title: Preboot VM warmup emulation (activate --lite) — react-native (Xcode)
         inputs:
-        - content: ./bitrise-build-cache-cli activate react-native --gradle=false --xcode=true --cpp=false
+        - content: PREBOOT_CLI=./bitrise-build-cache-cli "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" react-native --gradle=false --xcode=true --cpp=false
     - script:
         title: Build
         inputs:

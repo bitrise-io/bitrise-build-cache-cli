@@ -4,9 +4,13 @@
 # preboot-reconciler/startup_script_extension_*.sh) inside an e2e build.
 #
 # The point is negative: activation must not be able to see anything the
-# monolith injects per build. So every build-scoped variable is stripped from
-# the child environment before `activate --lite` runs, and the run is asserted
-# to have left no build-scoped value behind on disk.
+# monolith injects per build. Every build-scoped variable is stripped from the
+# child environment before `activate --lite` runs, so a workflow that still
+# caches afterwards has proved the deferral works.
+#
+# The script also does the two jobs that belong to the VM rather than to the
+# CLI: installing the binary somewhere the build can find it, and putting the
+# wrapper dir on the build's PATH.
 #
 # Usage: preboot_emulate.sh <tool> [extra activate args...]
 set -euo pipefail
@@ -14,6 +18,9 @@ set -euo pipefail
 CLI="${PREBOOT_CLI:?PREBOOT_CLI must point at the built bitrise-build-cache CLI}"
 TOOL="${1:?usage: preboot_emulate.sh <tool> [args...]}"
 shift
+
+INSTALL_DIR="${PREBOOT_INSTALL_DIR:-/usr/local/bin}"
+INSTALLED="${INSTALL_DIR}/bitrise-build-cache"
 
 # Everything Bitrise injects per build. If activation can read any of it, the
 # workflow is not testing warmup.
@@ -41,18 +48,39 @@ BUILD_SCOPED_ENVS=(
   CI
 )
 
+maybe_sudo() {
+  if [[ -w "$INSTALL_DIR" ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+# The real warmup downloads the CLI to a stable path on the build's PATH.
+# /tmp is not one: clibin refuses transient paths, which leaves Bazel without a
+# credential helper and the Gradle plugins without a binary to call.
+echo "=== preboot: installing the CLI to ${INSTALLED}"
+maybe_sudo mkdir -p "$INSTALL_DIR"
+maybe_sudo cp "$CLI" "$INSTALLED"
+maybe_sudo chmod 0755 "$INSTALLED"
+
 unset_args=()
 for name in "${BUILD_SCOPED_ENVS[@]}"; do
   unset_args+=(-u "$name")
 done
 
-echo "=== preboot warmup: activate ${TOOL} --lite $*"
+echo "=== preboot: activate ${TOOL} --lite $*"
+env "${unset_args[@]}" "$INSTALLED" activate "$TOOL" --lite --no-update-check "$@"
 
-# PATH is trimmed too: envman is a build tool and the real warmup never has it.
-# Anything the CLI would deliver through envman has to reach the build some
-# other way, or it is not actually deferred.
-env "${unset_args[@]}" \
-  BITRISE_BUILD_CACHE_PREBOOT_EMULATION=true \
-  "$CLI" activate "$TOOL" --lite --no-update-check "$@"
+# Standing in for /etc/paths.d (macOS) or the agent's environment (Linux):
+# putting the wrapper ahead of /usr/bin is the VM's job, and --lite deliberately
+# does not reach for envman to do it.
+if [[ "$TOOL" == "xcode" || "$TOOL" == "react-native" ]]; then
+  XCELERATE_BIN="${HOME}/.bitrise-xcelerate/bin"
+  if [[ -d "$XCELERATE_BIN" ]]; then
+    echo "=== preboot: putting ${XCELERATE_BIN} on PATH (VM-level stand-in)"
+    envman add --key PATH --value "${XCELERATE_BIN}:${PATH}"
+  fi
+fi
 
 echo "=== preboot warmup finished"

@@ -738,11 +738,17 @@ workflows:
         inputs:
           - verbose: 'true'
     - script:
-        title: Enable build cache
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh gradle -d --cache --cache-push
+    - script:
+        title: Assert warmup left no build-scoped data behind
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/assert_no_build_metadata.sh "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
     - script:
         title: Assert init script honors GRADLE_USER_HOME
         inputs:
@@ -857,11 +863,11 @@ workflows:
                 ../bitrise-build-cache-cli auth clear || true
                 ../bitrise-build-cache-cli auth status --debug || true
       - script:
-          title: Enable build cache
+          title: Preboot VM warmup emulation (activate --lite)
           inputs:
             - content: |-
                 set -exo pipefail
-                ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+                PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh gradle -d --cache --cache-push
       - script:
           title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
           inputs:
@@ -961,11 +967,11 @@ workflows:
             ../bitrise-build-cache-cli auth clear || true
             ../bitrise-build-cache-cli auth status --debug || true
     - script:
-        title: Enable build cache
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh gradle -d --cache --cache-push
     - script:
         title: Print ~/.init.d/bitrise-build-cache.init.gradle.kts
         inputs:
@@ -1075,11 +1081,11 @@ workflows:
             ../scripts/install_bazel.sh
         title: Install bazel
     - script:
-        title: Enable build cache
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh bazel -d --cache --cache-push --bes --timestamps
     - script:
         title: Build and capture logs
         inputs:
@@ -1166,11 +1172,38 @@ workflows:
             # helper can still resolve a valid Bearer token when Bazel spawns it.
             envman unset --key BITRISE_IO
     - script:
-        title: Enable build cache
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh bazel -d --cache --cache-push --bes --timestamps
+    - script:
+        title: Assert warmup left no build-scoped data behind
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/assert_no_build_metadata.sh "$HOME/.bazelrc"
+            # The headers the bazelrc used to bake now come back from `get` per
+            # invocation, so none of them may be present here.
+            for header in x-org-id x-app-id x-workflow-name x-flare-build-id x-build-id x-ci-provider x-flare-builduser; do
+              if grep -q "$header" "$HOME/.bazelrc"; then
+                echo "FAIL: $header is baked into the bazelrc; it must come from the credential helper"
+                exit 1
+              fi
+            done
+            echo "OK: no per-invocation headers baked into the bazelrc"
+    - script:
+        title: Assert the credential helper returns per-invocation metadata
+        inputs:
+        - content: |-
+            set -exo pipefail
+            resp=$(echo '{"uri":"grpcs://bitrise-accelerate.services.bitrise.io"}' | bitrise-build-cache get)
+            echo "$resp"
+            for header in x-org-id x-app-id x-workflow-name x-flare-build-id x-ci-provider; do
+              echo "$resp" | grep -q "\"$header\"" || { echo "FAIL: helper did not return $header"; exit 1; }
+            done
+            echo "$resp" | grep -q '"authorization"' || { echo "FAIL: helper returned no authorization header"; exit 1; }
+            echo "OK: the helper resolved auth and metadata at build time"
     - script:
         title: Assert local credential_helper path
         inputs:
@@ -1278,14 +1311,14 @@ workflows:
             - packages: 'bc dnsutils iputils-ping'
             - upgrade: "no"
       - script:
-          title: Enable build cache
+          title: Preboot VM warmup emulation (activate --lite)
           inputs:
             - content: |-
                 #!/bin/bash
                 set -exo pipefail
 
                 echo "Bitrise step ID: $BITRISE_STEP_EXECUTION_ID"
-                ../bitrise-build-cache-cli activate bazel -d --cache --cache-push --bes --timestamps
+                PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh bazel -d --cache --cache-push --bes --timestamps
       - script:
           title: Build and capture logs using Docker
           inputs:
@@ -1514,12 +1547,12 @@ workflows:
             go build -o bitrise-build-cache-cli
             envman add --key CLI_BIN --value "$BITRISE_SOURCE_DIR/bitrise-build-cache-cli"
     - script:
-        title: Enable build cache
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
             sudo mkdir -p "$APP_DIR" && sudo chown -R "$(whoami)" "$APP_DIR"
-            "$CLI_BIN" activate gradle -d --cache --cache-push
+            PREBOOT_CLI="$CLI_BIN" "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" gradle -d --cache --cache-push
     - change-workdir:
         inputs:
         - path: $APP_DIR
@@ -1591,7 +1624,7 @@ workflows:
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
-        title: activate xcode using CLI
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
           - content: |-
               #!/usr/bin/env bash
@@ -1600,9 +1633,16 @@ workflows:
               echo "Original Xcodebuild command location:"
               type xcodebuild || true
 
-              # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
-              ../bitrise-build-cache-cli -d activate xcode \
-                --cache
+              PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh xcode -d --cache
+    - script:
+        title: Assert warmup left no build-scoped data behind
+        inputs:
+          - content: |-
+              set -exo pipefail
+              ../scripts/assert_no_build_metadata.sh "$HOME/.bitrise-xcelerate/config.json"
+              # The wrapper has to be reachable without envman having run.
+              type xcodebuild
+              xcodebuild --version >/dev/null || true
     - script:
         title: build app
         inputs:
@@ -1805,12 +1845,12 @@ workflows:
             [[ "$a_sha" == "$b_sha" ]] || { echo "FAIL: checkout SHAs differ: A=$a_sha B=$b_sha"; exit 1; }
             echo "OK: two checkouts at $a_sha (A=$PWD, B=$CHECKOUT_B_DIR)"
     - script:
-        title: activate xcode using CLI
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -eo pipefail
 
-            ../bitrise-build-cache-cli -d activate xcode --cache
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh xcode -d --cache
     - script:
         title: Build checkout A (warm-up — expected mostly misses)
         inputs:
@@ -1898,13 +1938,13 @@ workflows:
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
-        title: activate xcode using CLI
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
           - content: |-
               #!/usr/bin/env bash
               set -eo pipefail
 
-              ../bitrise-build-cache-cli -d activate xcode --cache
+              PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh xcode -d --cache
     - script:
         title: build app
         inputs:
@@ -2042,11 +2082,11 @@ workflows:
         inputs:
           - set_java_version: '21'
     - script:
-        title: Enable build cache and MavenCentral mirror
+        title: Preboot VM warmup emulation (activate --lite) + MavenCentral mirror
         inputs:
         - content: |-
             set -exo pipefail
-            ../bitrise-build-cache-cli activate gradle -d --cache --cache-push
+            PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh gradle -d --cache --cache-push
             export BITRISE_MAVENCENTRAL_PROXY_ENABLED=true
             ../bitrise-build-cache-cli activate gradle-mirrors -d
     - script:
@@ -2683,11 +2723,11 @@ step_bundles:
         inputs:
         - path: $APP_DIR
     - script:
-        title: Enable build cache
+        title: Preboot VM warmup emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
-            "$CLI_BIN" activate gradle -d --cache --cache-push
+            PREBOOT_CLI="$CLI_BIN" "$BITRISE_SOURCE_DIR/scripts/preboot_emulate.sh" gradle -d --cache --cache-push
     - script:
         title: Print init scripts
         inputs:
