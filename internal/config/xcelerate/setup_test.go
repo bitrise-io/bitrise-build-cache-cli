@@ -24,6 +24,7 @@ func init() {
 	mockLogger.On("Debugf", mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Warnf").Return()
 	mockLogger.On("Warnf", mock.Anything).Return()
 	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()

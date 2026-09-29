@@ -252,6 +252,24 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 
 	logger.EnableDebugLog(config.DebugLogging)
 
+	metadata := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(utils.AllEnvs()), func(cmd string, args ...string) (string, error) {
+		o, err := utils.DefaultCommandFunc()(ctx, cmd, args...).CombinedOutput()
+
+		return string(o), err
+	}, osProxy, logger)
+
+	// Before the proxy starts, because on a baseline phase there should be no
+	// proxy at all. Lite activation could not ask for a phase — the query is
+	// keyed on a workspace, app and workflow that do not exist at VM warmup — so
+	// the build asks instead, once, and records it for its other invocations.
+	// A normal activation already exported the phase, and that env var wins here
+	// before any request is made, so this changes nothing for it.
+	metadata.BenchmarkPhase = resolveBenchmarkPhase(config, metadata, logger)
+	if metadata.BenchmarkPhase == configcommon.BenchmarkPhaseBaseline && config.BuildCacheEnabled {
+		logger.TInfof("Benchmark baseline phase: this build runs without the cache, to measure against")
+		config.BuildCacheEnabled = false
+	}
+
 	var proxySessionClient session.SessionClient
 	if isBuildAction && config.BuildCacheEnabled {
 		logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
@@ -274,12 +292,6 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		proxySessionClient, cleanup = createProxySessionClient(config, logger)
 		defer cleanup()
 	}
-
-	metadata := configcommon.NewMetadata(utils.AllEnvs(), invocationUsername(utils.AllEnvs()), func(cmd string, args ...string) (string, error) {
-		o, err := utils.DefaultCommandFunc()(ctx, cmd, args...).CombinedOutput()
-
-		return string(o), err
-	}, osProxy, logger)
 
 	xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
 
@@ -470,7 +482,6 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	hitRate, proxyOutcome := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
-	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
 	c.refreshCredential(ctx)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
@@ -815,23 +826,16 @@ func logBlobStatsProfile(logger log.Logger, snapshot *blobstats.Snapshot) {
 	}
 }
 
-// resolveBenchmarkPhase reads the benchmark phase from:
-// 1. BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE env var (set during activation)
-// 2. ~/.local/state/xcelerate/benchmark/benchmark-phase-xcode.json (file fallback)
-func resolveBenchmarkPhase(logger log.Logger) string {
-	if phase := os.Getenv(configcommon.BenchmarkPhaseEnvVar(configcommon.BuildToolXcode)); phase != "" {
-		logger.Debugf("Benchmark phase from env: %s", phase)
-
-		return phase
+// resolveBenchmarkPhase returns this build's benchmark phase, in order: the env
+// var a normal activation exported, then the record an earlier invocation of
+// this same build wrote, then the API. Off CI there is no build to ask about.
+func resolveBenchmarkPhase(config xcelerate.Config, metadata configcommon.CacheConfigMetadata, logger log.Logger) string {
+	var provider configcommon.BenchmarkPhaseProvider
+	if metadata.CIProvider != "" && config.AuthConfig.WorkspaceID != "" {
+		provider = configcommon.NewBenchmarkPhaseClient(consts.BitriseWebsiteBaseURL, config.AuthConfig, logger)
 	}
 
-	if phase := configcommon.ReadBenchmarkPhaseFile(configcommon.BuildToolXcode, logger); phase != "" {
-		logger.Debugf("Benchmark phase from file: %s", phase)
-
-		return phase
-	}
-
-	return ""
+	return configcommon.ResolveBenchmarkPhase(configcommon.BuildToolXcode, metadata, provider, logger)
 }
 
 // createProxySessionClient creates a gRPC client to connect to the proxy session service. If any error occurs during the

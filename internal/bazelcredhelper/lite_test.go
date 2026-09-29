@@ -112,15 +112,17 @@ func TestRun_NoBazelrcWithoutCredentialsStillPointsAtDoctor(t *testing.T) {
 	assert.Contains(t, err.Error(), "doctor --fix --interactive")
 }
 
-// The headers the bazelrc used to bake now travel per invocation, so a warmed-up
-// VM reports the build it actually ran rather than the one that activated.
-func TestRun_EmitsPerInvocationMetadataHeaders(t *testing.T) {
-	envs := map[string]string{
+func ciEnvs() map[string]string {
+	return map[string]string{
 		"BITRISE_IO":                    "true",
 		"BITRISE_BUILD_SLUG":            "build-slug-1",
 		"BITRISE_APP_SLUG":              "app-slug-1",
 		"BITRISE_TRIGGERED_WORKFLOW_ID": "primary",
 	}
+}
+
+func runWithMetadata(t *testing.T, envs map[string]string) GetCredentialsResponse {
+	t.Helper()
 
 	out := &bytes.Buffer{}
 	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard,
@@ -128,6 +130,18 @@ func TestRun_EmitsPerInvocationMetadataHeaders(t *testing.T) {
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+
+	return resp
+}
+
+// A lite bazelrc bakes no per-invocation metadata, so the helper has to supply
+// it — that is what lets a warmed-up VM report the build it actually ran rather
+// than the one that activated.
+func TestRun_LiteEmitsPerInvocationMetadataHeaders(t *testing.T) {
+	home := unconfiguredHome(t)
+	writeBazelrc(t, home, true)
+
+	resp := runWithMetadata(t, ciEnvs())
 
 	assert.Equal(t, []string{"app-slug-1"}, resp.Headers["x-app-id"])
 	assert.Equal(t, []string{"primary"}, resp.Headers["x-workflow-name"])
@@ -139,8 +153,27 @@ func TestRun_EmitsPerInvocationMetadataHeaders(t *testing.T) {
 	assert.Equal(t, []string{"ws-1"}, resp.Headers[orgIDHeader])
 }
 
+// A normal activation already baked this metadata into the bazelrc, so emitting
+// it here too would put two values in the same key. Deferring metadata is a lite
+// behaviour only — it must not change what every existing user of the CLI gets.
+func TestRun_NonLiteEmitsNoMetadataHeaders(t *testing.T) {
+	home := unconfiguredHome(t)
+	writeBazelrc(t, home, false)
+
+	resp := runWithMetadata(t, ciEnvs())
+
+	require.NotEmpty(t, resp.Headers["authorization"], "auth is still the helper's job on both branches")
+	for _, header := range []string{"x-app-id", "x-workflow-name", "x-ci-provider", "x-flare-build-id", "x-build-id", orgIDHeader} {
+		assert.NotContains(t, resp.Headers, header, "the bazelrc already carries this one")
+	}
+}
+
 // Off CI there is no build to describe, and empty headers would be noise.
 func TestNewMetadataResolver_OmitsWhatItCannotResolve(t *testing.T) {
+	// With no CI detected the build-user fallback goes through ResolveUsername,
+	// which reads the credential stores — including the OS keychain.
+	unconfiguredHome(t)
+
 	headers := NewMetadataResolver(map[string]string{auth.EnvAuthToken: "t"})()
 
 	assert.NotContains(t, headers, appIDHeader)

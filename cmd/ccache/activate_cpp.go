@@ -34,19 +34,29 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
-		// Both persist machine-scoped policy, which a warmup run has no business
-		// deciding on behalf of whatever build lands on this VM.
+		// A warmup run has no business deciding machine-scoped policy for whatever
+		// build lands on this VM, so it does not write it.
 		if !common.Lite {
 			if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
 				return fmt.Errorf("persist project mode: %w", err)
 			}
-
-			push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
-			if err != nil {
-				return fmt.Errorf("resolve cache push: %w", err)
-			}
-			activateCppParams.PushEnabled = push
 		}
+
+		// It does still have to READ that policy. An unchanged flag makes this a
+		// pure read that returns what the machine already has, and a nil command is
+		// how lite asks for exactly that: skipping the call outright would ignore an
+		// operator's persisted `cache push = false` and silently fall back to the
+		// flag default, which is the opposite of leaving policy alone.
+		pushCmd := cmd
+		if common.Lite {
+			pushCmd = nil
+		}
+
+		push, err := common.ResolveAndPersistCachePush(pushCmd, activateCppParams.PushEnabled, logger)
+		if err != nil {
+			return fmt.Errorf("resolve cache push: %w", err)
+		}
+		activateCppParams.PushEnabled = push
 
 		activator := ccachepkg.NewActivator(ccachepkg.ActivatorParams{
 			BuildCacheEndpoint:    activateCppParams.BuildCacheEndpoint,

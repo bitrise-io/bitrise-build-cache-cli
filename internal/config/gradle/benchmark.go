@@ -45,7 +45,7 @@ func ApplyBenchmarkPhase(
 
 	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolGradle)
 	exporter.Export(envVar, phase)
-	common.WriteBenchmarkPhaseFile(common.BuildToolGradle, phase, logger)
+	common.RecordBenchmarkPhase(common.BuildToolGradle, metadata, phase, logger)
 
 	// The user-facing summary is logged once at the end of activation by
 	// common.LogBenchmarkSummary. Avoid logging per-tool here so that on

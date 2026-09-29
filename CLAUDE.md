@@ -135,6 +135,23 @@ The `cache-ccache-test` workflow in `gradle-plugins/bitrise.yml` asserts on the 
 
 These are annotated with `// CI: asserted by cache-ccache-test workflow` in the source.
 
+## Lite activation (`--lite`)
+
+`activate <tool> --lite` runs at VM warmup, before a build is assigned: static
+wiring only, with credentials, build identity and the benchmark phase deferred
+to build time. Full rationale, per-tool mechanics and known limits:
+**[docs/lite-mode.md](docs/lite-mode.md)** — read it before changing anything
+that writes a generated config.
+
+Two rules it imposes on new code:
+
+- Anything baked into a generated config at warmup is inherited by whatever
+  unrelated build later lands on that VM. Under `Lite`, build-scoped values are
+  discarded at the config boundary — do not reintroduce them downstream.
+- Deferral is lite-only. A normal activation keeps baking what it always did;
+  moving resolution to runtime for everyone is a behaviour change for every
+  existing user of the CLI.
+
 ## Benchmark Phasing
 
 Benchmark phasing allows measuring build performance with and without cache. The phase is queried from the Bitrise API during activation and affects both Gradle and Xcode builds.

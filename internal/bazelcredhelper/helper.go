@@ -77,9 +77,14 @@ func Run(
 		return nil
 	}
 
+	// One read, used twice: a lite bazelrc bakes no per-invocation metadata and
+	// so needs this response to carry it, and it is also what says a missing
+	// credential is ordinary rather than a misconfiguration.
+	lite := liteActivation()
+
 	cred, err := resolve(ctx)
 	switch {
-	case errors.Is(err, ErrNoCredential) && liteActivation():
+	case errors.Is(err, ErrNoCredential) && lite:
 		// Warmup wired this machine before any credential existed, so a workspace
 		// without Build Cache lands here on every build. Bazel sends no auth, the
 		// backend declines, and the build proceeds without the cache.
@@ -119,15 +124,20 @@ func Run(
 		}
 	}
 
-	if resolveMetadata != nil {
-		for key, value := range resolveMetadata() {
-			resp.Headers[key] = []string{value}
+	// Only under lite. A normal activation baked this metadata into the bazelrc
+	// at a point where it knew the build, and emitting it here as well would put
+	// two values in the same key — the collision the authorization header hit.
+	if lite {
+		if resolveMetadata != nil {
+			for key, value := range resolveMetadata() {
+				resp.Headers[key] = []string{value}
+			}
 		}
-	}
 
-	// From the credential, not the environment, so it always matches the token.
-	if cred.WorkspaceID != "" {
-		resp.Headers[orgIDHeader] = []string{cred.WorkspaceID}
+		// From the credential, not the environment, so it always matches the token.
+		if cred.WorkspaceID != "" {
+			resp.Headers[orgIDHeader] = []string{cred.WorkspaceID}
+		}
 	}
 
 	if err := json.NewEncoder(out).Encode(resp); err != nil {

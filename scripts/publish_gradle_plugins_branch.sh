@@ -54,6 +54,19 @@ echo "    common=${COMMON_VERSION} remote-cache=${CACHE_VERSION} gradle-analytic
 rm -rf "$WORKDIR"
 # --branch takes a branch or a tag, never a SHA; GRADLE_PLUGINS_REF is one of
 # the first two.
+# activate-ssh-key only installs SSH_RSA_PRIVATE_KEY, so a dedicated deploy key
+# has to be pointed at explicitly. IdentitiesOnly stops ssh offering the agent's
+# other keys first and getting rejected before it reaches this one.
+if [[ -n "${GRADLE_PLUGINS_DEPLOY_KEY:-}" ]]; then
+  key_file="$(mktemp)"
+  # Trapped on EXIT so the key does not outlive this script on a failed clone.
+  trap 'rm -f "$key_file"' EXIT
+  printf '%s\n' "$GRADLE_PLUGINS_DEPLOY_KEY" > "$key_file"
+  chmod 600 "$key_file"
+  export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  echo "    using GRADLE_PLUGINS_DEPLOY_KEY"
+fi
+
 git clone --depth 1 --branch "$REF" "$REPO_URL" "$WORKDIR"
 echo "    at $(git -C "$WORKDIR" rev-parse --short HEAD)"
 

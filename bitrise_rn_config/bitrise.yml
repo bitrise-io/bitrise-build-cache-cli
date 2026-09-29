@@ -531,10 +531,16 @@ workflows:
         inputs:
         - content: go build
     - script:
-        title: Preboot VM warmup emulation (activate --lite) (ccache)
+        title: Activate ccache remote storage
         inputs:
+        # Deliberately NOT the warmup emulation. Lite skips the CCACHE_* envman
+        # export and starts no storage helper, and this workflow has no React
+        # Native runner to deliver either at build time — so the bare `ccache`
+        # calls it asserts on would have no remote storage to hit. Moving it to
+        # lite would not test lite, it would just delete the assertion's subject.
+        # Switch it over once non-wrapped ccache has a build-time delivery path.
         # -d so the storage helper logs the analytics payload, including cacheBlobStats.
-        - content: PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh c++ -d
+        - content: ./bitrise-build-cache-cli -d activate c++
     - script@1:
         title: Change apt sources to enzu mirror
         inputs:

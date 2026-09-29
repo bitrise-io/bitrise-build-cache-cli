@@ -41,8 +41,8 @@ build --remote_timeout=600s
 build --remote_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
 build --remote_header=x-flare-buildtool=bazel
-{{- /* Helper-less only; the helper returns builduser per invocation. Quoted and escaped: the value can include space, single quote and backslash. */}}
-{{- if not $useHelper }}
+{{- /* Baked unless lite, where the helper returns it per invocation. Quoted and escaped: the value can include space, single quote and backslash. */}}
+{{- if not .Common.Lite }}
 build --remote_header='x-flare-builduser={{ .Common.BuildUserHeaderValue }}'
 {{- end }}
 {{- if .Cache.IsPushEnabled }}
@@ -78,12 +78,13 @@ build --show_timestamps
 {{- end }}
 
 {{- /*
-Bitrise common metadata. Only on the helper-less branch: the helper returns these
-per invocation, and emitting both would put two values in the same metadata key —
-the same collision the authorization header hit.
+Bitrise common metadata. Baked here for a normal activation, which knows which
+build it belongs to. Under lite it is omitted and `get` returns it per
+invocation instead — the helper checks the same marker, so exactly one side
+emits each key and they cannot collide the way the authorization header once did.
 */}}
 
-{{- if not $useHelper }}
+{{- if not .Common.Lite }}
 
 {{- if .Common.WorkspaceID }}
 {{- if .Cache.Enabled }}
@@ -112,8 +113,8 @@ build --bes_header='x-ci-provider={{ .Common.CIProvider }}'
 {{- end }}
 {{- end }}
 
-{{- /* Repo-scoped, resolved per build by the helper on the other branch. */ -}}
-{{- if .Common.RepoURL }}
+{{- /* Repo-scoped and helper-resolved since before lite: it follows $useHelper, not Lite. */ -}}
+{{- if and .Common.RepoURL (not $useHelper) }}
 {{- if .Cache.Enabled }}
 build --remote_header='x-repository-url={{ .Common.RepoURL }}'
 {{- end }}
