@@ -71,6 +71,12 @@ Same idea: install into a persistent, on-PATH directory. Either
 `brew install bitrise-io/bitrise-build-cache/bitrise-build-cache` or the
 `installer.sh` one-liner pointed at `~/.local/bin` will do.
 
+`bitrise-build-cache activate bazel` also self-installs a copy of the running
+binary into `~/.local/bin/bitrise-build-cache` when the CLI is not already on
+`$PATH`, so a developer who ran the CLI once from `/tmp` or a downloaded
+tarball ends up with a persistent copy without a second step. Add
+`~/.local/bin` to `$PATH` to make bare-name resolution work.
+
 `bitrise-build-cache activate bazel` and `bitrise-build-cache doctor` will
 warn you when they detect the committed pin AND `bitrise-build-cache` is
 missing from `$PATH` — the message points here. When the CLI IS on `$PATH`

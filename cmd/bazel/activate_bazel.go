@@ -72,6 +72,10 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	}
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 
+	if _, _, err := clibin.EnsureInstalledInUserLocalBin(logger); err != nil {
+		logger.Debugf("self-install to ~/.local/bin skipped: %s", err)
+	}
+
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
 
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {

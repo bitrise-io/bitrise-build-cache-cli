@@ -21,12 +21,9 @@ const installerSnippet = `mkdir -p "$HOME/.local/bin"
 
 // WarnIfHelperPinnedInRepo scans the repo-level bazelrc files Bazel would load
 // and emits an actionable warning when one commits the Bitrise CLI as a
-// --credential_helper. Non-fatal: scan errors are logged and swallowed so an
-// unreadable file cannot break activation.
-//
-// cliOnPATH short-circuits the warning: the failure mode a pin causes only
-// bites machines where `bitrise-build-cache` is missing from $PATH, so we do
-// not need to warn a caller that already has it.
+// --credential_helper AND the binary is not on $PATH. A pin with the CLI on
+// $PATH is the normal, preferred setup, so we say nothing then. Scan errors
+// are logged and swallowed — an unreadable file cannot break activation.
 func WarnIfHelperPinnedInRepo(ctx context.Context, logger log.Logger, startDir string, osProxy utils.OsProxy, cliOnPATH bool) {
 	if cliOnPATH {
 		return
