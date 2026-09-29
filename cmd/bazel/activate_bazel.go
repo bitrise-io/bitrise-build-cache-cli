@@ -123,7 +123,6 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 			BESEnabled:        activateBazelParams.BES.Enabled,
 			RBEEnabled:        activateBazelParams.RBE.Enabled,
 			TimestampsEnabled: activateBazelParams.Timestamps,
-			Lite:              activateBazelParams.Lite,
 		}); mErr != nil {
 			logger.Debugf("bazel sidecar write failed (non-fatal): %s", mErr)
 		}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -121,12 +122,32 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		return CommonTemplateInventory{}, errLiteNeedsCredentialHelper
 	}
 
-	username, _ := resolver.ResolveUsername(envs)
+	// ResolveUsername can reach the OS keychain, which has been seen to hang on a
+	// macOS CI agent. Warmup emits no build user anyway, so do not ask.
+	var username string
+	if !params.Lite {
+		username, _ = resolver.ResolveUsername(envs)
+	}
+
 	cacheConfig := common.NewMetadata(envs, username,
 		commandFunc,
 		utils.DefaultOsProxy{},
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
+
+	// Structural, not environmental: warmup must emit no credential and no build
+	// identity even when it happens to run inside a build that has both. The
+	// helper resolves all of this per invocation. Host metadata stays — it
+	// describes the machine, which is the one thing warmup does know.
+	if params.Lite {
+		authConfig = authpkg.Credential{}
+		cacheConfig.BitriseAppID = ""
+		cacheConfig.CIProvider = ""
+		cacheConfig.GitMetadata.RepoURL = ""
+		cacheConfig.BitriseWorkflowName = ""
+		cacheConfig.BitriseBuildID = ""
+		cacheConfig.HostMetadata.Username = ""
+	}
 
 	return CommonTemplateInventory{
 		AuthToken:    authConfig.Token,
@@ -139,6 +160,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
 		CLIPath:      helperPath,
+		Lite:         params.Lite,
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,
@@ -239,6 +261,13 @@ func (params ActivateBazelParams) rbeTemplateInventory(
 // reads an empty CLIPath as "embed the token instead" — a config with a token on
 // disk still authenticates, whereas a helper that can never be spawned fails
 // every build.
+//
+// The bare name is resolved against the PATH of whatever spawns Bazel, which is
+// not necessarily the PATH activation saw. A build in another filesystem
+// namespace — bazel inside a container, most commonly — resolves neither the
+// bare name nor an absolute path unless the binary is mounted in, and warmup
+// cannot know it will happen. Unguarded by design; the failure is loud (Bazel
+// aborts with "Could not find file with name 'bitrise-build-cache' on PATH").
 func credentialHelperPath(cliPath string) string {
 	switch {
 	case cliPath != "":

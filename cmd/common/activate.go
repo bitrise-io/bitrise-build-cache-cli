@@ -10,8 +10,15 @@ import (
 
 // Lite is preboot activation: write the static wiring a build tool needs, and
 // nothing that depends on a workspace, a build or a credential. Under Lite the
-// CLI resolves no credential, pins nothing, queries no benchmark phase, exports
-// through no envman, starts no daemon and persists no machine-scoped policy.
+// CLI keeps no credential and no build identity — whatever the warmup
+// environment happens to hold is discarded at the config boundary, so the
+// exclusion does not depend on that environment being empty — and it pins
+// nothing, queries no benchmark phase, exports through no envman, starts no
+// daemon and persists no machine-scoped policy.
+//
+// Resolution is still attempted, and a credential that is present but malformed
+// still fails the activation: that is a broken machine either way. Only its
+// absence is tolerated.
 //
 //nolint:gochecknoglobals
 var Lite bool

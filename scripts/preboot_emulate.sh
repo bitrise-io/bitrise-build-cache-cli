@@ -3,10 +3,21 @@
 # Emulates the preboot VM warmup (build-prebooting-deployments,
 # preboot-reconciler/startup_script_extension_*.sh) inside an e2e build.
 #
-# The point is negative: activation must not be able to see anything the
-# monolith injects per build. Every build-scoped variable is stripped from the
-# child environment before `activate --lite` runs, so a workflow that still
-# caches afterwards has proved the deferral works.
+# The point is negative: activation must not be able to see the build it is
+# running inside. BUILD_SCOPED_ENVS below is stripped from the child environment
+# before `activate --lite` runs, so a workflow that still caches afterwards has
+# proved the deferral works.
+#
+# It is a denylist, not a hermetic environment, and it is deliberately not one:
+# activation legitimately reads a long tail of machine-scoped variables (PATH,
+# HOME, TMPDIR, GRADLE_USER_HOME, endpoint and mirror overrides, locale), and an
+# allowlist would silently change which of those activation sees. Two residues
+# therefore survive on purpose, and neither can be stripped away:
+#   - BITRISE_SOURCE_DIR / BITRISE_DEPLOY_DIR / BITRISEIO_GIT_* keep pointing at
+#     this build; nothing under test reads them, but they are present.
+#   - The script never leaves the git checkout, so `git remote` still resolves a
+#     repo URL. No amount of env stripping fixes that — only the assertions on
+#     the generated config do, which is why they exist.
 #
 # The script also does the two jobs that belong to the VM rather than to the
 # CLI: installing the binary somewhere the build can find it, and putting the
@@ -45,6 +56,13 @@ BUILD_SCOPED_ENVS=(
   BITRISE_GIT_MESSAGE
   BITRISE_PULL_REQUEST
   GIT_REPOSITORY_URL
+  GIT_CLONE_COMMIT_HASH
+  BITRISEIO_GIT_REPOSITORY_OWNER
+  BITRISEIO_GIT_REPOSITORY_SLUG
+  BITRISEIO_GIT_BRANCH_DEST
+  BITRISEIO_PULL_REQUEST_REPOSITORY_URL
+  BITRISEIO_PULL_REQUEST_MERGE_BRANCH
+  BITRISEIO_PULL_REQUEST_HEAD_BRANCH
   CI
 )
 
@@ -72,6 +90,10 @@ done
 echo "=== preboot: activate ${TOOL} --lite $*"
 env "${unset_args[@]}" "$INSTALLED" activate "$TOOL" --lite --no-update-check "$@"
 
+# PATH is re-prepended on every run. Harmless — the wrapper dir simply appears
+# more than once — and the alternative (reading back what envman already holds)
+# is not worth the branch for a stand-in that runs once per VM in production.
+#
 # Standing in for /etc/paths.d (macOS) or the agent's environment (Linux):
 # putting the wrapper ahead of /usr/bin is the VM's job, and --lite deliberately
 # does not reach for envman to do it.

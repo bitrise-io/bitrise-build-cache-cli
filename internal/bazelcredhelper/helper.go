@@ -52,11 +52,12 @@ type Resolver func(ctx context.Context) (Credential, error)
 var ErrNoCredential = errors.New("no Bitrise Build Cache credential is configured")
 
 // resolveRepoURL and resolveMetadata may be nil, in which case those headers are
-// not emitted.
+// not emitted. warn carries the one line a silently-uncached build gets.
 func Run(
 	ctx context.Context,
 	in io.Reader,
 	out io.Writer,
+	warn io.Writer,
 	resolve Resolver,
 	resolveRepoURL RepoURLResolver,
 	resolveMetadata MetadataResolver,
@@ -82,6 +83,14 @@ func Run(
 		// Warmup wired this machine before any credential existed, so a workspace
 		// without Build Cache lands here on every build. Bazel sends no auth, the
 		// backend declines, and the build proceeds without the cache.
+		//
+		// Said out loud because "nothing configured" also covers half-configured —
+		// a token with no workspace id, say — which would otherwise go uncached
+		// with no message anywhere.
+		if warn != nil {
+			_, _ = fmt.Fprintf(warn, "Bitrise Build Cache: %s; this build runs without the remote cache\n", err)
+		}
+
 		if encErr := json.NewEncoder(out).Encode(GetCredentialsResponse{Headers: map[string][]string{}}); encErr != nil {
 			return fmt.Errorf("encode empty credential-helper response: %w", encErr)
 		}

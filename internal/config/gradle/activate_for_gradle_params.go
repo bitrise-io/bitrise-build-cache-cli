@@ -11,6 +11,7 @@ import (
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -27,6 +28,10 @@ const (
 	errFmtTestDistroConfigCreation = "couldn't create test distribution configuration: %w"
 	errFmtInvalidValidationLevel   = "invalid validation level: '%s'"
 )
+
+var errLiteNeedsReachableCLI = errors.New(
+	"lite activation bakes no auth token, so the Gradle plugins resolve one by running the CLI at " +
+		"configuration time; install it on $PATH (e.g. /usr/local/bin) before running activate --lite")
 
 type CacheParams struct {
 	Enabled         bool
@@ -134,7 +139,13 @@ func (params ActivateGradleParams) TemplateInventory(
 		return TemplateInventory{}, fmt.Errorf(ErrFmtReadAuthConfig, err)
 	}
 
-	username, _ := resolver.ResolveUsername(envs)
+	// ResolveUsername can reach the OS keychain, which has been seen to hang on a
+	// macOS CI agent. Warmup emits no build user anyway, so do not ask.
+	var username string
+	if !params.Lite {
+		username, _ = resolver.ResolveUsername(envs)
+	}
+
 	metadata := common.NewMetadata(envs, username,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
@@ -153,7 +164,10 @@ func (params ActivateGradleParams) TemplateInventory(
 
 	projectMode := resolveProjectMode(osProxy, logger)
 
-	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode)
+	commonInventory, err := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode)
+	if err != nil {
+		return TemplateInventory{}, err
+	}
 
 	cacheInventory, err := params.cacheTemplateInventory(logger, envs)
 	if err != nil {
@@ -182,10 +196,25 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	metadata common.CacheConfigMetadata,
 	isDebug bool,
 	projectMode machineconfig.Mode,
-) PluginCommonTemplateInventory {
+) (PluginCommonTemplateInventory, error) {
 	cliPath := params.CLIPath
 	if cliPath == "" {
-		cliPath = "bitrise-build-cache"
+		cliPath = paths.CLIBinaryName
+	}
+
+	// Lite bakes no token, so every plugin that needs one shells out to the CLI
+	// at configuration time. A bare name that resolves to nothing there turns
+	// into a per-build auth failure inside Gradle; say so now instead.
+	if params.Lite && params.CLIPath == "" && !clibin.OnPATH() && params.needsAuthToken() {
+		return PluginCommonTemplateInventory{}, errLiteNeedsReachableCLI
+	}
+
+	// Structural, not environmental: warmup must emit no credential and no build
+	// identity even when it happens to run inside a build that has both. An empty
+	// CIProvider is also what lets the plugins run their own CI detection.
+	if params.Lite {
+		authConfig, authOrigin = authpkg.Credential{}, authpkg.Origin{}
+		metadata = common.CacheConfigMetadata{}
 	}
 
 	return PluginCommonTemplateInventory{
@@ -196,7 +225,13 @@ func (params ActivateGradleParams) commonTemplateInventory(
 		Version:     consts.GradleCommonPluginDepVersion,
 		CLIPath:     cliPath,
 		ProjectMode: string(projectMode),
-	}
+		Lite:        params.Lite,
+	}, nil
+}
+
+// needsAuthToken reports whether any enabled plugin has to authenticate.
+func (params ActivateGradleParams) needsAuthToken() bool {
+	return params.Cache.Enabled || params.Analytics.Enabled || params.TestDistro.Enabled
 }
 
 func (params ActivateGradleParams) cacheTemplateInventory(

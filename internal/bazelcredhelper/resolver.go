@@ -44,7 +44,10 @@ func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer
 		// lite activation this is the ordinary state of a workspace that has no
 		// Build Cache, and it must not fail the build.
 		case err != nil && !origin.Resolved() && authpkg.IsNotConfigured(err):
-			return Credential{}, ErrNoCredential
+			// Wrapped, not swallowed: "nothing configured" also covers a machine
+			// that has a token but no workspace id, and only the original error
+			// names which half is missing.
+			return Credential{}, fmt.Errorf("%w (%w)", ErrNoCredential, err)
 		case err != nil && !origin.Resolved():
 			return Credential{}, fmt.Errorf("resolve stored credentials: %w", err)
 		case err != nil:

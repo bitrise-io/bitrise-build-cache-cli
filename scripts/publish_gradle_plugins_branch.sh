@@ -8,7 +8,7 @@
 # That is what makes it possible to iterate on the plugin side from a CLI e2e
 # run — change the branch, re-run the workflow, and the build uses the new code.
 #
-# Set GRADLE_PLUGINS_REF to the branch (or tag, or SHA) to test. Unset means
+# Set GRADLE_PLUGINS_REF to the branch or tag to test. Unset means
 # "use the released plugins" and the script does nothing.
 set -euo pipefail
 
@@ -18,7 +18,11 @@ if [[ -z "$REF" ]]; then
   exit 0
 fi
 
-REPO_URL="${GRADLE_PLUGINS_URL:-https://github.com/bitrise-io/gradle-plugins.git}"
+# SSH, not HTTPS: bitrise-io/gradle-plugins is private and the build VM has no
+# HTTPS credentials for github.com, but every workflow that reaches this script
+# has already run activate-ssh-key. Never embed a token in the URL — it would
+# land in the logs and in argv.
+REPO_URL="${GRADLE_PLUGINS_URL:-git@github.com:bitrise-io/gradle-plugins.git}"
 # CLI_REPO_DIR, not BITRISE_SOURCE_DIR: change-workdir rewrites the latter, so by
 # the time this runs it can point at the cloned test app instead of the CLI repo.
 CLI_REPO="${CLI_REPO_DIR:-${BITRISE_SOURCE_DIR:-.}}"
@@ -48,6 +52,8 @@ echo "=== gradle-plugins ${REF} -> mavenLocal"
 echo "    common=${COMMON_VERSION} remote-cache=${CACHE_VERSION} gradle-analytics=${ANALYTICS_VERSION} test-distribution=${TESTDISTRO_VERSION}"
 
 rm -rf "$WORKDIR"
+# --branch takes a branch or a tag, never a SHA; GRADLE_PLUGINS_REF is one of
+# the first two.
 git clone --depth 1 --branch "$REF" "$REPO_URL" "$WORKDIR"
 echo "    at $(git -C "$WORKDIR" rev-parse --short HEAD)"
 

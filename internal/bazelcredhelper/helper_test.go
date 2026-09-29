@@ -33,7 +33,7 @@ func TestRun_EmitsBearerAuthorizationHeader(t *testing.T) {
 	in := strings.NewReader(`{"uri":"https://bitrise-accelerate.services.bitrise.io"}`)
 	out := &bytes.Buffer{}
 
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), nil, nil))
+	require.NoError(t, Run(t.Context(), in, out, io.Discard, envResolver(t, "test-token"), nil, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -44,7 +44,7 @@ func TestRun_EmptyStdin_StillEmitsHeader(t *testing.T) {
 	in := strings.NewReader("")
 	out := &bytes.Buffer{}
 
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), nil, nil))
+	require.NoError(t, Run(t.Context(), in, out, io.Discard, envResolver(t, "test-token"), nil, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -55,7 +55,7 @@ func TestRun_MalformedRequest_ReturnsError(t *testing.T) {
 	in := strings.NewReader("not-json")
 	out := &bytes.Buffer{}
 
-	err := Run(t.Context(), in, out, envResolver(t, "test-token"), nil, nil)
+	err := Run(t.Context(), in, out, io.Discard, envResolver(t, "test-token"), nil, nil)
 	require.Error(t, err)
 	assert.Empty(t, out.Bytes(), "no partial output when the request is malformed")
 }
@@ -65,7 +65,7 @@ func TestRun_UsesRawToken_NotGradleFormat(t *testing.T) {
 	// (workspace ID travels via x-org-id). The helper must match that.
 	in := strings.NewReader(`{"uri":"x"}`)
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "raw-token"), nil, nil))
+	require.NoError(t, Run(t.Context(), in, out, io.Discard, envResolver(t, "raw-token"), nil, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -83,7 +83,7 @@ func TestRun_NoCredentials_PointsAtDoctor(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	out := &bytes.Buffer{}
-	err := Run(t.Context(), strings.NewReader(`{"uri":"https://x.services.bitrise.io/"}`), out,
+	err := Run(t.Context(), strings.NewReader(`{"uri":"https://x.services.bitrise.io/"}`), out, io.Discard,
 		NewResolver(map[string]string{}, io.Discard), nil, nil)
 
 	require.Error(t, err)
@@ -100,7 +100,7 @@ func TestRun_EmitsExpires_FromCredentialExpiry(t *testing.T) {
 	}
 
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil, nil))
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard, resolve, nil, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -118,7 +118,7 @@ func TestRun_OmitsExpires_WhenExpiryUnknown(t *testing.T) {
 	}
 
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil, nil))
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard, resolve, nil, nil))
 
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &raw))
@@ -131,7 +131,7 @@ func TestRun_ResolverError_NoPartialOutput(t *testing.T) {
 	}
 
 	out := &bytes.Buffer{}
-	err := Run(t.Context(), strings.NewReader(`{}`), out, resolve, nil, nil)
+	err := Run(t.Context(), strings.NewReader(`{}`), out, io.Discard, resolve, nil, nil)
 
 	require.Error(t, err)
 	assert.Empty(t, out.Bytes())
@@ -142,7 +142,7 @@ func TestRun_EmitsRepositoryURLHeader(t *testing.T) {
 	out := &bytes.Buffer{}
 
 	repoURL := func(context.Context) string { return "https://github.com/org/repo.git" }
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), repoURL, nil))
+	require.NoError(t, Run(t.Context(), in, out, io.Discard, envResolver(t, "test-token"), repoURL, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -154,7 +154,7 @@ func TestRun_NoRepositoryURL_OmitsHeader(t *testing.T) {
 	out := &bytes.Buffer{}
 
 	repoURL := func(context.Context) string { return "" }
-	require.NoError(t, Run(t.Context(), in, out, envResolver(t, "test-token"), repoURL, nil))
+	require.NoError(t, Run(t.Context(), in, out, io.Discard, envResolver(t, "test-token"), repoURL, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -171,7 +171,7 @@ func TestRun_ProjectModeOptInWithoutMarkerReturnsEmptyHeaders(t *testing.T) {
 	t.Chdir(buildDir)
 
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, envResolver(t, "test-token"), nil, nil))
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard, envResolver(t, "test-token"), nil, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -189,7 +189,7 @@ func TestRun_ProjectModeOptInWithMarkerStillAuths(t *testing.T) {
 	t.Chdir(buildDir)
 
 	out := &bytes.Buffer{}
-	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, envResolver(t, "test-token"), nil, nil))
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard, envResolver(t, "test-token"), nil, nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))

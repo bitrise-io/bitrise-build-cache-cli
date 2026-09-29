@@ -64,6 +64,10 @@ func newCheckerForHome(home string) *status.Checker {
 		UserHomeDirFunc: func() (string, error) { return home, nil },
 		OpenFileFunc:    os.OpenFile,
 		StatFunc:        os.Stat,
+		// ReadConfig resolves the socket path and idle timeout a lite activation
+		// leaves empty, both of which depend on the reader's own environment.
+		TempDirFunc:  func() string { return home },
+		HostnameFunc: func() (string, error) { return "test-host", nil },
 	}
 	decoderFactory := &utilsMocks.DecoderFactoryMock{
 		DecoderFunc: func(r io.Reader) utils.Decoder { return json.NewDecoder(r) },
@@ -139,6 +143,10 @@ func TestChecker_Gradle_HonorsCustomGradleUserHome(t *testing.T) {
 		UserHomeDirFunc: func() (string, error) { return home, nil },
 		OpenFileFunc:    os.OpenFile,
 		StatFunc:        os.Stat,
+		// ReadConfig resolves the socket path and idle timeout a lite activation
+		// leaves empty, both of which depend on the reader's own environment.
+		TempDirFunc:  func() string { return home },
+		HostnameFunc: func() (string, error) { return "test-host", nil },
 	}
 	decoderFactory := &utilsMocks.DecoderFactoryMock{
 		DecoderFunc: func(r io.Reader) utils.Decoder { return json.NewDecoder(r) },

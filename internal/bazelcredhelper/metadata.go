@@ -22,9 +22,15 @@ const (
 // MetadataResolver returns the per-invocation metadata headers.
 type MetadataResolver func() map[string]string
 
-// NewMetadataResolver reads the build's own environment. Env only, no git and no
+// NewMetadataResolver reads the build's own environment. No git and no
 // subprocess: Bazel spawns the helper under a tight timeout, and the repo URL
 // lookup already spends the one git call this path can afford.
+//
+// One exception, off CI only: the build-user fallback goes through
+// ResolveUsername, which reads the credential stores and so can touch the OS
+// keychain. It is reached only when no CI provider is detected, so it never
+// runs on the agents where a keychain call has been seen to hang, and Bazel
+// caches the helper response rather than re-spawning it per RPC.
 func NewMetadataResolver(envs map[string]string) MetadataResolver {
 	return func() map[string]string {
 		headers := map[string]string{}

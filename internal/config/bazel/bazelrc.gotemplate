@@ -23,6 +23,14 @@ emit no auth line at all: `Bearer ` with an empty token is rejected by every
 endpoint and is indistinguishable from a broken deployment.
 */ -}}
 {{- $staticAuth := and (not $useHelper) .Common.AuthToken -}}
+{{- /*
+The warmup marker travels inside the block rather than in a sidecar file, so it
+is the same write as the config it describes: `get` reads it to tell a machine
+that never had a credential from one whose credential has gone missing.
+*/ -}}
+{{- if .Common.Lite -}}
+# bitrise-build-cache: activated at VM warmup (lite)
+{{ end }}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
 build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}
 {{ end }}

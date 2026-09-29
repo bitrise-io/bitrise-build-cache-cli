@@ -28,7 +28,13 @@ type CommonTemplateInventory struct {
 	// `<CLIPath> get` per the EngFlow credential-helper spec) instead of being
 	// written literally into `~/.bazelrc`. Empty when the CLI is not reachable,
 	// which falls back to the literal `Bearer <token>` header.
-	CLIPath      string
+	CLIPath string
+	// Lite renders the warmup marker comment into the generated block. It lives
+	// in the bazelrc rather than beside it so the marker and the config it
+	// describes are the same write and can never disagree: the credential helper
+	// reads it to tell a machine that was never configured from one whose
+	// credential has since gone.
+	Lite         bool
 	HostMetadata HostMetadataInventory
 }
 

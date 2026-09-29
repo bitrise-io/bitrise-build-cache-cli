@@ -101,6 +101,13 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 		return Config{}, fmt.Errorf("decode xcelerate config file (%s): %w", configFilePath, err)
 	}
 
+	// Lite activation persists no socket path, because $TMPDIR at warmup is not
+	// the build's. Resolving it here gives every reader the same answer the
+	// writer would have reached in its own environment.
+	if config.ProxySocketPath == "" {
+		config.ProxySocketPath = ResolveProxySocketPath("", envs, osProxy)
+	}
+
 	// The credential is resolved, never read out of this file: the invocation PUT
 	// and the doctor must agree on which credential is current, and only one
 	// resolution path can guarantee that.
@@ -149,7 +156,13 @@ func NewConfig(ctx context.Context,
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
-	username, _ := resolver.ResolveUsername(envs)
+	// ResolveUsername can reach the OS keychain, which has been seen to hang on a
+	// macOS CI agent. Warmup records no build user anyway, so do not ask.
+	var username string
+	if !params.Lite {
+		username, _ = resolver.ResolveUsername(envs)
+	}
+
 	metadata := common.NewMetadata(envs, username,
 		func(name string, v ...string) (string, error) {
 			output, err := exec.Command(name, v...).Output() //nolint:noctx
@@ -158,6 +171,14 @@ func NewConfig(ctx context.Context,
 		},
 		osProxy,
 		logger)
+
+	// Structural, not environmental: warmup must persist no credential and no
+	// build identity even when it happens to run inside a build that has both.
+	// The wrapper re-resolves all of it per build.
+	if params.Lite {
+		authConfig, authOrigin = authpkg.Credential{}, authpkg.Origin{}
+		metadata = common.CacheConfigMetadata{}
+	}
 
 	// Check benchmark phase and override params if needed (only on CI).
 	// The phase is exported as BITRISE_BUILD_CACHE_BENCHMARK_PHASE env var
@@ -191,12 +212,19 @@ func NewConfig(ctx context.Context,
 	}
 	logger.Infof("Using xcrun path: %s. You can always override this by supplying --xcrun-path.", xcrunPath)
 
-	proxySocketPath := ResolveProxySocketPath(params.ProxySocketPathOverride, envs, osProxy)
+	// Left empty under lite and re-resolved by ReadConfig: the default lives under
+	// $TMPDIR, which on macOS is per-session, so warmup's socket path is not the
+	// one the build's proxy binds. Persisting it points the build at a dead socket.
+	var proxySocketPath string
 	switch {
+	case params.Lite:
 	case params.ProxySocketPathOverride != "":
+		proxySocketPath = ResolveProxySocketPath(params.ProxySocketPathOverride, envs, osProxy)
 	case envs[EnvProxySocketPath] != "":
+		proxySocketPath = ResolveProxySocketPath("", envs, osProxy)
 		logger.Infof("Using proxy socket path from environment: %s", proxySocketPath)
 	default:
+		proxySocketPath = ResolveProxySocketPath("", envs, osProxy)
 		logger.Infof("Using new proxy socket path: %s", proxySocketPath)
 	}
 

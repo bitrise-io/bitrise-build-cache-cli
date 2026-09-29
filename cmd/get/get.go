@@ -35,7 +35,7 @@ var getCmd = &cobra.Command{
 		resolve := bazelcredhelper.NewResolver(envs, stderr)
 		resolveRepoURL := bazelcredhelper.NewRepoURLResolver(envs)
 		resolveMetadata := bazelcredhelper.NewMetadataResolver(envs)
-		if err := bazelcredhelper.Run(ctx, cmd.InOrStdin(), cmd.OutOrStdout(), resolve, resolveRepoURL, resolveMetadata); err != nil {
+		if err := bazelcredhelper.Run(ctx, cmd.InOrStdin(), cmd.OutOrStdout(), stderr, resolve, resolveRepoURL, resolveMetadata); err != nil {
 			_, _ = fmt.Fprintln(stderr, err.Error())
 
 			return fmt.Errorf("run bazel credential helper: %w", err)

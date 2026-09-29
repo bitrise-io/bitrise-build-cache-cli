@@ -139,7 +139,23 @@ func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProx
 		return Config{}, fmt.Errorf(ErrNoAuthConfig, err)
 	}
 
-	ipcEndpoint := ResolveIPCSocketPath(params.IPCSocketPathOverride, envs, osProxy)
+	// Both are left empty under lite and re-resolved by ReadConfig. The socket
+	// default lives under $TMPDIR, which on macOS is per-session, so warmup's path
+	// is not the one the build's helper binds — CCACHE_REMOTE_STORAGE would point
+	// at a dead socket and every lookup would silently miss. The idle timeout
+	// likewise depends on whether the *build* is CI, which warmup cannot know.
+	var ipcEndpoint string
+	var idleTimeout time.Duration
+	if !params.Lite {
+		ipcEndpoint = ResolveIPCSocketPath(params.IPCSocketPathOverride, envs, osProxy)
+		idleTimeout = idleTimeoutFor(envs, osProxy)
+	}
+
+	// Structural, not environmental: warmup must carry no credential even when it
+	// happens to run inside a build that has one. The helper re-resolves per RPC.
+	if params.Lite {
+		authConfig, authOrigin = authpkg.Credential{}, authpkg.Origin{}
+	}
 
 	buildCacheEndpoint := common.SelectCacheEndpointURL(params.BuildCacheEndpoint, envs)
 
@@ -151,7 +167,7 @@ func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProx
 		IPCEndpoint:        ipcEndpoint,
 		LogFile:            defaultLogFile,
 		ErrLogFile:         defaultErrLogFile,
-		IdleTimeout:        idleTimeoutFor(envs, osProxy),
+		IdleTimeout:        idleTimeout,
 		PushEnabled:        params.PushEnabled,
 		Enabled:            true,
 		BuildCacheEndpoint: buildCacheEndpoint,
@@ -229,6 +245,16 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 	var config Config
 	if err := dec.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf(ErrFmtDecodeConfigFile, configFilePath, err)
+	}
+
+	// Lite activation persists neither, because both depend on the build's own
+	// environment ($TMPDIR, CI-ness) rather than the machine's. Resolving them
+	// here gives every reader the answer the writer would have reached.
+	if config.IPCEndpoint == "" {
+		config.IPCEndpoint = ResolveIPCSocketPath("", envs, osProxy)
+	}
+	if config.IdleTimeout == 0 {
+		config.IdleTimeout = idleTimeoutFor(envs, osProxy)
 	}
 
 	// Resolved, never read out of this file — see the xcelerate ReadConfig note.

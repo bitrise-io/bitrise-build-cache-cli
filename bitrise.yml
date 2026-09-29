@@ -27,6 +27,8 @@ app:
     # released artifact. Set to empty to test against the released plugins.
     # Pointing at the matching branch while the PoC is in flight — the plugin side
     # has to detect the CI provider itself now that warmup cannot name it.
+    # REVERT TO EMPTY once that plugin change is released: as it stands every
+    # gradle e2e depends on a branch of another repo and goes red if it moves.
   - GRADLE_PLUGINS_REF: ACI-5515-lite-mode
 
 include:
@@ -1362,6 +1364,12 @@ workflows:
 
                 cli_path=$(readlink -f ../bitrise-build-cache-cli)
 
+                # The bazelrc names the credential helper by bare name (warmup
+                # installed it on the host PATH), and Bazel resolves that inside
+                # the container. A build in another filesystem namespace has to
+                # be handed the binary — an absolute path would not help either,
+                # since /usr/local/bin is the container's own.
+
                 sudo docker run --rm \
                   -w "/workspace" \
                   -e "BITRISE_APP_SLUG=$BITRISE_APP_SLUG" \
@@ -1376,6 +1384,7 @@ workflows:
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
                   --mount "type=bind,source=$cli_path,target=$cli_path,ro" \
+                  --mount "type=bind,source=/usr/local/bin/bitrise-build-cache,target=/usr/local/bin/bitrise-build-cache,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   ubuntu:22.04 \
                   bash -c "set -o pipefail; sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|http://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list && apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
@@ -2681,7 +2690,7 @@ step_bundles:
           inputs:
             - content: |-
                 set -exo pipefail
-                "$CLI_REPO_DIR/scripts/publish_gradle_plugins_branch.sh"
+                "${CLI_REPO_DIR:-$BITRISE_SOURCE_DIR}/scripts/publish_gradle_plugins_branch.sh"
 
   feature-e2e-setup:
     steps:

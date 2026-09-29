@@ -186,13 +186,13 @@ func overrideActivateXcodeParamsFromExistingConfig(
 	decoderFactory utils.DecoderFactory,
 	envs map[string]string,
 ) {
-	if existingConfig, err := ReadConfig(osProxy, decoderFactory, envs); err == nil {
-		// A warmup config resolved its toolchain paths before the stack was
-		// selected, so carrying them forward would pin the wrong Xcode.
-		if existingConfig.Lite {
-			return
-		}
-
+	existingConfig, err := ReadConfig(osProxy, decoderFactory, envs)
+	// A warmup config resolved its toolchain paths before the stack was selected,
+	// so carrying them forward would pin the wrong Xcode. It is "no usable config"
+	// for every purpose here, including the PATH safety net below — skip that and
+	// `which xcodebuild` finds the wrapper, which activation then persists as the
+	// original, and the wrapper execs itself.
+	if err == nil && !existingConfig.Lite {
 		if strings.Contains(existingConfig.OriginalXcodebuildPath, PathFor(osProxy, BinDir)) {
 			logger.Warnf("Removing xcelerate wrapper as original xcodebuild path...")
 			existingConfig.OriginalXcodebuildPath = ""
@@ -212,8 +212,12 @@ func overrideActivateXcodeParamsFromExistingConfig(
 			activateXcodeParams.XcrunPathOverride,
 			existingConfig.OriginalXcrunPath,
 		)
-	} else if isXcelerateInPath(osProxy, envs) {
-		logger.Warnf("It seems that the xcelerate config file is missing, but xcelerate is already in the PATH. \n" +
+
+		return
+	}
+
+	if isXcelerateInPath(osProxy, envs) {
+		logger.Warnf("It seems that there is no usable xcelerate config file, but xcelerate is already in the PATH. \n" +
 			"This will lead to unexpected behavior when determining the xcodebuild path. \n" +
 			"Defaulting to /usr/bin/xcodebuild...")
 		activateXcodeParams.XcodePathOverride = "/usr/bin/xcodebuild"

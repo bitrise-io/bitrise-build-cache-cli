@@ -939,6 +939,10 @@ step_bundles:
             curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-darwin.tar.gz" \
               | tar -xz --strip-components=1 -C /usr/local/bin "ccache-${CCACHE_VERSION}-darwin/ccache"
             ccache --version
+    # The android RN e2e asserts on gradle invocations, which under lite depend on
+    # the plugin detecting the CI provider itself. The iOS and benchmark
+    # workflows deliberately stay on the released plugins.
+    - bundle::publish-gradle-plugins-branch: {}
     - script:
         title: Preboot VM warmup emulation (activate --lite) — react-native (Gradle + C++)
         inputs:

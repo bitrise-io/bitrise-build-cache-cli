@@ -21,7 +21,9 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
             isIgnoreExitValue = true
         }
         if (result.exitValue != 0) {
+            {{- if not .Common.Lite }}
             System.err.println("bitrise-build-cache auth token exited ${result.exitValue}: ${err.toString().trim()}")
+            {{- end }}
             return ""
         }
         return out.toString().trim()
@@ -161,7 +163,9 @@ rootProject {
         testSearchDepth.set({{ .TestDistro.TestSearchDepth }})
         poolName.set("{{ .TestDistro.PoolName }}")
         bitrise {
+            {{- if .Common.AppSlug }}
             appSlug.set("{{ .Common.AppSlug }}")
+            {{- end }}
         }
     }
 
