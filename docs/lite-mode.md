@@ -258,6 +258,36 @@ checkout, so a repo URL still resolves. The property is proved by
 `scripts/assert_no_build_metadata.sh`, which checks the generated configs for the
 values themselves and fails if it ran no substantive check.
 
+## Rollout plan
+
+Staged so that each step limits the blast radius of the one before it. Nothing
+here is shipped by this PoC beyond step 1's CLI half.
+
+0. **Website: entitlement endpoint, per tool.** The gate needs an answer keyed on
+   workspace *and* build tool, so a workspace can be turned on for Gradle without
+   also being on for Xcode. Until it ships the check is bypassed by
+   `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` — see
+   [Entitlement](#entitlement), which lists everything to delete.
+1. **CLI + plugins: ship lite mode behind an org-slug env gate.** Released, but
+   inert: lite only engages for an allowlist of workspace slugs carried in an env
+   var, so internal workspaces can exercise it while everyone else is untouched.
+   The gate is evaluated **at build time**, not at preboot — preboot does not know
+   the workspace, which is the whole premise of lite mode.
+2. **Preboot: enable the tool in the startup-script extension.** Add the
+   `activate <tool> --lite` call to `build-prebooting-deployments`. Every VM now
+   boots activated; the org-slug gate is what keeps it a no-op for workspaces not
+   on the list.
+3. **Test the whole flow per tool.** With a trial, with an active subscription,
+   and with no entitlement at all — the last one is the case that must produce no
+   failed build, no auth-error spam, and no analytics invocation.
+4. **GTM heads-up.** Cache activity starts appearing for workspaces that never
+   added a Step, which changes what support and sales see.
+5. **Remove the org-slug gate.** General availability. The entitlement endpoint
+   from step 0 is then the only thing deciding whether a build caches.
+
+Steps 0 and 1 are independent and can run in parallel; 2 must not precede 1, or a
+VM would activate for workspaces the gate was meant to exclude.
+
 ## Known limits
 
 - **Containerised builds need two things handed in.** Preboot cannot know the
