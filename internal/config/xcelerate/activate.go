@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -249,42 +249,11 @@ func copyCLIToXcelerateBinDir(ctx context.Context, osProxy utils.OsProxy, logger
 		return fmt.Errorf("failed to ensure cli is not running: %w", err)
 	}
 
-	if err := writeExecutableAtomically(binPath, target, reader); err != nil {
-		return err
+	if err := clibin.WriteExecutableAtomically(binPath, target, reader); err != nil {
+		return fmt.Errorf("write cli: %w", err)
 	}
 
 	logger.TInfof("Copied CLI to %s", target)
-
-	return nil
-}
-
-// writeExecutableAtomically renames a temp copy over target, so a failed write or a still-running old CLI can't leave a corrupted binary in place.
-func writeExecutableAtomically(dir, target string, src io.Reader) error {
-	tmp, err := os.CreateTemp(dir, cliBasename+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("failed to create temp executable: %w", err)
-	}
-	defer func() {
-		_ = os.Remove(tmp.Name())
-	}()
-
-	if _, err = io.Copy(tmp, src); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("failed to copy executable: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("failed to close temp executable: %w", err)
-	}
-
-	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
-		return fmt.Errorf("failed to chmod temp executable: %w", err)
-	}
-
-	if err := os.Rename(tmp.Name(), target); err != nil {
-		return fmt.Errorf("failed to move executable into place: %w", err)
-	}
 
 	return nil
 }

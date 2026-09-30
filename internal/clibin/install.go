@@ -11,15 +11,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// UserLocalBinDir returns $HOME/.local/bin, the canonical persistent, on-PATH
-// (once the user opts in) install location shared by the CI and dev flows.
+// LocalBinRelative is the $HOME-relative canonical persistent, on-PATH (once
+// the user opts in) install location shared by the CI and dev flows.
+const LocalBinRelative = ".local/bin"
+
+// UserLocalBinDir returns $HOME/.local/bin.
 func UserLocalBinDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
 
-	return filepath.Join(home, ".local", "bin"), nil
+	return filepath.Join(home, LocalBinRelative), nil
 }
 
 // EnsureInstalledInUserLocalBin copies the running CLI to
@@ -64,26 +67,43 @@ func EnsureInstalledInUserLocalBin(logger log.Logger) (string, bool, error) {
 func copyExecutable(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
-		return err //nolint:wrapcheck
+		return fmt.Errorf("open %s: %w", src, err)
 	}
 	defer in.Close()
 
-	tmp := dst + ".tmp"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	return WriteExecutableAtomically(filepath.Dir(dst), dst, in)
+}
+
+// WriteExecutableAtomically renames a temp copy over target, so a failed write
+// or a still-running old executable can't leave a corrupted binary in place.
+// dir must be the directory that holds target (the temp file lives there so
+// the rename stays on one filesystem).
+func WriteExecutableAtomically(dir, target string, src io.Reader) error {
+	tmp, err := os.CreateTemp(dir, filepath.Base(target)+".*.tmp")
 	if err != nil {
-		return err //nolint:wrapcheck
+		return fmt.Errorf("create temp executable: %w", err)
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		_ = os.Remove(tmp)
+	defer func() {
+		_ = os.Remove(tmp.Name())
+	}()
 
-		return err //nolint:wrapcheck
-	}
-	if err := out.Close(); err != nil {
-		_ = os.Remove(tmp)
+	if _, err = io.Copy(tmp, src); err != nil {
+		_ = tmp.Close()
 
-		return err //nolint:wrapcheck
+		return fmt.Errorf("copy executable: %w", err)
 	}
 
-	return os.Rename(tmp, dst) //nolint:wrapcheck
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp executable: %w", err)
+	}
+
+	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
+		return fmt.Errorf("chmod temp executable: %w", err)
+	}
+
+	if err := os.Rename(tmp.Name(), target); err != nil {
+		return fmt.Errorf("move executable into place: %w", err)
+	}
+
+	return nil
 }
