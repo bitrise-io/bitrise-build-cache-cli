@@ -198,6 +198,27 @@ build time with everything else. On Bitrise CI the JWT is injected for every
 workspace regardless of entitlement, so a lite-warmed VM currently wires up for
 everyone and the decision falls to the backend rejecting.
 
+### The gate is an optimisation, not the safety net
+
+Every tool already survives an unauthorised backend without failing the build,
+and that stays the real guarantee — the gate is best-effort and can be wrong.
+What differs is how much each one spends finding out:
+
+| Tool | On `UNAUTHENTICATED` |
+|---|---|
+| Xcode | the first RPC fails the capabilities check, and compilation caching degrades to plain compilation |
+| Gradle | the plugin throws instead of burning its retries, and Gradle drops the remote cache for the rest of the build |
+| ccache | re-checks on **every** connection, so it never stops asking |
+| Bazel | no CLI-side handling; the helper returns empty headers with no credential, otherwise Bazel's own remote-cache error handling applies |
+
+ccache's retry is deliberate — a credential refreshed mid-build has to start
+working — but it cannot tell "this token just expired" from "this workspace has
+no Build Cache", and those want opposite answers. So on an unentitled workspace
+it re-asks and re-fails once per compile.
+
+That is the strongest argument for the gate: standing down keeps the build
+green, it does not make the attempt free. The gate is what makes it free.
+
 > **TEMPORARY — the endpoint does not exist yet.**
 > `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` disables the gate, and this
 > repo's own `bitrise.yml` sets it, or every e2e activation would refuse to run.
