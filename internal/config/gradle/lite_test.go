@@ -3,6 +3,8 @@
 package gradleconfig
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -237,4 +239,56 @@ func TestGenerateInitGradle_NonLiteDoesNotResolveTheBenchmarkPhase(t *testing.T)
 	assert.NotContains(t, got, "_bitriseBenchmarkPhase")
 	// Non-vacuous: the cache block this would have guarded is rendered.
 	assert.Contains(t, got, "registerBuildCacheService")
+}
+
+// The cache and analytics plugins run `auth token` themselves, so nothing the
+// template puts on that command line reaches them. The marker in the generated
+// script is what tells the CLI the build is lite-activated.
+func TestGenerateInitGradle_LiteEmitsTheLiteMarker(t *testing.T) {
+	isolate(t)
+
+	_, got := renderLite(t, populatedCIEnv())
+
+	assert.Contains(t, got, LiteMarker)
+}
+
+func TestGenerateInitGradle_NonLiteOmitsTheLiteMarker(t *testing.T) {
+	isolate(t)
+
+	params := liteParams()
+	params.Lite = false
+	inventory, err := params.TemplateInventory(
+		t.Context(), liteTestLogger(), populatedCIEnv(), false, nil, utils.DefaultOsProxy{})
+	require.NoError(t, err)
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.NotContains(t, got, LiteMarker)
+	// Non-vacuous: the script this would have marked is rendered.
+	assert.Contains(t, got, "registerBuildCacheService")
+}
+
+func TestIsLiteInitScript(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".gradle", "init.d")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	script := filepath.Join(dir, "bitrise-build-cache.init.gradle.kts")
+
+	require.NoError(t, os.WriteFile(script, []byte("// nothing here\n"), 0o600))
+	assert.False(t, IsLiteInitScript(map[string]string{}, home),
+		"a full activation must not be treated as lite")
+
+	require.NoError(t, os.WriteFile(script, []byte("import x\n"+LiteMarker+"\nrest\n"), 0o600))
+	assert.True(t, IsLiteInitScript(map[string]string{}, home))
+
+	// A build that relocates GRADLE_USER_HOME must still be found.
+	other := t.TempDir()
+	otherDir := filepath.Join(other, "init.d")
+	require.NoError(t, os.MkdirAll(otherDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(otherDir, "bitrise-build-cache.init.gradle.kts"), []byte(LiteMarker+"\n"), 0o600))
+	assert.True(t, IsLiteInitScript(map[string]string{"GRADLE_USER_HOME": other}, home))
+	assert.False(t, IsLiteInitScript(map[string]string{"GRADLE_USER_HOME": t.TempDir()}, home),
+		"no script at the relocated home means not lite")
 }

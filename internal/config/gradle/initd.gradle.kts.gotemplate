@@ -33,6 +33,9 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
 fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
     of(BitriseAuthTokenSource::class.java) {}.get()
 {{ end -}}
+{{- if .Common.Lite }}
+// bitrise-build-cache: activated at preboot (lite)
+{{ end -}}
 {{- if and .Common.Lite (or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled")) }}
 // Lite activation ran before this build existed, so it could not ask which
 // benchmark phase the build is in — that query is keyed on workspace, app and

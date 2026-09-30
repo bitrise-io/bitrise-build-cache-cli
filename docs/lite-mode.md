@@ -179,6 +179,51 @@ Callers:
 - **other tools** — `bitrise-build-cache benchmark-phase --tool <tool>`, at
   execution time.
 
+## How Gradle talks to the CLI
+
+Lite makes this surface load-bearing, so it is worth having in one place. There
+are **two** independent channels, and confusing them is how a gate ends up
+wired to the wrong one.
+
+**1. The init script the CLI generates.** Its `ValueSource`s shell out to the
+CLI at configuration time. The CLI controls this command line, because it wrote
+it:
+
+| Call | Emitted when | Purpose |
+|---|---|---|
+| `auth token [--lite]` | no CI provider at activation | feeds `authToken` where the template sets it — TestDistro only |
+| `benchmark-phase --tool gradle` | `--lite` | resolves the phase; a `baseline` answer disables the cache |
+| `project scope-check --quiet <dir>` | machine `project-mode: opt-in`, local dev | skips activation for unmarked checkouts |
+
+**2. The plugins themselves**, which shell out on their own. The CLI does *not*
+control these command lines — no flag it renders can reach them:
+
+| Call | Caller | Purpose |
+|---|---|---|
+| `auth token` | `common/AuthTokenResolver`, `cache/GradleAuthTokenSource` | how the cache and analytics plugins actually get their token |
+| `auth username` | `analytics/CIDataProvider` | display name on the invocation |
+| `version` | `analytics/BuildOperationsService` | CLI version on the invocation |
+| `register-invocation`, `register-child-invocation` | `CcacheStorageHelperService` | ties the Gradle and ccache invocations together |
+| `ccache storage-helper start\|health-check\|set-invocation-id\|collect-stats\|stop` | `CcacheStorageHelperService` | runs the ccache helper for C++ tasks |
+
+The second channel is the one that matters for the token. The template sets
+`authToken` only for TestDistro, so on a cache-and-analytics activation the
+init script's token `ValueSource` is **defined and never called** — both
+plugins go through `AuthTokenResolver` instead.
+
+That is why the entitlement gate keys off a **marker in the generated init
+script**, not the `--lite` flag. A flag would only have gated TestDistro. The
+CLI reads the marker from `$GRADLE_USER_HOME/init.d/` (or `~/.gradle/init.d/`)
+and applies the gate to any `auth token` resolution belonging to a
+lite-activated build, whoever invoked it. Same reasoning as the bazelrc marker,
+and for the same reason: the marker travels inside the config it describes, so
+the two cannot disagree.
+
+One consequence worth remembering when adding a feature: **anything the plugins
+invoke themselves cannot be configured by the template.** It has to be
+discoverable from machine state — a marker, a config file, an env var the build
+already carries — or it needs a plugin change.
+
 ## Entitlement
 
 A workspace with no Build Cache trial or subscription should never be activated.
@@ -241,8 +286,10 @@ Three properties it must keep:
 - **Lite only.** A full activation already asked before writing anything.
   Asking again here would add a request to every token resolution, every
   xcodebuild call and every Bazel RPC for every existing user. Gradle signals it
-  with the `--lite` flag the lite template renders; Xcode reads `lite` from its
-  persisted config; Bazel reads the marker in the bazelrc.
+  with a marker in the generated init script — see [How Gradle talks to the
+  CLI](#how-gradle-talks-to-the-cli) for why a flag would not have worked;
+  Xcode reads `lite` from its persisted config; Bazel reads the marker in the
+  bazelrc.
 - **Fail open.** Only an explicit negative stands a build down. Unknown — an
   unreachable website, no workspace id, the endpoint not shipped — carries on.
 - **Bypassable.** `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` short-circuits

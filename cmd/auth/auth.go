@@ -23,6 +23,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -666,7 +667,7 @@ var authTokenCmd = &cobra.Command{
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
 
-		if authTokenLite && withholdTokenForEntitlement(cmd, cred) {
+		if authTokenLiteBuild() && withholdTokenForEntitlement(cmd, cred) {
 			return errNoEntitlement
 		}
 
@@ -682,6 +683,22 @@ var authTokenCmd = &cobra.Command{
 // resolve their token through this command, so withholding it is what makes
 // them stand down — the cache stops connecting and analytics stops reporting.
 var errNoEntitlement = errors.New("no Build Cache entitlement for this workspace") //nolint:gochecknoglobals
+
+// authTokenLiteBuild reports whether this resolution belongs to a lite-activated
+// build. The flag covers the init script's own ValueSource; the marker covers
+// the plugins, which run `auth token` themselves and cannot be given a flag.
+func authTokenLiteBuild() bool {
+	if authTokenLite {
+		return true
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+
+	return gradleconfig.IsLiteInitScript(utils.AllEnvs(), home)
+}
 
 // withholdTokenForEntitlement answers only for a lite-activated build. A full
 // activation already asked before writing anything, and asking again here would

@@ -73,6 +73,14 @@ assert_entitlement_gate() {
     fail "auth token --lite handed out a token for a workspace with no entitlement"
   fi
 
+  # Without the flag: this is the call the Gradle plugins actually make, and the
+  # marker in the init script is the only thing that can gate it.
+  if BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK= \
+      BITRISE_BUILD_CACHE_ENTITLEMENT_OVERRIDE=none \
+      bitrise-build-cache auth token >/dev/null 2>&1; then
+    fail "auth token (no flag) handed out a token — the plugins' own call is ungated"
+  fi
+
   # Fail open: an unreachable gate must not withhold the token.
   BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK= \
     BITRISE_BUILD_CACHE_ENTITLEMENT_OVERRIDE= \
