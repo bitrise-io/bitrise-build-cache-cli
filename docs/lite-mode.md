@@ -179,10 +179,6 @@ Callers:
 - **other tools** — `bitrise-build-cache benchmark-phase --tool <tool>`, at
   execution time.
 
-  **The Gradle plugins do not call this yet**, so a lite Gradle build currently
-  resolves no phase at all. The subcommand is the intended interface; wiring it
-  is a plugin-side change.
-
 ## Entitlement
 
 A workspace with no Build Cache trial or subscription should never be activated.
