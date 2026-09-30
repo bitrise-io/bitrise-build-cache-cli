@@ -88,23 +88,42 @@ type Client struct {
 	lastErrAt   time.Time
 }
 
+// settings is the normalized configuration, so the Shared cache key and the client
+// it caches can't disagree about what the environment means.
+type settings struct {
+	requestURL   string
+	requestToken string
+	policyID     string
+	endpoint     string
+}
+
+func settingsFrom(envs map[string]string) settings {
+	endpoint := strings.TrimSpace(envs[auth.EnvOIDCTokenEndpoint])
+	if endpoint == "" {
+		endpoint = auth.DefaultOIDCTokenEndpoint
+	}
+
+	return settings{
+		requestURL:   envs[auth.EnvGitHubOIDCRequestURL],
+		requestToken: envs[auth.EnvGitHubOIDCRequestToken],
+		policyID:     strings.TrimSpace(envs[auth.EnvOIDCPolicyID]),
+		endpoint:     endpoint,
+	}
+}
+
 // FromEnv builds a Client when a trust policy is configured and GitHub offers
 // the job an OIDC token.
 func FromEnv(envs map[string]string) (*Client, bool) {
 	if !auth.OnGitHubActionsOIDC(envs) {
 		return nil, false
 	}
-
-	endpoint := strings.TrimSpace(envs[auth.EnvOIDCTokenEndpoint])
-	if endpoint == "" {
-		endpoint = auth.DefaultOIDCTokenEndpoint
-	}
+	s := settingsFrom(envs)
 
 	return &Client{
-		requestURL:   envs[auth.EnvGitHubOIDCRequestURL],
-		requestToken: envs[auth.EnvGitHubOIDCRequestToken],
-		policyID:     strings.TrimSpace(envs[auth.EnvOIDCPolicyID]),
-		endpoint:     endpoint,
+		requestURL:   s.requestURL,
+		requestToken: s.requestToken,
+		policyID:     s.policyID,
+		endpoint:     s.endpoint,
 		httpClient:   &http.Client{Timeout: requestTimeout},
 		now:          time.Now,
 		refreshSlot:  make(chan struct{}, 1),
@@ -115,10 +134,8 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 var shared sync.Map //nolint:gochecknoglobals
 
 func Shared(envs map[string]string) (*Client, bool) {
-	key := strings.Join([]string{
-		envs[auth.EnvGitHubOIDCRequestURL], envs[auth.EnvGitHubOIDCRequestToken],
-		strings.TrimSpace(envs[auth.EnvOIDCPolicyID]), envs[auth.EnvOIDCTokenEndpoint],
-	}, "\x00")
+	s := settingsFrom(envs)
+	key := strings.Join([]string{s.requestURL, s.requestToken, s.policyID, s.endpoint}, "\x00")
 	if c, ok := shared.Load(key); ok {
 		return c.(*Client), true //nolint:forcetypeassert // only *Client is stored
 	}

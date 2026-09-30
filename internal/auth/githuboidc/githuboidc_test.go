@@ -288,3 +288,41 @@ func TestToken_MissingExpiryIsAnError(t *testing.T) {
 
 	require.ErrorIs(t, err, errNoExpiry)
 }
+
+// Spellings of the same configuration must share one client, and so one cached token.
+func TestShared_KeysOnTheNormalizedConfiguration(t *testing.T) {
+	base := map[string]string{
+		auth.EnvOIDCPolicyID:           "policy-uuid",
+		auth.EnvGitHubOIDCRequestURL:   "https://example.com/idtoken",
+		auth.EnvGitHubOIDCRequestToken: "request-token-shared-key-test",
+	}
+	spelled := func(policyID, endpoint string) map[string]string {
+		envs := map[string]string{}
+		for k, v := range base {
+			envs[k] = v
+		}
+		envs[auth.EnvOIDCPolicyID] = policyID
+		if endpoint != "" {
+			envs[auth.EnvOIDCTokenEndpoint] = endpoint
+		}
+
+		return envs
+	}
+
+	defaulted, ok := Shared(spelled("policy-uuid", ""))
+	require.True(t, ok)
+
+	for _, envs := range []map[string]string{
+		spelled("policy-uuid", auth.DefaultOIDCTokenEndpoint),
+		spelled("policy-uuid", "  "+auth.DefaultOIDCTokenEndpoint+"  "),
+		spelled(" policy-uuid ", ""),
+	} {
+		c, ok := Shared(envs)
+		require.True(t, ok)
+		assert.Same(t, defaulted, c)
+	}
+
+	other, ok := Shared(spelled("policy-uuid", "https://staging.example.com/oidc/token"))
+	require.True(t, ok)
+	assert.NotSame(t, defaulted, other)
+}
