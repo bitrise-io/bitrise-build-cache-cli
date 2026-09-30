@@ -99,6 +99,10 @@ const (
 	MsgInvocationFailed         = "Invocation failed ❌ after %s: %s"
 	MsgInvocationSaved          = "Invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/xcode/%s"
 
+	// entitlementTimeout bounds the gate: a build waits on it, and failing open
+	// after a few seconds is better than holding up every xcodebuild call.
+	entitlementTimeout = 5 * time.Second
+
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"
 
@@ -263,6 +267,13 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	metadata.BenchmarkPhase, config.BuildCacheEnabled = applyBenchmarkPhase(
 		isBuildAction, config, metadata, logger, resolveBenchmarkPhase)
 
+	// Lite activation could not ask whether this workspace has Build Cache, so
+	// ask now — before the proxy starts and before anything is reported.
+	unentitled := skipForEntitlement(ctx, config, metadata, logger)
+	if unentitled {
+		config.BuildCacheEnabled = false
+	}
+
 	var proxySessionClient session.SessionClient
 	if isBuildAction && config.BuildCacheEnabled {
 		logger.TInfof("Cache enabled, starting xcelerate proxy connecting to: %s", config.BuildCacheEndpoint)
@@ -300,6 +311,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		NoPrefixMap:        noPrefixMap,
 		NoManagedDD:        noManagedDD,
 		NoXcresult:         noXcresult,
+		SkipAnalytics:      unentitled,
 	}
 	if !noDoctor {
 		runner.Doctor = &xcodeDoctor{
@@ -402,6 +414,8 @@ type XcodebuildRunner struct {
 	NoManagedDD bool
 	// Per-invocation counterpart to Config.SelfEnrichDisabled.
 	NoXcresult bool
+	// SkipAnalytics stands the wrapper down entirely: no session, no invocation.
+	SkipAnalytics bool
 
 	// Doctor reports local setup problems around the build; nil disables it.
 	Doctor buildHealthReporter
@@ -432,7 +446,11 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	// Query invocations have no session state or cache stats worth reporting;
 	// skip SetSession + analytics emit + marker write entirely.
-	if !c.XcodeArgs.HasBuildAction() {
+	//
+	// A workspace with no Build Cache takes the same path. Unlike the cache,
+	// analytics is not rejected for it — the invocation would be accepted and
+	// recorded, so nothing but this stops it.
+	if !c.XcodeArgs.HasBuildAction() || c.SkipAnalytics {
 		return c.runPassthrough(ctx, toPass)
 	}
 
@@ -1339,4 +1357,30 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 
 		logger.Printf(strings.TrimSpace(line))
 	}
+}
+
+// skipForEntitlement reports whether this workspace has no Build Cache, and so
+// should neither cache nor report.
+//
+// Only for a config a lite activation wrote. A normal activation already asked
+// before writing anything, and asking again on every xcodebuild call would add
+// a request per invocation for every existing user.
+//
+// Not asked for query invocations either: a fastlane or CocoaPods run fires
+// dozens of them, none of which reports anything for the gate to prevent.
+func skipForEntitlement(
+	ctx context.Context,
+	config xcelerate.Config,
+	metadata configcommon.CacheConfigMetadata,
+	logger log.Logger,
+) bool {
+	if !config.Lite || metadata.CIProvider == "" {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, entitlementTimeout)
+	defer cancel()
+
+	return configcommon.SkipForEntitlementAtBuildTime(
+		ctx, consts.BitriseWebsiteBaseURL, config.AuthConfig, metadata, logger)
 }

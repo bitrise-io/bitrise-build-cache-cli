@@ -51,8 +51,13 @@ type Resolver func(ctx context.Context) (Credential, error)
 // dying on a helper that failed.
 var ErrNoCredential = errors.New("no Bitrise Build Cache credential is configured")
 
-// resolveRepoURL and resolveMetadata may be nil, in which case those headers are
-// not emitted. warn carries the one line a silently-uncached build gets.
+// EntitlementSkipper reports whether this workspace has no Build Cache, so the
+// helper should answer with no credential at all.
+type EntitlementSkipper func(ctx context.Context, cred Credential) bool
+
+// resolveRepoURL, resolveMetadata and skipForEntitlement may be nil, in which
+// case those headers are not emitted and the gate does not apply. warn carries
+// the one line a silently-uncached build gets.
 func Run(
 	ctx context.Context,
 	in io.Reader,
@@ -61,6 +66,7 @@ func Run(
 	resolve Resolver,
 	resolveRepoURL RepoURLResolver,
 	resolveMetadata MetadataResolver,
+	skipForEntitlement EntitlementSkipper,
 ) error {
 	// Decoded and discarded, so a malformed payload is an error not a silent pass.
 	var req GetCredentialsRequest
@@ -107,6 +113,17 @@ func Run(
 		// config file were checked too — so say where to go from here.
 		return fmt.Errorf("no Bitrise Build Cache credentials in the environment, the OS keychain or the config file (%w); "+
 			"run `bitrise-build-cache doctor --fix --interactive` to sign in or store a token", err)
+	}
+
+	// A credential resolved, but a lite machine still does not know whether this
+	// workspace has Build Cache — preboot could not ask. Withholding the header
+	// is the same stand-down as having no credential at all.
+	if lite && skipForEntitlement != nil && skipForEntitlement(ctx, cred) {
+		if encErr := json.NewEncoder(out).Encode(GetCredentialsResponse{Headers: map[string][]string{}}); encErr != nil {
+			return fmt.Errorf("encode empty credential-helper response: %w", encErr)
+		}
+
+		return nil
 	}
 
 	resp := GetCredentialsResponse{

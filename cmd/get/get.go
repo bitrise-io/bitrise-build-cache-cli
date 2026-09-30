@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
@@ -35,7 +36,10 @@ var getCmd = &cobra.Command{
 		resolve := bazelcredhelper.NewResolver(envs, stderr)
 		resolveRepoURL := bazelcredhelper.NewRepoURLResolver(envs)
 		resolveMetadata := bazelcredhelper.NewMetadataResolver(envs)
-		if err := bazelcredhelper.Run(ctx, cmd.InOrStdin(), cmd.OutOrStdout(), stderr, resolve, resolveRepoURL, resolveMetadata); err != nil {
+		// stderr: stdout is the protocol channel.
+		skipForEntitlement := bazelcredhelper.NewEntitlementSkipper(envs, log.NewLogger(log.WithOutput(stderr)))
+		if err := bazelcredhelper.Run(ctx, cmd.InOrStdin(), cmd.OutOrStdout(), stderr,
+			resolve, resolveRepoURL, resolveMetadata, skipForEntitlement); err != nil {
 			_, _ = fmt.Fprintln(stderr, err.Error())
 
 			return fmt.Errorf("run bazel credential helper: %w", err)

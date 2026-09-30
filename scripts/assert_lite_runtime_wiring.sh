@@ -57,10 +57,38 @@ assert_gradle_benchmark_phase_wiring() {
   pass "Gradle resolves the benchmark phase at build time and the cache follows it"
 }
 
+# The gate has to be reachable from the build, and it has to fail open. Both
+# sides are asserted with the override, because the real endpoint does not
+# exist yet and every live answer is Unknown.
+assert_entitlement_gate() {
+  local out
+  if ! out="$(BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK= \
+      BITRISE_BUILD_CACHE_ENTITLEMENT_OVERRIDE=none \
+      bitrise-build-cache auth token --lite 2>&1)"; then
+    case "$out" in
+      *"$ENTITLEMENT_MSG"*) ;;
+      *) fail "auth token --lite failed without naming the entitlement: $out" ;;
+    esac
+  else
+    fail "auth token --lite handed out a token for a workspace with no entitlement"
+  fi
+
+  # Fail open: an unreachable gate must not withhold the token.
+  BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK= \
+    BITRISE_BUILD_CACHE_ENTITLEMENT_OVERRIDE= \
+    bitrise-build-cache auth token --lite >/dev/null \
+    || fail "auth token --lite withheld the token when entitlement was unknown — the gate is fail-closed"
+
+  pass "Entitlement gate withholds the token on 'none' and fails open on unknown"
+}
+
+readonly ENTITLEMENT_MSG="Bitrise Build Cache is not enabled for this workspace"
+
 case "$TOOL" in
   gradle)
     assert_cli_on_path
     assert_gradle_benchmark_phase_wiring
+    assert_entitlement_gate
     ;;
   xcode|react-native)
     assert_cli_on_path

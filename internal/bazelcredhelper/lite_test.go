@@ -4,6 +4,7 @@ package bazelcredhelper
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -45,7 +46,7 @@ func runHelper(t *testing.T, out, warn *bytes.Buffer) error {
 	t.Helper()
 
 	return Run(t.Context(), strings.NewReader(`{}`), out, warn,
-		NewResolver(map[string]string{}, io.Discard), nil, nil)
+		NewResolver(map[string]string{}, io.Discard), nil, nil, nil)
 }
 
 // After a lite activation, a workspace without Build Cache reaches this on
@@ -72,7 +73,7 @@ func TestRun_LiteActivationWithHalfACredentialSaysWhichHalfIsMissing(t *testing.
 
 	out, warn := &bytes.Buffer{}, &bytes.Buffer{}
 	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, warn,
-		NewResolver(map[string]string{auth.EnvAuthToken: "a-token"}, io.Discard), nil, nil))
+		NewResolver(map[string]string{auth.EnvAuthToken: "a-token"}, io.Discard), nil, nil, nil))
 
 	assert.Contains(t, warn.String(), auth.ErrWorkspaceIDNotProvided.Error())
 }
@@ -126,7 +127,7 @@ func runWithMetadata(t *testing.T, envs map[string]string) GetCredentialsRespons
 
 	out := &bytes.Buffer{}
 	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard,
-		envResolver(t, "test-token"), nil, NewMetadataResolver(envs)))
+		envResolver(t, "test-token"), nil, NewMetadataResolver(envs), nil))
 
 	var resp GetCredentialsResponse
 	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
@@ -179,4 +180,43 @@ func TestNewMetadataResolver_OmitsWhatItCannotResolve(t *testing.T) {
 	assert.NotContains(t, headers, appIDHeader)
 	assert.NotContains(t, headers, cacheBuildHeader)
 	assert.NotContains(t, headers, ciProviderHeader)
+}
+
+// A credential resolves but the workspace has no Build Cache. Withholding the
+// header is the same stand-down as having no credential: Bazel sends no auth
+// and the build runs uncached, rather than the helper failing the RPC.
+func TestRun_LiteWithoutEntitlementWithholdsTheCredential(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeBazelrc(t, home, true)
+
+	out := &bytes.Buffer{}
+	skip := func(context.Context, Credential) bool { return true }
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard,
+		func(context.Context) (Credential, error) {
+			return Credential{Token: "tok", WorkspaceID: "ws"}, nil
+		}, nil, nil, skip))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Empty(t, resp.Headers, "an unentitled workspace must get no authorization header")
+}
+
+// The gate must not fire for a full activation: it already asked before writing
+// anything, and a second check here would gate every existing Bazel user.
+func TestRun_NonLiteIgnoresTheEntitlementGate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeBazelrc(t, home, false)
+
+	out := &bytes.Buffer{}
+	skip := func(context.Context, Credential) bool { return true }
+	require.NoError(t, Run(t.Context(), strings.NewReader(`{}`), out, io.Discard,
+		func(context.Context) (Credential, error) {
+			return Credential{Token: "tok", WorkspaceID: "ws"}, nil
+		}, nil, nil, skip))
+
+	var resp GetCredentialsResponse
+	require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+	assert.Equal(t, []string{"Bearer tok"}, resp.Headers["authorization"])
 }

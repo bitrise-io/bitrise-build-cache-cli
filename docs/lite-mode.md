@@ -199,11 +199,42 @@ workspace regardless of entitlement, so a lite-activated VM currently wires up
 for everyone.
 
 For the cache that is survivable — the backend rejects and each tool stands
-down. For analytics it is not: nothing rejects it, so a lite-activated VM on an
-unentitled workspace *does* report an invocation. Lite has no build-time
-entitlement check yet, and until it does this is the one promise lite does not
-keep. It is why the org-slug gate in rollout step 1 is evaluated at build time
-rather than at preboot.
+down. For analytics it is not: nothing rejects it, so the question has to be
+asked again at build time.
+
+### The build-time gate
+
+`ResolveEntitlement` asks once per build and records the answer under
+`~/.local/state/bitrise-build-cache/entitlement.json`, scoped to the build id.
+Scoped, because a persistent runner reuses the machine and one build's "none"
+must not decide for every build after it; recorded, because a build makes many
+CLI calls and each would otherwise be a request.
+
+Every build-time entry point the CLI owns consults it, and each stands down in
+the way its own tool understands:
+
+| Surface | Gate | Effect |
+|---|---|---|
+| Gradle | `auth token --lite` exits non-zero | both plugins resolve their token here, so the cache stops connecting *and* analytics stops reporting |
+| Xcode | the wrapper takes its passthrough path | build runs, no proxy, no session, no invocation |
+| Bazel | the credential helper returns empty headers | same response as having no credential; Bazel runs uncached |
+
+Three properties it must keep:
+
+- **Lite only.** A full activation already asked before writing anything.
+  Asking again here would add a request to every token resolution, every
+  xcodebuild call and every Bazel RPC for every existing user. Gradle signals it
+  with the `--lite` flag the lite template renders; Xcode reads `lite` from its
+  persisted config; Bazel reads the marker in the bazelrc.
+- **Fail open.** Only an explicit negative stands a build down. Unknown — an
+  unreachable website, no workspace id, the endpoint not shipped — carries on.
+- **Bypassable.** `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` short-circuits
+  this too, not just activation. `BITRISE_BUILD_CACHE_ENTITLEMENT_OVERRIDE`
+  (`active` / `none`) pins the answer so e2e can exercise both sides without a
+  real unentitled workspace.
+
+This is also why the org-slug gate in rollout step 1 is evaluated at build time
+rather than at preboot: it is the same question, asked in the same place.
 
 ### The gate is load-bearing for analytics, an optimisation for the cache
 
@@ -353,9 +384,12 @@ is still being validated — but the PoC is not finished until it is gone.
   exist and shipped via `envman`. The React Native path is fine — its runner
   applies them at build time — but a bare `activate c++ --lite` followed by a
   direct `ccache`/`cmake` invocation gets no remote cache.
-- **Entitlement.** A resolved credential currently means the cache is attempted.
-  On Bitrise CI the JWT is injected for every workspace, entitled or not, so the
-  decision falls to the backend rejecting. Pending a dedicated endpoint.
+- **Entitlement.** The gate is wired at both activation and build time, but the
+  endpoint it calls does not exist yet, so every answer is Unknown and nothing
+  is gated. Rollout steps 0 and 6.
+- **ccache has no build-time gate.** The storage helper is not one of the three
+  surfaces above. An unentitled C++ build still re-asks per compile, because
+  ccache deliberately re-checks capabilities on every connection.
 - **BES on an unentitled workspace.** Unverified: whether
   `--bes_upload_mode=wait_for_upload_complete` fails the build when the helper
   returns empty headers. If it does, lite must not emit `--bes_backend` without a

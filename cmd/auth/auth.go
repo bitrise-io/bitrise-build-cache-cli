@@ -25,6 +25,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -665,6 +666,10 @@ var authTokenCmd = &cobra.Command{
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
 
+		if authTokenLite && withholdTokenForEntitlement(cmd, cred) {
+			return errNoEntitlement
+		}
+
 		if _, err := fmt.Fprintln(cmd.OutOrStdout(), authpkg.GradleToken(cred, origin)); err != nil {
 			return fmt.Errorf("write auth token: %w", err)
 		}
@@ -672,6 +677,31 @@ var authTokenCmd = &cobra.Command{
 		return nil
 	},
 }
+
+// errNoEntitlement exits non-zero with nothing on stdout. Both Gradle plugins
+// resolve their token through this command, so withholding it is what makes
+// them stand down — the cache stops connecting and analytics stops reporting.
+var errNoEntitlement = errors.New("no Build Cache entitlement for this workspace") //nolint:gochecknoglobals
+
+// withholdTokenForEntitlement answers only for a lite-activated build. A full
+// activation already asked before writing anything, and asking again here would
+// add a request to every token resolution for every existing user.
+func withholdTokenForEntitlement(cmd *cobra.Command, cred authpkg.Credential) bool {
+	logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode), log.WithOutput(cmd.ErrOrStderr()))
+	envs := utils.AllEnvs()
+
+	metadata := configcommon.NewMetadata(envs, "", func(string, ...string) (string, error) {
+		// Git metadata is irrelevant here and shelling out would cost a build's
+		// worth of subprocesses; only the build ID is read.
+		return "", nil
+	}, utils.DefaultOsProxy{}, logger)
+
+	return configcommon.SkipForEntitlementAtBuildTime(
+		cmd.Context(), consts.BitriseWebsiteBaseURL, cred, metadata, logger)
+}
+
+//nolint:gochecknoglobals
+var authTokenLite bool
 
 // nolint:gochecknoglobals
 var (
@@ -766,6 +796,8 @@ func init() {
 	authCmd.AddCommand(authSetCmd)
 	authCmd.AddCommand(authStatusCmd)
 	authCmd.AddCommand(authClearCmd)
+	authTokenCmd.Flags().BoolVar(&authTokenLite, "lite", false,
+		"Apply the build-time entitlement gate. Set by lite-activated configs, whose activation could not ask.")
 	authCmd.AddCommand(authTokenCmd)
 	authCmd.AddCommand(authUsernameCmd)
 	authCmd.AddCommand(newAuthWorkspaceCmd())

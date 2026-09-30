@@ -48,6 +48,11 @@ const entitlementTimeout = 5 * time.Second
 const MsgNoEntitlement = "Bitrise Build Cache is not enabled for this workspace. " +
 	"Start a free trial at https://app.bitrise.io/build-cache — skipping activation."
 
+// MsgNoEntitlementAtBuildTime is the same news reaching a build instead of an
+// activation. Nothing is being skipped there — the build runs, uncached.
+const MsgNoEntitlementAtBuildTime = "Bitrise Build Cache is not enabled for this workspace. " +
+	"Start a free trial at https://app.bitrise.io/build-cache — this build runs without the cache."
+
 type entitlementResponse struct {
 	Active bool `json:"active"`
 }

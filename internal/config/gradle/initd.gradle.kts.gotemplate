@@ -15,7 +15,7 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
         val out = java.io.ByteArrayOutputStream()
         val err = java.io.ByteArrayOutputStream()
         val result = execOps.exec {
-            commandLine("{{ .Common.CLIPath }}", "auth", "token")
+            commandLine("{{ .Common.CLIPath }}", "auth", "token"{{ if .Common.Lite }}, "--lite"{{ end }})
             standardOutput = out
             errorOutput = err
             isIgnoreExitValue = true
