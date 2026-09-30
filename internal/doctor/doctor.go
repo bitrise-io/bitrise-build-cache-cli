@@ -102,6 +102,9 @@ type Doctor struct {
 	WorkspacePickPrompt func() (workspaceID string, err error)
 	Now                 func() time.Time
 	Debug               bool
+	// LaunchctlGetter overrides the launchctl getenv the xcode-app-override
+	// check uses. Nil means the real /bin/launchctl.
+	LaunchctlGetter XCodeAppLaunchctlGetter
 
 	// checksOverride replaces the real check set in tests.
 	checksOverride []Check
@@ -269,6 +272,7 @@ func (d *Doctor) checks(opts Options) []Check {
 	checks = append(checks,
 		d.xcelerateProxyCheck(),
 		d.xcelerateWrapperPathCheck(),
+		d.xcodeAppCheck(),
 		d.enrichmentCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),

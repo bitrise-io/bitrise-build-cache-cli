@@ -46,6 +46,15 @@ func TestPaths_xcelerate(t *testing.T) {
 	assert.Equal(t, "/h/.bitrise-xcelerate/bin/xcodebuild", p.XcelerateBinFile("xcodebuild"))
 }
 
+func TestPaths_xcodeApp(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.bitrise-xcelerate/xcode-app.xcconfig", p.XcodeAppOverrideXCConfigFile())
+	assert.Equal(t,
+		"/h/Library/LaunchAgents/io.bitrise.build-cache.xcode-app-setenv.plist",
+		p.XcodeAppSetenvAgentPlistFile())
+}
+
 func TestPaths_proxySocket(t *testing.T) {
 	p := FromHome("/h")
 

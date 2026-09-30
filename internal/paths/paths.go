@@ -27,6 +27,17 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
+	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `xcode-app enable`.
+	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
+
+	// XcodeAppSetenvAgentLabel is the launchd label for the LaunchAgent that
+	// reapplies XCODE_XCCONFIG_FILE on every login.
+	XcodeAppSetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"
+
+	// XcodeAppSetenvAgentPlistFileName is the basename of the LaunchAgent plist
+	// (label + ".plist"), materialised as a constant so callers do not re-derive it.
+	XcodeAppSetenvAgentPlistFileName = XcodeAppSetenvAgentLabel + ".plist"
+
 	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
 	// tree, holding files such as the persisted xcode-{build,test}.json invocation specs.
 	BitriseBuildCacheDirRelative = ".bitrise-build-cache"
@@ -220,6 +231,17 @@ func (p Paths) XcelerateBinDir() string {
 // XcelerateBinFile returns a file path under XcelerateBinDir.
 func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
+func (p Paths) XcodeAppOverrideXCConfigFile() string {
+	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
+}
+
+// XcodeAppSetenvAgentPlistFile returns the LaunchAgent plist path for the
+// xcode-app setenv agent.
+func (p Paths) XcodeAppSetenvAgentPlistFile() string {
+	return filepath.Join(p.LaunchAgentsDir(), XcodeAppSetenvAgentPlistFileName)
 }
 
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
