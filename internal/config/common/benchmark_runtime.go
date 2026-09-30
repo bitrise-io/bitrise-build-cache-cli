@@ -54,6 +54,12 @@ func BenchmarkBuildID(metadata CacheConfigMetadata) string {
 	return metadata.ExternalBuildID
 }
 
+// BenchmarkPhaseOverride returns the phase pinned through
+// BITRISE_BUILD_CACHE_BENCHMARK_PHASE_<TOOL>, or "" when none is set.
+func BenchmarkPhaseOverride(buildTool string) string {
+	return os.Getenv(BenchmarkPhaseEnvVar(buildTool))
+}
+
 // ResolveBenchmarkPhase returns the phase for this build, asking the API at most
 // once per build per tool however many invocations run. Errors resolve to "" —
 // an unreachable benchmark API must not decide how a build caches.
@@ -63,15 +69,20 @@ func ResolveBenchmarkPhase(
 	provider BenchmarkPhaseProvider,
 	logger log.Logger,
 ) string {
+	buildID := BenchmarkBuildID(metadata)
+
+	// Every other reader of the file — LogBenchmarkSummary, the React Native
+	// activator, the Gradle plugin — ignores buildId, so another build's record
+	// left in place would be read as this build's phase.
+	discardForeignRecord(buildTool, buildID, logger)
+
 	// The override wins outright and is never recorded: e2e workflows set it to
 	// pin a phase, and writing it would make that pin outlive the build.
-	if phase := os.Getenv(BenchmarkPhaseEnvVar(buildTool)); phase != "" {
+	if phase := BenchmarkPhaseOverride(buildTool); phase != "" {
 		logger.Debugf("Benchmark phase from env var: %s", phase)
 
 		return phase
 	}
-
-	buildID := BenchmarkBuildID(metadata)
 
 	if record, found := readBenchmarkPhaseRecord(buildTool, logger); found && record.BuildID != "" && record.BuildID == buildID {
 		logger.Debugf("Benchmark phase already resolved for this build: %q", record.Phase)
@@ -86,6 +97,10 @@ func ResolveBenchmarkPhase(
 	phase, err := provider.GetBenchmarkPhase(buildTool, metadata)
 	if err != nil {
 		logger.Debugf("Could not fetch the benchmark phase, continuing without one: %v", err)
+		// Recorded as "no phase" for this build only: a build runs the tool dozens
+		// of times, and an unreachable API costs retries against a 10s timeout on
+		// every one of them.
+		recordBenchmarkPhase(buildTool, buildID, "", logger)
 
 		return ""
 	}
@@ -107,13 +122,38 @@ func RecordBenchmarkPhase(buildTool string, metadata CacheConfigMetadata, phase 
 // warmup-phase build measured as a baseline one, not a broken build.
 func recordBenchmarkPhase(buildTool, buildID, phase string, logger log.Logger) string {
 	if existing, found := readBenchmarkPhaseRecord(buildTool, logger); found &&
-		existing.BuildID == buildID && phaseRank(existing.Phase) > phaseRank(phase) {
+		buildID != "" && existing.BuildID == buildID && phaseRank(existing.Phase) > phaseRank(phase) {
 		phase = existing.Phase
 	}
 
 	writeBenchmarkPhaseRecord(buildTool, BenchmarkPhaseRecord{Phase: phase, BuildID: buildID}, logger)
 
 	return phase
+}
+
+// discardForeignRecord removes a record written for a different build. The
+// readers that ignore buildId would otherwise read it as their own, and a
+// resolve that ends without an answer (no provider, a failed query) would leave
+// it there.
+func discardForeignRecord(buildTool, buildID string, logger log.Logger) {
+	record, found := readBenchmarkPhaseRecord(buildTool, logger)
+	if !found || record.BuildID == buildID {
+		return
+	}
+
+	path, err := BenchmarkPhaseFilePath(buildTool)
+	if err != nil {
+		logger.Debugf("Failed to get benchmark phase file path: %v", err)
+
+		return
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger.Debugf("Failed to discard the previous build's benchmark phase record: %v", err)
+
+		return
+	}
+
+	logger.Debugf("Discarded a benchmark phase record from build %q", record.BuildID)
 }
 
 func readBenchmarkPhaseRecord(buildTool string, logger log.Logger) (BenchmarkPhaseRecord, bool) {

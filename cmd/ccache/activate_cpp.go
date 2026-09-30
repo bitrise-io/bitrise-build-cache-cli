@@ -34,6 +34,16 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
+		if err := common.RejectLocalOnlyFlags(activateCppProjectMode); err != nil {
+			return fmt.Errorf("invalid flags: %w", err)
+		}
+
+		// Before anything is written: a workspace with no Build Cache cannot use it,
+		// and activating would spend an analytics invocation saying so.
+		if common.SkipForEntitlement(cmd.Context(), logger) {
+			return nil
+		}
+
 		// A warmup run has no business deciding machine-scoped policy for whatever
 		// build lands on this VM, so it does not write it.
 		if !common.Lite {
@@ -43,10 +53,10 @@ This command will:
 		}
 
 		// It does still have to READ that policy. An unchanged flag makes this a
-		// pure read that returns what the machine already has, and a nil command is
-		// how lite asks for exactly that: skipping the call outright would ignore an
-		// operator's persisted `cache push = false` and silently fall back to the
-		// flag default, which is the opposite of leaving policy alone.
+		// pure read: the persisted value, or the built-in default when the machine
+		// has none, which lite then bakes in. A nil command is how lite asks for that:
+		// skipping the call outright would ignore an operator's persisted
+		// `cache push = false`, which is the opposite of leaving policy alone.
 		pushCmd := cmd
 		if common.Lite {
 			pushCmd = nil

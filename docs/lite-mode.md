@@ -131,33 +131,111 @@ The build does, through `internal/config/common.ResolveBenchmarkPhase`:
 
 1. `BITRISE_BUILD_CACHE_BENCHMARK_PHASE_<TOOL>` — an explicit override, used by
    e2e workflows. Never recorded, so a pin cannot outlive the build that set it.
+   The activation path (`config/{gradle,xcelerate}.ApplyBenchmarkPhase`) skips
+   the record for the same reason, since the provider hands an override back
+   indistinguishable from an API answer.
 2. The record at `~/.local/state/xcelerate/benchmark/benchmark-phase-<tool>.json`,
    **if it belongs to this build**.
-3. The API — once. The answer is recorded for the build's other invocations.
+3. The API — once. The answer is recorded for the build's other invocations, and
+   so is a failure, as "no phase": the client retries three times against a 10s
+   timeout, and one build runs the tool dozens of times.
 
 The record is build-scoped because a persistent runner reuses the machine:
 unscoped, one build's `baseline` would disable the cache for every build after
 it. `"no phase"` is recorded too, or an ordinary build pays for a request per
-invocation.
+invocation. Every other reader of the file — `LogBenchmarkSummary`, the React
+Native activator, the Gradle plugin — reads only `phase`, so a resolve for a
+different build deletes the record it found rather than leaving it readable.
 
 When two invocations race, both write, and the one that lands second keeps the
 higher-ranked phase (`baseline` > `warmup` > none). Baseline wins because half a
-build caching and half not would make the measurement meaningless.
+build caching and half not would make the measurement meaningless. The merge is
+build-scoped too: an unscoped record (off CI, or a CI provider with no build ID)
+is never merged into or reused.
 
 Callers:
 - **xcode** — the wrapper resolves before starting the proxy, because on baseline
-  there should be no proxy at all.
+  there should be no proxy at all. Only for a build action with the cache still
+  enabled: a fastlane or CocoaPods run fires dozens of `-version` /
+  `-showBuildSettings` calls, and the phase cannot change any of them.
 - **gradle and others** — `bitrise-build-cache benchmark-phase --tool <tool>`, at
   **execution** time. Not at Gradle configuration time: the phase changes per
   build, and anything read during configuration becomes a configuration-cache
   input, which invalidates the entry on every build.
 
+  **The Gradle plugins do not call this yet**, so a lite Gradle build currently
+  resolves no phase at all. The subcommand is the intended interface; wiring it
+  is a plugin-side change.
+
+## Entitlement
+
+A workspace with no Build Cache trial or subscription should never be activated.
+The build cannot use the cache, and activating anyway spends an analytics
+invocation recording that fact. `SkipActivationForEntitlement` stops before
+anything is written and points the user at the trial instead.
+
+It is deliberately three-valued. "We could not tell" is not "no" — otherwise one
+website outage disables caching for everyone. Only an explicit negative skips.
+
+Lite never skips: warmup has no workspace to ask about, so the question moves to
+build time with everything else. On Bitrise CI the JWT is injected for every
+workspace regardless of entitlement, so a lite-warmed VM currently wires up for
+everyone and the decision falls to the backend rejecting.
+
+> **TEMPORARY — the endpoint does not exist yet.**
+> `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` disables the gate, and this
+> repo's own `bitrise.yml` sets it, or every e2e activation would refuse to run.
+>
+> When the endpoint ships, flip `entitlementEndpointShipped` in
+> `internal/config/common/entitlement.go`. A unit test then fails and names
+> everything to delete: the env var, the branch that reads it, the `bitrise.yml`
+> entries, this section, and the test itself. The flip and the cleanup cannot
+> drift apart.
+
+## Local-dev features are mutually exclusive with lite
+
+Project scoping (`--project-mode opt-in`) answers "did this developer mark this
+checkout?". A warmed-up VM has no developer and no checkout, and runs whatever
+build it is handed — so the question has no meaning there. Opt-in also renders a
+scope-check `ValueSource` that shells out to the CLI on *every* Gradle
+configuration.
+
+So `--lite --project-mode …` is refused outright rather than silently ignored,
+and a lite activation resolves `always` regardless of what an earlier activation
+persisted on the machine. Lite never writes machine-wide policy either; it only
+reads the cache-push setting, falling back to the built-in default.
+
+## What the VM has to hand the build
+
+Activation normally publishes several values through `envman`, which belongs to
+a build and does not exist at warmup. These are all *machine-scoped* — a warmed
+VM genuinely knows them, it just has no build to give them to yet — so
+publishing them is the VM's job, not the CLI's:
+
+| Value | Who needs it | Stand-in |
+|---|---|---|
+| `PATH` + the wrapper dir | `xcodebuild` / `xcrun` interception | `/etc/paths.d`, the agent env, or `preboot_emulate.sh` |
+| the CLI on `$PATH` | Gradle plugins' token lookup, Bazel's credential helper | install to `/usr/local/bin` |
+| `BITRISE_XCODE_DERIVED_DATA_PATH` | cache steps targeting the SPM checkouts | `xcelerate derived-data-path`, exported by the VM |
+
+`BITRISE_BUILD_CACHE_CLI` is deliberately *not* on that list: the plugins fall
+back to `$PATH`, which the CLI install already covers.
+
+`scripts/assert_lite_runtime_wiring.sh` checks these reached the build, and
+checks **positives** — the DerivedData root exists, agrees with the CLI's own
+answer, and has been populated. Absence assertions are not enough here: this gap
+first shipped green because a cache step's glob expanded to `/*/SourcePackages`,
+matched nothing, and reported success.
+
 ## Testing it
 
 `scripts/preboot_emulate.sh <tool>` runs `activate --lite` with the build-scoped
-variables stripped from the child environment, and does the two jobs that belong
-to the VM: installing the CLI somewhere the build can find it, and putting the
-wrapper dir on `PATH`. Every e2e workflow activates through it.
+variables stripped from the child environment, and does the jobs that belong to
+the VM: installing the CLI somewhere the build can find it, putting the wrapper
+dir on `PATH`, and exporting the DerivedData root. Every e2e workflow activates
+through it, except two that deliberately do not: `feature-e2e-gradle-7` is the
+non-lite regression guard, and `ccache-storage-helper-test` needs the envman
+delivery lite skips.
 
 It is a **denylist**, and cannot be made airtight: the script never leaves the git
 checkout, so a repo URL still resolves. The property is proved by

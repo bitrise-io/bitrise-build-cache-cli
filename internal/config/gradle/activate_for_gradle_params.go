@@ -162,7 +162,16 @@ func (params ActivateGradleParams) TemplateInventory(
 		ApplyBenchmarkPhase(&params, logger, benchmarkProvider, metadata, envexport.New(envs, logger))
 	}
 
-	projectMode := resolveProjectMode(osProxy, logger)
+	// Never opt-in under lite, whatever the machine says. Opt-in renders a
+	// scope-check ValueSource that shells out to the CLI on every Gradle
+	// configuration, and it answers a question — "did this developer mark this
+	// checkout?" — that has no meaning on a VM about to be handed an arbitrary
+	// build. The flag is refused outright at the command layer; this covers a
+	// mode some earlier activation left on the machine.
+	projectMode := machineconfig.ModeAlways
+	if !params.Lite {
+		projectMode = resolveProjectMode(osProxy, logger)
+	}
 
 	commonInventory, err := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode)
 	if err != nil {

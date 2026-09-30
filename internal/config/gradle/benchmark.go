@@ -45,7 +45,13 @@ func ApplyBenchmarkPhase(
 
 	envVar := common.BenchmarkPhaseEnvVar(common.BuildToolGradle)
 	exporter.Export(envVar, phase)
-	common.RecordBenchmarkPhase(common.BuildToolGradle, metadata, phase, logger)
+	// An override is a pin, not an answer about this build: recording it would
+	// let it outlive the build that set it. ResolveBenchmarkPhase refuses the
+	// same way, and the provider hands the override back indistinguishable from
+	// an API answer.
+	if common.BenchmarkPhaseOverride(common.BuildToolGradle) == "" {
+		common.RecordBenchmarkPhase(common.BuildToolGradle, metadata, phase, logger)
+	}
 
 	// The user-facing summary is logged once at the end of activation by
 	// common.LogBenchmarkSummary. Avoid logging per-tool here so that on

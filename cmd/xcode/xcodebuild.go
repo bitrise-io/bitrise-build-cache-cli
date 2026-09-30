@@ -259,16 +259,9 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	}, osProxy, logger)
 
 	// Before the proxy starts, because on a baseline phase there should be no
-	// proxy at all. Lite activation could not ask for a phase — the query is
-	// keyed on a workspace, app and workflow that do not exist at VM warmup — so
-	// the build asks instead, once, and records it for its other invocations.
-	// A normal activation already exported the phase, and that env var wins here
-	// before any request is made, so this changes nothing for it.
-	metadata.BenchmarkPhase = resolveBenchmarkPhase(config, metadata, logger)
-	if metadata.BenchmarkPhase == configcommon.BenchmarkPhaseBaseline && config.BuildCacheEnabled {
-		logger.TInfof("Benchmark baseline phase: this build runs without the cache, to measure against")
-		config.BuildCacheEnabled = false
-	}
+	// proxy at all.
+	metadata.BenchmarkPhase, config.BuildCacheEnabled = applyBenchmarkPhase(
+		isBuildAction, config, metadata, logger, resolveBenchmarkPhase)
 
 	var proxySessionClient session.SessionClient
 	if isBuildAction && config.BuildCacheEnabled {
@@ -824,6 +817,38 @@ func logBlobStatsProfile(logger log.Logger, snapshot *blobstats.Snapshot) {
 			logger.Infof("Proxy %s profile: %s", d.name, line)
 		}
 	}
+}
+
+// applyBenchmarkPhase returns this invocation's benchmark phase and whether the
+// cache survives it.
+//
+// Lite activation could not ask for a phase — the query is keyed on a workspace,
+// app and workflow that do not exist at VM warmup — so the build asks instead,
+// once, and records it for its other invocations. A normal activation already
+// exported the phase, and that env var wins before any request is made.
+//
+// Nothing is asked unless the answer could change this invocation: a fastlane or
+// CocoaPods run fires dozens of `-version` / `-showBuildSettings` calls, and a
+// benchmark API that is down would cost each of them the client's retries.
+func applyBenchmarkPhase(
+	isBuildAction bool,
+	config xcelerate.Config,
+	metadata configcommon.CacheConfigMetadata,
+	logger log.Logger,
+	resolve func(xcelerate.Config, configcommon.CacheConfigMetadata, log.Logger) string,
+) (string, bool) {
+	if !isBuildAction || !config.BuildCacheEnabled {
+		return "", config.BuildCacheEnabled
+	}
+
+	phase := resolve(config, metadata, logger)
+	if phase == configcommon.BenchmarkPhaseBaseline {
+		logger.TInfof("Benchmark baseline phase: this build runs without the cache, to measure against")
+
+		return phase, false
+	}
+
+	return phase, config.BuildCacheEnabled
 }
 
 // resolveBenchmarkPhase returns this build's benchmark phase, in order: the env

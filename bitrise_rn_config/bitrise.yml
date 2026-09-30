@@ -1021,6 +1021,15 @@ step_bundles:
             cd _seek
             ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
+        title: Assert the VM-level stand-ins reached the build
+        inputs:
+          - content: |-
+              set -exo pipefail
+              # Warmup cannot publish these through envman; the preboot script
+              # does it instead. The step below reads the DerivedData root by
+              # name and fails hard if it is unset — this says why.
+              "$BITRISE_SOURCE_DIR/scripts/assert_lite_runtime_wiring.sh" react-native
+    - script:
         title: Assert a query action is told about the managed DerivedData
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_derived_data_query.sh

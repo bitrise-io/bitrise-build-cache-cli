@@ -30,6 +30,11 @@ app:
     # REVERT TO EMPTY once that plugin change is released: as it stands every
     # gradle e2e depends on a branch of another repo and goes red if it moves.
   - GRADLE_PLUGINS_REF: ACI-5515-lite-mode
+    # TEMPORARY, ACI-5515. The entitlement endpoint does not exist yet, so
+    # without this every activation in this repo would refuse to run. Delete
+    # this alongside the constant and the branch in the CLI the moment the
+    # endpoint ships — a unit test fails until all of them are gone.
+  - BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK: "true"
 
 include:
 - path: bitrise_rn_config/bitrise.yml
@@ -793,6 +798,13 @@ workflows:
             ../scripts/assert_no_build_metadata.sh "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
 
             log="$BITRISE_DEPLOY_DIR/logs.txt"
+
+            # The positive, in this step so the guard cannot go vacuous on its own:
+            # the capabilities call is authenticated, so a plugin that resolved no
+            # token never reaches this line.
+            ../scripts/check_pattern.sh "$log" \
+              '\[Bitrise [^]]*\].*Connected to remote server successfully'
+
             if grep -qE '^\[Bitrise [^]]*\].*No auth token:' "$log"; then
               echo "A plugin could not resolve a token at build time ❌"
               grep -m 5 -E '^\[Bitrise [^]]*\].*No auth token:' "$log" || true
@@ -1418,7 +1430,7 @@ workflows:
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
                   --mount "type=bind,source=$cli_path,target=$cli_path,ro" \
-                  --mount "type=bind,source=/usr/local/bin/bitrise-build-cache,target=/usr/local/bin/bitrise-build-cache,ro" \
+                  --mount "type=bind,source=${cli_path},target=/usr/local/bin/bitrise-build-cache,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   ubuntu:22.04 \
                   bash -c "set -o pipefail; sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|http://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list && apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
@@ -1807,6 +1819,16 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
+    - script:
+        title: Assert the VM-level stand-ins reached the build
+        inputs:
+          - content: |-
+              set -exo pipefail
+              # Warmup could not publish these through envman, so the preboot
+              # script does it instead. Checks a positive — the DerivedData root
+              # is populated — because the step below globs under it, and an
+              # unset value made that glob match nothing and still pass.
+              ../scripts/assert_lite_runtime_wiring.sh xcode
     - save-cache:
         title: 'ACI-5253: save the SPM checkouts the build actually used'
         inputs:

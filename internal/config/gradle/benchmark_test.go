@@ -158,3 +158,41 @@ func Test_ApplyBenchmarkPhase(t *testing.T) {
 		assert.False(t, params.Analytics.Enabled)
 	})
 }
+
+// The provider hands back an override indistinguishable from an API answer, and
+// ResolveBenchmarkPhase refuses to record one for a reason activation shares: a
+// recorded pin outlives the build that set it and keeps the cache off.
+func TestApplyBenchmarkPhase_AnOverrideIsAppliedButNotRecorded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(common.BenchmarkPhaseEnvVar(common.BuildToolGradle), common.BenchmarkPhaseBaseline)
+	logger := log.NewLogger()
+
+	params := ActivateGradleParams{Cache: CacheParams{Enabled: true}}
+	provider := &commonmocks.BenchmarkPhaseProviderMock{
+		GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+			return common.BenchmarkPhaseBaseline, nil
+		},
+	}
+
+	ApplyBenchmarkPhase(&params, logger, provider, common.CacheConfigMetadata{BitriseBuildID: "build-1"}, &noopExporter{})
+
+	assert.False(t, params.Cache.Enabled, "the override still decides this build")
+	assert.Empty(t, common.ReadBenchmarkPhaseFile(common.BuildToolGradle, logger))
+}
+
+func TestApplyBenchmarkPhase_AnAPIAnswerIsRecorded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(common.BenchmarkPhaseEnvVar(common.BuildToolGradle), "")
+	logger := log.NewLogger()
+
+	params := ActivateGradleParams{Cache: CacheParams{Enabled: true}}
+	provider := &commonmocks.BenchmarkPhaseProviderMock{
+		GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+			return common.BenchmarkPhaseWarmup, nil
+		},
+	}
+
+	ApplyBenchmarkPhase(&params, logger, provider, common.CacheConfigMetadata{BitriseBuildID: "build-1"}, &noopExporter{})
+
+	assert.Equal(t, common.BenchmarkPhaseWarmup, common.ReadBenchmarkPhaseFile(common.BuildToolGradle, logger))
+}

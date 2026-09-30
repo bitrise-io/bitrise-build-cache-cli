@@ -79,7 +79,11 @@ maybe_sudo() {
 # credential helper and the Gradle plugins without a binary to call.
 echo "=== preboot: installing the CLI to ${INSTALLED}"
 maybe_sudo mkdir -p "$INSTALL_DIR"
-maybe_sudo cp "$CLI" "$INSTALLED"
+# Skip when it is already the same file: cp refuses, and under `set -e` that
+# would abort a second emulation run on a VM that is already warmed up.
+if [[ "$(cd "$(dirname "$CLI")" && pwd)/$(basename "$CLI")" != "$INSTALLED" ]]; then
+  maybe_sudo cp "$CLI" "$INSTALLED"
+fi
 maybe_sudo chmod 0755 "$INSTALLED"
 
 unset_args=()
@@ -102,6 +106,20 @@ if [[ "$TOOL" == "xcode" || "$TOOL" == "react-native" ]]; then
   if [[ -d "$XCELERATE_BIN" ]]; then
     echo "=== preboot: putting ${XCELERATE_BIN} on PATH (VM-level stand-in)"
     envman add --key PATH --value "${XCELERATE_BIN}:${PATH}"
+  fi
+
+  # Also the VM's job, for the same reason as PATH: activation normally exports
+  # this through envman, which belongs to a build. The value is machine-scoped —
+  # the wrapper relocates every build's DerivedData into it — so a warmed-up VM
+  # does know it, it just has no build to hand it to yet. Cache steps that target
+  # the SPM checkouts under it read it by name.
+  #
+  # Asked of the CLI rather than written out here: internal/paths is the single
+  # source of truth for on-disk locations, and a second copy would drift.
+  DERIVED_DATA_PATH="$("$INSTALLED" xcelerate derived-data-path)"
+  if [[ -n "$DERIVED_DATA_PATH" ]]; then
+    echo "=== preboot: exporting BITRISE_XCODE_DERIVED_DATA_PATH=${DERIVED_DATA_PATH} (VM-level stand-in)"
+    envman add --key BITRISE_XCODE_DERIVED_DATA_PATH --value "$DERIVED_DATA_PATH"
   fi
 fi
 

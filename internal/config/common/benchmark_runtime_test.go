@@ -79,7 +79,7 @@ func TestResolveBenchmarkPhase_ARecordedPhaseIsServedToLaterInvocations(t *testi
 }
 
 // An unreachable benchmark API must not decide how a build caches, and must not
-// record an answer it never got.
+// leave a phase behind for the readers that ignore the build scope.
 func TestResolveBenchmarkPhase_AnAPIFailureIsNotAPhase(t *testing.T) {
 	phaseHome(t)
 	provider := &countingProvider{err: errors.New("benchmark API unreachable")}
@@ -87,9 +87,76 @@ func TestResolveBenchmarkPhase_AnAPIFailureIsNotAPhase(t *testing.T) {
 	got := common.ResolveBenchmarkPhase(common.BuildToolGradle, buildMeta("build-1"), provider, log.NewLogger())
 
 	assert.Empty(t, got)
-	path, err := common.BenchmarkPhaseFilePath(common.BuildToolGradle)
-	require.NoError(t, err)
-	assert.NoFileExists(t, path, "a failed query must leave no record for the next invocation to trust")
+	assert.Empty(t, common.ReadBenchmarkPhaseFile(common.BuildToolGradle, log.NewLogger()))
+}
+
+// The client retries three times against a 10s timeout, and a build runs the
+// tool dozens of times. One failure per build is the most it may cost.
+func TestResolveBenchmarkPhase_AFailureIsNotRetriedByTheSameBuild(t *testing.T) {
+	phaseHome(t)
+	provider := &countingProvider{err: errors.New("benchmark API unreachable")}
+
+	for range 3 {
+		assert.Empty(t, common.ResolveBenchmarkPhase(common.BuildToolGradle, buildMeta("build-1"), provider, log.NewLogger()))
+	}
+
+	assert.Equal(t, 1, provider.calls)
+}
+
+// Every other reader of the file — LogBenchmarkSummary, the React Native
+// activator, the Gradle plugin — ignores buildId. A record the resolver decided
+// not to use must therefore not survive it.
+func TestResolveBenchmarkPhase_APreviousBuildsRecordIsNotLeftOnDisk(t *testing.T) {
+	phaseHome(t)
+
+	common.RecordBenchmarkPhase(common.BuildToolGradle, buildMeta("build-1"), common.BenchmarkPhaseBaseline, log.NewLogger())
+
+	// No provider: this build gets no phase of its own, which is exactly when a
+	// stale record would be read as its answer.
+	got := common.ResolveBenchmarkPhase(common.BuildToolGradle, buildMeta("build-2"), nil, log.NewLogger())
+
+	assert.Empty(t, got)
+	assert.Empty(t, common.ReadBenchmarkPhaseFile(common.BuildToolGradle, log.NewLogger()),
+		"build-1's baseline must not be readable by build-2")
+}
+
+// An unmapped CI provider (Jenkins, Bamboo) and a local run both have no build
+// ID. Merging by an empty ID matches every other unscoped record, so a one-off
+// baseline would outrank every later warmup and pin the machine.
+func TestRecordBenchmarkPhase_AnUnscopedBaselineDoesNotPinTheMachine(t *testing.T) {
+	phaseHome(t)
+	unscoped := common.CacheConfigMetadata{}
+	require.Empty(t, common.BenchmarkBuildID(unscoped))
+
+	common.RecordBenchmarkPhase(common.BuildToolGradle, unscoped, common.BenchmarkPhaseBaseline, log.NewLogger())
+	common.RecordBenchmarkPhase(common.BuildToolGradle, unscoped, common.BenchmarkPhaseWarmup, log.NewLogger())
+
+	assert.Equal(t, common.BenchmarkPhaseWarmup, common.ReadBenchmarkPhaseFile(common.BuildToolGradle, log.NewLogger()))
+}
+
+// A Bitrise build ID is the scope when there is one; off Bitrise — GitHub
+// Actions, Build Hub, GitLab, CircleCI — the external one is, and it is the
+// only thing keeping a persistent runner's builds apart.
+func TestBenchmarkBuildID_FallsBackToTheExternalBuildID(t *testing.T) {
+	assert.Equal(t, "bitrise-1",
+		common.BenchmarkBuildID(common.CacheConfigMetadata{BitriseBuildID: "bitrise-1", ExternalBuildID: "ext-1"}))
+	assert.Equal(t, "ext-1", common.BenchmarkBuildID(common.CacheConfigMetadata{ExternalBuildID: "ext-1"}))
+}
+
+// The same machine, two GitHub Actions builds: without the external fallback
+// both records are unscoped, and the second build would inherit the first's
+// phase instead of asking for its own.
+func TestResolveBenchmarkPhase_AnExternalCIBuildDoesNotInheritThePreviousOne(t *testing.T) {
+	phaseHome(t)
+	external := func(buildID string) common.CacheConfigMetadata {
+		return common.CacheConfigMetadata{CIProvider: "github-actions", ExternalAppID: "app-1", ExternalBuildID: buildID}
+	}
+	provider := &countingProvider{phase: common.BenchmarkPhaseBaseline}
+
+	common.ResolveBenchmarkPhase(common.BuildToolGradle, external("ext-1"), provider, log.NewLogger())
+	common.ResolveBenchmarkPhase(common.BuildToolGradle, external("ext-2"), provider, log.NewLogger())
+
+	assert.Equal(t, 2, provider.calls, "each external build must ask for its own phase")
 }
 
 // e2e workflows pin a phase through the env var. Recording it would make the pin

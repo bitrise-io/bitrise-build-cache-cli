@@ -88,3 +88,39 @@ func TestApplyBenchmarkPhase(t *testing.T) {
 		assert.True(t, params.BuildCacheEnabled)
 	})
 }
+
+// The provider hands back an override indistinguishable from an API answer, and
+// ResolveBenchmarkPhase refuses to record one for a reason activation shares: a
+// recorded pin outlives the build that set it and keeps the cache off.
+func TestApplyBenchmarkPhase_AnOverrideIsAppliedButNotRecorded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(common.BenchmarkPhaseEnvVar(common.BuildToolXcode), common.BenchmarkPhaseBaseline)
+
+	params := xcelerate.Params{BuildCacheEnabled: true}
+	provider := &commonmocks.BenchmarkPhaseProviderMock{
+		GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+			return common.BenchmarkPhaseBaseline, nil
+		},
+	}
+
+	xcelerate.ApplyBenchmarkPhase(&params, mockLogger, provider, common.CacheConfigMetadata{BitriseBuildID: "build-1"}, &noopExporter{})
+
+	assert.False(t, params.BuildCacheEnabled, "the override still decides this build")
+	assert.Empty(t, common.ReadBenchmarkPhaseFile(common.BuildToolXcode, mockLogger))
+}
+
+func TestApplyBenchmarkPhase_AnAPIAnswerIsRecorded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(common.BenchmarkPhaseEnvVar(common.BuildToolXcode), "")
+
+	params := xcelerate.Params{BuildCacheEnabled: true}
+	provider := &commonmocks.BenchmarkPhaseProviderMock{
+		GetBenchmarkPhaseFunc: func(_ string, _ common.CacheConfigMetadata) (string, error) {
+			return common.BenchmarkPhaseWarmup, nil
+		},
+	}
+
+	xcelerate.ApplyBenchmarkPhase(&params, mockLogger, provider, common.CacheConfigMetadata{BitriseBuildID: "build-1"}, &noopExporter{})
+
+	assert.Equal(t, common.BenchmarkPhaseWarmup, common.ReadBenchmarkPhaseFile(common.BuildToolXcode, mockLogger))
+}

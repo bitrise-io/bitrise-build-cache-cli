@@ -13,6 +13,8 @@ import (
 	keyring "github.com/zalando/go-keyring"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -175,4 +177,28 @@ func TestGenerateInitGradle_LiteOutputIsStableAcrossRuns(t *testing.T) {
 
 	assert.Equal(t, first, second)
 	assert.NotContains(t, first, `authToken.set("`, "a baked token would change every build")
+}
+
+// Opt-in renders a scope-check ValueSource that shells out to the CLI on every
+// configuration, to answer a question that has no meaning on a VM about to run
+// an arbitrary build. A mode left on the machine must not leak into lite.
+func TestTemplateInventory_LiteIgnoresAPersistedOptInProjectMode(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	keyring.MockInit()
+
+	p, err := paths.Default()
+	require.NoError(t, err)
+	require.NoError(t, machineconfig.Write(
+		machineconfig.Config{ProjectMode: machineconfig.ModeOptIn}, utils.DefaultOsProxy{}, p))
+
+	inventory, err := liteParams().TemplateInventory(
+		t.Context(), liteTestLogger(), map[string]string{}, false, nil, utils.DefaultOsProxy{})
+	require.NoError(t, err)
+
+	assert.Equal(t, string(machineconfig.ModeAlways), inventory.Common.ProjectMode)
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.NotContains(t, got, "BitriseProjectScopeSource", "the scope-check must not render under lite")
 }
