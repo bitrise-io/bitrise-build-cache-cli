@@ -1,8 +1,6 @@
 // Package githuboidc exchanges a GitHub Actions OIDC token for a short-lived
 // Bitrise Workspace API token under a Bitrise OIDC trust policy, and exchanges
-// again before that token expires. It sits at L3 beside oauth and buildhub: it
-// turns something the environment offers into a credential, and knows nothing
-// about precedence. See docs/auth.md.
+// again before that token expires. L3, beside oauth and buildhub; see docs/auth.md.
 package githuboidc
 
 import (
@@ -24,17 +22,12 @@ import (
 // audience is the only one the Bitrise exchange accepts.
 const audience = "app.bitrise.io"
 
-// refreshSkew is how long before expiry a token counts as stale. Trust policies
-// allow 15 minutes at the shortest, so this still leaves most of the lifetime.
+// Trust policies allow 15 minutes at the shortest, so this still leaves most of the lifetime.
 const refreshSkew = 5 * time.Minute
 
-// requestTimeout bounds each of the two requests, so a hanging endpoint cannot
-// hang the build.
 const requestTimeout = 10 * time.Second
 
-// failureBackoff is how long a failed exchange is reported without retrying.
-// Every attempt spends a GitHub token and a Bitrise request, and a policy that
-// rejects one job's token will reject the next one too.
+// A policy that rejects one GitHub token rejects the next, and every attempt spends one.
 const failureBackoff = 30 * time.Second
 
 const maxErrorBody = 512
@@ -86,9 +79,7 @@ type Client struct {
 	httpClient   *http.Client
 	now          func() time.Time
 
-	// refreshSlot serialises exchanges, so a burst of resolves spends one GitHub
-	// token and mints one Bitrise token rather than one each. A channel rather
-	// than a mutex so waiting honours the caller's context.
+	// Serialises exchanges; a channel rather than a mutex so waiting honours the caller's context.
 	refreshSlot chan struct{}
 	mu          sync.RWMutex
 	token       string

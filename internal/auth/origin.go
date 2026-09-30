@@ -31,9 +31,8 @@ const (
 	// instance-manager rather than one the environment handed it. Same backend as
 	// the CI JWT, different origin, so diagnostics can tell them apart.
 	ProvenanceBrokered
-	// ProvenanceOIDC is a short-lived Workspace API token this CLI obtained by
-	// exchanging a GitHub Actions OIDC token under a Bitrise trust policy. It is
-	// not a JWT, so it is sent workspace-prefixed like any other PAT or WAT.
+	// ProvenanceOIDC is a short-lived Workspace API token exchanged for a GitHub
+	// Actions OIDC token. Not a JWT, so it is sent workspace-prefixed like any WAT.
 	ProvenanceOIDC
 )
 

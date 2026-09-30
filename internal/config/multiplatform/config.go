@@ -35,9 +35,7 @@ type AnalyticsAuthConfig struct {
 	AuthToken   string
 	WorkspaceID string
 	IsJWT       bool
-	// Provenance is how a short-lived credential was obtained. Empty in files
-	// written before the CLI could mint one, where a JWT could only have been
-	// injected and anything else was a PAT or WAT.
+	// How a short-lived credential was obtained; empty in files written before the CLI could mint one.
 	Provenance string
 }
 

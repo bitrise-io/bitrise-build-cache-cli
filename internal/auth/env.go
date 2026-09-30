@@ -20,9 +20,7 @@ const (
 	EnvBuildHubVMToken    = "BITRISEIO_BUILD_HUB_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
 	EnvBuildHubVMTokenURL = "BITRISEIO_BUILD_HUB_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
 
-	// EnvOIDCPolicyID names the Bitrise OIDC trust policy a GitHub Actions job's
-	// OIDC token is exchanged under. Not a secret: the trust comes from the
-	// GitHub-signed token satisfying the policy, not from knowing its ID.
+	// Not a secret: the trust comes from the GitHub-signed token matching the policy.
 	EnvOIDCPolicyID = "BITRISE_BUILD_CACHE_OIDC_POLICY_ID"
 	// GitHub Actions sets these only when the job has `permissions: id-token: write`.
 	EnvGitHubOIDCRequestURL   = "ACTIONS_ID_TOKEN_REQUEST_URL"
@@ -31,8 +29,7 @@ const (
 	EnvOIDCTokenEndpoint = "BITRISE_OIDC_TOKEN_ENDPOINT" //nolint:gosec // env-var key, not a credential
 )
 
-// DefaultOIDCTokenEndpoint is the Bitrise token exchange endpoint, shared by the
-// OAuth login and the GitHub Actions OIDC exchange.
+// Shared by the OAuth login and the GitHub Actions OIDC exchange.
 const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:gosec // URL, not a credential
 
 // OnBuildHub reports whether both halves of the Build Hub pair are set.

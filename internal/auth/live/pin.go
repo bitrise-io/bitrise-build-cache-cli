@@ -17,10 +17,9 @@ func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, is
 		return cred, origin, err
 	}
 
-	// A JWT or an OIDC-exchanged token lives for one build at most. It goes to the
-	// legacy authConfig key that the analytics and React Native readers expect, and
-	// never into the credentials block, which is for credentials that outlive one
-	// build: a later job would be served the expired token from there.
+	// A JWT or an OIDC-exchanged token lives for one build at most, so it goes only to
+	// the authConfig block the analytics readers expect: the credentials block would
+	// serve it, expired, to a later job.
 	if origin.Backend == auth.BackendJWT || origin.Provenance == auth.ProvenanceOIDC {
 		if legacyErr := writeAnalyticsCredential(cred, origin); legacyErr != nil {
 			r.debugf("could not mirror the credential to the analytics config: %s", legacyErr)

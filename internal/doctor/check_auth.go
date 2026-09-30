@@ -44,10 +44,9 @@ func (d *Doctor) authCheck() Check {
 	}
 }
 
-// oidcResult covers a configured GitHub Actions OIDC exchange, which this offline
-// check never performs. Before the first exchange there is nothing on the machine,
-// and that is not "no credentials". A policy the job can't use is reported even when
-// another credential resolved, because the user asked for OIDC and won't get it.
+// oidcResult covers a configured OIDC exchange, which this offline check never
+// performs, so nothing on the machine yet is not "no credentials". A policy the job
+// can't use is reported even when another credential resolved.
 func oidcResult(envs map[string]string, resolved bool) (Result, bool) {
 	if !auth.OIDCPolicyConfigured(envs) {
 		return Result{}, false

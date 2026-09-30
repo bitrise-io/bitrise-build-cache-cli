@@ -224,15 +224,10 @@ func validateStored(cred auth.Credential, origin auth.Origin, backing store.Stor
 	return cred, origin, backing, nil
 }
 
-// exchanged returns the precedence step for a credential this CLI mints itself:
-// the GitHub Actions OIDC exchange first, because a trust policy is something the
-// user configured, then the Build Hub token, which the runner offers regardless. A
-// failed exchange is not fatal: resolution falls through to the stores, and the
-// build gets whatever credential it had before.
-//
-// The error it returns is only ever the OIDC failure: a Build Hub runner offers its
-// token unasked, so a failed broker exchange is no reason to replace the usual
-// "no credentials" error.
+// exchanged returns the precedence step for a credential this CLI mints itself: the
+// GitHub Actions OIDC exchange first, because the user configured a policy, then the
+// Build Hub token the runner offers regardless. Its error is only ever the OIDC
+// failure; a Build Hub token nobody asked for is no reason to replace the usual one.
 func (r *Resolver) exchanged(ctx context.Context) func(map[string]string) (auth.Credential, auth.Origin, error) {
 	return func(envs map[string]string) (auth.Credential, auth.Origin, error) {
 		cred, oidcErr := r.oidcExchanged(ctx, envs)
@@ -405,10 +400,8 @@ func (r *Resolver) debugf(format string, args ...any) {
 // warning for every request.
 var warned sync.Map //nolint:gochecknoglobals
 
-// warnFellBack reports a failed OIDC exchange that another credential stood in
-// for. It warns rather than logging at debug level like a failed Build Hub
-// exchange: the user asked for this one, so the build is running on something
-// they didn't intend. When nothing stands in, the failure is the error instead.
+// warnFellBack reports a failed OIDC exchange that another credential stood in for.
+// Unlike a failed Build Hub exchange it isn't debug-level: the user asked for OIDC.
 func (r *Resolver) warnFellBack(exchangeErr error) {
 	if exchangeErr == nil || r.Logger == nil {
 		return
