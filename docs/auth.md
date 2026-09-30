@@ -265,8 +265,10 @@ resolver in one command shares a single cached token.
 
 The OIDC exchange runs first because a trust policy ID is something the user set,
 while a Build Hub runner offers its token whether or not it was asked for. For the
-same reason its failures are warned about, once per message, where a failed Build
-Hub exchange is only logged at debug level. The workspace comes from
+same reason its failures are not only logged at debug level, as a failed Build Hub
+exchange is: when another credential stands in, the failure is a warning (once per
+message), and when nothing does, it is the error `Resolve` returns instead of "no
+token set". The workspace comes from
 `BITRISE_BUILD_CACHE_WORKSPACE_ID`, not the token: what the exchange returns is a
 Workspace API token, opaque and not a JWT. That has three consequences:
 

@@ -183,6 +183,8 @@ func (r *Resolver) resolveWith(
 
 	if r.Prefer != PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
+			r.warnFellBack(exchangeErr)
+
 			return validateStored(cred, origin, backing)
 		}
 	}
@@ -191,6 +193,7 @@ func (r *Resolver) resolveWith(
 		if _, err := auth.SanitizeToken(cred.Token); err != nil {
 			return auth.Credential{}, auth.Origin{}, nil, err //nolint:wrapcheck // sentinel; callers errors.Is on it
 		}
+		r.warnFellBack(exchangeErr)
 
 		return cred, origin, nil, nil
 	}
@@ -246,27 +249,18 @@ func (r *Resolver) exchanged(ctx context.Context) func(map[string]string) (auth.
 		if cred.Token == "" {
 			return auth.Credential{}, auth.Origin{}, oidcErr
 		}
+		r.warnFellBack(oidcErr)
 
 		return cred, auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}, nil
 	}
 }
 
-// oidcExchanged warns rather than logging at debug level like the Build Hub step:
-// the user asked for this exchange, so a failure is a configuration to fix, not an
-// environment that happens not to offer one.
 func (r *Resolver) oidcExchanged(ctx context.Context, envs map[string]string) (auth.Credential, error) {
 	if !auth.OIDCPolicyConfigured(envs) {
 		return auth.Credential{}, nil
 	}
 
-	cred, err := r.oidcCredential(ctx, envs)
-	if err != nil {
-		r.warnOnce(err)
-
-		return auth.Credential{}, err
-	}
-
-	return cred, nil
+	return r.oidcCredential(ctx, envs)
 }
 
 func (r *Resolver) oidcCredential(ctx context.Context, envs map[string]string) (auth.Credential, error) {
@@ -411,12 +405,16 @@ func (r *Resolver) debugf(format string, args ...any) {
 // warning for every request.
 var warned sync.Map //nolint:gochecknoglobals
 
-func (r *Resolver) warnOnce(err error) {
-	if r.Logger == nil {
+// warnFellBack reports a failed OIDC exchange that another credential stood in
+// for. It warns rather than logging at debug level like a failed Build Hub
+// exchange: the user asked for this one, so the build is running on something
+// they didn't intend. When nothing stands in, the failure is the error instead.
+func (r *Resolver) warnFellBack(exchangeErr error) {
+	if exchangeErr == nil || r.Logger == nil {
 		return
 	}
-	if _, seen := warned.LoadOrStore(err.Error(), struct{}{}); !seen {
-		r.Logger.Warnf("%s", err)
+	if _, seen := warned.LoadOrStore(exchangeErr.Error(), struct{}{}); !seen {
+		r.Logger.Warnf("%s — using another credential instead", exchangeErr)
 	}
 }
 

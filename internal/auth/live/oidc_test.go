@@ -5,9 +5,11 @@ package live
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -272,4 +274,48 @@ func TestResolve_NoPolicyKeepsTheUsualError(t *testing.T) {
 	_, _, err := r.Resolve(context.Background(), map[string]string{})
 
 	require.ErrorIs(t, err, auth.ErrTokenNotProvided)
+}
+
+type recordingLogger struct {
+	log.Logger
+	warnings []string
+}
+
+func (l *recordingLogger) Warnf(format string, args ...any) {
+	l.warnings = append(l.warnings, fmt.Sprintf(format, args...))
+}
+
+// Another credential standing in is the case the user can't see from the result.
+func TestResolve_OIDCFailureWarnsWhenAnotherCredentialStandsIn(t *testing.T) {
+	logger := &recordingLogger{Logger: log.NewLogger()}
+	stored := &fakeStore{backend: auth.BackendKeychain, present: true, ts: auth.TokenSet{AuthToken: "stored-pat", WorkspaceID: "stored-org"}}
+	r := &Resolver{
+		Logger:   logger,
+		OIDC:     func(context.Context, map[string]string) (auth.Credential, error) { return auth.Credential{}, errors.New("rejected: stood in") },
+		Backends: []store.Store{stored},
+	}
+
+	for range 2 {
+		_, _, err := r.Resolve(context.Background(), oidcEnvs())
+		require.NoError(t, err)
+	}
+
+	require.Len(t, logger.warnings, 1, "warned once per message, not per resolve")
+	assert.Contains(t, logger.warnings[0], "rejected: stood in")
+}
+
+// When nothing stands in the failure is already the error; warning too would say it twice.
+func TestResolve_OIDCFailureDoesNotWarnWhenItIsTheError(t *testing.T) {
+	logger := &recordingLogger{Logger: log.NewLogger()}
+	r := &Resolver{
+		Logger:         logger,
+		OIDC:           func(context.Context, map[string]string) (auth.Credential, error) { return auth.Credential{}, errors.New("rejected: alone") },
+		Backends:       []store.Store{},
+		AnalyticsBlock: func() (auth.Credential, auth.Origin, bool) { return auth.Credential{}, auth.Origin{}, false },
+	}
+
+	_, _, err := r.Resolve(context.Background(), oidcEnvs())
+
+	require.Error(t, err)
+	assert.Empty(t, logger.warnings)
 }
