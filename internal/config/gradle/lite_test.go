@@ -289,6 +289,21 @@ func TestIsLiteInitScript(t *testing.T) {
 	require.NoError(t, os.WriteFile(
 		filepath.Join(otherDir, "bitrise-build-cache.init.gradle.kts"), []byte(LiteMarker+"\n"), 0o600))
 	assert.True(t, IsLiteInitScript(map[string]string{"GRADLE_USER_HOME": other}, home))
-	assert.False(t, IsLiteInitScript(map[string]string{"GRADLE_USER_HOME": t.TempDir()}, home),
-		"no script at the relocated home means not lite")
+	// Neither location has a marked script, so nothing is lite.
+	assert.False(t, IsLiteInitScript(map[string]string{"GRADLE_USER_HOME": t.TempDir()}, t.TempDir()),
+		"no marked script in either location means not lite")
+}
+
+// Preboot and the build need not agree on GRADLE_USER_HOME: preboot usually has
+// none and writes ~/.gradle. Looking only where the build points would leave the
+// gate silently off.
+func TestIsLiteInitScript_FindsAScriptWrittenToTheDefaultHome(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".gradle", "init.d")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "bitrise-build-cache.init.gradle.kts"), []byte(LiteMarker+"\n"), 0o600))
+
+	assert.True(t, IsLiteInitScript(map[string]string{"GRADLE_USER_HOME": t.TempDir()}, home),
+		"a build that relocates GRADLE_USER_HOME must still find the preboot script")
 }

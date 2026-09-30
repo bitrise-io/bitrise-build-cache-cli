@@ -21,7 +21,17 @@ const LiteMarker = "// bitrise-build-cache: activated at preboot (lite)"
 // preboot is treated as a full activation, which is the safe direction — it
 // leaves the build cacheing as it does today.
 func IsLiteInitScript(envs map[string]string, home string) bool {
-	body, err := os.ReadFile(initScriptPath(envs, home)) //nolint:gosec // path derived from home + constant
+	for _, path := range initScriptPaths(envs, home) {
+		if markedLite(path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func markedLite(path string) bool {
+	body, err := os.ReadFile(path) //nolint:gosec // path derived from home + constant
 	if err != nil {
 		return false
 	}
@@ -35,13 +45,18 @@ func IsLiteInitScript(envs map[string]string, home string) bool {
 	return false
 }
 
-// initScriptPath resolves the same location activation writes to: GRADLE_USER_HOME
-// when the build sets one, ~/.gradle otherwise.
-func initScriptPath(envs map[string]string, home string) string {
-	gradleHome := envs["GRADLE_USER_HOME"]
-	if gradleHome == "" {
-		gradleHome = filepath.Join(home, ".gradle")
+// initScriptPaths lists every location the script in force could be in. Both are
+// checked because preboot and the build need not agree on GRADLE_USER_HOME:
+// preboot usually has none set and writes ~/.gradle, while a workflow that sets
+// one later would otherwise look only there and find nothing — and a gate that
+// silently does not fire is the failure this whole marker exists to avoid.
+func initScriptPaths(envs map[string]string, home string) []string {
+	const name = "bitrise-build-cache.init.gradle.kts"
+
+	paths := []string{filepath.Join(home, ".gradle", "init.d", name)}
+	if gradleHome := envs["GRADLE_USER_HOME"]; gradleHome != "" {
+		paths = append([]string{filepath.Join(gradleHome, "init.d", name)}, paths...)
 	}
 
-	return filepath.Join(gradleHome, "init.d", "bitrise-build-cache.init.gradle.kts")
+	return paths
 }
