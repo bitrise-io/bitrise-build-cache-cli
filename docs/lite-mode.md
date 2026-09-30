@@ -195,14 +195,30 @@ website outage disables caching for everyone. Only an explicit negative skips.
 
 Lite never skips: preboot has no workspace to ask about, so the question moves to
 build time with everything else. On Bitrise CI the JWT is injected for every
-workspace regardless of entitlement, so a lite-warmed VM currently wires up for
-everyone and the decision falls to the backend rejecting.
+workspace regardless of entitlement, so a lite-activated VM currently wires up
+for everyone.
 
-### The gate is an optimisation, not the safety net
+For the cache that is survivable — the backend rejects and each tool stands
+down. For analytics it is not: nothing rejects it, so a lite-activated VM on an
+unentitled workspace *does* report an invocation. Lite has no build-time
+entitlement check yet, and until it does this is the one promise lite does not
+keep. It is why the org-slug gate in rollout step 1 is evaluated at build time
+rather than at preboot.
 
-Every tool already survives an unauthorised backend without failing the build,
-and that stays the real guarantee — the gate is best-effort and can be wrong.
-What differs is how much each one spends finding out:
+### The gate is load-bearing for analytics, an optimisation for the cache
+
+The two paths behave in opposite ways, and only one of them protects itself.
+
+**Analytics has no stand-down at all.** The endpoint does not reject an
+unentitled workspace — it accepts the invocation and records it. The client
+treats any non-2xx as a generic error, so there is no auth signal to react to
+even in principle. Nothing downstream of activation will decline to report. The
+gate is therefore the *only* thing that keeps an unentitled workspace out of the
+invocation data, which is what makes it load-bearing rather than a nicety.
+
+**The cache path does stand down**, in every tool, without failing the build.
+There the gate only saves work. What differs is how much each one spends finding
+out:
 
 | Tool | On `UNAUTHENTICATED` |
 |---|---|
@@ -216,8 +232,9 @@ working — but it cannot tell "this token just expired" from "this workspace ha
 no Build Cache", and those want opposite answers. So on an unentitled workspace
 it re-asks and re-fails once per compile.
 
-That is the strongest argument for the gate: standing down keeps the build
-green, it does not make the attempt free. The gate is what makes it free.
+So for the cache, standing down keeps the build green but does not make the
+attempt free — the gate is what makes it free. For analytics there is nothing to
+stand down, and the gate is the whole mechanism.
 
 > **TEMPORARY — the endpoint does not exist yet.**
 > `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` disables the gate, and this
