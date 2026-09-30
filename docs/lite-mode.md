@@ -13,19 +13,19 @@ Build Cache normally requires a Step. A Step runs inside a build, so it can see
 the workspace, the app, the workflow and a token, and it bakes what it learns
 into `~/.gradle/init.d/...`, `~/.bazelrc` and `~/.bitrise-xcelerate/config.json`.
 
-Bitrise warms VMs up before assigning work to them. Warmup already installs the
+Bitrise warms VMs up before assigning work to them. Preboot already installs the
 CLI and runs `activate gradle-mirrors`. If activation could also wire up Build
 Cache there, every build on a warmed VM would get it with no Step at all.
 
-Warmup has none of what activation currently relies on:
+Preboot has none of what activation currently relies on:
 
-| Available at warmup | Not available at warmup |
+| Available at preboot | Not available at preboot |
 |---|---|
 | VM env (`BITRISE_DEN_VM_DATACENTER`, stack rev) | auth token, JWT |
 | host facts (OS, cores, memory) | workspace / app / build / workflow |
 | the CLI binary | `envman`, `BITRISE_IO`, a git checkout |
 
-**The central hazard is not that warmup knows too little — it is that anything it
+**The central hazard is not that preboot knows too little — it is that anything it
 writes is inherited by whatever unrelated build later lands on that VM.** A baked
 app slug means one customer's build reports as another's. A baked token means one
 workspace's build authenticates as another's.
@@ -51,7 +51,7 @@ existing users of the CLI.
 
 ## How each tool defers
 
-| Tool | Warmup writes | Resolved at build time, by |
+| Tool | Preboot writes | Resolved at build time, by |
 |---|---|---|
 | gradle | init script, `gradle.properties` block | the plugins (`auth token`, env) |
 | bazel | bazelrc: helper line, endpoints, host metadata, lite marker | `bitrise-build-cache get` |
@@ -86,7 +86,7 @@ Exactly one side emits each key. Both sides read the same signal:
 
 ```
 # [start] generated-by-bitrise-build-cache
-# bitrise-build-cache: activated at VM warmup (lite)
+# bitrise-build-cache: activated at preboot (lite)
 build --credential_helper=*.services.bitrise.io=bitrise-build-cache
 ...
 ```
@@ -115,7 +115,7 @@ itself.
 
 ### ccache
 
-The storage helper is deliberately **not** started at warmup: it would bind a
+The storage helper is deliberately **not** started at preboot: it would bind a
 `$TMPDIR`-scoped socket, take the non-CI idle timeout, and freeze metadata
 resolved before any build existed.
 
@@ -126,7 +126,7 @@ would point at a dead socket while Linux passed, because both resolve `/tmp`.
 
 ## Benchmark phase
 
-The phase query is keyed on workspace + app + workflow, so warmup cannot make it.
+The phase query is keyed on workspace + app + workflow, so preboot cannot make it.
 The build does, through `internal/config/common.ResolveBenchmarkPhase`:
 
 1. `BITRISE_BUILD_CACHE_BENCHMARK_PHASE_<TOOL>` — an explicit override, used by
@@ -158,10 +158,26 @@ Callers:
   there should be no proxy at all. Only for a build action with the cache still
   enabled: a fastlane or CocoaPods run fires dozens of `-version` /
   `-showBuildSettings` calls, and the phase cannot change any of them.
-- **gradle and others** — `bitrise-build-cache benchmark-phase --tool <tool>`, at
-  **execution** time. Not at Gradle configuration time: the phase changes per
-  build, and anything read during configuration becomes a configuration-cache
-  input, which invalidates the entry on every build.
+- **gradle** — the generated init script resolves the phase through a
+  `ValueSource` that shells out to `bitrise-build-cache benchmark-phase --tool
+  gradle`, and a `baseline` answer turns the cache off for real: the remote
+  cache and `BitriseCCachePlugin` are skipped, and Gradle's local cache is left
+  at its default, which is exactly the shape a full activation produces when it
+  resolves `baseline` itself.
+
+  A `ValueSource` rather than `providers.environmentVariable`, because Gradle
+  re-runs `obtain()` on every build — configuration-cache hits included — and
+  only invalidates the entry when the value it returns actually changes. A
+  stable phase therefore costs one CLI call and keeps the entry; a phase that
+  flips invalidates it, which is correct, because the build genuinely caches
+  differently. Verified against Gradle 9.3: two consecutive
+  `--configuration-cache` runs reuse the entry on both `baseline` and `warmup`.
+
+  Emitted only under `--lite`. A full activation has already resolved the phase
+  and baked the result into the file, so a second query per build would be
+  waste — and off CI it would run `benchmark-phase` on a developer's machine.
+- **other tools** — `bitrise-build-cache benchmark-phase --tool <tool>`, at
+  execution time.
 
   **The Gradle plugins do not call this yet**, so a lite Gradle build currently
   resolves no phase at all. The subcommand is the intended interface; wiring it
@@ -177,7 +193,7 @@ anything is written and points the user at the trial instead.
 It is deliberately three-valued. "We could not tell" is not "no" — otherwise one
 website outage disables caching for everyone. Only an explicit negative skips.
 
-Lite never skips: warmup has no workspace to ask about, so the question moves to
+Lite never skips: preboot has no workspace to ask about, so the question moves to
 build time with everything else. On Bitrise CI the JWT is injected for every
 workspace regardless of entitlement, so a lite-warmed VM currently wires up for
 everyone and the decision falls to the backend rejecting.
@@ -208,7 +224,7 @@ reads the cache-push setting, falling back to the built-in default.
 ## What the VM has to hand the build
 
 Activation normally publishes several values through `envman`, which belongs to
-a build and does not exist at warmup. These are all *machine-scoped* — a warmed
+a build and does not exist at preboot. These are all *machine-scoped* — a warmed
 VM genuinely knows them, it just has no build to give them to yet — so
 publishing them is the VM's job, not the CLI's:
 
@@ -244,7 +260,7 @@ values themselves and fails if it ran no substantive check.
 
 ## Known limits
 
-- **Containerised builds need two things handed in.** Warmup cannot know the
+- **Containerised builds need two things handed in.** Preboot cannot know the
   build will run in another namespace.
   1. *The binary.* A Bazel build inside Docker needs the CLI mounted in, or the
      credential helper cannot be spawned and the build aborts. Loud, not silent.

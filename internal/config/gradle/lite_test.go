@@ -44,7 +44,7 @@ func liteParams() ActivateGradleParams {
 	params.TestDistro.Enabled = true
 	params.TestDistro.PoolName = "a-pool"
 	params.Lite = true
-	// Warmup installs the CLI at a stable path; without one lite refuses to write
+	// Preboot installs the CLI at a stable path; without one lite refuses to write
 	// a config whose token resolver can never run.
 	params.CLIPath = "/usr/local/bin/bitrise-build-cache"
 
@@ -53,7 +53,7 @@ func liteParams() ActivateGradleParams {
 
 // populatedCIEnv is everything the monolith injects into a build. Lite has to
 // exclude all of it, and the exclusion must not depend on the environment
-// happening to be empty — a warmup that runs inside a build sees exactly this.
+// happening to be empty — a lite activation that runs inside a build sees exactly this.
 func populatedCIEnv() map[string]string {
 	return map[string]string{
 		"BITRISE_IO":                    "true",
@@ -78,7 +78,7 @@ func renderLite(t *testing.T, envs map[string]string) (TemplateInventory, string
 	return inventory, got
 }
 
-// Warmup runs before any credential exists, so activation has to produce the
+// Preboot runs before any credential exists, so activation has to produce the
 // wiring anyway — the plugins fetch the token themselves mid-build.
 func TestTemplateInventory_LiteSucceedsWithoutACredential(t *testing.T) {
 	isolate(t)
@@ -152,7 +152,7 @@ func TestGenerateInitGradle_LiteDoesNotPrintAuthErrors(t *testing.T) {
 }
 
 // Nothing can resolve the token mid-build if the CLI is not reachable, and
-// lite bakes none. Better a failed warmup than a config that can never work.
+// lite bakes none. Better a failed preboot than a config that can never work.
 func TestTemplateInventory_LiteRefusesWhenTheCLIIsUnreachable(t *testing.T) {
 	isolate(t)
 	t.Setenv("PATH", t.TempDir())
@@ -167,7 +167,7 @@ func TestTemplateInventory_LiteRefusesWhenTheCLIIsUnreachable(t *testing.T) {
 }
 
 // The init script is a configuration-cache input, compared by content hash. Two
-// warmups on identical VMs have to produce identical bytes or every build
+// preboots on identical VMs have to produce identical bytes or every build
 // re-configures from scratch.
 func TestGenerateInitGradle_LiteOutputIsStableAcrossRuns(t *testing.T) {
 	isolate(t)
@@ -201,4 +201,40 @@ func TestTemplateInventory_LiteIgnoresAPersistedOptInProjectMode(t *testing.T) {
 	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
 	require.NoError(t, err)
 	assert.NotContains(t, got, "BitriseProjectScopeSource", "the scope-check must not render under lite")
+}
+
+// Lite activation happens before the build exists, so it cannot ask which
+// benchmark phase the build is in. The init script has to ask, and a baseline
+// answer has to actually turn the cache off — not merely be reported.
+func TestGenerateInitGradle_LiteResolvesTheBenchmarkPhaseAtBuildTime(t *testing.T) {
+	isolate(t)
+
+	_, got := renderLite(t, populatedCIEnv())
+
+	assert.Contains(t, got, `commandLine("/usr/local/bin/bitrise-build-cache", "benchmark-phase", "--tool", "gradle")`)
+	// Enforcement, not just reporting: every cache surface follows the phase.
+	assert.Contains(t, got, `isEnabled = _bitriseBenchmarkPhase != "baseline"`)
+	assert.Contains(t, got, `isEnabled = _bitriseBenchmarkPhase == "baseline"`)
+	assert.Contains(t, got, `if (_bitriseBenchmarkPhase != "baseline") apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()`)
+}
+
+// A full activation resolves the phase itself and bakes the result in, so the
+// init script must not also shell out — that would be a second query per build
+// and, off CI, a benchmark-phase call on a developer's machine.
+func TestGenerateInitGradle_NonLiteDoesNotResolveTheBenchmarkPhase(t *testing.T) {
+	isolate(t)
+
+	params := liteParams()
+	params.Lite = false
+	inventory, err := params.TemplateInventory(
+		t.Context(), liteTestLogger(), populatedCIEnv(), false, nil, utils.DefaultOsProxy{})
+	require.NoError(t, err)
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.NotContains(t, got, "benchmark-phase")
+	assert.NotContains(t, got, "_bitriseBenchmarkPhase")
+	// Non-vacuous: the cache block this would have guarded is rendered.
+	assert.Contains(t, got, "registerBuildCacheService")
 }

@@ -35,13 +35,13 @@ var benchmarkPhaseTools = []string{
 }
 
 // Lite activation cannot ask for a benchmark phase — the query needs a
-// workspace, app and workflow, and none of them exist at VM warmup. A build
+// workspace, app and workflow, and none of them exist at preboot. A build
 // tool that has no Go wrapper to resolve it in-process asks through this
 // instead, at execution time.
 //
-// NOT at Gradle configuration time: the phase changes per build, and anything
-// read during configuration becomes a configuration-cache input, which would
-// invalidate the entry on every build.
+// Gradle calls it from configuration time through a ValueSource, which Gradle
+// re-runs on every build including configuration-cache hits and which only
+// invalidates the entry when the phase it returns actually changes.
 //
 //nolint:gochecknoglobals
 var benchmarkPhaseCmd = &cobra.Command{

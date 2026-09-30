@@ -125,8 +125,9 @@ func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential,
 // SkipActivationForEntitlement reports whether activation should stop before
 // doing anything, and prints the reason when it should.
 //
-// Lite passes an empty credential: warmup has no workspace to ask about, so the
-// question moves to build time along with everything else.
+// Lite mode never reaches here: its caller returns before resolving a
+// credential, because a VM activated ahead of any build has no workspace to ask
+// about.
 func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) bool {
 	if os.Getenv(EnvSkipEntitlementCheck) != "" {
 		logger.Warnf("TEMPORARY: the Build Cache entitlement check is bypassed via %s (ACI-5515). "+

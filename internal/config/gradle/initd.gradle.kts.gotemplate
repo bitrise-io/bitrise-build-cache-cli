@@ -5,7 +5,7 @@ import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
 {{ end -}}
 {{- if and (not .Common.CIProvider) (or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") (eq .TestDistro.Usage "enabled")) -}}
 // No CI provider was detected when this file was written, which means either
-// local dev or a warmup run on a VM with no build assigned yet. Either way the
+// local dev or a lite activation on a VM with no build assigned yet. Either way the
 // auth token is resolved at build time through the bitrise-build-cache CLI, so
 // no credential lives in plain text on disk and the init.kts stays byte-stable
 // across configuration-cache save/restore VMs.
@@ -32,6 +32,35 @@ abstract class BitriseAuthTokenSource : org.gradle.api.provider.ValueSource<Stri
 
 fun org.gradle.api.provider.ProviderFactory.bitriseAuthToken(): String =
     of(BitriseAuthTokenSource::class.java) {}.get()
+{{ end -}}
+{{- if and .Common.Lite (or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled")) }}
+// Lite activation ran before this build existed, so it could not ask which
+// benchmark phase the build is in — that query is keyed on workspace, app and
+// workflow. The build asks instead, through the CLI, which answers once per
+// build and records the answer for the other invocations and for the analytics
+// plugin to report.
+//
+// A ValueSource, not providers.environmentVariable: Gradle re-runs obtain() on
+// every build including configuration-cache hits, and only invalidates the
+// entry when the value it returns actually changes. A stable phase therefore
+// costs nothing, and a phase that flips genuinely does change how the build
+// caches.
+abstract class BitriseBenchmarkPhaseSource : org.gradle.api.provider.ValueSource<String, org.gradle.api.provider.ValueSourceParameters.None> {
+    @get:javax.inject.Inject abstract val execOps: org.gradle.process.ExecOperations
+    override fun obtain(): String {
+        val out = java.io.ByteArrayOutputStream()
+        val result = execOps.exec {
+            commandLine("{{ .Common.CLIPath }}", "benchmark-phase", "--tool", "gradle")
+            standardOutput = out
+            errorOutput = java.io.ByteArrayOutputStream()
+            isIgnoreExitValue = true
+        }
+        if (result.exitValue != 0) {
+            return ""
+        }
+        return out.toString().trim()
+    }
+}
 {{ end -}}
 {{- if and (not .Common.CIProvider) (eq .Common.ProjectMode "opt-in") }}
 abstract class BitriseProjectScopeSource : org.gradle.api.provider.ValueSource<String, BitriseProjectScopeSource.Params> {
@@ -92,6 +121,18 @@ initscript {
 }
 {{- if or (eq .Cache.Usage "enabled") (eq .Analytics.Usage "enabled") }}
 settingsEvaluated {
+    {{- if .Common.Lite }}
+    // Fail open: an unreachable benchmark API must not decide how a build caches.
+    val _bitriseBenchmarkPhase = try {
+        providers.of(BitriseBenchmarkPhaseSource::class.java) {}.get()
+    } catch (t: Throwable) {
+        System.err.println("[bitrise-build-cache] benchmark phase lookup failed (${t.message}); caching normally")
+        ""
+    }
+    if (_bitriseBenchmarkPhase == "baseline") {
+        println("[bitrise-build-cache] Benchmark phase is 'baseline': the build cache is off for this build, analytics only.")
+    }
+    {{- end }}
     {{- if and (not .Common.CIProvider) (eq .Common.ProjectMode "opt-in") }}
     // scope-check exit codes: 0 = in scope, 1 = gated (skip), >=2 = error (fail open).
     val _bitriseScopeExit = try {
@@ -111,7 +152,14 @@ settingsEvaluated {
     {{- if eq .Cache.Usage "enabled" }}
     buildCache {
         local {
+            {{- if .Common.Lite }}
+            // Baseline measures the build without the Bitrise cache. A full
+            // activation gets that by emitting no buildCache block at all, which
+            // leaves Gradle's local cache at its default. Mirror that.
+            isEnabled = _bitriseBenchmarkPhase == "baseline"
+            {{- else }}
             isEnabled = false
+            {{- end }}
         }
 
         registerBuildCacheService(BitriseBuildCache::class.java, BitriseBuildCacheServiceFactory::class.java)
@@ -121,12 +169,19 @@ settingsEvaluated {
             debug = {{ .Common.Debug }}
             blobValidationLevel = "{{ .Cache.ValidationLevel }}"
             cacheGradleVersion = gradle.gradleVersion
+            {{- if .Common.Lite }}
+            isEnabled = _bitriseBenchmarkPhase != "baseline"
+            {{- end }}
             {{- if eq .Analytics.Usage "dependency" "enabled" }}
             collectMetadata = false
             {{- end }}
         }
     }
+    {{- if .Common.Lite }}
+    if (_bitriseBenchmarkPhase != "baseline") apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    {{- else }}
     apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
+    {{- end }}
     {{- end }}
     {{- if eq .Analytics.Usage "enabled" }}
     extensions.create("analytics", AnalyticsPluginExtension::class.java)

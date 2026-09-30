@@ -26,7 +26,7 @@ app:
     # consts.go pins, so the generated init script resolves it instead of the
     # released artifact. Set to empty to test against the released plugins.
     # Pointing at the matching branch while the PoC is in flight — the plugin side
-    # has to detect the CI provider itself now that warmup cannot name it.
+    # has to detect the CI provider itself now that preboot cannot name it.
     # REVERT TO EMPTY once that plugin change is released: as it stands every
     # gradle e2e depends on a branch of another repo and goes red if it moves.
   - GRADLE_PLUGINS_REF: ACI-5515-lite-mode
@@ -752,17 +752,23 @@ workflows:
         inputs:
           - verbose: 'true'
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
             PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh gradle -d --cache --cache-push
     - script:
-        title: Assert warmup left no build-scoped data behind
+        title: Assert preboot left no build-scoped data behind
         inputs:
         - content: |-
             set -exo pipefail
             ../scripts/assert_no_build_metadata.sh "$GRADLE_USER_HOME/init.d/bitrise-build-cache.init.gradle.kts"
+    - script:
+        title: Assert the build can resolve what lite deferred
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../scripts/assert_lite_runtime_wiring.sh gradle
     - script:
         title: Assert init script honors GRADLE_USER_HOME
         inputs:
@@ -780,7 +786,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # No stripping, unlike the non-lite guard in feature-e2e-gradle-7. Warmup
+            # No stripping, unlike the non-lite guard in feature-e2e-gradle-7. Preboot
             # pinned nothing, so the build's own environment is the only place a
             # credential exists — resolving it from there is the property under test.
             (./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
@@ -789,7 +795,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # The negative: warmup baked no token. The positive: the plugins
+            # The negative: preboot baked no token. The positive: the plugins
             # authenticated anyway. Together that is runtime resolution — either
             # alone would pass on a build that simply never tried to cache.
             #
@@ -815,7 +821,7 @@ workflows:
               grep -m 5 -E '^\[Bitrise [^]]*\].*Unauthenticated' "$log" || true
               exit 1
             fi
-            echo "Plugins resolved auth at build time from a warmup-only activation ✅"
+            echo "Plugins resolved auth at build time from a lite-only activation ✅"
     - script:
         title: Check for cache invocations
         inputs:
@@ -908,7 +914,7 @@ workflows:
           inputs:
             - content: |-
                 set -exo pipefail
-                # Deliberately NOT the warmup emulation. Deferral is a lite-only
+                # Deliberately NOT the preboot emulation. Deferral is a lite-only
                 # behaviour, so something has to keep watching the path every
                 # existing user of this CLI takes. This workflow is that guard,
                 # and it owns the pinning assertions lite cannot satisfy.
@@ -1024,7 +1030,7 @@ workflows:
             ../bitrise-build-cache-cli auth clear || true
             ../bitrise-build-cache-cli auth status --debug || true
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
@@ -1138,7 +1144,7 @@ workflows:
             ../scripts/install_bazel.sh
         title: Install bazel
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
@@ -1241,13 +1247,13 @@ workflows:
             # helper can still resolve a valid Bearer token when Bazel spawns it.
             envman unset --key BITRISE_IO
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
             PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh bazel -d --cache --cache-push --bes --timestamps
     - script:
-        title: Assert warmup left no build-scoped data behind
+        title: Assert preboot left no build-scoped data behind
         inputs:
         - content: |-
             set -exo pipefail
@@ -1388,7 +1394,7 @@ workflows:
             - packages: 'bc dnsutils iputils-ping'
             - upgrade: "no"
       - script:
-          title: Preboot VM warmup emulation (activate --lite)
+          title: Preboot VM emulation (activate --lite)
           inputs:
             - content: |-
                 #!/bin/bash
@@ -1410,7 +1416,7 @@ workflows:
 
                 cli_path=$(readlink -f ../bitrise-build-cache-cli)
 
-                # The bazelrc names the credential helper by bare name (warmup
+                # The bazelrc names the credential helper by bare name (preboot
                 # installed it on the host PATH), and Bazel resolves that inside
                 # the container. A build in another filesystem namespace has to
                 # be handed the binary — an absolute path would not help either,
@@ -1640,7 +1646,7 @@ workflows:
             envman add --key CLI_REPO_DIR --value "$BITRISE_SOURCE_DIR"
     - bundle::publish-gradle-plugins-branch: {}
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
@@ -1717,7 +1723,7 @@ workflows:
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
           - content: |-
               #!/usr/bin/env bash
@@ -1728,7 +1734,7 @@ workflows:
 
               PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh xcode -d --cache
     - script:
-        title: Assert warmup left no build-scoped data behind
+        title: Assert preboot left no build-scoped data behind
         inputs:
           - content: |-
               set -exo pipefail
@@ -1831,7 +1837,7 @@ workflows:
         inputs:
           - content: |-
               set -exo pipefail
-              # Warmup could not publish these through envman, so the preboot
+              # Preboot could not publish these through envman, so the preboot
               # script does it instead. Checks a positive — the DerivedData root
               # is populated — because the step below globs under it, and an
               # unset value made that glob match nothing and still pass.
@@ -1948,7 +1954,7 @@ workflows:
             [[ "$a_sha" == "$b_sha" ]] || { echo "FAIL: checkout SHAs differ: A=$a_sha B=$b_sha"; exit 1; }
             echo "OK: two checkouts at $a_sha (A=$PWD, B=$CHECKOUT_B_DIR)"
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -eo pipefail
@@ -2041,7 +2047,7 @@ workflows:
     steps:
     - bundle::feature-e2e-setup: {}
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
           - content: |-
               #!/usr/bin/env bash
@@ -2186,7 +2192,7 @@ workflows:
         inputs:
           - set_java_version: '21'
     - script:
-        title: Preboot VM warmup emulation (activate --lite) + MavenCentral mirror
+        title: Preboot VM emulation (activate --lite) + MavenCentral mirror
         inputs:
         - content: |-
             set -exo pipefail
@@ -2797,7 +2803,7 @@ step_bundles:
     #
     # BITRISE_BUILD_CACHE_WORKSPACE_ID used to be load-bearing here: without it
     # the init script baked a per-build JWT, whose bytes changed every build and
-    # invalidated the config-cache entry. Warmup activation bakes no token at
+    # invalidated the config-cache entry. Preboot activation bakes no token at
     # all, so the init script is now byte-stable by construction — this is the
     # workflow that proves it.
     envs:
@@ -2849,7 +2855,7 @@ step_bundles:
         - path: $APP_DIR
     - bundle::publish-gradle-plugins-branch: {}
     - script:
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         inputs:
         - content: |-
             set -exo pipefail
