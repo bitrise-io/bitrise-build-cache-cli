@@ -249,7 +249,7 @@ func copyCLIToXcelerateBinDir(ctx context.Context, osProxy utils.OsProxy, logger
 		return fmt.Errorf("failed to ensure cli is not running: %w", err)
 	}
 
-	if err := clibin.WriteExecutableAtomically(binPath, target, reader); err != nil {
+	if err := clibin.WriteExecutableAtomically(target, reader); err != nil {
 		return fmt.Errorf("write cli: %w", err)
 	}
 

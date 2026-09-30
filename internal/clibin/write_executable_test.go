@@ -19,7 +19,7 @@ func TestWriteExecutableAtomically_OverwritesExistingTarget(t *testing.T) {
 	target := filepath.Join(dir, "bin")
 	require.NoError(t, os.WriteFile(target, []byte("OLD-BINARY"), 0o755))
 
-	require.NoError(t, WriteExecutableAtomically(dir, target, strings.NewReader("NEW-BINARY")))
+	require.NoError(t, WriteExecutableAtomically(target, strings.NewReader("NEW-BINARY")))
 
 	got, err := os.ReadFile(target) //nolint:gosec // test path
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestWriteExecutableAtomically_FailedCopyLeavesTargetIntact(t *testing.T) {
 	target := filepath.Join(dir, "bin")
 	require.NoError(t, os.WriteFile(target, []byte("GOOD-INSTALLED-BINARY"), 0o755))
 
-	err := WriteExecutableAtomically(dir, target, &failingReader{data: []byte("partial")})
+	err := WriteExecutableAtomically(target, &failingReader{data: []byte("partial")})
 	require.Error(t, err)
 
 	got, err := os.ReadFile(target) //nolint:gosec // test path
@@ -56,7 +56,7 @@ func TestWriteExecutableAtomically_CreatesTargetWhenMissing(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "bin")
 
-	require.NoError(t, WriteExecutableAtomically(dir, target, strings.NewReader("FRESH")))
+	require.NoError(t, WriteExecutableAtomically(target, strings.NewReader("FRESH")))
 
 	got, err := os.ReadFile(target) //nolint:gosec // test path
 	require.NoError(t, err)

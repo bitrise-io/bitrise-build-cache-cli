@@ -15,7 +15,6 @@ import (
 // the user opts in) install location shared by the CI and dev flows.
 const LocalBinRelative = ".local/bin"
 
-// UserLocalBinDir returns $HOME/.local/bin.
 func UserLocalBinDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -71,14 +70,13 @@ func copyExecutable(src, dst string) error {
 	}
 	defer in.Close()
 
-	return WriteExecutableAtomically(filepath.Dir(dst), dst, in)
+	return WriteExecutableAtomically(dst, in)
 }
 
 // WriteExecutableAtomically renames a temp copy over target, so a failed write
 // or a still-running old executable can't leave a corrupted binary in place.
-// dir must be the directory that holds target (the temp file lives there so
-// the rename stays on one filesystem).
-func WriteExecutableAtomically(dir, target string, src io.Reader) error {
+func WriteExecutableAtomically(target string, src io.Reader) error {
+	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, filepath.Base(target)+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp executable: %w", err)

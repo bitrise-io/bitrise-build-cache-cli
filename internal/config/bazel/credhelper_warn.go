@@ -16,11 +16,9 @@ import (
 // $GITHUB_PATH so later steps see it. `/tmp/bin` and similar transient dirs
 // disable the credential-helper branch in `activate` (see clibin.IsTransientPath),
 // so the destination directory matters.
-//
-//nolint:gochecknoglobals // interpolates a package const at init once; a local const cannot Sprintf
-var installerSnippet = fmt.Sprintf(`mkdir -p "$HOME/%[1]s"
-    curl -sfL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b "$HOME/%[1]s"
-    echo "$HOME/%[1]s" >> "$GITHUB_PATH"`, clibin.LocalBinRelative)
+const installerSnippet = `mkdir -p "$HOME/` + clibin.LocalBinRelative + `"
+    curl -sfL https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh | sh -s -- -b "$HOME/` + clibin.LocalBinRelative + `"
+    echo "$HOME/` + clibin.LocalBinRelative + `" >> "$GITHUB_PATH"`
 
 // WarnIfHelperPinnedInRepo scans the repo-level bazelrc files Bazel would load
 // and emits an actionable warning when one commits the Bitrise CLI as a
