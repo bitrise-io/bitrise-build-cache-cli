@@ -3,7 +3,7 @@
 # generated init script. The plugins resolve their own token by running the CLI, so the build
 # has to be able to find it: either through BITRISE_BUILD_CACHE_CLI, which `activate gradle`
 # exports (the shape a customer on the released step has, since that step installs the CLI
-# into /tmp/bin), or on $PATH, which is how a warmup-activated VM provides it instead.
+# into /tmp/bin), or on $PATH, which is how a lite-activated VM provides it instead.
 #
 # Run it in a workflow that clears BITRISE_BUILD_CACHE_AUTH_TOKEN and runs `auth clear`.
 # Every pattern is anchored to the plugin's own log line: Bitrise echoes the commit message and
@@ -29,7 +29,7 @@ if grep -q 'authToken' "$INIT_SCRIPT"; then
 fi
 
 # The plugins look for the CLI in BITRISE_BUILD_CACHE_CLI first, then on $PATH.
-# A full activation exports the variable; a warmup one cannot — envman belongs to
+# A full activation exports the variable; a lite one cannot — envman belongs to
 # a build — and relies on the VM having installed the binary on $PATH instead.
 # Both routes are legitimate; what must not happen is neither.
 if [[ -n "${BITRISE_BUILD_CACHE_CLI:-}" ]]; then

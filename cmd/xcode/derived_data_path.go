@@ -9,7 +9,7 @@ import (
 )
 
 // Activation normally publishes this through envman, which belongs to a build
-// and does not exist at VM warmup. The path itself is machine-scoped, so a
+// and does not exist at preboot. The path itself is machine-scoped, so a
 // warmed-up VM does know it — it just has no way to hand it to a build that has
 // not started yet. Printing it lets whatever does own the VM's environment
 // (the preboot startup script, or its emulation in the e2e) publish it, without

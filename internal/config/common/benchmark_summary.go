@@ -71,7 +71,7 @@ func formatBenchmarkEntry(tool, phase string) string {
 	case BenchmarkPhaseBaseline:
 		return tool + "=baseline (cache disabled)"
 	case BenchmarkPhaseWarmup:
-		return tool + "=warmup (cache enabled, hit rate may not be ideal)"
+		return tool + "=preboot (cache enabled, hit rate may not be ideal)"
 	default:
 		return tool + "=" + phase
 	}

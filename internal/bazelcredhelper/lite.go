@@ -6,7 +6,7 @@ import (
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 )
 
-// liteActivation reports whether the bazelrc in force was written by a warmup
+// liteActivation reports whether the bazelrc in force was written by a preboot
 // run. There, no credential is the ordinary state of a workspace without Build
 // Cache, so the build proceeds uncached instead of being told to see a doctor.
 //

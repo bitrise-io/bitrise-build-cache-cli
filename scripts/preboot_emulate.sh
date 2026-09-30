@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Emulates the preboot VM warmup (build-prebooting-deployments,
+# Emulates the preboot VM (build-prebooting-deployments,
 # preboot-reconciler/startup_script_extension_*.sh) inside an e2e build.
 #
 # The point is negative: activation must not be able to see the build it is
@@ -34,7 +34,7 @@ INSTALL_DIR="${PREBOOT_INSTALL_DIR:-/usr/local/bin}"
 INSTALLED="${INSTALL_DIR}/bitrise-build-cache"
 
 # Everything Bitrise injects per build. If activation can read any of it, the
-# workflow is not testing warmup.
+# workflow is not testing preboot.
 BUILD_SCOPED_ENVS=(
   BITRISE_IO
   BITRISE_BUILD_SLUG
@@ -74,7 +74,7 @@ maybe_sudo() {
   fi
 }
 
-# The real warmup downloads the CLI to a stable path on the build's PATH.
+# The real preboot downloads the CLI to a stable path on the build's PATH.
 # /tmp is not one: clibin refuses transient paths, which leaves Bazel without a
 # credential helper and the Gradle plugins without a binary to call.
 echo "=== preboot: installing the CLI to ${INSTALLED}"
@@ -123,4 +123,4 @@ if [[ "$TOOL" == "xcode" || "$TOOL" == "react-native" ]]; then
   fi
 fi
 
-echo "=== preboot warmup finished"
+echo "=== preboot preboot finished"

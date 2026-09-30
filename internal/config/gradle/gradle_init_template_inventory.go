@@ -49,7 +49,7 @@ type PluginCommonTemplateInventory struct {
 
 	ProjectMode string
 
-	// Lite says the file was written at VM warmup. A credential-less machine is
+	// Lite says the file was written at preboot. A credential-less machine is
 	// the ordinary state there, so the token resolver stays quiet about it
 	// instead of printing on every configuration of every build on the VM.
 	Lite bool

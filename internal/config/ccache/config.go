@@ -140,10 +140,10 @@ func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProx
 	}
 
 	// Both are left empty under lite and re-resolved by ReadConfig. The socket
-	// default lives under $TMPDIR, which on macOS is per-session, so warmup's path
+	// default lives under $TMPDIR, which on macOS is per-session, so preboot's path
 	// is not the one the build's helper binds — CCACHE_REMOTE_STORAGE would point
 	// at a dead socket and every lookup would silently miss. The idle timeout
-	// likewise depends on whether the *build* is CI, which warmup cannot know.
+	// likewise depends on whether the *build* is CI, which preboot cannot know.
 	var ipcEndpoint string
 	var idleTimeout time.Duration
 	if !params.Lite {
@@ -151,7 +151,7 @@ func NewConfig(ctx context.Context, envs map[string]string, osProxy utils.OsProx
 		idleTimeout = idleTimeoutFor(envs, osProxy)
 	}
 
-	// Structural, not environmental: warmup must carry no credential even when it
+	// Structural, not environmental: preboot must carry no credential even when it
 	// happens to run inside a build that has one. The helper re-resolves per RPC.
 	if params.Lite {
 		authConfig, authOrigin = authpkg.Credential{}, authpkg.Origin{}

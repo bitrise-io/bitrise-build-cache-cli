@@ -46,7 +46,7 @@ func isolate(t *testing.T) string {
 
 // populatedCIEnv is everything an external CI injects into a build. Lite has to
 // exclude all of it, and the exclusion must not depend on the environment
-// happening to be empty — a warmup that runs inside a build sees exactly this.
+// happening to be empty — a lite activation that runs inside a build sees exactly this.
 func populatedCIEnv() map[string]string {
 	return map[string]string{
 		"GITHUB_ACTIONS":    "true",
@@ -100,14 +100,14 @@ func TestNewConfig_LiteExcludesAFullyPopulatedCIEnvironment(t *testing.T) {
 	}
 }
 
-// $TMPDIR is per-session on macOS, so warmup's socket path is not the one the
+// $TMPDIR is per-session on macOS, so preboot's socket path is not the one the
 // build's proxy binds. Persisting it points COMPILATION_CACHE_REMOTE_SERVICE_PATH
 // at a dead socket and every lookup silently misses.
 func TestNewConfig_LitePersistsNoProxySocketPath(t *testing.T) {
 	isolate(t)
 
 	osProxyMock := &utilsMocks.OsProxyMock{
-		TempDirFunc:  func() string { return "/warmup-tmp" },
+		TempDirFunc:  func() string { return "/preboot-tmp" },
 		HostnameFunc: func() (string, error) { return "test-host", nil },
 	}
 
@@ -150,7 +150,7 @@ func TestOverrideActivateXcodeParamsFromExistingConfig_LiteStillFallsBackToUsrBi
 	dir := filepath.Join(home, ".bitrise-xcelerate")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"),
-		[]byte(`{"lite":true,"originalXcodebuildPath":"/warmup/xcodebuild"}`), 0o600))
+		[]byte(`{"lite":true,"originalXcodebuildPath":"/preboot/xcodebuild"}`), 0o600))
 
 	osProxy := utils.DefaultOsProxy{}
 	envs := map[string]string{"PATH": PathFor(osProxy, BinDir) + ":/usr/bin"}
@@ -169,12 +169,12 @@ func TestOverrideActivateXcodeParamsFromExistingConfig_LiteDoesNotCarryPathsForw
 	dir := filepath.Join(home, ".bitrise-xcelerate")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"),
-		[]byte(`{"lite":true,"originalXcodebuildPath":"/warmup/xcodebuild"}`), 0o600))
+		[]byte(`{"lite":true,"originalXcodebuildPath":"/preboot/xcodebuild"}`), 0o600))
 
 	params := Params{}
 	overrideActivateXcodeParamsFromExistingConfig(
 		liteTestLogger(), utils.DefaultOsProxy{}, &params, utils.DefaultDecoderFactory{},
 		map[string]string{"PATH": "/usr/bin"})
 
-	assert.Empty(t, params.XcodePathOverride, "a warmup config resolved its paths before the stack was selected")
+	assert.Empty(t, params.XcodePathOverride, "a lite config resolved its paths before the stack was selected")
 }

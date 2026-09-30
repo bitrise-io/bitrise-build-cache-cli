@@ -51,7 +51,7 @@ func TestSkipActivationForEntitlement_DoesNotSkipOnAnUnknownAnswer(t *testing.T)
 	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
 }
 
-// Warmup has no workspace to ask about, so the question moves to build time
+// Preboot has no workspace to ask about, so the question moves to build time
 // rather than blocking the activation.
 func TestSkipActivationForEntitlement_DoesNotSkipWithoutAWorkspace(t *testing.T) {
 	t.Setenv(EnvSkipEntitlementCheck, "")

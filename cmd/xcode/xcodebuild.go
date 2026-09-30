@@ -823,7 +823,7 @@ func logBlobStatsProfile(logger log.Logger, snapshot *blobstats.Snapshot) {
 // cache survives it.
 //
 // Lite activation could not ask for a phase — the query is keyed on a workspace,
-// app and workflow that do not exist at VM warmup — so the build asks instead,
+// app and workflow that do not exist at preboot — so the build asks instead,
 // once, and records it for its other invocations. A normal activation already
 // exported the phase, and that env var wins before any request is made.
 //

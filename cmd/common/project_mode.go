@@ -20,7 +20,7 @@ const ProjectModeFlagUsage = "Project scoping mode ('always' or 'opt-in'). " +
 // ErrLiteWithProjectMode rejects the one combination that cannot mean anything.
 //
 // Project scoping is a local-dev feature: a developer marks which checkouts on
-// their machine participate. Warmup has no checkout and no developer, it must
+// their machine participate. Preboot has no checkout and no developer, it must
 // not persist machine-wide policy, and a VM handed to an arbitrary build has no
 // business inheriting one. Silently ignoring the flag would be worse than
 // refusing it — the caller asked for something it will not get.

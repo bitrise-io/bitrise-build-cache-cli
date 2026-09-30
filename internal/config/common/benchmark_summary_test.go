@@ -53,7 +53,7 @@ func TestLogBenchmarkSummary_AnyToolNotBaselineUsesInfo(t *testing.T) {
 	assert.Empty(t, rl.warnLines)
 
 	line := rl.infoLines[0]
-	assert.Contains(t, line, "gradle=warmup (cache enabled")
+	assert.Contains(t, line, "gradle=preboot (cache enabled")
 	assert.Contains(t, line, "xcode=baseline (cache disabled)")
 }
 
@@ -86,7 +86,7 @@ func TestLogBenchmarkSummary_SkipsToolsWithoutPhase(t *testing.T) {
 	require.Len(t, rl.infoLines, 1)
 
 	line := rl.infoLines[0]
-	assert.Contains(t, line, "gradle=warmup")
+	assert.Contains(t, line, "gradle=preboot")
 	assert.NotContains(t, line, "xcode")
 }
 

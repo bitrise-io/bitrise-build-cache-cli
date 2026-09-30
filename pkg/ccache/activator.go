@@ -127,7 +127,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 		return fmt.Errorf("failed to save ccache config: %w", err)
 	}
 
-	// A warmup helper would bind a $TMPDIR-scoped socket, take the non-CI idle
+	// A lite-activated helper would bind a $TMPDIR-scoped socket, take the non-CI idle
 	// timeout and freeze metadata resolved before any build existed. The build's
 	// first ccache call starts one with the right environment instead.
 	if !a.lite {
@@ -157,7 +157,7 @@ func (a *Activator) Activate(ctx context.Context) error {
 	a.logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(a.osProxy))
 
 	// CCACHE_BASEDIR is the build's source root, and envman belongs to the build.
-	// At warmup neither exists yet, so the caller delivers BuildEnv at build time.
+	// At preboot neither exists yet, so the caller delivers BuildEnv at build time.
 	if !a.lite {
 		baseDir := a.baseDirOverride
 		if baseDir == "" {

@@ -85,7 +85,7 @@ func Run(
 	cred, err := resolve(ctx)
 	switch {
 	case errors.Is(err, ErrNoCredential) && lite:
-		// Warmup wired this machine before any credential existed, so a workspace
+		// Preboot wired this machine before any credential existed, so a workspace
 		// without Build Cache lands here on every build. Bazel sends no auth, the
 		// backend declines, and the build proceeds without the cache.
 		//

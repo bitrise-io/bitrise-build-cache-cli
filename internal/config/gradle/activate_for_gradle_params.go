@@ -140,7 +140,7 @@ func (params ActivateGradleParams) TemplateInventory(
 	}
 
 	// ResolveUsername can reach the OS keychain, which has been seen to hang on a
-	// macOS CI agent. Warmup emits no build user anyway, so do not ask.
+	// macOS CI agent. Preboot emits no build user anyway, so do not ask.
 	var username string
 	if !params.Lite {
 		username, _ = resolver.ResolveUsername(envs)
@@ -218,7 +218,7 @@ func (params ActivateGradleParams) commonTemplateInventory(
 		return PluginCommonTemplateInventory{}, errLiteNeedsReachableCLI
 	}
 
-	// Structural, not environmental: warmup must emit no credential and no build
+	// Structural, not environmental: preboot must emit no credential and no build
 	// identity even when it happens to run inside a build that has both. An empty
 	// CIProvider is also what lets the plugins run their own CI detection.
 	if params.Lite {

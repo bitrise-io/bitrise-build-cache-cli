@@ -116,14 +116,14 @@ func (params ActivateBazelParams) commonTemplateInventory(
 
 	// Without a helper the bazelrc can only carry a literal token, and lite has
 	// none to carry. Writing it anyway produces a config that can never
-	// authenticate and bakes this machine's warmup metadata into every build, so
+	// authenticate and bakes this machine's preboot metadata into every build, so
 	// say so here rather than let it surface as a build-time auth failure.
 	if params.Lite && helperPath == "" && (params.Cache.Enabled || params.BES.Enabled) {
 		return CommonTemplateInventory{}, errLiteNeedsCredentialHelper
 	}
 
 	// ResolveUsername can reach the OS keychain, which has been seen to hang on a
-	// macOS CI agent. Warmup emits no build user anyway, so do not ask.
+	// macOS CI agent. Preboot emits no build user anyway, so do not ask.
 	var username string
 	if !params.Lite {
 		username, _ = resolver.ResolveUsername(envs)
@@ -135,10 +135,10 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 
-	// Structural, not environmental: warmup must emit no credential and no build
+	// Structural, not environmental: preboot must emit no credential and no build
 	// identity even when it happens to run inside a build that has both. The
 	// helper resolves all of this per invocation. Host metadata stays — it
-	// describes the machine, which is the one thing warmup does know.
+	// describes the machine, which is the one thing preboot does know.
 	if params.Lite {
 		authConfig = authpkg.Credential{}
 		cacheConfig.BitriseAppID = ""
@@ -265,7 +265,7 @@ func (params ActivateBazelParams) rbeTemplateInventory(
 // The bare name is resolved against the PATH of whatever spawns Bazel, which is
 // not necessarily the PATH activation saw. A build in another filesystem
 // namespace — bazel inside a container, most commonly — resolves neither the
-// bare name nor an absolute path unless the binary is mounted in, and warmup
+// bare name nor an absolute path unless the binary is mounted in, and preboot
 // cannot know it will happen. Unguarded by design; the failure is loud (Bazel
 // aborts with "Could not find file with name 'bitrise-build-cache' on PATH").
 func credentialHelperPath(cliPath string) string {

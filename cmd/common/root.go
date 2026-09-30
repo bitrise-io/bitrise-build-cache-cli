@@ -60,7 +60,7 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 }
 
 func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
-	// Warmup is not CI, so the nudge would reach for GitHub on every VM boot.
+	// Preboot is not CI, so the nudge would reach for GitHub on every VM boot.
 	if Lite {
 		return true
 	}

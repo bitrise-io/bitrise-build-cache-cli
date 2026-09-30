@@ -157,7 +157,7 @@ workflows:
             #!/usr/bin/env bash
             set -exo pipefail
             PREBOOT_CLI=../bitrise-build-cache-cli ../scripts/preboot_emulate.sh xcode
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
     - bundle::rn-cli-seek-ios: {}
     - share-pipeline-variable@1:
         inputs:
@@ -533,7 +533,7 @@ workflows:
     - script:
         title: Activate ccache remote storage
         inputs:
-        # Deliberately NOT the warmup emulation. Lite skips the CCACHE_* envman
+        # Deliberately NOT the preboot emulation. Lite skips the CCACHE_* envman
         # export and starts no storage helper, and this workflow has no React
         # Native runner to deliver either at build time — so the bare `ccache`
         # calls it asserts on would have no remote storage to hit. Moving it to
@@ -834,7 +834,7 @@ step_bundles:
             #!/usr/bin/env bash
             set -exo pipefail
             PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh react-native
-        title: Preboot VM warmup emulation (activate --lite)
+        title: Preboot VM emulation (activate --lite)
         run_if: '{{getenv "USE_BUILD_CACHE" | eq "true"}}'
   rn-cli-restore-gradle:
     steps:
@@ -950,7 +950,7 @@ step_bundles:
     # workflows deliberately stay on the released plugins.
     - bundle::publish-gradle-plugins-branch: {}
     - script:
-        title: Preboot VM warmup emulation (activate --lite) — react-native (Gradle + C++)
+        title: Preboot VM emulation (activate --lite) — react-native (Gradle + C++)
         inputs:
         - content: PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh react-native --debug --gradle=true --xcode=false --cpp=true
     - script:
@@ -1009,7 +1009,7 @@ step_bundles:
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
     - script:
-        title: Preboot VM warmup emulation (activate --lite) — react-native (Xcode)
+        title: Preboot VM emulation (activate --lite) — react-native (Xcode)
         inputs:
         - content: PREBOOT_CLI=./bitrise-build-cache-cli ./scripts/preboot_emulate.sh react-native --gradle=false --xcode=true --cpp=false
     - script:
@@ -1025,7 +1025,7 @@ step_bundles:
         inputs:
           - content: |-
               set -exo pipefail
-              # Warmup cannot publish these through envman; the preboot script
+              # Preboot cannot publish these through envman; the preboot script
               # does it instead. The step below reads the DerivedData root by
               # name and fails hard if it is unset — this says why.
               "$BITRISE_SOURCE_DIR/scripts/assert_lite_runtime_wiring.sh" react-native

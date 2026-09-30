@@ -216,7 +216,7 @@ func (a *Activator) exportEASWorkingDirIfCI() {
 func (a *Activator) Finalize(ctx context.Context) error {
 	a.exportEASWorkingDirIfCI() //nolint:contextcheck // envman export inside is fire-and-forget
 
-	// Nothing to pin at warmup, and the post-run hook re-resolves per build.
+	// Nothing to pin at preboot, and the post-run hook re-resolves per build.
 	if !a.lite {
 		if err := saveMultiplatformConfig(ctx, utils.AllEnvs(), a.debugLogging); err != nil {
 			return err

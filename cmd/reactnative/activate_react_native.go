@@ -49,7 +49,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 			return nil
 		}
 
-		// A warmup run has no business deciding machine-scoped policy for whatever
+		// A lite activation has no business deciding machine-scoped policy for whatever
 		// build lands on this VM, so it does not write it.
 		if !common.Lite {
 			if err := common.PersistProjectMode(projectMode, logger); err != nil {

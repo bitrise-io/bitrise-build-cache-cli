@@ -30,7 +30,7 @@ func unconfiguredHome(t *testing.T) string {
 	return home
 }
 
-// writeBazelrc puts a generated block on disk with or without the warmup marker.
+// writeBazelrc puts a generated block on disk with or without the lite marker.
 func writeBazelrc(t *testing.T, home string, lite bool) {
 	t.Helper()
 
@@ -48,7 +48,7 @@ func runHelper(t *testing.T, out, warn *bytes.Buffer) error {
 		NewResolver(map[string]string{}, io.Discard), nil, nil)
 }
 
-// After a warmup activation, a workspace without Build Cache reaches this on
+// After a lite activation, a workspace without Build Cache reaches this on
 // every build. Bazel must get a usable response, not a failing helper.
 func TestRun_LiteActivationWithoutCredentialsEmitsEmptyHeaders(t *testing.T) {
 	home := unconfiguredHome(t)

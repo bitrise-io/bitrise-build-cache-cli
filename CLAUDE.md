@@ -137,7 +137,7 @@ These are annotated with `// CI: asserted by cache-ccache-test workflow` in the 
 
 ## Lite activation (`--lite`)
 
-`activate <tool> --lite` runs at VM warmup, before a build is assigned: static
+`activate <tool> --lite` runs at preboot, before a build is assigned: static
 wiring only, with credentials, build identity and the benchmark phase deferred
 to build time. Full rationale, per-tool mechanics and known limits:
 **[docs/lite-mode.md](docs/lite-mode.md)** — read it before changing anything
@@ -145,7 +145,7 @@ that writes a generated config.
 
 Two rules it imposes on new code:
 
-- Anything baked into a generated config at warmup is inherited by whatever
+- Anything baked into a generated config at preboot is inherited by whatever
   unrelated build later lands on that VM. Under `Lite`, build-scoped values are
   discarded at the config boundary — do not reintroduce them downstream.
 - Deferral is lite-only. A normal activation keeps baking what it always did;
@@ -160,7 +160,7 @@ Benchmark phasing allows measuring build performance with and without cache. The
 
 **Phases:**
 - **baseline** — cache is disabled, analytics-only mode. Measures build time without cache.
-- **warmup** — cache is enabled but may not be fully populated yet. Logs a warning about potentially suboptimal performance.
+- **preboot** — cache is enabled but may not be fully populated yet. Logs a warning about potentially suboptimal performance.
 
 **Storage:** The phase is persisted in two ways during activation:
 1. `BITRISE_BUILD_CACHE_BENCHMARK_PHASE` env var (exported via envman / GITHUB_ENV / shell RC files)

@@ -43,7 +43,7 @@ func isolate(t *testing.T) {
 
 // populatedCIEnv is everything the monolith injects into a build. Lite has to
 // exclude all of it, and the exclusion must not depend on the environment
-// happening to be empty — a warmup that runs inside a build sees exactly this.
+// happening to be empty — a lite activation that runs inside a build sees exactly this.
 func populatedCIEnv() map[string]string {
 	return map[string]string{
 		"BITRISE_IO":                    "true",
@@ -58,7 +58,7 @@ func populatedCIEnv() map[string]string {
 func liteBazelParams() ActivateBazelParams {
 	params := DefaultActivateBazelParams()
 	params.Lite = true
-	// Warmup installs the CLI at a stable path; without one lite refuses.
+	// Preboot installs the CLI at a stable path; without one lite refuses.
 	params.CLIPath = "/usr/local/bin/bitrise-build-cache"
 
 	return params
@@ -111,7 +111,7 @@ func TestGenerateBazelrc_LiteExcludesAFullyPopulatedCIEnvironment(t *testing.T) 
 
 // The marker lives in the bazelrc so it and the config it describes are one
 // write. `get` reads it to tell an unconfigured machine from a broken one.
-func TestGenerateBazelrc_LiteEmitsTheWarmupMarker(t *testing.T) {
+func TestGenerateBazelrc_LiteEmitsTheLiteMarker(t *testing.T) {
 	isolate(t)
 
 	_, lite := renderLiteBazelrc(t, liteBazelParams(), populatedCIEnv())
@@ -128,7 +128,7 @@ func TestIsLiteBazelrc(t *testing.T) {
 	isolate(t)
 	home := t.TempDir()
 
-	assert.False(t, IsLiteBazelrc(home), "no bazelrc is not a warmup")
+	assert.False(t, IsLiteBazelrc(home), "no bazelrc is not a preboot")
 
 	_, body := renderLiteBazelrc(t, liteBazelParams(), populatedCIEnv())
 	writeBazelrc(t, home, body)

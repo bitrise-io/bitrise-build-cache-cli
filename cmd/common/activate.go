@@ -10,7 +10,7 @@ import (
 
 // Lite is preboot activation: write the static wiring a build tool needs, and
 // nothing that depends on a workspace, a build or a credential. Under Lite the
-// CLI keeps no credential and no build identity — whatever the warmup
+// CLI keeps no credential and no build identity — whatever the preboot
 // environment happens to hold is discarded at the config boundary, so the
 // exclusion does not depend on that environment being empty — and it pins
 // nothing, queries no benchmark phase, exports through no envman, starts no
@@ -43,5 +43,5 @@ Call the subcommands with the name of the tool you want to activate plugins for.
 func init() {
 	RootCmd.AddCommand(ActivateCmd)
 	ActivateCmd.PersistentFlags().BoolVar(&Lite, "lite", false,
-		"Write static wiring only, deferring credentials and build metadata to the build tool. For VM warmup, before a build is assigned.")
+		"Write static wiring only, deferring credentials and build metadata to the build tool. For preboot, before a build is assigned.")
 }

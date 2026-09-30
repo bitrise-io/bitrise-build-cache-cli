@@ -71,7 +71,7 @@ type Config struct {
 	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
-	// Lite records that this config came from a warmup run, so a later real
+	// Lite records that this config came from a lite activation, so a later real
 	// activation re-detects the toolchain paths instead of carrying forward ones
 	// resolved before the stack was selected.
 	Lite bool `json:"lite,omitempty"`
@@ -101,7 +101,7 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 		return Config{}, fmt.Errorf("decode xcelerate config file (%s): %w", configFilePath, err)
 	}
 
-	// Lite activation persists no socket path, because $TMPDIR at warmup is not
+	// Lite activation persists no socket path, because $TMPDIR at preboot is not
 	// the build's. Resolving it here gives every reader the same answer the
 	// writer would have reached in its own environment.
 	if config.ProxySocketPath == "" {
@@ -157,7 +157,7 @@ func NewConfig(ctx context.Context,
 	}
 
 	// ResolveUsername can reach the OS keychain, which has been seen to hang on a
-	// macOS CI agent. Warmup records no build user anyway, so do not ask.
+	// macOS CI agent. Preboot records no build user anyway, so do not ask.
 	var username string
 	if !params.Lite {
 		username, _ = resolver.ResolveUsername(envs)
@@ -172,7 +172,7 @@ func NewConfig(ctx context.Context,
 		osProxy,
 		logger)
 
-	// Structural, not environmental: warmup must persist no credential and no
+	// Structural, not environmental: preboot must persist no credential and no
 	// build identity even when it happens to run inside a build that has both.
 	// The wrapper re-resolves all of it per build.
 	if params.Lite {
@@ -213,7 +213,7 @@ func NewConfig(ctx context.Context,
 	logger.Infof("Using xcrun path: %s. You can always override this by supplying --xcrun-path.", xcrunPath)
 
 	// Left empty under lite and re-resolved by ReadConfig: the default lives under
-	// $TMPDIR, which on macOS is per-session, so warmup's socket path is not the
+	// $TMPDIR, which on macOS is per-session, so preboot's socket path is not the
 	// one the build's proxy binds. Persisting it points the build at a dead socket.
 	var proxySocketPath string
 	switch {

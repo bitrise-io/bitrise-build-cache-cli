@@ -16,7 +16,7 @@ import (
 // the point: activating anyway spends an analytics invocation to record a build
 // that could never have used the cache.
 //
-// Lite never skips. Warmup has no workspace to ask about, so the question moves
+// Lite never skips. Preboot has no workspace to ask about, so the question moves
 // to build time along with everything else lite defers.
 func SkipForEntitlement(ctx context.Context, logger log.Logger) bool {
 	if Lite {

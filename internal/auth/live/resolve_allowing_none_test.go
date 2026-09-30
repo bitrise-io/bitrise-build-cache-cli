@@ -17,7 +17,7 @@ func emptyResolver() *live.Resolver {
 	return &live.Resolver{Backends: []store.Store{}}
 }
 
-// Lite activation runs at VM warmup, before any credential exists. An
+// Lite activation runs at preboot, before any credential exists. An
 // unconfigured machine is the expected state there, not a failure.
 func TestResolveAllowingNone_UnconfiguredIsNotAnErrorWhenAllowed(t *testing.T) {
 	cred, origin, ok, err := emptyResolver().ResolveAllowingNone(t.Context(), map[string]string{}, true)

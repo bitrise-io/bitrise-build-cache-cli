@@ -160,7 +160,7 @@ func ensureLogDir(logger log.Logger, osProxy utils.OsProxy) {
 // exportDerivedDataPath publishes where the wrapper relocates DerivedData to, so cache steps can
 // target the SPM checkouts under it.
 func exportDerivedDataPath(logger log.Logger, config Config, envs map[string]string) {
-	// No envman at warmup, and the path is only read by cache steps inside a build.
+	// No envman at preboot, and the path is only read by cache steps inside a build.
 	if config.Lite || !config.BuildCacheEnabled || config.BuildCacheSkipFlags || config.DisablePrefixMapping {
 		return
 	}
@@ -187,7 +187,7 @@ func overrideActivateXcodeParamsFromExistingConfig(
 	envs map[string]string,
 ) {
 	existingConfig, err := ReadConfig(osProxy, decoderFactory, envs)
-	// A warmup config resolved its toolchain paths before the stack was selected,
+	// A preboot config resolved its toolchain paths before the stack was selected,
 	// so carrying them forward would pin the wrong Xcode. It is "no usable config"
 	// for every purpose here, including the PATH safety net below — skip that and
 	// `which xcodebuild` finds the wrapper, which activation then persists as the
@@ -395,7 +395,7 @@ func addXcelerateCommandToPathWithScriptWrapper(
 
 	exporter := envexport.New(envs, logger)
 
-	// envman belongs to a build, and warmup runs before one exists. Putting the
+	// envman belongs to a build, and preboot runs before one exists. Putting the
 	// wrapper dir on the build's PATH is the VM's job there — /etc/paths.d or the
 	// agent's own environment — not something activation can do from here.
 	if !config.Lite {

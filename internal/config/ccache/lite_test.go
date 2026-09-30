@@ -26,7 +26,7 @@ func isolate(t *testing.T) string {
 	return home
 }
 
-// populatedCIEnv is everything the monolith injects into a build. A warmup that
+// populatedCIEnv is everything the monolith injects into a build. A preboot that
 // runs inside one sees exactly this, and must persist none of it.
 func populatedCIEnv() map[string]string {
 	return map[string]string{
@@ -38,16 +38,16 @@ func populatedCIEnv() map[string]string {
 	}
 }
 
-// $TMPDIR is per-session on macOS, so warmup's socket is not the one the
+// $TMPDIR is per-session on macOS, so preboot's socket is not the one the
 // build's helper binds: CCACHE_REMOTE_STORAGE would point at a dead socket and
 // every lookup would silently miss. The idle timeout likewise depends on
-// whether the *build* is CI, which warmup cannot know.
+// whether the *build* is CI, which preboot cannot know.
 func TestNewConfig_LitePersistsNoEnvironmentDerivedValues(t *testing.T) {
 	isolate(t)
 	envs := populatedCIEnv()
 
 	osProxy := &utilsmocks.OsProxyMock{
-		TempDirFunc:     func() string { return "/warmup-tmp" },
+		TempDirFunc:     func() string { return "/preboot-tmp" },
 		UserHomeDirFunc: func() (string, error) { return t.TempDir(), nil },
 		HostnameFunc:    func() (string, error) { return "ci-host", nil },
 	}
@@ -91,5 +91,5 @@ func TestReadConfig_ResolvesAbsentEnvironmentDerivedValues(t *testing.T) {
 
 	assert.Equal(t, ResolveIPCSocketPath("", envs, osProxy), config.IPCEndpoint)
 	assert.NotEmpty(t, config.IPCEndpoint)
-	assert.Equal(t, ciIdleTimeout, config.IdleTimeout, "the build's CI-ness, not warmup's")
+	assert.Equal(t, ciIdleTimeout, config.IdleTimeout, "the build's CI-ness, not preboot's")
 }

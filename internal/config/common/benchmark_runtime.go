@@ -11,7 +11,7 @@ import (
 )
 
 // Lite activation cannot ask for a benchmark phase: the query is keyed on the
-// workspace, app and workflow, none of which exist at VM warmup. The build asks
+// workspace, app and workflow, none of which exist at preboot. The build asks
 // instead — but a build runs the tool many times, and the answer must be the
 // same for all of them and cost one request.
 //

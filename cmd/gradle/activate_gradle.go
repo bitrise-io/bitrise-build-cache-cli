@@ -65,7 +65,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 			return nil
 		}
 
-		// A warmup run has no business deciding machine-scoped policy for whatever
+		// A lite activation has no business deciding machine-scoped policy for whatever
 		// build lands on this VM, so it does not write it.
 		if !common.Lite {
 			if err := common.PersistProjectMode(activateGradleProjectMode, logger); err != nil {

@@ -29,7 +29,7 @@ type CommonTemplateInventory struct {
 	// written literally into `~/.bazelrc`. Empty when the CLI is not reachable,
 	// which falls back to the literal `Bearer <token>` header.
 	CLIPath string
-	// Lite renders the warmup marker comment into the generated block. It lives
+	// Lite renders the lite marker comment into the generated block. It lives
 	// in the bazelrc rather than beside it so the marker and the config it
 	// describes are the same write and can never disagree: the credential helper
 	// reads it to tell a machine that was never configured from one whose

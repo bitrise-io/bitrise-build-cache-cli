@@ -12,7 +12,7 @@ import (
 // marker and the config it describes are written together and cannot disagree —
 // a bazelrc that configures the credential helper always carries the answer to
 // "was there a credential when this was written?".
-const LiteMarker = "# bitrise-build-cache: activated at VM warmup (lite)"
+const LiteMarker = "# bitrise-build-cache: activated at preboot (lite)"
 
 // IsLiteBazelrc reports whether the home bazelrc was written by a lite run.
 // False on any error: a file we cannot prove was warmed up keeps the loud
