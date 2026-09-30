@@ -31,6 +31,10 @@ const (
 	// instance-manager rather than one the environment handed it. Same backend as
 	// the CI JWT, different origin, so diagnostics can tell them apart.
 	ProvenanceBrokered
+	// ProvenanceOIDC is a short-lived Workspace API token this CLI obtained by
+	// exchanging a GitHub Actions OIDC token under a Bitrise trust policy. It is
+	// not a JWT, so it is sent workspace-prefixed like any other PAT or WAT.
+	ProvenanceOIDC
 )
 
 type Origin struct {
@@ -43,7 +47,7 @@ type Origin struct {
 // keychain and the config file can hold an OAuth login. A static credential is
 // excluded — there is nothing to refresh it with.
 func (o Origin) StoreManaged() bool {
-	if o.Provenance == ProvenanceStatic {
+	if o.Provenance == ProvenanceStatic || o.Provenance == ProvenanceOIDC {
 		return false
 	}
 
@@ -59,6 +63,10 @@ const labelNone = "none"
 func (o Origin) Label() string {
 	switch o.Backend {
 	case BackendEnv:
+		if o.Provenance == ProvenanceOIDC {
+			return "GitHub Actions OIDC (" + EnvOIDCPolicyID + ")"
+		}
+
 		return "environment variables"
 	case BackendJWT:
 		if o.Provenance == ProvenanceBrokered {
@@ -78,7 +86,7 @@ func (o Origin) Label() string {
 			return "OAuth login (config file)"
 		case ProvenanceStatic:
 			return "multiplatform config"
-		case ProvenanceNone, ProvenanceInjected, ProvenanceManual, ProvenanceBrokered:
+		case ProvenanceNone, ProvenanceInjected, ProvenanceManual, ProvenanceBrokered, ProvenanceOIDC:
 		}
 
 		return "config file (CI-safe)"
@@ -92,6 +100,10 @@ func (o Origin) Label() string {
 func (o Origin) ShortLabel() string {
 	switch o.Backend {
 	case BackendEnv:
+		if o.Provenance == ProvenanceOIDC {
+			return "oidc"
+		}
+
 		return "env"
 	case BackendJWT:
 		if o.Provenance == ProvenanceBrokered {

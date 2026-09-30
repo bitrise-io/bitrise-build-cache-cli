@@ -19,11 +19,37 @@ const (
 	// Cache token, so their presence is what tells the CLI it can broker one.
 	EnvBuildHubVMToken    = "BITRISEIO_BUILD_HUB_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
 	EnvBuildHubVMTokenURL = "BITRISEIO_BUILD_HUB_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
+
+	// EnvOIDCPolicyID names the Bitrise OIDC trust policy a GitHub Actions job's
+	// OIDC token is exchanged under. Not a secret: the trust comes from the
+	// GitHub-signed token satisfying the policy, not from knowing its ID.
+	EnvOIDCPolicyID = "BITRISE_BUILD_CACHE_OIDC_POLICY_ID"
+	// GitHub Actions sets these only when the job has `permissions: id-token: write`.
+	EnvGitHubOIDCRequestURL   = "ACTIONS_ID_TOKEN_REQUEST_URL"
+	EnvGitHubOIDCRequestToken = "ACTIONS_ID_TOKEN_REQUEST_TOKEN" //nolint:gosec // env-var key, not a credential
+
+	EnvOIDCTokenEndpoint = "BITRISE_OIDC_TOKEN_ENDPOINT" //nolint:gosec // env-var key, not a credential
 )
+
+// DefaultOIDCTokenEndpoint is the Bitrise token exchange endpoint, shared by the
+// OAuth login and the GitHub Actions OIDC exchange.
+const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:gosec // URL, not a credential
 
 // OnBuildHub reports whether both halves of the Build Hub pair are set.
 func OnBuildHub(envs map[string]string) bool {
 	return envs[EnvBuildHubVMToken] != "" && envs[EnvBuildHubVMTokenURL] != ""
+}
+
+// OIDCPolicyConfigured reports whether the user asked for the GitHub Actions OIDC
+// exchange, whether or not this job can perform it.
+func OIDCPolicyConfigured(envs map[string]string) bool {
+	return strings.TrimSpace(envs[EnvOIDCPolicyID]) != ""
+}
+
+// OnGitHubActionsOIDC reports whether this job can exchange: a policy is configured
+// and GitHub is offering an OIDC token.
+func OnGitHubActionsOIDC(envs map[string]string) bool {
+	return OIDCPolicyConfigured(envs) && envs[EnvGitHubOIDCRequestURL] != "" && envs[EnvGitHubOIDCRequestToken] != ""
 }
 
 var (
@@ -31,6 +57,8 @@ var (
 	ErrWorkspaceIDNotProvided = errors.New(EnvWorkspaceID + " environment variable not set")
 	ErrWorkspaceNotSelected   = errors.New("signed in, but no workspace is selected yet — run `bitrise-build-cache auth workspace --list` to see them, then `auth workspace --set <slug>`")
 	ErrTokenNonPrintable      = errors.New("auth token contains non-printable characters — trim whitespace and control chars from " + EnvAuthToken)
+	ErrNoGitHubOIDCToken      = errors.New(EnvOIDCPolicyID + " is set, but GitHub Actions offers this job no OIDC token — add `permissions: id-token: write` to the job")
+	ErrOIDCWorkspaceIDMissing = errors.New(EnvOIDCPolicyID + " is set, but " + EnvWorkspaceID + " is not — the exchanged token does not carry the workspace, so set both")
 )
 
 // SanitizeToken trims surrounding whitespace and rejects tokens that still

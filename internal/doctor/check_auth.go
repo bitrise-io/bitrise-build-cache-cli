@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
@@ -25,7 +26,11 @@ func (d *Doctor) authCheck() Check {
 					Fixer:   WorkspacePickFixer{Prompt: d.WorkspacePickPrompt},
 				}
 			}
-			if err != nil || !origin.Resolved() {
+			resolved := err == nil && origin.Resolved()
+			if res, ok := oidcResult(d.Envs, resolved); ok {
+				return res
+			}
+			if !resolved {
 				return Result{
 					State:   StateError,
 					Detail:  "no credentials found",
@@ -37,6 +42,38 @@ func (d *Doctor) authCheck() Check {
 			return Result{State: StateOK, Detail: live.Describe(cred, origin)}
 		},
 	}
+}
+
+// oidcResult covers a configured GitHub Actions OIDC exchange, which this offline
+// check never performs. Before the first exchange there is nothing on the machine,
+// and that is not "no credentials". A policy the job can't use is reported even when
+// another credential resolved, because the user asked for OIDC and won't get it.
+func oidcResult(envs map[string]string, resolved bool) (Result, bool) {
+	if !auth.OIDCPolicyConfigured(envs) {
+		return Result{}, false
+	}
+
+	var misconfigured error
+	switch {
+	case !auth.OnGitHubActionsOIDC(envs):
+		misconfigured = auth.ErrNoGitHubOIDCToken
+	case strings.TrimSpace(envs[auth.EnvWorkspaceID]) == "":
+		misconfigured = auth.ErrOIDCWorkspaceIDMissing
+	}
+
+	switch {
+	case misconfigured != nil && resolved:
+		return Result{State: StateWarn, Detail: misconfigured.Error()}, true
+	case misconfigured != nil:
+		return Result{State: StateError, Detail: misconfigured.Error()}, true
+	case !resolved:
+		return Result{
+			State:  StateOK,
+			Detail: "GitHub Actions OIDC (trust policy " + strings.TrimSpace(envs[auth.EnvOIDCPolicyID]) + "), exchanged when a command first needs a credential",
+		}, true
+	}
+
+	return Result{}, false
 }
 
 // storedFirstResolver reports what is stored on this machine. The `auth` check
