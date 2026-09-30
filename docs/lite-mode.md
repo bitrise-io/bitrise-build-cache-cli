@@ -267,7 +267,8 @@ here is shipped by this PoC beyond step 1's CLI half.
    workspace *and* build tool, so a workspace can be turned on for Gradle without
    also being on for Xcode. Until it ships the check is bypassed by
    `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK` — see
-   [Entitlement](#entitlement), which lists everything to delete.
+   [Entitlement](#entitlement). The bypass is not removed here — it stays until
+   step 6, so the gate can be turned on per workspace while it is being tested.
 1. **CLI + plugins: ship lite mode behind an org-slug env gate.** Released, but
    inert: lite only engages for an allowlist of workspace slugs carried in an env
    var, so internal workspaces can exercise it while everyone else is untouched.
@@ -282,11 +283,19 @@ here is shipped by this PoC beyond step 1's CLI half.
    failed build, no auth-error spam, and no analytics invocation.
 4. **GTM heads-up.** Cache activity starts appearing for workspaces that never
    added a Step, which changes what support and sales see.
-5. **Remove the org-slug gate.** General availability. The entitlement endpoint
-   from step 0 is then the only thing deciding whether a build caches.
+5. **Remove the org-slug gate.** General availability for lite mode itself.
+6. **Remove the entitlement bypass.** Delete
+   `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK`, flip
+   `entitlementEndpointShipped` to `true`, and drop the artefacts
+   `TestEntitlementBypass_MustBeRemovedOnceTheEndpointShips` names — that test
+   fails on the flip precisely so this step cannot be forgotten. Also unset the
+   variable in `bitrise.yml`. Only after this is the entitlement endpoint the
+   sole thing deciding whether a build caches.
 
 Steps 0 and 1 are independent and can run in parallel; 2 must not precede 1, or a
-VM would activate for workspaces the gate was meant to exclude.
+VM would activate for workspaces the gate was meant to exclude. 6 is last rather
+than folded into 0 because the bypass is what lets steps 1-5 run while the gate
+is still being validated — but the PoC is not finished until it is gone.
 
 ## Known limits
 
